@@ -6,6 +6,492 @@
     "metric": 6
   },
   {
+    "file": "larch/agents/_auth.py",
+    "code": "C901",
+    "qualified_symbol": "_run_cursor_probes",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "C901",
+    "qualified_symbol": "_run_one_codex_probe",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "C901",
+    "qualified_symbol": "cursor_auth_preflight",
+    "metric": 13
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_read_fresh_probe_stamp",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_run_cursor_probes",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "PLR0912",
+    "qualified_symbol": "cursor_auth_preflight",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_probe_command",
+    "metric": 6
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "launch_claude_ci_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "launch_claude_lint_fix_main",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validate_ci_args",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_validate_failure_log_path",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "launch_codex_implement_main",
+    "metric": 9
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "launch_cursor_implement_main",
+    "metric": 8
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_claude_ci_main",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_claude_lint_fix_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_claude_ci_main",
+    "metric": 55
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_claude_lint_fix_main",
+    "metric": 66
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_cursor_implement_main",
+    "metric": 53
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "C901",
+    "qualified_symbol": "launch_claude_review_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "C901",
+    "qualified_symbol": "launch_claude_subprocess_main",
+    "metric": 23
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0911",
+    "qualified_symbol": "launch_claude_subprocess_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_claude_review_main",
+    "metric": 17
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_claude_subprocess_main",
+    "metric": 25
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0913",
+    "qualified_symbol": "build_launch_argv",
+    "metric": 10
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0913",
+    "qualified_symbol": "ingest_launcher_token_sidecar",
+    "metric": 8
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0913",
+    "qualified_symbol": "launch_tier",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_claude_review_main",
+    "metric": 77
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_claude_subprocess_main",
+    "metric": 99
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "C901",
+    "qualified_symbol": "launch_claude_drafter",
+    "metric": 30
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "C901",
+    "qualified_symbol": "launch_codex_drafter",
+    "metric": 26
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "C901",
+    "qualified_symbol": "parse_drafter_output",
+    "metric": 31
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "C901",
+    "qualified_symbol": "run_negotiation_round",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0911",
+    "qualified_symbol": "launch_claude_drafter",
+    "metric": 12
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0911",
+    "qualified_symbol": "launch_codex_drafter",
+    "metric": 13
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_negotiation_round",
+    "metric": 10
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_claude_drafter",
+    "metric": 33
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0912",
+    "qualified_symbol": "launch_codex_drafter",
+    "metric": 28
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0912",
+    "qualified_symbol": "parse_drafter_output",
+    "metric": 34
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_negotiation_round",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_drafter_status_file",
+    "metric": 13
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "launch_claude_drafter",
+    "metric": 8
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0913",
+    "qualified_symbol": "launch_codex_drafter",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_claude_drafter",
+    "metric": 129
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_codex_drafter",
+    "metric": 108
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0915",
+    "qualified_symbol": "launch_codex_exec_main",
+    "metric": 62
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0915",
+    "qualified_symbol": "parse_drafter_output",
+    "metric": 101
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_negotiation_round",
+    "metric": 74
+  },
+  {
+    "file": "larch/agents/_launch_failure.py",
+    "code": "C901",
+    "qualified_symbol": "classify_launch_failure",
+    "metric": 12
+  },
+  {
+    "file": "larch/agents/_launch_failure.py",
+    "code": "C901",
+    "qualified_symbol": "resolve_model_args",
+    "metric": 19
+  },
+  {
+    "file": "larch/agents/_launch_failure.py",
+    "code": "PLR0911",
+    "qualified_symbol": "classify_launch_failure",
+    "metric": 10
+  },
+  {
+    "file": "larch/agents/_launch_failure.py",
+    "code": "PLR0911",
+    "qualified_symbol": "is_transient_infra_failure",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_launch_failure.py",
+    "code": "PLR0913",
+    "qualified_symbol": "classify_launch_failure",
+    "metric": 6
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "_review_cursor_normalize_no_issues",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "_review_cursor_postprocess",
+    "metric": 12
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "_review_launch_codex",
+    "metric": 15
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "_review_validate_args",
+    "metric": 12
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "C901",
+    "qualified_symbol": "_review_write_codex_prompt_sidecar",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_review_read_codex_prompt_sentinel",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_review_validate_args",
+    "metric": 10
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_review_launch_codex",
+    "metric": 14
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_append_launch_failure",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_append_outer_meta",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_run_with_retries",
+    "metric": 8
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_run_wrapper_attempt",
+    "metric": 8
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_write_preflight_bundle",
+    "metric": 6
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_review_launch_codex",
+    "metric": 68
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_review_launch_cursor",
+    "metric": 56
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "C901",
+    "qualified_symbol": "_prepare_codex_home",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "C901",
+    "qualified_symbol": "_strip_codex_config",
+    "metric": 15
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "C901",
+    "qualified_symbol": "run_external_agent",
+    "metric": 29
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "C901",
+    "qualified_symbol": "run_external_agent_main",
+    "metric": 19
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_prepare_codex_home",
+    "metric": 7
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0911",
+    "qualified_symbol": "run_external_agent_main",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_strip_codex_config",
+    "metric": 15
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_external_agent",
+    "metric": 32
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0912",
+    "qualified_symbol": "run_external_agent_main",
+    "metric": 19
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_run_external_agent_with_auth_retries",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_write_preflight_bundle",
+    "metric": 6
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0913",
+    "qualified_symbol": "run_external_agent",
+    "metric": 16
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_external_agent",
+    "metric": 132
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "code": "PLR0915",
+    "qualified_symbol": "run_external_agent_main",
+    "metric": 59
+  },
+  {
     "file": "larch/agents/agent_voters.py",
     "code": "C901",
     "qualified_symbol": "dispatch_voters",
@@ -82,492 +568,6 @@
     "code": "PLR0915",
     "qualified_symbol": "dispatch_waterfall",
     "metric": 121
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_prepare_codex_home",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_review_cursor_normalize_no_issues",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_review_cursor_postprocess",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_review_launch_codex",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_review_validate_args",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_review_write_codex_prompt_sidecar",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_run_cursor_probes",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_run_one_codex_probe",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "_strip_codex_config",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "classify_launch_failure",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "cursor_auth_preflight",
-    "metric": 13
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_claude_ci_main",
-    "metric": 13
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_claude_drafter",
-    "metric": 30
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_claude_lint_fix_main",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_claude_review_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_claude_subprocess_main",
-    "metric": 23
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "launch_codex_drafter",
-    "metric": 26
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "parse_drafter_output",
-    "metric": 31
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "resolve_model_args",
-    "metric": 19
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "run_external_agent",
-    "metric": 29
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "run_external_agent_main",
-    "metric": 19
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "C901",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_prepare_codex_home",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_read_fresh_probe_stamp",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_review_read_codex_prompt_sentinel",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_review_validate_args",
-    "metric": 10
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_run_cursor_probes",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_validate_ci_args",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_validate_failure_log_path",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "classify_launch_failure",
-    "metric": 10
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "is_transient_infra_failure",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "launch_claude_drafter",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "launch_claude_subprocess_main",
-    "metric": 12
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "launch_codex_drafter",
-    "metric": 13
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "launch_codex_implement_main",
-    "metric": 9
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 8
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_external_agent_main",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 10
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_review_launch_codex",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_strip_codex_config",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "cursor_auth_preflight",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_claude_ci_main",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_claude_drafter",
-    "metric": 33
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_claude_lint_fix_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_claude_review_main",
-    "metric": 17
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_claude_subprocess_main",
-    "metric": 25
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "launch_codex_drafter",
-    "metric": 28
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "parse_drafter_output",
-    "metric": 34
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_external_agent",
-    "metric": 32
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_external_agent_main",
-    "metric": 19
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0912",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 14
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_append_launch_failure",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_append_outer_meta",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_run_with_retries",
-    "metric": 8
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_run_wrapper_attempt",
-    "metric": 8
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_write_preflight_bundle",
-    "metric": 6
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_run_external_agent_with_auth_retries",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_run_probe_command",
-    "metric": 6
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_drafter_status_file",
-    "metric": 13
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_write_preflight_bundle",
-    "metric": 6
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "build_launch_argv",
-    "metric": 10
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "classify_launch_failure",
-    "metric": 6
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "ingest_launcher_token_sidecar",
-    "metric": 8
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "launch_claude_drafter",
-    "metric": 8
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "launch_codex_drafter",
-    "metric": 7
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "launch_tier",
-    "metric": 11
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0913",
-    "qualified_symbol": "run_external_agent",
-    "metric": 16
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_review_launch_codex",
-    "metric": 68
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_review_launch_cursor",
-    "metric": 56
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_claude_ci_main",
-    "metric": 55
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_claude_drafter",
-    "metric": 129
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_claude_lint_fix_main",
-    "metric": 66
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_claude_review_main",
-    "metric": 77
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_claude_subprocess_main",
-    "metric": 99
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_codex_drafter",
-    "metric": 108
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_codex_exec_main",
-    "metric": 62
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 53
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_drafter_output",
-    "metric": 101
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_external_agent",
-    "metric": 132
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_external_agent_main",
-    "metric": 59
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "code": "PLR0915",
-    "qualified_symbol": "run_negotiation_round",
-    "metric": 74
   },
   {
     "file": "larch/agents/collect_results.py",

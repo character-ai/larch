@@ -1,5 +1,68 @@
 [
   {
+    "file": "larch/agents/_auth.py",
+    "qualified_symbol": "_run_probe_command",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "qualified_symbol": "cursor_auth_preflight",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_auth.py",
+    "qualified_symbol": "cursor_preread_service_token",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "qualified_symbol": "_append_implement_launch_failure",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "qualified_symbol": "launch_claude_drafter",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "qualified_symbol": "run_negotiation_round",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "qualified_symbol": "_review_run_test_trap_after_inner_done_if_enabled",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
+    "file": "larch/agents/_run_external.py",
+    "qualified_symbol": "run_external_agent",
+    "callee": "Popen",
+    "occurrence": 1,
+    "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
+  },
+  {
     "file": "larch/agents/agent_voters.py",
     "qualified_symbol": "_launch_claude_voter",
     "callee": "Popen",
@@ -18,69 +81,6 @@
     "qualified_symbol": "_launch_slot",
     "callee": "Popen",
     "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "_append_implement_launch_failure",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "_review_run_test_trap_after_inner_done_if_enabled",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "_run_probe_command",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "cursor_auth_preflight",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "cursor_preread_service_token",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "launch_claude_drafter",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "run_external_agent",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "run_negotiation_round",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agents.py",
-    "qualified_symbol": "run_negotiation_round",
-    "callee": "run",
-    "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -883,6 +883,20 @@
   },
   {
     "file": "larch/git/pr_body.py",
+    "qualified_symbol": "_run_diagram_subprocess",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "qualified_symbol": "_run_diagram_subprocess",
+    "callee": "run",
+    "occurrence": 2,
+    "reason": "retry call reuses the same launcher argv; routing through proc.Runner is blocking-only (#5714)"
+  },
+  {
+    "file": "larch/git/pr_body.py",
     "qualified_symbol": "generate_code_flow_diagram",
     "callee": "run",
     "occurrence": 1,
@@ -901,20 +915,6 @@
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "qualified_symbol": "_run_diagram_subprocess",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/git/pr_body.py",
-    "qualified_symbol": "_run_diagram_subprocess",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "retry call reuses the same launcher argv; routing through proc.Runner is blocking-only (#5714)"
   },
   {
     "file": "larch/git/pr_body.py",
@@ -998,13 +998,6 @@
     "qualified_symbol": "step2_dispatch_main",
     "callee": "run",
     "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/implement/implement_dispatch.py",
-    "qualified_symbol": "step2_entry_main",
-    "callee": "run",
-    "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -1521,20 +1514,6 @@
   {
     "file": "larch/review/plan_review_panel.py",
     "qualified_symbol": "dispatch_voters",
-    "callee": "Popen",
-    "occurrence": 2,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/plan_review_panel.py",
-    "qualified_symbol": "dispatch_voters",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/plan_review_panel.py",
-    "qualified_symbol": "dispatch_voters",
     "callee": "run",
     "occurrence": 3,
     "reason": "grandfathered existing debt in moved larch.review modules"
@@ -1551,13 +1530,6 @@
     "qualified_symbol": "dispatch_voters",
     "callee": "run",
     "occurrence": 5,
-    "reason": "grandfathered existing debt in moved larch.review modules"
-  },
-  {
-    "file": "larch/review/plan_review_panel.py",
-    "qualified_symbol": "dispatch_voters",
-    "callee": "run",
-    "occurrence": 6,
     "reason": "grandfathered existing debt in moved larch.review modules"
   },
   {

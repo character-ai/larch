@@ -19,6 +19,8 @@ import pytest
 from larch.cli import _REGISTRY
 
 from larch.agents import agents
+from larch.agents import _ci_launcher
+from larch.agents import _run_external
 from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
 from larch.core import logging_util
@@ -3463,13 +3465,13 @@ def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monk
     args = _launcher_args(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
     resolved = tmp_path / "resolved-repo"
     resolved.mkdir()
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
     captured: dict[str, object] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -3483,7 +3485,7 @@ def test_codex_launcher_builds_exec_argv_and_dynamic_prompt(tmp_path: Path, monk
         stdout_path.write_text('{"type":"turn_completed","usage":{"input_tokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
 
     rc = agents.launch_codex_implement_main(args)
 
@@ -3518,15 +3520,15 @@ def test_cursor_launcher_missing_binary_emits_kv(tmp_path: Path, monkeypatch: py
 def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     args = _launcher_args(tmp_path)
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/cursor" if name == "cursor" else "/bin/true")
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
     resolved = tmp_path / "resolved-repo"
     resolved.mkdir()
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(resolved))  # type: ignore[arg-type]
     captured: dict[str, object] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -3537,7 +3539,7 @@ def test_cursor_launcher_builds_agent_argv(tmp_path: Path, monkeypatch: pytest.M
         output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
 
     rc = agents.launch_cursor_implement_main(args)
 
@@ -4722,10 +4724,10 @@ def test_codex_launcher_codex_home_outside_implement_tmpdir(tmp_path: Path, monk
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
     captured: dict[str, str] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -4736,7 +4738,7 @@ def test_codex_launcher_codex_home_outside_implement_tmpdir(tmp_path: Path, monk
         stdout_path.write_text('{"type":"turn_completed"}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     rc = agents.launch_codex_implement_main(args)
     assert rc == 0
     home = Path(captured["home"]).resolve()
@@ -4748,10 +4750,10 @@ def test_codex_launcher_env_key_auth_argv_only(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/codex" if name == "codex" else "/bin/true")
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_usage_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
     captured: dict[str, object] = {}
 
     def fake_run_external_agent_with_auth_retries(**kwargs):  # type: ignore[no-untyped-def]
@@ -4764,7 +4766,7 @@ def test_codex_launcher_env_key_auth_argv_only(tmp_path: Path, monkeypatch: pyte
         stdout_path.write_text('{"type":"turn_completed"}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     rc = agents.launch_codex_implement_main(args)
     assert rc == 0
     cmd = captured["cmd"]
@@ -4778,12 +4780,12 @@ def test_codex_launcher_env_key_auth_argv_only(tmp_path: Path, monkeypatch: pyte
 def test_cursor_launcher_continues_when_config_copy_fails(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     args = _launcher_args(tmp_path)
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/cursor" if name == "cursor" else "/bin/true")
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_record_implement_timing", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_promote_inner_done", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", lambda *_args, **_kwargs: None)
 
     def boom_copy(*_args, **_kwargs):  # type: ignore[no-untyped-def]
         raise OSError("permission denied")
@@ -4803,7 +4805,7 @@ def test_cursor_launcher_continues_when_config_copy_fails(tmp_path: Path, monkey
         output.write_text('{"usage":{"inputTokens":1}}\n', encoding="utf-8")
         return agents.RunExternalAgentResult(0, output)
 
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     rc = agents.launch_cursor_implement_main(args)
     assert rc == 0
     assert "LAUNCHER_EXIT=0" in capsys.readouterr().out
@@ -4822,12 +4824,12 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
     def fake_run_external_agent(**_kwargs):  # type: ignore[no-untyped-def]
         return agents.RunExternalAgentResult(2, output)
 
-    monkeypatch.setattr(agents, "external_auth_verdict", fake_verdict)
-    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
-    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 2)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: object())  # noqa: ARG005
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
-    result = agents._run_external_agent_with_auth_retries(
+    monkeypatch.setattr(_run_external, "external_auth_verdict", fake_verdict)
+    monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 2)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: object())  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    result = _run_external._run_external_agent_with_auth_retries(
         tool="codex",
         output=output,
         timeout_seconds=1,

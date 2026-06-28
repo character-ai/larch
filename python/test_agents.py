@@ -22,6 +22,12 @@ from larch.core import config
 from larch.core import logging_util
 from larch.agents.agents import LaunchFailure, TierAttempt
 from larch.core.proc import CommandResult
+from larch.agents import _run_external
+from larch.agents import _auth
+from larch.agents import _ci_launcher
+from larch.agents import _review_launcher
+from larch.agents import _drafter
+from larch.agents import _claude_runner
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
 
@@ -879,7 +885,8 @@ def test_record_timing_wrappers_delegate_to_launch_timing(
     def fake_record(tool: str, task_kind: str, start_s: float, output: Path, exit_code: int) -> None:
         calls.append((tool, task_kind, start_s, output, exit_code))
 
-    monkeypatch.setattr(agents, "_record_launch_timing", fake_record)
+    monkeypatch.setattr(_review_launcher, "_record_launch_timing", fake_record)
+    monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record)
 
     output = tmp_path / "agent.out"
     agents._review_record_timing(vendor="codex", task_kind="codex-review", start_s=12.0, output=output, exit_code=7)  # pylint: disable=protected-access
@@ -1192,7 +1199,7 @@ def test_check_reviewers_positive_and_negative_stamp_rules(monkeypatch: pytest.M
     _ = stamp.write_text("true\n", encoding="utf-8")
     assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is True
     _ = stamp.write_text("false\n", encoding="utf-8")
-    monkeypatch.setattr(agents, "_run_one_codex_probe", lambda _timeout: 1)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 1)
     assert agents.check_reviewers(skip_cursor_probe=True, env=env).codex_present is False
     assert agents.check_reviewers(skip_cursor_probe=True, env={**env, "LARCH_PROBE_NEGATIVE_TTL_SECONDS": "60"}).codex_present is False
 
@@ -1217,7 +1224,7 @@ def test_check_reviewers_expired_stamp_misses_and_auth_retry(
         calls += 1
         return 2 if calls == 1 else 0
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_EXTERNAL_AUTH_RETRIES": "2"},
@@ -1267,10 +1274,10 @@ def test_check_reviewers_cursor_preflight_rc2_one_shot_and_cleanup(
         calls += 1
         return 2
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={
@@ -1312,10 +1319,10 @@ def test_check_reviewers_cursor_preflight_rc2_transient_rc1_one_shot(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={
@@ -1345,7 +1352,7 @@ def test_check_reviewers_invalid_env_normalization(
         seen_timeouts.append(timeout)
         return 0 if len(seen_timeouts) == 3 else 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1377,7 +1384,7 @@ def test_check_reviewers_transient_failure_retries_until_exhausted(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1408,7 +1415,7 @@ def test_check_reviewers_transient_failure_retries_until_success(
         calls += 1
         return 0 if calls == 2 else 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1437,7 +1444,7 @@ def test_check_reviewers_transient_failure_zero_budget_one_shot(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1467,7 +1474,7 @@ def test_check_reviewers_probe_no_retry_rc_one_shot(
         calls += 1
         return agents._PROBE_NO_RETRY_RC
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1492,7 +1499,7 @@ def test_check_reviewers_codex_timeout_one_shot_by_default(
         calls += 1
         return config.EXIT_TIMEOUT
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1518,7 +1525,7 @@ def test_check_reviewers_codex_timeout_retry_can_succeed(
         calls += 1
         return 0 if calls == 2 else config.EXIT_TIMEOUT
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1554,9 +1561,9 @@ def test_check_reviewers_cursor_timeout_retry_can_succeed(
         cfg_dir.mkdir()
         return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=None)  # pylint: disable=protected-access
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_probe)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={
@@ -1588,7 +1595,7 @@ def test_check_reviewers_invalid_timeout_retry_env_is_one_shot(
         calls += 1
         return config.EXIT_TIMEOUT
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1617,7 +1624,7 @@ def test_check_reviewers_timeout_budget_is_independent(
     def fake_probe(_timeout: int) -> int:
         return rcs.pop(0)
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1650,7 +1657,7 @@ def test_check_reviewers_health_gate_unset_probe_retries_one_shot(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1680,7 +1687,7 @@ def test_check_reviewers_health_gate_explicit_probe_retries_override(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1709,7 +1716,7 @@ def test_check_reviewers_auth_and_transient_budgets_are_independent(
     def fake_probe(_timeout: int) -> int:
         return rcs.pop(0)
 
-    monkeypatch.setattr(agents, "_run_one_codex_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", fake_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1741,8 +1748,8 @@ def test_check_reviewers_codex_auth_setup_failure(
         probe_calls += 1
         return real_probe(timeout)
 
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
-    monkeypatch.setattr(agents, "_run_one_codex_probe", counting_probe)
+    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", counting_probe)
     result = agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1782,10 +1789,10 @@ def test_check_reviewers_cursor_transient_retry_until_success(
         calls += 1
         return 0 if calls == 2 else 1
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1827,10 +1834,10 @@ def test_check_reviewers_cursor_transient_retry_until_exhausted(
         calls += 1
         return 1
 
-    monkeypatch.setattr(agents, "cursor_auth_preflight", fake_preflight)
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_cursor_probe)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", fake_preflight)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", fake_cleanup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_cursor_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1858,8 +1865,8 @@ def test_check_reviewers_cursor_setup_chain_failure(
         probe_calls += 1
         return 0
 
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", lambda: None)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", fake_probe)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", lambda: None)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", fake_probe)
     result = agents.check_reviewers(
         skip_codex_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1885,8 +1892,8 @@ def test_check_reviewers_cursor_private_config_cleanup(
         agents.os.environ["CURSOR_CONFIG_DIR"] = str(cfg_dir)
         return agents._CursorProbeSetup(cfg_tmp=cfg_dir, old_cfg=old_cfg)  # pylint: disable=protected-access
 
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", fake_setup)
-    monkeypatch.setattr(agents, "_run_one_cursor_probe", lambda _timeout: 0)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", fake_setup)
+    monkeypatch.setattr(_auth, "_run_one_cursor_probe", lambda _timeout: 0)
     monkeypatch.setattr(
         agents,
         "cursor_auth_preflight",
@@ -1907,9 +1914,9 @@ def test_cursor_probe_setup_chain_ignores_config_copy_failure(
     user_cfg = tmp_path / ".cursor" / "cli-config.json"
     user_cfg.parent.mkdir(parents=True)
     _ = user_cfg.write_text("{}", encoding="utf-8")
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "_probe_tmpdir", lambda: tmp_path)
+    monkeypatch.setattr(_auth, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_auth, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_auth, "_probe_tmpdir", lambda: tmp_path)
     monkeypatch.setattr(agents.Path, "home", lambda: tmp_path)
 
     def fail_copyfile(_src: Path, _dst: Path) -> None:
@@ -1933,7 +1940,7 @@ def test_check_reviewers_probe_temp_home_cleanup(
     codex = bin_dir / "codex"
     _ = codex.write_text("#!/usr/bin/env bash\nexit 0\n", encoding="utf-8")
     codex.chmod(0o755)
-    monkeypatch.setattr(agents, "_run_one_codex_probe", lambda _timeout: 0)
+    monkeypatch.setattr(_auth, "_run_one_codex_probe", lambda _timeout: 0)
     agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -1958,7 +1965,7 @@ def test_check_reviewers_codex_argv_no_secrets_in_cmd(
         seen_cmds.append(list(cmd))
         return 0
 
-    monkeypatch.setattr(agents, "_run_probe_command", capture_probe)
+    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
     agents.check_reviewers(
         skip_cursor_probe=True,
         env={
@@ -1990,15 +1997,15 @@ def test_check_reviewers_codex_probe_resolves_workdir(
         _ = trusted_instructions_file
         return (0, "")
 
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
-    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_auth, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(_auth, "_prepare_codex_home", fake_prepare)
     seen_cmds: list[Sequence[str]] = []
 
     def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
         seen_cmds.append(list(cmd))
         return 0
 
-    monkeypatch.setattr(agents, "_run_probe_command", capture_probe)
+    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
     agents.check_reviewers(
         skip_cursor_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -2032,17 +2039,17 @@ def test_check_reviewers_cursor_probe_resolves_workspace(
     def setup_chain_stub() -> object:
         return object()
 
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", cursor_auth_ok)
-    monkeypatch.setattr(agents, "_cursor_probe_setup_chain", setup_chain_stub)
-    monkeypatch.setattr(agents, "_cursor_probe_cleanup_private_config_dir", cleanup_noop)
+    monkeypatch.setattr(_auth, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(_auth, "cursor_auth_preflight", cursor_auth_ok)
+    monkeypatch.setattr(_auth, "_cursor_probe_setup_chain", setup_chain_stub)
+    monkeypatch.setattr(_auth, "_cursor_probe_cleanup_private_config_dir", cleanup_noop)
     seen_cmds: list[Sequence[str]] = []
 
     def capture_probe(cmd: Sequence[str], **_kwargs: object) -> int:
         seen_cmds.append(list(cmd))
         return 0
 
-    monkeypatch.setattr(agents, "_run_probe_command", capture_probe)
+    monkeypatch.setattr(_auth, "_run_probe_command", capture_probe)
     agents.check_reviewers(
         skip_codex_probe=True,
         env={"PATH": str(bin_dir), "TMPDIR": str(tmp_path), "LARCH_PROBE_TTL_SECONDS": "0"},
@@ -2060,7 +2067,7 @@ def test_run_negotiation_round_cursor_probe_failure_exit_2(
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
     monkeypatch.setattr(
         agents.subprocess,
         "run",
@@ -2078,7 +2085,7 @@ def test_run_negotiation_round_codex_auth_setup_failure_exit_2(
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", lambda _home: (1, "codex auth setup failed"))
     assert agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path) == 2
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
@@ -2147,7 +2154,7 @@ def test_run_negotiation_round_codex_failure_and_model_error(
     assert rc == 2
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad model")))
+    monkeypatch.setattr(_drafter, "resolve_model_args", lambda *_args, **_kwargs: (_ for _ in ()).throw(ValueError("bad model")))
     assert agents.run_negotiation_round(tool="codex", prompt_file=prompt, output=output, workspace=tmp_path) == 1
 
 
@@ -2159,7 +2166,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
     prompt = tmp_path / "prompt.txt"
     output = tmp_path / "reply.txt"
     _ = prompt.write_text("prompt body", encoding="utf-8")
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=False, rc=2, message="no auth"))
+    monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=False, rc=2, message="no auth"))
     assert agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path) == 3
     assert capsys.readouterr().out == f"RESPONSE_FILE={output}\n"
 
@@ -2171,7 +2178,7 @@ def test_run_negotiation_round_cursor_preflight_failure_and_success(
         return agents.subprocess.CompletedProcess(cmd, 0)
 
     monkeypatch.setenv("CURSOR_API_KEY", "crsr-secret")
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_drafter, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     assert agents.run_negotiation_round(tool="cursor", prompt_file=prompt, output=output, workspace=tmp_path) == 0
     cmd = seen["cmd"]
@@ -2214,8 +2221,8 @@ def test_run_negotiation_round_startup_lock_before_spawn(
                 stdout.write("cursor ok\n")
         return agents.subprocess.CompletedProcess(cmd, 0)
 
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_lock)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_drafter, "external_startup_lock_acquire", fake_lock)
+    monkeypatch.setattr(_drafter, "external_startup_lock_release_after", fake_release)
     monkeypatch.setattr(agents.subprocess, "run", fake_run)
     if tool == "codex":
         monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
@@ -2247,7 +2254,7 @@ def test_startup_lock_invalid_env_falls_back(monkeypatch: pytest.MonkeyPatch) ->
         def start(self) -> None:
             assert self.delay == 0.5
 
-    monkeypatch.setattr(agents, "Timer", FakeTimer)
+    monkeypatch.setattr(_run_external, "Timer", FakeTimer)
     state = agents.external_startup_lock_acquire(tool="cursor")
     try:
         assert state.lock_path is not None
@@ -2369,8 +2376,8 @@ def test_cursor_auth_preflight_keychain_uses_startup_lock(monkeypatch: pytest.Mo
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_SECURITY_RC", "0")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "crsr_from_keychain")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_auth, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_auth, "external_startup_lock_release_after", fake_release)
     assert agents.cursor_auth_preflight(caller="test").ok is True
     assert calls == [("acquire", "cursor"), ("release", "0")]
 
@@ -2389,8 +2396,8 @@ def test_cursor_preread_keychain_uses_startup_lock(monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_PREREAD_TOKEN", "crsr_from_keychain")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_auth, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_auth, "external_startup_lock_release_after", fake_release)
     agents.cursor_preread_service_token()
     assert agents.os.environ["CURSOR_API_KEY"] == "crsr_from_keychain"
     assert calls == [("acquire", "cursor"), ("release", "0")]
@@ -2406,7 +2413,7 @@ def test_cursor_auth_usable_env_key_skips_keychain_lock(monkeypatch: pytest.Monk
     monkeypatch.setenv("CURSOR_API_KEY", "  crsr_existing_key  ")
     monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Darwin")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_auth, "external_startup_lock_acquire", fake_acquire)
     assert agents.cursor_auth_preflight(caller="test").ok is True
     agents.cursor_preread_service_token()
     assert not calls
@@ -2422,7 +2429,7 @@ def test_cursor_auth_non_darwin_skips_keychain_lock(monkeypatch: pytest.MonkeyPa
     monkeypatch.setenv("CURSOR_API_KEY", "")
     monkeypatch.setenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", "1")
     monkeypatch.setenv("LIB_CURSOR_AUTH_TEST_UNAME", "Linux")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_auth, "external_startup_lock_acquire", fake_acquire)
     assert agents.cursor_auth_preflight(caller="test").ok is True
     agents.cursor_preread_service_token()
     assert not calls
@@ -2439,8 +2446,8 @@ def _cursor_auth_unlock(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_LIB_CURSOR_AUTH_TEST_MODE", raising=False)
     monkeypatch.setenv("CURSOR_API_KEY", "")
     monkeypatch.setattr(agents.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_acquire)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_auth, "external_startup_lock_acquire", fake_acquire)
+    monkeypatch.setattr(_auth, "external_startup_lock_release_after", fake_release)
 
 
 def test_cursor_auth_preflight_probes_keychain_readability(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2481,7 +2488,7 @@ def test_cursor_preread_surfaces_failed_keychain_read(monkeypatch: pytest.Monkey
     # CURSOR_API_KEY unset (which lets the Cursor slot auth-fail in-process).
     _cursor_auth_unlock(monkeypatch)
     warnings: list[str] = []
-    monkeypatch.setattr(agents, "_err", warnings.append)
+    monkeypatch.setattr(_auth, "_err", warnings.append)
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(list(argv), 1, stdout="")
@@ -2576,10 +2583,10 @@ def test_auth_retries_acquire_startup_lock_each_attempt(monkeypatch: pytest.Monk
     def fake_release(**_kwargs: object) -> None:
         calls.append("release")
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
-    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 2)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", fake_lock)
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", fake_release)
+    monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 2)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", fake_lock)
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", fake_release)
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="cursor",
         output=output,
@@ -2604,10 +2611,10 @@ def test_unclassified_empty_exit_one(monkeypatch: pytest.MonkeyPatch, tmp_path: 
         exit_code = 1 if calls["count"] == 1 else 4
         return agents.RunExternalAgentResult(exit_code, output_path)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
-    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 5)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
@@ -2634,10 +2641,10 @@ def test_unclassified_empty_exit_one_respects_auth_retry_limit_one(
         output_path.write_text("", encoding="utf-8")
         return agents.RunExternalAgentResult(1, output_path)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
-    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 1)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 1)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
         output=output,
@@ -2670,10 +2677,10 @@ def test_policy_rejection_marker_skips_auth_and_empty_retries(
         )
         return agents.RunExternalAgentResult(1, output_path)
 
-    monkeypatch.setattr(agents, "run_external_agent", fake_run_external_agent)
-    monkeypatch.setattr(agents, "_auth_retry_limit", lambda: 5)
-    monkeypatch.setattr(agents, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
-    monkeypatch.setattr(agents, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "run_external_agent", fake_run_external_agent)
+    monkeypatch.setattr(_run_external, "_auth_retry_limit", lambda: 5)
+    monkeypatch.setattr(_run_external, "external_startup_lock_acquire", lambda tool: agents.StartupLockState(None))  # noqa: ARG005
+    monkeypatch.setattr(_run_external, "external_startup_lock_release_after", lambda state: None)  # noqa: ARG005
 
     result = agents._run_external_agent_with_auth_retries(  # pylint: disable=protected-access
         tool="codex",
@@ -2831,10 +2838,10 @@ def test_launch_codex_exec_default_workdir_resolves_before_launch(
         return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
-    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_drafter, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_drafter, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
 
     rc = agents.launch_codex_exec_main(["--output", str(output), "--timeout", "5", "--prompt-file", str(prompt)])
@@ -2877,10 +2884,10 @@ def test_launch_codex_exec_explicit_workdir_is_not_resolved(
         return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fail_resolve)
-    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_drafter, "_resolve_review_codex_workdir", fail_resolve)
+    monkeypatch.setattr(_drafter, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_drafter, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_drafter, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
 
     rc = agents.launch_codex_exec_main(
@@ -2968,7 +2975,7 @@ def test_review_emit_launcher_result_composes_sink_before_classification(
         seen["sidecar"] = sidecar
         return agents.LaunchFailure("health", "auth")
 
-    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
+    monkeypatch.setattr(_review_launcher, "classify_launch_failure", fake_classify)
     agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
     failure_diag = output.with_suffix(output.suffix + ".failure-diag")
     assert seen["sidecar"] == failure_diag
@@ -3000,7 +3007,7 @@ def test_review_emit_launcher_result_merges_sink_into_existing_failure_diag(
         seen["sidecar"] = sidecar
         return agents.LaunchFailure("health", "auth")
 
-    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify)
+    monkeypatch.setattr(_review_launcher, "classify_launch_failure", fake_classify)
     agents._review_emit_launcher_result(output=output, tool="cursor", launcher_exit=2, stderr_sink=str(sink))  # pylint: disable=protected-access
     assert seen["sidecar"] == failure_diag
     assert "authentication failed in sink" in failure_diag.read_text(encoding="utf-8")
@@ -3020,7 +3027,7 @@ def test_review_append_launch_failure_merges_sink_into_existing_failure_diag(
     _ = diag.write_text("generic failure\n", encoding="utf-8")
     _ = failure_diag.write_text("===== diag =====\ngeneric failure\n", encoding="utf-8")
     _ = sink.write_text("launcher stderr detail\n", encoding="utf-8")
-    monkeypatch.setattr(agents, "_resolve_execution_issues_log", lambda: None)
+    monkeypatch.setattr(_review_launcher, "_resolve_execution_issues_log", lambda: None)
     agents._review_append_launch_failure(  # pylint: disable=protected-access
         output=output,
         tool="codex",
@@ -3036,7 +3043,7 @@ def test_review_append_launch_failure_threads_custom_site(tmp_path: Path, monkey
     log = tmp_path / "execution-issues.md"
     _ = log.write_text("", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents, "_resolve_execution_issues_log", lambda: log)
+    monkeypatch.setattr(_review_launcher, "_resolve_execution_issues_log", lambda: log)
     captured: dict[str, str] = {}
 
     def fake_run(argv: Sequence[str], **_kwargs: object) -> CommandResult:
@@ -3390,14 +3397,14 @@ def test_launch_codex_ci_resolves_consumer_workdir(
         return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", fake_resolve)
     monkeypatch.setattr(agents.shutil, "which", fake_which)
-    monkeypatch.setattr(agents, "_prepare_codex_home", fake_prepare)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", fake_prepare)
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
-    monkeypatch.setattr(agents, "_append_ci_failure", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_append_ci_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
 
     rc = agents.launch_codex_ci_main(
         [
@@ -3486,18 +3493,18 @@ def test_launch_codex_ci_finalize_order_and_token_stdout(
         logging_util.emit_kv(key="OUTPUT", value=str(output))
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    monkeypatch.setattr(agents, "_write", fake_write)
-    monkeypatch.setattr(agents, "_append", fake_append)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", fake_mirror)
-    monkeypatch.setattr(agents, "_record_launch_timing", fake_record_timing)
-    monkeypatch.setattr(agents, "_record_usage_from_events", fake_record_usage)
-    monkeypatch.setattr(agents, "_emit_kv", fake_emit_kv)
-    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
-    monkeypatch.setattr(agents, "_append_ci_failure", fake_append_failure)
-    monkeypatch.setattr(agents, "_emit_ci_launcher_result", fake_emit_result)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_run_external, "_write", fake_write)
+    monkeypatch.setattr(_ci_launcher, "_append", fake_append)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", fake_mirror)
+    monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record_timing)
+    monkeypatch.setattr(_run_external, "_record_usage_from_events", fake_record_usage)
+    monkeypatch.setattr(_run_external, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(_ci_launcher, "_append_ci_failure", fake_append_failure)
+    monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", fake_emit_result)
 
     rc = agents.launch_codex_ci_main(
         [
@@ -3536,10 +3543,10 @@ def test_launch_codex_ci_restores_codex_home_after_launcher_exception(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
 
     with pytest.raises(RuntimeError, match="boom"):
         agents.launch_codex_ci_main(
@@ -3793,16 +3800,16 @@ def test_launch_cursor_ci_resolves_consumer_workdir_and_preserves_fix_stall_chan
         return CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0)
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", fake_resolve)
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", fake_resolve)
     monkeypatch.setattr(agents.shutil, "which", fake_which)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
-    monkeypatch.setattr(agents, "_append_ci_failure", lambda *_args, **_kwargs: None)
-    monkeypatch.setattr(agents, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_append_ci_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", lambda *_args, **_kwargs: None)
 
     rc = agents.launch_cursor_ci_main(
         [
@@ -3885,21 +3892,21 @@ def test_launch_cursor_ci_finalize_order_and_stall_guard(
         order.append("emit")
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    monkeypatch.setattr(agents, "_write", fake_write)
-    monkeypatch.setattr(agents, "_append", fake_append)
-    monkeypatch.setattr(agents, "_record_launch_timing", fake_record_timing)
-    monkeypatch.setattr(agents, "_record_cursor_usage_from_output", fake_record_usage)
-    monkeypatch.setattr(agents, "_emit_kv", fake_emit_kv)
-    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
-    monkeypatch.setattr(agents, "_append_ci_failure", fake_append_failure)
-    monkeypatch.setattr(agents, "_emit_ci_launcher_result", fake_emit_result)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_run_external, "_write", fake_write)
+    monkeypatch.setattr(_ci_launcher, "_append", fake_append)
+    monkeypatch.setattr(_ci_launcher, "_record_launch_timing", fake_record_timing)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_usage_from_output", fake_record_usage)
+    monkeypatch.setattr(_run_external, "_emit_kv", fake_emit_kv)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(_ci_launcher, "_append_ci_failure", fake_append_failure)
+    monkeypatch.setattr(_ci_launcher, "_emit_ci_launcher_result", fake_emit_result)
 
     rc = agents.launch_cursor_ci_main(
         [
@@ -3968,13 +3975,13 @@ def test_launch_cursor_ci_restores_config_dir_after_launcher_exception(
         raise RuntimeError("boom")
 
     monkeypatch.chdir(raw_cwd)
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(consumer_repo))
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
 
     with pytest.raises(RuntimeError, match="boom"):
         agents.launch_cursor_ci_main(
@@ -4066,18 +4073,18 @@ def test_launch_codex_implement_finalize_order_uses_explicit_sidecar(
 
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "codex" else None)
-    monkeypatch.setattr(agents, "_safe_codex_home_dir", fake_safe_home)
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    monkeypatch.setattr(agents, "_append", fake_append)
-    monkeypatch.setattr(agents, "_mirror_codex_quota_from_events", fake_mirror)
-    monkeypatch.setattr(agents, "_record_implement_timing", fake_record_timing)
-    monkeypatch.setattr(agents, "_record_usage_from_events", fake_record_usage)
-    monkeypatch.setattr(agents, "_append_implement_launch_failure", fake_append_failure)
-    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
-    monkeypatch.setattr(agents, "_emit_implement_launcher_envelope", fake_emit)
+    monkeypatch.setattr(_ci_launcher, "_safe_codex_home_dir", fake_safe_home)
+    monkeypatch.setattr(_ci_launcher, "_prepare_codex_home", lambda _home, **_kwargs: (0, ""))
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_append", fake_append)
+    monkeypatch.setattr(_run_external, "_mirror_codex_quota_from_events", fake_mirror)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", fake_record_timing)
+    monkeypatch.setattr(_ci_launcher, "_record_usage_from_events", fake_record_usage)
+    monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", fake_append_failure)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", fake_emit)
     monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
 
     rc = agents.launch_codex_implement_main(
@@ -4162,18 +4169,18 @@ def test_launch_cursor_implement_finalize_order_uses_explicit_sidecar(
 
     monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
     monkeypatch.setattr(agents.shutil, "which", lambda name: "/usr/bin/true" if name == "cursor" else None)
-    monkeypatch.setattr(agents, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
-    monkeypatch.setattr(agents, "cursor_preread_service_token", lambda: True)
-    monkeypatch.setattr(agents, "cursor_auth_export_env", lambda: None)
-    monkeypatch.setattr(agents, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
-    monkeypatch.setattr(agents, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
-    monkeypatch.setattr(agents, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
-    monkeypatch.setattr(agents, "_append", fake_append)
-    monkeypatch.setattr(agents, "_record_implement_timing", fake_record_timing)
-    monkeypatch.setattr(agents, "_record_cursor_implement_usage", fake_record_usage)
-    monkeypatch.setattr(agents, "_append_implement_launch_failure", fake_append_failure)
-    monkeypatch.setattr(agents, "_promote_inner_done", fake_promote)
-    monkeypatch.setattr(agents, "_emit_implement_launcher_envelope", fake_emit)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_preflight", lambda **_kwargs: agents.AuthVerdict(ok=True, rc=0, message=""))
+    monkeypatch.setattr(_ci_launcher, "cursor_preread_service_token", lambda: True)
+    monkeypatch.setattr(_ci_launcher, "cursor_auth_export_env", lambda: None)
+    monkeypatch.setattr(_ci_launcher, "resolve_model_args", lambda *_args, **_kwargs: agents.ModelArgResult(()))
+    monkeypatch.setattr(_ci_launcher, "_resolve_review_codex_workdir", lambda _cwd: str(tmp_path))
+    monkeypatch.setattr(_ci_launcher, "_run_external_agent_with_auth_retries", fake_run_external_agent_with_auth_retries)
+    monkeypatch.setattr(_ci_launcher, "_append", fake_append)
+    monkeypatch.setattr(_ci_launcher, "_record_implement_timing", fake_record_timing)
+    monkeypatch.setattr(_ci_launcher, "_record_cursor_implement_usage", fake_record_usage)
+    monkeypatch.setattr(_ci_launcher, "_append_implement_launch_failure", fake_append_failure)
+    monkeypatch.setattr(_ci_launcher, "_promote_inner_done", fake_promote)
+    monkeypatch.setattr(_ci_launcher, "_emit_implement_launcher_envelope", fake_emit)
     monkeypatch.setattr(agents.proc, "run", lambda argv, **_kwargs: CommandResult(tuple(str(arg) for arg in argv), 0, "", "", 0.0))
 
     rc = agents.launch_cursor_implement_main(
@@ -4294,7 +4301,7 @@ def test_launch_claude_review_forwards_context_files_to_subprocess(tmp_path: Pat
         _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
         return 0
 
-    monkeypatch.setattr(agents, "launch_claude_subprocess_main", fake_launch)
+    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch)
     rc = agents.launch_claude_review_main(
         [
             "--output",
@@ -4332,7 +4339,7 @@ def test_launch_claude_review_skips_missing_implicit_context_files(tmp_path: Pat
         _ = output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
         return 0
 
-    monkeypatch.setattr(agents, "launch_claude_subprocess_main", fake_launch)
+    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch)
     rc = agents.launch_claude_review_main(
         [
             "--output",
@@ -5074,7 +5081,7 @@ def test_launch_codex_drafter_uses_exact_exec_args_and_cleans_success(
         _ = (cmd, kwargs)
         return agents.CommandResult((), 0, "", "", 0.0)
 
-    monkeypatch.setattr(agents, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
     rc = agents.launch_codex_drafter(
         prompt_file=str(prompt),
@@ -5163,7 +5170,7 @@ def test_launch_codex_drafter_failure_uses_sidecar_for_stderr_tail(
         _ = (cmd, kwargs)
         return agents.CommandResult((), 0, "", "", 0.0)
 
-    monkeypatch.setattr(agents, "_launch_codex_exec_inprocess", fake_exec)
+    monkeypatch.setattr(_drafter, "_launch_codex_exec_inprocess", fake_exec)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
     rc = agents.launch_codex_drafter(
         prompt_file=str(prompt),
@@ -5210,7 +5217,7 @@ def test_launch_codex_drafter_main_succeeds_when_exec_exit_on_done_under_quiet(
         _ = (cmd, kwargs)
         return agents.CommandResult((), 0, "", "", 0.0)
 
-    monkeypatch.setattr(agents, "launch_codex_exec_main", fake_launch_codex_exec_main)
+    monkeypatch.setattr(_drafter, "launch_codex_exec_main", fake_launch_codex_exec_main)
     monkeypatch.setattr(agents.proc, "run", fake_proc_run)
 
     read_fd, write_fd = os.pipe()
@@ -5391,9 +5398,9 @@ def test_launch_claude_drafter_main_rejects_wrapper_read_tool_flags() -> None:
 
 
 def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(agents, "_read_plugin_version_best_effort", lambda: "1.2.3")
+    monkeypatch.setattr(_auth, "_read_plugin_version_best_effort", lambda: "1.2.3")
     monkeypatch.setattr(
-        agents,
+        _auth,
         "check_reviewers",
         lambda: agents.CheckReviewersResult(
             codex_binary_found=True,
@@ -5420,12 +5427,12 @@ def test_status_check_emits_contract_keys(monkeypatch: pytest.MonkeyPatch, capsy
 
 
 def test_status_check_version_and_probe_fallback(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    monkeypatch.setattr(agents, "_read_plugin_version_best_effort", lambda: "unknown")
+    monkeypatch.setattr(_auth, "_read_plugin_version_best_effort", lambda: "unknown")
 
     def raise_probe() -> agents.CheckReviewersResult:
         raise RuntimeError("probe failed")
 
-    monkeypatch.setattr(agents, "check_reviewers", raise_probe)
+    monkeypatch.setattr(_auth, "check_reviewers", raise_probe)
     assert agents.status_check_main([]) == 0
     out = capsys.readouterr().out
     assert "LARCH_PLUGIN_VERSION=unknown" in out
@@ -5509,7 +5516,7 @@ def test_model_args_main_codex_role_ignores_default_and_global_env(
 def test_codex_probe_blank_review_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
-    monkeypatch.setattr(agents, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
+    monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
 
     assert agents._run_one_codex_probe(1) == agents._PROBE_NO_RETRY_RC  # pylint: disable=protected-access
 
