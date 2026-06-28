@@ -213,6 +213,7 @@ from larch.implement.dispatch_step18 import (
 
 # --- recovery paths and implement commit ---
 from larch.implement.dispatch_recovery import (
+    RecoveryPorcelainInputs,
     _commit_usage_fail,
     compute_recovery_paths,
     commit_main,

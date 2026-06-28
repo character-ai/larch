@@ -543,18 +543,6 @@ ignore = [
     "PLR0911",
     "PLR0912",
 ]
-"dispatch_recovery.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0913",
-]
-"dispatch_step2.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
 "implement_dispatch.py" = [
     "F401",
 ]

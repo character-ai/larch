@@ -1002,9 +1002,11 @@ def test_recovery_paths_filters_tmpdir_and_detects_changed_predirty(repo: Path) 
     ok = implement_dispatch.compute_recovery_paths(
         repo_root=repo,
         tmpdir=tmp,
-        prelaunch_porcelain=pre,
-        postlaunch_porcelain=post,
-        prelaunch_digests=digests,
+        porcelain=implement_dispatch.RecoveryPorcelainInputs(
+            prelaunch_porcelain=pre,
+            postlaunch_porcelain=post,
+            prelaunch_digests=digests,
+        ),
         out_file=out,
     )
 

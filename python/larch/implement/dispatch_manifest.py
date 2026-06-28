@@ -29,7 +29,7 @@ from larch.implement.dispatch_helpers import (
     PORCELAIN_MIN_PARTS,
     SUMMARY_BULLETS_MAX,
 )
-from larch.implement.dispatch_recovery import compute_recovery_paths
+from larch.implement.dispatch_recovery import RecoveryPorcelainInputs, compute_recovery_paths
 
 
 # Mutable state: scout_status / baseline_sha / spawn_branch are filled in as dispatch proceeds.
@@ -272,9 +272,11 @@ def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj
     ok = compute_recovery_paths(
         repo_root=st.repo_root,
         tmpdir=st.tmpdir,
-        prelaunch_porcelain=st.prelaunch_porcelain,
-        postlaunch_porcelain=st.postlaunch_porcelain,
-        prelaunch_digests=st.prelaunch_digests,
+        porcelain=RecoveryPorcelainInputs(
+            prelaunch_porcelain=st.prelaunch_porcelain,
+            postlaunch_porcelain=st.postlaunch_porcelain,
+            prelaunch_digests=st.prelaunch_digests,
+        ),
         out_file=st.recovery_paths_file,
     )
     if not ok:

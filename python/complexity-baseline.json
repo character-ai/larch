@@ -2832,60 +2832,6 @@
     "metric": 14
   },
   {
-    "file": "larch/implement/dispatch_recovery.py",
-    "code": "C901",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/dispatch_recovery.py",
-    "code": "PLR0913",
-    "qualified_symbol": "compute_recovery_paths",
-    "metric": 6
-  },
-  {
-    "file": "larch/implement/dispatch_recovery.py",
-    "code": "C901",
-    "qualified_symbol": "commit_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/dispatch_recovery.py",
-    "code": "PLR0912",
-    "qualified_symbol": "commit_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/dispatch_step2.py",
-    "code": "PLR0911",
-    "qualified_symbol": "run_dispatch_main",
-    "metric": 10
-  },
-  {
-    "file": "larch/implement/dispatch_step2.py",
-    "code": "C901",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 74
-  },
-  {
-    "file": "larch/implement/dispatch_step2.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 41
-  },
-  {
-    "file": "larch/implement/dispatch_step2.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 79
-  },
-  {
-    "file": "larch/implement/dispatch_step2.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step2_dispatch_main",
-    "metric": 241
-  },
-  {
     "file": "larch/implement/phantom.py",
     "code": "PLR0911",
     "qualified_symbol": "check_phantom_dirty",
