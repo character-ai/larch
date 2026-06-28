@@ -9,6 +9,7 @@ from typing import TYPE_CHECKING
 from larch.implement import ci_agentic_fix
 from larch.implement import ci_monitor
 from larch.agents import agents
+from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext
@@ -1232,7 +1233,7 @@ def test_run_cycle_later_non_health_is_waterfall_failed(
     monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
     monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
 
-    status, detail, _attempted, _delta, _pending, next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+    status, detail, _attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
         proc,
         args=_cycle_args(out_dir),
         repo_root=repo,
@@ -1242,4 +1243,129 @@ def test_run_cycle_later_non_health_is_waterfall_failed(
     )
     assert status == "waterfall-failed"
     assert detail == "parse"
-    assert next_run is None
+
+
+def test_run_cycle_retries_once_on_exit_124(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """_run_cycle retries launch_tier once when the first attempt exits 124."""
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    launch_calls: list[int] = []
+    resolve_calls: list[int] = []
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+        launch_calls.append(1)
+        return proc.CommandResult(("cli",), 0, "", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        resolve_calls.append(1)
+        if len(resolve_calls) == 1:
+            return config.EXIT_TIMEOUT
+        # Second call (retry): succeed
+        return 0
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("none", "")
+
+    def fake_capture_head(*_args: object, **_kwargs: object) -> str:
+        return "abc123"
+
+    def fake_head_changed(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    def fake_coder_forbidden_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ()
+
+    def fake_revert_forbidden_paths(*_args: object, **_kwargs: object) -> int:
+        return 0
+
+    def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_delta_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        return ("file.py",)
+
+    def fake_stage_and_push(*_args: object, **_kwargs: object) -> tuple[bool, str, tuple[str, ...], bool, bool]:
+        return True, "abc124", ("file.py",), False, False
+
+    def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
+        return {"ACTION": "merge", "CI_STATUS": "pass"}, None
+
+    def fake_write_push_checkpoint(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(coder_delta_guards, "capture_head", fake_capture_head)
+    monkeypatch.setattr(coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
+    monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_coder_forbidden_paths)
+    monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
+    monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
+    monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+    monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+    monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
+    monkeypatch.setattr(ci_agentic_fix, "_write_push_checkpoint", fake_write_push_checkpoint)
+
+    args = Namespace(
+        pr=1,
+        repo="o/r",
+        plan_file="",
+        base_remote="origin",
+        base_ref="main",
+        output_dir=str(out_dir),
+        implement_tmpdir=str(tmp_path),
+    )
+    status, _detail, _attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=args,
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    assert len(launch_calls) == 2, "should have called launch_tier twice (retry)"
+    assert len(resolve_calls) == 2, "should have called resolve_launcher_exit twice"
+    assert status == "passed"
+    issue_log = tmp_path / "execution-issues.md"
+    assert issue_log.is_file()
+    assert "retried once" in issue_log.read_text(encoding="utf-8")

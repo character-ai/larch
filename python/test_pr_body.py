@@ -1209,6 +1209,116 @@ def test_generate_code_flow_diagram_uses_py_cli_launcher(
     assert launch_argv[timeout_idx + 1] != "600"
 
 
+def test_generate_code_flow_diagram_retries_on_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        nonlocal call_count
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            call_count += 1
+            output_file = Path(argv[argv.index("--output-file") + 1])
+            if call_count == 1:
+                # First attempt: timeout — write empty file, return EXIT_TIMEOUT
+                _ = output_file.write_text("", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, config.EXIT_TIMEOUT, stdout="", stderr="")
+            # Second attempt (retry): success
+            _ = output_file.write_text(
+                "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    rc, status, diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert call_count == 2, "should have retried once"
+    assert rc == 0
+    assert status == "ok"
+    assert diagram
+    assert reason == ""
+    assert (tmp_path / "code-flow-diagram.retried").is_file()
+    retried_text = (tmp_path / "code-flow-diagram.retried").read_text(encoding="utf-8")
+    assert f"FIRST_RC={config.EXIT_TIMEOUT}" in retried_text
+
+
+def test_generate_code_flow_diagram_retries_on_empty_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        nonlocal call_count
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            call_count += 1
+            output_file = Path(argv[argv.index("--output-file") + 1])
+            if call_count == 1:
+                # First attempt: launcher ran but produced empty output (No messages)
+                _ = output_file.write_text("", encoding="utf-8")
+                return subprocess.CompletedProcess(argv, 1, stdout="", stderr="")
+            # Second attempt (retry): success
+            _ = output_file.write_text(
+                "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert call_count == 2, "should have retried once on empty output"
+    assert rc == 0
+    assert status == "ok"
+    assert reason == ""
+    assert (tmp_path / "code-flow-diagram.retried").is_file()
+
+
+def test_generate_code_flow_diagram_no_retry_on_hard_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        nonlocal call_count
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            call_count += 1
+            # Hard failure: exit 1, no output file written
+            return subprocess.CompletedProcess(argv, 1, stdout="launcher-init-failed", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    rc, status, _diagram, _reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert call_count == 1, "should NOT retry when output file is absent"
+    assert rc == 1
+    assert status == "failed"
+    assert not (tmp_path / "code-flow-diagram.retried").is_file()
+
+
 def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:
     body = "- **Filed URL**: https://github.com/acme/repo/issues/123\nnext line\n"
     _ = (tmp_path / "oos-issues.ndjson").write_text(

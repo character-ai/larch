@@ -907,6 +907,20 @@ def _diagram_failure_capture(*, returncode: int, stderr: str) -> tuple[str, str]
     return f"returncode: {returncode}\n{sanitized}", collapsed
 
 
+def _needs_diagram_retry(*, returncode: int, raw: Path) -> bool:
+    """Return True when the code-flow subprocess warrants a single retry.
+
+    Mirrors plan_review_panel._voter_needs_retry: retry on EXIT_TIMEOUT
+    (wall-clock timeout or degraded-auth fast-fail) and on empty output
+    when the launcher did run (file present but zero-byte).  A completely
+    absent file signals a hard argv / import failure — not a transient
+    Claude API hiccup — so we do NOT retry in that case.
+    """
+    if returncode == config.EXIT_TIMEOUT:
+        return True
+    return raw.is_file() and raw.stat().st_size == 0
+
+
 def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-sonnet-4-6", base_remote: str = "origin", base_ref: str = "main") -> tuple[int, str, str, str]:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
     raw = implement_tmpdir / "code-flow-diagram.raw.md"
@@ -914,6 +928,7 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
     diagram = implement_tmpdir / "code-flow-diagram.md"
     prompt_path = implement_tmpdir / "code-flow-prompt.md"
     failure_log = implement_tmpdir / "code-flow-diagram.failure.log"
+    retry_sidecar = implement_tmpdir / "code-flow-diagram.retried"
     base_target = f"{base_remote}/{base_ref}"
     merge_base = subprocess.run(["git", "merge-base", "HEAD", base_target], text=True, capture_output=True, check=False)  # noqa: S607
     if merge_base.returncode != 0 or not merge_base.stdout.strip():
@@ -936,20 +951,25 @@ def generate_code_flow_diagram(implement_tmpdir: Path, *, model: str = "claude-s
     launch_cmd = _code_flow_launch_cmd()
     with contextlib.suppress(OSError):
         failure_log.unlink()
-    completed = subprocess.run(
-        [
-            *launch_cmd,
-            "--model", model,
-            "--prompt-file", str(prompt_path),
-            "--output-file", str(raw),
-            "--timeout", str(_CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS),
-            "--allow-root", str(Path.cwd()),
-            "--timing-task-kind", "implement-code-flow",
-        ],
-        text=True,
-        capture_output=True,
-        check=False,
-    )
+    _launch_argv = [
+        *launch_cmd,
+        "--model", model,
+        "--prompt-file", str(prompt_path),
+        "--output-file", str(raw),
+        "--timeout", str(_CODE_FLOW_DIAGRAM_TIMEOUT_SECONDS),
+        "--allow-root", str(Path.cwd()),
+        "--timing-task-kind", "implement-code-flow",
+    ]
+    completed = subprocess.run(_launch_argv, text=True, capture_output=True, check=False)
+    if _needs_diagram_retry(returncode=completed.returncode, raw=raw):
+        # Transient failure (timeout or empty output): retry once, matching the
+        # one-retry-on-empty/124 pattern in plan_review_panel.dispatch_voters.
+        _first_rc = completed.returncode
+        with contextlib.suppress(OSError):
+            raw.unlink()
+        completed = subprocess.run(_launch_argv, text=True, capture_output=True, check=False)
+        with contextlib.suppress(OSError):
+            retry_sidecar.write_text(f"FIRST_RC={_first_rc}\nRETRY_RC={completed.returncode}\n", encoding="utf-8")
     if completed.returncode != 0:
         raw_capture: Path | None = implement_tmpdir / "code-flow-diagram.raw-failure.log"
         try:

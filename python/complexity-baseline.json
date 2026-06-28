@@ -1131,7 +1131,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "C901",
     "qualified_symbol": "step5c_core",
-    "metric": 18
+    "metric": 17
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1263,7 +1263,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0912",
     "qualified_symbol": "step5c_core",
-    "metric": 20
+    "metric": 19
   },
   {
     "file": "larch/design/design_lifecycle.py",
@@ -1347,7 +1347,7 @@
     "file": "larch/design/design_lifecycle.py",
     "code": "PLR0915",
     "qualified_symbol": "step5c_core",
-    "metric": 93
+    "metric": 92
   },
   {
     "file": "larch/design/design_log_publish_flow.py",
@@ -2252,6 +2252,12 @@
   {
     "file": "larch/git/pr_body.py",
     "code": "PLR0915",
+    "qualified_symbol": "generate_code_flow_diagram",
+    "metric": 59
+  },
+  {
+    "file": "larch/git/pr_body.py",
+    "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
     "metric": 54
   },
@@ -2529,7 +2535,7 @@
     "file": "larch/implement/ci_agentic_fix.py",
     "code": "C901",
     "qualified_symbol": "_run_cycle",
-    "metric": 33
+    "metric": 34
   },
   {
     "file": "larch/implement/ci_agentic_fix.py",
@@ -2565,7 +2571,7 @@
     "file": "larch/implement/ci_agentic_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_cycle",
-    "metric": 33
+    "metric": 34
   },
   {
     "file": "larch/implement/ci_agentic_fix.py",
@@ -2589,7 +2595,7 @@
     "file": "larch/implement/ci_agentic_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_cycle",
-    "metric": 96
+    "metric": 100
   },
   {
     "file": "larch/implement/ci_monitor.py",
@@ -3021,13 +3027,13 @@
     "file": "larch/implement/step_7a.py",
     "code": "C901",
     "qualified_symbol": "run_step7a",
-    "metric": 21
+    "metric": 24
   },
   {
     "file": "larch/implement/step_7a.py",
     "code": "PLR0912",
     "qualified_symbol": "run_step7a",
-    "metric": 22
+    "metric": 25
   },
   {
     "file": "larch/implement/step_7a.py",
@@ -3039,7 +3045,7 @@
     "file": "larch/implement/step_7a.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step7a",
-    "metric": 77
+    "metric": 87
   },
   {
     "file": "larch/issue/analyze_issues.py",
@@ -4407,7 +4413,7 @@
     "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "write_final_report",
-    "metric": 21
+    "metric": 20
   },
   {
     "file": "larch/report/final_report.py",
@@ -4431,13 +4437,13 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "write_final_report",
-    "metric": 8
+    "metric": 7
   },
   {
     "file": "larch/report/final_report.py",
     "code": "PLR0912",
     "qualified_symbol": "write_final_report",
-    "metric": 20
+    "metric": 19
   },
   {
     "file": "larch/report/final_report.py",
@@ -4449,7 +4455,7 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0915",
     "qualified_symbol": "write_final_report",
-    "metric": 68
+    "metric": 67
   },
   {
     "file": "larch/report/gc_run_logs.py",

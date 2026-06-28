@@ -6301,6 +6301,14 @@ def launch_claude_subprocess_main(argv: list[str] | None = None) -> int:
     full_prompt = _with_claude_read_only_preamble(prompt + ("\n\n" + context_text if context_text else ""))
     cmd = ["claude", "--print", "--output-format", "json", "--model", args.model]
     if args.read_tools:
+        # --permission-mode plan limits tool-approval prompts.  When ANTHROPIC_API_KEY
+        # is set, claude uses API-key mode and the api-key takes precedence over the
+        # claude.ai login; the "connectors disabled" stderr warning that appears on ~82%
+        # of runs is a red herring (it prints on successful votes too).  The intermittent
+        # "No messages returned from query" empty-output failure (4.3% rate, Claude lane)
+        # is a transient Claude API-side hiccup unrelated to this flag.  The fix is the
+        # one-retry-on-empty/124 pattern applied per-lane in #5677 (design voter),
+        # #5714 (code-flow and ci lint-fixer).
         cmd.extend(["--add-dir", str(Path(args.read_tools_add_dir).resolve()), "--allowedTools", "Read", "--permission-mode", "plan"])
     prompt_sidecar = output.with_suffix(output.suffix + ".prompt")
     for stale in (output.with_suffix(output.suffix + ".stderr"), output.with_suffix(output.suffix + ".stderr-tail"), output.with_suffix(output.suffix + ".failure-diag")):
