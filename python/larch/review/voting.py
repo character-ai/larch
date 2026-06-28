@@ -1192,6 +1192,24 @@ def accepted_finding_points_from_severities(
     return 2 if high_yes > total_yes / 2 else 1
 
 
+def neutral_high_severity_rescue_to_oos(
+    result: str,
+    *,
+    yes_votes: Iterable[str],
+    severities: Iterable[str],
+) -> bool:
+    if result != "neutral":
+        return False
+    severity_values = list(severities)
+    for idx, vote in enumerate(yes_votes):
+        if vote != ReviewVote.yes.value:
+            continue
+        severity = severity_values[idx] if idx < len(severity_values) else ""
+        if valid_panel_severity(severity) in HIGH_SEVERITIES:
+            return True
+    return False
+
+
 def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:
     values = os.environ if env is None else env
     raw = (values.get(UNIQUE_FINDER_BONUS_ENV) or "").strip()

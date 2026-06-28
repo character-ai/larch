@@ -1646,6 +1646,73 @@ def test_tally_plan_review_main_agent_sole_voter_severity_scoreboard(tmp_path: P
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
 
 
+def test_tally_plan_review_rescues_high_severity_neutral_findings_to_oos(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### FINDING_1: High severity neutral
+- **Reviewer**: Codex-Correctness
+- focus-area = correctness
+- Concern: High severity single-YES concern.
+
+### FINDING_2: Nit neutral
+- **Reviewer**: Cursor-Testing
+- focus-area = testing
+- Concern: Low severity single-YES concern.
+""",
+        encoding="utf-8",
+    )
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    _ = v1.write_text(
+        "FINDING_1: YES SEVERITY=major\n"
+        "FINDING_2: YES SEVERITY=nit\n",
+        encoding="utf-8",
+    )
+    for voter in (v2, v3):
+        _ = voter.write_text(
+            "FINDING_1: NO SEVERITY=nit\n"
+            "FINDING_2: NO SEVERITY=nit\n",
+            encoding="utf-8",
+        )
+    design = tmp_path / "design-neutral-rescue"
+    design.mkdir()
+
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    oos = (design / "oos.md").read_text(encoding="utf-8")
+    rejected = (design / "rejected-findings.md").read_text(encoding="utf-8")
+    accepted = (design / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert "FINDING_1" in oos
+    assert "neutral-rescued" in oos
+    assert "FINDING_1" not in rejected
+    assert "FINDING_2" in rejected
+    assert accepted == ""
+    assert "| FINDING_1 | 1 | 2 | 0 | neutral |" in tally
+    assert "| FINDING_2 | 1 | 2 | 0 | neutral |" in tally
+    rows = _read_tsv(design / "plan-review" / "round-1" / "findings-classification.tsv")
+    assert rows["FINDING_1"]["scope"] == "oos"
+    assert rows["FINDING_1"]["voting_result"] == "neutral"
+    assert rows["FINDING_2"]["scope"] == "in_scope"
+    assert rows["FINDING_2"]["voting_result"] == "neutral"
+    ledger_rows = _read_tsv(design / "findings-ledger.tsv")
+    assert ledger_rows["FINDING_1"]["outcome"] == "oos"
+
+
 def test_tally_plan_review_rejected_latent_ledger_outcome_is_oos(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(

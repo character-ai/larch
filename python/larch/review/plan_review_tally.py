@@ -42,6 +42,51 @@ _FULL_PANEL = 3
 LABEL_MAP_MIN_COLS = 2
 
 
+def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
+    if _LATENT_BODY_SEVERITY.search(block_text):
+        return "latent-rerouted"
+    if neutral_rescued:
+        return "neutral-rescued"
+    return ""
+
+
+def _record_plan_review_score_rows(
+    *,
+    score_state: tuple[list[tuple[str, str, str, int, float]], list[str], float],
+    reviewer: str,
+    kind: str,
+    result: str,
+    vote_inputs: tuple[list[str], list[str]],
+) -> int:
+    score_rows, attribution_labels, active_bonus = score_state
+    votes, severities = vote_inputs
+    neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
+        result,
+        yes_votes=votes,
+        severities=severities,
+    )
+    score_kind = "oos" if kind == "oos" or neutral_rescued else "finding"
+    accepted_weight = (
+        voting.accepted_finding_points_from_severities(severities, votes=votes)
+        if score_kind == "finding" and result == "accepted"
+        else 0
+    )
+    split_reviewers = voting.split_classification_attribution(
+        reviewer,
+        column="finding_reviewers",
+        labels=attribution_labels,
+    )
+    if not split_reviewers:
+        split_reviewers = [part.strip() for part in reviewer.split(",") if part.strip()]
+    bonus_float = (
+        active_bonus
+        if score_kind == "finding" and result == "accepted" and len(split_reviewers) == 1 and active_bonus > 0
+        else 0.0
+    )
+    score_rows.extend((reviewer_slot, score_kind, result, accepted_weight, bonus_float) for reviewer_slot in split_reviewers)
+    return 1 if bonus_float > 0 else 0
+
+
 class _AbortTally(Exception):
     """Unwind to the CLI boundary with a specific exit code (bash ``exit N``)."""
 
@@ -343,6 +388,12 @@ class _Tally:
             body_severity = _sanitize_tsv_cell(_body_severity_for_block(block))
             _, _, _, result = self._tally_votes_for_id(item_id)
             tsv_result = "rejected" if self.main_agent_voter else result
+            votes, severities = self._votes_and_severities_for_item(item_id)
+            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
+                result,
+                yes_votes=votes,
+                severities=severities,
+            )
             row = [item_id, reviewer, tsv_result]
             for pos in (1, 2, 3):
                 voter_file = self.slot_file[pos]
@@ -366,7 +417,7 @@ class _Tally:
                 else:
                     row += ["", "", "", "", "", ""]
             row.append(body_severity)
-            row.append("oos" if item_id.startswith("OOS_") else "in_scope")
+            row.append("oos" if item_id.startswith("OOS_") or neutral_rescued else "in_scope")
             buf += "\t".join(row) + "\n"
         tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
         _ = tmp.write_text(buf, encoding="utf-8")
@@ -410,7 +461,15 @@ class _Tally:
             block = Path(self.block_dir) / f"{item_id}.md"
             block_text = block.read_text(encoding="utf-8", errors="replace")
             yes, _no, _judge_error, result = self._tally_votes_for_id(item_id)
+            votes, severities = self._votes_and_severities_for_item(item_id)
+            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
+                result,
+                yes_votes=votes,
+                severities=severities,
+            )
             outcome = "oos" if item_id.startswith("OOS_") else result
+            if neutral_rescued:
+                outcome = "oos"
             if _LATENT_BODY_SEVERITY.search(block_text) and outcome != "accepted":
                 outcome = "oos"
             entries.append(
@@ -703,40 +762,33 @@ class _Tally:
                 agreement_rows.append(agreement_row)
 
             reviewer = self._proposer_for_item(item_id=item_id, block=block)
-            kind = "oos" if item_id.startswith("OOS_") else "finding"
             votes, severities = self._votes_and_severities_for_item(item_id)
-            accepted_weight = (
-                voting.accepted_finding_points_from_severities(severities, votes=votes)
-                if kind == "finding" and result == "accepted"
-                else 0
+            neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
+                result,
+                yes_votes=votes,
+                severities=severities,
             )
-            split_reviewers = voting.split_classification_attribution(
-                reviewer,
-                column="finding_reviewers",
-                labels=attribution_labels,
+            kind = "oos" if item_id.startswith("OOS_") else "finding"
+            sole_finder_reward_count += _record_plan_review_score_rows(
+                score_state=(score_rows, attribution_labels, active_bonus),
+                reviewer=reviewer,
+                kind=kind,
+                result=result,
+                vote_inputs=(votes, severities),
             )
-            if not split_reviewers:
-                split_reviewers = [part.strip() for part in reviewer.split(",") if part.strip()]
-            bonus_float = (
-                active_bonus
-                if kind == "finding" and result == "accepted" and len(split_reviewers) == 1 and active_bonus > 0
-                else 0.0
-            )
-            if bonus_float > 0:
-                sole_finder_reward_count += 1
-            score_rows.extend((reviewer_slot, kind, result, accepted_weight, bonus_float) for reviewer_slot in split_reviewers)
             security = self._is_security(block)
             block_text = Path(block).read_text(encoding="utf-8", errors="replace")
             artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
+            reroute_marker = _finding_oos_reroute_marker(block_text=block_text, neutral_rescued=neutral_rescued)
 
             if kind == "finding":
                 if result == "accepted":
                     accepted_chunks.append(artifact_text + "\n")
-                elif _LATENT_BODY_SEVERITY.search(block_text):
+                elif reroute_marker:
                     oos_chunks.append(
                         artifact_text
                         + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
-                        f"Result={result} (latent-rerouted)\n\n"
+                        f"Result={result} ({reroute_marker})\n\n"
                     )
                 else:
                     rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")

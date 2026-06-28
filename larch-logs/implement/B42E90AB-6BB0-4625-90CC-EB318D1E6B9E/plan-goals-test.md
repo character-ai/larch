@@ -1,0 +1,207 @@
+## Goal
+Implement issue #5641: [IMPLEMENTING] Rescue high-severity neutral (1-YES) review findings to OOS instead of dropping them.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+- Use the supplied `NO_SKETCHES` synthesis and direct repo inspection.
+- Follow discussion round 1:
+  - Rescue only `blocker` or `major` single-YES neutral findings.
+  - Do not count rescued neutrals in `NEUTRAL_COUNT` or `REJECTED_COUNT`.
+  - Apply the rule to both code-review and plan-review tallies.
+  - Do not add tally-level OOS dedup. Keep downstream OOS handling unchanged.
+- Add one shared helper in `voting.py`.
+  - It should check `result == "neutral"`.
+  - It should require at least one `YES` vote whose severity is in `voting.HIGH_SEVERITIES`.
+  - It should not treat `minor`, `nit`, `uncertain`, missing, or invalid severity as rescue-worthy.
+  - Accept judge `cells` (code-review) or parallel `(votes, severities)` lists (plan-review).
+- In tally render paths, preserve the vote-table `Result` column as `neutral`.
+- Route rescued items to `oos.md` with a clear marker such as `(neutral-rescued)`.
+- Keep inline acceptance unchanged. `accepted_count` still depends only on existing quorum acceptance.
+- **Ordering invariant (code-review):** compute `neutral_rescued` immediately after per-item `cells` and `result` are known, **before** `_record_classification_and_ledger`. Pass `outcome="oos"` into `_ledger_entry` when rescue fires. Do not rely on the post-ledger artifact branch alone.
+- **Classification parity (#4882):** when rescue fires on an in-scope `FINDING_*`, write classification `scope=oos` while keeping `voting_result=neutral`. This keeps `progress_report._parse_classification_tsv` aligned with stdout/env KVs without editing `progress_report.py`.
+- **Per-item tally env parity:** rescued neutrals must persist as `OUTCOME=oos` (no `REJECTED_SUBTYPE`), and `emit-tally` compact rejected synthesis must ignore them.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/voting.py
+
+- Add a small helper, for example `neutral_high_severity_rescue_to_oos(result: str, *, yes_votes: list[str], severities: list[str]) -> bool`.
+- Gate on `result == "neutral"`.
+- For each index, require `yes_votes[i] == ReviewVote.yes.value` and `valid_panel_severity(severities[i]) in HIGH_SEVERITIES`.
+- Ignore `JUDGE_ERROR`, missing, or invalid severities.
+- Return false for `accepted` / `rejected` regardless of severities.
+- Add no new severity constants unless needed.
+
+### UPDATED: python/larch/review/review_tally.py
+
+- Extend `_classification_row(...)` with a `neutral_rescued: bool = False` parameter (or equivalent precomputed scope flag).
+  - Final scope column: `"oos" if is_oos or neutral_rescued else "in_scope"`.
+  - Keep `voting_result` as the raw `result` (`neutral`).
+- In the per-item tally loop, immediately after `cells` / `result` are computed:
+  1. Derive `yes_votes` and `severities` from `cells`.
+  2. Set `neutral_rescued = neutral_high_severity_rescue_to_oos(result, yes_votes=..., severities=...)`.
+  3. Pass `neutral_rescued` into `_classification_row`.
+  4. Pass `outcome="oos" if (is_oos or neutral_rescued) else result` into `_ledger_entry` **before** `_record_classification_and_ledger`.
+- In the `kind == "finding"` artifact branch, add an explicit `elif neutral_rescued:` **after** the latent-reroute branch and **before** the generic rejected/neutral fallback:
+  - append the finding block to `oos.md` with `Result=neutral (neutral-rescued)` tally text;
+  - increment `oos_rejected`;
+  - do **not** increment `neutral` or `rejected`;
+  - call `_record_tally(..., accepted=False, outcome="oos")`;
+  - do not append to `rejected-findings.md`.
+- Keep latent reroute behavior intact (latent check stays first; rescued branch must not double-route latent items).
+- Do not write rescued neutral findings to `oos-accepted-review.md`.
+- Extend `_record_tally`:
+  - when `outcome == "oos"`, emit `{prefix}_{number}_OUTCOME=oos` and **omit** `REJECTED_SUBTYPE`;
+  - keep existing `accepted` / `rejected` / `neutral` subtype behavior unchanged.
+- In `emit-tally`, keep compact `rejected-findings.md` rebuild limited to `_OUTCOME=rejected` rows only (rescued `OUTCOME=oos` rows must not reappear as rejected).
+- If any rescued row still lands in an accepted-OOS sink, update the `emit-tally` count consistency checks in the same patch.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+- In `_render(...)`, after `_tally_votes_for_id` and `_votes_and_severities_for_item`, compute `neutral_rescued` with the shared helper.
+- Add an explicit `elif neutral_rescued:` branch after latent reroute and before the rejected fallback:
+  - append to `oos_chunks` with `Result=neutral (neutral-rescued)`;
+  - do not append to `rejected_chunks`;
+  - keep vote-table `Result` as `neutral`.
+- In `_write_findings_classification(...)`:
+  - per item, recompute rescue from slot voter severities (same helper inputs as `_render`);
+  - write `scope=oos` when rescued, else existing `in_scope` / `OOS_` logic;
+  - keep `voting_result=neutral`.
+- In `_write_findings_ledger(...)`:
+  - call `_votes_and_severities_for_item(item_id)` (not `_tally_votes_for_id` alone);
+  - apply the shared rescue helper;
+  - set `outcome="oos"` when rescued, mirroring latent body handling;
+  - keep `voting_result=neutral` in classification TSV unchanged.
+
+### UPDATED: python/test_voting.py
+
+- Add unit coverage for the shared helper:
+  - neutral plus `YES major` returns true;
+  - neutral plus `YES blocker` returns true;
+  - neutral plus `YES minor`, `YES nit`, `YES uncertain`, missing severity, or invalid severity returns false;
+  - accepted/rejected results return false even with high severity;
+  - `NO major` returns false.
+
+### UPDATED: python/test_review_tally.py
+
+- Add a code-review regression test with two 1-YES neutral findings:
+  - `FINDING_1`: one `YES SEVERITY=major`, two `NO` votes.
+  - `FINDING_2`: one `YES SEVERITY=nit`, two `NO` votes.
+- Assert:
+  - `ACCEPTED_COUNT=0`;
+  - `OOS_REJECTED_COUNT=1`;
+  - `NEUTRAL_COUNT=1`;
+  - `REJECTED_COUNT` counts only the non-rescued neutral path;
+  - `FINDING_1` appears in `oos.md` with the neutral-rescue marker;
+  - `FINDING_1` does not appear in `rejected-findings.md` (including after `emit-tally` rebuild);
+  - `FINDING_2` remains in `rejected-findings.md`;
+  - per-item tally env for `FINDING_1` has `OUTCOME=oos` (no `REJECTED_SUBTYPE`);
+  - `findings-classification.tsv` for `FINDING_1` has `scope=oos` and `voting_result=neutral`;
+  - `findings-classification.tsv` for `FINDING_2` has `scope=in_scope` and `voting_result=neutral`;
+  - the ledger outcome for `FINDING_1` is `oos`.
+
+### UPDATED: python/test_plan_review.py
+
+- Add a plan-review regression test mirroring the code-review case.
+  - the high-severity neutral is written to `oos.md`;
+  - the nit neutral remains in `rejected-findings.md`;
+  - `accepted-plan-findings.md` stays empty;
+  - the voting table still shows `Result` as `neutral`;
+  - classification TSV has `scope=oos` for the rescued item and `voting_result=neutral`;
+  - the ledger outcome for the rescued item is `oos`.
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+- Document the neutral-rescue rule near the severity interaction section.
+- Keep it short:
+  - `blocker` or `major` single-YES neutral findings are routed to OOS artifacts.
+  - `minor`, `nit`, `uncertain`, missing, or invalid single-YES severities stay dropped.
+  - Inline acceptance still requires the existing YES quorum.
+  - Rescued neutrals keep vote-table `Result=neutral` but classification `scope=oos`.
+
+### MAY_UPDATE: skills/shared/reviewer-templates.md
+
+- Update only if the rubric propagation check or prompt-template invariant requires embedded text changes.
+
+### MAY_UPDATE: agents/code-reviewer.md
+
+- Regenerate only if `reviewer-templates.md` changes.
+
+### MAY_UPDATE: agents/reviewer-plan-fidelity.md
+
+
+### MAY_UPDATE: agents/reviewer-code-robustness.md
+
+
+### MAY_UPDATE: agents/reviewer-security-structure-tests.md
+
+
+### MAY_UPDATE: agents/reviewer-edge-cases.md
+
+- Update or regenerate only if prompt-template invariant checks require the propagated rubric text.
+
+### MAY_UPDATE: agents/reviewer-testing.md
+
+
+### MAY_UPDATE: skills/shared/voting-protocol.md
+
+- Update only if the new neutral-rescue rule needs a voter-facing cross-reference.
+
+### MAY_UPDATE: skills/shared/oos-acceptance-rubric.md
+
+- Update only if the OOS materiality text needs to distinguish neutral-rescued OOS artifacts from accepted OOS ballot items.
+
+### MAY_UPDATE: skills/design/references/plan-review.md
+
+- Update only if plan-review artifact interpretation needs to mention neutral-rescued OOS rows or `scope=oos` classification rows.
+
+## Edge cases
+
+- A neutral with one `YES minor` and one `YES major` cannot exist in a normal three-judge neutral, but the helper should still be list-based and return true when any YES severity is high.
+- Missing or malformed severity should fail closed to no rescue.
+- `JUDGE_ERROR` cells should not rescue.
+- Existing OOS ballot items should keep their current OOS path.
+- Existing latent reroutes should keep their marker and counts; rescued branch must run only when latent reroute did not fire.
+- Security OOS handling should remain unchanged.
+- Rescued in-scope `FINDING_*` rows must not remain `scope=in_scope` in classification TSV (breaks `round-meta.json` parity).
+
+## Failure modes
+
+- **Ledger drift:** if rescue is decided only in the artifact branch, `findings-ledger.tsv` can record `outcome=neutral` while `oos.md` and KVs say OOS. Fix by pre-ledger rescue computation (see Approach).
+- **Classification drift:** if `scope` stays `in_scope`, stdout `OOS_REJECTED_COUNT` and TSV-derived `NEUTRAL_COUNT` diverge. Fix with `scope=oos` on rescue.
+- **Emit-tally drift:** if `_record_tally` still emits `OUTCOME=rejected` for rescued neutrals, compact `rejected-findings.md` will contradict `oos.md`. Fix with `OUTCOME=oos` and rejected-only rebuild filtering.
+- **Count drift:** if a rescued item is written to accepted-OOS sinks while `OOS_ACCEPTED_COUNT` remains zero, update `emit-tally` consistency checks in the same patch.
+- **Prompt drift:** if rubric prose changes without regenerating embedded reviewer prompts, run the prompt invariant target when any prompt surface changes.
+
+## Testing strategy
+
+- Run targeted Python tests:
+  - `python3 -m pytest python/test_voting.py -q`
+  - `python3 -m pytest python/test_review_tally.py -q`
+  - `python3 -m pytest python/test_plan_review.py -q`
+- Include `emit-tally` in the code-review regression path so compact rejected rebuild is exercised.
+- If prompt surfaces change, also run:
+  - `make test-prompt-template-invariants`
+- If generated agents change, run the documented generator commands from `skills/shared/review-acceptance-rubric.md` and then rerun the prompt invariant target.
+
+## Acceptance
+
+- Run targeted Python tests:
+  - `python3 -m pytest python/test_voting.py -q`
+  - `python3 -m pytest python/test_review_tally.py -q`
+  - `python3 -m pytest python/test_plan_review.py -q`
+- Include `emit-tally` in the code-review regression path so compact rejected rebuild is exercised.
+- If prompt surfaces change, also run:
+  - `make test-prompt-template-invariants`
+- If generated agents change, run the documented generator commands from `skills/shared/review-acceptance-rubric.md` and then rerun the prompt invariant target.
+
+diff_added: 320
+diff_deleted: 50
+mechanical_churn: false
+diff_lines: 370
+
+## Test plan
+(no test plan section in plan-file)

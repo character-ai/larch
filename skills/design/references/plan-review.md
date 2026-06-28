@@ -182,7 +182,7 @@ The loop appends `. Scenario: <text>` to the `- **Description**:` line when the 
 
 ## Track Rejected Plan Review Findings
 
-For any **in-scope** findings that were **not accepted by vote** (fewer than 2 YES votes — whether neutral or rejected) during plan review (from any reviewer — Claude subagents, Codex, or Cursor), append each to `$DESIGN_TMPDIR/rejected-findings.md` using the byte-preserved template below. **Do not include OOS items** — those follow a separate pipeline (accepted OOS → GitHub issues via `/implement`, non-accepted OOS → PR body observations).
+For any **in-scope** findings that were **not accepted by vote** (fewer than 2 YES votes, whether neutral or rejected) during plan review (from any reviewer, Claude subagents, Codex, or Cursor), append each to `$DESIGN_TMPDIR/rejected-findings.md` using the byte-preserved template below. **Do not include OOS items or neutral-rescued findings**. A single-YES neutral with `blocker` or `major` severity goes to `$DESIGN_TMPDIR/oos.md` with `Result=neutral (neutral-rescued)` and classification `scope=oos`; lower, missing, or invalid single-YES severities stay rejected. OOS items follow a separate pipeline (accepted OOS → GitHub issues via `/implement`, non-accepted OOS → PR body observations).
 
 If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.md` so Step 5's manifest export has a complete required-may-be-empty artifact set.
 

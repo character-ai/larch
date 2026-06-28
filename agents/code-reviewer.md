@@ -121,6 +121,11 @@ explicitly required by the supplied implementation plan is In-Scope when omitted
 is not a license to require optional tests or docs the plan did not mandate. When you use this
 carve-out, name or cite the matching plan requirement in the finding text.
 
+High-severity neutral rescue: if exactly one judge votes YES and marks the finding `blocker`
+or `major`, the tally routes that neutral to OOS artifacts instead of dropping it. It still
+is not accepted inline. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities
+stay dropped.
+
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe

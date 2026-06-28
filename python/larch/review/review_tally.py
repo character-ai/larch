@@ -409,11 +409,39 @@ def _write_yield_tsv(*,
     return orphans
 
 
+def _record_code_review_score_rows(
+    *,
+    score_state: tuple[list[tuple[str, str, str, int]], defaultdict[str, float], float],
+    reviewer: str,
+    classification: tuple[str, str, bool],
+    cells: list[tuple[str, str, str, str, str, str | None]],
+) -> int:
+    score_rows, bonus_by_reviewer, active_bonus = score_state
+    kind, result, neutral_rescued = classification
+    score_kind = "oos" if kind == "oos" or neutral_rescued else "finding"
+    accepted_weight = (
+        voting.accepted_finding_points_from_severities(
+            [cell[2] for cell in cells],
+            votes=[cell[0] for cell in cells],
+        )
+        if score_kind == "finding" and result == "accepted"
+        else 0
+    )
+    reviewer_slots = [part.strip() for part in reviewer.split(",") if part.strip()]
+    score_rows.extend((reviewer_slot, score_kind, result, accepted_weight) for reviewer_slot in reviewer_slots)
+    if score_kind == "finding" and result == "accepted" and len(reviewer_slots) == 1 and active_bonus > 0:
+        bonus_by_reviewer[reviewer_slots[0]] += active_bonus
+        return 1
+    return 0
+
+
 def _record_tally(*, tally_file: Path, item_id: str, accepted: bool, outcome: str) -> None:
     prefix, number = item_id.split("_", 1)
     _append(path=tally_file, text=f"{prefix}_{number}_ACCEPTED={'true' if accepted else 'false'}\n")
     if outcome == "accepted":
         _append(path=tally_file, text=f"{prefix}_{number}_OUTCOME=accepted\n")
+    elif outcome == "oos":
+        _append(path=tally_file, text=f"{prefix}_{number}_OUTCOME=oos\n")
     else:
         _append(path=tally_file, text=f"{prefix}_{number}_OUTCOME=rejected\n")
         subtype = "true_rejected" if outcome == "rejected" else "neutral"
@@ -529,6 +557,14 @@ def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: st
         "vote_tally": vote_tally,
         "reason": _ledger_reason(block_text),
     }
+
+
+def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
+    if re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", block_text):
+        return "latent-rerouted"
+    if neutral_rescued:
+        return "neutral-rescued"
+    return ""
 
 
 def _record_classification_and_ledger(*,
@@ -744,6 +780,12 @@ def tally_code_votes(argv: list[str]) -> int:
             voter_tools=args.voter_tools,
             three_slot=three_slot,
         )
+        vote_values = [vote for _label, vote in voter_votes]
+        neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
+            result,
+            yes_votes=vote_values,
+            severities=voter_severities,
+        )
         agreement_row = voting.voter_agreement_row_from_panel(
             voting_result=result,
             voter_votes=voter_votes,
@@ -769,42 +811,43 @@ def tally_code_votes(argv: list[str]) -> int:
             drift += 1
         _record_classification_and_ledger(
             class_tsv=class_tsv,
-            classification_row=_classification_row(item_id=item_id, reviewer=reviewer, result=result, cells=cells, three_slot=three_slot, is_oos=is_oos),
+            classification_row=_classification_row(
+                item_id=item_id,
+                reviewer=reviewer,
+                result=result,
+                cells=cells,
+                three_slot=three_slot,
+                is_oos=is_oos or neutral_rescued,
+            ),
             ledger_entries=ledger_entries,
             ledger_entry=_ledger_entry(
                 item_id=item_id,
                 block_text=text,
-                outcome="oos" if is_oos else result,
+                outcome="oos" if is_oos or neutral_rescued else result,
                 vote_tally=f"YES={yes}/{effective}"
             )
         )
         kind = "oos" if is_oos else "finding"
-        accepted_weight = (
-            voting.accepted_finding_points_from_severities(
-                [cell[2] for cell in cells],
-                votes=[cell[0] for cell in cells],
-            )
-            if kind == "finding" and result == "accepted"
-            else 0
+        sole_finder_reward_count += _record_code_review_score_rows(
+            score_state=(score_rows, bonus_by_reviewer, active_bonus),
+            reviewer=reviewer,
+            classification=(kind, result, neutral_rescued),
+            cells=cells,
         )
-        reviewer_slots = [part.strip() for part in reviewer.split(",") if part.strip()]
-        score_rows.extend((reviewer_slot, kind, result, accepted_weight) for reviewer_slot in reviewer_slots)
-        if kind == "finding" and result == "accepted" and len(reviewer_slots) == 1 and active_bonus > 0:
-            bonus_by_reviewer[reviewer_slots[0]] += active_bonus
-            sole_finder_reward_count += 1
         try:
             security = _security_block(block)
         except RuntimeError:
             return _error(f"tally-code-votes: security classifier failed for {item_id}")
+        reroute_marker = _finding_oos_reroute_marker(block_text=text, neutral_rescued=neutral_rescued)
         if kind == "finding":
             if result == "accepted":
                 _append(path=accepted_file, text=artifact_text + "\n")
                 accepted += 1
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=True, outcome="accepted")
-            elif re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", text):
-                _append(path=oos_file, text=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} (latent-rerouted)\n\n")
+            elif reroute_marker:
+                _append(path=oos_file, text=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n")
                 oos_rejected += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome=result)
+                _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome="oos" if neutral_rescued else result)
             else:
                 rejected += 1
                 if result == "neutral":
