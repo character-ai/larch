@@ -1,14 +1,15 @@
-## /implement run 47463794-3F77-4F7D-8005-B7E466378B6D — shipping
+## /implement run 47463794-3F77-4F7D-8005-B7E466378B6D — pr-created
 
 - **Mode**: N/A
 - Force: true
 - **Duration**: 02:19:57
-- **Cost**: 💰 TOTAL ~$31.12 — Claude $27.54, Codex-5.5 $1.51, Codex-mini $1.76, Cursor $0.00, Claude (subprocess) $0.31  |  Tokens: 67818k
+- **Cost**: 💰 TOTAL ~$32.08 — Claude $28.50, Codex-5.5 $1.51, Codex-mini $1.76, Cursor $0.00, Claude (subprocess) $0.31  |  Tokens: 70896k
 - **Issue**: #5774 — https://github.com/character-ai/larch/issues/5774
+- **PR**: #5811 — https://github.com/character-ai/larch/pull/5811
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 1/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +3127/-3027, larch-logs +772/-0
 - **OOS filed**: 0
 - **Exec issues**: 10
 - **Warnings**: 2
