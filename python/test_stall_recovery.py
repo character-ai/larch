@@ -8,6 +8,8 @@ import pytest
 from larch.core import config
 from larch.issue import issue_create
 from larch.state import stall_recovery
+from larch.state import _escalation as _sr_escalation
+from larch.state import _report as _sr_report
 
 
 def _stdout_kv(output: str, key: str) -> str:
@@ -290,7 +292,7 @@ def test_record_escalation_oversize_truncate_failure_is_nonfatal(
         sidecar: str | None = None
         return sidecar
 
-    monkeypatch.setattr(stall_recovery, "_materialize_truncated_failure_detail_log", fail_truncate)
+    monkeypatch.setattr(_sr_escalation, "_materialize_truncated_failure_detail_log", fail_truncate)
 
     rc = stall_recovery.record_escalation_main(_record_escalation_args(tmp_path, str(oversize)))
 
@@ -1584,7 +1586,7 @@ def test_compose_report_tier_b_create_failure_fallback(
         stall_recovery.emit(key="STALL_RECOVERY_REPORT_STATUS", value="fallback-print-required")
         stall_recovery.emit(key="STALL_RECOVERY_REPORT_FALLBACK_REASON", value="create-failed")
 
-    monkeypatch.setattr(stall_recovery, "_emit_chat_print_filing_status", _fake_emit)
+    monkeypatch.setattr(_sr_report, "_emit_chat_print_filing_status", _fake_emit)
     rc = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--surface", "chat-print",
@@ -1897,7 +1899,7 @@ def test_compose_report_redact_text_fails_closed_when_redactor_missing(
         encoding="utf-8",
     )
     _ = (tmp_path / "stall-recovery-sensitive-corpus.env").write_text("safe-token\n", encoding="utf-8")
-    monkeypatch.setattr(stall_recovery, "_REPO_ROOT", tmp_path / "missing-plugin-root")
+    monkeypatch.setattr(_sr_report, "_REPO_ROOT", tmp_path / "missing-plugin-root")
     rc = stall_recovery.compose_report_main([
         "--implement-tmpdir", str(tmp_path),
         "--surface", "chat-print",
