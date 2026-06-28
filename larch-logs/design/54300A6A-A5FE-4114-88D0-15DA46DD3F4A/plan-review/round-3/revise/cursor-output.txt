@@ -1,0 +1,242 @@
+Reviewing the Step 3 timeout-pin precedent and `checks-repair-loop.md` so the revised plan aligns the launcher tuples and extends `--force-checks` to all repair re-entry paths.
+## Plan
+
+Implement the Step 6 fold with the smallest contract change, incorporating accepted review findings on composite stdout parsing, anti-halt continuation, check-changes baseline argv, invalid-envelope stall routing, machine-stdout registration, repair re-entry checks bypass (all post-repair paths), timeout-pin launcher tuple alignment with Step 3 precedent, and stale harness launcher pins.
+
+- Keep `skills/implement/scripts/step-6-entry.sh` as the SKILL.md launcher target.
+- Make it a thin wrapper around `python/cli.py implement step-6-entry`.
+- Add `--forked-target` as the variable Step 6 argument on every orchestrator and repair re-entry call.
+- Add `--force-checks` for repair re-entry only: bypass the `FILES_CHANGED` gate and always run the Step 6 checks/commit/7.r composite.
+- Put fixed Step 6 composite args in `step6_entry_main`:
+  - `--checks-site step6`
+  - `--commit-site step7`
+  - `--emit-step7-breadcrumb`
+  - `--rebase-checkpoint-7r`
+- Preserve `.review-boundary-passed` at entry.
+- Relay `FILES_CHANGED`, `UNTRACKED_BASELINE`, and `GIT_PROBE_FAILED` before any composite routing line on the normal path.
+- Emit one line-anchored `NEXT_ACTION`:
+  - `skip-to-7a` when `FILES_CHANGED=false` on the normal path only
+  - `checks-failed` from the checks leg
+  - `stall` from commit-route stall
+  - `continue` plus `CHECKPOINT_NEXT` from the folded 7.r path
+- Keep warning prose in SKILL.md. The composite only relays degradation KVs.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/implement_dispatch.py
+
+Update `step6_entry_main` to own the composite routing.
+
+Implementation shape:
+
+- Parse `--forked-target` with choices `true|false`, default `false`.
+- Parse `--force-checks` with choices `true|false`, default `false`.
+- Rehydrate plugin root and telemetry as today.
+- Touch `$IMPLEMENT_TMPDIR/.review-boundary-passed` before any child leg.
+- **Normal path** (`--force-checks false`):
+  - Run `review-and-fix check-changes` via a captured CLI call so Python can inspect stdout. **Pin the baseline argv contract explicitly:**
+    - `--baseline "$IMPLEMENT_TMPDIR/pre-review-untracked.txt"`
+    - `--head-baseline "$IMPLEMENT_TMPDIR/pre-review-head.txt"`
+  - Relay check-change stdout and stderr.
+  - Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, and `GIT_PROBE_FAILED` from the relayed stdout.
+  - If `FILES_CHANGED=false`, emit `NEXT_ACTION=skip-to-7a` and return `0`.
+  - If `FILES_CHANGED=true`, call the existing `checks_commit_route_main` path with fixed Step 6 args and the parsed `--forked-target`.
+  - If change detection exits non-zero or omits a valid `FILES_CHANGED=true|false`, fail closed. Prefer seeding durable stall state for Step 6 before emitting `NEXT_ACTION=stall`; if seeding fails, return non-zero without fabricating a successful envelope.
+- **Repair re-entry path** (`--force-checks true`):
+  - Skip the `FILES_CHANGED` gate entirely.
+  - Do not emit `NEXT_ACTION=skip-to-7a`.
+  - Call `checks_commit_route_main` directly with the fixed Step 6 args and parsed `--forked-target`.
+  - Relay composite output only; no leading check-change KVs required on this path.
+- On the `FILES_CHANGED=true` or `--force-checks true` branch, do not emit a second `NEXT_ACTION` after delegating to `checks_commit_route_main`; relay its composite output after any leading check-change KVs on the normal path.
+
+Keep `checks_commit_route_main` behavior unchanged except where tests reveal a direct helper extraction is needed.
+
+### UPDATED: skills/implement/scripts/step-6-entry.sh
+
+Turn the shell script into a thin delegating wrapper.
+
+Keep:
+
+- Bash 3.2 portability.
+- `IMPLEMENT_TMPDIR` requirement.
+- plugin-root rehydration.
+- telemetry triplet rehydration if still needed by the child process.
+
+Change the final command to:
+
+- `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "$@"`
+
+Do not keep the direct `review-and-fix check-changes` call in Bash.
+
+### UPDATED: skills/implement/scripts/step-6-entry.md
+
+Update the contract:
+
+- Document `--forked-target true|false`.
+- Document `--force-checks true|false` (repair re-entry only; bypasses change detection and always runs the Step 6 composite).
+- State that the helper writes `.review-boundary-passed`.
+- State that the normal path relays `FILES_CHANGED`, `UNTRACKED_BASELINE`, and `GIT_PROBE_FAILED`.
+- **Pin the check-changes argv contract:** `--baseline pre-review-untracked.txt` and `--head-baseline pre-review-head.txt` under `$IMPLEMENT_TMPDIR`.
+- State that it conditionally runs the Step 6 checks/commit/7.r composite.
+- Document `NEXT_ACTION=skip-to-7a|continue|checks-failed|stall`.
+- Document `CHECKPOINT_NEXT=continue|load-routing` only with `NEXT_ACTION=continue`.
+- Document that `--force-checks true` never emits `NEXT_ACTION=skip-to-7a`.
+
+### UPDATED: skills/implement/SKILL.md
+
+**Checks Failure Entry Macro** (global, folded-site recapture):
+
+- Change item 1 from first-physical-line-only to **full composite stdout key-scan** for `REDACTED_LOG_FILE` at folded sites (match Step 3 at line ~487). Do not restrict the scan to line 1 when check-change KVs prefix the relay.
+
+Replace the two Step 6 fences with one background composite fence. Hoist the Step 3-pattern block directly above the unified fence:
+
+> **Continue after child returns.** Parse the full composite stdout. On `NEXT_ACTION=skip-to-7a`, print `⏩ 6: checks (2) status=skip reason=no-review-changes elapsed=<elapsed>` and IMMEDIATELY proceed to Step 7a; do NOT halt after the skip breadcrumb. On `NEXT_ACTION=continue`, apply the relayed 7.r `CHECKPOINT_NEXT` macro handling, then proceed to Step 7a when `CHECKPOINT_NEXT=continue`. On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route). On `NEXT_ACTION=checks-failed`, **key-scan the full composite capture** for `REDACTED_LOG_FILE` (checks failure, NOT raw `LOG_FILE`) when present; do not restrict the scan to the first physical line. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`; then apply **Checks Failure Entry Macro** with pinned `--site step6`. The re-invoke loop is in-Step-6, not a halt. Do NOT end the turn, summarize, or write a handoff message.
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
+
+```bash
+bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"
+```
+
+Wait for `<task-notification>` before parsing composite stdout.
+
+Revise the Step 6 parsing prose after the fence:
+
+- Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored `NEXT_ACTION` from the full composite capture.
+- Log the existing warnings when the degradation KVs are present (`UNTRACKED_BASELINE=missing`, `GIT_PROBE_FAILED=true`).
+- Route `NEXT_ACTION=skip-to-7a` directly to Step 7a.
+- Route `NEXT_ACTION=continue` through the existing 7.r `CHECKPOINT_NEXT` macro handling (`continue` → Step 7a; `load-routing` or missing/malformed → load `rebase-checkpoint-routing.md`).
+- Route `NEXT_ACTION=checks-failed` to the existing checks repair macro with pinned `--site step6`, using full-capture `REDACTED_LOG_FILE` key-scan.
+- Route `NEXT_ACTION=stall` to Step 18.
+- **Invalid composite envelope** (carry forward the live contract from current SKILL.md ~612): on missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat as an invalid composite envelope; log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18. Do not proceed to Step 7a or Step 8. Do not probe porcelain prompt-side.
+- Remove the separate foreground `step-6-entry.sh` fence, the prompt-side `FILES_CHANGED=true` branch that launches `checks-commit-route`, and the post-/review boundary sentinel prose that duplicates `.review-boundary-passed` write (the composite owns the sentinel at entry).
+
+Keep the Step 7 prose that says the Step 7 commit route runs inside the Step 6 composite.
+
+Update the Extracted Script Registry `step-6-entry.md` row to reference `python/cli.py implement step-6-entry` via `step-6-entry.sh`.
+
+### UPDATED: skills/implement/references/checks-repair-loop.md
+
+- Update section 2 Step 6 folded composite launcher to `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` for the initial orchestrator path.
+- **Repair re-entry split (FINDING_3):** Step 6 post-repair composite relaunch must use `--force-checks true` on **every** repair path, not only `NEXT_ACTION=continue`:
+  - **Initial Step 6 entry** (orchestrator): `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` (change gate active).
+  - **All Step 6 post-repair re-entries** (after `step6` checks-failed, including both `NEXT_ACTION=continue` and `NEXT_ACTION=main-agent-edit`): `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` so the checks leg always re-runs even when repair left the tree matching pre-review baselines.
+- Qualify section 4 line 51 (`NEXT_ACTION=continue`) with a Step 6 carve-out: for Step 6 only, "identical argv" means the repair re-entry launcher above (`--force-checks true`), not the initial orchestrator argv.
+- Qualify section 4 `main-agent-edit` re-entry bullets (lines 77 and 81) the same way: after main-agent repair edits at Step 6, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` before any success-path routing or subsequent `checks repair-loop` invocation; do not reuse the initial orchestrator argv without `--force-checks true`.
+- State explicitly that repair re-entry must **not** use the bare `checks-commit-route` launcher and must **not** omit `--force-checks true` on either the `continue` or `main-agent-edit` repair path.
+- Keep the pinned `--site step6` repair-loop behavior.
+
+### UPDATED: python/larch/cli.py
+
+Add `("implement", "step-6-entry")` to `_MACHINE_STDOUT_KEYS` alongside the other implement composite entrypoints (`checks-commit-route`, `checks-step5-resume`, etc.) so the orchestrator receives the full composite routing envelope (`FILES_CHANGED`, `CHECKPOINT_NEXT`, `NEXT_ACTION`) without inherited quiet routing suppressing machine stdout.
+
+### UPDATED: python/test_implement_dispatch.py
+
+Add Step 6 entry coverage:
+
+- `FILES_CHANGED=false` relays degradation KVs, emits `NEXT_ACTION=skip-to-7a`, and does not run checks/commit route.
+- `FILES_CHANGED=true` relays degradation KVs, calls the fixed Step 6 checks/commit/7.r route, and passes only `--forked-target` from argv.
+- **Captured check-changes argv** includes `--baseline` and `--head-baseline` pointing at `$IMPLEMENT_TMPDIR/pre-review-untracked.txt` and `$IMPLEMENT_TMPDIR/pre-review-head.txt`.
+- `FILES_CHANGED=true` with a checks failure emits `NEXT_ACTION=checks-failed` and `REDACTED_LOG_FILE=...` on a line after leading `FILES_CHANGED`/`UNTRACKED_BASELINE`/`GIT_PROBE_FAILED` lines; assert full-capture key-scan would find it (document the fixture shape the SKILL macro expects).
+- `FILES_CHANGED=true` with commit stall emits `NEXT_ACTION=stall`.
+- `FILES_CHANGED=true` with 7.r routing emits `CHECKPOINT_NEXT` before `NEXT_ACTION=continue`.
+- Malformed or missing `FILES_CHANGED` fails closed.
+- **`checks_commit_route_main` seed-failed** output without `NEXT_ACTION` routed through `step6_entry_main` yields non-zero exit and does not fabricate `NEXT_ACTION=continue|skip-to-7a`.
+- **`--force-checks true` with `FILES_CHANGED=false` would-have-been:** skips change gate, calls `checks_commit_route_main`, never emits `NEXT_ACTION=skip-to-7a`.
+
+Update `test_composite_outer_timeout_budgets_match_leg_sums_and_fences`:
+
+- Change `step6_launcher` from `python/cli.py implement checks-commit-route --checks-site step6` to `skills/implement/scripts/step-6-entry.sh` **without** `--forked-target` (match Step 3 precedent: the timeout-pin tuple in `test-implement-structure.sh` omits variable argv suffixes).
+- Assert that exact `(launcher + '<step6_launcher>', 'timeout: …')` substring exists in `test-implement-structure.sh`.
+
+Update existing structure assertions that look for the old Step 6 `checks-commit-route` SKILL.md launcher.
+
+### UPDATED: python/test_cli.py
+
+Extend machine-stdout coverage so `("implement", "step-6-entry")` is asserted present in `_MACHINE_STDOUT_KEYS` (alongside existing composite entrypoint assertions).
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Change `EXPECTED_NEW` from `22` to `21`.
+
+This is the expected net effect of deleting the separate Step 6 `checks-commit-route` fence.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Update Step 6 static assertions following the **Step 3 launcher-tuple precedent** (full argv in the require loop; shorter argv in the timeout-pin loop):
+
+- In the `for script in [` launcher require loop (~130–145), replace the separate `step-6-entry.sh` plus `checks-commit-route --checks-site step6 ...` pair with a single required launcher: `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"`.
+- In the immediate-background timeout pin loop (~235–242), replace bare `checks-commit-route --checks-site step6` with `skills/implement/scripts/step-6-entry.sh` **only** (no `--forked-target` suffix), matching how Step 3 pins `checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r` in the require loop but omits `--forked-target` in the timeout tuple.
+- Stop requiring the old Step 6 `checks-commit-route` launcher in SKILL.md.
+- Keep requiring the Step 6 immediate-background callout and `timeout: 15600000` near the new launcher.
+- Require the canonical `> **Continue after child returns.**` blockquote within five preceding lines of the unified Step 6 launcher.
+- Update checks-repair-loop assertions to match the new Step 6 launcher, the repair `--force-checks true` argv on both `continue` and `main-agent-edit` paths, and forbid bare `checks-commit-route` on repair re-entry.
+- Add a forbid check for the removed SKILL.md Step 6 `checks-commit-route --checks-site step6` launcher.
+
+### UPDATED: scripts/test-implement-rebase-macro.sh
+
+Replace the Step 6 SKILL.md literal check for `checks-commit-route --checks-site step6 ... --rebase-checkpoint-7r` with the new `step-6-entry.sh --forked-target "${forked_target:-false}"` launcher.
+
+Keep the assertions that standalone `7.r` probes are absent.
+
+### UPDATED: skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh
+
+Update the Step 6 invocation matcher:
+
+- Treat `bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-6-entry.sh` as the load-bearing relevant-checks composite site (with or without `--forked-target` on the same line).
+- Remove the Step 6 `checks-commit-route` matcher for site counting.
+- Accept `NEXT_ACTION=skip-to-7a` as valid success-continuation guidance in the five-line lookback (alongside existing `NEXT_ACTION=continue` / checks-pass patterns).
+
+Keep `EXPECTED_SITES=3` unless the actual SKILL.md self-review/reference split changes during implementation.
+
+### UPDATED: skills/implement/scripts/test-implement-relevant-checks-anti-halt.md
+
+Update the contract text to match the harness:
+
+- Step 6 is now the unified `step-6-entry.sh` composite.
+- The active SKILL.md scan still covers three load-bearing sites if self-review remains in its reference file.
+- Document that `NEXT_ACTION=skip-to-7a` satisfies the success-guidance check.
+- Keep the edit-in-sync warning.
+
+## Edge cases
+
+- `FILES_CHANGED=false` with `UNTRACKED_BASELINE=missing`: emit `NEXT_ACTION=skip-to-7a`, but SKILL.md still logs the warning.
+- `FILES_CHANGED=false` with `GIT_PROBE_FAILED=true`: emit `NEXT_ACTION=skip-to-7a`, but SKILL.md still logs the warning.
+- `FILES_CHANGED=true` and checks fail: composite stdout leads with check-change KVs; orchestrator must still find `REDACTED_LOG_FILE` via full-capture scan before entering the Step 6 repair loop.
+- **Repair re-entry after checks-failed (`continue` or `main-agent-edit`):** even when repair restores pre-review baselines (`FILES_CHANGED=false` on a normal path), `--force-checks true` must re-run step6 checks instead of routing to Step 7a.
+- `FILES_CHANGED=true` and commit route seeds stall: emit `NEXT_ACTION=stall` and route to Step 18.
+- `FILES_CHANGED=true` and 7.r reports `CHECKPOINT_NEXT=load-routing`: emit `NEXT_ACTION=continue`, then SKILL.md loads rebase routing.
+- Duplicate, malformed, seed-failed, or non-zero-without-`NEXT_ACTION`: fail closed as invalid composite envelope with `STALL_STEP=7` when durable seed is absent.
+- Check-change child failure before a valid `FILES_CHANGED`: do not run checks/commit route.
+
+## Failure modes
+
+- **Lost degradation warnings**: prevented by relaying check-change stdout before routing on the normal path.
+- **Lost `REDACTED_LOG_FILE` on checks-failed**: prevented by full-capture key-scan in Step 6 prose and the global Checks Failure Entry Macro (not first-line-only).
+- **Double `NEXT_ACTION`**: avoid emitting `NEXT_ACTION` in `step6_entry_main` after delegating to `checks_commit_route_main` on the true branch.
+- **Missing machine stdout**: prevented by registering `("implement", "step-6-entry")` in `_MACHINE_STDOUT_KEYS`.
+- **Wrong timeout semantics**: keep the single folded fence backgrounded with `timeout: 15600000`.
+- **Anti-halt regression**: prevented by hoisting the canonical continuation blockquote above the unified fence and updating `test-implement-relevant-checks-anti-halt.sh` to accept `skip-to-7a`.
+- **False `FILES_CHANGED=false` after review edits**: prevented by pinning `--baseline` and `--head-baseline` in `step6_entry_main`.
+- **Repair loop skipping checks**: prevented by `--force-checks true` on all Step 6 post-repair composite relaunches (`continue` and `main-agent-edit`), not only the `continue` branch.
+- **Timeout-pin CI breakage**: prevented by aligning `test_composite_outer_timeout_budgets_match_leg_sums_and_fences` `step6_launcher` with the shorter timeout-pin tuple in `test-implement-structure.sh` (Step 3 precedent: full argv in require loop, shorter argv in timeout loop).
+- **Stale harness launcher pins**: prevented by updating `test_composite_outer_timeout_budgets_match_leg_sums_and_fences` and the `for script in [` require loop in `test-implement-structure.sh`.
+- **Stall without durable state**: seed durable stall state before emitting `NEXT_ACTION=stall` for Step 6 entry failures. If seeding fails, return non-zero so SKILL.md treats the envelope as invalid.
+- **Repair-loop drift**: update `checks-repair-loop.md` and static harnesses in the same change.
+
+## Testing strategy
+
+Run focused tests and harnesses:
+
+- `python3 -m pytest python/test_implement_dispatch.py -k 'step6_entry or checks_commit_route or composite_rebase_checkpoint or composite_outer_timeout'`
+- `python3 -m pytest python/test_cli.py -k 'machine_stdout'`
+- `bash scripts/test-implement-fence-shape.sh`
+- `bash scripts/test-implement-structure.sh`
+- `bash scripts/test-implement-rebase-macro.sh`
+- `bash skills/implement/scripts/test-implement-relevant-checks-anti-halt.sh`
+- Python lint/type checks for changed Python files per repo convention.
+
+diff_added: 375
+diff_deleted: 195
+mechanical_churn: false
+diff_lines: 570
