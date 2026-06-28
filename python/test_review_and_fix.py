@@ -1275,7 +1275,8 @@ def test_commit_fixes_stage_all_uses_review_delta_pathspec(tmp_path, monkeypatch
 
 
 @pytest.mark.commit_fixes
-def test_commit_fixes_stage_all_dirty_after_success_fails(tmp_path, monkeypatch, capsys):
+def test_commit_fixes_stage_all_dirty_after_success_nonfatal(tmp_path, monkeypatch, capsys):
+    # Residual dirty state outside the --only pathspec is non-fatal (issue #5678).
     impl = _tmp_impl(tmp_path)
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
@@ -1291,11 +1292,10 @@ def test_commit_fixes_stage_all_dirty_after_success_fails(tmp_path, monkeypatch,
     monkeypatch.setattr(review_and_fix, "_run", fake_run)
     rc = review_and_fix.commit_fixes(["--stage-all", "--message", "fix review"])
     out = capsys.readouterr().out
-    assert rc == 1
+    assert rc == 0
     assert "COMMITTED=true" in out
     assert "SHA=deadbeef" in out
-    assert "ERROR=dirty tree after review fix commit" in out
-    assert "COMMIT_OUTCOME=failed" in out
+    assert "COMMIT_OUTCOME=ok" in out
 
 
 @pytest.mark.commit_fixes
