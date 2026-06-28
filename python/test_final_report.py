@@ -68,6 +68,48 @@ def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) 
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
+def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    round_dir = run_dir / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "2",
+                "REJECTED_COUNT": "1",
+                "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "1",
+                "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "summary": {"panel": {"total_slot_count": 3}},
+        }),
+        encoding="utf-8",
+    )
+    (tmp_path / "timing-ledger.tsv").write_text(
+        "v1\tround\t100\timplement\t-\t1\t100\t200\t100\t0\t0\t0\t-\n"
+        "v1\tvendor\t150\timplement\t-\tcodex\tcodex-review\t120\t150\t30\tcodex-output.txt\t0\tsignal\n",
+        encoding="utf-8",
+    )
+    _stub_cost_and_assessment(monkeypatch)
+
+    rc, url, err = final_report.write_final_report(
+        tmp_path,
+        comment_only=True,
+        skip_tracking_upsert=True,
+    )
+
+    assert (rc, url, err) == (0, "", "")
+    summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "codex/codex-review" in summary
+    assert "█" in summary
+    assert "│ 30s" in summary
+    assert "No review rounds completed." not in summary
+    assert "No reviewer timing tasks overlapped this round." not in summary
+    assert "No reviewer timing tasks overlapped" not in summary
+
+
 def test_step18b_reports_write_failure(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     monkeypatch.setattr(final_report, "write_final_report", lambda _tmpdir: (7, "", "boom"))
     emit, rc, _present, _snapshot = final_report.step18b_final_report(tmp_path)

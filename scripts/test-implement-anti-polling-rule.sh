@@ -46,6 +46,9 @@ CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
 RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
+DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on an empty-output'
+SHARED_IMMEDIATE_WAIT_ANCHOR='After the background launch ack'
+IMPL_NEVER8_ANCHOR='8. **NEVER call `ScheduleWakeup`'
 
 PASS=0
 fail() { echo "  FAIL: $1" >&2; echo "    missing literal: $2" >&2; exit 1; }
@@ -175,10 +178,35 @@ check "$AGENTS_MD" \
 check "$AGENTS_MD" \
     "AGENTS.md bans per-turn output-file polling while a run_in_background task runs" \
     'poll the task output file once per turn'
+check "$AGENTS_MD" \
+    "AGENTS.md pins /design empty-output no-probe clause with issue reference" \
+    'For `/design`, when task output is empty, end the turn without probing (spurious notification, #5240)'
+check "$AGENTS_MD" \
+    "AGENTS.md pins /implement premature notifications across output states" \
+    'empty or non-empty task output'
+check "$AGENTS_MD" \
+    "AGENTS.md pins /implement empty-or-non-empty sentinel no-probe action" \
+    'end the turn without sentinel probing'
 
 check "$IMPL_MD" \
     "SKILL.md Step 5 delegates reviewer waiting to scripts" \
     'Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh`'
+
+check_context "$DESIGN_MD" \
+    "/design Anti-pattern #5 pins empty-output notification scope" \
+    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "2" \
+    'on an empty-output notification'
+check_context "$DESIGN_MD" \
+    "/design Anti-pattern #5 pins no-tool action" \
+    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "2" \
+    'Call no tool'
+check_context "$DESIGN_MD" \
+    "/design Anti-pattern #5 pins spurious notification issue" \
+    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "2" \
+    '#5240'
 
 # (3)/(4) /design shared wait extraction and load contracts.
 check_count "$DESIGN_MD" \
@@ -199,6 +227,21 @@ check "$SHARED_DESIGN_WAIT_MD" \
 check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor pins the compact-table missing warning" \
     '**⚠ Reviewer status table omitted: pre-rendered table not found.**'
+check_context "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design immediate wait pins empty-output condition" \
+    "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
+    "2" \
+    'When task output is empty'
+check_context "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design immediate wait pins no-tool action" \
+    "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
+    "2" \
+    'call no tool'
+check_context "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design immediate wait pins no-probe turn end" \
+    'Foreground terminal-sentinel probe' \
+    "2" \
+    'end the turn without probing'
 
 check_context "$DESIGN_MD" \
     "/design Verbosity Control references the shared wait anchor" \
@@ -391,9 +434,21 @@ check "$IMPL_MD" \
 check "$IMPL_MD" \
     "SKILL.md NEVER list keeps implement premature-notification recovery notification-driven" \
     'end the turn and wait for the next `<task-notification>`; do not probe `$DESIGN_TMPDIR` or design-only sentinels'
-check "$IMPL_MD" \
-    "SKILL.md NEVER list covers all premature notification output states" \
+check_context "$IMPL_MD" \
+    "SKILL.md NEVER #8 covers all premature notification output states" \
+    "$IMPL_NEVER8_ANCHOR" \
+    "2" \
     'empty or non-empty task output'
+check_context "$IMPL_MD" \
+    "SKILL.md NEVER #8 pins no-probe action" \
+    "$IMPL_NEVER8_ANCHOR" \
+    "2" \
+    'do not probe'
+check_context "$IMPL_MD" \
+    "SKILL.md NEVER #8 forbids design sentinel probes" \
+    "$IMPL_NEVER8_ANCHOR" \
+    "2" \
+    'do not probe `$DESIGN_TMPDIR` or design-only sentinels'
 check "$IMPL_MD" \
     "SKILL.md NEVER list lazy-loads orchestrator-never only for premature recovery" \
     'On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting.'
