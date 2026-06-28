@@ -31,6 +31,8 @@ from larch.implement.checks_lint_fix import (
     run_checks_phase,
     checks_lint_fix_main,
     checks_repair_loop_main,
+    _compose_prompt,
+    _codex_lint_fix_prompt_appendix,
 )
 
 __all__ = [
@@ -45,6 +47,8 @@ __all__ = [
     "escalate",
     "external_defaults",
     "git",
+    "_compose_prompt",
+    "_codex_lint_fix_prompt_appendix",
     "normalize_max_iter",
     "run_check_fix_loop",
     "run_checks_phase",
