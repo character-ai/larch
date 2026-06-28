@@ -221,6 +221,7 @@ ignore = [
 ]
 "_report.py" = [
     "C901",
+    "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
@@ -834,6 +835,35 @@ ignore = [
     "PLR0912",
     "PLR0913",
     "PLR0915",
+]
+"_classify.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0915",
+]
+"_corpus.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"_escalation.py" = [
+    "C901",
+    "PLR0911",
+]
+"_normalize.py" = [
+    "C901",
+    "PLR0911",
+]
+"_state_mgmt.py" = [
+    "C901",
+    "PLR0911",
+]
+"_validate.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
 ]
 "stall_recovery.py" = [
     "C901",
