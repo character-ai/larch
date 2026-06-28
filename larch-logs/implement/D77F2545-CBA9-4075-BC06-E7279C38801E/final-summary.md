@@ -1,10 +1,9 @@
-## /implement run D77F2545-CBA9-4075-BC06-E7279C38801E — stalled
+## /implement run D77F2545-CBA9-4075-BC06-E7279C38801E — shipping
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$3.01 — Claude $0.23, Codex-5.5 $0.67, Codex-mini $0.82, Cursor $1.12, Claude (subprocess) $0.17  |  Tokens: 8855k
+- **Duration**: 01:52:45
+- **Cost**: 💰 TOTAL ~$10.86 — Claude $8.08, Codex-5.5 $0.67, Codex-mini $0.82, Cursor $1.12, Claude (subprocess) $0.17  |  Tokens: 25561k
 - **Issue**: #5765 — https://github.com/character-ai/larch/issues/5765
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
