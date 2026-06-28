@@ -1,0 +1,14 @@
+### FINDING_1: Stale Step 8+ re-entry docs missing foreground handoff clear
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The plan updates `skills/implement/SKILL.md` (and related main Step 8 surfaces) but leaves load-on-demand Step 8+ relaunch reference docs stale: `skills/implement/references/stall-recovery.md`, `skills/implement/references/ship-pr-ci-fix.md`, `skills/implement/references/conflict-resolution.md`, and `skills/implement/references/ship-pr-exit-matrix.md`. Those files are the prompts loaded on `step8-shippr`, `ci-fix`, conflict-resolution re-entry, and `reship`. Without a separate foreground pre-launch `rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" 2>/dev/null || true` before each `step-8-ship.sh` re-invoke, stale sidecars can misroute premature `<task-notification>` handling before wrapper-entry cleanup runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add these docs to `### UPDATED` and mirror the same foreground pre-launch clear in each re-entry block, not just in `SKILL.md`.
+  - From Codex-Requirements: Add the four re-entry docs to `### UPDATED:` and insert the same separate foreground sidecar-clear step immediately before each `step-8-ship.sh` re-invoke bullet.
+
+### FINDING_2: Plan omits `test-implement-structure.sh` contract enforcement
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan mandates a separate foreground stale-handoff `rm` before every Step 8+ `run_in_background` launch but does not update `scripts/test-implement-structure.sh`, the repo's SKILL.md contract linter (`require`/`require_near` pins for Step 8 launcher, handoff gates, conflict-resolution re-entry). Wrapper entry cleanup and hook tests can pass while `SKILL.md` or `conflict-resolution.md` omits or drifts the orchestrator-only clear; `test-implement-fence-shape.sh` only guards single-line launcher fences. Reship/ci-fix/stall-recovery relaunches can still satisfy a stale `.step-8-ship-handoff.rc` probe before the new wrapper runs, reproducing the stale-handoff misroute risk.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `### UPDATED: scripts/test-implement-structure.sh`: `require()` the foreground `rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"` prose in `skills/implement/SKILL.md`; `require_near()` placing that clear before the single-line `step-8-ship.sh` launcher; extend the existing `conflict-resolution.md` needles loop (~447-455) with the same clear-then-launcher ordering. Include `bash scripts/test-implement-structure.sh` in Testing strategy.
