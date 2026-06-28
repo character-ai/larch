@@ -2075,6 +2075,11 @@ def test_reviewer_prune_normalize_code_label_reconciles_output_suffix_to_bare_to
     assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output.txt") == bare  # pyright: ignore[reportPrivateUsage]
     assert review_pipeline._normalize_code_label("cursor-specialist-correctness-output-ns-retry") == bare  # pyright: ignore[reportPrivateUsage]
     assert review_pipeline._normalize_code_label(bare) == bare  # pyright: ignore[reportPrivateUsage]
+    # Dynamic and -codex dynamic slots reconcile too: _normalize_slot keeps
+    # "-codex" (it strips only -output/-ns-retry), so the label must canonicalize
+    # to the same "-codex"-bearing slot the aggregator emits as the bare token.
+    assert review_pipeline._normalize_code_label("dyn-foo-output.txt") == "dyn-foo"  # pyright: ignore[reportPrivateUsage]
+    assert review_pipeline._normalize_code_label("dyn-foo-codex-output.txt") == "dyn-foo-codex"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_reviewer_prune_record_bare_classification_tokens_populate_counts(tmp_path: Path) -> None:
