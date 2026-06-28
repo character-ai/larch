@@ -355,6 +355,65 @@ def test_durable_note_present_requires_regular_present_artifacts(tmp_path: Path)
     assert not ag.durable_note_present(tmpdir)
 
 
+def test_note_readable_any_head_accepts_present_durable_note_with_mismatched_head(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
+        head_sha="other",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+
+    assert ag.note_readable_any_head(tmpdir)
+
+
+def test_note_readable_any_head_rejects_non_present_status(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+
+    (tmpdir / ag.DURABLE_NOTE_ENV).write_text("STATUS=absent\nHEAD_SHA=other\n", encoding="utf-8")
+
+    assert not ag.note_readable_any_head(tmpdir)
+
+
+def test_note_readable_any_head_rejects_symlinked_durable_artifacts(tmp_path: Path) -> None:
+    note_tmpdir = tmp_path / "note"
+    ag.write_implement_note(
+        implement_tmpdir=note_tmpdir,
+        note_text="note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    note_target = tmp_path / "note-target.md"
+    note_target.write_text("note\n", encoding="utf-8")
+    (note_tmpdir / ag.DURABLE_NOTE).unlink()
+    (note_tmpdir / ag.DURABLE_NOTE).symlink_to(note_target)
+
+    meta_tmpdir = tmp_path / "meta"
+    ag.write_implement_note(
+        implement_tmpdir=meta_tmpdir,
+        note_text="note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+    meta_target = tmp_path / "meta-target.env"
+    meta_target.write_text("STATUS=present\nHEAD_SHA=head\n", encoding="utf-8")
+    (meta_tmpdir / ag.DURABLE_NOTE_ENV).unlink()
+    (meta_tmpdir / ag.DURABLE_NOTE_ENV).symlink_to(meta_target)
+
+    assert not ag.note_readable_any_head(note_tmpdir)
+    assert not ag.note_readable_any_head(meta_tmpdir)
+
+
 def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
