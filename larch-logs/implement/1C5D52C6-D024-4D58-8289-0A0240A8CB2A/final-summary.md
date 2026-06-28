@@ -1,7 +1,7 @@
 ## /implement run 1C5D52C6-D024-4D58-8289-0A0240A8CB2A — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 00:32:33
 - **Cost**: 💰 TOTAL ~$4.41 — Claude $0.70, Codex-5.5 $2.51, Codex-mini $0.39, Cursor $0.81, Claude (subprocess) $0.00  |  Tokens: 8660k
 - **Issue**: #5667 — https://github.com/character-ai/larch/issues/5667
 - **Plan review**: N/A
@@ -60,3 +60,7 @@ aggregator                           │                                   █�
 
 **Reviewer slot failures**: 1
 - cursor/dyn-dyn-plr0911-carveout: 1
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
