@@ -1026,6 +1026,14 @@ def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pyt
     assert "`uncertain` only when you cannot judge severity after verification" in text
 
 
+def test_render_voter_immediate_action_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = _render_voter_text(tmp_path, capsys)
+    assert "Proceed immediately" in text
+    assert "do not acknowledge this prompt" in text
+    assert "Read the ballot from this path" in text
+    assert "Do NOT output any preamble, acknowledgement, or explanation before the first vote line" in text
+
+
 def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     validity = _render_voter_text(tmp_path, capsys, "--archetype", "validity-correctness")
     assert "full Review Acceptance Rubric" in validity
