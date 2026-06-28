@@ -1,0 +1,7 @@
+**Lever:** always-loaded SKILL.md context.
+
+**Dedup:** The Step 5 checks-failed blockquote is byte-identical at two sites (the `main-agent-vote-required` and `coder-main-agent-required` branches); both feed the same resume fence. Collapse to one shared blockquote. Separately, the Checks Failure Entry Macro already owns the read + mandatory-read steps, yet five call sites re-inline the macro body — trim each to a macro invocation with the pinned `--site`.
+
+**Dead-directive:** The Preflight exit-code-3 sub-cases A/B/C restate the `STATE=clean|ambiguous|awaiting-response` posting/labeling flow that already lives authoritatively in `preflight-plan-audit.md` `## Clarify-request flow after AUDIT=refuse` (already mandatory-read on the refuse path). Collapse the table cell to a one-line pointer.
+
+**Risk:** LOW-MED. Preserve per-site `--site` / `--checks-site` tokens (load-bearing). The per-site MANDATORY-READ may be anti-halt reinforcement — pair the macro-collapse with the halt-rate regression harness.
