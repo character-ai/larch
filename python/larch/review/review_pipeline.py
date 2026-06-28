@@ -552,7 +552,7 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         prune_active = "false"
     elif env_override:
         warn = "reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; set it exactly to off to disable"
-    if prune_active == "false" or round_num <= 1 or round_num >= 5:
+    if prune_active == "false" or round_num <= 2 or round_num >= 5:
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(manifest, out)
         return PruneFilterResult(prune_active, len(rows), 0, "", "false", warn=warn)
@@ -565,11 +565,10 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         return PruneFilterResult("false", len(rows), 0, "", "false", "true", fail_warn)
     eligible: list[dict[str, object]] = []
     pruned: list[str] = []
-    min_recent = 1 if round_num == 2 else 2
     for row in rows:
         key = _manifest_combo(row)
         recent = sorted(hist.get(key, {}).items())[-2:]
-        if len(recent) >= min_recent:
+        if len(recent) >= 2:
             accepted_sum = sum(count.accepted for _, count in recent)
             weighted_accepted_sum = sum(count.weighted_accepted for _, count in recent)
             rejected_sum = sum(count.rejected for _, count in recent)
@@ -630,7 +629,7 @@ def normalize_prune_eligible(*, prune_active: str, eligible_count: int | str) ->
 
 
 def prune_window_evaluated(round_num: int | str) -> str:
-    return "true" if str(round_num) in {"2", "3", "4"} else "false"
+    return "true" if str(round_num) in {"3", "4"} else "false"
 
 
 def ensure_reviewer_prune_ledger(ledger: Path) -> None:
