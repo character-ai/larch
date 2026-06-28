@@ -891,6 +891,68 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     assert result.phase == "pre-commit"
 
 
+def test_run_relevant_checks_precommit_failure_skips_later_phases(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    repo = _git_repo(tmp_path)
+    changed = repo / "python" / "foo.py"
+    changed.parent.mkdir()
+    changed.write_text("print('bad')\n", encoding="utf-8")
+    _checks_path(
+        monkeypatch,
+        tmp_path,
+        precommit="#!/usr/bin/env bash\necho precommit failed\nexit 1\n",
+    )
+    calls = {
+        "run_logged": 0,
+        "direct_targets": 0,
+        "contains_pin": 0,
+        "agent_lint": 0,
+    }
+
+    def fake_run_logged(*, runner: object, argv: list[str], log_fd: int, **_kwargs: object) -> CommandResult:
+        _ = runner
+        calls["run_logged"] += 1
+        assert argv[:3] == ["pre-commit", "run", "--files"]
+        os.write(log_fd, b"precommit failed\n")
+        return _ok("precommit failed\n", rc=1)
+
+    def fake_direct_targets(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+        calls["direct_targets"] += 1
+        return ()
+
+    def fake_contains_pin_phase(*_args: object, **_kwargs: object) -> int:
+        calls["contains_pin"] += 1
+        return 0
+
+    def fake_agent_lint(*_args: object, **_kwargs: object) -> int | None:
+        calls["agent_lint"] += 1
+
+    monkeypatch.setattr(checks, "_run_logged", fake_run_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_direct_targets", fake_direct_targets)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+
+    result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
+
+    assert result.ok is False
+    assert result.phase == "pre-commit"
+    assert calls == {
+        "run_logged": 1,
+        "direct_targets": 0,
+        "contains_pin": 0,
+        "agent_lint": 0,
+    }
+    log = Path(result.raw_log_path or "").read_text(encoding="utf-8")
+    marker_index = log.index("=== Running pre-commit on 1 changed file(s) ===")
+    assert "precommit failed" in log[marker_index:]
+    assert "=== Running direct relevant make target(s):" not in log[marker_index:]
+    assert "=== Running agent-lint ===" not in log[marker_index:]
+    assert "contains-pin" not in log[marker_index:]
+
+
 def test_run_relevant_checks_direct_targets_dedup_and_env_scrub(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -3206,6 +3268,20 @@ def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ..
     return checks._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
 
 
+def _direct_targets_with_toolchain(
+    paths: tuple[str, ...],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> tuple[str, ...]:
+    def available(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    monkeypatch.setattr(checks, "_python311_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(checks, "_pytest_available", available)  # pyright: ignore[reportPrivateUsage]
+    return checks._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
     targets = _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
     assert "test-implement-structure" in targets
@@ -3251,6 +3327,76 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
 )
 def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str, target: str) -> None:
     assert target in _direct_targets_for((path,), tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("path", "expected"),
+    [
+        ("scripts/test-implement-anti-polling-rule.sh", {"test-implement-anti-polling-rule"}),
+        (
+            "AGENTS.md",
+            {
+                "test-design-structure",
+                "test-review-structure",
+                "test-research-structure",
+                "test-implement-anti-polling-rule",
+                "py-lint",
+                "py-test",
+            },
+        ),
+        (
+            "skills/design/SKILL.md",
+            {
+                "test-design-structure",
+                "test-render-cost-line-callsites",
+                "test-design-step3-mav",
+                "test-step3-orchestrator-fence",
+                "test-references-headers",
+                "test-implement-anti-polling-rule",
+            },
+        ),
+        ("skills/shared/design-background-wait.md", {"test-implement-anti-polling-rule"}),
+        ("skills/shared/orchestrator-never.md", {"test-implement-anti-polling-rule"}),
+        (
+            "skills/implement/SKILL.md",
+            {
+                "test-implement-structure",
+                "test-render-cost-line-callsites",
+                "test-references-headers",
+                "test-implement-anti-polling-rule",
+            },
+        ),
+        ("python/larch/review/review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
+        ("python/test_review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
+        (
+            "python/larch/report/final_report.py",
+            {"test-write-final-report", "test-step-18b-final-report", "py-test"},
+        ),
+        (
+            "python/test_final_report.py",
+            {"test-write-final-report", "test-step-18b-final-report", "py-lint", "py-test"},
+        ),
+        ("python/larch/report/progress_report.py", {"py-test"}),
+        ("python/larch/rendering/gantt.py", {"py-test"}),
+        ("python/larch/report/review_phase_detail.py", {"py-test"}),
+        ("python/larch/implement/checks.py", {"py-test"}),
+        ("python/test_checks.py", {"py-lint", "py-test"}),
+    ],
+)
+def test_direct_targets_chronic_surface_full_union_sets(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    path: str,
+    expected: set[str],
+) -> None:
+    # These are full union expectations, not one-row spot checks. The design and
+    # implement SKILL paths combine their structure rows, the skills/* references
+    # header row, and the anti-polling row. The design SKILL also inherits the
+    # Step 3 MAV fence targets. Top-level python/*.py paths inherit py-lint and
+    # py-test when the toolchain probes are stubbed available.
+    targets = set(_direct_targets_with_toolchain((path,), tmp_path, monkeypatch))
+    assert targets == expected
+
 
 def test_direct_targets_rule_targets_before_py_lint(
     tmp_path: Path,

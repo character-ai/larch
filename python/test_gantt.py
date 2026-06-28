@@ -49,6 +49,24 @@ def test_edges_align() -> None:
             assert line.rindex("│") == right
 
 
+def test_minimal_overlapping_row_renders_visible_relative_chart() -> None:
+    chart = render_gantt(
+        window_start_s=100,
+        window_end_s=200,
+        rows=[GanttRow("codex/reviewer", 120, 150)],
+        width=20,
+    )
+
+    assert chart.strip()
+    assert "codex/reviewer" in chart
+    assert "█" in chart
+    assert "│ 30s" in chart
+    assert "0:00" in chart
+    assert "1:40" in chart
+    assert "100" not in chart
+    assert all(line.strip() for line in chart.splitlines())
+
+
 def test_axis_uses_relative_span_and_aligns_to_track() -> None:
     lines = _lines()
     left, right = _border_cols(lines)

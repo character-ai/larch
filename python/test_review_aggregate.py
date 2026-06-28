@@ -176,6 +176,64 @@ _NARROW_TRIGGER_SUCCESS = """### FINDING_1: Merged in-scope
 - **Suggested revision**: fix"""
 
 
+def _write_validate_pair(tmp_path: Path, *, input_text: str, output_text: str) -> tuple[Path, Path]:
+    input_path = tmp_path / "input.md"
+    output_path = tmp_path / "output.md"
+    _ = input_path.write_text(input_text, encoding="utf-8")
+    _ = output_path.write_text(output_text, encoding="utf-8")
+    return input_path, output_path
+
+
+def test_validate_aggregate_output_rejects_missing_reviewer_slot(tmp_path: Path) -> None:
+    input_path, output_path = _write_validate_pair(
+        tmp_path,
+        input_text=_NON_OOS_INPUT,
+        output_text=_MISSING_REVIEWER_FAIL,
+    )
+
+    rc, err = review_aggregate._validate_aggregate_output(  # pyright: ignore[reportPrivateUsage]
+        input_path=input_path,
+        output_path=output_path,
+        input_mode="code",
+    )
+
+    assert rc == review_aggregate._MISSING_REVIEWER_RC  # pyright: ignore[reportPrivateUsage]
+    assert "input reviewers missing from merge output" in err
+
+
+def test_validate_aggregate_output_accepts_preserved_reviewer_slots(tmp_path: Path) -> None:
+    input_path, output_path = _write_validate_pair(
+        tmp_path,
+        input_text=_NON_OOS_INPUT,
+        output_text=_MISSING_REVIEWER_SUCCESS,
+    )
+
+    rc, err = review_aggregate._validate_aggregate_output(  # pyright: ignore[reportPrivateUsage]
+        input_path=input_path,
+        output_path=output_path,
+        input_mode="code",
+    )
+
+    assert rc == 0, err
+
+
+def test_validate_aggregate_output_rejects_semantic_missing_severity(tmp_path: Path) -> None:
+    input_path, output_path = _write_validate_pair(
+        tmp_path,
+        input_text=_NON_OOS_INPUT,
+        output_text=_NON_OOS_FAIL,
+    )
+
+    rc, err = review_aggregate._validate_aggregate_output(  # pyright: ignore[reportPrivateUsage]
+        input_path=input_path,
+        output_path=output_path,
+        input_mode="code",
+    )
+
+    assert rc == 2
+    assert "Severity" in err
+
+
 def test_aggregate_disabled_fast_path_preserves_findings(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     original = "### FINDING_1: keep me\n"

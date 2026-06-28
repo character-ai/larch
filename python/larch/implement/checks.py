@@ -534,8 +534,9 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("python/larch/state/session_env.py", "python/test_session_env.py"), ("test-design-structure", "py-test"), False, False),
     (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-publish", "test-design-stage-terminal-state", "test-design-failure-report", "test-design-step5c", "test-design-structure"), False, False),
     (("skills/design/scripts/design-step5c.sh", "skills/design/scripts/test-design-step5c.sh", "skills/design/scripts/test-design-step5c.md"), ("test-design-step5c", "test-design-publish", "test-design-stage-terminal-state"), False, False),
-        (("skills/design/SKILL.md", "skills/design/references/*.md"), ("test-design-structure", "test-render-cost-line-callsites"), False, False),
+    (("skills/design/SKILL.md", "skills/design/references/*.md"), ("test-design-structure", "test-render-cost-line-callsites"), False, False),
     (("skills/design/SKILL.md", "skills/design/references/plan-review.md", "skills/design/scripts/design-step3-mav.sh", "skills/design/scripts/design-step3-mav.md", "skills/design/scripts/test-design-step3-mav.sh", "skills/design/scripts/test-design-step3-mav.md", "skills/design/scripts/test-step3-orchestrator-fence.sh", "skills/design/scripts/test-step3-orchestrator-fence.md"), ("test-design-step3-mav", "test-step3-orchestrator-fence"), False, False),
+    (("scripts/test-implement-anti-polling-rule.sh", "AGENTS.md", "skills/design/SKILL.md", "skills/shared/design-background-wait.md", "skills/shared/orchestrator-never.md", "skills/implement/SKILL.md"), ("test-implement-anti-polling-rule",), False, False),
     (("python/upgrade_larch.py", "python/test_upgrade_larch.py"), ("py-test",), False, False),
     (("python/design_argv.py", "python/test_design_argv.py"), ("test-parse-design-argv",), False, False),
     (("python/design_lifecycle.py", "python/test_design_lifecycle.py"), ("test-design-step2b-drafter", "test-design-driver", "test-design-step0-init", "test-design-step1d5", "test-design-stage-terminal-state", "test-design-step-final-summary", "test-design-failure-report", "test-design-step5c", "test-design-structure", "test-step0b-router-flag-recovery"), False, False),
@@ -582,6 +583,11 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("python/larch/state/finalize.py", "python/test_finalize.py"), ("test-implement-finalize",), False, False),
     (("python/larch/state/closeout.py", "python/test_closeout.py"), ("test-step-16-17",), False, False),
     (("python/final_report.py", "python/test_final_report.py"), ("test-write-final-report", "test-step-18b-final-report"), False, False),
+    (("python/larch/report/final_report.py",), ("test-write-final-report", "test-step-18b-final-report"), False, True),
+    (("python/larch/report/progress_report.py",), (), False, True),
+    (("python/larch/report/review_phase_detail.py",), (), False, True),
+    (("python/larch/rendering/gantt.py",), (), False, True),
+    (("python/larch/implement/checks.py",), (), False, True),
     (("python/pr_body.py", "python/test_pr_body.py", "python/ship.py", "python/test_ship.py", "python/final_report.py", "python/test_final_report.py"), ("py-test",), False, False),
     (("skills/implement/scripts/step-architectural-guidelines-*.sh", "skills/implement/scripts/step-architectural-guidelines-*.md", "skills/implement/scripts/test-architectural-guidelines-step.sh", "skills/implement/scripts/test-architectural-guidelines-step.md", "scripts/residual-bash-paths.txt"), ("test-architectural-guidelines-step", "test-implement-fence-shape"), False, False),
     (("skills/implement/references/ship-pr-exit-matrix.md", "skills/implement/references/conflict-resolution.md", "scripts/test-implement-fence-shape.sh"), ("test-implement-fence-shape",), False, False),
@@ -605,7 +611,12 @@ def _append_once(*, items: list[str], item: str) -> None:
 
 
 def _patterns_match(*, path: str, patterns: tuple[str, ...]) -> bool:
-    return any(fnmatch.fnmatchcase(path, pattern) for pattern in patterns)
+    for pattern in patterns:
+        if "/" in pattern and "**" not in pattern and path.count("/") != pattern.count("/"):
+            continue
+        if fnmatch.fnmatchcase(path, pattern):
+            return True
+    return False
 
 
 def _append_py_lint_target(

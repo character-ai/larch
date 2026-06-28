@@ -2663,7 +2663,14 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
+    assert "## Review Phase Detail" in rendered
+    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | — | 3 |" in rendered
     assert "### Round 1 reviewer timing" in rendered
+    assert "```" in rendered
+    assert "codex/codex-review" in rendered
+    assert "│" in rendered
+    assert "█" in rendered
+    assert "30s" in rendered
     assert "No reviewer timing tasks overlapped this round." not in rendered
 
 
