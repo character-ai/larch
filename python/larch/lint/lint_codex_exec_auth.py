@@ -159,20 +159,24 @@ def scan_markdown_file( *,root: Path, rel: str) -> bool:
 
 
 def scan_review_and_fix_review_core(root: Path) -> bool:
-    rel = "python/review_and_fix.py"
-    path = root / rel
-    if not path.is_file() or path.is_symlink():
-        return False
+    rels = [
+        "python/larch/review/review_and_fix.py",
+        "python/larch/review/round_runner.py",
+    ]
     violation = False
-    for nr, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
-        if TRAILING_PRAGMA_RE.search(line) or re.match(r"^\s*#", line):
+    for rel in rels:
+        path = root / rel
+        if not path.is_file() or path.is_symlink():
             continue
-        if REVIEW_CORE_SUBPROCESS_RE.search(line):
-            print(
-                f"lint-codex-exec-auth: {rel}:{nr}: Step 5 must not subprocess review core; use review_core_capture / review_pipeline.review_core",
-                file=sys.stderr,
-            )
-            violation = True
+        for nr, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
+            if TRAILING_PRAGMA_RE.search(line) or re.match(r"^\s*#", line):
+                continue
+            if REVIEW_CORE_SUBPROCESS_RE.search(line):
+                print(
+                    f"lint-codex-exec-auth: {rel}:{nr}: Step 5 must not subprocess review core; use review_core_capture / review_pipeline.review_core",
+                    file=sys.stderr,
+                )
+                violation = True
     return violation
 
 

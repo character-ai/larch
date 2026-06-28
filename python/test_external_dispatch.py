@@ -24,6 +24,7 @@ from larch.design import plan_scout
 from larch.git import rebase
 from larch.review import review_aggregate
 from larch.review import review_and_fix
+from larch.review import coder_runner
 from larch.review import review_pipeline
 from larch.core import config
 
@@ -156,15 +157,15 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
         output_file.write_text(input_file.read_text(encoding="utf-8"), encoding="utf-8")
         return True, 0
 
-    monkeypatch.setattr(review_and_fix, "_scrub_findings", fake_scrub_findings)
-    monkeypatch.setattr(review_and_fix, "_submodule_paths", lambda: ())
-    monkeypatch.setattr(review_and_fix, "_compose_coder_prompt", lambda **_kwargs: "prompt")
-    monkeypatch.setattr(review_and_fix, "_ensure_pre_coder_snapshot", fake_ensure)
-    monkeypatch.setattr(review_and_fix, "_snapshot_mode", lambda _round_dir: "full")
-    monkeypatch.setattr(review_and_fix, "_git_head", lambda: "HEAD")
-    monkeypatch.setattr(review_and_fix, "_run_coder_codex", fake_codex)
-    monkeypatch.setattr(review_and_fix, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
-    monkeypatch.setattr(review_and_fix, "_collect_round_stage_paths", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
+    monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
+    monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
+    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
+    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_codex)
+    monkeypatch.setattr(coder_runner, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda *_args, **_kwargs: [])
 
     result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file)
 

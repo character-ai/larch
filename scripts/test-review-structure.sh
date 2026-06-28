@@ -92,9 +92,11 @@ grep -Fq -- '("review-and-fix", "step5")' "$REPO_ROOT/python/larch/cli.py" \
   || fail "(1b) missing python/cli.py review-and-fix step5 registry entry"
 grep -Fq -- '("redact", "scrub-submodule-paths")' "$REPO_ROOT/python/larch/cli.py" \
   || fail "(1b) missing python/cli.py redact scrub-submodule-paths registry entry"
-grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
+{ grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
+    || grep -Fq -- 'launch-codex-exec' "$REPO_ROOT/python/larch/review/coder_runner.py"; } \
   || fail "(1b) review-and-fix CLI must dispatch Codex coder"
-grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
+{ grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
+    || grep -Fq -- '"--tool", "cursor"' "$REPO_ROOT/python/larch/review/coder_runner.py"; } \
   || fail "(1b) review-and-fix CLI must dispatch Cursor coder"
 ! grep -Fq -- 'launch-claude-subprocess' "$REPO_ROOT/python/larch/review/review_and_fix.py" \
   || fail "(1b) review-and-fix CLI must not dispatch a Claude subagent fallback"
