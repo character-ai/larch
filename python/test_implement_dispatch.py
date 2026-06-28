@@ -23,6 +23,14 @@ from larch.agents import _ci_launcher
 from larch.agents import _run_external
 from larch.report import exec_issue_detail
 from larch.implement import implement_dispatch
+from larch.implement import (
+    dispatch_commit_route,
+    dispatch_leg,
+    dispatch_ship,
+    dispatch_step18,
+    dispatch_step2,
+    dispatch_recovery,
+)
 from larch.core import logging_util
 from larch.report import run_logs
 from larch.core.proc import CommandResult
@@ -214,6 +222,7 @@ def test_ship_route_exit_fourth_transient_seeds_stall(
         return subprocess.CompletedProcess(args, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_capture)
     _write_ship_handoff(tmp, 6, {"outcome": "TRANSIENT"})
 
     assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)]) == 0
@@ -562,6 +571,7 @@ def _install_step18_normalize(
         )
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", fake_capture)
 
 
 def _install_step18_finalize(
@@ -637,6 +647,7 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
         "_run_cli_capture",
         lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"),
     )
+    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"))
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",
@@ -871,6 +882,7 @@ def test_ship_pre_driver_guard_failure_isolates_stdout(
         return subprocess.CompletedProcess(list(args), 4, '{"outcome":"STALLED"}\n', "guard stderr\n")
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 4
 
@@ -898,6 +910,7 @@ def test_ship_pre_driver_seed_failure_stops_before_oos(
         return results.pop(0)
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 7
 
@@ -926,6 +939,7 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
         return results.pop(0)
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 5
 
@@ -958,6 +972,7 @@ def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
         return results.pop(0)
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
 
     assert implement_dispatch.ship_pre_driver_main([]) == 0
 
@@ -1123,7 +1138,9 @@ def test_run_dispatch_ignores_legacy_cursor_present(tmp_path: Path, monkeypatch:
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_step2, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
+    monkeypatch.setattr(dispatch_step2, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"])
     assert rc == 0
     assert "--cursor-binary-found" in captured["argv"]
@@ -1143,7 +1160,9 @@ def test_run_dispatch_forwards_answers_to_step2(tmp_path: Path, monkeypatch: pyt
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_step2, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
+    monkeypatch.setattr(dispatch_step2, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
     rc = implement_dispatch.run_dispatch_main([
         "--implement-tmpdir", str(tmp),
         "--coder", "codex",
@@ -1188,7 +1207,9 @@ def test_run_dispatch_marks_step2_once_under_lock_and_skips_answers(
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_step2, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
+    monkeypatch.setattr(dispatch_step2, "_capture_prelaunch_porcelain", lambda **_kwargs: 0)
 
     assert implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "codex"]) == 0
     assert implement_dispatch.run_dispatch_main([
@@ -1225,6 +1246,7 @@ def test_run_dispatch_fails_closed_when_fallback_repo_root_missing(
 
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: None)
+    monkeypatch.setattr(dispatch_step2, "_resolve_repo_root", lambda: None)
 
     rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", str(tmp), "--coder", "claude"])
 
@@ -1285,8 +1307,11 @@ def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: 
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1311,6 +1336,7 @@ def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, 
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1331,6 +1357,7 @@ def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_pat
     tmp = _session(tmp_path)
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
     monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1355,6 +1382,7 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
         "_run_launcher",
         _malformed_launcher(edit_readme),
     )
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", _malformed_launcher(edit_readme))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1375,6 +1403,7 @@ def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_pa
         _git(repo_root, "mv", "README.md", "RENAMED.md")
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(edit))
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", _malformed_launcher(edit))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1412,7 +1441,9 @@ def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     rc_qa = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1452,6 +1483,7 @@ def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: P
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1478,8 +1510,11 @@ def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_p
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1514,7 +1549,9 @@ def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -1545,7 +1582,9 @@ def test_commit_main_passes_named_files_once(monkeypatch: pytest.MonkeyPatch, ca
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(dispatch_recovery, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    monkeypatch.setattr(dispatch_recovery, "_run", fake_run)
 
     rc = implement_dispatch.commit_main(["--message", "Commit helper", "one.txt", "two.txt"])
 
@@ -1583,7 +1622,9 @@ def test_commit_main_git_commit_failure_preserves_exit_code(repo: Path, monkeypa
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(dispatch_recovery, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    monkeypatch.setattr(dispatch_recovery, "_run", fake_run)
     rc = implement_dispatch.commit_main(["--message", "Implement thing", "file.txt"])
     assert rc == 7
     captured = capsys.readouterr()
@@ -1638,8 +1679,11 @@ def _setup_commit_route(
         return subprocess.CompletedProcess(list(argv), porcelain_rc, porcelain_stdout, "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", fake_invoke)
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_seed)
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_seed)
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    monkeypatch.setattr(dispatch_commit_route, "_run", fake_run)
     return impl, invoke_calls, seed_calls
 
 
@@ -1925,11 +1969,16 @@ def _mock_composite_continue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, *,
             False,
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ))
     monkeypatch.setattr(
         implement_dispatch,
         "_run_commit_route_leg",
         lambda **_kwargs: ("continue", commit_stdout),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", lambda **_kwargs: ("continue", commit_stdout))
     return impl
 
 
@@ -1950,6 +1999,7 @@ def _mock_step6_check_changes(
         return _completed(args, stdout, "check stderr\n", rc)
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_capture)
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fake_capture)
 
 
 def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
@@ -1968,6 +2018,7 @@ def test_step6_entry_skip_relays_degradation_kvs_and_does_not_run_composite(
         raise AssertionError("Step 6 composite must not run when FILES_CHANGED=false")
 
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fail_composite)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2027,6 +2078,7 @@ def test_step6_entry_files_changed_runs_fixed_composite_with_forked_target(
         return 0
 
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
     rc = implement_dispatch.step6_entry_main(["--forked-target", "true"])
 
@@ -2065,6 +2117,7 @@ def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change
         return 0
 
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2102,6 +2155,7 @@ def test_step6_entry_relays_composite_stall_and_rebase_routing(
         return 0
 
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2132,7 +2186,9 @@ def test_step6_entry_malformed_files_changed_seeds_stall(
         raise AssertionError("Step 6 composite must not run after malformed FILES_CHANGED")
 
     monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+    monkeypatch.setattr(dispatch_commit_route, "_seed_durable_stall_state", fake_seed)
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fail_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fail_composite)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2154,6 +2210,7 @@ def test_step6_entry_check_changes_nonzero_seed_failure_returns_nonzero_without_
         rc=1,
     )
     monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_commit_route, "_seed_durable_stall_state", lambda *_args, **_kwargs: False)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2178,6 +2235,7 @@ def test_step6_entry_composite_seed_failed_output_does_not_fabricate_next_action
         return 1
 
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
     rc = implement_dispatch.step6_entry_main([])
 
@@ -2204,7 +2262,9 @@ def test_step6_entry_force_checks_skips_change_gate_and_never_emits_skip(
         return 0
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fail_check_changes)
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_capture", fail_check_changes)
     monkeypatch.setattr(implement_dispatch, "checks_commit_route_main", fake_composite)
+    monkeypatch.setattr(dispatch_commit_route, "checks_commit_route_main", fake_composite)
 
     rc = implement_dispatch.step6_entry_main(["--force-checks", "true"])
 
@@ -2232,6 +2292,7 @@ def test_run_relevant_checks_for_site_does_not_allow_skip(
         )
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
 
     captured, timed_out = implement_dispatch._run_relevant_checks_for_site(
         implement_tmpdir=impl,
@@ -2278,8 +2339,11 @@ def test_checks_commit_route_ok_envelope_continues_through_real_helper(
         raise AssertionError("7.r checkpoint must not run without the explicit Step 6 flag")
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
     monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fake_commit)
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fake_commit)
     monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fail_checkpoint)
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fail_checkpoint)
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step5-self-review", "--commit-site", "step5-self-review"]
@@ -2320,7 +2384,9 @@ def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
         return 0, "STEP5_REVIEW_STATUS=complete\n"
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
     monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fake_resume)
+    monkeypatch.setattr(dispatch_commit_route, "_run_step5_resume_leg", fake_resume)
 
     rc = implement_dispatch.checks_step5_resume_main(
         ["--checks-site", "step5-review-fixes", "--final-round-num", "3", "--resume-deadline-ms", "5678"]
@@ -2389,6 +2455,7 @@ def test_7r_rebase_checkpoint_invokes_cli_and_relays_stdout(
         )
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", fake_invoke)
 
     rc = implement_dispatch._run_7r_rebase_checkpoint("true")
 
@@ -2423,6 +2490,7 @@ def test_composite_rebase_checkpoint_relays_probe_and_returns_probe_rc(
         return probe_rc
 
     monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fake_checkpoint)
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fake_checkpoint)
 
     rc = implement_dispatch.checks_commit_route_main(
         [
@@ -2457,6 +2525,7 @@ def test_composite_without_rebase_flag_preserves_step5_self_review_route(
         raise AssertionError("7.r checkpoint must not run without the explicit Step 6 flag")
 
     monkeypatch.setattr(implement_dispatch, "_run_7r_rebase_checkpoint", fail_checkpoint)
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", fail_checkpoint)
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step5-self-review", "--commit-site", "step5-self-review"]
@@ -2480,16 +2549,19 @@ def test_composite_rebase_checkpoint_skips_checks_failed(
         "_run_relevant_checks_for_site",
         lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "relevant-checks-failed"}, False),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "relevant-checks-failed"}, False))
     monkeypatch.setattr(
         implement_dispatch,
         "_run_commit_route_leg",
         lambda **_kwargs: (_ for _ in ()).throw(AssertionError("commit must not run after checks failure")),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("commit must not run after checks failure")))
     monkeypatch.setattr(
         implement_dispatch,
         "_run_7r_rebase_checkpoint",
         lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after checks failure")),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after checks failure")))
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
@@ -2510,11 +2582,13 @@ def test_composite_rebase_checkpoint_skips_seeded_stall(
         "_run_commit_route_leg",
         lambda **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", lambda **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\nCOMMIT_OUTCOME=failed\n"))
     monkeypatch.setattr(
         implement_dispatch,
         "_run_7r_rebase_checkpoint",
         lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after seeded stall")),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_7r_rebase_checkpoint", lambda _forked_target: (_ for _ in ()).throw(AssertionError("7.r checkpoint must not run after seeded stall")))
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step6", "--commit-site", "step7", "--rebase-checkpoint-7r"]
@@ -2541,13 +2615,20 @@ def test_step4_composite_noop_runs_4r_and_does_not_double_emit_continue(
             False,
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step3", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ))
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_commit_route, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(dispatch_commit_route, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(
         implement_dispatch,
         "_run_step4_commit_leg",
         lambda *_args, **_kwargs: ("noop", "COMMIT_ROUTE_OUTCOME=noop\n"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_step4_commit_leg", lambda *_args, **_kwargs: ("noop", "COMMIT_ROUTE_OUTCOME=noop\n"))
 
     def fake_4r(forked_target: str) -> int:
         assert forked_target == "true"
@@ -2557,6 +2638,7 @@ def test_step4_composite_noop_runs_4r_and_does_not_double_emit_continue(
         return 0
 
     monkeypatch.setattr(implement_dispatch, "_run_4r_rebase_checkpoint", fake_4r)
+    monkeypatch.setattr(dispatch_commit_route, "_run_4r_rebase_checkpoint", fake_4r)
 
     rc = implement_dispatch.checks_commit_route_main([
         "--checks-site",
@@ -2587,18 +2669,23 @@ def test_step4_composite_seeded_stall_skips_4r(
         "_run_relevant_checks_for_site",
         lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False))
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_commit_route, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(dispatch_commit_route, "_run_step4_recovery_recompute", lambda *_args, **_kwargs: 0)
     monkeypatch.setattr(
         implement_dispatch,
         "_run_step4_commit_leg",
         lambda *_args, **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\n"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_step4_commit_leg", lambda *_args, **_kwargs: ("seeded-stall", "COMMIT_ROUTE_OUTCOME=seeded-stall\n"))
     monkeypatch.setattr(
         implement_dispatch,
         "_run_4r_rebase_checkpoint",
         lambda _forked_target: (_ for _ in ()).throw(AssertionError("4.r must not run after seeded stall")),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_4r_rebase_checkpoint", lambda _forked_target: (_ for _ in ()).throw(AssertionError("4.r must not run after seeded stall")))
 
     rc = implement_dispatch.checks_commit_route_main([
         "--checks-site",
@@ -2626,6 +2713,7 @@ def test_run_step4_commit_leg_commits_ordinary_pathspec(
         return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 
@@ -2656,17 +2744,20 @@ def test_run_step4_commit_leg_failure_seeds_step4_stall(
         "_run_leg_with_timeout",
         lambda **_kwargs: subprocess.CompletedProcess([], 1, "COMMITTED=false\nERROR=failed\n", ""),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", lambda **_kwargs: subprocess.CompletedProcess([], 1, "COMMITTED=false\nERROR=failed\n", ""))
     monkeypatch.setattr(
         implement_dispatch,
         "_invoke_cli",
         lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 0, "", ""),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 0, "", ""))
 
     def fake_seed(_tmpdir: Path, *, stall_step: str, bail_reason: str) -> bool:
         seed_calls.append((stall_step, bail_reason))
         return True
 
     monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+    monkeypatch.setattr(dispatch_commit_route, "_seed_durable_stall_state", fake_seed)
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 
@@ -2723,6 +2814,7 @@ def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
         return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=abc\n", "")
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 
@@ -2762,11 +2854,13 @@ def test_run_step4_recovery_recompute_scope_check_failure_emits_bail(
     (impl / "recovery-metadata.json").write_text("{}\n", encoding="utf-8")
 
     monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
+    monkeypatch.setattr(dispatch_commit_route, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
     monkeypatch.setattr(
         implement_dispatch,
         "_invoke_cli",
         lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"))
 
     rc = implement_dispatch._run_step4_recovery_recompute(impl, repo_root=Path("/repo"))
 
@@ -2789,13 +2883,17 @@ def test_step4_composite_recovery_out_of_scope_emits_bail_without_next_action(
         "_run_relevant_checks_for_site",
         lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: ({"RELEVANT_CHECKS_OK": "true", "SITE": "step3"}, False))
     monkeypatch.setattr(implement_dispatch, "_resolve_repo_root", lambda: Path("/repo"))
+    monkeypatch.setattr(dispatch_commit_route, "_resolve_repo_root", lambda: Path("/repo"))
     monkeypatch.setattr(implement_dispatch, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
+    monkeypatch.setattr(dispatch_commit_route, "_derive_pathspec_via_recovery_paths", lambda **_kwargs: 0)
     monkeypatch.setattr(
         implement_dispatch,
         "_invoke_cli",
         lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), 1, "", "scope fail"))
 
     rc = implement_dispatch.checks_commit_route_main([
         "--checks-site",
@@ -2960,8 +3058,11 @@ def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
 
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
@@ -3003,7 +3104,12 @@ def test_composite_commit_route_spawns_child_with_emit_next_action_false(
             False,
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step6", "COVERAGE": "changed", "PHASE": "checks"},
+            False,
+        ))
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
 
     rc = implement_dispatch.checks_commit_route_main(
         ["--checks-site", "step6", "--commit-site", "step7", "--commit-deadline-ms", "1234"]
@@ -3044,11 +3150,18 @@ def test_composite_checks_timeout_with_partial_pass_skips_commit_leg(
             stderr="timeout",
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", lambda **_kwargs: subprocess.TimeoutExpired(
+            cmd=["checks", "run-relevant"],
+            timeout=1,
+            output="RELEVANT_CHECKS_OK=true SITE=step6 COVERAGE=changed PHASE=checks\n",
+            stderr="timeout",
+        ))
 
     def fail_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
         raise AssertionError("commit leg must not start after checks-leg timeout")
 
     monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fail_commit)
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fail_commit)
 
     rc = implement_dispatch.checks_commit_route_main(["--checks-site", "step6", "--commit-site", "step7"])
 
@@ -3073,11 +3186,18 @@ def test_composite_checks_timeout_with_partial_pass_skips_resume_leg(
             stderr="timeout",
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", lambda **_kwargs: subprocess.TimeoutExpired(
+            cmd=["checks", "run-relevant"],
+            timeout=1,
+            output="RELEVANT_CHECKS_OK=true SITE=step5-review-fixes COVERAGE=changed PHASE=review\n",
+            stderr="timeout",
+        ))
 
     def fail_resume(**_kwargs: object) -> tuple[int, str]:
         raise AssertionError("resume leg must not start after checks-leg timeout")
 
     monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fail_resume)
+    monkeypatch.setattr(dispatch_commit_route, "_run_step5_resume_leg", fail_resume)
 
     rc = implement_dispatch.checks_step5_resume_main(
         ["--checks-site", "step5-review-fixes", "--final-round-num", "3"]
@@ -3099,11 +3219,13 @@ def test_composite_checks_failure_skips_commit_leg(
         "_run_relevant_checks_for_site",
         lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "checks-leg-timeout"}, True),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: ({"STATUS": "fail", "FAILURE_REASON": "checks-leg-timeout"}, True))
 
     def fail_commit(**_kwargs: object) -> tuple[implement_dispatch.CommitRouteOutcome, str]:
         raise AssertionError("commit leg must not start after checks failure")
 
     monkeypatch.setattr(implement_dispatch, "_run_commit_route_leg", fail_commit)
+    monkeypatch.setattr(dispatch_commit_route, "_run_commit_route_leg", fail_commit)
 
     rc = implement_dispatch.checks_commit_route_main(["--checks-site", "step6", "--commit-site", "step7"])
 
@@ -3122,13 +3244,16 @@ def test_commit_leg_timeout_seeds_stall_in_parent(
         "_run_leg_with_timeout",
         lambda **_kwargs: subprocess.TimeoutExpired(cmd=["child"], timeout=1, output="COMMITTED=false\n", stderr="timeout"),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", lambda **_kwargs: subprocess.TimeoutExpired(cmd=["child"], timeout=1, output="COMMITTED=false\n", stderr="timeout"))
     monkeypatch.setattr(implement_dispatch, "_commit_route_log_failure", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dispatch_commit_route, "_commit_route_log_failure", lambda *_args, **_kwargs: None)
 
     def fake_seed(_tmp: Path, *, stall_step: str, bail_reason: str) -> bool:
         seed_calls.append((stall_step, bail_reason))
         return True
 
     monkeypatch.setattr(implement_dispatch, "_seed_durable_stall_state", fake_seed)
+    monkeypatch.setattr(dispatch_commit_route, "_seed_durable_stall_state", fake_seed)
 
     outcome, stdout = implement_dispatch._run_commit_route_leg(
         site_name="step7",
@@ -3157,12 +3282,17 @@ def test_checks_step5_resume_timeout_relays_partial_without_composite_continue(
             False,
         ),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_run_relevant_checks_for_site", lambda **_kwargs: (
+            {"RELEVANT_CHECKS_OK": "true", "SITE": "step5-review-fixes", "COVERAGE": "changed", "PHASE": "review"},
+            False,
+        ))
 
     def fake_resume(*, deadline_ms: int, **_kwargs: object) -> tuple[int, str]:
         resume_calls.append(deadline_ms)
         return 124, "partial resume stdout\n"
 
     monkeypatch.setattr(implement_dispatch, "_run_step5_resume_leg", fake_resume)
+    monkeypatch.setattr(dispatch_commit_route, "_run_step5_resume_leg", fake_resume)
 
     rc = implement_dispatch.checks_step5_resume_main(
         ["--checks-site", "step5-review-fixes", "--final-round-num", "3", "--resume-deadline-ms", "5678"]
@@ -3214,6 +3344,7 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(implement_dispatch.os, "killpg", lambda pgid, sig: killed.append((pgid, sig)))
     monkeypatch.setattr(implement_dispatch.os, "kill", lambda pid, sig: descendant_kills.append((pid, sig)))
     monkeypatch.setattr(implement_dispatch, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
+    monkeypatch.setattr(dispatch_leg, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 
@@ -3246,6 +3377,7 @@ def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch)
     process = FakeProcess()
     implement_dispatch._LEG_STATE.active = cast("subprocess.Popen[str]", process)
     monkeypatch.setattr(implement_dispatch, "_descendants", lambda _pid: [])
+    monkeypatch.setattr(dispatch_leg, "_descendants", lambda _pid: [])
     monkeypatch.setattr(implement_dispatch.os, "getpgid", lambda pid: pid)
     monkeypatch.setattr(implement_dispatch.os, "killpg", lambda _pgid, _sig: killed.append(1))
 
@@ -3271,6 +3403,7 @@ def _setup_step5_resume(
         "_invoke_cli",
         lambda args, **_kwargs: subprocess.CompletedProcess(list(args), route_rc, route_stdout, ""),
     )
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda args, **_kwargs: subprocess.CompletedProcess(list(args), route_rc, route_stdout, ""))
     resume_calls: list[list[str]] = []
 
     def fake_forward(args, **_kwargs):  # type: ignore[no-untyped-def]
@@ -3278,6 +3411,7 @@ def _setup_step5_resume(
         return 0
 
     monkeypatch.setattr(implement_dispatch, "_run_cli_forward", fake_forward)
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_forward)
     monkeypatch.setattr(
         implement_dispatch.subprocess,
         "run",
@@ -3604,7 +3738,9 @@ def test_commit_main_pathspec_with_spaced_paths(repo: Path, tmp_path: Path, monk
         return subprocess.CompletedProcess(argv, 0, stdout, "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
+    monkeypatch.setattr(dispatch_recovery, "_invoke_cli", lambda *_args, **_kwargs: subprocess.CompletedProcess([], 0, "", ""))
     monkeypatch.setattr(implement_dispatch, "_run", fake_run)
+    monkeypatch.setattr(dispatch_recovery, "_run", fake_run)
 
     rc = implement_dispatch.commit_main([
         "--message", "Recover spaced path",
@@ -3648,8 +3784,11 @@ def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkey
         return real_run(argv, check=kwargs.pop("check", False), **kwargs)
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
 
     rc = implement_dispatch.step2_dispatch_main([
@@ -3706,7 +3845,9 @@ def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path,
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3762,6 +3903,7 @@ def test_step2_dispatch_qa_loop_exceeded(repo: Path, tmp_path: Path, monkeypatch
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3833,6 +3975,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3859,6 +4002,7 @@ def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: p
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "false", "STATUS": "cap_hit"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3882,6 +4026,7 @@ def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: P
         return implement_dispatch.WRAPPER_VALIDATION_RC, dict[str, str](), ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3905,6 +4050,7 @@ def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Pa
         return 1, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "false"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3933,8 +4079,11 @@ def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_pat
         return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3991,6 +4140,7 @@ def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
         return 0, {"LAUNCHER_EXIT": "1", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4026,8 +4176,11 @@ def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monk
         st.external_scout_marker.write_text("eligible\n", encoding="utf-8")
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", fake_normalize_scout)
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", fake_normalize_scout)
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4098,8 +4251,11 @@ def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: P
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4127,8 +4283,11 @@ def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monk
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4169,8 +4328,11 @@ def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4206,8 +4368,11 @@ def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4240,8 +4405,11 @@ def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4275,8 +4443,11 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4315,8 +4486,11 @@ def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrel
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4363,9 +4537,13 @@ def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warning
         return real_git(repo_root, *args, binary=binary)
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(implement_dispatch, "_git", fake_git)
+    monkeypatch.setattr(dispatch_step2, "_git", fake_git)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -4415,8 +4593,11 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
         return real_read_text(self, encoding=encoding, errors=errors)
 
     monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
     monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
     monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
     monkeypatch.setattr(Path, "read_text", fake_read_text)
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
@@ -4464,6 +4645,7 @@ def test_append_warning_normalizes_plain_text_for_final_summary(
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(implement_dispatch, "_invoke_cli", fake_invoke)
+    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke)
     st = cast("implement_dispatch.DispatchState", SimpleNamespace(tmpdir=tmp_path))
 
     implement_dispatch._append_warning(st=st, text="Step 7a.1 — could not read plan file for plan-file coverage: /p: boom")
