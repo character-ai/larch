@@ -23,6 +23,29 @@ def test_title_contiguous(capsys):
     assert capsys.readouterr().out.strip() == "TITLE=[Implement Run Logs Audit T Report] PRs #1-#3"
 
 
+def test_title_single_pr(capsys):
+    assert audit_runs.title_main(["--skill", "implement", "--pr-list", "42", "--timestamp", "T"]) == 0
+    assert capsys.readouterr().out.strip() == "TITLE=[Implement Run Logs Audit T Report] PRs #42"
+
+
+def test_title_noncontiguous_compact(capsys):
+    assert audit_runs.title_main(["--skill", "implement", "--pr-list", "1,2,5,6", "--timestamp", "T"]) == 0
+    assert capsys.readouterr().out.strip() == "TITLE=[Implement Run Logs Audit T Report] PRs #1-#6 (4 total)"
+
+
+def test_title_noncontiguous_stays_under_256_chars(capsys):
+    pr_list = ",".join(str(n) for n in range(5000, 5000 + 1138))
+    assert audit_runs.title_main(["--skill", "implement", "--pr-list", pr_list, "--timestamp", "2026-06-28T10:00-07:00"]) == 0
+    out = capsys.readouterr().out.strip()
+    title_val = out.removeprefix("TITLE=")
+    assert len(title_val) <= 256
+
+
+def test_title_design_noncontiguous_compact(capsys):
+    assert audit_runs.title_main(["--skill", "design", "--pr-list", "10,20,30", "--timestamp", "T"]) == 0
+    assert capsys.readouterr().out.strip() == "TITLE=[Design Run Logs Audit T Report] PRs #10-#30 (3 total)"
+
+
 def test_design_run_id_extraction_requires_strict_uuid_title():
     title = "chore(larch-logs): design run 12345678-1234-1234-1234-123456789ABC"
     assert audit_runs.match_design_run_log_pr_title(title)
