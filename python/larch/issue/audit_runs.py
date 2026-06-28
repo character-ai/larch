@@ -86,7 +86,7 @@ def title_main(argv: list[str] | None = None) -> int:
     elif nums[-1] - nums[0] + 1 == len(nums):
         prs = f"#{nums[0]}-#{nums[-1]}"
     else:
-        prs = ", ".join(f"#{n}" for n in nums)
+        prs = f"#{nums[0]}-#{nums[-1]} ({len(nums)} total)"
     print(f"TITLE=[{prefix} {args.timestamp} Report] PRs {prs}")
     return 0
 
