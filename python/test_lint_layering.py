@@ -49,6 +49,14 @@ def test_importer_package_non_larch() -> None:
     assert ll._importer_package("cli.py") is None  # type: ignore[reportPrivateUsage]
 
 
+def test_importer_package_root_init() -> None:
+    assert ll._importer_package("larch/__init__.py") == "larch"  # type: ignore[reportPrivateUsage]
+
+
+def test_importer_package_subpackage_init() -> None:
+    assert ll._importer_package("larch/core/__init__.py") == "larch.core"  # type: ignore[reportPrivateUsage]
+
+
 # ---------------------------------------------------------------------------
 # _package_tier
 # ---------------------------------------------------------------------------
@@ -192,11 +200,26 @@ def test_import_inside_function_is_detected(tmp_path: Path) -> None:
     assert findings[0].qualified_symbol == "f"
 
 
-def test_relative_imports_ignored(tmp_path: Path) -> None:
+def test_barrel_import_unknown_subpackage_is_violation(tmp_path: Path) -> None:
     python_dir = tmp_path / "python"
     larch_core = python_dir / "larch" / "core"
     larch_core.mkdir(parents=True)
-    source = "from . import config\nfrom .. import errors\n"
+    source = "from larch import newpkg\n"
+    path = larch_core / "barrel.py"
+    _ = path.write_text(source, encoding="utf-8")
+
+    findings = ll.scan_file(
+        path, python_dir=python_dir, importer_pkg="larch.core", importer_tier=1
+    )
+    assert len(findings) == 1
+    assert findings[0].imported_package == "larch.newpkg"
+
+
+def test_relative_imports_same_package_ok(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    larch_core = python_dir / "larch" / "core"
+    larch_core.mkdir(parents=True)
+    source = "from . import config\n"
     path = larch_core / "relative.py"
     _ = path.write_text(source, encoding="utf-8")
 
@@ -204,6 +227,21 @@ def test_relative_imports_ignored(tmp_path: Path) -> None:
         path, python_dir=python_dir, importer_pkg="larch.core", importer_tier=1
     )
     assert not findings
+
+
+def test_relative_import_upward_is_violation(tmp_path: Path) -> None:
+    python_dir = tmp_path / "python"
+    larch_core = python_dir / "larch" / "core"
+    larch_core.mkdir(parents=True)
+    source = "from ..state import session_env\n"
+    path = larch_core / "relative.py"
+    _ = path.write_text(source, encoding="utf-8")
+
+    findings = ll.scan_file(
+        path, python_dir=python_dir, importer_pkg="larch.core", importer_tier=1
+    )
+    assert len(findings) == 1
+    assert findings[0].imported_package == "larch.state"
 
 
 # ---------------------------------------------------------------------------

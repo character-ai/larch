@@ -138,6 +138,8 @@ def _importer_package(normalized_file: str) -> str | None:
         basename = parts[1]
         if not basename.endswith(".py"):
             return None
+        if basename == "__init__.py":
+            return "larch"
         module_name = basename[:-3]
         return f"larch.{module_name}"
     subpkg = parts[1]
@@ -152,6 +154,20 @@ def _top_level_package(module: str) -> str:
     return parts[0]
 
 
+def _resolve_relative_package(importer_pkg: str, level: int, module: str | None) -> str | None:
+    """Resolve a relative ImportFrom to an absolute dotted module name."""
+    if level <= 0:
+        return None
+    parts = importer_pkg.split(".")
+    ascend = level - 1
+    if ascend > len(parts):
+        return None
+    base_parts = parts[: len(parts) - ascend] if ascend else parts
+    if module:
+        base_parts.extend(module.split("."))
+    return ".".join(base_parts)
+
+
 def _package_tier(pkg: str) -> int:
     """Return the tier for a package name; unknown larch.* sub-packages default to domain (2)."""
     if pkg in PACKAGE_TIER:
@@ -161,7 +177,7 @@ def _package_tier(pkg: str) -> int:
     return -1
 
 
-def _importee_packages(node: ast.stmt) -> list[str]:
+def _importee_packages(node: ast.stmt, *, importer_pkg: str) -> list[str]:
     """Return the list of top-level larch packages referenced by an import statement."""
     if isinstance(node, ast.Import):
         return [
@@ -171,17 +187,15 @@ def _importee_packages(node: ast.stmt) -> list[str]:
         ]
     if isinstance(node, ast.ImportFrom):
         if node.level and node.level > 0:
+            resolved = _resolve_relative_package(importer_pkg, node.level, node.module)
+            if resolved is None:
+                return []
+            if resolved == "larch" or resolved.startswith("larch."):
+                return [_top_level_package(resolved)]
             return []
         module = node.module or ""
         if module == "larch":
-            pkgs: list[str] = []
-            for alias in node.names:
-                candidate = f"larch.{alias.name}"
-                if candidate in PACKAGE_TIER:
-                    pkgs.append(candidate)
-                else:
-                    pkgs.append("larch")
-            return pkgs
+            return [f"larch.{alias.name}" for alias in node.names]
         if module == "larch" or module.startswith("larch."):
             return [_top_level_package(module)]
         return []
@@ -230,7 +244,7 @@ def _collect_scope(
             _collect_scope(node.body, prefix=(*prefix, node.name), ctx=ctx)
             return
         if isinstance(node, (ast.Import, ast.ImportFrom)):
-            importee_pkgs = _importee_packages(node)
+            importee_pkgs = _importee_packages(node, importer_pkg=ctx.importer_pkg)
             for importee_pkg in importee_pkgs:
                 importee_tier = _package_tier(importee_pkg)
                 if importee_tier > ctx.importer_tier and ctx.importer_pkg != importee_pkg:
