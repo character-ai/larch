@@ -89,7 +89,14 @@ contains "$SKILL" '**⚠ --force and --draft are mutually exclusive. Aborting.**
 contains "$SKILL" '`--force` and `-f` both set `force_requested=true`' "missing -f alias parse rule"
 contains "$SKILL" '`--force` / `-f` and `--draft` together' "missing -f draft mutex wording"
 contains "$PREFLIGHT_HELPER_TEST" 'test_preflight_force_short_flag_missing_plan_uses_raw_body' "helper test missing -f coverage"
-contains "$SKILL" 'STATE=awaiting-response' "missing clarify awaiting-response guard"
+contains "$PREFLIGHT_AUDIT_REF" '## Clarify-request flow after `AUDIT=refuse`' "missing clarify refusal flow heading"
+contains "$PREFLIGHT_AUDIT_REF" 'STATE=ambiguous' "missing clarify ambiguous-state guard"
+contains "$PREFLIGHT_AUDIT_REF" 'STATE=awaiting-response' "missing clarify awaiting-response guard"
+contains "$PREFLIGHT_AUDIT_REF" 'STATE=clean' "missing clarify clean-state next-id guidance"
+contains "$SKILL" 'Follow `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md` `## Clarify-request flow after AUDIT=refuse` for post, label, `STATE=ambiguous`, and `STATE=awaiting-response` behavior.' "missing exit-code 3 preflight pointer"
+forbid "$SKILL" 'Sub-case A' "SKILL.md must not retain collapsed exit-code 3 Sub-case A"
+forbid "$SKILL" 'Sub-case B' "SKILL.md must not retain collapsed exit-code 3 Sub-case B"
+forbid "$SKILL" 'Sub-case C' "SKILL.md must not retain collapsed exit-code 3 Sub-case C"
 # Force mode skips the item 4 plan-adequacy audit entirely (issue #4442);
 # there is no AUDIT=refuse result and no audit-refuse bypass on the force path.
 contains "$SKILL" 'BYPASS kind=<lowercase-token> issue=<number>' "missing structured force bypass log grammar"
