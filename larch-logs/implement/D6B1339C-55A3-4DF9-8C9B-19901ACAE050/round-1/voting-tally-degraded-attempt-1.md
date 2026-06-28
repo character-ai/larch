@@ -7,12 +7,13 @@
 | Item | YES | NO | JERR | Result |
 |---|---:|---:|---:|---|
 | FINDING_1 | 0 | 2 | 0 | rejected |
+| FINDING_2 | 1 | 1 | 0 | neutral |
 
 ## Reviewer Competition Scoreboard
 
 | Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score | Status |
 |---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| codex-generalist | 1 | 0 | 0 | 1 | 0 | 0 | 0 | 0 | -1 | STATUS=OK |
+| codex-generalist | 1 | 0 | 0 | 1 | 1 | 0 | 1 | 0 | -1 | STATUS=OK |
 | cursor-specialist-correctness | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |
 | codex-specialist-correctness | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |
 | cursor-specialist-edge-cases | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | STATUS=OK |

@@ -1,6 +1,6 @@
 {
   "tally": {
-    "ACCEPTED_COUNT": "1",
+    "ACCEPTED_COUNT": "0",
     "REJECTED_COUNT": "1",
     "EXONERATED_COUNT": "0",
     "NEUTRAL_COUNT": "0",
@@ -14,12 +14,12 @@
   },
   "collector": "",
   "tally_canonical": {
-    "ACCEPTED_COUNT": "1",
+    "ACCEPTED_COUNT": "0",
     "REJECTED_COUNT": "1",
     "EXONERATED_COUNT": "0",
     "NEUTRAL_COUNT": "0",
     "OOS_ACCEPTED_COUNT": "0",
     "OOS_REJECTED_COUNT": "0"
   },
-  "nit_pruned_count": "1"
+  "nit_pruned_count": "0"
 }
