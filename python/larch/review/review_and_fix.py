@@ -282,13 +282,13 @@ def _commit_fixes_result_error(result: proc.CommandResult) -> str:
 
 
 def _finish_stage_all_commit_success(sha: str) -> int:
-    porcelain, probe_ok = _git_status_porcelain_or_fail()
+    _, probe_ok = _git_status_porcelain_or_fail()
     if not probe_ok:
         _emit_commit_fixes_kvs(committed=True, sha=sha, error="git status probe failed", outcome="failed")
         return 1
-    if porcelain.strip():
-        _emit_commit_fixes_kvs(committed=True, sha=sha, error="dirty tree after review fix commit", outcome="failed")
-        return 1
+    # Residual dirty state after --only --pathspec-from-file is non-fatal:
+    # the commit landed the review-fix paths; files outside the delta set
+    # remain dirty by design and do not indicate a commit failure.
     _emit_commit_fixes_kvs(committed=True, sha=sha, error="", outcome="ok")
     return 0
 
