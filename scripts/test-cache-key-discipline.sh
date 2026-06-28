@@ -93,7 +93,7 @@ check_annotated_literal_lines() {
 }
 
 check_render_specialist_prompt_paths() {
-  local file="python/rendering.py"
+  local file="python/larch/rendering/rendering.py"
 
   [[ -f "$REPO_ROOT/$file" ]] || {
     report_violation "$file" 1 "renderer source file missing" "$file"
