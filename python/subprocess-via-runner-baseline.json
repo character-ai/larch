@@ -938,77 +938,77 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_helpers.py",
     "qualified_symbol": "_git",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_helpers.py",
     "qualified_symbol": "_run",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_leg.py",
     "qualified_symbol": "_run_cli_capture",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_helpers.py",
     "qualified_symbol": "_run_cli_forward",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_leg.py",
     "qualified_symbol": "_run_leg_with_timeout",
     "callee": "Popen",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
-    "qualified_symbol": "commit_main",
+    "file": "larch/implement/dispatch_recovery.py",
+    "qualified_symbol": "_mark_commit_timing",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_step2.py",
     "qualified_symbol": "run_dispatch_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_step2.py",
     "qualified_symbol": "step2_dispatch_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_step2.py",
     "qualified_symbol": "step2_dispatch_main",
     "callee": "run",
     "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_commit_route.py",
     "qualified_symbol": "step5_resume_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/implement_dispatch.py",
+    "file": "larch/implement/dispatch_ship.py",
     "qualified_symbol": "step8_oos_checkpoint_main",
     "callee": "run",
     "occurrence": 1,

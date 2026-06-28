@@ -1,0 +1,2 @@
+{"slot":"correctness","tool":"codex","output":"<TMPDIR>/round-3/codex-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.10/agents/reviewer-correctness.md"}
+{"slot":"edge-cases","tool":"codex","output":"<TMPDIR>/round-3/codex-specialist-edge-cases-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.1.10/agents/reviewer-edge-cases.md"}
