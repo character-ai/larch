@@ -1,0 +1,3 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	scope
+FINDING_1	codex-specialist-correctness|cursor-specialist-testing|codex-specialist-testing|codex-generalist|dyn-dyn-module-split	accepted	YES	true	major	excellent	false	cursor-validity	YES	true	major	excellent	false	codex-plan-fidelity	YES	true	major	good	false	codex-pragmatism	in_scope
+FINDING_2	codex-generalist	accepted	YES	true	minor	adequate	false	cursor-validity	NO	partially-true	minor	adequate	false	codex-plan-fidelity	YES	true	major	adequate	false	codex-pragmatism	in_scope
