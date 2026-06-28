@@ -25,6 +25,8 @@ from larch.issue._ground_truth import (
     _GROUND_TRUTH_FILED_CACHE,
     _GROUND_TRUTH_ROW_CACHE,
     _candidate_evidence_for_row,
+    _ground_truth_run_dir,
+    _ground_truth_run_started_at_strict,
     _ground_truth_verdict_exit,
     _parse_ground_truth_min_runs,
     _parse_ground_truth_since_date,
