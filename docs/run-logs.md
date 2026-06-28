@@ -34,7 +34,6 @@ larch-logs/
       plan-review-tally.json
       code-review-tally.json
       review-findings-full.jsonl
-      version-bump-reasoning.md
       final-summary.md
       oos-issues.ndjson
       run-statistics.md
@@ -334,7 +333,7 @@ bailout paths may not produce them.
 
 ### plan-review-tally.json
 
-**Mode**: replace (JSON object). **Written**: **Step 0** materialization tail, after the plan-review voting tally is exported.
+**Mode**: replace (JSON object). **Written**: **Step 0** materialization tail. `/implement` writes this batch on every run: the exported plan-review voting tally when one is present, otherwise a stub recording that plan review ran in `/design`.
 
 One JSON object per `/implement` session. The tally envelope shape is shared with
 `code-review-tally.json`: `schema_version` (`2`), `phase`, `batch`, `mode`, `rounds`,
@@ -400,7 +399,7 @@ See `python/compose_review.py` for the same mixed-stream contract (`python/cli.p
 
 ### version-bump-reasoning.md
 
-**Mode**: replace. **Written**: **not** on the `/implement` ship path after Phase 1 (#3364). Legacy runs may still carry this batch from pre-Phase-1 implement bumps; new implement runs omit it. `/release` and manual `.claude/skills/release` flows own version reasoning when operators need an auditable bump record.
+**Mode**: replace. **Written**: **not** on the `/implement` ship path after Phase 1 (#3364). Legacy runs may still carry this batch from pre-Phase-1 implement bumps; new implement runs omit it, and it is no longer listed in `docs/run-logs-required-files.tsv`, so the `required-file-presence` audit no longer expects it on implement runs. `/release` and manual `.claude/skills/release` flows own version reasoning when operators need an auditable bump record.
 
 Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps on release-driven paths.
 

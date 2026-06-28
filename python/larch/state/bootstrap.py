@@ -7,6 +7,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import io
+import json
 import os
 import re
 import shlex
@@ -562,6 +563,9 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
     if init.returncode != 0:
         _tracking_bail(st=st, detail="run-log init failed", result=init)
         return False
+    # Emit plan-review tally (stub or preflight candidate) before later Step 0
+    # bailouts can skip _phase_plan; _phase_plan overwrites when a real tally exists.
+    _publish_plan_review_tally(st)
     if not _persist_run_flags(st):
         return False
     post_args = ["tracking", "post-issue", "--implement-tmpdir", st.implement_tmpdir, "--run-id", st.run_id, "--adopted", "true", "--force-requested", st.opts.force_requested]
@@ -807,23 +811,55 @@ def _publish_plan_review_tally(st: BootstrapState) -> None:
         preflight / "voting-tally.json",
         Path(st.implement_tmpdir) / "plan-review-tally.json",
     ):
-        if not candidate.is_file():
-            continue
-        _cli(
-            "run-log",
-            "write",
-            "--log-root",
-            str(Path(st.implement_tmpdir) / "larch-logs"),
-            "--skill",
-            "implement",
-            "--run-id",
-            st.run_id,
-            "--batch",
-            "plan-review-tally",
-            "--input-file",
-            str(candidate),
-        )
+        if candidate.is_file():
+            _write_plan_review_tally_batch(st=st, source=candidate)
+            return
+    # /implement plan review runs in /design, so no upstream tally is materialized on
+    # this path. Emit a stub anyway so the run-log completeness manifest
+    # (plan-review-tally.json, condition `always`) is satisfied and the committed
+    # artifact points readers back to the /design run for the real ballots.
+    stub = Path(st.implement_tmpdir) / "plan-review-tally-stub.json"
+    try:
+        stub.write_text(_plan_review_tally_stub_json(), encoding="utf-8")
+    except OSError:
         return
+    _write_plan_review_tally_batch(st=st, source=stub)
+
+
+def _plan_review_tally_stub_json() -> str:
+    record: dict[str, object] = {
+        "schema_version": 2,
+        "phase": "plan-review",
+        "batch": "plan-review-tally",
+        "mode": "simple",
+        "rounds": 0,
+        "accepted_count": 0,
+        "rejected_count": 0,
+        "exonerated_count": 0,
+        "body": (
+            "Plan review completed in the /design phase; see the /design run "
+            "artifacts for the ballots. No plan-review voting ran in this "
+            "/implement run."
+        ),
+    }
+    return json.dumps(record, separators=(",", ":"))
+
+
+def _write_plan_review_tally_batch(*, st: BootstrapState, source: Path) -> None:
+    _cli(
+        "run-log",
+        "write",
+        "--log-root",
+        str(Path(st.implement_tmpdir) / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        st.run_id,
+        "--batch",
+        "plan-review-tally",
+        "--input-file",
+        str(source),
+    )
 
 
 def _upsert_plan_summary(st: BootstrapState) -> None:
