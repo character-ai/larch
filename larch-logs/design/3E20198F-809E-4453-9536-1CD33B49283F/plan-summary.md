@@ -1,0 +1,1 @@
+Fix final-summary architectural guideline rendering by adding an any-HEAD durable-note readability helper, using it as the final-report fallback, clearing stale drop markers after fallback success, and skipping post-merge Step 16/17 re-pins.

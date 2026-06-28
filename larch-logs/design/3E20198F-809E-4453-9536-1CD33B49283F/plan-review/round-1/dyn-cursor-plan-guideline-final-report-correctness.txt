@@ -1,0 +1,24 @@
+Reviewing the plan against the current codebase: reading the cited modules and tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/report/final_report.py:218-244	Planned flow order conflicts with the new drop-marker regression test and the stated edge case	Planned steps 5 then 7 keep `read_dropped_note_notice()` before the `note_readable_any_head()` fallback. Step 5 fills `section` from a pre-seeded `DROPPED_NOTE_ARTIFACT`, so step 7 never runs and `clear_dropped_note_notice()` is never called. `test_final_report.py` regression asserting durable-note render plus cleared marker cannot pass as written; edge case "drop markers first" blocks recovery from a prior spurious persist	Reorder `_architectural_guidelines_section()`: attempt the readable-any-head fallback (and `clear_dropped_note_notice()` on success) before reading a persisted drop notice, or add an explicit branch that prefers a readable durable note over a stale drop marker. Update the edge-case bullet to match
+1	in_scope	important	risk-integration	python/larch/report/final_report.py:218-244	[SCOPE-REDUCTION] Final-report fallback is not gated on post-merge context unlike closeout	Closeout pins skip only with post-merge evidence (`post-merge-sentinel` / `MERGE_RESULT in config.POST_MERGE_MERGE_RESULTS` per `closeout.py:213-228` and `run_logs.py:2399-2400`). Final-report fallback triggers on any `not consumable` plus `note_readable_any_head()` (alias of `durable_note_present()` at `architectural_guidelines.py:315-320`), with no fingerprint check because `stale` is only computed when `note_consumable()` is true (`final_report.py:222-231`). On a pre-merge stall with HEAD advanced after pin, final summary can show a durable note the ship path would treat as unconsumable; `ship.py:715-724` stays strict but final-report widens beyond the checkout-main bug	Gate the fallback on the same post-merge signals used in closeout (and Option A in the issue). Keep unconditional `note_readable_any_head()` only for that context; leave other HEAD mismatches on the existing drop-and-invalidate path
+
+**Reviewed artifacts**
+
+- `python/larch/core/architectural_guidelines.py`: `durable_note_present()` (315-320), `note_consumable()` (588-595), `note_fingerprint_stale()` (598-621), `pin_note_from_staged()` (512-542), `invalidate_implement_note()` (567-580), `clear_dropped_note_notice()` (355-361)
+- `python/larch/report/final_report.py`: `_architectural_guidelines_section()` (218-244), `_persist_drop_notice_and_invalidate()` (203-215), `write()` call site (704-708)
+- `python/larch/implement/ship.py`: `_pin_and_load_guidelines_note()` (678-724), `_handle_stale_guidelines_note()` (660-675), `run_postmerge_phase()` / `post-merge-sentinel` write (1580-1590)
+- `python/larch/state/closeout.py`: `_pin_architectural_guidelines_note_best_effort()` (213-230), `step_16_17()` pin-before-report order (380-404)
+- `python/larch/state/finalize.py`: `_local_cleanup()` checkout-main (230-236)
+- `python/larch/core/config.py`: `POST_MERGE_MERGE_RESULTS` (566-570)
+- `python/larch/report/run_logs.py`: post-merge skip predicate (2399-2400)
+- `python/test_final_report.py`: head-mismatch (416-441), stale invalidation (471-499), happy-path-over-drop-marker (502-526)
+- `python/test_closeout.py`: pin helper skipped (176-195), step-16-17 pin order (107-142)
+- `python/test_architectural_guidelines.py`: `durable_note_present` symlink/status tests (336-355)
+- `python/test_ship.py`: `note_consumable` ship-loop contracts (4380-4495)
+
+**Invariant checks (no finding)**
+
+- **Ship-loop safety**: Plan leaves `note_consumable()` and `ship.py` `_pin_and_load_guidelines_note()` unchanged; consumable + `note_fingerprint_stale()` drop path preserved (plan step 9; existing `test_architectural_guidelines_section_stale_note_persists_then_invalidates`).
+- **Stale fingerprint when consumable**: Still evaluated only inside the `if consumable:` block (`final_report.py:226-231`); `not consumable or stale` still drives `_persist_drop_notice_and_invalidate()` for consumable+stale.
+- **Step 16/17 pin guard scope**: Planned post-merge-only skip with matching-HEAD and no-post-merge-evidence cases matches the requirement; `pin_note_from_staged()` failure remains non-mutating (`architectural_guidelines.py:527-533`).
