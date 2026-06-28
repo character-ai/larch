@@ -262,7 +262,7 @@ assert_fence_line_violation "no-path brace ripgrep" '{ ripgrep -n PATTERN; }' \
 assert_fence_line_violation "no-path brace command ripgrep" '{ command ripgrep -n PATTERN; }' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path brace grep" '{ grep -n PATTERN; }' \
-    "no-path rg/grep probe may block on stdin"
+    "bare top-level grep in bash fence"
 assert_fence_line_violation "no-path brace command grep" '{ command grep -q PATTERN; }' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "quoted stdin marker is not stdin-safe" "rg -n PATTERN; echo '< /dev/null'" \
@@ -321,7 +321,8 @@ assert_fence_line_allowed "path subshell command grep" '( command grep -q PATTER
 assert_fence_line_allowed "path subshell command rg" '( command rg -n PATTERN python/ )'
 assert_fence_line_allowed "path brace command rg" '{ command rg -n PATTERN python/; }'
 assert_fence_line_allowed "path brace command ripgrep" '{ command ripgrep -n PATTERN skills/; }'
-assert_fence_line_allowed "path brace grep" '{ grep -n PATTERN file.txt; }'
+assert_fence_line_violation "brace bare grep wrapper trap" '{ grep -n PATTERN file.txt; }' \
+    "bare top-level grep in bash fence"
 assert_fence_line_allowed "path brace command grep" '{ command grep -q PATTERN file.txt; }'
 assert_fence_line_allowed "path env rg" 'LC_ALL=C rg -n PATTERN python/'
 assert_fence_line_allowed "stdin-safe rg" 'rg -n PATTERN --type py < /dev/null'
@@ -329,6 +330,19 @@ assert_fence_line_allowed "redirected command grep with path" "command grep -v '
 assert_fence_line_allowed "piped rg allowed" 'cat file.txt | rg PATTERN'
 assert_fence_line_allowed "rg -e with path allowed" 'rg -e PATTERN python/'
 assert_fence_line_allowed "command grep -e with path allowed" 'command grep -e PATTERN file.txt'
+assert_fence_line_allowed "command grep -l with path allowed" 'command grep -l PATTERN file.txt'
+assert_fence_line_violation "command grep -l without path rejected" 'command grep -l PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "stdin alias dash rejected" 'command grep -q PATTERN -' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "stdin alias devstdin rejected" 'rg -n PATTERN /dev/stdin' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_allowed "quoted semicolon pattern with path" "rg ';' python/"
+assert_fence_line_allowed "quoted less-than pattern with path" "rg '<' python/"
+assert_fence_line_allowed "quoted pipe pattern with path" "rg '|' python/"
+assert_fence_line_violation "rg -j without path rejected" 'rg -j 4 PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_allowed "rg -j with path allowed" 'rg -j 4 PATTERN python/'
 
 # 9. Same-line pragma suppression.
 reset_tree

@@ -235,7 +235,19 @@ scan_file() {
                 i = skip_assignments(i)
                 if (i == idx) return 1
             }
+            if (tok[i] == "{") {
+                i++
+                i = skip_assignments(i)
+                if (i == idx) return 1
+            }
             return 0
+        }
+        function is_stdin_operand(value) {
+            return value == "-" || value == "/dev/stdin"
+        }
+        function is_quoted_operator_operand(idx) {
+            return tok_quoted[idx] && (tok[idx] == ";" || tok[idx] == "<" ||
+                tok[idx] == ">" || tok[idx] == "|" || tok[idx] == "&")
         }
         function is_command_boundary(value) {
             return value == "|" || value == "||" || value == "&&" ||
@@ -281,7 +293,9 @@ scan_file() {
                     base == "--encoding" || base == "--colors" ||
                     base == "--ignore-file" || base == "--path-separator" ||
                     base == "--replace" || base == "--pre" ||
-                    base == "--pre-glob"
+                    base == "--pre-glob" ||
+                    base == "-j" || base == "--threads" ||
+                    base == "--max-columns"
             }
             return base == "-e" || base == "--regexp" ||
                 base == "-f" || base == "--file" ||
@@ -289,7 +303,7 @@ scan_file() {
                 base == "-B" || base == "--before-context" ||
                 base == "-C" || base == "--context" ||
                 base == "-m" || base == "--max-count" ||
-                base == "-l" || base == "--label" ||
+                base == "--label" ||
                 base == "--include" || base == "--exclude" ||
                 base == "--exclude-dir"
         }
@@ -310,7 +324,7 @@ scan_file() {
 
             for (i = idx + 1; i <= nt; i++) {
                 value = tok[i]
-                if (is_argv_terminator(value)) break
+                if (!tok_quoted[i] && is_argv_terminator(value)) break
 
                 if (!end_options && value == "--") {
                     end_options = 1
@@ -320,12 +334,14 @@ scan_file() {
                     if (is_pattern_option(value)) {
                         pattern_seen = 1
                         if (!has_equals_value(value) && !has_attached_short_value(value) &&
-                            i + 1 <= nt && !is_argv_terminator(tok[i + 1])) {
+                            i + 1 <= nt && !tok_quoted[i + 1] &&
+                            !is_argv_terminator(tok[i + 1])) {
                             i++
                         }
                     } else if (option_takes_value(cmd, value) &&
                         !has_equals_value(value) && !has_attached_short_value(value) &&
-                        i + 1 <= nt && !is_argv_terminator(tok[i + 1])) {
+                        i + 1 <= nt && !tok_quoted[i + 1] &&
+                        !is_argv_terminator(tok[i + 1])) {
                         i++
                     }
                     continue
@@ -334,6 +350,8 @@ scan_file() {
                 if (!pattern_seen) {
                     pattern_seen = 1
                 } else {
+                    if (is_stdin_operand(value)) return 0
+                    if (is_quoted_operator_operand(i)) return 0
                     return 1
                 }
             }
