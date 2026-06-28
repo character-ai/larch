@@ -859,3 +859,4 @@ The following `${CLAUDE_PLUGIN_ROOT}` paths exist for issue-anchored plan and cl
 Step 18 teardown tail relay is dual-source pinned: preserve both the final report tail
 and the teardown tail as distinct relay sources.
 -->
+<!-- script refs: skills/implement/scripts/step-architectural-guidelines-write-staged.md, skills/implement/scripts/step-architectural-guidelines-write-staged.sh -->
