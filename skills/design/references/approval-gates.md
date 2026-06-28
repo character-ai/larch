@@ -88,7 +88,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty (no accepted in-scope f
 Determine Gate B handling only after the zero-findings short-circuit above proves there is at least one accepted in-scope finding to handle. The script-internal controller (`python/plan_review.py`) applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). `--manual` / persisted manual mode no longer exists. The apply UX is selected by `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
 - **`approve_requested=false` (default): auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim. No operator prompt fires before the plan is revised.
-- **`approve_requested=true` (`--per-round-approval`): explicit.** Use the full Apply all / Go through each / Switch to discussion mode prompt below. Gate B prompts explicitly before any finding changes `plan.txt`.
+- **`approve_requested=true` (`--per-round-approval`): explicit.** Use the deferred explicit-mode reference load after Presentation below. Gate B prompts explicitly before any finding changes `plan.txt`, but `approval-gates-explicit.md` is loaded only after the zero-findings short-circuit and resume idempotency guard prove this entry will prompt.
 
 **Resume idempotency guard**: loop mode records `$DESIGN_TMPDIR/.step3-round-N.phase` and writes `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` only after dedup succeeds. `awaiting-apply` resumes at apply, `awaiting-post-apply` resumes at mechanical dedup/postplan without re-applying findings, and `awaiting-continuation` runs only `plan-review-continuation.sh`. Prompt-side Gate B uses the same marker to avoid double-applying during `main-agent-apply-required` recovery. Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric. When `$DESIGN_TMPDIR/.gate-b-postapply-ready-$_gate_b_round` exists and `.completed/step-3.5` does not, do not re-apply accepted findings. Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying. Bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence. Do not jump directly to Step 3b from this post-apply resume branch; the script-internal loop at `awaiting-continuation` handles continuation before any Step 3b transition.
 
@@ -115,22 +115,16 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer halts: the driver records a wa
 1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
 2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings — Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
 
+### Explicit-mode load gate
+
+Run this gate only after the zero-findings short-circuit proves `$DESIGN_TMPDIR/accepted-plan-findings.md` is non-empty, after the Resume idempotency guard does not route to the post-apply-only settle path, and after Presentation completes.
+
+- **`approve_requested=false` (default):** do not load `skills/design/references/approval-gates-explicit.md`; continue directly to `### Apply-all body`.
+- **`approve_requested=true` (`--per-round-approval`):** **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/approval-gates-explicit.md` completely immediately before firing the explicit `AskUserQuestion` or one-by-one iteration.
+
 ### Prompt
 
-**Explicit mode only (`approve_requested=true`).** Under default auto-apply (`approve_requested=false`) this entire prompt is skipped. Gate B runs `### Apply-all body` directly after the `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` breadcrumb. When `--per-round-approval` is set, fire `AskUserQuestion` with exactly three options:
-
-- **Apply all**: Execute `### Apply-all body` verbatim. The dedup-sweep and shared post-apply pipeline run there.
-- **Go through each**: Iterate only the Python-emitted `FINDING_IDS` list. For each id, fire `AskUserQuestion` with three options: apply / skip / switch to discussion mode. If any per-finding prompt picks switch to discussion mode, stop the iteration immediately, discard any unapplied per-finding intent, and exit to Gate A. Otherwise, after the iteration completes, run the single post-iteration apply/update path documented below.
-- **Switch to discussion mode**: Skip plan revision entirely. Exit to Gate A. `plan.txt` remains as it was before Step 3.
-
-Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` before asking. Bind all counts from stdout KVs. Do not inspect or classify finding blocks in the orchestrator.
-
-Question text depends on `GATE_B_SEVERITY_MODE`:
-
-- **`structured`**: `"Plan review returned N findings (H high / M medium / L low). How would you like to handle them?"`
-- **`fallback`**: `"Plan review returned N findings (C critical / H high / M medium / L low). How would you like to handle them?"`
-
-Header: `"Plan findings"`. Substitute the bound counts before asking.
+Explicit-mode prompt details live in `skills/design/references/approval-gates-explicit.md`. Load that file only through `### Explicit-mode load gate`.
 
 ### Apply-all body
 
@@ -138,23 +132,7 @@ Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the re
 
 ### One-by-one iteration prompt
 
-For **Go through each**, use Python-emitted fields only:
-
-1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"`. Parse `FINDING_IDS` and `ACCEPTED_COUNT`.
-2. Split `FINDING_IDS` on `,`. Skip empty tokens. Iterate the numeric ids in that order only. Never iterate `1..ACCEPTED_COUNT`.
-3. For each id, run `python/cli.py plan-review gate-b-finding-line --design-tmpdir "$DESIGN_TMPDIR" --finding-id <id>`.
-4. Parse `ONE_BY_ONE_PROMPT_LINE` and `ONE_BY_ONE_HEADER` from stdout KVs. You may also parse `ONE_BY_ONE_ORDINAL` and `ONE_BY_ONE_TOTAL` for diagnostics.
-5. Fire `AskUserQuestion` with question text exactly `ONE_BY_ONE_PROMPT_LINE` and header exactly `ONE_BY_ONE_HEADER`. The header is `Finding <ordinal>/<total>`, where ordinal is the list position, not the raw finding id.
-
-The orchestrator must not manually classify findings, invent severity labels, or re-read `### FINDING_N:` blocks for severity, reviewer, or concern text. It may only pass through Python-emitted display fields and the Python-emitted id list.
-
-Options:
-
-- **Apply**: record in the applied set.
-- **Skip**: record in the skipped set; the finding moves from accepted to rejected.
-- **Switch to discussion mode**: abort iteration; exit to Gate A; do NOT revise `plan.txt`.
-
-After iteration completes (all findings answered without an early abort), the orchestrator revises `plan.txt` per the applied set only, writes the per-finding outcomes back to `$DESIGN_TMPDIR/accepted-plan-findings.md` (apply set retained) and `$DESIGN_TMPDIR/rejected-findings.md` (skip set appended with `Reason not implemented: rejected by user during one-by-one review`), then Execute `### Shared post-apply pipeline` verbatim.
+Explicit-mode one-by-one details live in `skills/design/references/approval-gates-explicit.md`. Load that file only through `### Explicit-mode load gate`.
 
 ### Shared post-apply pipeline
 
