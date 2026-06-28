@@ -1,5 +1,6 @@
-## /implement run 47463794-3F77-4F7D-8005-B7E466378B6D — pr-created
+## /implement run 47463794-3F77-4F7D-8005-B7E466378B6D — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - Force: true
 - **Duration**: 02:19:57
@@ -9,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 1/3 accepted
-- **Lines (PR diff)**: code +3127/-3027, larch-logs +772/-0
+- **Lines (PR diff)**: code +3127/-3027, larch-logs +774/-0
 - **OOS filed**: 0
 - **Exec issues**: 10
 - **Warnings**: 2
