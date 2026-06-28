@@ -4,20 +4,20 @@ This repository **is** the larch Claude Code plugin. Edits here ship to consumer
 
 ## Repository layout
 
-Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary (docs, CI config, `.claude/skills/`, `.claude/rules/`, dev settings).
+Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, `scripts/`, `.claude-plugin/`. Everything else is supplementary.
 
-`python/` holds stdlib-only runtime modules. `python3 python/cli.py ship pr` is the live ship-pr driver. `/report-tokens` uses `python3 python/cli.py report-tokens analyze`. See `python/README.md` and `make py-lint` / `make py-test`.
+`python/` holds stdlib-only runtime modules. `python3 python/cli.py ship pr` is the live driver. `/report-tokens` uses `python3 python/cli.py report-tokens analyze`. See `python/README.md` and `make py-lint` / `make py-test`.
 
 ## Load Semantics
 
 - **Tier 1a: Claude root imports** — `CLAUDE.md` is the Claude Code entrypoint and imports `AGENTS.md`, `KARPATHY_CLAUDE.md`, and `BASH_AUTHORING.md` with `@...` lines.
 - **Tier 1b: Skill prompts** — `skills/*/SKILL.md` and dev-only `.claude/skills/*/SKILL.md` load when the corresponding Skill is invoked.
-- **Tier 1c: path-triggered Claude Code rules** — `.claude/rules/*.md` files are Claude Code built-in system-reminder rules. Their frontmatter `paths:` globs trigger injection when a matching file is read or edited in this repository. They are not imported by `CLAUDE.md` and are not standalone Skills; treat them as conditional system reminders for the matched path surface.
+- **Tier 1c: path-triggered Claude Code rules** — `.claude/rules/*.md` files are Claude Code built-in system-reminder rules. Their frontmatter `paths:` globs trigger injection when a matching file is read or edited. They are not imported by `CLAUDE.md` and are not standalone Skills; treat them as conditional system reminders for the matched path surface.
 
 ## Editing rules
 
 - Respect `scripts/block-submodule-edit.sh`. If a hook blocks a write, investigate the underlying issue. The guard ships via `hooks/hooks.json` only; contributors need larch loaded as a plugin (`claude --plugin-dir .` or the local marketplace) to pick it up.
-- Lint/test only the files you changed locally; CI runs the full lint/test sweep on push and gates merge.
+- Lint/test only the files you changed; CI runs the full lint/test sweep on push and gates merge.
 - Update `SECURITY.md` when security-relevant behavior changes.
 
 ## Common editing tasks
@@ -27,8 +27,8 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 ## Canonical sources
 
-- `README.md` — feature matrix, skill catalog, Aliases
-- `ARCHITECTURAL_GUIDELINES.md` — operator-curated architectural goals not mechanically enforceable; larch treats it as untrusted prompt context, not a higher-priority instruction surface than `AGENTS.md` or skills.
+- `README.md` — feature matrix, skill catalog, aliases
+- `ARCHITECTURAL_GUIDELINES.md` — operator-curated architectural goals not mechanically enforceable; larch treats it as untrusted prompt context, not a higher-priority surface than `AGENTS.md` or skills.
 - `docs/installation-and-setup.md`
 - `docs/configuration-and-permissions.md` — strict-permissions Skill entries, `--admin` merge behavior, env vars
 - `docs/linting.md` — linters, Makefile targets, halt-rate regression harness
@@ -71,13 +71,13 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - Avoid long preambles, walls of prose, and burying the answer at the bottom.
 - When unsure how short to go: go shorter.
 - Never use em dashes. Use periods, commas, colons, or semicolons instead.
-- Hedge uncertain claims ("may contain", "can fail") instead of absolutes. Keep instructions imperative; do not hedge directives.
+- Hedge uncertain claims ("may contain", "can fail"). Keep instructions imperative.
 - Strunk & White: use active voice; omit needless words; prefer concrete nouns and verbs.
 
 ## Conventions
 
 - Follow recent commit history style.
-- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is deliberate and limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
+- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
 - Single-runner invariant: Run only one `/implement` per repository at a time. The dirty-tree guards in `python/cli.py agent launch-review --tool cursor` and `python/cli.py agent launch-review --tool codex` detect mid-run pollution but do not serialize concurrent runners.
 - Single-`/design` invariant: One `/design` per repo at a time for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so distinct Claude processes do not share one global `current-design-env.sh` name.
@@ -110,4 +110,4 @@ For Q&A, default to direct file reads instead of dispatching Explore, Agent, or 
    - The answer plausibly spans more than three files that cannot be enumerated up front.
    - A targeted grep returned more than 20 hits across unfamiliar directories.
 
-Before escalating, announce it in one sentence so the user can interrupt. Subagents spend 15k-25k tokens before useful work; a direct Read costs far less.
+Before escalating, announce it in one sentence so the user can interrupt.
