@@ -43,6 +43,11 @@ currently-uncovered, risk-bearing execution path THIS feature introduces; a test
 exist, restates existing coverage, broadens an unrelated harness, or is red-green-TDD-after-the-fact
 is a Nit → Out-of-Scope, never In-Scope.
 
+High-severity neutral rescue: if exactly one judge votes YES and marks the finding `blocker`
+or `major`, the tally routes that neutral to OOS artifacts instead of dropping it. It still
+is not accepted inline. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities
+stay dropped.
+
 You are scored against this same rubric. Putting a finding In-Scope that the panel does not accept
 forfeits the point: it costs -0.25 if at least one judge found it credible but below the
 acceptance threshold, and -1 if none did. The safe

@@ -44,6 +44,7 @@ belongs on the Out-of-Scope list, where it can still be accepted as a tracked Gi
 Deferring a good idea is the correct outcome, not a loss.
 
 Severity interaction. A Nit can never clear the necessity gate (a Nit is by definition optional).
+Neutral rescue is not inline acceptance. A neutral finding with one YES vote is routed to OOS artifacts only when the YES severity is `blocker` or `major`. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped. Rescued neutrals keep vote-table `Result=neutral`, but classification records `scope=oos`.
 After the first review round, a finding that no prior round raised is suspect: if it were
 necessary, the plan or code would not have passed the earlier round — hold it to gate 2 or 3
 (Correctness or Introduced-regression) only.

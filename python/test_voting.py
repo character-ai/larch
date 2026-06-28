@@ -1224,6 +1224,41 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
     assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
 
 
+@pytest.mark.parametrize("severity", ["major", "blocker"])
+def test_neutral_high_severity_rescue_to_oos_accepts_high_yes(severity: str) -> None:
+    assert voting.neutral_high_severity_rescue_to_oos(
+        "neutral",
+        yes_votes=[ReviewVote.yes.value, ReviewVote.no.value, ReviewVote.no.value],
+        severities=[severity, "major", "major"],
+    )
+
+
+@pytest.mark.parametrize("severity", ["minor", "nit", "uncertain", "", "critical"])
+def test_neutral_high_severity_rescue_to_oos_rejects_low_or_invalid_yes(severity: str) -> None:
+    assert not voting.neutral_high_severity_rescue_to_oos(
+        "neutral",
+        yes_votes=[ReviewVote.yes.value, ReviewVote.no.value, ReviewVote.no.value],
+        severities=[severity, "major", "major"],
+    )
+
+
+@pytest.mark.parametrize("result", ["accepted", "rejected"])
+def test_neutral_high_severity_rescue_to_oos_requires_neutral_result(result: str) -> None:
+    assert not voting.neutral_high_severity_rescue_to_oos(
+        result,
+        yes_votes=[ReviewVote.yes.value, ReviewVote.no.value, ReviewVote.no.value],
+        severities=["major", "major", "major"],
+    )
+
+
+def test_neutral_high_severity_rescue_to_oos_ignores_high_no_votes() -> None:
+    assert not voting.neutral_high_severity_rescue_to_oos(
+        "neutral",
+        yes_votes=[ReviewVote.no.value, ReviewVote.no.value, ReviewVote.no.value],
+        severities=["major", "major", "major"],
+    )
+
+
 def test_unique_finder_bonus_from_env() -> None:
     assert voting.unique_finder_bonus_from_env({}) == 0.0
     assert voting.unique_finder_bonus_from_env({"LARCH_UNIQUE_FINDER_BONUS": ""}) == 0.0

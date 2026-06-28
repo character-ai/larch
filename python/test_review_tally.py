@@ -209,6 +209,90 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     assert "proposer" not in (case / "findings-ledger.tsv").read_text(encoding="utf-8").splitlines()[0]
 
 
+def test_tally_rescues_high_severity_neutral_findings_to_oos(tmp_path: Path) -> None:
+    case = tmp_path / "neutral-rescue"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: High severity neutral
+- **Reviewer**: Codex-Correctness
+- **Concern**: High severity single-YES concern.
+- **Suggested revision**: File this instead of dropping it.
+
+### FINDING_2: Nit neutral
+- **Reviewer**: Cursor-Testing
+- **Concern**: Low severity single-YES concern.
+- **Suggested revision**: Keep current neutral handling.
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "v1.txt").write_text(
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
+        "FINDING_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+    for name in ("v2.txt", "v3.txt"):
+        _ = (case / name).write_text(
+            "FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
+            "FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n",
+            encoding="utf-8",
+        )
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(case / "v1.txt"),
+        str(case / "v2.txt"),
+        str(case / "v3.txt"),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="ACCEPTED_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="OOS_REJECTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="NEUTRAL_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="REJECTED_COUNT") == "1"
+    oos = (case / "oos.md").read_text(encoding="utf-8")
+    rejected = (case / "rejected-findings.md").read_text(encoding="utf-8")
+    assert "FINDING_1" in oos
+    assert "neutral-rescued" in oos
+    assert "FINDING_1" not in rejected
+    assert "FINDING_2" in rejected
+    tally_env = (case / "review-tally.env").read_text(encoding="utf-8")
+    assert "FINDING_1_OUTCOME=oos\n" in tally_env
+    assert "FINDING_1_REJECTED_SUBTYPE=" not in tally_env
+    rows = _tsv_rows(Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or ""))
+    assert rows["FINDING_1"]["scope"] == "oos"
+    assert rows["FINDING_1"]["voting_result"] == "neutral"
+    assert rows["FINDING_2"]["scope"] == "in_scope"
+    assert rows["FINDING_2"]["voting_result"] == "neutral"
+    ledger_rows = _tsv_rows(case / "findings-ledger.tsv")
+    assert ledger_rows["FINDING_1"]["outcome"] == "oos"
+
+    emit = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(case / "review-tally.env"),
+        "--accepted-findings-file",
+        str(case / "accepted-findings.md"),
+        "--oos-file",
+        str(case / "oos.md"),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "diff",
+    )
+
+    assert emit.returncode == 0, emit.stderr
+    rebuilt_rejected = (case / "rejected-findings.md").read_text(encoding="utf-8")
+    assert "FINDING_1" not in rebuilt_rejected
+    assert "FINDING_2_OUTCOME=rejected" in rebuilt_rejected
+
+
 def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
     # Issue #4880: two of three voters JUDGE_ERROR (by omitting their votes) on a trailing finding
     # while staying under the per-voter parse-rate removal threshold, so the panel silently collapses

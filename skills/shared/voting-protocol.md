@@ -54,7 +54,7 @@ Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter ou
 
 Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` and `/implement` Step 5 code review the expected size is the three-slot code-review panel when Cursor or Codex voter lanes are available, or **one Claude fallback voter** when Cursor is unavailable and no external voter 2/3 lane is active. Voter 1 is Cursor-only on the external path and is replaced by Claude when Cursor is unavailable. Voters 2 and 3 use Codex-primary labels with external waterfall behavior. A single-Claude fallback is the designed state and raises **no** warning; only a genuine failure of an *expected* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholder slots keep their `vN_tool` attribution but do not inflate the quorum.
 
-After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; -0.25 points to the proposing reviewer), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary.
+After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; -0.25 points to the proposing reviewer unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `blocker` or `major` neutral to OOS artifacts with classification `scope=oos`. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped.
 
 ## Voter Panel Composition
 
@@ -130,7 +130,7 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 |---|---|---|
 | Accepted in-scope finding with a strict majority of YES voters rating `blocker` or `major` on their `vN_severity` cell | +2 | High-impact finding validated by YES voters |
 | Other accepted in-scope finding | +1 | Finding was validated by the panel |
-| Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed |
+| Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed. Single-YES `blocker` or `major` neutrals route to OOS instead. |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |
 
 Severity for competition points comes from panel `vN_severity` cells attached to recorded panel votes. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.
