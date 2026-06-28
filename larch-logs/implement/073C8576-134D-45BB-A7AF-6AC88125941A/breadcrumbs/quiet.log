@@ -1,0 +1,22 @@
+=== larch-quiet-cli.py-22582.log ===
+=== larch-quiet-cli.py-34863.log ===
+=== larch-quiet-cli.py-40717.log ===
+=== larch-quiet-cli.py-59720.log ===
+=== larch-quiet-cli.py-63862.log ===
+=== larch-quiet-cli.py-64284.log ===
+=== larch-quiet-cli.py-64704.log ===
+usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT --tmpdir
+                                       TMPDIR [--capture-postlaunch]
+                                       --prelaunch-porcelain
+                                       PRELAUNCH_PORCELAIN
+                                       --postlaunch-porcelain
+                                       POSTLAUNCH_PORCELAIN
+                                       --prelaunch-digests PRELAUNCH_DIGESTS
+                                       --out-file OUT_FILE
+cli.py implement recovery-paths: error: the following arguments are required: --postlaunch-porcelain
+=== larch-quiet-cli.py-82775.log ===
+=== larch-quiet-read-session-env-key.sh-79707.log ===
+=== larch-quiet-read-session-env-key.sh-79719.log ===
+=== larch-quiet-read-session-env-key.sh-79743.log ===
+=== larch-quiet-scout-plan-archetypes-wrapper.sh-58658.log ===
+=== larch-quiet-sessionstart-health.sh-61131.log ===
