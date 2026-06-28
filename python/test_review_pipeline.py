@@ -1979,23 +1979,23 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
     )
 
 
-def test_reviewer_prune_window_evaluated_covers_rounds_two_through_four() -> None:
+def test_reviewer_prune_window_evaluated_covers_rounds_three_and_four() -> None:
     assert review_pipeline.prune_window_evaluated(1) == "false"
-    assert review_pipeline.prune_window_evaluated(2) == "true"
+    assert review_pipeline.prune_window_evaluated(2) == "false"
     assert review_pipeline.prune_window_evaluated(3) == "true"
     assert review_pipeline.prune_window_evaluated(4) == "true"
     assert review_pipeline.prune_window_evaluated(5) == "false"
 
 
-def test_reviewer_prune_filter_round_two_uses_single_prior_round(tmp_path: Path) -> None:
+def test_reviewer_prune_filter_round_two_never_prunes(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
 
     result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert "PRUNE_ACTIVE=true" in result.stdout
-    assert "PRUNED_COUNT=1" in result.stdout
-    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
 def test_reviewer_prune_filter_round_three_requires_two_recent_rounds(tmp_path: Path) -> None:
