@@ -2,8 +2,8 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$4.29 — Claude $0.29, Codex-5.5 $2.12, Codex-mini $1.59, Cursor $0.00, Claude (subprocess) $0.29  |  Tokens: 13302k
+- **Duration**: 01:51:41
+- **Cost**: 💰 TOTAL ~$34.16 — Claude $30.16, Codex-5.5 $2.12, Codex-mini $1.59, Cursor $0.00, Claude (subprocess) $0.29  |  Tokens: 87919k
 - **Issue**: #5773 — https://github.com/character-ai/larch/issues/5773
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
@@ -73,3 +73,7 @@ codex/pragmatism-vote            │                                     ██�
 - cursor/correctness: 1
 - cursor/edge-cases: 1
 - cursor/testing: 1
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
