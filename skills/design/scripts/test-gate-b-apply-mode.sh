@@ -15,7 +15,7 @@ APPROVAL_GATES="$ROOT/skills/design/references/approval-gates.md"
 fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
-python3 -m py_compile "$ROOT/python/design_postplan.py" || fail 'design_postplan.py py_compile failed'
+python3 -m py_compile "$ROOT/python/larch/design/design_postplan.py" || fail 'design_postplan.py py_compile failed'
 python3 -m py_compile "$ROOT/python/larch/review/plan_review.py" || fail 'plan_review.py py_compile failed'
 bash -n "$SETTLE" || fail 'design-step35-settle bash -n failed'
 

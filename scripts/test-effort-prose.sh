@@ -7,7 +7,7 @@ cd "$REPO_ROOT"
 
 PATTERN='Work at (your )?maximum reasoning effort level[.]'
 FILES=(
-  python/rendering.py
+  python/larch/rendering/rendering.py
   skills/design/SKILL.md
   skills/design/references/plan-review.md
   skills/implement/SKILL.md
