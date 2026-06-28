@@ -1,14 +1,19 @@
 # scripts/lint-bare-grep-probe.sh - contract
 
-`scripts/lint-bare-grep-probe.sh` is a static lint that rejects bare top-level
-`grep` calls inside fenced `bash` / `sh` / `shell` code blocks in
+`scripts/lint-bare-grep-probe.sh` is a static lint that rejects unsafe
+grep-family probes inside fenced `bash` / `sh` / `shell` code blocks in
 orchestrator-facing Markdown. It is the static backstop for `BASH_AUTHORING.md`
-§1: in a Claude Code Bash tool block, `grep` is a wrapper shell function that
-exec-subshells into the `claude` CLI in `ugrep` mode; a non-zero top-level exit
-terminates the whole Bash tool block, defeating `|| true`,
-`if grep ...; then`, and `{ grep ...; } || X` guards (see issue #3104). The lint
-forces authors to use `command grep PATTERN file || X` (preferred — bypasses the
-wrapper) or `( grep PATTERN file ) || X` (explicit subshell wrap).
+§1:
+
+- Bare top-level `grep` is a Claude Code wrapper function. A non-zero
+  top-level exit terminates the whole Bash tool block, defeating `|| true`,
+  `if grep ...; then`, and `{ grep ...; } || X` guards. See issue #3104.
+- No-path `rg`, `ripgrep`, and grep-family safe forms may read stdin. In
+  background Bash mode, stdin can stay open and block forever.
+
+The lint forces wrapper-safe and stdin-safe probes: use `command grep` or an
+explicit subshell when needed for the wrapper trap, and always pass an explicit
+path operand or `< /dev/null` for grep-family producer probes.
 
 ## Scope
 
@@ -31,17 +36,40 @@ scanned. Exit codes are `0` clean, `1` violations, `2` CLI / root errors.
 
 ## Detection
 
-Inside a fenced `bash` / `sh` / `shell` block, the linter flags a line whose
-first command-word is `grep`:
+Inside a fenced `bash` / `sh` / `shell` block, the linter flags bare wrapper
+forms:
 
 - `grep PATTERN FILE` (bare statement, with or without `|| X`, `> tmp`, etc.)
 - `if grep ... ; then` and `if ! grep ... ; then`
 
-Lines using `command grep ...` are accepted (the `command` builtin bypasses the
-wrapper function). Lines beginning with `(` are accepted (explicit subshell wrap
-isolates the function's inner exec subshell). Piped grep (`cmd | grep ...`) is
-accepted because the pipeline already runs grep in a subshell. Full-line
-comments are skipped.
+It also rejects no-path `rg`, `ripgrep`, and safe-form `grep` probes that may
+read stdin. Grep-family probes are allowed only when the candidate command has
+an explicit path operand or an unquoted `< /dev/null` redirect. This applies to
+`grep`, `rg`, and `ripgrep`, including `command`, subshell, and brace wraps.
+
+Subshell wrap (`( grep ... )`, `( ripgrep ... )`, `( command rg ... )`) does not
+exempt no-path probes from the stdin rule. It only addresses the wrapper-exit
+trap for bare `grep`. `cmd | rg`, `cmd | ripgrep`, and `cmd | grep` remain
+allowed because stdin is pipe-fed, matching piped `grep`.
+
+Evaluation order:
+
+- An unquoted `< /dev/null` redirect on the candidate command segment
+  short-circuits to allowed before terminator truncation.
+- Quoted, commented, or echo-only substrings containing `< /dev/null` do not
+  count.
+- Only after the stdin check fails does argv parsing truncate at unquoted `|`,
+  `||`, `&&`, `;`, `&`, `|&`, and redirects (`>`, `>>`, `<`, `2>`, `>&`, and
+  similar forms) before path detection.
+
+The rule is shape-based and line-based. Option parsing is conservative and
+focused on common grep and ripgrep flags, including split pairs (`--type py`),
+equals forms (`--type=py`), and attached short forms (`-A3`). Brace groups
+such as `{ rg ...; }`, `{ command ripgrep ...; }`, `{ grep ...; }`, and
+`{ command grep ...; }` are in scope. Parenthesized bare `( grep ... )` /
+`( ripgrep ... )` and `( command ... )` forms are also in scope.
+
+Full-line comments are skipped.
 
 Same-line `# lint-bare-grep-probe: ok <reason>` suppresses intentional fixture
 or static-pattern lines only; use it narrowly and include a reviewable reason.

@@ -10,16 +10,38 @@ Behavioral guidelines for authoring Bash commands. Merge with project-specific i
 
 Inside an orchestrator Bash tool block, `grep` is **not** the system `/usr/bin/grep`. It is a Claude Code shell function that rewrites the call into the `claude` CLI in `ugrep` mode (`( exec -a ugrep "$CLAUDE_CODE_EXECPATH" -G ... )`). When that subshell exits non-zero at the top level of the script, the harness treats the top-level `claude` subprocess exit as a fatal tool error and terminates the **whole** Bash tool block — even with `|| true`, `|| echo NO_MATCH`, `if grep ...; then`, or `{ grep ...; } || X` guards. Subsequent lines never run; the orchestrator sees `Exit code 1` and the next step starts mid-state. Issue #3104 captures the full reproduction; the canonical bug shape is `grep -q PATTERN FILE || echo X` aborting before `echo X` runs.
 
-Two patterns are safe and equivalent in semantics to bare `grep`:
+Two patterns are safe for the `grep` wrapper-exit trap. They address issue #3104 only. Producer probes also need an explicit path operand, such as `.`,
+`python/`, or `docs/file.md`, or `< /dev/null` when an intentional empty stdin
+search is desired. See the bullets below, the bash 3.2 `if` note, and
+[Background stdin hangs](#background-stdin-hangs).
 
 - **`command grep PATTERN FILE || X`** — `command` bypasses the function and runs the system binary directly. Preferred (no wrapper detour, no extra subshell). Use this for `command grep -v ... > tmp` and other non-`if`-condition probe shapes. **Not safe in `if` conditions on bash 3.2** — use `( command grep ... )` for `if`-condition probes; see note below.
 - **`( grep PATTERN FILE ) || X`** — explicit subshell wraps the function's inner exec subshell so the harness sees a normal subshell exit, not a top-level `claude` exit. Also use `( command grep ... )` for `if`-condition probes on bash 3.2 (see note below). Useful when you specifically want the function's `ugrep`-mode behavior (e.g. ignoring `.git/`); otherwise prefer `command grep`.
 
-> **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero, even though `if grep ...; then` and `if /usr/bin/grep ...; then` are safe. For `if`-condition probes, use `( command grep ... )` (explicit subshell — the form from the second bullet above).
+Every grep-family producer probe also needs an explicit path operand, such as
+`.`, `python/`, or `docs/file.md`, or `< /dev/null`, including inside
+subshells and `command` forms. Subshell and `command` wrapping solve the
+wrapper-exit trap only. They do not prevent background stdin blocking. See
+[Background stdin hangs](#background-stdin-hangs).
+
+> **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero, even though `if grep ...; then` and `if /usr/bin/grep ...; then` are safe. For `if`-condition probes, use `( command grep PATTERN FILE )` (explicit subshell, the form from the second bullet above), and still pass a path or `< /dev/null`.
 
 Piped grep (`printf X | grep Y`, `cat file | grep Y`) is safe — the pipeline already runs grep in a subshell. Plain `grep` *inside* a `bash script.sh` invocation is also safe: the wrapper function is not exported, so child `bash` processes see the real `grep`. The hazard is specific to top-level `grep` lines in Markdown bash/sh/shell fences (and direct Bash tool blocks).
 
 A static lint (`scripts/lint-bare-grep-probe.sh`, wired into pre-commit) scans orchestrator-facing Markdown for bare top-level grep probes and rejects them. Suppress fixture or intentional lines only with a trailing `# lint-bare-grep-probe: ok <reason>` comment.
+
+### Background stdin hangs
+
+Probe `rg`, `ripgrep`, and `grep` calls must pass an explicit path when they
+may run as the first command in an orchestrator Bash block. Use `.` or a
+concrete path such as `python/`, `skills/`, or `docs/file.md`.
+
+Use `< /dev/null` only when the probe intentionally wants an empty stdin. A
+no-path grep-family probe can block forever in background Bash mode because
+stdin may be an open pipe with no EOF.
+
+The same `# lint-bare-grep-probe: ok <reason>` pragma is available for rare
+intentional stdin-search fixtures.
 
 ### Probe stdout guards (still required after the safe form is chosen)
 
