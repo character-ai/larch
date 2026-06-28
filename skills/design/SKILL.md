@@ -301,13 +301,11 @@ Print: `> **🔶 /design 1c: questions**`
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 
-
 <!-- step:1d — Design Discussion (Round 1) -->
 
 Print: `> **🔶 /design 1d: discussion r1**`
 
 Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
-
 
 <!-- step:1d.5 — Brainstorm Panel -->
 
@@ -342,7 +340,6 @@ Bind `skip_approve_requested` from the `SKIP_APPROVE_REQUESTED=` line above. Alw
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
 
-
 <!-- step:1e — Discussion Mode Gate (Gate A) -->
 
 **Gate B(c) / Gate C(b) re-entry only** — when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
@@ -365,7 +362,6 @@ Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the
 2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
-
 
 <!-- step:2a — Sentinel Artifact Prep -->
 ## Step 2a — Sentinel Artifact Prep
@@ -685,7 +681,6 @@ Then fire the Gate C `AskUserQuestion` per `approval-gates.md` (only when `_skip
 
 > **Continue to Step 5 IMMEDIATELY** once Gate C returns either Approve label. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
 
-
 <!-- step:5 — Finalize design (write plan + file OOS) -->
 
 Print: `> **🔶 /design 5: finalize**`
@@ -782,7 +777,6 @@ When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, th
 `➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
-
 
 <!-- step:6 — Cleanup -->
 
