@@ -107,7 +107,9 @@ cat > "$IMPL_FN/round-1/review-findings-full.jsonl" <<'JSONL'
 {"id":"REJ_CR1_5","phase":"code-review","outcome":"rejected","reviewer_slots":["codex-pragmatism"],"round_num":"1","category":"Blocking reject","body_severity":"blocking","prose_body":"## FINDING_5:\n- **Concern**: This is truly blocking."}
 JSONL
 printf 'finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n' > "$IMPL_FN/round-1/findings-classification.tsv"
-printf 'FINDING_4\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\t\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
+{
+  printf 'FINDING_4\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\t\t\n'
+} >> "$IMPL_FN/round-1/findings-classification.tsv"
 printf 'FINDING_5\tcodex-pragmatism\trejected\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\tblocking\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
 printf 'OOS_CR1_6\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\t\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
 printf 'FINDING_7\tcursor-validity\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tcursor-validity\tNO\ttrue\tnit\tweak\tfalse\tcodex-plan\tNO\ttrue\tnit\tweak\tfalse\tcodex-prag\timportant\toos\n' >> "$IMPL_FN/round-1/findings-classification.tsv"
@@ -171,7 +173,9 @@ cat > "$DROUND/findings.md" <<'MD'
 - **Concern**: A rename would be cleaner here.
 MD
 printf 'finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv1_tool\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv2_tool\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tv3_tool\tbody_severity\tscope\n' > "$DROUND/findings-classification.tsv"
-printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\t\n' >> "$DROUND/findings-classification.tsv"
+{
+  printf 'FINDING_1\tCursor-Arch\taccepted\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tYES\ttrue\tmajor\tgood\tfalse\tCodex\tYES\ttrue\tmajor\tgood\tfalse\tCursor\timportant\t\n'
+} >> "$DROUND/findings-classification.tsv"
 printf 'FINDING_2\tCodex-Pragmatic\trejected\tNO\ttrue\tnit\tadequate\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tnit\t\n' >> "$DROUND/findings-classification.tsv"
 printf 'FINDING_3\tCodex-FN\tneutral\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\timportant\t\n' >> "$DROUND/findings-classification.tsv"
 printf 'FINDING_4\tCodex-FN\trejected\tYES\ttrue\tmajor\tgood\tfalse\tClaude\tNO\ttrue\tnit\tadequate\tfalse\tCodex\tNO\ttrue\tnit\tadequate\tfalse\tCursor\tblocker\t\n' >> "$DROUND/findings-classification.tsv"
