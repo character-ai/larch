@@ -895,3 +895,349 @@ def test_stable_ids_by_combined_item_covers_every_source_on_count_reducing_combi
 
     covered = {sid for ids in mapping.values() for sid in ids}
     assert covered == {"src:OOS_1", "src:OOS_2", "src:OOS_3"}
+
+
+def test_high_risk_oos_provisions_and_applies_correctness_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Correctness risk\n- **Focus area**: correctness\n- **Description**: Fix later.\n",
+    )
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert any("--label" in call and "oos-correctness" in call for call in create_calls)
+    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    assert any(call[:4] == ["gh", "issue", "edit", "101"] and "oos-correctness" in call for call in gh_calls)
+
+
+def test_non_high_risk_oos_does_not_touch_priority_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(tmp_path, "### OOS_1: Cosmetic\n- **Focus area**: risk-integration\n- **Description**: Later.\n")
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert not gh_calls
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert not any("oos-correctness" in call for call in create_calls)
+
+
+def test_later_regression_duplicate_ors_priority_into_retained_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Same title\n- **Description**: First.\n\n"
+        "### OOS_2: Same title\n- **Focus area**: regression\n- **Description**: Second.\n",
+    )
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
+    assert any(call[:4] == ["gh", "issue", "edit", "101"] for call in gh_calls)
+
+
+def test_priority_provision_failure_still_files_non_priority_survivor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Correctness\n- **Focus area**: correctness\n- **Description**: Risk.\n\n"
+        "### OOS_2: Cosmetic\n- **Description**: Safe.\n",
+    )
+    fake = FakeCli(tmp_path)
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        return _cp(args, stderr="label failed", rc=1)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    monkeypatch.setattr(oos_filer, "_run_cli", fake)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    payload = json.loads(buf.getvalue())
+
+    assert rc == 1
+    assert payload["status"] == "priority_provision_partial_failure"
+    assert payload["urls"] == ["https://github.com/owner/repo/issues/101"]
+    assert "Cosmetic" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+
+
+def test_filed_url_high_risk_duplicate_backfills_label_on_rerun(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Already filed\n"
+        "- **Focus area**: correctness\n"
+        "- **Description**: Risk.\n"
+        "- **Filed URL**: https://github.com/owner/repo/issues/77\n",
+    )
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    assert any(call[:4] == ["gh", "issue", "edit", "77"] for call in gh_calls)
+
+
+def test_priority_label_partial_failure_preserves_cosmetic_survivor(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Correctness\n- **Focus area**: correctness\n- **Description**: Risk.\n\n"
+        "### OOS_2: Cosmetic\n- **Description**: Safe.\n",
+    )
+    fake = FakeCli(tmp_path)
+    label_calls = 0
+    cleanup_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        nonlocal label_calls
+        if args[:2] == ["gh", "label"]:
+            return _cp(args)
+        label_calls += 1
+        if label_calls == 1:
+            return _cp(args, stderr="edit failed", rc=1)
+        return _cp(args)
+
+    original_run_cli = fake.__call__
+
+    def run_cli(args: list[str], *, input_text: str | None = None) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ["issue", "cleanup-failed"]:
+            cleanup_calls.append(args)
+        return original_run_cli(args, input_text=input_text)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    monkeypatch.setattr(oos_filer, "_run_cli", run_cli)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    payload = json.loads(buf.getvalue())
+
+    assert rc == 1
+    assert payload["status"] == "priority_label_partial_failure"
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    assert "Cosmetic" in sentinel
+    assert "https://github.com/owner/repo/issues/102" in sentinel
+    assert not any("102" in str(call) for call in cleanup_calls)
+
+
+def test_cap_rollup_high_risk_receives_correctness_label(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "1")
+    monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Safe\n- **Description**: Cosmetic.\n\n"
+        "### OOS_2: Risk\n- **Focus area**: correctness\n- **Description**: Fix later.\n",
+    )
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
+    assert gh_calls[0][:4] == ["gh", "label", "create", "oos-correctness"]
+    assert any(call[:4] == ["gh", "issue", "edit", "101"] for call in gh_calls)
+
+
+def test_multipart_priority_label_failure_stops_later_parts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    large_body = "C" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1)
+    _write_oos(
+        tmp_path,
+        f"### OOS_1: High risk big\n- **Focus area**: correctness\n- **Description**: {large_body}\n",
+    )
+    fake = FakeCli(tmp_path)
+    fake.urls = [
+        "https://github.com/owner/repo/issues/301",
+        "https://github.com/owner/repo/issues/302",
+    ]
+    label_calls = 0
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        nonlocal label_calls
+        if args[:2] == ["gh", "label"]:
+            return _cp(args)
+        label_calls += 1
+        return _cp(args, stderr="edit failed", rc=1)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    monkeypatch.setattr(oos_filer, "_run_cli", fake)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    payload = json.loads(buf.getvalue())
+
+    assert rc == 1
+    assert payload["status"] == "issue_batch_failed"
+    assert payload["failure_mode"] == "priority_label"
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
+
+
+def test_duplicate_high_risk_label_failure_still_persisted_for_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: Correctness dup\n- **Focus area**: correctness\n- **Description**: Risk.\n",
+    )
+    fake = FakeCli(tmp_path)
+    fake.duplicate = True
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ["gh", "label"]:
+            return _cp(args)
+        return _cp(args, stderr="edit failed", rc=1)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    monkeypatch.setattr(oos_filer, "_run_cli", fake)
+    monkeypatch.setattr(oos_filer, "_repo_root", lambda: tmp_path)
+    monkeypatch.setattr(oos_filer, "_probe_tracking_blocker", lambda **_a: True)  # type: ignore[arg-type]
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path), "--codex-timeout", "1"])
+    payload = json.loads(buf.getvalue())
+
+    assert rc == 1
+    assert payload["status"] == "priority_label_partial_failure"
+    assert "https://github.com/owner/repo/issues/101" in payload["urls"]
+    assert "https://github.com/owner/repo/issues/101" in (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+
+
+def test_priority_urls_from_combined_order_uses_stable_ids_on_count_mismatch(tmp_path: Path) -> None:
+    combined = tmp_path / "combined.md"
+    combined.write_text(
+        "### OOS_1: one\n- **Focus area**: correctness\n\n"
+        "### OOS_2: two\n- **Description**: safe\n",
+        encoding="utf-8",
+    )
+    filed = [
+        oos_filer.FiledIssue("two", "https://github.com/o/r/issues/2", stable_id="src:OOS_2"),
+    ]
+    stable_ids = {1: ("src:OOS_1",), 2: ("src:OOS_2",)}
+    urls = oos_filer._priority_urls_from_combined_order(
+        combined_path=combined,
+        filed=filed,
+        stable_ids_by_item=stable_ids,
+    )
+    assert urls == set()
+
+
+def test_priority_urls_from_combined_order_does_not_mislabel_lone_non_priority_survivor(tmp_path: Path) -> None:
+    combined = tmp_path / "combined-lone.md"
+    combined.write_text(
+        "### OOS_1: one\n- **Focus area**: correctness\n\n"
+        "### OOS_2: two\n- **Description**: safe\n",
+        encoding="utf-8",
+    )
+    filed = [oos_filer.FiledIssue("two", "https://github.com/o/r/issues/2", stable_id="src:OOS_2")]
+    urls = oos_filer._priority_urls_from_combined_order(combined_path=combined, filed=filed)
+    assert urls == set()
+
+
+def test_sentinel_only_rerun_backfills_high_risk_after_recovery_snapshot(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    (tmp_path / "oos-accepted-main-agent.md").unlink(missing_ok=True)
+    (tmp_path / "oos-combined.md").write_text(
+        "### OOS_1: Risk\n- **Focus area**: correctness\n- **Description**: Fix later.\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "oos-issues-created.md").write_text(
+        "| OOS title | Issue | URL |\n|---|---|---|\n"
+        "| Risk | #77 | https://github.com/owner/repo/issues/77 |\n\n"
+        "- **Title**: Risk\n"
+        "- **Stable ID**: oos-accepted-main-agent:OOS_1\n"
+        "- **Filed URL**: https://github.com/owner/repo/issues/77\n"
+        "- **Filed**: 1\n",
+        encoding="utf-8",
+    )
+    fake = FakeCli(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(args: list[str]) -> subprocess.CompletedProcess[str]:
+        gh_calls.append(args)
+        return _cp(args)
+
+    monkeypatch.setattr(oos_filer, "_run_gh", fake_gh)
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert (tmp_path / "oos-accepted-main-agent.md").is_file()
+    assert not any(call[:2] == ["issue", "create-one"] for call in fake.calls)
+    assert any(call[:4] == ["gh", "issue", "edit", "77"] for call in gh_calls)

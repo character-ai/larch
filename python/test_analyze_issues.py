@@ -2063,3 +2063,83 @@ def test_ground_truth_run_dir_key_returns_none_when_not_under_log_root(tmp_path:
     outside = tmp_path / "outside-run"
     outside.mkdir()
     assert analyze_issues._ground_truth_run_dir_key(outside, log_root=log_root) is None
+
+
+def test_high_risk_oos_backlog_filters_and_sorts_oldest_first() -> None:
+    issues = [
+        {
+            "number": 2,
+            "state": "OPEN",
+            "title": "[OOS] newer",
+            "createdAt": "2026-01-03T00:00:00Z",
+            "url": "https://github.com/o/r/issues/2",
+            "labels": [{"name": "oos-correctness"}],
+        },
+        {
+            "number": 1,
+            "state": "OPEN",
+            "title": "[OOS] older",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "url": "https://github.com/o/r/issues/1",
+            "labels": ["oos-correctness"],
+        },
+        {
+            "number": 3,
+            "state": "CLOSED",
+            "title": "[OOS] closed",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "labels": ["oos-correctness"],
+        },
+        {
+            "number": 4,
+            "state": "OPEN",
+            "title": "Regular issue",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "labels": ["oos-correctness"],
+        },
+        {
+            "number": 5,
+            "state": "OPEN",
+            "title": "[OOS] unlabelled",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "labels": [],
+        },
+    ]
+
+    text = analyze_issues.render_high_risk_oos_backlog(
+        issues,
+        now=analyze_issues.parse_iso("2026-01-11T00:00:00Z"),
+    )
+
+    assert "## High-risk OOS Backlog" in text
+    assert text.index("#1") < text.index("#2")
+    assert "#3" not in text
+    assert "#4" not in text
+    assert "#5" not in text
+    assert "10d" in text
+
+
+def test_high_risk_oos_backlog_empty_state() -> None:
+    text = analyze_issues.render_high_risk_oos_backlog([])
+    assert "No open high-risk OOS issues found." in text
+
+
+def test_build_analyze_report_includes_high_risk_oos_backlog(tmp_path: Path) -> None:
+    issues = [
+        {
+            "number": 9,
+            "state": "OPEN",
+            "title": "[OOS] correctness backlog",
+            "createdAt": "2026-01-01T00:00:00Z",
+            "labels": ["oos-correctness"],
+        }
+    ]
+
+    text = analyze_issues._build_analyze_report(
+        issues,
+        log_root=tmp_path / "missing",
+        filed_issue_details={},
+    )
+
+    assert "## High-risk OOS Backlog" in text
+    assert "#9" in text

@@ -13,13 +13,16 @@ import re
 import shutil
 import subprocess
 import sys
-from dataclasses import dataclass
+from collections.abc import Callable, Sequence
+from dataclasses import dataclass, replace
 from pathlib import Path
 from larch import io as larch_io
-from typing import cast
+from typing import Literal, cast
 
 from larch.core import config
+from larch.core import proc
 from larch.issue import file_oos
+from larch.issue import oos_priority
 
 _CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
@@ -34,6 +37,7 @@ class AcceptedBlock:
     title: str
     body: str
     stable_id: str = ""
+    oos_priority: bool = False
 
 
 @dataclass(frozen=True)
@@ -43,12 +47,14 @@ class FiledIssue:
     duplicate: bool = False
     stable_id: str = ""
     source_stable_ids: tuple[str, ...] = ()
+    oos_priority: bool = False
 
 
 @dataclass(frozen=True)
 class BatchResult:
     filed: list[FiledIssue]
     failures: int
+    failure_mode: Literal["none", "hard_create", "priority_label", "priority_provision"] = "none"
 
 
 def _bool(value: str) -> bool:
@@ -172,6 +178,25 @@ def _stable_ids_by_combined_item(*, blocks: list[AcceptedBlock], combined_text: 
     return mapped
 
 
+def _priority_by_combined_item(
+    *,
+    blocks: list[AcceptedBlock],
+    combined_text: str,
+    stable_ids_by_item: dict[int, tuple[str, ...]],
+) -> dict[int, bool]:
+    """Return post-cap item indices that need the high-risk OOS label."""
+    combined_blocks = file_oos._parse_oos_blocks(combined_text)  # pyright: ignore[reportPrivateUsage]
+    priority_by_stable_id = {block.stable_id: block.oos_priority for block in blocks if block.stable_id}
+    priority: dict[int, bool] = {}
+    for index, combined_block in enumerate(combined_blocks, start=1):
+        source_ids = stable_ids_by_item.get(index, ())
+        source_priority = any(priority_by_stable_id.get(stable_id, False) for stable_id in source_ids)
+        text_priority = oos_priority.is_high_risk_oos_block(combined_block.body)
+        if source_priority or text_priority:
+            priority[index] = True
+    return priority
+
+
 def _accepted_input_paths(tmpdir: Path) -> tuple[Path, ...]:
     return (
         tmpdir / "oos-accepted-main-agent.md",
@@ -181,7 +206,8 @@ def _accepted_input_paths(tmpdir: Path) -> tuple[Path, ...]:
 
 
 def _working_batch(tmpdir: Path) -> tuple[list[AcceptedBlock], list[FiledIssue]]:
-    seen: set[str] = set()
+    seen: dict[str, int] = {}
+    pending_priority_by_title: dict[str, bool] = {}
     blocks: list[AcceptedBlock] = []
     already: list[FiledIssue] = []
     for path in _accepted_input_paths(tmpdir):
@@ -192,16 +218,25 @@ def _working_batch(tmpdir: Path) -> tuple[list[AcceptedBlock], list[FiledIssue]]
         for item in file_oos._parse_oos_blocks(text):  # pyright: ignore[reportPrivateUsage]
             if _is_security_block(item.body):
                 continue
+            normalized = _normalized_title(item.title)
+            stable_id = _stable_identifier(item.title, item.body, source_key=source_key)
+            item_priority = oos_priority.is_high_risk_oos_block(item.body)
             filed_urls = _FILED_URL_LINE_RE.findall(item.body)
             if filed_urls:
-                stable_id = _stable_identifier(item.title, item.body, source_key=source_key)
-                already.extend(FiledIssue(item.title, url, duplicate=True, stable_id=stable_id) for url in filed_urls)
+                if normalized in seen:
+                    index = seen[normalized]
+                    blocks[index] = replace(blocks[index], oos_priority=blocks[index].oos_priority or item_priority)
+                else:
+                    pending_priority_by_title[normalized] = pending_priority_by_title.get(normalized, False) or item_priority
+                already.extend(FiledIssue(item.title, url, duplicate=True, stable_id=stable_id, oos_priority=item_priority) for url in filed_urls)
                 continue
-            normalized = _normalized_title(item.title)
             if normalized in seen:
+                index = seen[normalized]
+                blocks[index] = replace(blocks[index], oos_priority=blocks[index].oos_priority or item_priority)
                 continue
-            seen.add(normalized)
-            blocks.append(AcceptedBlock(item.title, item.body, _stable_identifier(item.title, item.body, source_key=source_key)))
+            seen[normalized] = len(blocks)
+            priority = item_priority or pending_priority_by_title.pop(normalized, False)
+            blocks.append(AcceptedBlock(item.title, item.body, stable_id, priority))
     return blocks, already
 
 
@@ -552,8 +587,62 @@ def _probe_tracking_blocker(*, tmpdir: Path, repo: str, issue_number: str) -> bo
     return True
 
 
-def _cleanup_created_issues(_tmpdir: Path, filed: list[FiledIssue], *, repo: str) -> None:
+def _run_gh(args: list[str]) -> proc.CommandResult:
+    return proc.run(args)
+
+
+def _ensure_priority_label(*, tmpdir: Path, repo: str) -> bool:
+    if not repo:
+        _append_tool_failure(
+            tmpdir=tmpdir,
+            site="step-9a1-oos-file",
+            tool="gh label create",
+            rc=1,
+            output="missing repo for oos-correctness label provisioning",
+        )
+        return False
+    result = _run_gh(oos_priority.label_create_argv(repo=repo))
+    if result.returncode == 0:
+        return True
+    _append_tool_failure(
+        tmpdir=tmpdir,
+        site="step-9a1-oos-file",
+        tool="gh label create",
+        rc=result.returncode or 1,
+        output=result.stderr or result.stdout or "oos-correctness label provisioning failed",
+    )
+    return False
+
+
+def _apply_priority_label(*, tmpdir: Path, url: str, repo: str) -> bool:
+    number = oos_priority.issue_number_from_url(url)
+    if not repo or not number:
+        detail = "missing repo for oos-correctness label application" if not repo else f"could not parse issue number from {url}"
+        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="gh issue edit", rc=1, output=detail)
+        return False
+    result = _run_gh(oos_priority.label_edit_argv(number, repo=repo))
+    if result.returncode == 0:
+        return True
+    _append_tool_failure(
+        tmpdir=tmpdir,
+        site="step-9a1-oos-file",
+        tool="gh issue edit",
+        rc=result.returncode or 1,
+        output=result.stderr or result.stdout or f"oos-correctness label application failed for {url}",
+    )
+    return False
+
+
+def _cleanup_created_issues(
+    _tmpdir: Path,
+    filed: list[FiledIssue],
+    *,
+    repo: str,
+    only: Callable[[FiledIssue], bool] | None = None,
+) -> None:
     for issue in filed:
+        if only is not None and not only(issue):
+            continue
         if issue.url.startswith("skipped://") or issue.duplicate:
             continue
         number = issue.url.rsplit("/", 1)[-1]
@@ -653,6 +742,22 @@ def _apply_intra_batch_edges(
     return True
 
 
+def _handle_priority_label_failure(
+    filed_issue: FiledIssue,
+    filed: list[FiledIssue],
+    tmpdir: Path,
+    url: str,
+    repo: str,
+) -> None:
+    if filed_issue.duplicate:
+        filed.append(filed_issue)
+    else:
+        _cleanup_created_issues(
+            tmpdir, [filed_issue], repo=repo,
+            only=lambda candidate, u=url: candidate.url == u and not candidate.duplicate,
+        )
+
+
 def _run_issue_batch(
     tmpdir: Path,
     combined: Path,
@@ -661,6 +766,7 @@ def _run_issue_batch(
     issue_number: str,
     deps_path: Path | None = None,
     stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
+    priority_by_item: dict[int, bool] | None = None,
 ) -> BatchResult:
     bodies_dir = tmpdir / "oos-issue-bodies"
     bodies_dir.mkdir(parents=True, exist_ok=True)
@@ -670,11 +776,11 @@ def _run_issue_batch(
     parsed = _run_cli(["issue", "parse-input", "--input-file", str(sanitized_input), "--output-dir", str(bodies_dir)])
     if parsed.returncode != 0:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue parse-input", rc=parsed.returncode, output=parsed.stderr or parsed.stdout)
-        return BatchResult([], 1)
+        return BatchResult([], 1, "hard_create")
     fields = _parse_kv(parsed.stdout)
     total = int(fields.get("ITEMS_TOTAL", "0") or "0")
     if not _probe_tracking_blocker(tmpdir=tmpdir, repo=repo, issue_number=issue_number):
-        return BatchResult([], 1)
+        return BatchResult([], 1, "hard_create")
 
     intra_batch_edges = _parse_intra_batch_deps(deps_path) if deps_path is not None else []
     create_order = _topological_create_order(total=total, edges=intra_batch_edges)
@@ -682,6 +788,8 @@ def _run_issue_batch(
 
     filed: list[FiledIssue] = []
     failures = 0
+    failure_mode: Literal["none", "hard_create", "priority_label", "priority_provision"] = "none"
+    priority_label_ready: bool | None = None
     for item_index in create_order:
         title = file_oos._sanitize_public_text(fields.get(f"ITEM_{item_index}_TITLE", "")).strip()  # pyright: ignore[reportPrivateUsage]
         # Never publish an empty public issue: if the parser flagged this item
@@ -690,6 +798,13 @@ def _run_issue_batch(
         if fields.get(f"ITEM_{item_index}_MALFORMED", "") == "true":
             detail = f"skipped malformed accepted-OOS item (empty/unparseable Description); not filing empty public issue: {title or f'item {item_index}'}"
             _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=detail)
+            continue
+        item_priority = bool(priority_by_item and priority_by_item.get(item_index, False))
+        if item_priority and priority_label_ready is None:
+            priority_label_ready = _ensure_priority_label(tmpdir=tmpdir, repo=repo)
+        if item_priority and priority_label_ready is False:
+            failures += 1
+            failure_mode = "priority_provision"
             continue
         body_files = _body_files_for_item(tmpdir=tmpdir, item_index=item_index, fields=fields)
         source_ids = stable_ids_by_item.get(item_index, ()) if stable_ids_by_item else ()
@@ -709,18 +824,34 @@ def _run_issue_batch(
             ]
             if repo:
                 args.extend(["--repo", repo])
+            if item_priority:
+                args.extend(["--label", oos_priority.OOS_CORRECTNESS_LABEL])
             created = _run_cli(args)
             kv = _parse_kv(created.stdout)
             if created.returncode != 0 or kv.get("ISSUE_FAILED") == "true":
                 failures += 1
                 _cleanup_created_issues(tmpdir, filed, repo=repo)
-                return BatchResult(filed, failures)
+                return BatchResult(filed, failures, "hard_create")
             url = kv.get("ISSUE_URL") or kv.get(f"ISSUE_{item_index}_URL") or kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL")
             duplicate = bool(kv.get("ISSUE_DUPLICATE_OF_URL") or kv.get(f"ISSUE_{item_index}_DUPLICATE_OF_URL"))
+            filed_issue: FiledIssue | None = None
             if url:
                 part_stable = primary_stable if part_index == 1 else f"{primary_stable}:part{part_index}"
                 part_source_ids = source_ids if part_index == 1 else ()
-                filed.append(FiledIssue(part_title, url, duplicate, part_stable, part_source_ids))
+                filed_issue = FiledIssue(
+                    part_title,
+                    url,
+                    duplicate,
+                    part_stable,
+                    part_source_ids,
+                    oos_priority=item_priority,
+                )
+                if item_priority and not _apply_priority_label(tmpdir=tmpdir, url=url, repo=repo):
+                    failures += 1
+                    failure_mode = "priority_label"
+                    _handle_priority_label_failure(filed_issue, filed, tmpdir, url, repo)
+                    break
+                filed.append(filed_issue)
             number = kv.get("ISSUE_NUMBER") or ""
             if part_index == 1 and number.isdigit():
                 issue_numbers[item_index] = number
@@ -731,11 +862,11 @@ def _run_issue_batch(
                     detail = blocked_kv.get("ERROR") or blocked.stderr or blocked.stdout or "add-blocked-by failed"
                     _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue add-blocked-by", rc=blocked.returncode or 1, output=detail)
                     _cleanup_created_issues(tmpdir, filed, repo=repo)
-                    return BatchResult(filed, 1)
+                    return BatchResult(filed, 1, "hard_create")
         item_edges = [edge for edge in intra_batch_edges if edge[1] == item_index]
         if not _apply_intra_batch_edges(tmpdir, item_edges, issue_numbers, filed, repo=repo):
-            return BatchResult(filed, 1)
-    return BatchResult(filed, failures)
+            return BatchResult(filed, 1, "hard_create")
+    return BatchResult(filed, failures, failure_mode)
 
 
 def _write_sentinel(*, tmpdir: Path, filed: list[FiledIssue]) -> None:
@@ -766,6 +897,109 @@ def _write_oos_ndjson(tmpdir: Path, run_id: str, filed: list[FiledIssue], *, sta
         records.append(json.dumps(record, separators=(",", ":")))
     path.write_text(("\n".join(records) + "\n") if records else "", encoding="utf-8")
     return path
+
+
+def _find_urls_by_stable_ids(
+    *,
+    priority_indices: set[int],
+    stable_ids_by_item: dict[int, tuple[str, ...]],
+    filed: list[FiledIssue],
+) -> set[str]:
+    urls: set[str] = set()
+    for index in priority_indices:
+        for stable_id in stable_ids_by_item.get(index, ()):
+            urls.update(issue.url for issue in filed if _issue_covers_stable_id(issue=issue, stable_id=stable_id))
+    return urls
+
+
+def _urls_from_priority_by_position(
+    combined_count: int,
+    priority_indices: set[int],
+    real_filed: list[FiledIssue],
+) -> set[str]:
+    if combined_count == 1:
+        return {issue.url for issue in real_filed} if priority_indices else set()
+    if len(real_filed) != combined_count:
+        return set()
+    return {issue.url for index, issue in enumerate(real_filed, start=1) if index in priority_indices}
+
+
+def _priority_urls_from_combined_order(
+    *,
+    combined_path: Path,
+    filed: list[FiledIssue],
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
+) -> set[str]:
+    if not combined_path.is_file():
+        return set()
+    combined_text = combined_path.read_text(encoding="utf-8", errors="replace")
+    combined_blocks = file_oos._parse_oos_blocks(combined_text)  # pyright: ignore[reportPrivateUsage]
+    priority_indices = {
+        index
+        for index, block in enumerate(combined_blocks, start=1)
+        if oos_priority.is_high_risk_oos_block(block.body)
+    }
+    if not priority_indices:
+        return set()
+    real_filed = [issue for issue in filed if not issue.url.startswith("skipped://")]
+    if not real_filed:
+        return set()
+    urls: set[str] = {issue.url for issue in real_filed if issue.oos_priority}
+    urls.update(_urls_from_priority_by_position(len(combined_blocks), priority_indices, real_filed))
+    if stable_ids_by_item:
+        urls.update(_find_urls_by_stable_ids(
+            priority_indices=priority_indices,
+            stable_ids_by_item=stable_ids_by_item,
+            filed=real_filed,
+        ))
+    return urls
+
+
+def _priority_urls_from_blocks(*, filed: list[FiledIssue], blocks: list[AcceptedBlock]) -> set[str]:
+    urls: set[str] = set()
+    for issue in filed:
+        if issue.url.startswith("skipped://"):
+            continue
+        if issue.oos_priority:
+            urls.add(issue.url)
+            continue
+        for block in blocks:
+            if not (block.oos_priority or oos_priority.is_high_risk_oos_block(block.body)):
+                continue
+            if _issue_matches_block(issue, block) or _block_has_filed_url(block=block, url=issue.url):
+                urls.add(issue.url)
+                break
+    return urls
+
+
+def _backfill_priority_labels_from_sentinel(
+    *,
+    tmpdir: Path,
+    repo: str,
+    combined_path: Path,
+    all_filed: Sequence[FiledIssue] = (),
+    blocks: Sequence[AcceptedBlock] = (),
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
+) -> bool:
+    filed = _dedupe_filed(list(all_filed))
+    if not filed:
+        return True
+    priority_urls = _priority_urls_from_blocks(filed=filed, blocks=list(blocks))
+    priority_urls.update(
+        _priority_urls_from_combined_order(
+            combined_path=combined_path,
+            filed=filed,
+            stable_ids_by_item=stable_ids_by_item,
+        )
+    )
+    if not priority_urls:
+        return True
+    if not _ensure_priority_label(tmpdir=tmpdir, repo=repo):
+        return False
+    ok = True
+    for url in sorted(priority_urls):
+        ok = _apply_priority_label(tmpdir=tmpdir, url=url, repo=repo) and ok
+    return ok
 
 
 def _write_run_statistics(*, tmpdir: Path, run_id: str, filed_count: int) -> Path:
@@ -799,6 +1033,34 @@ def _stamp_manifest(tmpdir: Path, run_id: str, *, value: bool) -> bool:
     return True
 
 
+def _recover_persisted_blocks(
+    *,
+    tmpdir: Path,
+    run_id: str,
+    all_blocks: list[AcceptedBlock],
+    already: list[FiledIssue],
+) -> tuple[list[AcceptedBlock], list[AcceptedBlock], list[FiledIssue], list[FiledIssue]]:
+    persisted = _persisted_filed_evidence(tmpdir=tmpdir, run_id=run_id)
+    blocks, matched = _split_persisted_matches(blocks=all_blocks, persisted=persisted)
+    already = _dedupe_filed([*already, *matched])
+    if persisted and not any(p.is_file() for p in _accepted_input_paths(tmpdir)):
+        _materialize_sentinel_recovery_evidence(tmpdir=tmpdir, filed=_dedupe_filed([*persisted, *already]))
+        all_blocks, recovery_already = _working_batch(tmpdir)
+        blocks, matched_recovery = _split_persisted_matches(blocks=all_blocks, persisted=persisted)
+        already = _dedupe_filed([*already, *recovery_already, *matched_recovery])
+    return blocks, all_blocks, persisted, already
+
+
+def _compute_stable_ids(
+    combined_path: Path,
+    all_blocks: list[AcceptedBlock],
+) -> dict[int, tuple[str, ...]] | None:
+    if not combined_path.is_file():
+        return None
+    post_cap_text = combined_path.read_text(encoding="utf-8", errors="replace")
+    return _stable_ids_by_combined_item(blocks=list(all_blocks), combined_text=post_cap_text)
+
+
 def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     tmpdir = Path(args.implement_tmpdir)
     state = _read_kv_file(path=tmpdir / "ship-pr-state.sh")
@@ -821,11 +1083,33 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
         except (TypeError, OSError, RuntimeError, ValueError) as exc:
             _append_warning(tmpdir=tmpdir, message=f"manifest OOS materialization failed: {exc}")
 
-    blocks, already = _working_batch(tmpdir)
-    accepted_count = len(blocks) + len(already)
-    persisted = _persisted_filed_evidence(tmpdir=tmpdir, run_id=run_id)
-    blocks, matched = _split_persisted_matches(blocks=blocks, persisted=persisted)
-    already = _dedupe_filed([*already, *matched])
+    all_blocks, already = _working_batch(tmpdir)
+    accepted_count = len(all_blocks) + len(already)
+    blocks, all_blocks, persisted, already = _recover_persisted_blocks(
+        tmpdir=tmpdir, run_id=run_id, all_blocks=all_blocks, already=already
+    )
+    combined_path = tmpdir / "oos-combined.md"
+    stable_ids_by_item = _compute_stable_ids(combined_path, all_blocks)
+    if (persisted or already) and not forked and not repo_unavailable:
+        backfilled = _backfill_priority_labels_from_sentinel(
+            tmpdir=tmpdir,
+            repo=repo,
+            combined_path=combined_path,
+            all_filed=[*persisted, *already],
+            blocks=all_blocks,
+            stable_ids_by_item=stable_ids_by_item,
+        )
+        if not backfilled:
+            filed = _dedupe_filed([*persisted, *already])
+            return 1, {
+                "status": "priority_label_backfill_failed",
+                "accepted_count": accepted_count,
+                "filed_count": len(filed),
+                "deduplicated_count": len([issue for issue in filed if issue.duplicate]),
+                "urls": [issue.url for issue in filed],
+                "run_statistics_written": False,
+                "step9a1_stamped": False,
+            }
     if persisted and not blocks and not already:
         filed = persisted
         _materialize_sentinel_recovery_evidence(tmpdir=tmpdir, filed=filed)
@@ -875,10 +1159,32 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     # records every rolled-up source stable ID.
     post_cap_text = combined.read_text(encoding="utf-8", errors="replace")
     stable_ids_by_item = _stable_ids_by_combined_item(blocks=blocks, combined_text=post_cap_text)
-    batch = _run_issue_batch(tmpdir, combined, repo=repo, issue_number=issue_number, deps_path=deps_path, stable_ids_by_item=stable_ids_by_item)
+    priority_by_item = _priority_by_combined_item(blocks=blocks, combined_text=post_cap_text, stable_ids_by_item=stable_ids_by_item)
+    batch = _run_issue_batch(
+        tmpdir,
+        combined,
+        repo=repo,
+        issue_number=issue_number,
+        deps_path=deps_path,
+        stable_ids_by_item=stable_ids_by_item,
+        priority_by_item=priority_by_item,
+    )
     if batch.failures:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=f"ISSUES_FAILED={batch.failures}")
-        return 1, {"status": "issue_batch_failed", "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
+        if batch.failure_mode in {"priority_label", "priority_provision"} and batch.filed:
+            filed = _dedupe_filed([*persisted, *already, *batch.filed])
+            _write_sentinel(tmpdir=tmpdir, filed=filed)
+            _write_oos_ndjson(tmpdir, run_id, filed, status="Priority label partial failure")
+            return 1, {
+                "status": f"{batch.failure_mode}_partial_failure",
+                "accepted_count": accepted_count,
+                "filed_count": len(filed),
+                "deduplicated_count": len([issue for issue in filed if issue.duplicate]),
+                "urls": [issue.url for issue in filed],
+                "run_statistics_written": False,
+                "step9a1_stamped": False,
+            }
+        return 1, {"status": "issue_batch_failed", "failure_mode": batch.failure_mode, "accepted_count": accepted_count, "filed_count": len(batch.filed), "deduplicated_count": len([issue for issue in batch.filed if issue.duplicate]), "urls": [issue.url for issue in batch.filed], "run_statistics_written": False, "step9a1_stamped": False}
     filed = _dedupe_filed([*persisted, *already, *batch.filed])
     _write_sentinel(tmpdir=tmpdir, filed=filed)
     _write_oos_ndjson(tmpdir, run_id, filed)

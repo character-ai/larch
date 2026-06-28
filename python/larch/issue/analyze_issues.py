@@ -20,6 +20,7 @@ from pathlib import Path
 from typing import Any, Dict, Iterable, List, Mapping, MutableMapping, Sequence, Tuple
 
 from larch.issue import oos_filer
+from larch.issue import oos_priority
 from larch.review import voting
 
 BODY_CAP = 5 * 1024
@@ -698,6 +699,49 @@ def issue_labels(issue: Mapping[str, Any]) -> set[str]:
         if value:
             labels.add(str(value).strip().lower())
     return labels
+
+
+def is_open_high_risk_oos_issue(issue: Mapping[str, Any]) -> bool:
+    title = str(issue.get("title") or "").strip()
+    state = str(issue.get("state") or "").upper()
+    return (
+        state == "OPEN"
+        and title.lower().startswith("[oos]")
+        and oos_priority.OOS_CORRECTNESS_LABEL in issue_labels(issue)
+    )
+
+
+def created_at_sort_key(issue: Mapping[str, Any]) -> tuple[datetime, int]:
+    created = parse_iso(str(issue.get("createdAt") or ""))
+    fallback = datetime.max.replace(tzinfo=timezone.utc)
+    return (created or fallback, issue_number(issue))
+
+
+def render_high_risk_oos_backlog(
+    issues: Sequence[Mapping[str, Any]],
+    *,
+    now: datetime | None = None,
+    top_k: int = 10,
+) -> str:
+    current = now or datetime.now(timezone.utc)
+    rows = sorted(
+        [issue for issue in issues if is_open_high_risk_oos_issue(issue)],
+        key=created_at_sort_key,
+    )
+    lines = ["## High-risk OOS Backlog"]
+    if not rows:
+        lines.append("No open high-risk OOS issues found.")
+        return "\n".join(lines)
+    for issue in rows[: max(top_k, 1)]:
+        created = parse_iso(str(issue.get("createdAt") or ""))
+        created_text = created.date().isoformat() if created else "unknown"
+        age_text = "unknown"
+        if created:
+            age_text = str(max((current.date() - created.date()).days, 0))
+        url = str(issue.get("url") or "")
+        suffix = f" — {url}" if url else ""
+        lines.append(f"- #{issue_number(issue)} ({age_text}d, {created_text}): {issue.get('title') or ''}{suffix}")
+    return "\n".join(lines)
 
 
 def issue_comments(issue: Mapping[str, Any]) -> list[str]:
@@ -3211,6 +3255,7 @@ def _build_analyze_report(
         patterns_text,
         waste_text,
         reviewer_text,
+        render_high_risk_oos_backlog(issues, top_k=top_k),
     ]
     try:
         fate_text, _fate_stats = fate_adjusted_oos_scoring(

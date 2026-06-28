@@ -18,9 +18,12 @@ Valid actions remain:
 |---|---|
 | `skip-pipeline` | Do not call `/larch:issue`. Follow `finalize-step5.md` for skip breadcrumb, warning handling, conditional annotate, and Step 5b.5 continuation. |
 | `file-issues` | Invoke `/larch:issue` and annotate per `finalize-step5.md`. |
+| `label-only` | Do not call `/larch:issue`. Run annotate in label-only mode per `finalize-step5.md`; `oos-issue.stdout.txt` and `oos-accepted-design.md` are not required. |
 | `unknown-oos-status` | Stop for repair. Do not continue to Step 5b.5. |
 
 Missing `NEXT_ACTION`, an unknown action, or a disagreement between `NEXT_ACTION` and `FILE_DESIGN_OOS_STATUS` is a repair stop. Do not derive a prompt-side route from `FILE_DESIGN_OOS_STATUS`.
+
+`FILE_DESIGN_OOS_STATUS=label-only-retry` maps to `NEXT_ACTION=label-only` inside the prepare wrapper. `annotate-label-failed` and pending priority-label states must not dispatch Step 5b.5.
 
 ## Legacy note
 

@@ -17,7 +17,11 @@ Thin launcher-compat wrapper for the `/design` Step 5b annotate block.
 - The annotate entrypoint binds `oos_issue_stdout = design_tmpdir / "oos-issue.stdout.txt"` immediately after the tmpdir guard.
 - The same `oos_issue_stdout` path is used for `--issue-stdout-file` and `ISSUES_FAILED` detection.
 - The annotate entrypoint returns immediately through pause-save when `.pause-requested` exists.
-- Annotate failure emits `STEP5B_STATUS=annotate-failed`; `.completed/step-5b` is also written when `oos-issue.stdout.txt` is present and non-empty (partial `/larch:issue` failures and skip-already annotate retries can continue to Step 5b.5). When `oos-issue.stdout.txt` is empty or missing (sequencing error), the sentinel is not written.
+- Normal annotate writes `oos-issues-created.md` before GitHub priority-label calls.
+- Pending marker `.oos-priority-label-pending` is written at label-phase entry when any high-risk OOS URL still needs `oos-correctness`.
+- Label-only mode skips empty-stdout, missing-accepted, and missing-order sequencing errors. It requires the sentinel, combined OOS file, and `REPO`.
+- Annotate failure emits `STEP5B_STATUS=annotate-failed`; `.completed/step-5b` is also written when `oos-issue.stdout.txt` is present and non-empty for partial `/larch:issue` failures without label-retry state. `annotate-label-failed` returns non-zero, does not write `.completed/step-5b`, blocks Step 5b.5, and leaves label-only retry available even when `oos-issue.stdout.txt` is non-empty.
+- Full normal annotate success and label-only retry success write `.completed/step-5b`.
 
 ## Harness
 
