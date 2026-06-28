@@ -1,0 +1,1 @@
+Relocate two rare `/implement` prompt bodies into lazy references: force-mode details and architectural-guidelines present+ok handling. Keep inline routing terse, update fence count, and retarget prompt-structure tests.

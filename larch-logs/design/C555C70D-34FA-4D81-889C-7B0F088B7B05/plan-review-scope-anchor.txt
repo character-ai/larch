@@ -1,0 +1,9 @@
+**Lever:** always-loaded SKILL.md context.
+
+**--force:** The full `--force` paragraph (the `BYPASS kind=<token> issue=<N>` log grammar, canonical kind tokens, and the does/doesn't-bypass carve-outs) is always-loaded for a rare emergency flag whose helper already writes `force-bypass.log` mechanically. Relocate the grammar + carve-outs to a reference loaded only when `force_requested=true`; keep the flag-table row and the item-4 skip breadcrumb inline.
+
+**Arch-guidelines:** Only the `ARCHITECTURAL_GUIDELINES_STATUS=present` + `DIFF_STATUS=ok` branch needs the verbose exit-code routing, the assessment-authoring judgment, and the `write-staged` fence (~17 lines); absent / invalid / diff-failed are one-liners and present+ok is the minority path. Keep the unconditional `prepare` fence plus a terse 3-line status branch inline; move the present-path body to a reference, mandatory-read on present+ok. Update fence-shape `EXPECTED_NEW` (net -1).
+
+**Savings:** ~17+ always-loaded lines.
+
+**Risk:** MED. New references; preserve exit-code routing semantics exactly (invalidate rc 2; present+diff-failed continue).
