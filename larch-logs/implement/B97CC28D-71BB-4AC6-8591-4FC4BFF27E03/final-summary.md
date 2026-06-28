@@ -1,7 +1,7 @@
 ## /implement run B97CC28D-71BB-4AC6-8591-4FC4BFF27E03 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 01:08:28
 - **Cost**: 💰 TOTAL ~$11.50 — Claude $4.48, Codex-5.5 $3.91, Codex-mini $1.47, Cursor $1.64, Claude (subprocess) $0.00  |  Tokens: 27991k
 - **Issue**: #5674 — https://github.com/character-ai/larch/issues/5674
 - **Plan review**: N/A
@@ -62,3 +62,7 @@ cursor/apply                    │                                             
 2. codex/generalist — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
