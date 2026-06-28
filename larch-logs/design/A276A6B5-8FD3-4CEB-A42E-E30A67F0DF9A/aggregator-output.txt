@@ -1,0 +1,27 @@
+### FINDING_1: Relocated docs lack structure-test existence pins
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Relocated docs lack positive existence pins while runtime deletions are only optionally asserted. The firm plan mandates `docs/attic/dialectic-legacy.md` and `docs/summary-comment-template.md`, and updates `skills/shared/dialectic-protocol.md` plus `docs/run-logs.md` to point at them. `test-implement-structure.sh` only requires the old `skills/implement/references/{summary-comment-template,pr-body-template}.md` files to exist today; after removal from that list, `make test-implement-structure` still passes if the docs copies are never created, leaving new authoritative pointers at broken paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add firm harness checks that `docs/attic/dialectic-legacy.md` and `docs/summary-comment-template.md` exist, alongside explicit `not Path(...).is_file()` assertions for the retired `skills/*/references/` paths.
+
+### FINDING_2: Attic copy may retain stale internal pointers
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Attic move underspecifies internal stale pointers beyond dialectic-execution.md. The NEW attic section only calls out dialectic-execution.md, but the source file also has a broken "Current /design profile" callout above reference at line 13 and five dialectic-execution mentions (full path and short form at lines 32, 43, 89, 139, 299). Copying without scrubbing all of them ships a new contributor-facing attic doc with dead links.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Require scrubbing every dialectic-execution and "Current /design profile" pointer in the attic copy; add a testing rg that fails on dialectic-execution|Current /design profile under docs/attic/dialectic-legacy.md.
+
+### FINDING_3: Post-cleanup rg lacks pass/fail acceptance gate
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Post-cleanup rg has no pass/fail gate. The plan lists rg discovery commands but no acceptance rule that skills/scripts/python/docs (excluding fixtures and larch-logs) must have zero hits for the retired runtime paths. A missed repoint (for example docs/run-logs.md or dialectic-protocol.md) can merge while structure tests pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add an explicit acceptance step: rg must return no matches for the retired skills/*/references paths outside allowed fixture/larch-logs paths before merge.
+
+### FINDING_4: dialectic-legacy retirement missing design-structure harness pin
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Firm dialectic-legacy retirement has no design-structure negative pin. The plan deletes `skills/design/references/dialectic-legacy.md` and adds only `scripts/test-implement-structure.sh` harness edits. That implement harness does not cover design reference paths. An implementer can drop the runtime file without updating `skills/shared/dialectic-protocol.md`, or delete it without creating `docs/attic/dialectic-legacy.md`, and `make test-implement-structure` still passes. CI would miss an incomplete retirement until a manual rg pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add `### UPDATED: scripts/test-design-structure.sh` to the firm plan: follow the existing retired-path loop (`[ ! -e "$ROOT/skills/design/references/dialectic-legacy.md" ] || fail ...`) and assert `docs/attic/dialectic-legacy.md` exists after the move. List `make test-design-structure` in Testing strategy for the firm path, not only when optional OOS cleanup runs.
