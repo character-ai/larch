@@ -2370,157 +2370,157 @@
     "metric": 57
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "C901",
     "qualified_symbol": "_redacted_log_for_dispatch",
     "metric": 12
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "C901",
     "qualified_symbol": "_run_relevant_checks_inner",
     "metric": 17
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "C901",
     "qualified_symbol": "_scan_contains_pin_script",
     "metric": 13
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "C901",
     "qualified_symbol": "_scan_shell_quoted_literal",
     "metric": 12
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "C901",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 17
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "_head_change_invalid_after_dispatch",
     "metric": 7
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "_redacted_log_for_dispatch",
     "metric": 12
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0911",
     "qualified_symbol": "_run_relevant_checks_inner",
     "metric": 12
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0911",
     "qualified_symbol": "_scan_shell_quoted_literal",
     "metric": 7
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "_status_for_missing_redacted_log",
     "metric": 8
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 13
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_relevant_checks_inner",
     "metric": 18
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 17
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0913",
     "qualified_symbol": "_append_partition_guard_target",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0913",
     "qualified_symbol": "_append_py_lint_target",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0913",
     "qualified_symbol": "_append_py_test_target",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "_build_cursor_argv",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0913",
     "qualified_symbol": "_checks_failure",
     "metric": 8
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "_head_change_invalid_after_dispatch",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "_run_codex",
     "metric": 7
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "_run_cursor",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 6
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "run_checks_phase",
     "metric": 13
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0913",
     "qualified_symbol": "run_lint_fix",
     "metric": 10
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_relevant_checks_inner",
     "metric": 56
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_lint_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "run_check_fix_loop",
     "metric": 59

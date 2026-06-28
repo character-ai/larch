@@ -15,6 +15,8 @@ from pathlib import Path
 import pytest
 
 from larch.implement import checks
+from larch.implement import checks_run_relevant as _crr
+from larch.implement import checks_lint_fix as _clf
 from larch.core import config
 from larch.core import proc
 from larch.outcomes import Outcome
@@ -842,7 +844,7 @@ def test_run_relevant_checks_precommit_missing_fails(
         _ = runner
         return name != "pre-commit"
 
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
     assert result.exit_code == 1
@@ -930,10 +932,10 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
     def fake_agent_lint(*_args: object, **_kwargs: object) -> int | None:
         calls["agent_lint"] += 1
 
-    monkeypatch.setattr(checks, "_run_logged", fake_run_logged)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_direct_targets", fake_direct_targets)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_run_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_direct_targets", fake_direct_targets)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
 
@@ -1046,7 +1048,7 @@ def test_run_relevant_checks_records_exception_timing(
     def fail_impl(*_args: object, **_kwargs: object) -> checks.ChecksResult:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(checks, "_run_relevant_checks_impl", fail_impl)
+    monkeypatch.setattr(_crr, "_run_relevant_checks_impl", fail_impl)
 
     with pytest.raises(RuntimeError, match="boom"):
         checks.run_relevant_checks(
@@ -1107,7 +1109,7 @@ def test_run_relevant_checks_timing_failure_is_non_fatal(
             warn=None,
         )
 
-    monkeypatch.setattr(checks, "_run_relevant_checks_impl", ok_impl)
+    monkeypatch.setattr(_crr, "_run_relevant_checks_impl", ok_impl)
     result = checks.run_relevant_checks(
         TimingFailRunner(),
         site="step6",
@@ -1210,7 +1212,7 @@ def test_run_lint_fix_skips_outer_timing_for_claude_outcome(
             coder_tool="claude",
         )
 
-    monkeypatch.setattr(checks, "_run_lint_fix_impl", claude_impl)
+    monkeypatch.setattr(_clf, "_run_lint_fix_impl", claude_impl)
 
     outcome = checks.run_lint_fix(
         runner,
@@ -1236,7 +1238,7 @@ def test_run_lint_fix_records_exception_timing(
     def fail_impl(*_args: object, **_kwargs: object) -> checks.FixOutcome:
         raise RuntimeError("boom")
 
-    monkeypatch.setattr(checks, "_run_lint_fix_impl", fail_impl)
+    monkeypatch.setattr(_clf, "_run_lint_fix_impl", fail_impl)
 
     with pytest.raises(RuntimeError, match="boom"):
         checks.run_lint_fix(
@@ -1294,9 +1296,9 @@ def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
         dispatch_calls.append("cursor")
         raise AssertionError("cursor must not run")
 
-    monkeypatch.setattr(checks, "_run_claude", fail_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     runner = StubRunner()
 
     outcome = checks.run_lint_fix(
@@ -1342,9 +1344,9 @@ def test_run_lint_fix_complexity_baseline_new_identity_fast_fail(
         dispatch_calls.append("cursor")
         raise AssertionError("cursor must not run")
 
-    monkeypatch.setattr(checks, "_run_claude", fail_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     runner = StubRunner()
 
     outcome = checks.run_lint_fix(
@@ -1382,7 +1384,7 @@ def test_run_lint_fix_complexity_baseline_plr0911_new_uses_normal_fixer(
         codex_calls.append("codex")
         return 1
 
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -1438,9 +1440,9 @@ def test_run_lint_fix_complexity_baseline_plr0911_new_with_metric_fast_fail(
         dispatch_calls.append("cursor")
         raise AssertionError("cursor must not run")
 
-    monkeypatch.setattr(checks, "_run_claude", fail_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     runner = StubRunner()
 
     outcome = checks.run_lint_fix(
@@ -1478,7 +1480,7 @@ def test_run_lint_fix_complexity_baseline_tool_error_uses_normal_fixer(
         codex_calls.append("codex")
         return 1
 
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -1571,7 +1573,7 @@ def test_run_lint_fix_missing_scripts_dir_no_longer_checks_deleted_launcher(
     def missing_scripts_dir() -> Path:
         return repo / "scripts"
 
-    monkeypatch.setattr(checks, "_plugin_scripts_dir", missing_scripts_dir)
+    monkeypatch.setattr(_crr, "plugin_scripts_dir", missing_scripts_dir)
     runner = StubRunner()
     outcome = checks.run_lint_fix(
         runner,
@@ -1590,7 +1592,7 @@ def test_run_lint_fix_missing_scripts_dir_no_longer_checks_deleted_launcher(
 def test_run_lint_fix_codex_argv_parity(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
-    agent_cli = checks._agent_cli()  # pyright: ignore[reportPrivateUsage]
+    agent_cli = _clf._agent_cli()  # pyright: ignore[reportPrivateUsage]
     log = tmp_path / "checks.log"
     _ = log.write_text("lint error\n", encoding="utf-8")
     head = "abc123"
@@ -1645,8 +1647,8 @@ def test_build_codex_argv_grants_only_run_dir_and_repo(tmp_path: Path) -> None:
     run_dir.mkdir(parents=True)
     prompt_file = run_dir / "prompt.md"
 
-    argv = checks._build_codex_argv(  # pyright: ignore[reportPrivateUsage]
-        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+    argv = _clf._build_codex_argv(  # pyright: ignore[reportPrivateUsage]
+        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         repo_root=str(repo),
         prompt_file=prompt_file,
@@ -1715,9 +1717,9 @@ def test_run_codex_ingests_token_record_on_success_and_failure(tmp_path: Path, m
 
     for launcher_exit in (0, 7):
         runner = TokenWritingRunner(launcher_exit=launcher_exit)
-        rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+        rc = _clf._run_codex(  # pyright: ignore[reportPrivateUsage]
             runner,
-            agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+            agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
             run_dir=run_dir,
             implement_tmpdir=implement_tmpdir,
             repo_root=str(repo),
@@ -1732,12 +1734,12 @@ def test_run_codex_ingests_token_record_on_success_and_failure(tmp_path: Path, m
         assert len(active_calls) == 1
         append_argv = list(append_calls[0][0])
         token_record = run_dir / "codex.log.token-record"
-        assert append_argv[:3] == ["python3", str(checks._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
+        assert append_argv[:3] == ["python3", str(_clf._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
         assert append_argv[1] != "python/cli.py"
         assert append_argv[append_argv.index("--input") + 1] == str(token_record)
         assert append_argv[append_argv.index("--tmpdir") + 1] == str(implement_tmpdir)
         active_argv = list(active_calls[0][0])
-        assert active_argv[:3] == ["python3", str(checks._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
+        assert active_argv[:3] == ["python3", str(_clf._agent_cli()), "token"]  # pyright: ignore[reportPrivateUsage]
         assert active_argv[active_argv.index("--input") + 1] == str(token_record)
         active_env = active_calls[0][1]["env"]
         assert isinstance(active_env, Mapping)
@@ -1757,9 +1759,9 @@ def test_run_codex_warns_on_append_failure_and_still_records_active_ledger(
     run_dir.mkdir(parents=True)
     runner = TokenWritingRunner(append_rc=13, append_stderr="append exploded")
 
-    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+    rc = _clf._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
@@ -1786,9 +1788,9 @@ def test_run_codex_warns_on_active_ledger_failure(
     run_dir.mkdir(parents=True)
     runner = TokenWritingRunner(active_rc=9, active_stderr="ledger denied")
 
-    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+    rc = _clf._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
@@ -1813,9 +1815,9 @@ def test_run_codex_preserves_active_ledger_stderr_warning(
     run_dir.mkdir(parents=True)
     runner = TokenWritingRunner(active_stderr="unsupported TOOL=unknown")
 
-    _ = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+    _ = _clf._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
@@ -1827,7 +1829,7 @@ def test_run_codex_preserves_active_ledger_stderr_warning(
 
 
 def test_codex_lint_fix_prompt_appendix_binds_site_and_verification() -> None:
-    appendix = checks._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
+    appendix = _clf._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
 
     assert "machine site `step5`" in appendix
     assert "checks run-relevant --site step5" in appendix
@@ -1848,9 +1850,9 @@ def test_run_codex_writes_shared_prompt_plus_codex_appendix(tmp_path: Path) -> N
     run_dir.mkdir(parents=True)
     runner = TokenWritingRunner()
 
-    rc = checks._run_codex(  # pyright: ignore[reportPrivateUsage]
+    rc = _clf._run_codex(  # pyright: ignore[reportPrivateUsage]
         runner,
-        agent_cli=checks._agent_cli(),  # pyright: ignore[reportPrivateUsage]
+        agent_cli=_clf._agent_cli(),  # pyright: ignore[reportPrivateUsage]
         run_dir=run_dir,
         implement_tmpdir=implement_tmpdir,
         repo_root=str(repo),
@@ -1860,7 +1862,7 @@ def test_run_codex_writes_shared_prompt_plus_codex_appendix(tmp_path: Path) -> N
 
     assert rc == 0
     prompt = (run_dir / "prompt.md").read_text(encoding="utf-8")
-    assert prompt == "shared prompt\n" + checks._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
+    assert prompt == "shared prompt\n" + _clf._codex_lint_fix_prompt_appendix("step5")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
@@ -1881,7 +1883,7 @@ def test_run_lint_fix_threads_session_root_as_codex_implement_tmpdir(
         captured["run_dir"] = kwargs["run_dir"]  # type: ignore[assignment]
         return 1
 
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -1927,7 +1929,7 @@ def test_run_lint_fix_derives_implement_tmpdir_from_run_parent_without_allowed_t
         captured["implement_tmpdir"] = kwargs["implement_tmpdir"]  # type: ignore[assignment]
         return 1
 
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -1969,7 +1971,7 @@ def test_run_lint_fix_dispatch_failure_ignores_health_classification(
     def classify_must_not_run(*_args: object, **_kwargs: object) -> None:
         raise AssertionError("dispatch failure classification must not select status")
 
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
     monkeypatch.setattr("larch.agents.agents.classify_launch_failure", classify_must_not_run)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
@@ -2198,7 +2200,7 @@ def test_run_lint_fix_plugin_json_touch_is_reverted(tmp_path: Path, monkeypatch:
     def succeed_claude(*_args: object, **_kwargs: object) -> int:
         return 0
 
-    monkeypatch.setattr(checks, "_run_claude", succeed_claude)
+    monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2275,9 +2277,9 @@ def test_run_lint_fix_cursor_argv_and_wrap_cwd(tmp_path: Path) -> None:
         call for call, _kw in runner.calls
         if "cursor" in call and "agent" in call
     )
-    idx = list(cursor_call).index(str(checks._agent_cli()))  # pyright: ignore[reportPrivateUsage]
+    idx = list(cursor_call).index(str(_clf._agent_cli()))  # pyright: ignore[reportPrivateUsage]
     argv = list(cursor_call)[idx:]
-    assert argv[:4] == [str(checks._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
+    assert argv[:4] == [str(_clf._agent_cli()), "agent", "run-external-agent", "--tool"]  # pyright: ignore[reportPrivateUsage]
     assert argv[4] == "cursor"
     assert "--timeout" in argv
     assert "300" in argv
@@ -2373,8 +2375,8 @@ def test_run_checks_phase_checks_site_and_fix_site_split(
             ledger_failure_detail_log=str(log),
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
-    monkeypatch.setattr(checks, "run_lint_fix", fake_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_fix)
     result = checks.run_checks_phase(
         StubRunner(),
         tmpdir=str(session),
@@ -2441,8 +2443,8 @@ def test_run_checks_phase_threads_target_cmd_display(
             raw_log_path=str(log),
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
     result = checks.run_checks_phase(
         StubRunner(),
         tmpdir=str(session),
@@ -2572,9 +2574,9 @@ def test_run_lint_fix_dispatches_claude_before_codex(
         dispatch_calls.append("cursor")
         return 1
 
-    monkeypatch.setattr(checks, "_run_claude", succeed_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     runner = StubRunner([
         _ok(""),  # baseline tracked diff
         _ok(""),  # baseline cached diff
@@ -2630,9 +2632,9 @@ def test_run_lint_fix_codex_fail_cursor_success(tmp_path: Path, monkeypatch: pyt
         dispatch_calls.append("cursor")
         return 0
 
-    monkeypatch.setattr(checks, "_run_claude", fail_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", succeed_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", succeed_cursor)
     def claude_on_path(name: str) -> str | None:
         return "/usr/bin/claude" if name == "claude" else None
 
@@ -2771,7 +2773,7 @@ def test_run_lint_fix_non_executable_deleted_launcher_is_ignored(
     _ = run_external.chmod(0o644)
     log = tmp_path / "checks.log"
     _ = log.write_text("failure\n", encoding="utf-8")
-    monkeypatch.setattr(checks, "_plugin_scripts_dir", lambda: scripts)
+    monkeypatch.setattr(_crr, "plugin_scripts_dir", lambda: scripts)
     outcome = checks.run_lint_fix(
         StubRunner(),
         site="step6",
@@ -2821,7 +2823,7 @@ def test_compose_prompt_redacts_checks_log_path(tmp_path: Path) -> None:
     cache.mkdir(parents=True)
     log = cache / "checks.log"
     _ = log.write_text("failure\n", encoding="utf-8")
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=(),
@@ -2835,7 +2837,7 @@ def test_compose_prompt_redacts_secrets(tmp_path: Path) -> None:
     log = tmp_path / "checks.log"
     secret = "ghp_" + "a" * 36
     _ = log.write_text(secret + "\n", encoding="utf-8")
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=(),
@@ -2848,7 +2850,7 @@ def test_compose_prompt_redacts_secrets(tmp_path: Path) -> None:
 def test_compose_prompt_includes_submodule_prohibition(tmp_path: Path) -> None:
     log = tmp_path / "checks.log"
     _ = log.write_text("failure\n", encoding="utf-8")
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=("vendor/lib",),
@@ -2865,7 +2867,7 @@ def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) ->
         "python/test_collect_results.py:42:9 - error: ... (reportPrivateUsage)\n",
         encoding="utf-8",
     )
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=(),
@@ -2891,7 +2893,7 @@ def test_compose_prompt_includes_pyright_type_ignore_guidance(tmp_path: Path) ->
 def test_compose_prompt_includes_plr0911_consolidation_guidance(tmp_path: Path) -> None:
     log = tmp_path / "checks.log"
     _ = log.write_text("larch/git/gh.py:42:5: PLR0911 Too many return statements\n", encoding="utf-8")
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=(),
@@ -2905,7 +2907,7 @@ def test_compose_prompt_includes_plr0911_consolidation_guidance(tmp_path: Path) 
 def test_compose_prompt_omits_codex_only_exec_prohibitions(tmp_path: Path) -> None:
     log = tmp_path / "checks.log"
     _ = log.write_text("failure\n", encoding="utf-8")
-    prompt = checks._compose_prompt(  # pyright: ignore[reportPrivateUsage]
+    prompt = _clf._compose_prompt(  # pyright: ignore[reportPrivateUsage]
         checks_log=log,
         site_label="Step 6",
         submodule_paths=(),
@@ -2918,9 +2920,9 @@ def test_compose_prompt_omits_codex_only_exec_prohibitions(tmp_path: Path) -> No
 
 def test_read_log_tail_truncation_uses_constant(tmp_path: Path) -> None:
     log = tmp_path / "large.log"
-    _ = log.write_bytes(b"a" * (checks._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
-    text = checks._read_log_tail(path=log, max_bytes=checks._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
-    assert text.startswith(f"[truncated to last {checks._PROMPT_TAIL_BYTES} bytes]\n")  # pyright: ignore[reportPrivateUsage]
+    _ = log.write_bytes(b"a" * (_clf._PROMPT_TAIL_BYTES + 1))  # pyright: ignore[reportPrivateUsage]
+    text = _clf._read_log_tail(path=log, max_bytes=_clf._PROMPT_TAIL_BYTES)  # pyright: ignore[reportPrivateUsage]
+    assert text.startswith(f"[truncated to last {_clf._PROMPT_TAIL_BYTES} bytes]\n")  # pyright: ignore[reportPrivateUsage]
 
 
 def test_read_log_text_bounded_uses_seek_not_full_read(
@@ -2928,13 +2930,13 @@ def test_read_log_text_bounded_uses_seek_not_full_read(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     log = tmp_path / "large.log"
-    _ = log.write_bytes(b"x" * (checks._PROMPT_TAIL_BYTES + 5000))  # pyright: ignore[reportPrivateUsage]
+    _ = log.write_bytes(b"x" * (_clf._PROMPT_TAIL_BYTES + 5000))  # pyright: ignore[reportPrivateUsage]
 
     def fail_read_bytes(_self: object, *_args: object, **_kwargs: object) -> bytes:
         raise AssertionError("read_bytes must not load entire log for tail reads")
 
     monkeypatch.setattr(Path, "read_bytes", fail_read_bytes)
-    text = checks._read_log_text_bounded(path=log, max_bytes=100)  # pyright: ignore[reportPrivateUsage]
+    text = _clf._read_log_text_bounded(path=log, max_bytes=100)  # pyright: ignore[reportPrivateUsage]
     assert text is not None
     assert text.startswith("[truncated to last 100 bytes]\n")
 
@@ -3099,8 +3101,8 @@ def test_run_checks_phase_dispatch_first_wiring(
             coder_tool="codex",
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
-    monkeypatch.setattr(checks, "run_lint_fix", fake_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_fix)
     result = checks.run_checks_phase(
         StubRunner(),
         tmpdir=str(session),
@@ -3222,8 +3224,8 @@ def test_presence_flag_reads_session_env(tmp_path: Path, monkeypatch: pytest.Mon
     (session / "session-env.sh").write_text("CODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=false\n", encoding="utf-8")
     monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
     monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
-    assert checks._binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=session, binary="codex") is True  # pyright: ignore[reportPrivateUsage]
-    assert checks._binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=session, binary="cursor") is False  # pyright: ignore[reportPrivateUsage]
+    assert _clf._binary_flag(name="CODEX_BINARY_FOUND", implement_tmpdir=session, binary="codex") is True  # pyright: ignore[reportPrivateUsage]
+    assert _clf._binary_flag(name="CURSOR_BINARY_FOUND", implement_tmpdir=session, binary="cursor") is False  # pyright: ignore[reportPrivateUsage]
 
 
 def test_checks_lint_fix_main_reads_presence_from_session_env(
@@ -3247,7 +3249,7 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
             coder_tool=None,
         )
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
     monkeypatch.delenv("CODEX_BINARY_FOUND", raising=False)
     monkeypatch.delenv("CURSOR_BINARY_FOUND", raising=False)
     rc = checks.checks_lint_fix_main([
@@ -3265,7 +3267,7 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
 
 
 def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ...]:
-    return checks._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+    return _crr._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
 
 
 def _direct_targets_with_toolchain(
@@ -3276,10 +3278,10 @@ def _direct_targets_with_toolchain(
     def available(*_args: object, **_kwargs: object) -> bool:
         return True
 
-    monkeypatch.setattr(checks, "_python311_available", available)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_pytest_available", available)  # pyright: ignore[reportPrivateUsage]
-    return checks._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_python311_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_pytest_available", available)  # pyright: ignore[reportPrivateUsage]
+    return _crr._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
@@ -3413,7 +3415,7 @@ def test_direct_targets_rule_targets_before_py_lint(
         _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
     runner = StubRunner()
-    targets = checks._direct_targets(runner=runner, changed=("python/larch/review/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+    targets = _crr._direct_targets(runner=runner, changed=("python/larch/review/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
     assert "test-review-and-fix" in targets
     assert "py-lint" in targets
     assert targets.index("test-review-and-fix") < targets.index("py-lint")
@@ -3432,12 +3434,12 @@ def _write_partition_guard(repo: Path, enforced: tuple[str, ...]) -> None:
 
 def test_enforced_partition_files_reads_guard_tuple(tmp_path: Path) -> None:
     _write_partition_guard(tmp_path, ("python/test_plan_review.py", "python/test_agents.py"))
-    enforced = checks._enforced_partition_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
+    enforced = _crr._enforced_partition_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
     assert enforced == frozenset({"python/test_plan_review.py", "python/test_agents.py"})
 
 
 def test_enforced_partition_files_missing_guard_is_empty(tmp_path: Path) -> None:
-    assert checks._enforced_partition_files(tmp_path) == frozenset()  # pyright: ignore[reportPrivateUsage]
+    assert _crr._enforced_partition_files(tmp_path) == frozenset()  # pyright: ignore[reportPrivateUsage]
 
 
 def test_direct_targets_enforced_test_file_adds_partition_guard(tmp_path: Path) -> None:
@@ -3459,7 +3461,7 @@ def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None
     target.write_text("x\n", encoding="utf-8")
     link = repo / "link.py"
     link.symlink_to(target)
-    assert checks._existing_regular_files(repo=repo, paths=("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
+    assert _crr._existing_regular_files(repo=repo, paths=("link.py",)) == ("link.py",)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_run_relevant_checks_deletion_only_runs_direct_targets(
@@ -3492,17 +3494,17 @@ def test_run_relevant_checks_deletion_only_runs_direct_targets(
     def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     def available(*, runner: object, name: str, **_kwargs: object) -> bool:
         _ = runner
         return name != "pre-commit"
 
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
     assert direct_changed == [("scripts/read-result-env.sh",)]
@@ -3538,17 +3540,17 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
     def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_logged", fake_logged)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     def available(*, runner: object, name: str, **_kwargs: object) -> bool:
         _ = runner
         return name != "pre-commit"
 
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
     assert make_calls == [["make", "test-read-result-env"]]
@@ -3578,16 +3580,16 @@ def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
     def fake_agent_lint(*_args: object, **_kwargs: object) -> None:
         return None
 
-    monkeypatch.setattr(checks, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(checks, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_changed_files", fake_changed_files)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_direct_targets", fake_direct)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_contains_pin_phase", fake_contains_pin_phase)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_run_agent_lint", fake_agent_lint)  # pyright: ignore[reportPrivateUsage]
 
     def available(*, runner: object, name: str, **_kwargs: object) -> bool:
         _ = runner
         return name != "pre-commit"
 
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
     assert result.exit_code == 2
@@ -3611,7 +3613,7 @@ def test_run_relevant_checks_no_changes_skips_precommit_requirement(
         _ = runner
         return name != "pre-commit"
 
-    monkeypatch.setattr(checks, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
 
@@ -3635,7 +3637,7 @@ def test_checks_run_relevant_main_success_envelope(
             warn=None,
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
     rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
     out = capsys.readouterr().out
     assert rc == 0
@@ -3665,7 +3667,7 @@ def test_checks_run_relevant_main_fail_envelope(
             failure_reason="checks-failed",
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
     rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
     out = capsys.readouterr().out
     assert rc == 1
@@ -3692,7 +3694,7 @@ def test_checks_run_relevant_main_allow_skip_envelope(
             warn=None,
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
     rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session), "--allow-skip"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -3719,7 +3721,7 @@ def test_checks_run_relevant_main_without_allow_skip_never_emits_skipped(
             failure_reason="checks-failed",
         )
 
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_checks)
+    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
     rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
     out = capsys.readouterr().out
     assert rc == 2
@@ -3755,7 +3757,7 @@ def test_checks_lint_fix_main_main_agent_required_envelope(
             stderr_tail_path=str(session / "lint-fix-loop" / "step3.x" / "codex.log"),
         )
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
     rc = checks.checks_lint_fix_main([
         "--tmpdir",
         str(session),
@@ -3793,7 +3795,7 @@ def test_checks_lint_fix_main_failed_envelope(
             coder_tool=None,
         )
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
     rc = checks.checks_lint_fix_main([
         "--tmpdir",
         str(session),
@@ -3868,8 +3870,8 @@ def test_checks_repair_loop_main_continue_after_applied_and_clean_recheck(
         calls.append(f"checks:{site}:{tmpdir}:{repo_root}")
         return _repair_loop_ok_result(site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -3924,8 +3926,8 @@ def test_checks_repair_loop_main_main_agent_edit_envelope(
     def fail_if_checks_run(*_args: object, **_kwargs: object) -> checks.ChecksResult:
         raise AssertionError("main-agent-required returns before re-check")
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fail_if_checks_run)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fail_if_checks_run)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -3984,8 +3986,8 @@ def test_checks_repair_loop_main_wires_lint_and_capture_sites(
         seen["capture_site"] = site
         return _repair_loop_ok_result(site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -4038,8 +4040,8 @@ def test_checks_repair_loop_main_stall_exit_is_parseable(
         _ = tmpdir, repo_root
         return _repair_loop_failed_result(fail_log, site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -4134,8 +4136,8 @@ def test_checks_repair_loop_main_reentry_keeps_checks_site_pair(
         capture_sites.append(site)
         return _repair_loop_ok_result(site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
     argv = [
         "--tmpdir",
         str(session),
@@ -4185,8 +4187,8 @@ def test_checks_repair_loop_main_emits_dispatching_breadcrumb_to_stdout(
         _ = tmpdir, repo_root
         return _repair_loop_ok_result(site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
     rc = checks.checks_repair_loop_main([
         "--tmpdir",
         str(session),
@@ -4223,7 +4225,7 @@ def test_emit_repair_loop_heartbeat_writes_periodic_lines_to_stdout(
                 return False
             return True
 
-    checks._emit_repair_loop_heartbeat(stop=_CountingStop(3), site="step3")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
+    _clf._emit_repair_loop_heartbeat(stop=_CountingStop(3), site="step3")  # pyright: ignore[reportPrivateUsage, reportArgumentType]
     captured = capsys.readouterr()
     assert captured.out.count("PROGRESS=lint-fix-running site=step3 elapsed=") == 3
     assert captured.err == ""
@@ -4244,7 +4246,7 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
     checks_log.write_text("err\n", encoding="utf-8")
 
     # Very short interval so the heartbeat fires quickly during the blocking fixer.
-    monkeypatch.setattr(checks, "_REPAIR_LOOP_HEARTBEAT_INTERVAL_S", 0.005)  # type: ignore[attr-defined]
+    monkeypatch.setattr(_clf, "_REPAIR_LOOP_HEARTBEAT_INTERVAL_S", 0.005)  # type: ignore[attr-defined]
 
     stop_captured: list[threading.Event] = []
     heartbeat_fired = threading.Event()
@@ -4262,7 +4264,7 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
             if fixer_active.is_set():
                 heartbeat_fired.set()
 
-    monkeypatch.setattr(checks, "_emit_repair_loop_heartbeat", tracking_heartbeat)
+    monkeypatch.setattr(_clf, "_emit_repair_loop_heartbeat", tracking_heartbeat)
 
     def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
         # Block until at least one heartbeat has fired, then complete.
@@ -4289,8 +4291,8 @@ def test_repair_loop_heartbeat_fires_during_blocking_lint_fix(
         _ = tmpdir, repo_root
         return _repair_loop_ok_result(site=site)
 
-    monkeypatch.setattr(checks, "run_lint_fix", fake_run_lint_fix)
-    monkeypatch.setattr(checks, "run_relevant_checks", fake_run_relevant_checks)
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
 
     rc = checks.checks_repair_loop_main([
         "--tmpdir", str(session),
@@ -4340,12 +4342,12 @@ def test_repair_loop_oserror_stops_heartbeat_and_emits_stall(
         stop_events.append(stop)
         stop.wait()
 
-    monkeypatch.setattr(checks, "_emit_repair_loop_heartbeat", recording_heartbeat)
+    monkeypatch.setattr(_clf, "_emit_repair_loop_heartbeat", recording_heartbeat)
 
     def oserror_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
         raise OSError("simulated disk error")
 
-    monkeypatch.setattr(checks, "run_lint_fix", oserror_lint_fix)
+    monkeypatch.setattr(_clf, "run_lint_fix", oserror_lint_fix)
 
     rc = checks.checks_repair_loop_main([
         "--tmpdir", str(session),
@@ -4378,7 +4380,7 @@ def test_run_lint_fix_claude_only_host_dispatches_claude(
         dispatch_calls.append("claude")
         return 0
 
-    monkeypatch.setattr(checks, "_run_claude", succeed_claude)
+    monkeypatch.setattr(_clf, "_run_claude", succeed_claude)
     def claude_on_path(name: str) -> str | None:
         return "/usr/bin/claude" if name == "claude" else None
 
@@ -4440,9 +4442,9 @@ def test_run_lint_fix_all_three_tiers_fail_main_agent_required(
         dispatch_calls.append("cursor")
         return 1
 
-    monkeypatch.setattr(checks, "_run_claude", fail_claude)
-    monkeypatch.setattr(checks, "_run_codex", fail_codex)
-    monkeypatch.setattr(checks, "_run_cursor", fail_cursor)
+    monkeypatch.setattr(_clf, "_run_claude", fail_claude)
+    monkeypatch.setattr(_clf, "_run_codex", fail_codex)
+    monkeypatch.setattr(_clf, "_run_cursor", fail_cursor)
     def all_tools_on_path(name: str) -> str:
         return f"/usr/bin/{name}"
 

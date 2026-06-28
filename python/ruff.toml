@@ -250,7 +250,15 @@ ignore = [
 "check_topology_rule_paths.py" = [
     "C901",
 ]
-"checks.py" = [
+"checks.py" = []
+"checks_run_relevant.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"checks_lint_fix.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
