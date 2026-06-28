@@ -1,0 +1,21 @@
+Reviewing the final-summary contract in the codebase against the plan.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/finalize-step5.md:78-94	Plan omits finalize-step5.md but SKILL.md:708 routes Step 5c abort handling through it; lines 78 and 94 still require following the `/design` marker-first callsite row and extracting summary from `<task-notification>` stdout.	After `_emit_final_summary_marked_from_disk` emits empty readiness markers only, abort-path orchestrators that load finalize-step5.md first still follow marker-body extraction instructions and can emit empty chat instead of reading the disk summary.	Add `### UPDATED: skills/design/references/finalize-step5.md` with the same Read-always readiness wording as Step 5c item 5 (parse `FINAL_SUMMARY_PATH` from completed task stdout, Read file, then sidecars).
+1	in_scope	important	risk-integration	scripts/test-render-cost-line-callsites.sh:105-127	Plan retargets `/design` emit sites in SKILL.md and final-summary-emit.md but does not list the lint harness that grep-pins those exact strings (`/design` marker-first`, marker-first callsite row`, anti-halt marker-first profile pointer).	Prior final-summary SKILL changes required retargeting this harness; `make test-harnesses-2` / `make test-render-cost-line-callsites` will fail on the proposed SKILL/shared-doc edits while the plan’s pytest-only command stays green.	Add `### UPDATED: scripts/test-render-cost-line-callsites.sh` (and matching `.md` if prose pins change) to retarget greps to the Read-always readiness profile, empty-marker contract, and preserved sidecar ordering.
+1	in_scope	important	correctness	skills/design/SKILL.md:207-216	Plan lists cancellation wording at :220 and Step 5c sites but not the Final summary block Parameters/wait lines that still say proceed to marker extraction or the Read fallback.	Those always-loaded lines contradict the new readiness contract and can keep orchestrators waiting to extract marker bodies from `<task-notification>` stdout after Python stops emitting bodies.	Extend the SKILL.md edit to replace :207-208 and :216 with parse-`FINAL_SUMMARY_PATH`-from-stdout-then-Read wording aligned with the new shared profile.
+
+## Inspected (current repo)
+
+**Python emit path:** `python/larch/design/design_lifecycle.py:1349-1361` reads the full summary from disk and writes it between `LARCH_FINAL_SUMMARY_BEGIN/END` on the contract stream; callers include cancellation at `:1422`, Step 5c success at `:4637-4638`, and publish-tail abort at `:4581-4582`. Step 5c also emits publish KVs including `FINAL_SUMMARY_PATH` at `:4616-4631`.
+
+**Shared contract (pre-change):** `skills/shared/final-summary-emit.md:29-38,44` defines marker-first extraction with Read fallback; `/implement` rows at `:45-46` are correctly left untouched by the plan.
+
+**Design orchestration (pre-change):** `skills/design/SKILL.md:29,207-220,708-710,720` still point at marker-first extraction; `:155` cancel-title-filter already uses file-only Read (unchanged).
+
+**Tests (pre-change):** `python/test_design_lifecycle.py` has broad Step 5c/cancellation/subprocess coverage (`:640-659`, `:2714-2741`, `:2952-3004`, `:3333-3480`, `:3483-3571`, `:3775-3791`); several assert full body in contract (e.g. `:3109` in rc1 stdout-fallback test). No large Gantt body-omission regression exists yet. Sidecar coverage at `:2691-2711`.
+
+**Harness gap:** `scripts/test-render-cost-line-callsites.sh:105-127` pins marker-first strings that the plan removes.
+
+## Assessment
+
+The plan’s core Python change (`_emit_final_summary_marked_from_disk` only), Read-always `/design` profile, Gantt regression test, and preservation of sidecars/`render_gantt` match the issue’s minimum-change goal. The three findings above are the gaps that would leave abort-path prose stale, break CI harnesses, or preserve contradictory Final summary block instructions.

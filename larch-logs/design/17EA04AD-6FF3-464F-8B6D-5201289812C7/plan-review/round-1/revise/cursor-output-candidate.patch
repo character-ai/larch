@@ -1,0 +1,166 @@
+## Plan
+
+## Approach
+
+Draft from direct repository inspection because `approach-synthesis.txt` is `NO_SKETCHES`.
+
+Keep the fix narrow:
+
+- Stop sending the full `final-summary.md` body through the contract stream.
+- Emit `FINAL_SUMMARY_PATH=<path>` plus an empty `LARCH_FINAL_SUMMARY_BEGIN/END` readiness marker when the summary file exists and is non-empty.
+- Update `/design` prompt guidance so chat display always parses `FINAL_SUMMARY_PATH` from completed task stdout and uses the Read tool on that path.
+- Treat readiness markers as empty signals only; never extract summary bodies from `<task-notification>` stdout.
+- Leave `render_gantt`, `render_phase_detail`, and GitHub summary publishing unchanged.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_lifecycle.py
+
+Change `_emit_final_summary_marked_from_disk` only.
+
+Implementation details:
+
+- Keep the existing file existence and non-empty guard.
+- Remove the `read_text()` call and body writes to the contract stream.
+- Emit `FINAL_SUMMARY_PATH` with `logging_util.emit_kv(key=config.ENV_FINAL_SUMMARY_PATH, value=str(summary_path))`.
+- Write only:
+
+```text
+LARCH_FINAL_SUMMARY_BEGIN
+LARCH_FINAL_SUMMARY_END
+```
+
+- Flush the contract stream as today.
+- Keep `design_tmpdir` unused unless lint requires a small adjustment.
+
+Expected behavior:
+
+- Step 5c still emits its normal publish rows.
+- Cancellation and final-summary wrapper paths now also expose the concrete summary path through the same helper.
+- Long Gantt bodies no longer traverse `<task-notification>` stdout.
+
+### UPDATED: skills/shared/final-summary-emit.md
+
+Update the `/design` contract from marker-body extraction to Read-always behavior.
+
+Minimum changes:
+
+- Add a `/design` Read-always readiness profile section.
+- Rename or replace the `/design` marker-first callsite row with a Read-always readiness row.
+- State that `LARCH_FINAL_SUMMARY_BEGIN/END` for `/design` is a readiness signal only.
+- State that the marker body is expected to be empty.
+- State that the orchestrator must parse `FINAL_SUMMARY_PATH=<path>` from the completed task-output source already in context, then use the Read tool on that path when non-empty, and emit the file body verbatim.
+- Do not extract or emit summary bodies from marker pairs on `/design` paths.
+- Preserve the existing constraints:
+  - do not use Bash or Python to print the body.
+  - do not paraphrase, collapse, wrap, or omit Gantt sections.
+  - emit sidecars from `REPORT_GATE_SIDECARS_FILE` after the body.
+- Keep `/implement` marker-first behavior unchanged.
+
+### UPDATED: skills/design/SKILL.md
+
+Make narrow wording updates at all `/design` final-summary callsites.
+
+Update these surfaces:
+
+- The anti-halt preamble near the top (~line 29): replace `marker-first profile and /design callsite row` with the `/design` Read-always readiness profile wording; keep `_publish_rc` carve-out, no-recap, no-collapse, and render-exit carve-out.
+- The Final summary block Parameters (~lines 207-208): replace `proceed to marker extraction or the Read fallback` with parse-`FINAL_SUMMARY_PATH`-from-completed-stdout-then-Read wording; readiness markers confirm emit only.
+- The Final summary block wait line (~line 216): replace `before extracting final-summary markers, using the file fallback` with wait-for-notification-then-parse-`FINAL_SUMMARY_PATH`-and-Read-disk-file wording.
+- The cancellation final-summary wording (~line 220) around the `design-step-final-summary.sh` source.
+- Step 5c driver abort contract (~line 708).
+- Step 5c item 5 (~line 710).
+- Step 5d recap guard (~lines 720-722) for consistency with Step 5c item 5.
+
+Required wording shift at each site:
+
+- Replace `follow the /design marker-first callsite row` with `follow the /design Read-always readiness profile` in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`.
+- Make clear that completed task output supplies `FINAL_SUMMARY_PATH`, not the full summary body.
+- Make clear that empty `LARCH_FINAL_SUMMARY_BEGIN/END` markers mean readiness only; the orchestrator must Read the disk file.
+- Keep the no-recap, no-collapse, no-`<details>`, and sidecar follow-on rules.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+This reference loads at Step 5 entry and on Step 5c abort/handoff paths; it must match the new contract.
+
+Minimum changes:
+
+- Step 5c `_publish_rc` abort contract (~lines 78, 94): replace marker-first callsite language with the `/design` Read-always readiness profile (parse `FINAL_SUMMARY_PATH` from completed `design-step5c.sh` `<task-notification>` stdout, confirm empty readiness markers, Read the disk file verbatim, then sidecars).
+- Step 5d warning replay and footer (~line 116): replace `shared marker-first profile` with Read-always readiness profile wording consistent with Step 5c item 5.
+- Preserve sidecar-before-stop ordering and abort ownership semantics.
+
+### UPDATED: scripts/test-render-cost-line-callsites.sh
+
+Update grep pins so harnesses enforce the new contract instead of marker-body extraction.
+
+Concrete updates:
+
+- Replace greps at ~lines 124-127 that require `follow the /design marker-first callsite row` with greps that require `follow the /design Read-always readiness profile` (or equivalent pinned substring) at cancellation, Step 5c abort, Step 5c item 5, and Step 5d back-reference sites.
+- Retain pins for `design-step-final-summary.sh`, `design-step5c.sh`, sidecar ordering, no-recap tokens, and render-exit carve-out.
+- Retire or replace any grep that implies marker-body extraction is the primary `/design` path.
+- If `Binding: markers` restatement greps (~line 135) no longer apply after SKILL.md edits, update them to match the new compact pointer wording or remove them with an explicit comment in the harness.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Mirror the callsite grep updates if this harness still pins `Binding: markers` or marker-first language (~line 409) that the SKILL.md edits remove.
+
+### UPDATED: python/test_design_lifecycle.py
+
+Update existing final-summary contract tests and add one regression test for the corrupted Gantt case.
+
+Concrete updates:
+
+- Change tests that assert contract output contains body text between `LARCH_FINAL_SUMMARY_BEGIN/END`.
+- Assert instead:
+  - `FINAL_SUMMARY_PATH=<expected path>` appears in contract output when the summary file is non-empty.
+  - `LARCH_FINAL_SUMMARY_BEGIN` and `LARCH_FINAL_SUMMARY_END` appear.
+  - summary body text does not appear in contract output.
+- Keep existing tests that assert no markers on missing, empty, or render-failure paths.
+- Update subprocess test expectations to match empty readiness markers plus `FINAL_SUMMARY_PATH`.
+- Add or extend a test with a large multi-line summary body containing Gantt-like rows.
+  - Verify the body is written on disk.
+  - Verify the contract output omits representative body rows.
+  - Verify the emitted path points at that disk file.
+
+## Edge cases
+
+- **Missing summary file:** keep current behavior. Emit no readiness markers and no summary path from the helper.
+- **Empty summary file:** keep current behavior. Emit no readiness markers and no summary path from the helper.
+- **No trailing newline:** no longer relevant to contract-stream body emission. Keep a test that ensures the disk body remains untouched.
+- **Step 5c publish rows:** if Step 5c already emits `FINAL_SUMMARY_PATH`, duplicate identical rows are acceptable only if existing KV consumers tolerate them. Prefer avoiding a duplicate in Step 5c only if inspection shows the helper call would create confusing repeated rows. Otherwise favor the smallest helper-only change.
+- **Sidecars:** preserve current `REPORT_GATE_SIDECARS_FILE` behavior. Sidecars are separate from the final-summary body.
+- **Stale orchestrator prose:** any callsite still directing marker-body extraction yields empty chat after Python stops emitting bodies; `finalize-step5.md`, SKILL.md Final summary block lines, and harness greps must all move together.
+
+## Failure modes
+
+- If the orchestrator prose still tries to extract a marker body, chat output will be empty. The shared profile, SKILL.md, `finalize-step5.md`, and harness updates must close this gap.
+- If `FINAL_SUMMARY_PATH` is omitted on cancellation paths, the summary may not display. Emitting the path inside `_emit_final_summary_marked_from_disk` covers those paths.
+- If tests only check markers, the Gantt corruption regression can return. Add a body-omission assertion for a large Gantt-like summary.
+- If harness greps still require marker-first language, CI will fail even when runtime behavior is correct.
+
+## Testing strategy
+
+Run focused tests only:
+
+```bash
+python3 -m pytest python/test_design_lifecycle.py -k "final_summary or step5c"
+```
+
+Run harness pins for the updated callsite contract:
+
+```bash
+bash scripts/test-render-cost-line-callsites.sh
+bash scripts/test-design-structure.sh
+```
+
+Also run lint for touched Python if available in the repo workflow:
+
+```bash
+make py-lint
+```
+
+If `make py-lint` is too broad for local time, run the narrow configured Python lint command documented for this repo against the touched Python files.
+
+diff_added: 110
+diff_deleted: 70
+mechanical_churn: false
+diff_lines: 180
