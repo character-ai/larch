@@ -66,68 +66,6 @@ Writer contract lives at `${CLAUDE_PLUGIN_ROOT}/python/session_env.py (session w
 
 **Completion sentinels for pause/resume.** Maintainer-only folded sentinel contract, tradeoff, helper-coverage, and host-table details live in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md`. Load that reference only when editing sentinel host mappings or debugging pause/resume sentinels. Normal `/design` orchestration does not load it.
 
-### Wrapper contract inventory
-
-The wrapper-only D3 surface uses these script contracts. Keep direct wrappers and internal helper wrappers referenced here so agent-lint can detect stale files:
-
-- `design-step-final-summary.sh` (launcher basename mapped to `python/cli.py design step-final-summary`)
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step-prelude.md`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan validator-autofix` (launcher-routed from retired `design-step-validator-autofix.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-clarify.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-clarify.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-clarify.md`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step2b-drafter` (launcher-routed from retired `design-step2b-drafter.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step2b-postplan` (launcher-routed from retired `design-step2b-postplan.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step2b5` (launcher-routed from retired `design-step2b5.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan validator-autofix` (launcher-routed from retired `design-step-validator-autofix.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-continuation-entry.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-preview.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-preview.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry-state.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-entry.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-entry.sh`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review panel-dispatch`
-- `${CLAUDE_PLUGIN_ROOT}/python/plan_review_panel.py`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-review.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-review.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-mav.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-mav.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-mav.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step3-mav.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-step3-review-cap.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3-gate-b-bypass.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35-settle.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step35-settle.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-entry.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step3b-tail.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-annotate.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-prepare.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5b-prepare.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/design-step5c.md`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.sh`
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-design-step5c.md`
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6` (Step 6 combined cleanup authority)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6-prelude` (Step 6 prelude authority)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step6-cleanup` (Step 6 cleanup authority)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design stage-terminal-state` (launcher-routed from retired `design-stage-terminal-state.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design failure-report` (launcher-routed from retired `design-failure-report.sh`)
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step-final-summary` (launcher-routed from retired `design-step-final-summary.sh`)
-
 ## Design Mindset
 
 Before invoking `/design`, the orchestrator should internalize these questions. They bias every subsequent choice: plan drafting, review-finding acceptance, and the thinking pattern this skill transfers along with its mechanical procedures.
