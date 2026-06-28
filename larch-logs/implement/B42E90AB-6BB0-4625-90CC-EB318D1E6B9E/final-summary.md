@@ -1,7 +1,7 @@
 ## /implement run B42E90AB-6BB0-4625-90CC-EB318D1E6B9E — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 00:49:54
 - **Cost**: 💰 TOTAL ~$14.82 — Claude $1.13, Codex-5.5 $8.58, Codex-mini $2.06, Cursor $3.05, Claude (subprocess) $0.00  |  Tokens: 38120k
 - **Issue**: #5641 — https://github.com/character-ai/larch/issues/5641
 - **Plan review**: N/A
@@ -63,3 +63,7 @@ codex/pragmatism-vote            │                                        █�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
