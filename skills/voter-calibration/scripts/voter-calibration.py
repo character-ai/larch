@@ -618,10 +618,10 @@ def _load_realized_outcomes_section(*, log_root: Path, repo_override: str, filed
         try:
             with tempfile.NamedTemporaryFile(prefix="voter-calibration-issues-", suffix=".json", delete=False) as handle:
                 dump_path = handle.name
-            rc = fetch_main(["--repo", repo, "--limit", "2000", "--output", dump_path])
-        except FileNotFoundError:
-            return _realized_outcomes_skip("gh_unavailable")
-        try:
+            try:
+                rc = fetch_main(["--repo", repo, "--limit", "2000", "--output", dump_path])
+            except FileNotFoundError:
+                return _realized_outcomes_skip("gh_unavailable")
             if rc != 0:
                 enrichment_degraded = "bulk_fetch_failed"
             else:
