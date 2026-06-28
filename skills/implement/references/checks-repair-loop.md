@@ -25,7 +25,7 @@ Bind and reuse the pinned site pair for every invocation in section 4, including
 - Step 3: `--site step3`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"`.
 - Step 5 self-review: `--site step5-self-review`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review`.
 - Step 5 MAV and coder-main-agent-required: `--site step5-mav --checks-site step5-review-fixes`. The folded composite launcher is `python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"`. Repair-loop follows the lint-fix site, not the capture site. **Never** omit `--checks-site` on re-entry. Defaulting would run internal re-checks under `step5-mav` instead of `step5-review-fixes`.
-- Step 6: `--site step6`. The folded composite launcher is `python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"`.
+- Step 6: `--site step6`. The initial orchestrator folded composite launcher is `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"` with the change gate active. All Step 6 post-repair re-entries, including `NEXT_ACTION=continue` and `NEXT_ACTION=main-agent-edit`, use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` so the checks leg always re-runs even when repair leaves the tree matching pre-review baselines. Step 6 repair re-entry must not use the bare `checks-commit-route` launcher and must not omit `--force-checks true`.
 
 ## 3. Parse stdout before branching on exit code
 
@@ -48,7 +48,7 @@ Exit-code contract:
 
 Use this site split as the sole normative rule.
 
-- Folded sites (Step 3, Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing.
+- Folded sites (Step 3, Step 5 self-review, Step 5 MAV/coder, Step 6): re-run the section 2-pinned composite launcher with identical argv before any success-path routing. For Step 6 only, identical argv means the post-repair re-entry launcher `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`, not the initial orchestrator argv without `--force-checks true`.
 
 ### `NEXT_ACTION=main-agent-edit`
 
@@ -74,11 +74,11 @@ fi
 
 After the pathspec refresh fence succeeds, rewrite `$IMPLEMENT_TMPDIR/implementation-commit-message.txt` with the redacted Step 4 commit message synthesized from the current plan/issue context (same contract as Step 2.4 in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md`).
 
-If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv.
+If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv. For Step 6 after main-agent repair edits, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` before any success-path routing or subsequent `checks repair-loop` invocation; do not reuse the initial orchestrator argv without `--force-checks true`.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
-Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` still means re-run the same composite launcher before success routing.
+Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` still means re-run the same composite launcher before success routing. On Step 6, both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`; never re-enter Step 6 repair via bare `checks-commit-route`.
 Preserve the structural `FAILURE_REASON` handling in section 1 on each re-entry.
 
 ### `NEXT_ACTION=stall`

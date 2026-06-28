@@ -156,8 +156,7 @@ for script in [
     'skills/implement/scripts/step-5-review.sh',
     'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"',
     'skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only',
-    'skills/implement/scripts/step-6-entry.sh',
-    'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"',
+    'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"',
     'python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR"',
     'python/cli.py ship pre-driver',
     'skills/implement/scripts/step-8-ship.sh',
@@ -259,7 +258,7 @@ for script, timeout in [
     (launcher + 'skills/implement/scripts/step-5-review.sh', 'timeout: 21600000'),
     (launcher + 'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement checks-step5-resume --checks-site step5-review-fixes', 'timeout: 32700000'),
-    (launcher + 'python/cli.py implement checks-commit-route --checks-site step6', 'timeout: 15600000'),
+    (launcher + 'skills/implement/scripts/step-6-entry.sh', 'timeout: 15600000'),
     (launcher + 'python/cli.py implement step-7a', 'timeout: 1800000'),
     (launcher + 'skills/implement/scripts/step-8-ship.sh', 'timeout: 21600000'),
 ]:
@@ -269,6 +268,7 @@ self_review_composite = launcher + 'python/cli.py implement checks-commit-route 
 require_near('skills/implement/references/self-review.md', self_review_composite, 'Immediate-background required', 'self-review immediate-background pin', 1400)
 require_near('skills/implement/references/self-review.md', self_review_composite, 'timeout: 14700000', 'self-review timeout pin', 1400)
 require_near(skill, launcher + 'skills/implement/scripts/step-5-review.sh', '<task-notification>', 'Step 5 review task notification wait', 1800)
+require_near(skill, launcher + 'skills/implement/scripts/step-6-entry.sh', '> **Continue after child returns.**', 'Step 6 unified launcher continuation opener', 2000)
 require_near(skill, launcher + 'skills/implement/scripts/step-8-ship.sh', '<task-notification>', 'Step 8 ship task notification wait', 2000)
 
 require(skill, 'PHASE=checks` and `PR_NUMBER` is empty/absent', 'SKILL pre-driver predicate checks phase and empty pr')
@@ -485,8 +485,11 @@ require(skill, 'BOOTSTRAP_NEXT=step2', 'SKILL step2 directive')
 require(skill, 'if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2`', 'SKILL fail-closed malformed BOOTSTRAP_NEXT')
 require(skill, 'branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r directive branch')
 require(skill, 'For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope.', 'SKILL Step 1.r directive branch')
-require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `checks-commit-route` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
-require('skills/implement/references/checks-repair-loop.md', 'python/cli.py implement checks-commit-route --checks-site step6 --commit-site step7 --emit-step7-breadcrumb --rebase-checkpoint-7r --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 composite launcher')
+require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `step-6-entry` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing', 'SKILL folded 7.r and 7a.r relays keep checkpoint macro routing')
+require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 initial composite launcher')
+require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true', 'checks-repair-loop Step 6 force-checks repair launcher')
+require('skills/implement/references/checks-repair-loop.md', 'both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`', 'checks-repair-loop Step 6 continue and main-agent force-checks')
+forbid(skill, 'python/cli.py implement checks-commit-route --checks-site step6', 'SKILL old Step 6 checks-commit-route launcher removed')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [
     'agent degraded-tools-gate', '--codex-present', '--cursor-present',
@@ -503,7 +506,7 @@ require('skills/implement/scripts/step-5-resume.sh', "printf '%s\\n' \"$commit_o
 forbid('skills/implement/scripts/step-5-resume.sh', 'porcelain="$(git status --porcelain)"', 'step-5-resume porcelain probe moved to commit-route')
 forbid('skills/implement/scripts/step-5-resume.sh', 'review-and-fix commit-fixes --stage-all || true', 'step-5-resume must not mask commit failure')
 require('skills/implement/scripts/step-5-resume.sh', 'review-and-fix step5', 'step-5-resume review loop resume')
-require(skill, 'After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record.', 'SKILL line-anchored composite NEXT_ACTION parse')
+require(skill, 'Parse `FILES_CHANGED`, `UNTRACKED_BASELINE`, `GIT_PROBE_FAILED`, and exactly one line-anchored composite `NEXT_ACTION=` record from the full composite capture.', 'SKILL line-anchored composite NEXT_ACTION parse')
 require(skill, 'Whitespace-token-scan only the first physical line for checks keys', 'SKILL composite checks parsing slice')
 require(checks_ref, 're-run the section 2-pinned composite launcher with identical argv before any success-path routing', 'checks repair-loop folded-site re-capture authority')
 require(skill, 'When stdout contains `STEP5_REVIEW_STATUS=`, route by the Step 5 status table only.', 'SKILL review-loop envelope branch')
@@ -511,7 +514,7 @@ require(skill, 'First, `NEXT_ACTION=stall` means durable stall state is already 
 require(skill, '`NEXT_ACTION=continue` without `STEP5_REVIEW_STATUS=` is not Step 6 continuation.', 'SKILL NEXT_ACTION continue without envelope is not Step 6')
 require(skill, 'missing, duplicated, malformed, or non-zero-without-`NEXT_ACTION` output is an invalid composite envelope', 'SKILL invalid composite envelope branch')
 require(skill, 'commit-phase success (`NEXT_ACTION=continue`, `COMMIT_ROUTE_OUTCOME=continue`, or `COMMIT_OUTCOME=ok|noop`) alone does not satisfy NEVER #4', 'SKILL commit-route success alone is not review authorization')
-require(skill, 'On composite `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 composite NEXT_ACTION stall branch')
+require(skill, 'On `NEXT_ACTION=stall`, skip to Step 18 (stall recovery runs before the final report; durable bail is already seeded by commit-route).', 'SKILL Step 7 composite NEXT_ACTION stall branch')
 require('skills/implement/references/self-review.md', 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18', 'self-review invalid envelope fail-closed')
 require(skill, 'set prompt-side `STALL_TRACKING=true` and `STALL_STEP=7` when durable seed is absent, and skip to Step 18', 'SKILL Step 7 invalid envelope fail-closed')
 require('python/larch/implement/implement_dispatch.py', 'COMMIT_ROUTE_OUTCOME', 'composite commit route child outcome')
