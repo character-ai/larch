@@ -1,14 +1,14 @@
 ## /implement run F6070E45-8961-4358-90A6-5F9316426C6D — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
+- **Duration**: 01:41:24
 - **Cost**: 💰 TOTAL ~$27.58 — Claude $4.91, Codex-5.5 $18.36, Codex-mini $2.02, Cursor $2.29, Claude (subprocess) $0.00  |  Tokens: 51043k
 - **Issue**: #5642 — https://github.com/character-ai/larch/issues/5642
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: 10/10 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/5723
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/F6070E45-8961-4358-90A6-5F9316426C6D/`
@@ -74,3 +74,7 @@ No reviewer timing tasks overlapped this round.
 7. codex/testing — 4
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
