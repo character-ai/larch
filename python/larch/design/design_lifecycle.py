@@ -3044,6 +3044,11 @@ def step1d7_main(argv: Sequence[str]) -> int:
     require_plugin_root(env.get("CLAUDE_PLUGIN_ROOT", ns.plugin_root))
     _derive_binary_found(env)
     design_tmpdir = _require_design_tmpdir(env=env)
+    if not _step1d5_brainstorm_requested(design_tmpdir):
+        completed = design_tmpdir / ".completed"
+        completed.mkdir(parents=True, exist_ok=True)
+        for name in ("step-1c", "step-1d", "step-1d.5"):
+            (completed / name).write_text("", encoding="utf-8")
     check_pause_and_exit(env=env, design_tmpdir=design_tmpdir)
     skip = False
     try:
