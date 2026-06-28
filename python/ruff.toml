@@ -739,7 +739,47 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
+"_raf_util.py" = [
+    "C901",
+    "F401",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"batch_report.py" = [
+    "C901",
+    "F401",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"coder_runner.py" = [
+    "C901",
+    "F401",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 "review_and_fix.py" = [
+    "C901",
+    "F401",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"round_runner.py" = [
+    "C901",
+    "F401",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"snapshot.py" = [
     "C901",
     "F401",
     "PLR0911",

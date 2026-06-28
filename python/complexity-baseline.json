@@ -5550,31 +5550,31 @@
     "metric": 21
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/batch_report.py",
     "code": "C901",
     "qualified_symbol": "_process_skipped_findings",
     "metric": 12
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/snapshot.py",
     "code": "C901",
     "qualified_symbol": "_remove_untracked_delta_paths",
     "metric": 11
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/round_runner.py",
     "code": "C901",
     "qualified_symbol": "_run_round",
     "metric": 39
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/snapshot.py",
     "code": "C901",
     "qualified_symbol": "_verify_post_cleanup_state",
     "metric": 15
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/coder_runner.py",
     "code": "C901",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 16
@@ -5598,13 +5598,13 @@
     "metric": 28
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/coder_runner.py",
     "code": "PLR0911",
     "qualified_symbol": "_run_coder_cursor",
     "metric": 7
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/coder_runner.py",
     "code": "PLR0911",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 12
@@ -5622,19 +5622,19 @@
     "metric": 20
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/round_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "_run_round",
     "metric": 41
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/snapshot.py",
     "code": "PLR0912",
     "qualified_symbol": "_verify_post_cleanup_state",
     "metric": 14
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/coder_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_findings_with_coder",
     "metric": 15
@@ -5658,13 +5658,13 @@
     "metric": 9
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/coder_runner.py",
     "code": "PLR0913",
     "qualified_symbol": "_record_coder_vendor_task",
     "metric": 9
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/round_runner.py",
     "code": "PLR0913",
     "qualified_symbol": "_surface_dropped_reviewer_warning",
     "metric": 7
@@ -5676,7 +5676,7 @@
     "metric": 54
   },
   {
-    "file": "larch/review/review_and_fix.py",
+    "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
     "metric": 163

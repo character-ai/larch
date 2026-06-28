@@ -192,7 +192,6 @@ def test_write_rejected_counts_and_copies(tmp_path, monkeypatch, capsys):
 
 
 def test_review_and_fix_source_uses_in_process_review_core():
-    from larch.review import round_runner
     raf_source = Path(review_and_fix.__file__).read_text(encoding="utf-8")
     rr_source = Path(round_runner.__file__).read_text(encoding="utf-8")
     assert '"review", "core"' not in raf_source
