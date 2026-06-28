@@ -1035,7 +1035,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/checks.py",
+    "file": "larch/implement/checks_run_relevant.py",
     "qualified_symbol": "checks_run_relevant_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",

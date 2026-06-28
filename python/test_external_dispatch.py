@@ -16,6 +16,7 @@ from larch.agents import agent_waterfall
 from larch.agents import agents
 from larch.state import bootstrap
 from larch.implement import checks
+from larch.implement import checks_lint_fix as _clf
 from larch.implement import ci_monitor
 from larch.design import decompose
 from larch.core import external_defaults
@@ -107,16 +108,16 @@ def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: p
         run_calls.append("cursor")
         return 0
 
-    monkeypatch.setattr(checks, "_agent_cli", lambda: agent_cli)
-    monkeypatch.setattr(checks, "_plugin_scripts_dir", lambda: tmp_path)
-    monkeypatch.setattr(checks, "_capture_tracked_paths", lambda *_args, **_kwargs: frozenset())
-    monkeypatch.setattr(checks, "_capture_untracked_paths", lambda *_args, **_kwargs: frozenset())
+    monkeypatch.setattr(_clf, "_agent_cli", lambda: agent_cli)
+    monkeypatch.setattr(_clf, "plugin_scripts_dir", lambda: tmp_path)
+    monkeypatch.setattr(_clf, "_capture_tracked_paths", lambda *_args, **_kwargs: frozenset())
+    monkeypatch.setattr(_clf, "_capture_untracked_paths", lambda *_args, **_kwargs: frozenset())
     monkeypatch.setattr(checks.git, "rev_parse", lambda *_args, **_kwargs: "HEAD")
     monkeypatch.setattr(checks.git, "current_branch", lambda *_args, **_kwargs: "feature")
-    monkeypatch.setattr(checks, "_submodule_paths", lambda *_args, **_kwargs: ())
+    monkeypatch.setattr(_clf, "_submodule_paths", lambda *_args, **_kwargs: ())
     monkeypatch.setattr(checks.coder_delta_guards, "coder_forbidden_paths", lambda *_args, **_kwargs: ())
-    monkeypatch.setattr(checks, "_run_cursor", fake_cursor)
-    monkeypatch.setattr(checks, "_post_dispatch_forbidden_revert", lambda *_args, **_kwargs: 0)
+    monkeypatch.setattr(_clf, "_run_cursor", fake_cursor)
+    monkeypatch.setattr(_clf, "_post_dispatch_forbidden_revert", lambda *_args, **_kwargs: 0)
 
     outcome = checks.run_lint_fix(
         runner,
