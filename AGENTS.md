@@ -56,7 +56,7 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 
 - Explicit output formats take precedence. Do not apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
 - Does not apply to code or code comments; match the surrounding style there.
-- Applies to new prose only. Do not rewrite or restyle existing text to conform. Every changed line needs to trace to the task at hand.
+- Applies to new prose only. Do not restyle existing text. Every changed line needs to trace to the task.
 - Precedence when rules conflict: explicit format contracts, then exact meaning, then these style rules.
 
 **Style rules.**
@@ -68,10 +68,10 @@ Plugin ships the entire repo. **Runtime surface**: `skills/`, `agents/`, `hooks/
 - Use small chunks with short headers when it helps (for example **Before:**, **After:**, **Why:**).
 - In chat answers, confirm or correct up front ("Right" / "Not quite"), then explain.
 - Stop early. Answer what was asked. Cut filler.
-- Avoid long preambles, walls of prose, and burying the answer at the bottom.
+- Avoid long preambles, walls of prose, and buried answers.
 - When unsure how short to go: go shorter.
 - Never use em dashes. Use periods, commas, colons, or semicolons instead.
-- Hedge uncertain claims ("may contain", "can fail"). Keep instructions imperative.
+- Hedge uncertain claims. Keep instructions imperative.
 - Strunk & White: use active voice; omit needless words; prefer concrete nouns and verbs.
 
 ## Conventions
