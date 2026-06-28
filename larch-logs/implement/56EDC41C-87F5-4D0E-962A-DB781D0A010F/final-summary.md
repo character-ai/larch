@@ -10,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, producer missing-or-invalid
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: code +8268/-7502, larch-logs +951/-0
+- **Lines (PR diff)**: code +8273/-7502, larch-logs +954/-0
 - **OOS filed**: 0
 - **Exec issues**: 11
 - **Warnings**: 2

@@ -188,4 +188,9 @@ OSError: [Errno 30] Read-only file system: '/implementation-commit-paths.nul.tmp
 === larch-quiet-sessionstart-health.sh-1256.log ===
 === larch-quiet-sessionstart-health.sh-89105.log ===
 === larch-quiet-ship.py-17784.log ===
+=== larch-quiet-ship.py-51678.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: CI fail after 4s -> evaluate_failure
 === larch-quiet-tracking-issue-read-14027.log ===
