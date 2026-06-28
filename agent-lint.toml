@@ -595,6 +595,7 @@ exclude = [
   # dead-script scanner does not resolve TSV registry entries, so the exemplar
   # generator is excluded explicitly.
   "python3 python/cli.py generate code-reviewer-agent",
+  "python3 python/cli.py generate conflict-resolution-code-reviewer",
   # These generators are invoked through the same scripts/generators.tsv
   # registry walker. agent-lint does not resolve TSV rows, so exclude them
   # alongside the exemplar generator above.

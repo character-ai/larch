@@ -1,9 +1,11 @@
 ---
 paths:
   - "skills/shared/reviewer-templates.md"
+  - "skills/shared/reviewer-templates-code-reviewer.md"
   - "agents/code-reviewer.md"
   - "agents/reviewer-*.md"
   - "python/rendering.py"
+  - "python/larch/rendering/rendering.py"
   - "scripts/generators.tsv"
 ---
 
@@ -17,6 +19,7 @@ triggers live there), then regenerate the affected agent file(s):
 - `python3 python/cli.py generate reviewer-plan-fidelity-agent` → `agents/reviewer-plan-fidelity.md`
 - `python3 python/cli.py generate reviewer-code-robustness-agent` → `agents/reviewer-code-robustness.md`
 - `python3 python/cli.py generate reviewer-security-structure-tests-agent` → `agents/reviewer-security-structure-tests.md`
+- `python3 python/cli.py generate conflict-resolution-code-reviewer` → `skills/shared/reviewer-templates-code-reviewer.md`
 
 CI's `agent-sync` job runs `python3 python/cli.py generate check` to enforce drift across all registered generators.
 

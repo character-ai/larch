@@ -48,6 +48,7 @@ FILE_LINE_REGEXES = {
 
 BACKTICKED_FOCUS_FILES = (
     "skills/shared/reviewer-templates.md",
+    "skills/shared/reviewer-templates-code-reviewer.md",
     "agents/code-reviewer.md",
     "agents/reviewer-structure.md",
     "agents/reviewer-correctness.md",

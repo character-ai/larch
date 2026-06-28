@@ -316,6 +316,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("generate", "reviewer-plan-fidelity-agent"): ("larch.rendering.rendering", "generate_reviewer_plan_fidelity_agent_main"),
     ("generate", "reviewer-code-robustness-agent"): ("larch.rendering.rendering", "generate_reviewer_code_robustness_agent_main"),
     ("generate", "reviewer-security-structure-tests-agent"): ("larch.rendering.rendering", "generate_reviewer_security_structure_tests_agent_main"),
+    ("generate", "conflict-resolution-code-reviewer"): ("larch.rendering.rendering", "generate_conflict_resolution_code_reviewer_main"),
     ("generate", "pre-rendered-reviewer-prompts"): ("larch.rendering.rendering", "generate_pre_rendered_reviewer_prompts_main"),
     ("generate", "codex-implementer"): ("larch.rendering.rendering", "generate_codex_implementer_main"),
     ("generate", "cursor-implementer"): ("larch.rendering.rendering", "generate_cursor_implementer_main"),
