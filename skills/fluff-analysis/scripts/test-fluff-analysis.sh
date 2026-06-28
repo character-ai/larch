@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC2129
 # test-fluff-analysis.sh - offline regression harness for fluff-analysis.py.
 #
 # Builds a synthetic larch-logs fixture, runs the analyzer against it, and
