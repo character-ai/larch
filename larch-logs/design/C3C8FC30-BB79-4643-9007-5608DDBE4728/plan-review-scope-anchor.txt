@@ -1,0 +1,34 @@
+## Problem
+
+The bugs that review could have prevented were, in the strongest cases, **already identified and filed as Out-of-Scope issues**. They shipped anyway because the deferred fix did not land before the defect bit. See analysis #5640: both clean PREVENTABLE bugs (#5386, #5610) traced to OOS-deferred findings, not to rejected ones.
+
+larch's review correctly defers real-but-non-blocking findings to OOS (the necessity gate in `skills/shared/review-acceptance-rubric.md` is working). The gap is downstream: OOS issues carrying correctness or regression risk are not triaged or prioritized differently from cosmetic OOS items, so latency between **defer** and **fix** is unbounded.
+
+## Proposed direction
+
+Add lightweight severity-aware triage to the OOS backlog so high-risk deferred findings get worked before they manifest as bugs:
+
+- Tag OOS issues filed with a **correctness / regression / security** signal with a priority label at filing time (the severity is already known at OOS-filing).
+- Surface those high-risk OOS issues distinctly in backlog reporting so they are picked up by `/design` ahead of cosmetic items.
+- Optionally define a soft SLA (for example, correctness-tagged OOS issues should be designed within N days) and report breaches.
+
+This is a process / backlog change, not a voting change. It does not touch acceptance thresholds.
+
+## Affected surfaces
+
+- `python/oos_filer.py` and the `oos-issues.ndjson` filing path (attach a priority signal from finding severity at file time)
+- `from-implement-oos` label flow; consider a `oos-correctness` / priority label
+- `.claude/skills/analyze-issues` (fate-adjusted OOS scoring already scans filed OOS evidence; extend to report high-risk OOS age / breach)
+- `/deps` and `/combine-issues` (backlog hygiene already exist; wire priority awareness)
+
+## Acceptance criteria
+
+- An OOS finding carrying correctness/regression/security severity is filed with a distinguishable priority marker.
+- Backlog reporting can list open high-risk OOS issues sorted by age.
+- No change to inline review acceptance or OOS-vs-accept routing.
+
+## Rationale
+
+From #5640: the real prevention failure for the strongest cases is OOS defer-to-fix latency, not over-rejection. Shortening that latency for correctness-bearing OOS items targets the actual mechanism that let these bugs ship.
+
+Refs #5640.

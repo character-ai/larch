@@ -1,0 +1,379 @@
+## Plan
+
+## Approach
+
+Add a shared high-risk OOS priority helper, then wire it into implement Step 9a.1 filing and design Step 5b annotate labeling.
+
+- Treat `focus-area: correctness` and `focus-area: regression` (and equivalent `Focus area` / `focus area` forms) as high-risk public OOS signals.
+- Reuse the existing label name `oos-correctness` for both correctness- and regression-tagged filed issues (label name unchanged; scope broadened).
+- Auto-create the label with `gh label create oos-correctness --force` before applying it.
+- Apply the label only to filed issue(s) whose accepted or post-cap combined OOS item carries a high-risk focus-area signal.
+- Mirror `file_oos._FOCUS_AREA_LINE_RE` / `oos._FOCUS_AREA_FIELD_RE` line normalization so indented rollup bodies (4-space embedded source blocks under cap) are detected.
+- OR priority across normalized-title duplicates before filing so a later duplicate cannot drop a retained block's high-risk flag.
+- Add a design label-only retry path when filing succeeded but labeling failed, without re-invoking `/larch:issue`.
+- Wire label-only retry through Step 5b lifecycle routing (`design_lifecycle.py`) so prepare status `label-only-retry` reaches annotate without `unknown-oos-status` repair stops.
+- **Persist label-retry state durably** beside the existing cross-session sentinel under `~/.cache/larch/design-oos-filed/` so a fresh `$DESIGN_TMPDIR` or post-cleanup `/design` rerun can finish labeling without re-filing.
+- **Do not complete Step 5b** on `annotate-label-failed`; keep annotate retryable in-session and across sessions.
+- **On implement mixed-batch priority-label failure**, persist sentinel and ndjson for successful non-priority URLs before returning non-zero.
+- **Scope label provisioning failures** to priority-tagged items only; never block non-priority filing.
+- **On implement idempotent rerun**, backfill missing `oos-correctness` labels from persisted sentinel evidence before the early return.
+- Keep security routing unchanged.
+- Do not change inline review acceptance, OOS-vs-accept routing, SLA reporting, `/deps`, or `/combine-issues`.
+- Do not label `risk-integration` or private security-routed OOS.
+
+## Files to modify/create
+
+### NEW: python/larch/issue/oos_priority.py
+
+Create a focused helper module for priority-OOS constants and pure parsing.
+
+Include:
+
+- `OOS_CORRECTNESS_LABEL = "oos-correctness"`.
+- Label color and description constants.
+- `HIGH_RISK_FOCUS_VALUES = frozenset({"correctness", "regression"})`.
+- `is_high_risk_oos_block(text: str) -> bool`.
+  - Scan line-by-line with normalization mirroring `file_oos._FOCUS_AREA_LINE_RE` / `oos._FOCUS_AREA_FIELD_RE`.
+  - Allow leading whitespace and list markers before the focus-area field.
+  - Accept bold or plain label names.
+  - Accept `focus-area`, `focus area`, `Focus area`.
+  - Accept `:` or `=`.
+  - Match value tokens case-insensitively against `HIGH_RISK_FOCUS_VALUES`.
+  - Do not match `risk-integration`, `security`, `security-hardening`, or prose-only mentions inside a description line (for example `- **Description**: focus-area = correctness`).
+- `issue_number_from_url(url: str) -> str`.
+- Small argv builders for:
+  - `gh label create oos-correctness --force ...`
+  - `gh issue edit <number> --add-label oos-correctness ...`
+
+Keep this module side-effect-free so callers can test command intent without live GitHub calls.
+
+### UPDATED: python/larch/issue/oos_filer.py
+
+Wire implement Step 9a.1 filing to `oos-correctness`, partial-failure persistence, scoped provisioning, and idempotent label backfill.
+
+Changes:
+
+- Extend `AcceptedBlock` with a boolean priority field, for example `oos_priority: bool = False`. Keep the dataclass `frozen=True`.
+- In `_working_batch()`:
+  - Compute `item_priority = oos_priority.is_high_risk_oos_block(item.body)` for each accepted block.
+  - When a normalized title is new, append the block with `oos_priority=item_priority`.
+  - When a normalized title duplicate is encountered, do **not** skip silently: locate the retained block with the same normalized title and replace it with `dataclasses.replace(retained, oos_priority=retained.oos_priority or item_priority)`, then continue without appending a second block. Do not use in-place `|=` mutation on frozen instances.
+- After Codex combine and `issue_cap`, derive `priority_by_item: dict[int, bool]` from the actual post-cap `oos-combined.md` blocks alongside `_stable_ids_by_combined_item`:
+  - For 1:1 combined indices, use the retained source block's `oos_priority` bit.
+  - For tail-aggregated rollup indices (fewer combined blocks than source blocks), mark priority if **any** mapped tail `stable_id` source block was priority-tagged **or** if `is_high_risk_oos_block()` matches anywhere in that combined block's text (covers indented embedded bodies).
+  - Prefer the stable-id map for rollup truth; keep direct text scan as a secondary guard for indented child lines.
+- **Scoped label provisioning** (Finding 5):
+  - Do **not** run a single pre-batch `gh label create` that aborts the whole batch on failure.
+  - Lazily provision `oos-correctness` immediately before the first priority-tagged create or label edit in the batch.
+  - On provision failure: record the tool failure, increment failures only for priority-tagged indices, and **continue** filing non-priority items without priority labels.
+- In `_run_issue_batch()`, for each item whose `priority_by_item` entry is true:
+  - Ensure label provisioning succeeded for this batch before create/edit; if provision already failed for this batch, skip create for that priority item and count a failure without touching non-priority work.
+  - Pass `--label oos-correctness` to `issue create-one` for newly created issues.
+  - After a URL is returned, also apply `gh issue edit <number> --add-label oos-correctness` so duplicate matches receive the label too.
+- On priority label application failure for one item:
+  - Append a tool failure to `execution-issues.md`.
+  - Fail closed only for the priority-tagged item(s) involved in the failure.
+  - Do **not** call `_cleanup_created_issues()` for already-successful non-priority items in the same batch.
+  - Run `_cleanup_created_issues()` only for priority-tagged creates in the current batch that lack a verified `oos-correctness` label when cleanup is still required for idempotency.
+  - Never delete or close duplicate target issues.
+- **Partial-batch persistence in `_file()`** (Finding 3):
+  - When `_run_issue_batch()` returns with `batch.failures > 0` but `batch.filed` contains successful non-priority URLs, **before** returning non-zero:
+    - Merge survivors with any `persisted` / `already` rows.
+    - Call `_write_sentinel()` and `_write_oos_ndjson()` for the survivor set.
+    - Return a status such as `priority_label_partial_failure` with `filed_count` reflecting survivors.
+  - Keep full-batch `_cleanup_created_issues()` only for pre-label create / add-blocked-by failures, not for post-create priority-label failures on mixed batches.
+- **Idempotent label backfill** (Finding 11):
+  - Add `_backfill_priority_labels_from_sentinel(*, tmpdir, repo, combined_path, persisted)` called from `_file()` on the early-return paths that reuse persisted sentinel evidence (`status="idempotent"` and `status="already_filed"` / empty-blocks with filed survivors).
+  - Before `_after_checkpoint(..., status="idempotent", ...)`, scan persisted sentinel URLs against post-cap `oos-combined.md` when present, else retained accepted-OOS bodies, using `is_high_risk_oos_block()`.
+  - Provision `oos-correctness` once, apply missing labels idempotently per high-risk URL.
+  - Fail closed (non-zero, no `step9a1` stamp) only when a high-risk URL still lacks the label after backfill; leave non-priority sentinel recovery unchanged.
+- Preserve existing stable ID, sentinel, blocker, cap, and idempotency behavior for non-priority paths.
+
+### UPDATED: python/larch/design/design_oos.py
+
+Add design Step 5b precision labeling after `/larch:issue` returns, label-only retry, and **durable cross-session retry state**.
+
+- Import `oos_priority`.
+- Add cross-session sidecar helpers alongside `_cross_session_cache_path()`:
+  - `_cross_session_priority_pending_path(issue_number) -> Path | None` → `~/.cache/larch/design-oos-filed/<issue>.priority-pending`
+  - `_cross_session_combined_path(issue_number) -> Path | None` → `~/.cache/larch/design-oos-filed/<issue>.combined.md`
+  - `_sync_label_retry_sidecars(*, design_tmpdir, issue_number, sentinel, combined_path, pending)` — atomic write of pending marker and post-cap `oos-combined.md` copy.
+  - `_restore_label_retry_sidecars(*, design_tmpdir, issue_number) -> bool` — copy durable combined into `$DESIGN_TMPDIR/oos-combined.md` and recreate in-session `.oos-priority-label-pending` when durable pending exists.
+  - Extend `_sync_cross_session_cache()` success path to remain sentinel-only on full annotate success.
+  - On `annotate-label-failed` or when writing `.oos-priority-label-pending`, call `_sync_label_retry_sidecars()` even though annotate did not complete.
+  - Extend `--clear-cross-session-cache` handling to delete durable pending and combined sidecars for that issue.
+- Add a small `_run_gh()` wrapper using `subprocess.run(..., capture_output=True, text=True, check=False)`.
+- Add helpers:
+  - `_priority_indices_from_combined(combined_path: Path) -> set[str]` using `is_high_risk_oos_block()` on each parsed combined item (including capped/rollup text).
+  - `_priority_indices_from_sentinel(sentinel_path: Path, combined_path: Path) -> dict[str, bool]` mapping filed URL to whether that row's combined item index is priority-tagged.
+  - `_ensure_oos_correctness_label() -> bool`
+  - `_apply_oos_correctness_label(url: str) -> bool`
+  - `_apply_priority_labels_only(*, design_tmpdir: Path, combined_path: Path, sentinel_path: Path) -> int` — provision label, apply missing labels from sentinel URLs, clear pending markers on full success, return 0/1.
+- Pending marker: write `$DESIGN_TMPDIR/.oos-priority-label-pending` when any priority-tagged URL lacks a successful label application; remove it only after all required labels succeed; mirror to durable sidecar via `_sync_label_retry_sidecars()`.
+- In `file_oos_prepare_main()`:
+  - **Before both `skip-sentinel` exits** (in-session sentinel at lines 226–228 and cross-session cache restore at 239–250):
+    - If in-session `.oos-priority-label-pending` exists, or durable `*.priority-pending` exists for this issue, or prior annotate env records `FILE_DESIGN_OOS_STATUS=annotate-label-failed`, emit `FILE_DESIGN_OOS_STATUS=label-only-retry`, `NEXT_ACTION=label-only`, `STEP5B_NEEDS_ANNOTATE=true`.
+    - Restore `oos-combined.md` from durable sidecar or in-session copy when needed for label-only annotate.
+    - Do not call `/larch:issue` on this branch.
+  - When `oos-issues-created.md` exists and is non-empty and label retry is not required, keep existing `skip-sentinel` behavior.
+  - Still skip re-file when sentinel exists and no pending label work remains.
+- In `file_oos_annotate_main()`:
+  - Add `--label-only` flag.
+  - Support label-only entry when `FILE_DESIGN_OOS_STATUS=label-only-retry` or when invoked with `--label-only` (tests may use the flag directly).
+  - **Label-only path must enter before the empty `oos-issue.stdout.txt` guard.** Empty or missing stdout is expected and must not emit `annotate-failed-empty-stdout`.
+  - Normal annotate path (post-`/larch:issue`):
+    - Read `oos-combined.md` if present (prefer capped post-prepare combined text when available).
+    - Compute priority-tagged item indices from the actual filed batch input.
+    - Provision the label before the first label application.
+    - For each successful URL or duplicate URL from `/larch:issue`, apply `oos-correctness` only when its item index is in that set.
+    - Write the complete `oos-issues-created.md` sentinel and existing `Filed URL` annotations as today.
+  - Label-only path:
+    - Do not invoke `/larch:issue` and do not rewrite filing annotations beyond existing sentinel content.
+    - Do not require `oos-design-filing-order.txt` or non-empty `oos-issue.stdout.txt`.
+    - Read URLs from `oos-issues-created.md`, map them to combined-item indices via restored `oos-combined.md`, apply missing `oos-correctness` labels idempotently.
+  - On label failure after filing:
+    - Preserve/write the complete `oos-issues-created.md` sentinel so issues are not re-filed.
+    - Write `.oos-priority-label-pending` and durable sidecars.
+    - Emit `FILE_DESIGN_OOS_STATUS=annotate-label-failed`.
+    - Return non-zero so Step 5b records the issue in `execution-issues.md`.
+  - On label-only retry success:
+    - Remove in-session and durable pending markers.
+    - Emit `FILE_DESIGN_OOS_STATUS=annotate-label-complete`.
+    - Return 0.
+
+### UPDATED: python/larch/design/design_lifecycle.py
+
+Wire Step 5b prepare/annotate routing for label-only retry and **block Step 5b completion on label failure**.
+
+- Extend `_step5b_next_action()`:
+  - Map `label-only-retry` to `label-only` (or treat `label-only` as a first-class routable action).
+  - Keep existing `ready` → `file-issues` and skip statuses → `skip-pipeline` mappings.
+- Extend `_step5b_emit_prepare_success()`:
+  - Accept upstream `NEXT_ACTION=label-only` when `FILE_DESIGN_OOS_STATUS=label-only-retry` without disagreement repair stop.
+  - Set `STEP5B_NEEDS_ANNOTATE=true` for `label-only-retry`.
+  - Do **not** write `.completed/step-5b` on prepare for label-only retry; annotate success owns completion.
+  - Add skip breadcrumb text for label-only retry, for example `⏩ 5b: oos filing — label-only retry (pending priority labels)`.
+- Extend `step5b_annotate_main()` (Finding 2):
+  - Read `oos-filing-prepare.env` / prepare stdout for `NEXT_ACTION=label-only` or `FILE_DESIGN_OOS_STATUS=label-only-retry`.
+  - Forward `--label-only` to `file_oos_annotate_main()` on that branch.
+  - Skip `_step5b_annotate_sequencing_error()` handling for label-only annotate; empty `oos-issue.stdout.txt` is valid.
+  - On non-zero annotate rc with `FILE_DESIGN_OOS_STATUS=annotate-label-failed`, or when `.oos-priority-label-pending` exists after annotate:
+    - Emit `STEP5B_STATUS=annotate-label-failed`.
+    - **Do not** call `_step5b_mark_complete()`.
+    - Leave `STEP5B_NEEDS_ANNOTATE=true` in prepare env semantics so a same-session label-only retry can run.
+    - Return non-zero so Step 5c does not publish with unlabeled high-risk OOS issues.
+  - On label-only annotate success, write `.completed/step-5b` as today.
+  - On other annotate failures (`ISSUES_FAILED>0`), keep existing partial-failure behavior unchanged.
+
+### UPDATED: python/larch/issue/analyze_issues.py
+
+Add a backlog section for high-risk OOS.
+
+- Add helpers such as:
+  - `is_open_high_risk_oos_issue(issue)`.
+  - `created_at_sort_key(issue)`.
+  - `render_high_risk_oos_backlog(issues, *, now=None, top_k=...)`.
+- Filter:
+  - state is open.
+  - title starts with `[OOS]` case-insensitively.
+  - labels include `oos-correctness` (covers correctness- and regression-tagged public OOS issues filed under this MVP).
+- Sort oldest first by `createdAt`.
+- Render `## High-risk OOS Backlog` before `## Fate-adjusted OOS Scoring`.
+- Include issue number, age in days, created date, title, and URL when present.
+- If none exist, print a short empty-state line.
+- Keep this report read-only.
+- Do not add SLA breach logic in this MVP.
+
+### UPDATED: python/test_oos.py
+
+Add pure parser coverage for `oos_priority.is_high_risk_oos_block()`.
+
+Cases:
+
+- Matches `- **Focus area**: correctness`.
+- Matches `focus-area = correctness`.
+- Matches case-insensitive `Correctness`.
+- Matches `- **Focus area**: regression`.
+- Matches `focus-area = regression` with leading whitespace / 4-space indent (rollup-style embedded line).
+- Does not match `risk-integration`.
+- Does not match `security` or `security-hardening`.
+- Does not match prose-only `- **Description**: focus-area = correctness`.
+
+### UPDATED: python/test_oos_filer.py
+
+Add implement filing coverage.
+
+- A correctness OOS item provisions `oos-correctness` before filing.
+- A regression OOS item also provisions and applies `oos-correctness`.
+- The matching `issue create-one` call includes `--label oos-correctness`.
+- A duplicate URL also receives `gh issue edit <number> --add-label oos-correctness`.
+- A non-high-risk OOS item does not provision or apply the label.
+- Normalized-title dedup: later regression-tagged duplicate ORs priority into the retained earlier block via `dataclasses.replace` and the filed issue is labeled.
+- Cap rollup (`OOS_ISSUES_PER_RUN_CAP=1` style): aggregate combined item with an indented embedded `- **Focus area**: correctness` line is labeled.
+- Label-application failure returns non-zero and records a tool failure.
+- Mixed batch: label failure on one high-risk item after a successful non-high-risk create does **not** delete the non-high-risk issue.
+- **Mixed batch partial persistence** (Finding 3): sentinel and ndjson contain the successful non-priority URL when only the high-risk row fails labeling.
+- **Provision failure scoping** (Finding 5): when `gh label create` fails, non-priority items still file without labels; only priority indices fail.
+- **Idempotent backfill** (Finding 11): on rerun with empty blocks and persisted sentinel, missing `oos-correctness` labels are applied without re-filing; non-priority sentinel recovery unchanged.
+
+Extend `FakeCli` or monkeypatch the new GitHub runner seam rather than invoking real `gh`.
+
+### UPDATED: python/test_design_oos.py
+
+Add design annotate, label-only retry, and cross-session durability coverage.
+
+- Given `oos-combined.md` with one correctness item and one non-high-risk item, only the correctness issue URL receives `gh issue edit --add-label oos-correctness`.
+- A regression item is labeled the same way.
+- Label provisioning runs before the first edit.
+- Duplicate URLs are labelable.
+- Label failure writes/preserves the normal filed sentinel, writes `.oos-priority-label-pending`, syncs durable sidecars, and returns non-zero with `annotate-label-failed`.
+- When sentinel exists and pending marker is present, `prepare` emits `label-only-retry` / `NEXT_ACTION=label-only` instead of `skip-sentinel`.
+- **Cross-session durability** (Finding 1): after simulate Step 6 cleanup (fresh `design_tmpdir`), durable pending + combined sidecars cause `prepare` to emit `label-only-retry`, restore `oos-combined.md`, and label-only annotate completes without `/larch:issue`.
+- Label-only annotate applies missing labels without calling `/larch:issue`, without requiring `oos-issue.stdout.txt`, clears pending markers on success, and returns 0.
+- `step5b_prepare_main` integration: `label-only-retry` maps to `NEXT_ACTION=label-only`, sets `STEP5B_NEEDS_ANNOTATE=true`, and does not mark `.completed/step-5b`.
+- `step5b_annotate_main` forwards `--label-only` on label-only retry.
+- **`annotate-label-failed` does not complete Step 5b** (Finding 2): `.completed/step-5b` stays absent after label failure; success path still writes it.
+- Existing partial-failure behavior for `ISSUES_FAILED>0` remains unchanged.
+
+### UPDATED: python/test_analyze_issues.py
+
+Add report coverage.
+
+- Open `[OOS]` issues with `oos-correctness` labels appear in `## High-risk OOS Backlog`.
+- Rows are sorted oldest first.
+- Closed issues are excluded.
+- Open non-`[OOS]` issues with the label are excluded.
+- Open `[OOS]` issues without the label are excluded.
+- Empty state renders when no matching issues exist.
+
+Use fixed `createdAt` values and, if age is asserted, pass a fixed `now` into the helper.
+
+### UPDATED: .claude/skills/analyze-issues/SKILL.md
+
+Document the new report section.
+
+Add a short note under the existing fate-adjusted OOS section or as a new subsection:
+
+- `/analyze-issues` now includes `## High-risk OOS Backlog`.
+- It lists open `[OOS]` issues carrying `oos-correctness` (correctness- and regression-tagged deferrals filed by this MVP), sorted oldest first.
+- It is diagnostic and does not mutate issues.
+
+### UPDATED: skills/design/SKILL.md
+
+Extend Step 5b routing skeleton for label-only retry.
+
+Add a third `NEXT_ACTION` branch alongside `skip-pipeline` and `file-issues`:
+
+- **`label-only`**: do not call `/larch:issue`; invoke `design-step5b-annotate.sh` with label-only semantics per `finalize-step5.md` (no `oos-issue.stdout.txt` requirement).
+- Treat `unknown-oos-status` repair stop as before when `label-only-retry` is not mapped.
+- Step 5c must not run until label-only annotate succeeds when `annotate-label-failed` or durable pending state remains.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+Extend the Step 5b annotate contract, skip-pipeline handling, and completion rules.
+
+Add:
+
+- After `/larch:issue` succeeds, `design file-oos-annotate` applies `oos-correctness` only to filed design OOS items whose filed batch item carries `focus-area: correctness` or `focus-area: regression`.
+- Label application failure is reported through the annotate failure path, writes `.oos-priority-label-pending`, syncs durable sidecars under `~/.cache/larch/design-oos-filed/`, and must not cause re-filing when `oos-issues-created.md` exists.
+- **`annotate-label-failed` is not Step 5b success**: do not write `.completed/step-5b`; block Step 5c until label-only annotate succeeds or the operator repairs.
+- When `FILE_DESIGN_OOS_STATUS=label-only-retry` / `NEXT_ACTION=label-only`, run `design-step5b-annotate.sh` in label-only mode: provision and apply missing `oos-correctness` labels from the existing sentinel plus restored `oos-combined.md` without calling `/larch:issue`.
+- **Label-only carve-out:** when `NEXT_ACTION=label-only` or annotate receives `--label-only`, call `design-step5b-annotate.sh` even when `oos-issue.stdout.txt` is absent or empty. Do not treat empty stdout as a sequencing error on this branch.
+- Cross-session prepare must consult durable pending/combined sidecars before `skip-sentinel` when in-session pending is absent.
+- Wire this branch through prepare when label retry is required instead of a full skip.
+
+### UPDATED: skills/design/references/oos-step5b-dispatch.md
+
+Add `label-only` to the valid action table:
+
+| Action | Dispatch |
+|---|---|
+| `label-only` | Do not call `/larch:issue`. Run annotate in label-only mode per `finalize-step5.md`; `oos-issue.stdout.txt` not required. |
+
+Document that `label-only-retry` prepare status must map to `NEXT_ACTION=label-only` inside the prepare wrapper.
+
+### UPDATED: skills/design/scripts/design-step5b-prepare.md
+
+Document prepare outputs for label-only retry:
+
+- `FILE_DESIGN_OOS_STATUS=label-only-retry`
+- `NEXT_ACTION=label-only`
+- `STEP5B_NEEDS_ANNOTATE=true`
+- No `.completed/step-5b` write on prepare success for this status.
+- Durable pending/combined sidecars under `~/.cache/larch/design-oos-filed/` trigger this branch after tmpdir cleanup.
+
+### UPDATED: skills/design/scripts/design-step5b-annotate.md
+
+Document annotate completion rules:
+
+- `annotate-label-failed` returns non-zero, does not write `.completed/step-5b`, and leaves label-only retry available.
+- Label-only mode skips empty-stdout sequencing errors.
+- Full annotate success and label-only retry success write `.completed/step-5b`.
+
+### UPDATED: skills/implement/references/oos-pipeline.md
+
+Add process notes:
+
+- Implement Step 9a.1 labels filed accepted-OOS issues with `oos-correctness` when the accepted OOS block has `focus-area: correctness` or `focus-area: regression`.
+- Rollup/cap aggregates inherit priority when any embedded source block was high-risk.
+- Priority label failure fails only the affected high-risk item(s); successful non-priority issues in the same batch remain filed and their sentinel/ndjson evidence is written before non-zero return.
+- Label provisioning failure blocks only priority-tagged items, not the whole batch.
+- On idempotent Step 9a.1 rerun with persisted sentinel evidence, missing priority labels are backfilled before the early return.
+- Security-routed OOS remains private and is not affected.
+
+## Edge cases
+
+- **Duplicate filing result**: apply `oos-correctness` to the duplicate target issue too.
+- **Normalized-title dedup**: OR high-risk priority from skipped same-title duplicates into the retained block via `dataclasses.replace` before combine/cap.
+- **Cap or rollup**: label the filed rollup issue when any embedded source body was high-risk or indented focus-area lines match inside the aggregate block.
+- **Missing label**: auto-create it before filing or before post-file edit.
+- **Missing repo in implement path**: use the same repo resolution already available in Step 9a.1. If unavailable, fail the priority label operation rather than silently filing an unmarked high-risk OOS issue.
+- **Design retry after label failure**: preserve `oos-issues-created.md`, in-session pending marker, and durable sidecars; a subsequent `/design` run (even with fresh `$DESIGN_TMPDIR`) uses label-only retry to finish labeling without re-filing.
+- **Design retry after label success**: `prepare` keeps `skip-sentinel` behavior when pending markers are absent.
+- **Label-only annotate**: empty `oos-issue.stdout.txt` is expected; lifecycle must not treat it as sequencing error.
+- **Mixed-batch label failure**: non-priority filed issues survive with sentinel/ndjson written; only failing priority creates are eligible for cleanup.
+- **Label provision failure mid-batch**: non-priority items continue; only priority indices are skipped/failed.
+- **Implement idempotent rerun**: backfill missing labels from sentinel + combined/accepted bodies before returning `status="idempotent"`.
+- **Security OOS**: keep excluded from public filing. Do not label private security sidecar items.
+- **risk-integration OOS**: out of scope for this MVP; no priority label.
+- **`--clear-cross-session-cache`**: delete sentinel plus durable pending and combined sidecars for that issue.
+
+## Failure modes
+
+- **`gh label create --force` fails**: fail only priority-tagged OOS in the batch; record the command output; continue non-priority filing; do not roll back unrelated non-priority filings.
+- **`gh issue edit --add-label` fails**: fail after recording filed URLs for the affected priority item(s). On design, write pending marker and durable sidecars for label-only retry; do not complete Step 5b. On implement, write partial sentinel/ndjson for successful non-priority URLs, then return non-zero; clean up only priority-tagged creates that lack verified labels.
+- **Step 5b routing mismatch**: if `label-only-retry` is not mapped to routable `NEXT_ACTION`, prepare stops for repair; add lifecycle tests to prevent regression.
+- **Step 5b premature completion**: if `annotate-label-failed` writes `.completed/step-5b`, Step 5c can publish with unlabeled high-risk OOS; lifecycle must treat label failure as incomplete Step 5b.
+- **Cross-session state loss**: if only the sentinel is cached without pending/combined sidecars, a fresh session can skip labeling forever; sidecar sync on label failure is mandatory.
+- **Analyze issue dump lacks labels**: render an empty high-risk section rather than guessing from issue bodies.
+- **Analyze issue dump lacks `createdAt`**: sort those rows last and print `unknown` for date or age.
+
+## Testing strategy
+
+Run targeted tests only:
+
+```bash
+python3 -m pytest python/test_oos.py python/test_oos_filer.py python/test_design_oos.py python/test_analyze_issues.py
+```
+
+Then run focused lint for changed Python files:
+
+```bash
+make py-lint FILES="python/larch/issue/oos_priority.py python/larch/issue/oos_filer.py python/larch/design/design_oos.py python/larch/design/design_lifecycle.py python/larch/issue/analyze_issues.py python/test_oos.py python/test_oos_filer.py python/test_design_oos.py python/test_analyze_issues.py"
+```
+
+If the repository uses a different per-file lint target, use the closest existing Python lint command from `docs/linting.md`.
+
+## Non-goals
+
+- Do not change review acceptance thresholds.
+- Do not change OOS acceptance criteria.
+- Do not add SLA breach reporting.
+- Do not wire `/deps` or `/combine-issues` priority behavior in this MVP.
+- Do not label `risk-integration`.
+- Do not label security-routed OOS.
+
+diff_added: 920
+diff_deleted: 55
+mechanical_churn: false
+diff_lines: 975
