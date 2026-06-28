@@ -47,13 +47,6 @@ case "$THRESHOLD" in ''|*[!0-9]*) THRESHOLD=5 ;; esac
 now=$(date +%s 2>/dev/null) || exit 0
 case "$now" in ''|*[!0-9]*) exit 0 ;; esac
 
-# Per-session marker scoping (mirrors hook-bg-poll-guard.sh HOOK_CLAUDE_PID resolution).
-HOOK_CLAUDE_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-_input_pid=$(printf '%s' "$INPUT" | jq -r '.claude_pid // .parent_pid // ""' 2>/dev/null) || _input_pid=""
-if [ -n "$_input_pid" ] && [ "$_input_pid" != "null" ]; then
-  HOOK_CLAUDE_PID="$_input_pid"
-fi
-
 canonical_dir() {
   [ -n "$1" ] || return 1
   [ -d "$1" ] || return 1
@@ -122,7 +115,7 @@ reset_no_progress_state() {
 # Sets LIVE_MARKER_DIR on success. Returns 0 when live, non-zero when not live.
 LIVE_MARKER_DIR=""
 is_marker_live() {
-  local marker="$1" dir pid start timeout age limit grace stored_pid hook_pid step
+  local marker="$1" dir pid start timeout age limit grace step
   LIVE_MARKER_DIR=""
   if [ ! -f "$marker" ]; then
     dir=$(dirname "$marker") || return 1
@@ -133,12 +126,10 @@ is_marker_live() {
   [ ! -L "$marker" ] || return 1
   dir=$(dirname "$marker") || return 1
   dir=$(canonical_dir "$dir" 2>/dev/null) || return 1
-  # Per-session scoping: skip markers belonging to other Claude PIDs.
-  stored_pid=$(marker_value "$marker" CLAUDE_PID 2>/dev/null) || stored_pid=""
-  hook_pid="${HOOK_CLAUDE_PID:-}"
-  if [ -n "$stored_pid" ] && [ -n "$hook_pid" ] && [ "$stored_pid" != "$hook_pid" ]; then
-    return 1
-  fi
+  # #5684: liveness is NOT scoped by CLAUDE_PID. In production the hook's PPID and input
+  # never match the marker's stored CLAUDE_PID, so the old equality check skipped every
+  # marker and this circuit breaker never armed. Session isolation comes from the
+  # per-session tmpdir plus the kill -0 PID-liveness and age checks below.
   # Release guard when the step's terminal sentinel is already written.
   step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
   if is_step_completed "$dir" "$step"; then

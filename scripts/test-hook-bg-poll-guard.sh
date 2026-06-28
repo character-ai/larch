@@ -358,10 +358,14 @@ assert_allow "$out" 'plan-review substring outside live tmpdir allows'
 out=$(run_payload "$(payload_bash "awk '{print}' \"\$DESIGN_TMPDIR/plan-review/round-1/foo-output.txt\"")")
 assert_deny "$out" 'live marker plus awk against DESIGN_TMPDIR output denies'
 
-write_marker $$ "$(date +%s)"
+# #5684: production-divergence regression. In production the hook's PPID/input never
+# match the marker's stored CLAUDE_PID and LARCH_BG_POLL_GUARD_SESSION_PID is unset, so
+# the old CLAUDE_PID equality check rejected every marker and the guard never fired. A
+# live marker (alive PID, within age) must now deny regardless of the stored CLAUDE_PID,
+# with no session-PID env set — exactly the real hook environment.
 printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(date +%s)" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER"
-out=$(LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_allow "$out" 'foreign-session marker does not deny current session'
+out=$(printf '%s' "$(payload_bash "$design_tmpdir_ls")" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
+assert_deny "$out" 'live marker denies regardless of stored CLAUDE_PID without session-PID env (#5684)'
 write_marker $$ "$(date +%s)"
 printf '0\n' >"$D/bg-poll-guard-denials.count"
 chmod 444 "$D/bg-poll-guard-denials.count" 2>/dev/null || true

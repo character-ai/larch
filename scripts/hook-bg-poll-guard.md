@@ -11,6 +11,7 @@ PreToolUse guard that blocks progress-observation probes (and Monitor / TaskOutp
 ## Invariants
 
 - Fails open on malformed hook input, missing `jq`, unreadable or malformed markers, telemetry write failure, and unexpected runtime errors.
+- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` (or the allowed `${TMPDIR}` design/larch parents) plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production because the hook's `PPID`/input never matched the stored value, so no probe was ever denied. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
 - Denies Monitor and TaskOutput tool calls unconditionally while any bg-wait marker is live (design or implement). This is the primary defense against the BC8DDA64 Monitor-arming amplifier.
 - Denies progress-observation probes aimed at the live tmpdir (design or implement), task output files, result env files, reviewer output files, or `plan-review` artifacts.
 - Allows wrapper-routed calls through `design-run-*.sh` so `/design` can launch or resume the background work.

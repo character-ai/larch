@@ -217,6 +217,21 @@ else
 fi
 rm -f "$MARKER"
 
+# --- T14: #5684 production-divergence — foreign CLAUDE_PID, no session-PID env → still live, counter increments ---
+# In production the hook's PPID/input never match the marker's stored CLAUDE_PID and
+# LARCH_BG_POLL_GUARD_SESSION_PID is unset, so the old equality check skipped every marker
+# and the breaker never armed. A live marker must now count regardless of stored CLAUDE_PID.
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=implement-step3-checks" "TIMEOUT_S=21600" >"$MARKER"
+out=$(printf '%s' "$(stop_event)" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
+cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T14: foreign CLAUDE_PID without session-PID env → marker live, counter increments (#5684)"
+else
+  fail "T14: expected count=1 for foreign-CLAUDE_PID live marker: out='$out' cnt=$cnt"
+fi
+rm -f "$MARKER"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
