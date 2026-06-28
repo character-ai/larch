@@ -637,9 +637,10 @@ def test_failure_report_core_sentinel_and_cancellation_paths(tmp_path: Path) -> 
     assert (tmp_path / "design-failure-operator-action-chat.md").is_file()
 
 
-def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step_final_summary_core_emits_readiness_and_cleans_bg_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
-    (tmp_path / "final-summary.md").write_text("summary without newline", encoding="utf-8")
+    summary = tmp_path / "final-summary.md"
+    summary.write_text("summary without newline", encoding="utf-8")
 
     def fake_render(argv: list[str]) -> int:
         assert "--post-publish-only" in argv
@@ -655,9 +656,82 @@ def test_step_final_summary_core_emits_markers_and_cleans_bg_marker(tmp_path: Pa
         monkeypatch,
     )
     assert rc == 0
+    assert f"FINAL_SUMMARY_PATH={summary}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" in contract
-    assert "summary without newline\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "summary without newline" not in contract
+    assert summary.read_text(encoding="utf-8") == "summary without newline"
     assert not (tmp_path / ".bg-wait-active").exists()
+    assert (tmp_path / ".completed" / "step-final-summary").is_file()
+
+
+def test_step_final_summary_core_omits_large_gantt_body_from_contract(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    summary = tmp_path / "final-summary.md"
+    body = (
+        "## /design run gantt-regression\n"
+        "\n"
+        "### Round 1 reviewer timing\n"
+        "Round 1 reviewer timing  ·  window 0:00-12:03 (723s)\n"
+        "codex/codex-plan-arch                    │█████                                     │  91s\n"
+        "cursor/dyn-cursor-plan-shell-lint-parser │███████████████                           │ 263s\n"
+        "claude/vote                              │                   ███████████████████    │ 332s\n"
+        "cursor/apply                             │                                      ████│  66s\n"
+        "\n"
+        "### Round 5 reviewer timing\n"
+        "cursor/apply │ ██████│  80s"
+    )
+    summary.write_text(body + "\n", encoding="utf-8")
+
+    def fake_render(argv: list[str]) -> int:
+        assert "--post-publish-only" in argv
+        return 0
+
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step_final_summary_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    assert f"FINAL_SUMMARY_PATH={summary}" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert summary.read_text(encoding="utf-8") == body + "\n"
+    assert "Round 1 reviewer timing  ·  window 0:00-12:03 (723s)" not in contract
+    assert "cursor/dyn-cursor-plan-shell-lint-parser" not in contract
+    assert "cursor/apply │ ██████│  80s" not in contract
+
+
+@pytest.mark.parametrize("write_empty_file", [False, True])
+def test_step_final_summary_core_skips_missing_or_empty_summary_readiness(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    write_empty_file: bool,
+) -> None:
+    env_path = _write_session_env(tmp_path, tmp_path, monkeypatch, ISSUE_NUMBER="0", SUMMARY_OUTCOME="approved")
+    summary = tmp_path / "final-summary.md"
+    if write_empty_file:
+        summary.write_text("", encoding="utf-8")
+
+    def fake_render(argv: list[str]) -> int:
+        assert "--post-publish-only" in argv
+        return 0
+
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step_final_summary_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "approved"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    assert "FINAL_SUMMARY_PATH=" not in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
     assert (tmp_path / ".completed" / "step-final-summary").is_file()
 
 
@@ -2649,6 +2723,7 @@ def test_step_final_summary_render_exception_skips_sentinel_and_marked_emit(tmp_
     assert rc == 1
     assert not (tmp_path / ".completed" / "step-final-summary").is_file()
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
+    assert "FINAL_SUMMARY_PATH=" not in contract
 
 
 def test_step_final_summary_main_returns_failure_without_sentinel_after_render_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -2737,8 +2812,10 @@ def test_step_final_summary_cli_subprocess_emits_markers_on_stdout(tmp_path: Pat
         env=env,
     )
     assert result.returncode == 0
+    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in result.stdout
     assert "LARCH_FINAL_SUMMARY_BEGIN" in result.stdout
     assert "LARCH_FINAL_SUMMARY_END" in result.stdout
+    assert "cli summary" not in result.stdout
 
 
 def _capture_core_contract(
@@ -2999,7 +3076,9 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     assert (design / ".completed" / "step-5c").is_file()
     assert (design / ".completed" / "step-5c-terminal").is_file()
     assert "PUBLISH_RC=0" in contract
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nsummary body\nLARCH_FINAL_SUMMARY_END" in contract
+    assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "summary body" not in contract
     assert "unmarked render stdout" not in contract
     assert "unmarked render stdout" in (design / "render-final-summary.approved.stdout.log").read_text(encoding="utf-8")
 
@@ -3106,7 +3185,9 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     assert "PUBLISH_STDOUT_FALLBACK=true" in status
     assert "CLEANUP_ELIGIBLE=false" in status
     assert not (design / ".completed" / "step-5c").exists()
-    assert "current failed summary" in contract
+    assert f"FINAL_SUMMARY_PATH={current_summary}" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "current failed summary" not in contract
 
 
 def test_step5c_core_rc3_stdout_fallback_keeps_success_path(
@@ -3363,7 +3444,9 @@ def test_step5c_core_publish_tail_abort_stages_renders_and_writes_terminal(
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
     assert (design / ".completed" / "step-5c-terminal").is_file()
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in contract
+    assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "abort summary" not in contract
     assert "REPORT_GATE_SIDECARS_FILE=" in contract
 
 
@@ -3477,7 +3560,9 @@ def test_step5c_core_publish_tail_abort_rc5_stages_and_writes_terminal(
     assert stderr_log.is_file()
     assert stdout_log.stat().st_size > 0
     assert (design / ".completed" / "step-5c-terminal").is_file()
-    assert "LARCH_FINAL_SUMMARY_BEGIN\nabort summary\nLARCH_FINAL_SUMMARY_END" in contract
+    assert f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}" in contract
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+    assert "abort summary" not in contract
 
 
 def test_step5c_core_success_without_final_summary_skips_markers(
@@ -3787,8 +3872,10 @@ def test_step_final_summary_main_machine_rows_visible_under_inherited_quiet(
         os.close(saved_stdout)
         logging_util.reset_quiet_state()
     assert rc == 0
+    assert f"FINAL_SUMMARY_PATH={tmp_path / 'final-summary.md'}" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" in contract
     assert "LARCH_FINAL_SUMMARY_END" in contract
+    assert "summary body" not in contract
 
 
 def _write_step5c_status(

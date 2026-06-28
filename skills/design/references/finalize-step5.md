@@ -75,7 +75,7 @@ Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitiz
 
 ## Step 5c `_publish_rc` abort contract
 
-`_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` (including `_publish_rc`=5) abort Step 5c after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. Before stopping, use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Complete the shared sidecar follow-on before stopping. **Stop `/design` immediately after this abort-path emission; do not run Step 5c items 5–7, Step 5d, or Step 6.**
+`_publish_rc`=2 and unexpected non-zero values outside `{0,1,3,4}` (including `_publish_rc`=5) abort Step 5c after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. Before stopping, parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Empty `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers confirm readiness only; Read the disk file verbatim when the path is non-empty. Complete the shared sidecar follow-on before stopping. **Stop `/design` immediately after this abort-path emission; do not run Step 5c items 5–7, Step 5d, or Step 6.**
 
 `_publish_rc`=3 means the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5–7 with the WARN above; do not treat exit 3 as publish-tail incomplete.
 
@@ -91,7 +91,7 @@ A missing or empty `$DESIGN_TMPDIR/composed-plan.md` also exits 4 with `VALIDATE
 
 When `_publish_rc=4`, execute **### Plan command validator failure (shared)** using the parsed `VALIDATE_*` keys with `--site` context `design Step 5c`. When `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, skip auto-repair and offer only Fix-and-retry and Cancel. When `VALIDATE_LOG_FILE` is empty and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal: skip auto-repair, skip Override, and offer only Fix-and-retry (re-run `/design`) and Cancel.
 
-When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. This includes `_publish_rc=5`. Before stopping, use source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` marker-first callsite row in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Complete the shared sidecar follow-on before stopping. Stop `/design` immediately after this abort-path emission. Do not run Step 5c items 5-7, Step 5d, or Step 6.
+When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`. This includes `_publish_rc=5`. Before stopping, parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Empty `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers confirm readiness only; Read the disk file verbatim when the path is non-empty. Complete the shared sidecar follow-on before stopping. Stop `/design` immediately after this abort-path emission. Do not run Step 5c items 5-7, Step 5d, or Step 6.
 
 When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written. Parse the captured stdout fallback (`_publish_stdout_file`) and continue Step 5c items 5-7 with the warning above. Do not treat exit 3 as publish-tail incomplete.
 
@@ -113,7 +113,7 @@ Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed (or stdout fa
 - `**⚠ Codex plan review failed / produced empty output**`
 - `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
 
-The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared marker-first profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
+The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared Read-always readiness profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
 When `PLAN_WRITE_OK=true`, repeat the external-reviewer warnings, then emit exactly one terminal machine footer as the last human-visible output line of Step 5. When `PLAN_WRITE_OK=false`, Step 5c already ran the summary before the `**⚠ 5: plan-block-write failed**` line. Do not invoke `python/cli.py design render-final-summary` again.
 
