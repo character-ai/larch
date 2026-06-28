@@ -869,7 +869,7 @@ def test_design_annotate_label_failure_without_repo_fails_closed(
         gh_calls.append(argv)
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    monkeypatch.setattr(design_oos, "_resolve_filing_repo", lambda **_a: "")
+    monkeypatch.setattr(design_oos, "_resolve_filing_repo", lambda **_a: "")  # type: ignore[arg-type]
     monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
@@ -907,3 +907,4 @@ def test_label_only_mapping_uses_oos_file_map_without_stdout(tmp_path: Path) -> 
         "https://github.com/acme/repo/issues/101": True,
         "https://github.com/acme/repo/issues/102": False,
     }
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false

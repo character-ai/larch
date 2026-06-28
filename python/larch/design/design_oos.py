@@ -600,6 +600,36 @@ def _filing_slot_urls_from_sidecars(
     return {int(os_number): url for os_number, url in os_to_url.items() if os_number.isdigit()}
 
 
+def _is_priority_for_slot(slot_index: int, combined_count: int, priority_indices: set[int]) -> bool:
+    if combined_count == 1:
+        return bool(priority_indices)
+    return slot_index in priority_indices
+
+
+def _read_stdout_slots(issue_stdout_path: Path | None) -> dict[int, str | None]:
+    if issue_stdout_path is None or not issue_stdout_path.is_file() or not issue_stdout_path.stat().st_size:
+        return {}
+    return _parse_issue_stdout_slots(issue_stdout_path.read_text(encoding="utf-8", errors="replace"))
+
+
+def _map_stdout_slots_to_priority(
+    *,
+    stdout_slots: dict[int, str | None],
+    combined_count: int,
+    priority_indices: set[int],
+    order_file: Path | None,
+) -> dict[str, bool]:
+    slot_count = max(combined_count, *stdout_slots)
+    if order_file is not None and order_file.is_file():
+        slot_count = max(slot_count, len(_parse_order(order_file)))
+    mapping: dict[str, bool] = {}
+    for index in range(1, slot_count + 1):
+        url = stdout_slots.get(index)
+        if url:
+            mapping[url] = _is_priority_for_slot(index, combined_count, priority_indices)
+    return mapping
+
+
 def _label_only_url_priority_map(
     *,
     sentinel_path: Path,
@@ -612,38 +642,23 @@ def _label_only_url_priority_map(
     sentinel_urls = _urls_from_sentinel(sentinel_path)
     if not sentinel_urls or not combined_blocks:
         return {}
-    stdout_slots: dict[int, str | None] = {}
-    if issue_stdout_path is not None and issue_stdout_path.is_file() and issue_stdout_path.stat().st_size > 0:
-        stdout_slots = _parse_issue_stdout_slots(issue_stdout_path.read_text(encoding="utf-8", errors="replace"))
-    slot_count = len(combined_blocks)
-    if order_file is not None and order_file.is_file():
-        slot_count = max(slot_count, len(_parse_order(order_file)))
+    combined_count = len(combined_blocks)
+    stdout_slots = _read_stdout_slots(issue_stdout_path)
     if stdout_slots:
-        slot_count = max(slot_count, *stdout_slots)
-        mapping: dict[str, bool] = {}
-        for index in range(1, slot_count + 1):
-            url = stdout_slots.get(index)
-            if not url:
-                continue
-            if len(combined_blocks) == 1:
-                mapping[url] = bool(priority_indices)
-            else:
-                mapping[url] = index in priority_indices
-        return mapping
+        return _map_stdout_slots_to_priority(
+            stdout_slots=stdout_slots,
+            combined_count=combined_count,
+            priority_indices=priority_indices,
+            order_file=order_file,
+        )
     slot_urls = _filing_slot_urls_from_sidecars(sentinel_path=sentinel_path, order_file=order_file)
     if slot_urls:
-        slot_mapping: dict[str, bool] = {}
-        for slot_index, url in slot_urls.items():
-            if len(combined_blocks) == 1:
-                slot_mapping[url] = bool(priority_indices)
-            else:
-                slot_mapping[url] = slot_index in priority_indices
-        return slot_mapping
-    if len(combined_blocks) == 1:
+        return {url: _is_priority_for_slot(idx, combined_count, priority_indices) for idx, url in slot_urls.items()}
+    if combined_count == 1:
         return {url: bool(priority_indices) for url in sentinel_urls}
-    if len(sentinel_urls) != len(combined_blocks):
+    if len(sentinel_urls) != combined_count:
         return {}
-    return {url: index in priority_indices for index, url in enumerate(sentinel_urls, start=1)}
+    return {url: _is_priority_for_slot(idx, combined_count, priority_indices) for idx, url in enumerate(sentinel_urls, start=1)}
 
 
 def _ensure_oos_correctness_label(*, repo: str) -> bool:
