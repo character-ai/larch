@@ -29,7 +29,7 @@ not_contains() {
   fi
 }
 
-contains "$SKILL" 'IMMEDIATELY skip to Step 7a for checks/diagrams; architectural-guidelines Phase A staging runs after Step 7a, not on the Step 6 skip branch.' 'step6 skip then post-7a staging'
+contains "$SKILL" 'This includes the Step 6 `FILES_CHANGED=false` skip-to-7a path and Step 7 skipped/no-op paths.' 'step6 skip then post-7a staging'
 contains "$SKILL" 'Continue to Architectural guidelines Phase A staging before Step 8 IMMEDIATELY.' 'step7a anti-halt phase-a requirement'
 contains "$SKILL" 'The prepare helper clears stale Phase A artifacts at entry; do not add an orchestrator-side `rm` loop for those files.' 'prepare clears stale artifacts'
 contains "$SKILL" 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-prepare.sh' 'prepare wrapper fence'

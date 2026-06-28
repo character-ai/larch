@@ -1689,8 +1689,8 @@ def _run_step6_composite(*, forked_target: str) -> int:
 def _step6_entry_seed_stall(implement_tmpdir: Path) -> int:
     seeded = _seed_durable_stall_state(
         implement_tmpdir,
-        stall_step="7",
-        bail_reason="review-change-detection-failed",
+        stall_step="6",
+        bail_reason=config.REVIEW_CHANGE_DETECTION_FAILED,
     )
     if not seeded:
         return 1

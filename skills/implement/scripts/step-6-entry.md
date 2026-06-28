@@ -28,6 +28,8 @@ It relays these change-detection KVs before any composite routing:
 
 When `FILES_CHANGED=false`, it emits `NEXT_ACTION=skip-to-7a` and does not run checks. When `FILES_CHANGED=true`, it conditionally runs the fixed Step 6 checks/commit/`7.r` composite and relays that composite envelope.
 
+When change detection fails (malformed or missing `FILES_CHANGED`, or `check-changes` exits non-zero), the entrypoint seeds durable stall state with `stall_step=6` and `bail_reason=review-change-detection-failed`, then emits `NEXT_ACTION=stall`. Seeding failure returns non-zero without `NEXT_ACTION`.
+
 Repair re-entry (`--force-checks true`) skips change detection, never emits `NEXT_ACTION=skip-to-7a`, and relays only the fixed Step 6 checks/commit/`7.r` composite envelope.
 
 Valid routing records are newline-delimited and line-anchored:

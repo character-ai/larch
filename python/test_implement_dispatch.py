@@ -2136,7 +2136,7 @@ def test_step6_entry_malformed_files_changed_seeds_stall(
 
     assert rc == 0
     assert "NEXT_ACTION=stall\n" in capsys.readouterr().out
-    assert seed_calls == [("7", "review-change-detection-failed")]
+    assert seed_calls == [("6", "review-change-detection-failed")]
 
 
 def test_step6_entry_check_changes_nonzero_seed_failure_returns_nonzero_without_next_action(

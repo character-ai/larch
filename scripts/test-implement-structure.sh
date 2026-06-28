@@ -489,6 +489,8 @@ require(skill, 'Step `4.r` is folded into the Step 3 `checks-commit-route` compo
 require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"', 'checks-repair-loop Step 6 initial composite launcher')
 require('skills/implement/references/checks-repair-loop.md', 'skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true', 'checks-repair-loop Step 6 force-checks repair launcher')
 require('skills/implement/references/checks-repair-loop.md', 'both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`', 'checks-repair-loop Step 6 continue and main-agent force-checks')
+forbid(checks_ref, 'python/cli.py implement checks-commit-route --checks-site step6', 'checks-repair-loop old Step 6 checks-commit-route launcher removed')
+forbid(checks_ref, 'checks-commit-route --checks-site step6 --commit-site step7', 'checks-repair-loop bare Step 6 checks-commit-route repair re-entry removed')
 forbid(skill, 'python/cli.py implement checks-commit-route --checks-site step6', 'SKILL old Step 6 checks-commit-route launcher removed')
 forbid(skill, 'branch on envelope `ROUTE=` and `REBASE_RC=` from the Step 0 bootstrap stdout envelope', 'SKILL absorbed 1.r direct ROUTE branch removed')
 for needle in [
