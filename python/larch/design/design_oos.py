@@ -566,6 +566,40 @@ def _parse_issue_stdout_slots(stdout_text: str) -> dict[int, str | None]:
     return slots
 
 
+def _parse_oos_file_map(sentinel_text: str) -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for line in sentinel_text.splitlines():
+        if not line.startswith("OOS_FILE_MAP\t"):
+            continue
+        parts = line.split("\t")
+        if len(parts) >= _OOS_FILE_MAP_FIELD_COUNT:
+            os_number = parts[1].strip()
+            url = parts[2].strip()
+            if os_number and url:
+                mapping[os_number] = url
+    return mapping
+
+
+def _filing_slot_urls_from_sidecars(
+    *,
+    sentinel_path: Path,
+    order_file: Path | None,
+) -> dict[int, str]:
+    if not sentinel_path.is_file():
+        return {}
+    os_to_url = _parse_oos_file_map(sentinel_path.read_text(encoding="utf-8", errors="replace"))
+    if not os_to_url:
+        return {}
+    if order_file is not None and order_file.is_file():
+        slots: dict[int, str] = {}
+        for slot_index, os_number in enumerate(_parse_order(order_file), start=1):
+            url = os_to_url.get(os_number)
+            if url:
+                slots[slot_index] = url
+        return slots
+    return {int(os_number): url for os_number, url in os_to_url.items() if os_number.isdigit()}
+
+
 def _label_only_url_priority_map(
     *,
     sentinel_path: Path,
@@ -591,13 +625,24 @@ def _label_only_url_priority_map(
             url = stdout_slots.get(index)
             if not url:
                 continue
-            if len(sentinel_urls) == 1 and len(combined_blocks) > 1:
+            if len(combined_blocks) == 1:
                 mapping[url] = bool(priority_indices)
             else:
                 mapping[url] = index in priority_indices
         return mapping
-    if len(sentinel_urls) == 1 and len(combined_blocks) > 1:
-        return {sentinel_urls[0]: bool(priority_indices)}
+    slot_urls = _filing_slot_urls_from_sidecars(sentinel_path=sentinel_path, order_file=order_file)
+    if slot_urls:
+        slot_mapping: dict[str, bool] = {}
+        for slot_index, url in slot_urls.items():
+            if len(combined_blocks) == 1:
+                slot_mapping[url] = bool(priority_indices)
+            else:
+                slot_mapping[url] = slot_index in priority_indices
+        return slot_mapping
+    if len(combined_blocks) == 1:
+        return {url: bool(priority_indices) for url in sentinel_urls}
+    if len(sentinel_urls) != len(combined_blocks):
+        return {}
     return {url: index in priority_indices for index, url in enumerate(sentinel_urls, start=1)}
 
 
@@ -632,6 +677,13 @@ def _apply_priority_labels_only(  # noqa: PLR0913
         order_file=order_file,
         issue_stdout_path=issue_stdout_path,
     )
+    priority_indices = _priority_indices_from_combined(combined_path)
+    sentinel_urls = _urls_from_sentinel(sentinel_path)
+    if priority_indices and sentinel_urls and not url_priority:
+        pending_marker = design_tmpdir / _PRIORITY_PENDING
+        _write_pending_marker(pending_marker)
+        print("design file-oos-annotate: ambiguous priority label slot mapping", file=sys.stderr)
+        return 1
     priority_urls = [url for url, priority in url_priority.items() if priority]
     if not priority_urls:
         _clear_label_retry_pending(design_tmpdir=design_tmpdir, issue_number=issue_number)
@@ -741,7 +793,6 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
     url_by_idx, dup_by_idx, failed_indices, issues_failed_count = _parse_issue_stdout(stdout_text)
     accepted_text = accepted.read_text(encoding="utf-8")
     map_lines: list[str] = []
-    gh_urls: set[str] = set()
     for index, os_number in enumerate(order, start=1):
         key = str(index)
         if key in failed_indices:
@@ -758,12 +809,8 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
         accepted_text = accepted_text[:span[0]] + new_block + accepted_text[span[1]:]
         map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
-        gh = _GH_ISSUE_URL_RE.search(url)
-        if gh:
-            gh_urls.add(gh.group(0))
     _ = accepted.write_text(accepted_text, encoding="utf-8")
-    sentinel_lines = [*map_lines, *sorted(gh_urls)]
-    sentinel_body = "\n".join(sentinel_lines) + ("\n" if sentinel_lines else "")
+    sentinel_body = "\n".join(map_lines) + ("\n" if map_lines else "")
     complete_sentinel = design_tmpdir / "oos-issues-created.md"
     _ = complete_sentinel.write_text(sentinel_body, encoding="utf-8")
     combined_path = design_tmpdir / "oos-combined.md"

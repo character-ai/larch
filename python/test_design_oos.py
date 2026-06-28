@@ -852,3 +852,58 @@ def test_step5b_annotate_label_failed_does_not_mark_complete(
     assert rc == 1
     assert "STEP5B_STATUS=annotate-label-failed" in out
     assert not (tmp_path / ".completed" / "step-5b").exists()
+    assert design_pause._determine_step(design_tmpdir=tmp_path, plugin_root=Path.cwd()) != "5b.5"  # pyright: ignore[reportPrivateUsage]
+    assert not (tmp_path / ".completed" / "step-5b.5").exists()
+
+
+def test_design_annotate_label_failure_without_repo_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    stdout_file = _write_design_priority_fixture(tmp_path)
+    gh_calls: list[list[str]] = []
+
+    def fake_gh(*, repo: str, argv: list[str]) -> subprocess.CompletedProcess[str]:
+        _ = repo
+        gh_calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(design_oos, "_resolve_filing_repo", lambda **_a: "")
+    monkeypatch.setattr(design_oos, "_run_gh", fake_gh)
+
+    rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
+    captured = capsys.readouterr()
+
+    assert rc == 1
+    assert _kv(captured.out)["FILE_DESIGN_OOS_STATUS"] == "annotate-label-failed"
+    assert not gh_calls
+
+
+def test_label_only_mapping_uses_oos_file_map_without_stdout(tmp_path: Path) -> None:
+    sentinel = tmp_path / "oos-issues-created.md"
+    _ = sentinel.write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101\n"
+        "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/102\n",
+        encoding="utf-8",
+    )
+    combined = tmp_path / "oos-combined.md"
+    _ = combined.write_text(
+        "### OOS_1: one\n- **Focus area**: correctness\n\n"
+        "### OOS_2: two\n- **Focus area**: risk-integration\n",
+        encoding="utf-8",
+    )
+    order_file = tmp_path / "oos-design-filing-order.txt"
+    _ = order_file.write_text("1\n2\n", encoding="utf-8")
+
+    mapping = design_oos._label_only_url_priority_map(  # pyright: ignore[reportPrivateUsage]
+        sentinel_path=sentinel,
+        combined_path=combined,
+        order_file=order_file,
+        issue_stdout_path=None,
+    )
+
+    assert mapping == {
+        "https://github.com/acme/repo/issues/101": True,
+        "https://github.com/acme/repo/issues/102": False,
+    }

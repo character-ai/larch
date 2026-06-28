@@ -822,18 +822,27 @@ def _run_issue_batch(
             if url:
                 part_stable = primary_stable if part_index == 1 else f"{primary_stable}:part{part_index}"
                 part_source_ids = source_ids if part_index == 1 else ()
-                filed_issue = FiledIssue(part_title, url, duplicate, part_stable, part_source_ids)
+                filed_issue = FiledIssue(
+                    part_title,
+                    url,
+                    duplicate,
+                    part_stable,
+                    part_source_ids,
+                    oos_priority=item_priority,
+                )
                 if item_priority and not _apply_priority_label(tmpdir=tmpdir, url=url, repo=repo):
                     failures += 1
                     failure_mode = "priority_label"
-                    if not duplicate:
+                    if duplicate:
+                        filed.append(filed_issue)
+                    else:
                         _cleanup_created_issues(
                             tmpdir,
                             [filed_issue],
                             repo=repo,
                             only=lambda candidate, failed_url=url: candidate.url == failed_url and not candidate.duplicate,
                         )
-                    continue
+                    break
                 filed.append(filed_issue)
             number = kv.get("ISSUE_NUMBER") or ""
             if part_index == 1 and number.isdigit():
@@ -882,7 +891,12 @@ def _write_oos_ndjson(tmpdir: Path, run_id: str, filed: list[FiledIssue], *, sta
     return path
 
 
-def _priority_urls_from_combined_order(*, combined_path: Path, filed: list[FiledIssue]) -> set[str]:
+def _priority_urls_from_combined_order(
+    *,
+    combined_path: Path,
+    filed: list[FiledIssue],
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
+) -> set[str]:
     if not combined_path.is_file():
         return set()
     combined_text = combined_path.read_text(encoding="utf-8", errors="replace")
@@ -895,11 +909,23 @@ def _priority_urls_from_combined_order(*, combined_path: Path, filed: list[Filed
     if not priority_indices:
         return set()
     real_filed = [issue for issue in filed if not issue.url.startswith("skipped://")]
-    if len(real_filed) == 1:
-        return {real_filed[0].url}
+    if not real_filed:
+        return set()
+    urls: set[str] = {issue.url for issue in real_filed if issue.oos_priority}
+    if len(combined_blocks) == 1:
+        if priority_indices:
+            urls.update(issue.url for issue in real_filed)
+        return urls
     if len(real_filed) == len(combined_blocks):
-        return {issue.url for index, issue in enumerate(real_filed, start=1) if index in priority_indices}
-    return set()
+        urls.update(issue.url for index, issue in enumerate(real_filed, start=1) if index in priority_indices)
+        return urls
+    if stable_ids_by_item:
+        for index in priority_indices:
+            for stable_id in stable_ids_by_item.get(index, ()):
+                for issue in real_filed:
+                    if _issue_covers_stable_id(issue=issue, stable_id=stable_id):
+                        urls.add(issue.url)
+    return urls
 
 
 def _priority_urls_from_blocks(*, filed: list[FiledIssue], blocks: list[AcceptedBlock]) -> set[str]:
@@ -927,12 +953,19 @@ def _backfill_priority_labels_from_sentinel(
     persisted: list[FiledIssue],
     already: Sequence[FiledIssue] = (),
     blocks: Sequence[AcceptedBlock] = (),
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None,
 ) -> bool:
     filed = _dedupe_filed([*persisted, *already])
     if not filed:
         return True
     priority_urls = _priority_urls_from_blocks(filed=filed, blocks=list(blocks))
-    priority_urls.update(_priority_urls_from_combined_order(combined_path=combined_path, filed=filed))
+    priority_urls.update(
+        _priority_urls_from_combined_order(
+            combined_path=combined_path,
+            filed=filed,
+            stable_ids_by_item=stable_ids_by_item,
+        )
+    )
     if not priority_urls:
         return True
     if not _ensure_priority_label(tmpdir=tmpdir, repo=repo):
@@ -1001,14 +1034,25 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     persisted = _persisted_filed_evidence(tmpdir=tmpdir, run_id=run_id)
     blocks, matched = _split_persisted_matches(blocks=all_blocks, persisted=persisted)
     already = _dedupe_filed([*already, *matched])
+    if persisted and not any(path.is_file() for path in _accepted_input_paths(tmpdir)):
+        _materialize_sentinel_recovery_evidence(tmpdir=tmpdir, filed=_dedupe_filed([*persisted, *already]))
+        all_blocks, recovery_already = _working_batch(tmpdir)
+        blocks, matched_recovery = _split_persisted_matches(blocks=all_blocks, persisted=persisted)
+        already = _dedupe_filed([*already, *recovery_already, *matched_recovery])
+    combined_path = tmpdir / "oos-combined.md"
+    stable_ids_by_item: dict[int, tuple[str, ...]] | None = None
+    if combined_path.is_file():
+        post_cap_text = combined_path.read_text(encoding="utf-8", errors="replace")
+        stable_ids_by_item = _stable_ids_by_combined_item(blocks=list(all_blocks), combined_text=post_cap_text)
     if (persisted or already) and not forked and not repo_unavailable:
         backfilled = _backfill_priority_labels_from_sentinel(
             tmpdir=tmpdir,
             repo=repo,
-            combined_path=tmpdir / "oos-combined.md",
+            combined_path=combined_path,
             persisted=persisted,
             already=already,
             blocks=all_blocks,
+            stable_ids_by_item=stable_ids_by_item,
         )
         if not backfilled:
             filed = _dedupe_filed([*persisted, *already])
