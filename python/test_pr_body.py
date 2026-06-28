@@ -1154,6 +1154,7 @@ def test_generate_code_flow_diagram_labels_launcher_failure_class(
     _ = launcher.write_text("#!/bin/sh\nexit 124\n", encoding="utf-8")
     launcher.chmod(0o755)
     monkeypatch.setenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", str(launcher))
+    monkeypatch.setattr(pr_body.time, "sleep", lambda _: None)  # type: ignore[arg-type]
 
     def fake_run(*_args: object, **_kwargs: object) -> object:
         return subprocess.CompletedProcess(
@@ -1214,6 +1215,7 @@ def test_generate_code_flow_diagram_retries_on_timeout(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    monkeypatch.setattr(pr_body.time, "sleep", lambda _: None)  # type: ignore[arg-type]
     call_count = 0
 
     def fake_run(argv: list[str], **kwargs: object) -> object:
@@ -1230,7 +1232,7 @@ def test_generate_code_flow_diagram_retries_on_timeout(
                 # First attempt: timeout — write empty file, return EXIT_TIMEOUT
                 _ = output_file.write_text("", encoding="utf-8")
                 return subprocess.CompletedProcess(argv, config.EXIT_TIMEOUT, stdout="", stderr="")
-            # Second attempt (retry): success
+            # Second attempt (first retry): success
             _ = output_file.write_text(
                 "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
                 encoding="utf-8",
@@ -1241,7 +1243,7 @@ def test_generate_code_flow_diagram_retries_on_timeout(
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
     rc, status, diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
 
-    assert call_count == 2, "should have retried once"
+    assert call_count == 2, "should succeed on first retry"
     assert rc == 0
     assert status == "ok"
     assert diagram
@@ -1249,6 +1251,8 @@ def test_generate_code_flow_diagram_retries_on_timeout(
     assert (tmp_path / "code-flow-diagram.retried").is_file()
     retried_text = (tmp_path / "code-flow-diagram.retried").read_text(encoding="utf-8")
     assert f"FIRST_RC={config.EXIT_TIMEOUT}" in retried_text
+    assert "RETRY_1_RC=0" in retried_text
+    assert "RETRIES=1" in retried_text
 
 
 def test_generate_code_flow_diagram_retries_on_empty_output(
@@ -1256,6 +1260,7 @@ def test_generate_code_flow_diagram_retries_on_empty_output(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    monkeypatch.setattr(pr_body.time, "sleep", lambda _: None)  # type: ignore[arg-type]
     call_count = 0
 
     def fake_run(argv: list[str], **kwargs: object) -> object:
@@ -1272,7 +1277,7 @@ def test_generate_code_flow_diagram_retries_on_empty_output(
                 # First attempt: launcher ran but produced empty output (No messages)
                 _ = output_file.write_text("", encoding="utf-8")
                 return subprocess.CompletedProcess(argv, 1, stdout="", stderr="")
-            # Second attempt (retry): success
+            # Second attempt (first retry): success
             _ = output_file.write_text(
                 "## Code Flow Diagram\n\n```mermaid\nflowchart LR\n  A --> B\n```\n",
                 encoding="utf-8",
@@ -1283,7 +1288,7 @@ def test_generate_code_flow_diagram_retries_on_empty_output(
     monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
     rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
 
-    assert call_count == 2, "should have retried once on empty output"
+    assert call_count == 2, "should succeed on first retry"
     assert rc == 0
     assert status == "ok"
     assert reason == ""
@@ -1317,6 +1322,73 @@ def test_generate_code_flow_diagram_no_retry_on_hard_failure(
     assert rc == 1
     assert status == "failed"
     assert not (tmp_path / "code-flow-diagram.retried").is_file()
+
+
+def test_generate_code_flow_diagram_retries_up_to_max_on_persistent_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+    monkeypatch.setattr(pr_body.time, "sleep", lambda _: None)  # type: ignore[arg-type]
+    call_count = 0
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        nonlocal call_count
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            call_count += 1
+            output_file = Path(argv[argv.index("--output-file") + 1])
+            # Always fail with empty output (triggers retry)
+            _ = output_file.write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, config.EXIT_TIMEOUT, stdout="", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    rc, status, _diagram, _reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    expected_calls = 1 + pr_body._MAX_DIAGRAM_RETRIES
+    assert call_count == expected_calls, f"should attempt {expected_calls} times total"
+    assert rc == 1
+    assert status == "failed"
+    assert (tmp_path / "code-flow-diagram.retried").is_file()
+    retried_text = (tmp_path / "code-flow-diagram.retried").read_text(encoding="utf-8")
+    assert f"FIRST_RC={config.EXIT_TIMEOUT}" in retried_text
+    assert f"RETRIES={pr_body._MAX_DIAGRAM_RETRIES}" in retried_text
+
+
+def test_generate_code_flow_diagram_reads_stderr_sidecar(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("LARCH_TEST_LAUNCH_CLAUDE_SUBPROCESS", raising=False)
+
+    auth_message = "takes precedence over your claude.ai login"
+    raw_path = tmp_path / "code-flow-diagram.raw.md"
+
+    def fake_run(argv: list[str], **kwargs: object) -> object:
+        _ = kwargs
+        if argv[:2] == ["git", "merge-base"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="abc123\n", stderr="")
+        if argv[:3] == ["git", "diff", "--name-only"] or argv[:3] == ["git", "rev-parse"]:
+            return subprocess.CompletedProcess(argv, 0, stdout="file.py\n", stderr="")
+        if argv[2:4] == ["agent", "launch-claude-subprocess"]:
+            # Write the .stderr sidecar as the real launcher would, leave stdout empty
+            _ = raw_path.with_suffix(raw_path.suffix + ".stderr").write_text(auth_message + "\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 1, stdout="launcher-init-failed", stderr="")
+        return subprocess.CompletedProcess(argv, 1, stdout="", stderr="unexpected")
+
+    monkeypatch.setattr(pr_body.subprocess, "run", fake_run)  # type: ignore[arg-type]
+    rc, status, _diagram, reason = pr_body.generate_code_flow_diagram(tmp_path)
+
+    assert rc == 1
+    assert status == "failed"
+    # Sidecar content must appear in the reason; completed.stderr was empty so
+    # without Fix 1 the tail would be "no-output" instead.
+    assert "claude.ai login" in reason
 
 
 def test_derive_oos_fields_reads_json_body_filed_url(tmp_path: Path) -> None:

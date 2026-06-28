@@ -904,16 +904,16 @@
   },
   {
     "file": "larch/git/pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
+    "qualified_symbol": "_run_diagram_subprocess",
     "callee": "run",
-    "occurrence": 4,
+    "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
     "file": "larch/git/pr_body.py",
-    "qualified_symbol": "generate_code_flow_diagram",
+    "qualified_symbol": "_run_diagram_subprocess",
     "callee": "run",
-    "occurrence": 5,
+    "occurrence": 2,
     "reason": "retry call reuses the same launcher argv; routing through proc.Runner is blocking-only (#5714)"
   },
   {
