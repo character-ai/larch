@@ -103,11 +103,7 @@ scan_file() {
             printf("lint-bare-grep-probe: %s:%s: no-path rg/grep probe may block on stdin in background mode; pass an explicit path or < /dev/null (%s)\n", rel, FNR, cmd) > "/dev/stderr"
             violations = 1
         }
-        function clear_tokens(    i) {
-            for (i = 1; i <= nt; i++) {
-                delete tok[i]
-                delete tok_quoted[i]
-            }
+        function clear_tokens() {
             nt = 0
         }
         function add_token(value, quoted) {
