@@ -4,12 +4,15 @@ usage: append-execution-issue.sh --log LOG --category CATEGORY
 append-execution-issue.sh: error: one of the arguments --entry --entry-file is required
 === larch-quiet-cli.py-11043.log ===
 === larch-quiet-cli.py-32531.log ===
+=== larch-quiet-cli.py-39598.log ===
 === larch-quiet-cli.py-47046.log ===
 === larch-quiet-cli.py-54303.log ===
 === larch-quiet-cli.py-74311.log ===
 === larch-quiet-cli.py-80152.log ===
 === larch-quiet-cli.py-81619.log ===
 === larch-quiet-cli.py-83960.log ===
+=== larch-quiet-cli.py-86408.log ===
+=== larch-quiet-cli.py-87272.log ===
 === larch-quiet-cli.py-91296.log ===
 === larch-quiet-cli.py-94065.log ===
 === larch-quiet-read-session-env-key.sh-2189.log ===
@@ -24,3 +27,4 @@ append-execution-issue.sh: error: one of the arguments --entry --entry-file is r
 === larch-quiet-sessionstart-health.sh-63956.log ===
 === larch-quiet-sessionstart-health.sh-98409.log ===
 === larch-quiet-ship.py-27192.log ===
+=== larch-quiet-tracking-issue-upsert-summary-87855.log ===
