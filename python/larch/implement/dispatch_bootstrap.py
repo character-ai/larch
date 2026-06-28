@@ -7,6 +7,7 @@ import argparse
 import os
 import shutil
 import sys
+from dataclasses import dataclass
 from pathlib import Path
 
 from larch.implement.dispatch_helpers import (
@@ -24,7 +25,7 @@ from larch.implement.dispatch_helpers import (
 )
 
 
-def step0_bootstrap_main(argv: list[str] | None = None) -> int:
+def _build_step0_bootstrap_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="cli.py implement step-0-bootstrap")
     parser.add_argument("--mode", choices=("initial", "resume"), required=True)
     parser.add_argument("--issue-number", default="")
@@ -42,7 +43,95 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--caller-env", default="")
     parser.add_argument("--session-env", default="")
     parser.add_argument("--non-interactive", choices=("true", "false"), default="")
-    args = parser.parse_args(argv)
+    return parser
+
+
+@dataclass
+class _Step0BootstrapFields:
+    issue: str
+    run_id: str
+    preflight: str
+    forked: str
+    force: str
+    self_review: str
+    merge: str
+    draft: str
+    no_admin: str
+    no_logs: str
+
+
+def _step0_bootstrap_resume_fields(
+    *,
+    args: argparse.Namespace,
+    implement_tmpdir: Path,
+    fields: _Step0BootstrapFields,
+) -> _Step0BootstrapFields:
+    if args.mode != "resume":
+        return fields
+    preflight = fields.preflight
+    forked = fields.forked
+    force = fields.force
+    self_review = fields.self_review
+    merge = fields.merge
+    draft = fields.draft
+    no_admin = fields.no_admin
+    no_logs = fields.no_logs
+    issue = fields.issue
+    run_id = fields.run_id
+    if not preflight and (implement_tmpdir / "preflight-tmpdir.env").is_file():
+        preflight = _session_get(file=implement_tmpdir / "preflight-tmpdir.env", key="PREFLIGHT_TMPDIR", default="")
+    if not forked:
+        forked = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="FORKED_TARGET", default="false")
+    force = _env_value(name="force_requested") if _env_value(name="force_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="FORCE_REQUESTED", default=force)
+    self_review = _env_value(name="self_review") if _env_value(name="self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
+    seed = implement_tmpdir / "ship-seed-input.env"
+    merge = _env_value(name="merge") or _session_get(file=seed, key="MERGE", default=merge)
+    draft = _env_value(name="draft") or _session_get(file=seed, key="DRAFT", default=draft)
+    no_admin = _env_value(name="no_admin_fallback") or _session_get(file=seed, key="NO_ADMIN_FALLBACK", default=no_admin)
+    no_logs = _env_value(name="no_logs_commit") or _session_get(file=seed, key="NO_LOGS_COMMIT", default=no_logs)
+    if not issue:
+        sentinel_values = _tracking_sentinel_values(implement_tmpdir / "parent-issue.md")
+        issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="ISSUE_NUMBER", default="")
+        run_id = run_id or sentinel_values.get("RUN_ID", "")
+    run_id = run_id or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="RUN_ID", default="")
+    return _Step0BootstrapFields(
+        issue=issue,
+        run_id=run_id,
+        preflight=preflight,
+        forked=forked,
+        force=force,
+        self_review=self_review,
+        merge=merge,
+        draft=draft,
+        no_admin=no_admin,
+        no_logs=no_logs,
+    )
+
+
+def _step0_bootstrap_fork_upstream(
+    *,
+    forked: str,
+    upstream: str,
+    caller_env: str,
+) -> tuple[int | None, str, str, str]:
+    if forked != "true" or upstream:
+        return None, caller_env, upstream, forked
+    fork = _invoke_cli(["admission", "fork-env"])
+    if fork.stdout:
+        sys.stdout.write(fork.stdout)
+    if fork.returncode != 0:
+        return fork.returncode, caller_env, upstream, forked
+    values = _parse_kv(fork.stdout)
+    caller_env = values.get("CALLER_ENV_PATH", caller_env)
+    upstream = values.get("UPSTREAM_REPO", upstream)
+    os.environ["FORK_REPO"] = values.get("FORK_REPO", os.environ.get("FORK_REPO", ""))
+    os.environ["FORK_OWNER"] = values.get("FORK_OWNER", os.environ.get("FORK_OWNER", ""))
+    forked = values.get("FORKED_TARGET", forked)
+    return None, caller_env, upstream, forked
+
+
+def step0_bootstrap_main(argv: list[str] | None = None) -> int:
+    args = _build_step0_bootstrap_parser().parse_args(argv)
     implement_tmpdir_raw = os.environ.get("IMPLEMENT_TMPDIR", "")
     implement_tmpdir = Path(implement_tmpdir_raw) if implement_tmpdir_raw else None
     _rehydrate_plugin_root(implement_tmpdir)
@@ -59,35 +148,40 @@ def step0_bootstrap_main(argv: list[str] | None = None) -> int:
     upstream = args.upstream_repo or os.environ.get("UPSTREAM_REPO", "")
     run_id = args.run_id or os.environ.get("RUN_ID", "")
     caller_env = args.caller_env or args.session_env or os.environ.get("CALLER_ENV_PATH", os.environ.get("SESSION_ENV_PATH", ""))
-    if args.mode == "resume" and implement_tmpdir:
-        if not preflight and (implement_tmpdir / "preflight-tmpdir.env").is_file():
-            preflight = _session_get(file=implement_tmpdir / "preflight-tmpdir.env", key="PREFLIGHT_TMPDIR", default="")
-        if not forked:
-            forked = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="FORKED_TARGET", default="false")
-        force = _env_value(name="force_requested") if _env_value(name="force_requested") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="FORCE_REQUESTED", default=force)
-        self_review = _env_value(name="self_review") if _env_value(name="self_review") in {"true", "false"} else _session_get(file=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default=self_review)
-        seed = implement_tmpdir / "ship-seed-input.env"
-        merge = _env_value(name="merge") or _session_get(file=seed, key="MERGE", default=merge)
-        draft = _env_value(name="draft") or _session_get(file=seed, key="DRAFT", default=draft)
-        no_admin = _env_value(name="no_admin_fallback") or _session_get(file=seed, key="NO_ADMIN_FALLBACK", default=no_admin)
-        no_logs = _env_value(name="no_logs_commit") or _session_get(file=seed, key="NO_LOGS_COMMIT", default=no_logs)
-        if not issue:
-            sentinel_values = _tracking_sentinel_values(implement_tmpdir / "parent-issue.md")
-            issue = sentinel_values.get("ISSUE_NUMBER", "") or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="ISSUE_NUMBER", default="")
-            run_id = run_id or sentinel_values.get("RUN_ID", "")
-        run_id = run_id or _read_session_key_default(implement_tmpdir=implement_tmpdir, key="RUN_ID", default="")
-    if forked == "true" and not upstream:
-        fork = _invoke_cli(["admission", "fork-env"])
-        if fork.stdout:
-            sys.stdout.write(fork.stdout)
-        if fork.returncode != 0:
-            return fork.returncode
-        values = _parse_kv(fork.stdout)
-        caller_env = values.get("CALLER_ENV_PATH", caller_env)
-        upstream = values.get("UPSTREAM_REPO", upstream)
-        os.environ["FORK_REPO"] = values.get("FORK_REPO", os.environ.get("FORK_REPO", ""))
-        os.environ["FORK_OWNER"] = values.get("FORK_OWNER", os.environ.get("FORK_OWNER", ""))
-        forked = values.get("FORKED_TARGET", forked)
+    if implement_tmpdir and args.mode == "resume":
+        fields = _step0_bootstrap_resume_fields(
+            args=args,
+            implement_tmpdir=implement_tmpdir,
+            fields=_Step0BootstrapFields(
+                issue=issue,
+                run_id=run_id,
+                preflight=preflight,
+                forked=forked,
+                force=force,
+                self_review=self_review,
+                merge=merge,
+                draft=draft,
+                no_admin=no_admin,
+                no_logs=no_logs,
+            ),
+        )
+        issue = fields.issue
+        run_id = fields.run_id
+        preflight = fields.preflight
+        forked = fields.forked
+        force = fields.force
+        self_review = fields.self_review
+        merge = fields.merge
+        draft = fields.draft
+        no_admin = fields.no_admin
+        no_logs = fields.no_logs
+    fork_rc, caller_env, upstream, forked = _step0_bootstrap_fork_upstream(
+        forked=forked,
+        upstream=upstream,
+        caller_env=caller_env,
+    )
+    if fork_rc is not None:
+        return fork_rc
     if implement_tmpdir:
         _rehydrate_larch_triplet(implement_tmpdir)
         if preflight:

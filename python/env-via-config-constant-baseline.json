@@ -1090,7 +1090,7 @@
   },
   {
     "file": "larch/implement/dispatch_recovery.py",
-    "qualified_symbol": "commit_main",
+    "qualified_symbol": "_rehydrate_commit_session_from_tmpdir",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
@@ -1099,7 +1099,7 @@
   },
   {
     "file": "larch/implement/dispatch_recovery.py",
-    "qualified_symbol": "commit_main",
+    "qualified_symbol": "_rehydrate_commit_session_from_tmpdir",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
@@ -1111,6 +1111,15 @@
     "qualified_symbol": "commit_route_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/implement/dispatch_step2.py",
+    "qualified_symbol": "_validate_run_dispatch_args",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
     "access": "get",
     "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
@@ -1152,17 +1161,17 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2.py",
-    "qualified_symbol": "step2_dispatch_main",
+    "file": "larch/implement/dispatch_step2_flow.py",
+    "qualified_symbol": "_step2_build_dispatch_state",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
     "access": "get",
-    "occurrence": 2,
+    "occurrence": 1,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/implement/dispatch_step2.py",
-    "qualified_symbol": "step2_dispatch_main",
+    "file": "larch/implement/dispatch_step2_flow.py",
+    "qualified_symbol": "_step2_setup_tmpdir_env",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "subscript_store",

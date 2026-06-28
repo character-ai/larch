@@ -254,43 +254,27 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj: object | None) -> int:
-    if not isinstance(raw_obj, dict):
-        return st.emit_bailed("manifest-schema-invalid")
-    if status != "complete" and not (status == "" and _manifest_legacy_fingerprint(raw_obj)):
-        return st.emit_bailed("manifest-schema-invalid")
-    prelaunch_index_nonempty = "false"
-    if st.prelaunch_index_flag.is_file():
-        for line in st.prelaunch_index_flag.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith("PRELAUNCH_INDEX_NONEMPTY="):
-                prelaunch_index_nonempty = line.split("=", 1)[1]
-                break
-    if prelaunch_index_nonempty == "true":
-        return st.emit_bailed("manifest-schema-invalid")
-    post = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
-    _write_bytes_atomic(path=st.postlaunch_porcelain, data=cast("bytes", post))
-    ok = compute_recovery_paths(
-        repo_root=st.repo_root,
-        tmpdir=st.tmpdir,
-        porcelain=RecoveryPorcelainInputs(
-            prelaunch_porcelain=st.prelaunch_porcelain,
-            postlaunch_porcelain=st.postlaunch_porcelain,
-            prelaunch_digests=st.prelaunch_digests,
-        ),
-        out_file=st.recovery_paths_file,
-    )
-    if not ok:
-        return st.emit_bailed("manifest-schema-invalid")
+def _read_prelaunch_index_nonempty(st: DispatchState) -> str:
+    if not st.prelaunch_index_flag.is_file():
+        return "false"
+    for line in st.prelaunch_index_flag.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith("PRELAUNCH_INDEX_NONEMPTY="):
+            return line.split("=", 1)[1]
+    return "false"
+
+
+def _recovery_paths_submodule_clean(st: DispatchState) -> bool:
     roots = _submodule_roots(st.repo_root)
     for rel in st.recovery_paths_file.read_bytes().split(b"\0"):
         if not rel:
             continue
         path = rel.decode("utf-8", "surrogateescape")
         if _path_under_submodule(rel=path, roots=roots):
-            return st.emit_bailed("submodule-dirty")
-    reason = _post_implementer_safety_reason(st)
-    if reason:
-        return st.emit_bailed(reason)
+            return False
+    return True
+
+
+def _finalize_manifest_invalid_recovery(st: DispatchState) -> None:
     invalid = st.tmpdir / "manifest-raw.invalid.json"
     if st.manifest_raw_path.exists():
         st.manifest_raw_path.replace(invalid)
@@ -318,6 +302,38 @@ def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj
     _emit_kv(key="RECOVERY_PRIOR_TOOL", value=st.tool_tag)
     _emit_kv(key="RECOVERY_PATHS_FILE", value=str(st.recovery_paths_file))
     _clear_external_scout_state(st.tmpdir)
+
+
+def _manifest_invalid_bail_reason(*, st: DispatchState, status: str, raw_obj: object | None) -> str | None:
+    if not isinstance(raw_obj, dict):
+        return "manifest-schema-invalid"
+    if status != "complete" and not (status == "" and _manifest_legacy_fingerprint(raw_obj)):
+        return "manifest-schema-invalid"
+    if _read_prelaunch_index_nonempty(st) == "true":
+        return "manifest-schema-invalid"
+    post = _git(st.repo_root, "status", "--porcelain=v1", "-z", "--untracked-files=all", binary=True).stdout
+    _write_bytes_atomic(path=st.postlaunch_porcelain, data=cast("bytes", post))
+    ok = compute_recovery_paths(
+        repo_root=st.repo_root,
+        tmpdir=st.tmpdir,
+        porcelain=RecoveryPorcelainInputs(
+            prelaunch_porcelain=st.prelaunch_porcelain,
+            postlaunch_porcelain=st.postlaunch_porcelain,
+            prelaunch_digests=st.prelaunch_digests,
+        ),
+        out_file=st.recovery_paths_file,
+    )
+    if not ok:
+        return "manifest-schema-invalid"
+    if not _recovery_paths_submodule_clean(st):
+        return "submodule-dirty"
+    return _post_implementer_safety_reason(st) or None
+
+
+def _emit_manifest_invalid_or_recover(*, st: DispatchState, status: str, raw_obj: object | None) -> int:
+    if (bail := _manifest_invalid_bail_reason(st=st, status=status, raw_obj=raw_obj)) is not None:
+        return st.emit_bailed(bail)
+    _finalize_manifest_invalid_recovery(st)
     return 0
 
 

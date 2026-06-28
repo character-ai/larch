@@ -2790,46 +2790,10 @@
     "metric": 62
   },
   {
-    "file": "larch/implement/dispatch_bootstrap.py",
-    "code": "C901",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 14
-  },
-  {
-    "file": "larch/implement/dispatch_bootstrap.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 13
-  },
-  {
-    "file": "larch/implement/dispatch_bootstrap.py",
-    "code": "PLR0915",
-    "qualified_symbol": "step0_bootstrap_main",
-    "metric": 78
-  },
-  {
     "file": "larch/implement/dispatch_helpers.py",
     "code": "PLR0913",
     "qualified_symbol": "_maybe_mark_step2_telemetry",
     "metric": 7
-  },
-  {
-    "file": "larch/implement/dispatch_manifest.py",
-    "code": "C901",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 15
-  },
-  {
-    "file": "larch/implement/dispatch_manifest.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 7
-  },
-  {
-    "file": "larch/implement/dispatch_manifest.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_emit_manifest_invalid_or_recover",
-    "metric": 14
   },
   {
     "file": "larch/implement/phantom.py",
