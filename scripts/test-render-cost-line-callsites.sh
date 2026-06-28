@@ -69,7 +69,7 @@ grep -Fq 'sidecar follow-on `forbidden`' "$REPO/skills/implement/SKILL.md" || fa
 grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 composite missing-marker warning must be pinned'
 grep -Fq '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 finalize missing-marker warning must be pinned'
 grep -Fq 'STEP17_EMITTED_FOR_STEP18' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 finalize fence must bind STEP17_EMITTED_FOR_STEP18'
-grep -Fq 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on stall-recovery and escalation-filing paths.' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 teardown tail relay must be dual-source pinned'
+grep -Fq 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on the stall-recovery path.' "$REPO/skills/implement/SKILL.md" || fail 'Step 18 teardown tail relay must be dual-source pinned'
 # shellcheck disable=SC2016
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
