@@ -73,7 +73,7 @@ def test_display_grouping_and_mutable_regular_prefixes() -> None:
     assert deps_audit._group_for_title("[IMPLEMENTING] work") == "IMPLEMENTING"
     assert deps_audit._group_for_title("plain issue") == "REGULAR"
     assert deps_audit._is_mutable_regular("plain issue") is True
-    for prefix in ["[STALLED]", "[OOS]", "[DONE]", "[PLANNED]", "[IN PROGRESS]", "[LOCKED]"]:
+    for prefix in [f"[{state}]" for state in ("STALLED", "OOS", "DONE", "PLANNED", "IN PROGRESS", "LOCKED")]:
         assert deps_audit._is_mutable_regular(f"{prefix} issue") is False
 
 
