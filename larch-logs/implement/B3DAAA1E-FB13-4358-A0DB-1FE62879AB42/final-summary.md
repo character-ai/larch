@@ -1,13 +1,15 @@
-## /implement run B3DAAA1E-FB13-4358-A0DB-1FE62879AB42 — shipping
+## /implement run B3DAAA1E-FB13-4358-A0DB-1FE62879AB42 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:12:46
-- **Cost**: 💰 TOTAL ~$10.29 — Claude $1.88, Codex-5.5 $5.55, Codex-mini $1.89, Cursor $0.00, Claude (subprocess) $0.97  |  Tokens: 20427k
+- **Cost**: 💰 TOTAL ~$10.86 — Claude $2.45, Codex-5.5 $5.55, Codex-mini $1.89, Cursor $0.00, Claude (subprocess) $0.97  |  Tokens: 22077k
 - **Issue**: #5783 — https://github.com/character-ai/larch/issues/5783
+- **PR**: #5831 — https://github.com/character-ai/larch/pull/5831
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +895/-4, larch-logs +1060/-0
 - **OOS filed**: 0
 - **Exec issues**: 14
 - **Warnings**: 3
