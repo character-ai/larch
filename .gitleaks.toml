@@ -82,6 +82,7 @@ regexes = [
     '''abcdefghijklmnopqrstuvwxyz0123456789''',
     '''MIIBOgIBAAJBAKj34GkxFhD90vcNLYLInFEX6Ppy1tPf9''',
     '''IMPLEMENT_BAIL_REASON=''',
+    '''IMPLEMENT_TMPDIR=''',
     '''MERGE_RESULT=merged''',
     '''LARCH_TOKEN_SESSION_ID=[0-9A-F]{8}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{4}-[0-9A-F]{12}''',
     '''keys, absent/octal/boundary''',

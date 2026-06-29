@@ -257,7 +257,7 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     assert seen_policy == ["review.panel"]
 
 
-def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch) -> None:
     original = external_defaults.voter_policies
 
     def fake_voter_policies(role_id: str) -> tuple[config.VoterPolicyDefault, ...]:
@@ -271,14 +271,14 @@ def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest
     monkeypatch.setattr(external_defaults, "voter_policies", fake_voter_policies)
     try:
         reloaded = importlib.reload(agent_voters)
-        path2, path3, tool2, tool3 = reloaded._state_from_voter23_bindings(
-            review_tmpdir=tmp_path,
+        state = reloaded._state_from_bindings(
             bindings={
                 "voter-2": agent_waterfall.SlotOutputBinding(path="v2.txt", tool="cursor"),
                 "voter-3": agent_waterfall.SlotOutputBinding(path="v3.txt", tool="codex"),
             },
+            launched_policies=reloaded.VOTER_SLOT_POLICIES,
         )
-        assert (path2, path3, tool2, tool3) == ("v2.txt", "v3.txt", "sentinel-v2", "sentinel-v3")
+        assert (state.voter_2_path, state.voter_3_path, state.voter_2_tool, state.voter_3_tool) == ("v2.txt", "v3.txt", "sentinel-v2", "sentinel-v3")
     finally:
         monkeypatch.setattr(external_defaults, "voter_policies", original)
         importlib.reload(agent_voters)
