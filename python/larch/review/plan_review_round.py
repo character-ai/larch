@@ -53,18 +53,52 @@ def _run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subproces
     )
 
 
+# (slot-name prefix, human-label prefix, nominal vendor). Order matters: the
+# ``dyn-*`` prefixes must precede their bare forms. Shared by _slot_human_label
+# and _nominal_vendor_from_slot so the vendor mapping cannot drift (issue #5838).
+_SLOT_LABEL_PREFIXES = (
+    ("dyn-cursor-plan-", "Cursor-dyn-", "cursor"),
+    ("dyn-codex-plan-", "Codex-dyn-", "codex"),
+    ("cursor-plan-", "Cursor-", "cursor"),
+    ("codex-plan-", "Codex-", "codex"),
+    ("codex-primary-plan-", "Codex-", "codex"),
+)
+
+
 def _slot_human_label(slot: str) -> str:
-    prefixes = (
-        ("dyn-cursor-plan-", "Cursor-dyn-"),
-        ("dyn-codex-plan-", "Codex-dyn-"),
-        ("cursor-plan-", "Cursor-"),
-        ("codex-plan-", "Codex-"),
-        ("codex-primary-plan-", "Codex-"),
-    )
-    for prefix, label in prefixes:
+    for prefix, label, _ in _SLOT_LABEL_PREFIXES:
         if slot.startswith(prefix):
             return label + slot[len(prefix) :].replace("-", " ").title()
     return slot
+
+
+def _nominal_vendor_from_slot(slot: str) -> str:
+    """Vendor a plan-review slot was assigned to, from its name prefix.
+
+    Empty when the slot has no vendor prefix (e.g. a generalist or Claude slot).
+    """
+    for prefix, _, vendor in _SLOT_LABEL_PREFIXES:
+        if slot.startswith(prefix):
+            return vendor
+    return ""
+
+
+def reconciled_reviewer_label(slot: str, *, executing_tool: str) -> str:
+    """Human reviewer label, annotated ``(via <Tool>)`` on vendor fallback.
+
+    On fallback the panel keeps the original slot name (e.g. ``cursor-plan-arch``)
+    even though another tool produced the output, so attribution keyed on the slot
+    label alone credits a vendor that contributed nothing. ``executing_tool`` is the
+    collector ``TOOL=`` provenance for the slot's output file; when it names a known
+    tool that differs from the slot's nominal vendor, annotate the label so the
+    report reflects the tool that actually ran the slot (issue #5838).
+    """
+    label = _slot_human_label(slot)
+    nominal = _nominal_vendor_from_slot(slot)
+    tool = (executing_tool or "").strip()
+    if nominal and tool and tool != "unknown" and tool != nominal:
+        return f"{label} (via {tool.title()})"
+    return label
 
 
 def _load_manifest_slots(manifest: Path) -> list[str]:
@@ -495,6 +529,8 @@ def write_reviewer_status_tsv(
         return None
     status_by_output: dict[str, str] = {}
     status_by_norm_basename: dict[str, str] = {}
+    tool_by_output: dict[str, str] = {}
+    tool_by_norm_basename: dict[str, str] = {}
     if collect_text is not None:
         text = collect_text
     else:
@@ -505,14 +541,18 @@ def write_reviewer_status_tsv(
             reviewer_file = record.get("REVIEWER_FILE", "")
             if reviewer_file:
                 status = record.get("STATUS", "")
+                tool = record.get("TOOL", "")
                 status_by_output[reviewer_file] = status
+                tool_by_output[reviewer_file] = tool
                 norm = voting.normalize_reviewer_basename(reviewer_file)
                 if status_by_norm_basename.get(norm) != "OK":
                     status_by_norm_basename[norm] = status
+                    tool_by_norm_basename[norm] = tool
                 with contextlib.suppress(OSError):
                     resolved = os.path.realpath(reviewer_file)
                     if resolved != reviewer_file:
                         status_by_output[resolved] = status
+                        tool_by_output[resolved] = tool
     round_dir = design / "plan-review" / f"round-{round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     out = round_dir / "reviewer-status.tsv"
@@ -533,7 +573,13 @@ def write_reviewer_status_tsv(
             status = "done" if raw_status == "OK" else "failed"
         else:
             status = "skipped"
-        lines.append(f"{_slot_human_label(slot)}\t{status}\t")
+        executing_tool = tool_by_norm_basename.get(norm)
+        if executing_tool is None:
+            executing_tool = tool_by_output.get(output)
+        if executing_tool is None:
+            with contextlib.suppress(OSError):
+                executing_tool = tool_by_output.get(os.path.realpath(output))
+        lines.append(f"{reconciled_reviewer_label(slot, executing_tool=executing_tool or '')}\t{status}\t")
     _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     _ = _write_reviewer_status_table_artifacts(design=design, source_tsv=out, round_num=round_num)
     sync_latest_reviewer_status(design=design, round_status=out)
