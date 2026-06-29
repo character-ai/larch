@@ -1,0 +1,22 @@
+# [py-code-quality] [pkg-payoff] 13/14: Re-tighten per-package complexity enforcement after splits
+
+**Improvement #2 (complexity ratchet).** Part of the post-#4982 packaging-payoff umbrella.
+
+#### Problem
+`python/complexity-baseline.json` grandfathers ~1,139 complexity violations, and `python/ruff.toml` per-file ignores suppress `C901` / `PLR09xx` for whole modules. These are cleanup bookkeeping, not real budgets. After the god-module splits (2/14 through 12/14) pay down the bulk of this debt, re-tighten enforcement per package.
+
+#### Scope
+- Remove per-file ignores and `complexity-baseline.json` rows made obsolete by the splits.
+- Re-enable strict `C901` / `PLR0911` / `PLR0912` / `PLR0913` / `PLR0915` enforcement per package where the package is now clean.
+- Document the re-tightened policy in `docs/linting.md`.
+
+#### Acceptance
+- Baseline reduced to genuine, justified residual, not split-removable debt.
+- Strict complexity rules enforced per cleaned package.
+- `make py-lint` green.
+
+#### Value (LLM-only repo)
+Strong. This is the umbrella's explicitly-named unlock ("re-enable strict complexity rules per-package"). Mechanical enforcement matters more, not less, without a human reviewing architecture.
+
+#### Dependencies
+**Blocked by all 11 split issues (2/14 through 12/14).** You cannot drop a module's grandfather entries until that module is split. Blocks the umbrella.

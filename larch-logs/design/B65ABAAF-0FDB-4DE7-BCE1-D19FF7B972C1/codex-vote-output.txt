@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The row is basename-wide, but tightening the shim is not necessary for this package-ratchet feature; the live larch/cli.py entry still preserves the intended complexity enforcement.

@@ -1,0 +1,14 @@
+### FINDING_1: Preserve non-complexity ignores when tightening complexity suppressions
+- **Reviewer(s)**: Cursor-Arch Phase2, Codex-Generic
+- **Severity**: blocking
+- **Concern**: The plan can delete whole `ruff.toml` per-file ignore entries after removing obsolete complexity codes, even when those entries still contain unrelated non-complexity suppressions. This would re-enable unrelated lint failures outside the complexity-only scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch Phase2: Only delete the whole ignore entry when the list is empty after removing complexity codes; otherwise preserve any remaining non-complexity codes.
+  - From Codex-Generic: Change the removal rule to delete an entry only when no ignored codes remain after removing obsolete complexity codes. Update the expected-effect list so entries with non-complexity codes are retained with those codes, or remove that list.
+
+### FINDING_2: Avoid basename-level retention for shared production files
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: The plan keeps complexity ignores by basename when any file with that basename still has a live baseline row. Shared production basenames can therefore keep obsolete ignores for cleaned paths, which misses the requirement to re-enable strict enforcement per cleaned package.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Split only shared production basename entries into path-qualified ruff.toml entries, then keep each complexity code only for the matched file paths with live regenerated baseline rows. Unique basename entries can stay on the current basename flow.

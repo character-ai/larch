@@ -1,0 +1,49 @@
+**Improvement #2 (complexity ratchet).** Part of the post-#4982 packaging-payoff umbrella.
+
+#### Problem
+`python/complexity-baseline.json` grandfathers ~1,139 complexity violations, and `python/ruff.toml` per-file ignores suppress `C901` / `PLR09xx` for whole modules. These are cleanup bookkeeping, not real budgets. After the god-module splits (2/14 through 12/14) pay down the bulk of this debt, re-tighten enforcement per package.
+
+#### Scope
+- Remove per-file ignores and `complexity-baseline.json` rows made obsolete by the splits.
+- Re-enable strict `C901` / `PLR0911` / `PLR0912` / `PLR0913` / `PLR0915` enforcement per package where the package is now clean.
+- Document the re-tightened policy in `docs/linting.md`.
+
+#### Acceptance
+- Baseline reduced to genuine, justified residual, not split-removable debt.
+- Strict complexity rules enforced per cleaned package.
+- `make py-lint` green.
+
+#### Value (LLM-only repo)
+Strong. This is the umbrella's explicitly-named unlock ("re-enable strict complexity rules per-package"). Mechanical enforcement matters more, not less, without a human reviewing architecture.
+
+#### Dependencies
+**Blocked by all 11 split issues (2/14 through 12/14).** You cannot drop a module's grandfather entries until that module is split. Blocks the umbrella.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Regenerate `python/complexity-baseline.json` from live ruff so it holds only genuine residual violations; split-removed rows drop out.
+- Tighten `python/ruff.toml` per-file-ignores per-code: keep only codes each production file still violates; delete fully-clean entries.
+- Re-document the re-tightened policy in `docs/linting.md` and keep `make py-lint` green.
+
+### Non-goals
+- No new complexity-reducing refactors; splits 2/14 through 12/14 own that paydown.
+- No new per-package config, directory-scoped ruff sections, or new linter mode.
+- No edits to test exemptions, non-complexity ignores, the audit config shape, or the other ratchets (subprocess / env / layering).
+
+### Approach sketch
+- Reuse existing mechanisms only. `make regen-complexity-baseline` (= `cli.py lint complexity-baseline --write`) regenerates the baseline via `ruff-complexity-audit.toml`, which already sees every production violation.
+- Treat the regenerated baseline as ground truth: a production `(file, code)` stays in `ruff.toml` per-file-ignores only when it still appears in the baseline; drop the rest.
+- Preserve byte-canonical baseline output (sorted, 2-space, trailing newline) and all test-facing globs.
+- Verify with `make py-lint`; tightened ignores plus regenerated baseline must leave it green.
+
+### Surfaces in scope
+- `python/complexity-baseline.json` (regenerated)
+- `python/ruff.toml` (per-file-ignores, complexity codes only)
+- `docs/linting.md` (policy section)
+
+### Open questions
+- Mechanize the `ruff.toml` tightening as a one-shot derivation (honors "no new make targets") or add a committed regen target for reproducibility? Lean one-shot.
+- Confirm baseline path keys map cleanly to `ruff.toml` basename globs when deriving the kept-ignore set; resolve during plan drafting.
