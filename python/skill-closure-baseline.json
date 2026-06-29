@@ -1,6 +1,6 @@
 [
   {
-    "closure_estimated_tokens": 70502,
+    "closure_estimated_tokens": 70464,
     "closure_lines": 2047,
     "files": [
       "skills/design/SKILL.md",
@@ -17,7 +17,7 @@
       "skills/design/references/validator-failure.md"
     ],
     "skill": "design",
-    "skill_md_estimated_tokens": 30169,
+    "skill_md_estimated_tokens": 30131,
     "skill_md_lines": 705
   },
   {
