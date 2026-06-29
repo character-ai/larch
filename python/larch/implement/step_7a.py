@@ -290,6 +290,7 @@ def _run_step7a_inner(
     claude_source = _read_kv(path=session_env, key="LARCH_CLAUDE_SOURCE_FILE")
 
     _run_cli("token", "mark", "Step 7a — pre-ship")
+    # lint-subprocess-via-runner: ok timing-mark needs LARCH_TIMING_SKILL env; _run_cli does not support custom env
     subprocess.run(
         [sys.executable, str(_plugin_root() / "python" / "cli.py"), "timing", "mark", "Step 7a — pre-ship"],
         env={**os.environ, "LARCH_TIMING_SKILL": "implement"},
