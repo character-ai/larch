@@ -49,7 +49,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 
 - Explicit output formats take precedence. Do not apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
 - Code and comments keep surrounding style.
-- Applies to new prose only. Do not restyle existing text. Every changed line must trace to the task.
+- Applies to new prose only. Do not restyle existing text. Every changed line traces to the task.
 - Precedence: explicit format contracts, exact meaning, then these style rules.
 
 **Style rules.** Lead with the answer. Keep one idea per short sentence. Prefer bullets. **Bold** scan keys. Use short headers when helpful. In chat, confirm or correct up front. Stop early. Avoid walls of prose, em dashes, over-hedging, and passive filler. Use concrete nouns and verbs.
