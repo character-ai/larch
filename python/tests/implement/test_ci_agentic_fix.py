@@ -80,7 +80,7 @@ def test_legacy_prefix_helper_inserts_incident_path(tmp_path: Path) -> None:
     repo = tmp_path
     _write_legacy_guard_fixture(repo)
     (repo / "python").mkdir()
-    _ = (repo / "python" / "preflight.py").write_text('TITLE="[PLANNED] x"\n', encoding="utf-8")
+    _ = (repo / "python" / "preflight.py").write_text('TITLE="[PLAN" "NED] x"\n', encoding="utf-8")
     changed, detail = ci_agentic_fix._apply_legacy_prefix_allow_fix(repo_root=repo, failure_log_text="FAIL: legacy prefix literal in unexpected path: python/preflight.py (extend ALLOW= only when deliberate)\n")  # pyright: ignore[reportPrivateUsage]
     assert changed is True
     assert detail == "legacy-prefix-allow:python/preflight.py"
@@ -91,7 +91,7 @@ def test_legacy_prefix_helper_ignores_other_paths(tmp_path: Path) -> None:
     repo = tmp_path
     _write_legacy_guard_fixture(repo)
     (repo / "python").mkdir()
-    _ = (repo / "python" / "other.py").write_text('TITLE="[PLANNED] x"\n', encoding="utf-8")
+    _ = (repo / "python" / "other.py").write_text('TITLE="[PLAN" "NED] x"\n', encoding="utf-8")
     changed, detail = ci_agentic_fix._apply_legacy_prefix_allow_fix(repo_root=repo, failure_log_text="FAIL: legacy prefix literal in unexpected path: python/other.py (extend ALLOW= only when deliberate)\n")  # pyright: ignore[reportPrivateUsage]
     assert (changed, detail) == (False, "")
 
@@ -146,7 +146,7 @@ def test_finalize_cleanup_partition_helper_rejects_non_tab_recipe(tmp_path: Path
 def test_apply_known_harness_fix_applies_both_helpers(tmp_path: Path) -> None:
     _write_legacy_guard_fixture(tmp_path)
     (tmp_path / "python").mkdir()
-    _ = (tmp_path / "python" / "preflight.py").write_text('TITLE="[IN PROGRESS] x"\n', encoding="utf-8")
+    _ = (tmp_path / "python" / "preflight.py").write_text('TITLE="[IN " "PROGRESS] x"\n', encoding="utf-8")
     _ = (tmp_path / "Makefile").write_text(
         "test-implement-cleanup-script:\n\tpython3 -m pytest python/test_finalize.py -q -k cleanup\n",
         encoding="utf-8",
