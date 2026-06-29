@@ -374,6 +374,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "topology-rule-paths"): ("larch.lint.check_topology_rule_paths", "main"),
     ("lint", "mermaid-fences"): ("larch.lint.lint_mermaid_fences", "main"),
     ("lint", "skill-md-flag-signature"): ("larch.lint.lint_skill_md_flag_signature", "main"),
+    ("lint", "skill-description-length"): ("larch.lint.lint_skill_description_length", "main"),
     ("lint", "readability-preamble"): ("larch.lint.lint_readability_preamble", "main"),
     ("lint", "gh-body-inline"): ("larch.lint.lint_gh_body_inline", "main"),
     ("lint", "complexity-baseline"): ("larch.lint.lint_complexity_baseline", "main"),

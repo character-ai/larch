@@ -1,6 +1,6 @@
 ---
 name: set-up-forked-open-source-repo
-description: "Use when configuring the current clone for upstream-fork OSS contribution: rewire origin/upstream remotes, disable upstream pushes, and optionally mirror-sync the fork. Triggers: set up forked repo, configure fork remotes, rewire fork."
+description: "Use when configuring a clone for upstream-fork OSS work: set origin/upstream remotes, disable upstream pushes, and optionally mirror-sync the fork."
 argument-hint: "--upstream <owner/repo> --fork <owner/repo> [--mirror-confirmed] [--init-submodules]"
 allowed-tools: Bash
 ---

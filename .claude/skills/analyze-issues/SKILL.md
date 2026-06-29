@@ -1,6 +1,6 @@
 ---
 name: analyze-issues
-description: "Use when generating a backlog-and-process insight report from a repository's GitHub issues -- coverage stats, category breakdown, cumulative-growth chart, wasteful-work signatures, reviewer/persona effectiveness, and realized-outcome voter diagnostics."
+description: "Use when generating a GitHub-issue backlog report: coverage, categories, growth chart, waste signatures, reviewer/persona, and voter diagnostics."
 allowed-tools: Bash, Read
 ---
 

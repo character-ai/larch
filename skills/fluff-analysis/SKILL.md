@@ -1,6 +1,6 @@
 ---
 name: fluff-analysis
-description: "Use when analyzing review 'fluff' from committed larch run logs: which /design and /implement review suggestions get rejected, deferred to OOS, or accepted-but-low-value, plus data-driven recommendations for tightening reviewer/judge instructions."
+description: "Use when analyzing review fluff in committed larch run logs: rejected, OOS, or accepted-low-value findings, plus tuning recommendations."
 allowed-tools: Bash, Read
 ---
 

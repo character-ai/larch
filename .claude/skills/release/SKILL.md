@@ -1,6 +1,6 @@
 ---
 name: release
-description: "Use when cutting a new larch release: gather merged PRs since the last Latest release, generate categorized notes, decide the aggregate semver bump, open and merge the plugin.json bump PR, tag and create the GitHub Release, promote to Latest, then run /upgrade-larch. Private to this larch repo; not plugin exported."
+description: "Use when cutting a larch release: collect merged PRs, classify semver bump, open and merge the version PR, tag, publish GitHub Release, and promote Latest."
 argument-hint: "[--dry-run] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash, Skill
 disable-model-invocation: true

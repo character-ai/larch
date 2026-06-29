@@ -1,6 +1,6 @@
 ---
 name: rebalance-tests
-description: "Use when rebalancing CI test harness shards, Python unit test shards, or both. Fetches recent CI timings, repacks selected shard artifacts, creates one PR, triggers verification CI, keeps harness verification warning-only, and fails closed for Python timing verification."
+description: "Use when rebalancing CI test harness shards, Python unit test shards, or both from recent timings. Creates one PR and verifies the selected shard plan."
 allowed-tools: Bash, Read, Write
 ---
 

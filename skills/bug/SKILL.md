@@ -1,6 +1,6 @@
 ---
 name: bug
-description: "Use when filing, reporting, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled. Keywords: bug report, regression, broken behavior, reproduction, suggested fix."
+description: "Use when filing, investigating, or root-causing a software bug. Reads the repo, drafts a detailed GitHub issue, and invokes /issue with dedup enabled."
 argument-hint: "[--urgent] <bug description>"
 allowed-tools: Bash, Read, Grep, Glob, Write, Skill
 hooks:

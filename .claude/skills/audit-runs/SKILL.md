@@ -1,6 +1,6 @@
 ---
 name: audit-runs
-description: "Use when auditing recently-merged larch run logs for anomalies (design or implement), filing the chain-of-history audit-report issue, and proposing bug-issue follow-ups that require explicit user direction before any filing or augmentation. Mechanizes the ad-hoc post-merge audit workflow."
+description: "Use when auditing recently merged larch run logs for anomalies, filing the chain-of-history audit issue, and proposing user-approved bug follow-ups."
 allowed-tools: Bash, Read
 ---
 

@@ -1,6 +1,6 @@
 ---
 name: combine-issues
-description: "Use when asked to try to combine existing issue to reduce issue count.  Examine all open issues that are not currently being worked on, and see if any number of them can be combined into one issue (closing the source issues afterwords), in order to save tokens / reduce the number of tasks to do.  Good candidated would be issues that either work in the same code area, or that apply very similar changes to different code areas, but think of other criteria that it would be appropriate as well.  Again, the primary goal is to reduce the tokens spent on executing unnecessarily fine-grained tasks.  Use `/combine-issues --oos` when asked to combine out-of-scope (OOS) issues — operates only on issues whose title starts with `[OOS]`, checks each item for actuality, discards stale items, and proposes an aggressive combination scheme."
+description: "Use when combining open issues to reduce issue count and token cost. Use /combine-issues --oos for OOS issues; verifies actuality and proposes combined replacements."
 allowed-tools: Bash, Read, Write
 ---
 
