@@ -1668,6 +1668,12 @@
     "metric": 64
   },
   {
+    "file": "larch/design/design_terminal.py",
+    "code": "PLR0915",
+    "qualified_symbol": "step_final_summary_core",
+    "metric": 52
+  },
+  {
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "_extract_file_replacement",
