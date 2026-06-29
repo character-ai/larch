@@ -189,6 +189,25 @@ def test_missing_referenced_markdown_fails_closed(tmp_path: Path) -> None:
         _ = scg.scan_skill(tmp_path, "design")
 
 
+def test_invalid_utf8_referenced_markdown_reports_scan_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = (tmp_path / "skills/design/references/flags.md").write_bytes(b"\xff\xfe")
+
+    assert scg.main(["--root", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "lint skill-closure-growth: cannot read" in err
+
+
+def test_invalid_utf8_baseline_reports_scan_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    _ = (tmp_path / "python/skill-closure-baseline.json").write_bytes(b"\xff\xfe")
+
+    assert scg.main(["--root", str(tmp_path)]) == 2
+    err = capsys.readouterr().err
+    assert "lint skill-closure-growth: cannot read baseline" in err
+
+
 def test_baseline_check_passes_when_live_metrics_match(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     fixture_project(tmp_path)
     _ = write_baseline_from_live(tmp_path)

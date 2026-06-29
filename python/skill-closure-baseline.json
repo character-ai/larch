@@ -1,7 +1,7 @@
 [
   {
-    "closure_estimated_tokens": 70527,
-    "closure_lines": 2132,
+    "closure_estimated_tokens": 70506,
+    "closure_lines": 2047,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
@@ -17,8 +17,8 @@
       "skills/design/references/validator-failure.md"
     ],
     "skill": "design",
-    "skill_md_estimated_tokens": 30206,
-    "skill_md_lines": 790
+    "skill_md_estimated_tokens": 30185,
+    "skill_md_lines": 705
   },
   {
     "closure_estimated_tokens": 38486,

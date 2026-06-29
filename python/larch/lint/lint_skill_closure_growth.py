@@ -117,7 +117,7 @@ def _estimated_tokens(text: str) -> int:
 def _read_file_metrics(path: Path) -> FileMetrics:
     try:
         text = path.read_text(encoding="utf-8")
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ScanError(f"cannot read {path}: {exc}") from exc
     return FileMetrics(lines=len(text.splitlines()), estimated_tokens=_estimated_tokens(text))
 
@@ -274,7 +274,7 @@ def _append_unique_paths(references: list[str], seen: set[str], paths: Iterable[
 def parse_direct_markdown_references(root: Path, skill: str, skill_path: Path) -> tuple[str, ...]:
     try:
         lines = skill_path.read_text(encoding="utf-8").splitlines()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         raise ScanError(f"cannot read {skill_path}: {exc}") from exc
 
     references: list[str] = []
@@ -372,6 +372,8 @@ def load_baseline(path: Path) -> list[BaselineRow]:
         raw: object = json.loads(path.read_text(encoding="utf-8"))
     except FileNotFoundError as exc:
         raise BaselineError(f"baseline not found: {path}") from exc
+    except UnicodeDecodeError as exc:
+        raise BaselineError(f"cannot read baseline {path}: {exc}") from exc
     except (OSError, json.JSONDecodeError) as exc:
         raise BaselineError(f"cannot read baseline {path}: {exc}") from exc
     if not isinstance(raw, list):
