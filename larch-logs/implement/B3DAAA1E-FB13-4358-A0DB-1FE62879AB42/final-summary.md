@@ -9,7 +9,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +895/-4, larch-logs +1060/-0
+- **Lines (PR diff)**: code +897/-4, larch-logs +1063/-0
 - **OOS filed**: 0
 - **Exec issues**: 14
 - **Warnings**: 3
@@ -34,4 +34,4 @@ No review rounds completed.
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
