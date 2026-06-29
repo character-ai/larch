@@ -1,0 +1,19 @@
+# md-to-py-IX: in-place prose compression of skills/design/SKILL.md
+
+Reduce the always-loaded line/token count of `skills/design/SKILL.md` (790 lines) by **line-level prose compression**, not relocation. Rounds V–VIII already mined relocation; that well is thinning. This child mines the un-touched vein: Strunk & White density of the prose that stays on the hot path.
+
+#### Goal
+
+Target the dense, qualifier-heavy prose: the roughly 600-word anti-halt continuation paragraph, the Step 0 and Step 3 prose, repeated hedging. `SKILL.md` remains the single largest always-loaded file in `/design`. A careful 10–15% prose pass is roughly 80–120 hot-path lines, comparable to the entire #5683 headline, spread across the file.
+
+#### Hard guards (must hold)
+
+- Do **NOT** remove deliberate compaction-resilience duplication. The repeated NEVER rules and anti-halt reminders exist on purpose (see the #5696 "deliberately out of scope" list).
+- Do **NOT** alter load-bearing contract tokens, `KEY=value` grammars, step numbers, fence shapes, or `Print:` directives.
+- Must pass `make test-design-structure` and all existing design harnesses **unchanged**.
+
+#### Out of scope
+
+`skills/implement/SKILL.md` (child B2); references; structural fold/relocate.
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569, VIII #5696). Round IX pivots from md-to-py migration and fold/relocate to Tier-1 autoload + in-place prose density, fronted by a CI closure-size ratchet. Designed independently.

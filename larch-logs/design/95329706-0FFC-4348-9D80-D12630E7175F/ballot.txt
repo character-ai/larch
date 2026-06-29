@@ -1,0 +1,17 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: plan.txt:39-43
+- **Concern**: [SCOPE-REDUCTION] Safe-edits list leaves an exception for fenced Bash block changes. Scenario: This is a prose-only compression task, but the exception can let implementation touch Bash fences when nearby prose changes, which risks launcher or sentinel contract drift outside the feature scope
+- **Proposed resolution**: Make the rule unconditional: keep fenced Bash blocks byte-stable and edit only prose outside fences
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:95-108
+- **Concern**: Testing plan makes the broader design harness pass optional. Scenario: The issue hard guard requires existing design harnesses to pass, but the plan allows stopping after a narrow subset and only running the broader shard if time allows
+- **Proposed resolution**: Replace the optional shard language with a required concrete design-harness verification set, and remove "if time allows" for the relevant CI shard or targets
