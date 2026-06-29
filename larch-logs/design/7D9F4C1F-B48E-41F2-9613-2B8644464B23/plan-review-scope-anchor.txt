@@ -1,0 +1,54 @@
+Tighten the **Tier-1 autoload** that rounds V–VIII never touched: the skill `description:` fields render into the skill registry **every conversation**, regardless of which skill runs.
+
+#### Goal
+
+- Compress the 28 skill `description:` fields (~6,348 chars, roughly 1,587 tokens, paid every conversation). The 8 longest are 200–250 chars (`fluff-analysis` 249, `bug` 243, `set-up-forked-open-source-repo` 237, `issue` 224, `design` 219, `voter-calibration` 215, `alias` 214, `gc-run-logs` 203).
+- Add a `description:` **length-cap lint** (for example 200 chars) to hold the gain.
+
+#### Hard constraint
+
+Each `description:` MUST keep its trigger clause. `agent-lint` `S017/desc-no-trigger` requires a `Use when …` / `Trigger when …` form. Compression is surgical rewording, not blunt truncation, and the cap lint must not conflict with S017.
+
+#### Scope
+
+`description:` fields in `skills/*/SKILL.md` and dev-only `.claude/skills/*/SKILL.md`; the new cap lint.
+
+#### Out of scope
+
+- The `@`-import chain prose (sibling child A2).
+- `SKILL.md` bodies (children B1/B2).
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569, VIII #5696). Round IX pivots from md-to-py migration and fold/relocate to Tier-1 autoload + in-place prose density, fronted by a CI closure-size ratchet. Designed independently.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Compress all 14 over-cap skill `description:` values to ≤200 chars, keeping each trigger clause (S017 compliant).
+- Add `lint-skill-description-length` (Python + pre-commit hook) to enforce the cap in CI.
+
+### Non-goals
+- `SKILL.md` body prose.
+- `@`-import chain prose (sibling A2).
+- Modifying the external `agent-lint` repo.
+
+### Approach sketch
+- Surgically reword 14 over-cap descriptions (8 public + 6 dev-only) in place; no body edits.
+- New `python/larch/lint/lint_skill_description_length.py`: parse YAML frontmatter, extract description value, fail if `len > 200`.
+- Register via `("lint", "skill-description-length")` in `python/larch/cli.py`.
+- Wire as a `local` pre-commit hook (always_run, SKILL.md file pattern) in `.pre-commit-config.yaml`.
+- Add `lint-skill-description-length` Makefile target + `test-lint-skill-description-length` test target.
+- Pytest module `python/test_lint_skill_description_length.py` covering pass, over-cap, missing-field, unquoted-value edge cases.
+
+### Surfaces in scope
+- `skills/*/SKILL.md` (8 descriptions to rewrite)
+- `.claude/skills/*/SKILL.md` (6 descriptions to rewrite)
+- `python/larch/lint/lint_skill_description_length.py` (new)
+- `python/test_lint_skill_description_length.py` (new)
+- `python/larch/cli.py` (register lint verb)
+- `.pre-commit-config.yaml` (new hook entry)
+- `Makefile` (new lint + test targets)
+
+### Open questions
+- None.
