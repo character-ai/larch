@@ -5694,186 +5694,6 @@
     "metric": 132
   },
   {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_parse_output",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_review_core_body",
-    "metric": 55
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 35
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "collect_findings",
-    "metric": 21
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 53
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "gather_context",
-    "metric": 16
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "C901",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_review_core_body",
-    "metric": 13
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 11
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 7
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "collect_findings",
-    "metric": 7
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 11
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0911",
-    "qualified_symbol": "reviewer_prune",
-    "metric": 10
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_review_core_body",
-    "metric": 55
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 13
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 28
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "collect_findings",
-    "metric": 20
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 61
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0912",
-    "qualified_symbol": "gather_context",
-    "metric": 15
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_core_common_rows",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_emit_core_common",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_review_core_body",
-    "metric": 14
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 8
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "derive_prune_status",
-    "metric": 6
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0913",
-    "qualified_symbol": "write_prune_decision_env",
-    "metric": 9
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_review_core_body",
-    "metric": 229
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "check_reviewer_failure_threshold",
-    "metric": 114
-  },
-  {
-    "file": "larch/review/review_pipeline.py",
-    "code": "PLR0915",
-    "qualified_symbol": "collect_findings",
-    "metric": 70
-  },
-  {
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "emit_tally",
@@ -6736,5 +6556,185 @@
     "code": "PLR0915",
     "qualified_symbol": "main",
     "metric": 110
+  },
+  {
+    "file": "larch/review/review_gather.py",
+    "code": "C901",
+    "qualified_symbol": "gather_context",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/review_gather.py",
+    "code": "PLR0912",
+    "qualified_symbol": "gather_context",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/review_prune.py",
+    "code": "C901",
+    "qualified_symbol": "reviewer_prune",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_prune.py",
+    "code": "PLR0911",
+    "qualified_symbol": "reviewer_prune",
+    "metric": 10
+  },
+  {
+    "file": "larch/review/review_prune.py",
+    "code": "PLR0913",
+    "qualified_symbol": "derive_prune_status",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/review_prune.py",
+    "code": "PLR0913",
+    "qualified_symbol": "write_prune_decision_env",
+    "metric": 9
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 53
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0911",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0912",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 61
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 8
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "code": "C901",
+    "qualified_symbol": "_parse_output",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "code": "C901",
+    "qualified_symbol": "collect_findings",
+    "metric": 21
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "code": "PLR0911",
+    "qualified_symbol": "collect_findings",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "code": "PLR0912",
+    "qualified_symbol": "collect_findings",
+    "metric": 20
+  },
+  {
+    "file": "larch/review/review_collect.py",
+    "code": "PLR0915",
+    "qualified_symbol": "collect_findings",
+    "metric": 70
+  },
+  {
+    "file": "larch/review/review_threshold.py",
+    "code": "C901",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 35
+  },
+  {
+    "file": "larch/review/review_threshold.py",
+    "code": "PLR0911",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/review_threshold.py",
+    "code": "PLR0912",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 28
+  },
+  {
+    "file": "larch/review/review_threshold.py",
+    "code": "PLR0915",
+    "qualified_symbol": "check_reviewer_failure_threshold",
+    "metric": 114
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "C901",
+    "qualified_symbol": "_review_core_body",
+    "metric": 55
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_review_core_body",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_review_core_body",
+    "metric": 55
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_core_common_rows",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_emit_core_common",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_review_core_body",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/review_core_body.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_review_core_body",
+    "metric": 229
   }
 ]

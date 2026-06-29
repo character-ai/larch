@@ -314,7 +314,7 @@ grep -Fq '**⚠ /review requires either --diff (branch diff review) or a descrip
 #      line granularity. A future edit that drops either flag, or splits the
 #      invocation across multiple lines, fails closed under `set -o pipefail`.
 # ---------------------------------------------------------------------------
-COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/larch/review/review_pipeline.py"
+COLLECT_FINDINGS_IMPL="$REPO_ROOT/python/larch/review/review_collect.py"
 grep 'agent collect-results' "$COLLECT_FINDINGS_IMPL" \
   | grep -F -- '--timeout 1860' \
   | grep -F -- '--substantive-validation' \

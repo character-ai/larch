@@ -12,12 +12,15 @@ from pathlib import Path
 from larch.core import proc
 import pytest
 from larch.review import review_pipeline
+from larch.review import review_core_body
 import review_test_support as rts
 from larch.review import voting
 
 ROOT = rts.ROOT
 CLI = rts.CLI
 REVIEW_PIPELINE = ROOT / "python" / "larch" / "review" / "review_pipeline.py"
+REVIEW_CORE_BODY = ROOT / "python" / "larch" / "review" / "review_core_body.py"
+REVIEW_DISPATCH_PANEL = ROOT / "python" / "larch" / "review" / "review_dispatch_panel.py"
 
 
 def run_review(*args: str, env: dict[str, str] | None = None, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
@@ -398,7 +401,7 @@ def test_review_core_body_proposer_map_failed_has_no_classification(
     def fail_proposer(*_args: object, **_kwargs: object) -> None:
         raise ValueError("proposer map failed")
 
-    monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+    monkeypatch.setattr(review_core_body, "_write_proposer_sidecar_and_neutralize", fail_proposer)
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=1, outdir_name="body-proposer-fail")
     keys = _review_core_row_keys(result)
 
@@ -418,7 +421,7 @@ def test_review_core_body_validation_exhausted_proposer_map_failed_has_no_classi
         raise ValueError("proposer map failed")
 
     stubs = _write_review_core_stubs(tmp_path / "body-agg-proposer-fail-stubs")
-    monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+    monkeypatch.setattr(review_core_body, "_write_proposer_sidecar_and_neutralize", fail_proposer)
     result = _run_review_core_body_direct(
         tmp_path,
         monkeypatch,
@@ -692,7 +695,7 @@ def test_emit_review_core_result_stdout_order_matches_rows(
         def fail_proposer(*_args: object, **_kwargs: object) -> None:
             raise ValueError("proposer map failed")
 
-        monkeypatch.setattr(review_pipeline, "_write_proposer_sidecar_and_neutralize", fail_proposer)
+        monkeypatch.setattr(review_core_body, "_write_proposer_sidecar_and_neutralize", fail_proposer)
     result = _run_review_core_body_direct(
         tmp_path,
         monkeypatch,
@@ -1360,12 +1363,12 @@ echo "STATUS=ok"
 
 
 def test_dispatch_panel_python_surface_does_not_import_agents_waterfall() -> None:
-    text = (ROOT / "python" / "larch" / "review" / "review_pipeline.py").read_text(encoding="utf-8")
+    text = REVIEW_DISPATCH_PANEL.read_text(encoding="utf-8")
     assert "agents.run_waterfall" not in text
 
 
 def test_review_core_default_prune_nits_uses_review_cli() -> None:
-    text = REVIEW_PIPELINE.read_text(encoding="utf-8")
+    text = REVIEW_CORE_BODY.read_text(encoding="utf-8")
     retired_prune = "/".join(("skills", "review", "scripts", "prune-nit-findings.sh"))  # noqa: FLY002
     assert retired_prune not in text
     assert '_call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings"' in text
