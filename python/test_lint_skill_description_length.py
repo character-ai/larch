@@ -83,6 +83,14 @@ def test_hash_inside_quoted_description_counts_as_content(
     assert "description is 201 chars" in err
 
 
+def test_apostrophe_in_unquoted_description_does_not_start_a_quote(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_skill(tmp_path, "skills/apostrophe/SKILL.md", skill_doc("description: Use when user's issue #123 is open"))
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
 def test_crlf_and_utf8_bom_are_accepted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     path = tmp_path / "skills/crlf/SKILL.md"
     path.parent.mkdir(parents=True)

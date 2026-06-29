@@ -29,6 +29,14 @@ def extract_frontmatter(text: str) -> str | None:
 
 
 def _strip_inline_comment(value: str) -> str:
+    value = value.strip()
+    if not value:
+        return value
+    if value[0] not in {"'", '"'}:
+        for index, char in enumerate(value):
+            if char == "#" and (index == 0 or value[index - 1].isspace()):
+                return value[:index].rstrip()
+        return value
     in_single = False
     in_double = False
     for index, char in enumerate(value):
@@ -38,7 +46,7 @@ def _strip_inline_comment(value: str) -> str:
             in_double = not in_double
         elif char == "#" and not in_single and not in_double and index > 0 and value[index - 1].isspace():
             return value[:index].rstrip()
-    return value.strip()
+    return value
 
 
 def _strip_surrounding_quotes(value: str) -> str:
