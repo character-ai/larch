@@ -1,8 +1,8 @@
 ## /implement run B3DAAA1E-FB13-4358-A0DB-1FE62879AB42 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$8.65 — Claude $0.24, Codex-5.5 $5.55, Codex-mini $1.89, Cursor $0.00, Claude (subprocess) $0.97  |  Tokens: 16218k
+- **Duration**: 01:12:46
+- **Cost**: 💰 TOTAL ~$10.29 — Claude $1.88, Codex-5.5 $5.55, Codex-mini $1.89, Cursor $0.00, Claude (subprocess) $0.97  |  Tokens: 20427k
 - **Issue**: #5783 — https://github.com/character-ai/larch/issues/5783
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -29,3 +29,7 @@ Warnings (3):
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
