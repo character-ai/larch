@@ -1,0 +1,132 @@
+## Plan
+
+## Approach
+
+Make a prose-only density pass over `skills/design/SKILL.md`.
+
+- Target final line count: **670-710 lines** from the current **790**.
+- Preserve all contract tokens, step numbers, `KEY=value` grammars, fence shapes, `Print:` directives, sentinels, and exact literals pinned by `scripts/test-design-structure.sh`.
+- Preserve deliberate compaction-resilience duplication:
+  - anti-halt reminders
+  - NEVER rules
+  - Step 2b and Step 3 continuation warnings
+  - background-wait warnings
+- Prefer line-level compression over relocation.
+- Do not edit references or `skills/implement/SKILL.md`.
+
+Focus the pass on long, qualifier-heavy prose:
+
+- the large anti-halt continuation paragraph near the top
+- Step 0 setup and routing prose
+- Step 2b drafting and postplan prose
+- Step 3 routing, resume, and review-loop prose
+- repeated hedging where meaning stays intact
+
+After compression, add a line-count ratchet to `scripts/test-design-structure.sh`.
+
+- Follow the simple `wc -l` style used by `scripts/test-review-structure.sh`.
+- Set the threshold to the achieved post-compression count.
+- Keep the failure message direct, for example that `skills/design/SKILL.md` must stay under the ratchet after prose compression.
+
+Update `scripts/test-design-structure.md` to document the new closure-size ratchet.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+Compress prose in place.
+
+Safe edits:
+
+- Split or tighten long prose only when all load-bearing literals remain present.
+- Convert verbose clauses to direct imperatives.
+- Remove repeated qualifiers only when the nearby deliberate reminder still remains.
+- Keep all fenced Bash blocks byte-stable unless a prose line around them changes.
+- Keep the inline Step 2b fallback instructions.
+- Keep all structural-test needles visible.
+
+Do not:
+
+- move content to `references/`
+- remove NEVER rules
+- remove anti-halt duplicates
+- rename step headers
+- alter `Print:` lines
+- alter launcher commands
+- alter sentinel names
+- alter `LARCH_*` plan/scout/dialectic grammar prose
+
+### UPDATED: scripts/test-design-structure.sh
+
+Add a line-count ratchet for `skills/design/SKILL.md`.
+
+Suggested placement:
+
+- Near the existing top-level constants and helper setup, before detailed `contains` checks.
+- Use `skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')`.
+- Fail when the count exceeds the achieved threshold.
+
+Keep the check small. Do not add a new helper unless it avoids duplication.
+
+### UPDATED: scripts/test-design-structure.md
+
+Add one short sentence or bullet that the harness now pins the `/design` hot-path `SKILL.md` line count after in-place prose compression.
+
+## Edge cases
+
+- **Pinned literals:** Some long lines are intentionally pinned by `contains`, `not_contains`, and context checks. Preserve exact substrings before shortening surrounding prose.
+- **Markdown tables:** Do not compress tables in ways that change flag names or persisted key names.
+- **Bash fences:** Leave command shapes intact. This task is not a Bash-fence refactor.
+- **Line count misses target:** If a safe pass lands above 710 lines, make a second prose pass. Do not compensate by moving content out of scope.
+- **Over-strict ratchet:** Set the ratchet only after the final count is known. Avoid guessing before compression.
+
+## Failure modes
+
+1. **Contract drift from prose edits**
+   - Signal: `make test-design-structure` fails on missing literals or context checks.
+   - Mitigation: Restore exact needles and compress only around them.
+
+2. **Accidental removal of deliberate duplication**
+   - Signal: anti-halt or NEVER reminders disappear or become single-sited.
+   - Mitigation: Compare the anti-halt and NEVER sections before and after. Keep repeated reminders when they carry local context.
+
+3. **Ratchet blocks intended target**
+   - Signal: final `wc -l skills/design/SKILL.md` is below target but the test threshold uses a stale or lower number.
+   - Mitigation: Set the threshold from the final observed count in the same implementation pass.
+
+## Testing strategy
+
+Run:
+
+- `wc -l skills/design/SKILL.md`
+- `make test-design-structure`
+- existing design harnesses most likely touched by prompt contracts:
+  - `make test-anti-halt`
+  - `make test-lint-skill-invocations`
+  - `make test-lint-literal-counts`
+
+If time allows, run the broader shard that already includes the design structure harness:
+
+- `make test-harnesses-3`
+
+## Acceptance
+
+Run:
+
+- `wc -l skills/design/SKILL.md`
+- `make test-design-structure`
+- existing design harnesses most likely touched by prompt contracts:
+  - `make test-anti-halt`
+  - `make test-lint-skill-invocations`
+  - `make test-lint-literal-counts`
+
+If time allows, run the broader shard that already includes the design structure harness:
+
+- `make test-harnesses-3`
+
+review_status: ok
+rounds_completed: 1
+diff_added: 25
+diff_deleted: 125
+mechanical_churn: false
+diff_lines: 150

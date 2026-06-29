@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the plan already preserves bash fence byte stability and forbids launcher/sentinel edits; this loophole is not present.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the optional shard is extra verification, not a required part of the issue's hard-gated design harnesses.
