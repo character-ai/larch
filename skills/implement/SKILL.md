@@ -575,7 +575,7 @@ Treat `python/cli.py implement step-7a` relay stdout as one KV stream. Scan `REB
 
 ### Architectural guidelines (Phase A — staging)
 
-Runs after Step 7a and `7a.r` routing on every path that reaches Step 8, including Step 6 skip-to-7a and Step 7 no-op paths. Do not nest this under Step 7 changed-files logic.
+Runs unconditionally after Step 7a completes and after `7a.r` routing, on every path that reaches Step 8. This includes the Step 6 `FILES_CHANGED=false` skip-to-7a path and Step 7 skipped/no-op paths. Do not nest this under Step 7's `FILES_CHANGED=true` rebase subsection.
 
 The prepare helper clears stale Phase A artifacts at entry; do not add an orchestrator-side `rm` loop for those files.
 
@@ -598,7 +598,7 @@ After that exit-code routing passes, branch on the helper output:
 - **`ARCHITECTURAL_GUIDELINES_STATUS=invalid`**: log `ARCHITECTURAL_GUIDELINES_WARNING` to `Warnings`, skip deviation assessment, then continue to Step 8.
 - **`ARCHITECTURAL_GUIDELINES_STATUS=present` with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`**: **MANDATORY — READ ENTIRE FILE**: read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely, then follow it for prompt-side assessment, staged persistence, chat output, warnings, and Step 8 continuation.
 
-Continue to Step 8 only after Phase A succeeds or one explicit continue path fires (`absent`, `invalid`, or present-with-diff-failure). Hard prepare failures stop before Step 8. Sibling contract: `skills/implement/scripts/step-architectural-guidelines-prepare.md`. Present-path persistence contract: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md`. Regression harness: `skills/implement/scripts/test-architectural-guidelines-step.sh` and `skills/implement/scripts/test-architectural-guidelines-step.md`.
+Continue to Step 8 only after Phase A completes successfully or is skipped via the explicit `absent` / `invalid` / present-with-diff-failure continue paths above; hard prepare failures stop before Step 8. Sibling contract: `skills/implement/scripts/step-architectural-guidelines-prepare.md`. Present-path persistence contract: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md`. Regression harness: `skills/implement/scripts/test-architectural-guidelines-step.sh` and `skills/implement/scripts/test-architectural-guidelines-step.md`.
 
 **Phase B — durable pin.** `python/ship.py` pins the staged assessment immediately before every `compose_pr_body()` call. Fresh path: after pre-compose log-only flushes and before first PR body compose. Retry paths: after refreshed Phase A and before the next compose. Do not write the durable pin prompt-side.
 
