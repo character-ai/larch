@@ -1,0 +1,1 @@
+Add bg-wait markers for uncovered `/implement` and `/design` background fences, extend hook release/probe allowlists, and add a lint that prevents future uncovered background fences in design, implement, review, and review-and-fix surfaces.

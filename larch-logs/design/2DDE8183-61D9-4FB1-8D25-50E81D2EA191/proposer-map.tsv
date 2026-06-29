@@ -1,0 +1,9 @@
+# attributed_ballot_sha256=237d4ab007d513f29ef63aaf5f82cd14cab2153149d67bec0452c03335203f7c
+# neutral_ballot_sha256=649e07eed1963ab8b8c150673fc4f10182328a4ece8ab08e53ef394c80ef1286
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch Phase2, Cursor-dyn-Hook Coverage Reviewer Phase2	- **Reviewer(s)**: Cursor-Arch Phase2, Cursor-dyn-Hook Coverage Reviewer Phase2
+FINDING_2	Cursor-Arch Phase2, Cursor-Pragmatic Phase2, Codex-Requirements	- **Reviewer(s)**: Cursor-Arch Phase2, Cursor-Pragmatic Phase2, Codex-Requirements
+FINDING_3	Codex-Arch, Codex-Innovation	- **Reviewer(s)**: Codex-Arch, Codex-Innovation
+FINDING_4	Codex-Arch, Cursor-Requirements Phase2, Codex-Generic	- **Reviewer(s)**: Codex-Arch, Cursor-Requirements Phase2, Codex-Generic
+FINDING_5	Cursor-Innovation Phase2	- **Reviewer(s)**: Cursor-Innovation Phase2
+OOS_1	Codex-Pragmatic	- **Reviewer**: Codex-Pragmatic

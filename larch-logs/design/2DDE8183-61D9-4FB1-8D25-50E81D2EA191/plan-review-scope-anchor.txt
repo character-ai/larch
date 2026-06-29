@@ -1,0 +1,86 @@
+## Summary
+
+Four backgrounded fences in `/implement` and `/design` run with no `.bg-wait-active` marker, so the two notification-storm hook guards are inert during them. Extend marker coverage to all four, and add a structural guard so `/review` (foreground today) cannot silently regress into an uncovered backgrounded fence.
+
+## Root cause
+
+Both guards fire only while a live `.bg-wait-active` marker exists, and the hooks recognize a closed STEP allowlist (`marker_step_completed` in `scripts/hook-bg-poll-guard.sh`; `is_step_completed` in `scripts/hook-no-progress-guard.sh`): `design-step3-review`, `design-step5c`, `design-step-final-summary`, `implement-step3-checks`, `implement-step5-review`. Any backgrounded fence outside that list runs with Monitor/TaskOutput denial **and** the #5639 circuit breaker both disabled. See the companion ship-pr issue for the full root cause.
+
+## Affected fences (all immediate-background, all currently marker-less)
+
+| Fence | Launch | Recovery model |
+|---|---|---|
+| implement Step 7a | `python/cli.py implement step-7a` (`SKILL.md:566`, timeout 1800000) | notification-only |
+| implement Step 6 checks | checks composite `--site step6` (`SKILL.md:537`, timeout 15600000) | notification-only |
+| implement Step 5 MAV/coder resume | `checks-step5-resume --checks-site step5-review-fixes` (`SKILL.md:491`, timeout 32700000) | notification-only |
+| design Step 4 dialectic tail | `design-step3b-tail.sh`, terminal sentinel `.completed/step-4` (`SKILL.md:602-608`, timeout 900000) | foreground-probe |
+
+## Fix
+
+For each fence: write `.bg-wait-active` on entry (`PID`/`START_EPOCH`/`TIMEOUT_S`/`STEP=<new value>`), remove on all exits, and register the new STEP + its terminal sentinel in both hooks' release functions (`marker_step_completed` + `reset_probe_counter_for_step` in `hook-bg-poll-guard.sh`; `is_step_completed` in `hook-no-progress-guard.sh`). Fail-open throughout.
+
+Specifics:
+
+- **Step 7a** (Python): write/remove the marker in the `step-7a` entrypoint via `try`/`finally`, like the design final-summary Python port (`SKILL.md:218`). Terminal sentinel e.g. `.completed/step-7a-terminal`.
+- **Step 6 / Step 5-resume** (composites): write the marker at the **outer composite boundary** (`checks-commit-route` / `checks-step5-resume`), **not** inside `run-step-checks.sh` per check pass. These composites re-invoke checks in a repair loop; a per-pass marker would thrash on/off. Terminal sentinels e.g. `.completed/step-6-terminal`, `.completed/step-5-resume-terminal`.
+- **design Step 4 tail**: `.completed/step-4` is already the fence's terminal sentinel; reuse it. Write/remove the marker in `design-step3b-tail.sh` (`STEP=design-step4-tail`). Because `/design` recovery uses a foreground probe, **also** add `step-4` to the foreground-probe allowlist + clamp in `bash_is_terminal_sentinel_foreground_probe` / `probe_sentinel_name` (its regex currently lists only `step-3-terminal`/`step-5c-terminal`/`step-final-summary`) and to the `skills/shared/design-background-wait.md` contract. Otherwise the live marker makes `hook-bg-poll-guard.sh` deny the sanctioned `[ -f "$DESIGN_TMPDIR/.completed/step-4" ]` probe via the generic bracket-file-test rule.
+- **Step 7a / 6 / 5-resume are notification-only** (`/implement` recovery is notification-only per NEVER #8): no foreground-probe allowlist change needed; the marker only needs the two release registrations.
+
+## /review coverage
+
+`/review` and `/review-and-fix` dispatch the reviewer panel (`review core`) and the Cursor/Codex fix applier (`review-and-fix apply-findings`) as **foreground** `python/cli.py` calls. No `run_in_background`, no `<task-notification>`, so no spurious-notification exposure and no marker needed today. The only backgrounded review path is `/implement` Step 5, already covered by `implement-step5-review`.
+
+To keep it that way, add a structural lint/test asserting every `run_in_background: true` launch directive in `skills/{design,implement,review,review-and-fix}/**` maps to a fence that arms `.bg-wait-active` (allowlist-backed). This generalizes the invariant and forces any future backgrounded review fence to add a marker. It covers `/review` by construction.
+
+## Acceptance criteria
+
+- Markers armed/removed on all paths for the four fences; written at the composite/outer boundary for Step 6 / Step 5-resume (no per-check-pass thrash).
+- Both hooks recognize the four new STEP values + terminal sentinels; Monitor/TaskOutput denied and the circuit breaker arms during each; unit assertions in `scripts/test-hook-bg-poll-guard.sh` + `scripts/test-hook-no-progress-guard.sh`.
+- design Step 4 `[ -f .../.completed/step-4 ]` foreground probe stays **allowed** (allowlist + clamp) under the new marker; `skills/shared/design-background-wait.md` updated.
+- New structural lint asserts the `run_in_background` to marker pairing across all four skills; wired into pre-commit + CI; covers `/review` by construction.
+
+## References
+
+- `scripts/hook-bg-poll-guard.sh:66-101,148-161,163-173,421-476`; `scripts/hook-no-progress-guard.sh:78-105`.
+- `skills/implement/SKILL.md:491,537,566`; `skills/design/SKILL.md:602-608`; `skills/shared/design-background-wait.md`.
+- Patterns to copy: `skills/implement/scripts/step-5-review.sh:50-63` (shell); design final-summary Python port (`SKILL.md:218`) for the `try`/`finally` (Python) shape.
+- Depends on / coordinates with the companion ship-pr issue for the shared hook release-function edits.
+## Predecessor
+
+#5638 built the foundational `/implement` bg-wait marker defense and explicitly deferred "exact set of /implement fences that need a marker/sentinel ... any others?" as an Open Question. This issue answers it for the remaining backgrounded fences (Step 7a/6/5-resume, design Step 4 tail) and adds the /review foreground-invariant guard.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Arm `.bg-wait-active` markers on all four currently uncovered backgrounded fences so hook guards protect them from notification storms.
+- Register new STEP values and terminal sentinels in both hook release functions, and extend the foreground-probe allowlist for design Step 4.
+- Add a structural lint that enforces `run_in_background: true` → `.bg-wait-active` pairing across all four skills, covering `/review` by construction.
+
+### Non-goals
+- No changes to marker format, hook decision logic, or guard thresholds beyond adding new STEP registrations.
+- No changes to fences that already carry markers (`design-step3-review`, `design-step5c`, `design-step-final-summary`, `implement-step3-checks`, `implement-step5-review`, `implement-step8-ship`).
+- No restructuring of the companion ship-pr issue's scope; hook edits in this issue are additive only.
+
+### Approach sketch
+- Python `try`/`finally` in `step_7a.py::run_step7a` for implement Step 7a, mirroring the design final-summary port.
+- Bash EXIT-trap at outer composite boundary in `step-6-entry.sh` (Step 6) and `step-5-resume.sh` (Step 5-resume), not inside per-check-pass scripts.
+- Bash EXIT-trap in `design-step3b-tail.sh` for design Step 4; reuse existing `.completed/step-4` as terminal sentinel; STEP name `design-step4-tail`.
+- Extend `marker_step_completed`, `reset_probe_counter_for_step` (both hooks) with 4 new STEP cases; extend `is_step_completed` in `hook-no-progress-guard.sh`.
+- Extend `bash_is_terminal_sentinel_foreground_probe` and `probe_sentinel_name` regex with `step-4` for design Step 4 foreground-probe allowlist.
+- New Python lint (`python/larch/lint/lint_bg_wait_coverage.py`) scanning SKILL.md files for `run_in_background: true` against a STEP allowlist; wired into `make lint` and pre-commit.
+
+### Surfaces in scope
+- `python/larch/implement/step_7a.py`
+- `skills/implement/scripts/step-6-entry.sh`
+- `skills/implement/scripts/step-5-resume.sh`
+- `skills/design/scripts/design-step3b-tail.sh`
+- `scripts/hook-bg-poll-guard.sh`
+- `scripts/hook-no-progress-guard.sh`
+- `skills/shared/design-background-wait.md`
+- `python/larch/lint/lint_bg_wait_coverage.py` (new)
+- Test harnesses: `scripts/test-hook-bg-poll-guard.sh`, `scripts/test-hook-no-progress-guard.sh`
+
+### Open questions
+- None.
