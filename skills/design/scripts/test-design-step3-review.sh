@@ -3,6 +3,7 @@
 set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 MODULE="$ROOT/python/larch/review/plan_review.py"
+NORMALIZE_MODULE="$ROOT/python/larch/review/plan_review_normalize.py"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
@@ -41,10 +42,10 @@ PY
   chmod +x "$dir/python/cli.py"
 }
 
-grep -Fq 'step3_stage_postplan_failed' "$MODULE" || fail 'postplan-failed staging helper missing'
-grep -Fq 'failed-postplan' "$MODULE" || fail 'failed-postplan outcome not staged'
+grep -Fq 'step3_stage_postplan_failed' "$NORMALIZE_MODULE" || fail 'postplan-failed staging helper missing'
+grep -Fq 'failed-postplan' "$NORMALIZE_MODULE" || fail 'failed-postplan outcome not staged'
 # shellcheck disable=SC2016
-( command grep -Fq 'record-escalation' "$MODULE" ) || fail 'record-escalation call missing'
+( command grep -Fq 'record-escalation' "$NORMALIZE_MODULE" ) || fail 'record-escalation call missing'
 # shellcheck disable=SC2016
 ( command grep -Fq -- 'step3-review' "$MODULE" ) || fail 'record-escalation site missing'
 grep -Fq 'main-agent-vote-required' "$MODULE" || fail 'escalation/degradation status set missing'
@@ -73,10 +74,10 @@ done
 # Step 3 stages panel-init-failed under the shared failed-judge-panel summary
 # outcome: the orchestrator maps panel-init-failed to SUMMARY_OUTCOME=failed-judge-panel
 # and the terminal-failure report requires the staged outcome to match it, so the
-# canonical staging in plan_review.py carries failed-judge-panel (restored after the
-# sh-to-py port regressed it to panel-init-failed). What Step 3 must NOT own is the
-# Step 2b.5 decompose-panel retry exhaustion, whose Split-path staging is uniquely
-# marked by the decompose-panel site/trigger.
+# canonical staging in plan_review_normalize.py carries failed-judge-panel (restored
+# after the sh-to-py port regressed it to panel-init-failed). What Step 3 must NOT own
+# is the Step 2b.5 decompose-panel retry exhaustion, whose Split-path staging is
+# uniquely marked by the decompose-panel site/trigger.
 if grep -Fq 'decompose-panel' "$MODULE"; then
   fail 'Step 3 must not handle Step 2b.5 decompose-panel retry exhaustion'
 fi
@@ -87,10 +88,10 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
   fail 'postplan-failed stdout must remain KV-only'
 fi
 grep -Fq 'plan-review normalize-status' "$WRAPPER" || fail 'normalizer delegation missing'
-grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$MODULE" || fail 'postplan-failed summary KV missing from normalizer'
-grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$MODULE" || fail 'panel-init-failed summary KV missing from normalizer'
-grep -Fq 'file=sys.stderr' "$MODULE" || fail 'normalizer markdown warnings must route to stderr'
-grep -Fq 'load_bash_quoted_env' "$MODULE" || fail 'normalizer must load quoted env values'
+grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$NORMALIZE_MODULE" || fail 'postplan-failed summary KV missing from normalizer'
+grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$NORMALIZE_MODULE" || fail 'panel-init-failed summary KV missing from normalizer'
+grep -Fq 'file=sys.stderr' "$NORMALIZE_MODULE" || fail 'normalizer markdown warnings must route to stderr'
+grep -Fq 'load_bash_quoted_env' "$NORMALIZE_MODULE" || fail 'normalizer must load quoted env values'
 grep -Fq '_step3_read_result_env_quiet' "$MODULE" || fail 'quiet read-result-env helper missing'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")

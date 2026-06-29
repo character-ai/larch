@@ -5210,38 +5210,14 @@
   {
     "file": "larch/review/plan_review.py",
     "code": "C901",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 16
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 15
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "C901",
     "qualified_symbol": "run_step3_review",
     "metric": 36
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "C901",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 13
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0911",
     "qualified_symbol": "run_step3_review",
     "metric": 17
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0911",
-    "qualified_symbol": "step3_record_report_evidence",
-    "metric": 7
   },
   {
     "file": "larch/review/plan_review.py",
@@ -5252,56 +5228,80 @@
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0912",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 16
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0912",
     "qualified_symbol": "run_step3_review",
     "metric": 37
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 13
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0913",
-    "qualified_symbol": "step3_loop_emit_envelope",
-    "metric": 6
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0913",
-    "qualified_symbol": "step3_loop_persist_envelope",
-    "metric": 6
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0915",
-    "qualified_symbol": "normalize_step3_status_main",
-    "metric": 64
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0915",
-    "qualified_symbol": "plan_review_continuation",
-    "metric": 71
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
     "metric": 138
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "C901",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "C901",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "PLR0912",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "PLR0912",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "PLR0913",
+    "qualified_symbol": "step3_loop_emit_envelope",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "PLR0913",
+    "qualified_symbol": "step3_loop_persist_envelope",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_loop.py",
+    "code": "PLR0915",
+    "qualified_symbol": "plan_review_continuation",
+    "metric": 71
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "code": "C901",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 16
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "code": "PLR0911",
+    "qualified_symbol": "step3_record_report_evidence",
+    "metric": 7
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "code": "PLR0912",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/review/plan_review_normalize.py",
+    "code": "PLR0915",
+    "qualified_symbol": "normalize_step3_status_main",
+    "metric": 64
   },
   {
     "file": "larch/review/plan_review_panel.py",

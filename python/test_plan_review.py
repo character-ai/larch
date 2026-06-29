@@ -13,6 +13,7 @@ from typing import cast
 
 from larch.core import logging_util
 from larch.review import plan_review
+from larch.review import plan_review_normalize
 from larch.review import plan_review_round
 from larch.report import progress_report
 import pytest
@@ -195,7 +196,7 @@ def test_step3_normalizer_escalation_evidence_failure_contract(
         logging_util.emit_kv(key="WARN", value="Step 3: failed to record design escalation evidence for tally-error")
         return 1
 
-    monkeypatch.setattr(plan_review, "step3_record_report_evidence", fake_record_report_evidence)
+    monkeypatch.setattr(plan_review_normalize, "step3_record_report_evidence", fake_record_report_evidence)
     out = io.StringIO()
     stderr = io.StringIO()
     with contextlib.redirect_stdout(out), contextlib.redirect_stderr(stderr):
@@ -353,14 +354,14 @@ def test_step3_normalizer_sentinel_before_kv_emit(tmp_path: Path, monkeypatch: p
     stdout_file = tmp_path / "plan-review.stdout"
     _ = stdout_file.write_text("LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     sentinel_seen = False
-    original = plan_review._step3_emit_normalize_envelope_with_next_action  # pyright: ignore[reportPrivateUsage]
+    original = plan_review_normalize._step3_emit_normalize_envelope_with_next_action  # pyright: ignore[reportPrivateUsage]
 
     def _assert_sentinel_before_emit(tmpdir: Path, *, values: dict[str, str]) -> None:
         nonlocal sentinel_seen
         sentinel_seen = (tmpdir / ".completed" / "step-3-terminal").is_file()
         original(tmpdir=tmpdir, values=values)
 
-    monkeypatch.setattr(plan_review, "_step3_emit_normalize_envelope_with_next_action", _assert_sentinel_before_emit)
+    monkeypatch.setattr(plan_review_normalize, "_step3_emit_normalize_envelope_with_next_action", _assert_sentinel_before_emit)
     with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
         rc = plan_review.normalize_step3_status_main(
             ["--design-tmpdir", str(tmp_path), "--stdout-file", str(stdout_file), "--loop-rc", "0"]
@@ -434,7 +435,7 @@ def test_step3_normalizer_next_action_map_persists(tmp_path: Path) -> None:
 
 
 def test_step3_normalizer_static_contract_pins() -> None:
-    body = (ROOT / "python" / "larch" / "review" / "plan_review.py").read_text(encoding="utf-8")
+    body = (ROOT / "python" / "larch" / "review" / "plan_review_normalize.py").read_text(encoding="utf-8")
     assert "SUMMARY_OUTCOME=failed-postplan" in body
     assert "SUMMARY_OUTCOME=failed-judge-panel" in body
     assert "load_bash_quoted_env" in body

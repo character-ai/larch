@@ -1,8 +1,0 @@
-voter1_rc=1
-output_bytes=0
---- first 200 bytes of .diag ---
-ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
-Failed with exit code 1. Output s
---- launcher stderr (first 500 bytes) ---
-❌ cursor agent: FAILED (exit code 1, output 0 bytes)
-
