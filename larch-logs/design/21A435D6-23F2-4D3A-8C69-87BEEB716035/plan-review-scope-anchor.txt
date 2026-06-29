@@ -1,0 +1,21 @@
+Round-IX **enabler**. Build the measurement + ratchet so the A/B compression children have a trustworthy before/after and the surface cannot silently regrow.
+
+#### Goal
+
+- A report (make target and/or `python/cli.py` verb, or extend the `larch-size` skill) that prints the **always-loaded `.md` closure size** (lines + estimated tokens) for `/design` and `/implement` **separately**. Closure = each `SKILL.md` plus every reference it `MANDATORY — READ ENTIRE FILE`s on the happy path.
+- A **lint** (wired into `make lint` / pre-commit) that fails a PR which grows either `SKILL.md` (or its always-loaded closure) past a committed baseline without an explicit justification token.
+
+#### Why
+
+Rounds V–VIII each re-ran a manual six-region audit to decide what to cut. A committed baseline plus a CI ratchet makes the next round's measurement free and stops silent backsliding. Cost model unchanged: cost is roughly turns times context-per-turn; this child measures the context-per-turn denominator.
+
+#### Scope notes
+
+- The closure walker can reuse the existing load-directive grammar (`MANDATORY — READ ENTIRE FILE`, ``Read `...md` completely``) already present in both `SKILL.md`.
+- Distinguish always-loaded (happy-path) from conditional reference loads; only the always-loaded set counts toward the gated baseline.
+
+#### Out of scope
+
+- Actually compressing anything (that is the A1/A2/B1/B2 children). No runtime behavior change.
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569, VIII #5696). Round IX pivots from md-to-py migration and fold/relocate to Tier-1 autoload + in-place prose density, fronted by this CI closure-size ratchet. Designed independently.

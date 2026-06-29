@@ -1,0 +1,31 @@
+===== sidecar.history =====
+===== cursor auth attempt diag =====
+Error: Password not found for account 'cursor-user' and service 'cursor-access-token'
+Failed with exit code 1. Output size: 0 bytes.
+===== diag =====
+ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== sidecar.history =====
+===== cursor auth attempt diag =====
+Error: Password not found for account 'cursor-user' and service 'cursor-access-token'
+Failed with exit code 1. Output size: 0 bytes.
+===== diag =====
+ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== sidecar.history =====
+===== cursor auth attempt diag =====
+Error: Password not found for account 'cursor-user' and service 'cursor-access-token'
+Failed with exit code 1. Output size: 0 bytes.
+===== diag =====
+ActionRequiredError: You have an unpaid invoice Your team has an unpaid invoice. Please contact your team administrator to pay your invoice and continue using Cursor.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)

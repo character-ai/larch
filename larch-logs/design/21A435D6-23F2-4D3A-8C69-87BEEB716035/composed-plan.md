@@ -1,0 +1,196 @@
+## Plan
+
+## Approach
+- Build one Python implementation that serves both needs.
+- **Report**: print `/design` and `/implement` always-loaded `.md` closure size separately.
+- **Lint**: compare live metrics with a committed baseline and fail on growth.
+- **Baseline update token**: `python3 python/cli.py lint skill-closure-growth --write` rewrites the baseline, and committing that file is the explicit justification.
+- Scope is the happy-path always-loaded markdown closure only. Do not count conditional loads.
+- Parse only the markdown paths that belong to the directive read clause. Ignore later explanatory citations, harness docs, and non-markdown references on the same line.
+- Treat as conditional:
+  - lines or bullets that are explicitly conditional, for example `If`, `When`, `only if`, or `only when`
+  - conditional bullet lines
+  - branch-only routing-table rows and other route-predicate table rows or route-context prose
+  - directive-bearing table rows whose first cell is a branch selector
+- For `/implement`, also exclude directive lines that sit inside known non-happy-path macro sections, at minimum **Checks Failure Entry Macro** and **Durable Bail to Step 18 Macro**, until the next heading. Failure-only reads must not enter the happy-path baseline.
+- Depth is single level only. Count `SKILL.md` plus directly referenced markdown files.
+- Estimate tokens as characters divided by 4.
+- Use direct codebase inspection. `approach-synthesis.txt` is `NO_SKETCHES`.
+
+### NEW: python/larch/lint/lint_skill_closure_growth.py
+Create the shared scanner, reporter, baseline writer, and lint entrypoint.
+
+Implementation shape:
+- Define the gated skills as `design` and `implement`.
+- Resolve each root as:
+  - `skills/design/SKILL.md`
+  - `skills/implement/SKILL.md`
+- Parse direct markdown references from each `SKILL.md` line, but extract only the path or paths in the directive read clause.
+- Recognize directive forms used in this repo:
+  - `MANDATORY - READ ENTIRE FILE`
+  - `Read ... .md completely`
+- Do not collect markdown paths that appear later as explanatory citations, examples, or harness references outside the read clause.
+- Ignore non-markdown references such as `step-name-registry.tsv`.
+- Normalize `${CLAUDE_PLUGIN_ROOT}/` paths to repo-relative paths.
+- Accept backticked paths and bare `${CLAUDE_PLUGIN_ROOT}/...` paths.
+- Deduplicate referenced files while preserving deterministic ordering.
+- Do not recurse into references loaded by references.
+- For `/implement`, track section headings and suppress known failure-only macro sections until the next heading.
+- Count:
+  - `skill_md_lines`
+  - `skill_md_estimated_tokens`
+  - `closure_lines`
+  - `closure_estimated_tokens`
+  - `files`
+- Fail closed when a referenced file cannot be resolved or read.
+- Treat a directive line that matches a supported form but yields no resolvable markdown path as a parse defect.
+
+CLI behavior:
+- `report_main(argv)`:
+  - supports `--root`.
+  - prints one deterministic table or simple aligned report with one row per skill.
+  - includes the direct closure file list beneath each skill or behind `--verbose`.
+- `main(argv)` for lint:
+  - supports `--write`.
+  - check mode loads `python/skill-closure-baseline.json`.
+  - fails with exit 1 when any live gated metric exceeds the baseline.
+  - exits 2 for malformed baseline, missing baseline, unreadable files, or parse defects.
+  - write mode regenerates canonical JSON with sorted records and a trailing newline.
+
+Use frozen dataclasses for scan results and baseline rows.
+
+### NEW: python/skill-closure-baseline.json
+Commit the current generated baseline.
+
+Use a compact top-level JSON array, one record per skill.
+
+Suggested record keys:
+- `skill`
+- `skill_md_lines`
+- `skill_md_estimated_tokens`
+- `closure_lines`
+- `closure_estimated_tokens`
+- `files`
+
+The `files` list should include the `SKILL.md` and the direct always-loaded markdown references counted for that skill.
+
+### NEW: python/test_lint_skill_closure_growth.py
+Add focused pytest coverage.
+
+Cover:
+- design and implement roots are scanned separately.
+- direct mandatory markdown references are counted.
+- conditional references are excluded by the agreed text rules.
+- branch-only routing-table rows and related route-predicate contexts are excluded.
+- non-markdown references are ignored.
+- referenced-file references are not recursed into.
+- only the directive read clause is harvested, not later explanatory citations or harness docs on the same line.
+- missing referenced markdown fails closed.
+- baseline check passes when live metrics match.
+- baseline check fails when `SKILL.md` lines grow.
+- baseline check fails when closure lines grow.
+- baseline check fails when estimated tokens grow.
+- `--write` regenerates canonical JSON.
+- report mode prints both `design` and `implement`.
+- add a regression fixture for rebase or bootstrap mandatory reads that should stay excluded from always-loaded closure counting.
+- add a regression fixture for the named `/implement` failure-only macro sections. Assert that `Checks Failure Entry Macro` and `Durable Bail to Step 18 Macro` do not contribute to the happy-path baseline until the next heading.
+
+Use temp repos with minimal `skills/design/SKILL.md` and `skills/implement/SKILL.md` fixtures.
+
+### UPDATED: python/larch/cli.py
+Register two new CLI surfaces:
+- `("skill-closure", "report")` mapped to `larch.lint.lint_skill_closure_growth.report_main`
+- `("lint", "skill-closure-growth")` mapped to `larch.lint.lint_skill_closure_growth.main`
+
+Keep names stable and descriptive.
+
+### UPDATED: Makefile
+Add Make targets:
+- `skill-closure-size`
+  - runs `$(PYTHON) python/cli.py skill-closure report`
+- `lint-skill-closure-growth`
+  - runs `$(PYTHON) python/cli.py lint skill-closure-growth`
+- `regen-skill-closure-baseline`
+  - runs `$(PYTHON) python/cli.py lint skill-closure-growth --write`
+- `test-lint-skill-closure-growth`
+  - runs the new pytest file through `python/cli.py timing harness-mark`.
+
+Wire `lint-skill-closure-growth` into `lint`.
+
+Add the test target to one existing `test-harnesses-N` shard with nearby lint tests.
+
+### UPDATED: .pre-commit-config.yaml
+Add a local hook:
+- id: `lint-skill-closure-growth`
+- entry: `python3 python/cli.py lint skill-closure-growth`
+- `language: system`
+- `pass_filenames: false`
+- `always_run: true`
+
+Use `always_run` because referenced files can change without pre-commit passing every relevant path to the hook.
+
+### UPDATED: docs/linting.md
+Document the new lint.
+
+Include:
+- command: `python3 python/cli.py lint skill-closure-growth`
+- report: `python3 python/cli.py skill-closure report`
+- baseline regen: `python3 python/cli.py lint skill-closure-growth --write`
+- baseline path: `python/skill-closure-baseline.json`
+- scope: `/design` and `/implement` direct always-loaded markdown closure only.
+- explicit note: updating the baseline is the justification token.
+- note that conditional bullets, branch-only routing-table rows, other route-predicate contexts, and the named `/implement` failure-only macro sections are excluded.
+- note that only the directive read clause is harvested from a matching line.
+
+## Edge cases
+- **Conditional same-line directive**: exclude when the text before the directive contains the agreed conditional markers.
+- **Conditional bullet**: exclude when the line starts as a conditional bullet.
+- **Branch-only route row**: exclude table rows whose first cell is a route predicate or branch selector.
+- **Directive with later citations**: collect only the read-clause markdown path, not explanatory markdown references later on the line.
+- **Multiple paths on one line**: count each direct markdown path once.
+- **Duplicate reference**: count once per skill.
+- **Non-md mandatory load**: ignore for this markdown closure report.
+- **Missing baseline**: fail closed in lint mode.
+- **Missing reference**: fail closed. Do not silently undercount.
+- **Unrecognized path form**: ignore only when the line does not match a supported directive form. If it matches a directive but no markdown path can be resolved, emit a parse defect.
+- **Failure-only macro section**: in `/implement`, directive lines inside the named non-happy-path macro sections are excluded until the next heading.
+
+## Failure modes
+- **False positive growth**: implementer runs `--write` and commits the baseline when growth is intentional.
+- **False negative conditional parsing**: tests should pin the exact discussion rules, including route-table exclusions.
+- **Failure-only macro leakage**: tests should prove the named `/implement` macro sections do not contribute to the happy-path baseline.
+- **Accidental recursion**: tests should include a referenced file that references another markdown file and prove it is not counted.
+- **Path drift**: baseline `files` list makes closure changes auditable in code review.
+- **Over-collection from citations**: tests should prove later explanatory markdown links do not enter the closure set.
+
+## Testing strategy
+Run focused checks:
+- `python3 -m pytest python/test_lint_skill_closure_growth.py -q`
+- `python3 python/cli.py skill-closure report`
+- `python3 python/cli.py lint skill-closure-growth`
+- `make test-lint-skill-closure-growth`
+- `make lint-skill-closure-growth`
+
+If Makefile or pre-commit wiring changes:
+- `pre-commit run lint-skill-closure-growth --all-files`
+- `make lint`
+
+## Acceptance
+
+Run focused checks:
+- `python3 -m pytest python/test_lint_skill_closure_growth.py -q`
+- `python3 python/cli.py skill-closure report`
+- `python3 python/cli.py lint skill-closure-growth`
+- `make test-lint-skill-closure-growth`
+- `make lint-skill-closure-growth`
+
+If Makefile or pre-commit wiring changes:
+- `pre-commit run lint-skill-closure-growth --all-files`
+- `make lint`
+
+review_status: ok
+rounds_completed: 3
+diff_added: 680
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 680
