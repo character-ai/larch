@@ -28,9 +28,11 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   respects the `LARCH_BG_POLL_GUARD_MARKER` test-override.
 - Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it; as a result two concurrent larch sessions on one machine are no longer isolated from each other's live-marker counts.
 - Checks `is_step_completed` (terminal sentinel present) before declaring a marker live, mirroring
-  the release logic in `hook-bg-poll-guard.sh` (#4431, #4450 race-condition fix). It releases
-  `implement-step8-ship` on root-level `.step-8-ship-handoff.rc` when the sidecar is a regular file,
-  not a symlink.
+  the release logic in `hook-bg-poll-guard.sh` (#4431, #4450 race-condition fix). It covers
+  design Step 3, Step 4 tail, Step 5c, and final-summary markers, plus implement Step 3 checks,
+  Step 5 review, Step 5 resume, Step 5 self-review, Step 6 checks, Step 7a, and Step 8 ship
+  markers. It releases `implement-step8-ship` on root-level `.step-8-ship-handoff.rc`; every
+  completion sentinel must be a regular file, not a symlink.
 - Counter (`no-progress-turns.count`) and breaker (`no-progress-circuit-breaker-armed`) files live
   in the marker directory and are cleaned up with the session tmpdir.
 - Stop re-entry guard: exits immediately when `stop_hook_active=true` in the payload.

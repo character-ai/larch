@@ -635,6 +635,13 @@ repos:
         always_run: true
         files: ^(skills/[^/]+/SKILL\.md|skills/[^/]+/references/[^/]+\.md|\.claude/skills/[^/]+/SKILL\.md)$
 
+      - id: lint-bg-wait-coverage
+        name: lint background wait marker coverage
+        entry: python3 python/cli.py lint bg-wait-coverage
+        language: system
+        pass_filenames: false
+        files: ^skills/(design|implement|review|review-and-fix)/
+
       - id: lint-awk-multibyte-regex
         name: lint multi-byte UTF-8 in dynamic awk regex
         entry: bash scripts/lint-awk-multibyte-regex.sh

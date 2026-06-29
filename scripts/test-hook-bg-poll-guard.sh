@@ -677,6 +677,63 @@ out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
 assert_allow "$out" 'Step 8 same-tmpdir relaunch with wrapper-cleared clamp allows first rc probe'
 rm -f "$MARKER"
 
+for spec in \
+  'design-step4-tail:.completed/step-4:design' \
+  'implement-step5-resume:.completed/step-5-resume-terminal:implement' \
+  'implement-step5-self-review:.completed/step-5-self-review-terminal:implement' \
+  'implement-step6-checks:.completed/step-6-terminal:implement' \
+  'implement-step7a:.completed/step-7a-terminal:implement'
+do
+  step=${spec%%:*}
+  rest=${spec#*:}
+  sentinel=${rest%%:*}
+  kind=${rest#*:}
+  rm -f "$MARKER" "$D/.completed/"* "$D"/bg-poll-guard-probe-denials.*.count
+  mkdir -p "$D/.completed"
+  write_marker $$ "$(date +%s)" 21600 "$step"
+  out=$(run_payload "$(payload_monitor)")
+  assert_deny "$out" "live $step marker plus Monitor denies"
+  out=$(run_payload "$(payload_taskoutput)")
+  assert_deny "$out" "live $step marker plus TaskOutput denies"
+  out=$(run_payload "$(payload_bash "$implement_probe" "$D")")
+  assert_deny "$out" "live $step marker plus ordinary tmpdir probe denies"
+  : >"$D/$sentinel"
+  out=$(run_payload "$(payload_monitor)")
+  assert_allow "$out" "$step terminal sentinel releases Monitor"
+  rm -f "$D/$sentinel"
+  : >"$D/.completed/real-target"
+  ln -s "$D/.completed/real-target" "$D/$sentinel"
+  out=$(run_payload "$(payload_monitor)")
+  assert_deny "$out" "symlinked $step terminal sentinel does not release"
+  rm -f "$D/$sentinel" "$D/.completed/real-target" "$MARKER"
+  if [ "$kind" = implement ]; then
+    terminal_basename=${sentinel##*/}
+    impl_terminal_probe="test -f \"\$IMPLEMENT_TMPDIR/.completed/$terminal_basename\""
+    write_marker $$ "$(date +%s)" 21600 "$step"
+    out=$(run_payload "$(payload_bash "$impl_terminal_probe" "$D")")
+    assert_deny "$out" "$step does not gain an implement foreground terminal-probe carve-out"
+    rm -f "$MARKER"
+  fi
+done
+
+write_marker $$ "$(date +%s)" 21600 design-step4-tail
+rm -f "$D/.completed/step-4"
+reset_probe_counters
+step4_foreground_probe='[ -f "$DESIGN_TMPDIR/.completed/step-4" ] && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$step4_foreground_probe" "$D")")
+assert_allow "$out" 'absent Step 4 terminal sentinel foreground probe allows'
+out=$(run_payload "$(payload_bash "$step4_foreground_probe" "$D")")
+assert_allow "$out" 'Step 4 foreground probe allows second absent attempt'
+out=$(run_payload "$(payload_bash "$step4_foreground_probe" "$D")")
+assert_deny "$out" 'Step 4 foreground probe clamps repeated absent probes'
+non_step4_probe='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo WAIT'
+out=$(run_payload "$(payload_bash "$non_step4_probe" "$D")")
+assert_deny "$out" 'design-step4-tail denies non-Step-4 foreground terminal probe'
+ordinary_step4_probe='test -f "$DESIGN_TMPDIR/.completed/step-4" && cat "$DESIGN_TMPDIR/rejected-findings.md"'
+out=$(run_payload "$(payload_bash "$ordinary_step4_probe" "$D")")
+assert_deny "$out" 'Step 4 foreground probe with appended read denies'
+rm -f "$D/.completed/step-4" "$D"/bg-poll-guard-probe-denials.*.count "$MARKER"
+
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"
 out=$(run_payload "$(payload_monitor)")

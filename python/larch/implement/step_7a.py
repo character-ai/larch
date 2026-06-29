@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import time
 from pathlib import Path
 from larch import io as larch_io
 
@@ -67,6 +68,45 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         check=False,
     )
 
+
+
+def _clear_no_progress_sidecars(tmpdir: Path) -> None:
+    for name in ("no-progress-turns.count", "no-progress-circuit-breaker-armed"):
+        with contextlib.suppress(OSError):
+            (tmpdir / name).unlink()
+
+
+def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
+    _clear_no_progress_sidecars(tmpdir)
+    start = int(time.time())
+    claude_pid = os.environ.get("LARCH_BG_POLL_GUARD_SESSION_PID", "") or str(os.getppid())
+    text = (
+        f"PID={os.getpid()}\n"
+        f"CLAUDE_PID={claude_pid}\n"
+        f"START_EPOCH={start}\n"
+        f"STEP={step}\n"
+        f"TIMEOUT_S={timeout_s}\n"
+    )
+    with contextlib.suppress(OSError):
+        (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
+
+
+def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
+    path = tmpdir / sentinel
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+
+@contextlib.contextmanager
+def _bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int, terminal_sentinel: str):
+    _write_bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
+    try:
+        yield
+    finally:
+        _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
+        with contextlib.suppress(OSError):
+            (tmpdir / ".bg-wait-active").unlink()
 
 def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) -> None:
     section = implement_tmpdir / "code-flow-section.md"
@@ -199,6 +239,33 @@ def run_step7a(
     base_ref: str = "main",
 ) -> int:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    with _bg_wait_marker(
+        tmpdir=implement_tmpdir,
+        step="implement-step7a",
+        timeout_s=1800,
+        terminal_sentinel=".completed/step-7a-terminal",
+    ):
+        return _run_step7a_inner(
+            implement_tmpdir,
+            issue_number=issue_number,
+            run_id=run_id,
+            no_logs_commit=no_logs_commit,
+            forked_target=forked_target,
+            base_remote=base_remote,
+            base_ref=base_ref,
+        )
+
+
+def _run_step7a_inner(
+    implement_tmpdir: Path,
+    *,
+    issue_number: str = "",
+    run_id: str = "",
+    no_logs_commit: bool = False,
+    forked_target: bool = False,
+    base_remote: str = "origin",
+    base_ref: str = "main",
+) -> int:
     session_env = implement_tmpdir / "session-env.sh"
     if not issue_number:
         issue_number = _read_kv(path=session_env, key="LARCH_ISSUE_NUMBER")

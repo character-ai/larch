@@ -87,10 +87,30 @@ design_pause_check() {
   fi
 }
 
+design_step4_tail_cleanup() {
+  [ -n "${DESIGN_TMPDIR:-}" ] || return 0
+  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || true
+  printf '' >"$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+}
+
+design_step4_tail_marker() {
+  local start claude_pid
+  [ -n "${DESIGN_TMPDIR:-}" ] || return 0
+  rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+  start=$(date +%s 2>/dev/null) || start=0
+  case "$start" in ''|*[!0-9]*) start=0 ;; esac
+  claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${CLAUDE_PID:-${PPID:-}}}"
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=design-step4-tail\nTIMEOUT_S=900\n' \
+    "$$" "$claude_pid" "$start" >"$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+}
+
 design_source_env_optional
 [ -n "${DESIGN_TMPDIR:-}" ] && rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 
 design_pause_check
+trap design_step4_tail_cleanup EXIT
+design_step4_tail_marker
 LARCH_TIMING_SKILL=design python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" timing mark "design Step 4 — rejected findings" || true
 if [ ! -f "$DESIGN_TMPDIR/.completed/finalize" ]; then
   set +e

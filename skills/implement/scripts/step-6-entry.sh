@@ -38,6 +38,24 @@ rehydrate_larch_triplet() {
     export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
+step6_cleanup() {
+    mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
+    printf '' >"$IMPLEMENT_TMPDIR/.completed/step-6-terminal" 2>/dev/null || true
+    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+}
+
+write_step6_marker() {
+    local start claude_pid
+    rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+    start=$(date +%s 2>/dev/null) || start=0
+    case "$start" in ''|*[!0-9]*) start=0 ;; esac
+    claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
+    printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step6-checks\nTIMEOUT_S=15600\n' \
+        "$$" "$claude_pid" "$start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+}
+
 rehydrate_plugin_root
 rehydrate_larch_triplet
+trap step6_cleanup EXIT
+write_step6_marker
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "$@"

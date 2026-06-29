@@ -70,8 +70,10 @@ marker_step_completed() {
   # launch ack and the bg process has not yet run its EXIT-trap marker cleanup
   # (#4431, #4450). Race-free: each step writes its sentinel before the task
   # process exits on terminal paths, and exits before the notification fires.
-  # Covers design-step3-review, design-step5c, design-step-final-summary,
-  # implement-step3-checks, implement-step5-review, and implement-step8-ship.
+  # Covers design-step3-review, design-step4-tail, design-step5c,
+  # design-step-final-summary, implement-step3-checks, implement-step5-review,
+  # implement-step5-resume, implement-step5-self-review, implement-step6-checks,
+  # implement-step7a, and implement-step8-ship.
   local dir="$1" step="$2" sentinel="" sidecar=""
   [ -n "$dir" ] || return 1
   case "$step" in
@@ -79,6 +81,10 @@ marker_step_completed() {
       sentinel="$dir/.completed/step-3-terminal"
       sidecar="$dir/.step3-terminal-persisted-this-run"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ] && [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]
+      ;;
+    design-step4-tail)
+      sentinel="$dir/.completed/step-4"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
     design-step5c)
       sentinel="$dir/.completed/step-5c-terminal"
@@ -94,6 +100,22 @@ marker_step_completed() {
       ;;
     implement-step5-review)
       sentinel="$dir/.completed/step-5-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-resume)
+      sentinel="$dir/.completed/step-5-resume-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-self-review)
+      sentinel="$dir/.completed/step-5-self-review-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step6-checks)
+      sentinel="$dir/.completed/step-6-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step7a)
+      sentinel="$dir/.completed/step-7a-terminal"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
     implement-step8-ship)
@@ -155,10 +177,15 @@ reset_probe_counter_for_step() {
   local dir="$1" step="$2" name=""
   case "$step" in
     design-step3-review) name="step-3-terminal" ;;
+    design-step4-tail) name="step-4" ;;
     design-step5c) name="step-5c-terminal" ;;
     design-step-final-summary) name="step-final-summary" ;;
     implement-step3-checks) name="step-3-terminal" ;;
     implement-step5-review) name="step-5-terminal" ;;
+    implement-step5-resume) name="step-5-resume-terminal" ;;
+    implement-step5-self-review) name="step-5-self-review-terminal" ;;
+    implement-step6-checks) name="step-6-terminal" ;;
+    implement-step7a) name="step-7a-terminal" ;;
     implement-step8-ship) name="step-8-ship-handoff.rc" ;;
     *) return 0 ;;
   esac
@@ -170,9 +197,9 @@ probe_sentinel_name() {
   # foreground probe. Returns non-zero when no known sentinel is present.
   local cmd="$1" normalized name
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
-  name=$(printf '%s' "$normalized" | sed -E 's#.*/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary).*#\1#')
+  name=$(printf '%s' "$normalized" | sed -E 's#.*/\.completed/(step-3-terminal|step-4|step-5c-terminal|step-final-summary).*#\1#')
   case "$name" in
-    step-3-terminal|step-5c-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
+    step-3-terminal|step-4|step-5c-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
   esac
   # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in candidate Bash commands.
   if printf '%s' "$normalized" | grep -Eq '(\$IMPLEMENT_TMPDIR|\$\{IMPLEMENT_TMPDIR\})/\.step-8-ship-handoff\.rc'; then
@@ -239,6 +266,23 @@ probe_target_live_dir_step8() {
   done <"$live_markers_file"
   [ "$step8_count" -eq 1 ] || return 1
   printf '%s' "$sole_step8_dir"
+}
+
+terminal_sentinel_allowed_for_live_step() {
+  local dir="$1" name="$2" live_dir live_step expected=""
+  while IFS='|' read -r live_dir live_step || [ -n "$live_dir" ]; do
+    [ -n "$live_dir" ] || continue
+    [ "$live_dir" = "$dir" ] || continue
+    case "$live_step" in
+      design-step3-review) expected="step-3-terminal" ;;
+      design-step4-tail) expected="step-4" ;;
+      design-step5c) expected="step-5c-terminal" ;;
+      design-step-final-summary) expected="step-final-summary" ;;
+      *) expected="" ;;
+    esac
+    [ "$name" = "$expected" ] && return 0
+  done <"$live_markers_file"
+  return 1
 }
 
 bash_is_step8_handoff_foreground_probe() {
@@ -511,7 +555,7 @@ bash_is_terminal_sentinel_foreground_probe() {
     *.completed/step-3\"*|*.completed/step-3\'*|*.completed/step-3[[:space:]]*|*.completed/step-3.5\"*|*.completed/step-3.5\'*|*.completed/step-3.5[[:space:]]*|*.completed/step-5c\"*|*.completed/step-5c\'*|*.completed/step-5c[[:space:]]*) return 1 ;;
   esac
   # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-  probe_target_re='(\$DESIGN_TMPDIR/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary)|\$\{DESIGN_TMPDIR\}/\.completed/(step-3-terminal|step-5c-terminal|step-final-summary))'
+  probe_target_re='(\$DESIGN_TMPDIR/\.completed/(step-3-terminal|step-4|step-5c-terminal|step-final-summary)|\$\{DESIGN_TMPDIR\}/\.completed/(step-3-terminal|step-4|step-5c-terminal|step-final-summary))'
   test_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?( && echo DONE \|\| echo WAIT)?$'
   bracket_re='^(DESIGN_TMPDIR=[^;]+;[[:space:]]*)?(\[\[|\[)[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?[[:space:]]+(\]\]|\])( && echo DONE \|\| echo WAIT)?$'
   if printf '%s' "$normalized" | grep -Eq "$test_re"; then
@@ -544,9 +588,10 @@ bash_is_terminal_sentinel_foreground_probe() {
     while IFS= read -r dir || [ -n "$dir" ]; do
       [ -n "$dir" ] || continue
       # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-      sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-5c-terminal|step-final-summary).*/\2/')
+      sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-4|step-5c-terminal|step-final-summary).*/\2/')
       sentinel_name="$sentinel_path"
       [ -n "$sentinel_name" ] || return 1
+      terminal_sentinel_allowed_for_live_step "$dir" "$sentinel_name" || return 1
       sentinel_abs="$dir/.completed/$sentinel_name"
       if [ -L "$sentinel_abs" ]; then
         return 1
@@ -559,7 +604,7 @@ bash_is_terminal_sentinel_foreground_probe() {
 bash_attempts_terminal_sentinel_mutation() {
   local cmd="$1"
   case "$cmd" in
-    *step-3-terminal*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*|*step-8-ship-handoff.rc*) ;;
+    *step-3-terminal*|*step-4*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*|*step-8-ship-handoff.rc*) ;;
     *) return 1 ;;
   esac
   printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 0

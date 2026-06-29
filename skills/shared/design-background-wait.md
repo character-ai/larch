@@ -18,7 +18,7 @@ After the background launch ack, print `{breadcrumb}` when supplied, then **END 
 
 Foreground probes are non-sleeping `[ -f … ]` or `test -f …` checks only. Accepted terminal sentinels for probe and completion checks are `.completed/step-3-terminal`, `.completed/step-5c-terminal`, `.completed/step-final-summary`, and `.completed/step-4` for the Step 4 tail path. Do not use `.completed/step-3`, `.completed/step-5c`, or `.step3-review-result.env` as a probe or completion target. The `.step3-review-result.env` ban applies only to probe and completion checks; after `.completed/step-3-terminal` is present, parsing `.step3-review-result.env` for loop routing remains required.
 
-When `$DESIGN_TMPDIR` is not exported, prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment. When `$DESIGN_TMPDIR` is not exported, prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment. `WAIT` when absent is expected (the foreground probe reports `WAIT` when the terminal sentinel is still absent). When the terminal sentinel is present (`DONE`), proceed to guarded parsing or call-site handling; do not wait for a second `<task-notification>`. When the probe reports `WAIT` or the terminal sentinel is absent, yield without `ps` polling. This assumes the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion (current evidence indicates it does).
+When `$DESIGN_TMPDIR` is not exported, prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment. `WAIT` when absent is expected (the foreground probe reports `WAIT` when the terminal sentinel is still absent). When the terminal sentinel is present (`DONE`), proceed to guarded parsing or call-site handling; do not wait for a second `<task-notification>`. When the probe reports `WAIT` or the terminal sentinel is absent, yield without `ps` polling. This assumes the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion (current evidence indicates it does).
 
 ## Step 3 task notification boundary
 
@@ -51,7 +51,7 @@ The only Step 3 table output is the verbatim pre-rendered single line from `$DES
 
 ## Step 4 post-notification sequence
 
-For the debate path, the orchestrator backgrounds the whole `design-step3b-tail.sh` fence and uses `.completed/step-4` as the terminal sentinel for durable completion. After confirmed completion, parse rejected-findings markers from the tail stdout, bind `SKIP_APPROVE_REQUESTED_GATEC`, and retain any dialectic digest stdout for Step 4b presentation. Do not re-read `dialectic-clarifier-digest.md` on the same turn when the tail stdout already printed the digest.
+For the debate path, the orchestrator backgrounds the whole `design-step3b-tail.sh` fence. The wrapper arms `.bg-wait-active` with `STEP=design-step4-tail` and uses `.completed/step-4` as the terminal sentinel for durable completion. After confirmed completion, parse rejected-findings markers from the tail stdout, bind `SKIP_APPROVE_REQUESTED_GATEC`, and retain any dialectic digest stdout for Step 4b presentation. Do not re-read `dialectic-clarifier-digest.md` on the same turn when the tail stdout already printed the digest.
 
 ## Update Triggers
 

@@ -84,6 +84,10 @@ is_step_completed() {
       sidecar="$dir/.step3-terminal-persisted-this-run"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ] && [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]
       ;;
+    design-step4-tail)
+      sentinel="$dir/.completed/step-4"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
     design-step5c)
       sentinel="$dir/.completed/step-5c-terminal"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
@@ -98,6 +102,22 @@ is_step_completed() {
       ;;
     implement-step5-review)
       sentinel="$dir/.completed/step-5-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-resume)
+      sentinel="$dir/.completed/step-5-resume-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step5-self-review)
+      sentinel="$dir/.completed/step-5-self-review-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step6-checks)
+      sentinel="$dir/.completed/step-6-terminal"
+      [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+      ;;
+    implement-step7a)
+      sentinel="$dir/.completed/step-7a-terminal"
       [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
       ;;
     implement-step8-ship)
