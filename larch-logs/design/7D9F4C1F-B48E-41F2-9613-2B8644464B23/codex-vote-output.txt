@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The approved direction only requires rewriting the 14 over-cap descriptions; leaving already sub-200-char descriptions unchanged does not block the feature.
