@@ -18,8 +18,8 @@
   "status": "in-progress",
   "steps_ran": {
     "step8": true,
-    "step9a1": false
+    "step9a1": true
   },
   "superseded_by": null,
-  "updated_at": "2026-06-29T08:02:04Z"
+  "updated_at": "2026-06-29T08:04:44Z"
 }
