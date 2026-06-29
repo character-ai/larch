@@ -1,0 +1,2 @@
+1	replacing the whole `residual bash after e3` section with an `agents.md` cross-reference would remove unique `bash_authoring.md` guidance for hook output contracts, `sessionstart-health.sh` stdout fallback behavior, and residual-bash-paths cli usage.
+1	the preserve list omits the pinned literal for the non-empty `/design` premature-notification recovery branch, so edits could drop that foreground-probe rule without the harness catching it.

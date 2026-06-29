@@ -1,0 +1,200 @@
+## Plan
+
+## Approach
+
+Make the smallest safe prose trims, then hard-cap the result.
+
+- Preserve all behavior rules and contract tokens.
+- Preserve every `AGENTS.md` literal pinned by `scripts/test-implement-anti-polling-rule.sh`, including:
+  - `Don't spawn a Monitor or a Bash`
+  - `Bash \`run_in_background\` polling loop`
+  - `` `for`/`while`/`until` + `sleep` ``
+  - `poll the task output file once per turn`
+  - `For \`/design\`, when task output is empty, end the turn without probing`
+  - `For \`/design\`, when a premature \`<task-notification>\` fires with non-empty task output, the sanctioned recovery path is one foreground non-sleeping \`[ -f … ]\` or \`test -f …\` probe against the relevant terminal completion sentinel (\`.completed/step-3-terminal\`, \`.completed/step-5c-terminal\`, or \`.completed/step-final-summary\`); prefix the probe with a single \`DESIGN_TMPDIR=<absolute-path>;\` assignment when \`$DESIGN_TMPDIR\` is unexported`
+  - `For \`/implement\` Steps 3 and 5, premature notifications remain notification-only`
+  - `For \`/implement\` Step 8, run one foreground non-sleeping \`test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"\` at notification time`
+  - `NEVER launch a background recovery waiter`
+  - `skills/shared/orchestrator-never.md`
+  - `prefix the probe with a single \`DESIGN_TMPDIR=<absolute-path>;\` assignment`
+- Keep section structure in place.
+- Remove only duplicate prose where another Tier-1a import still carries the same rule.
+- Add a Python-only `lint tier1a-size` CLI that fails when any Tier-1a imported file exceeds its cap.
+- Set caps to the final trimmed line counts, or below them only if the prose still preserves meaning.
+- Each cap must stay below the current counts: `AGENTS.md` 113, `KARPATHY_CLAUDE.md` 65, `BASH_AUTHORING.md` 111.
+
+## Files to modify/create
+
+### UPDATED: AGENTS.md
+
+Condense prose in place.
+
+- Tighten the opening repository description.
+- Compact `Repository layout`.
+- Shorten `Load Semantics` prose without changing Tier names.
+- Compress `Canonical sources` descriptions.
+- Tighten `Output Style` bullets.
+- Preserve the plan grammar tokens exactly:
+  - `### NEW:`
+  - `### UPDATED:`
+  - `### REWRITTEN:`
+  - `diff_lines:`
+- Preserve anti-polling literals pinned by `scripts/test-implement-anti-polling-rule.sh`, including the non-empty `/design` recovery branch above.
+- Condense `Honesty` by pointing to `KARPATHY_CLAUDE.md` §1 for overlapping philosophy.
+- Keep the concrete honesty rules about fabrication, test claims, failed commands, and observed versus inferred facts.
+
+### UPDATED: KARPATHY_CLAUDE.md
+
+Condense prose in place.
+
+- Keep all four numbered sections.
+- Keep the caution-over-speed tradeoff.
+- Shorten examples and explanatory tails.
+- Replace repeated explanatory sentences with sharper imperatives.
+- Keep the meaning of:
+  - ask when unclear,
+  - prefer simple code,
+  - avoid adjacent cleanup,
+  - verify success with tests or checks.
+
+### UPDATED: BASH_AUTHORING.md
+
+Condense prose in place.
+
+- Shorten the wrapped-grep trap explanation.
+- Keep the safe forms:
+  - `command grep PATTERN FILE || X`
+  - `( grep PATTERN FILE ) || X`
+  - `( command grep ... )` for Bash 3.2 `if` probes
+- Keep the explicit path or `< /dev/null` requirement.
+- Keep background stdin hang guidance.
+- Keep Bash 3.2 forbidden constructs.
+- Keep renderer substitution safety guidance and the `%%` / `##` split pattern.
+- Condense `Residual Bash after E3` in place.
+- Cross-link `AGENTS.md` for the shared residual-Bash policy, but retain the unique hook output contracts, `sessionstart-health.sh` stdout fallback, and `scripts/residual-bash-paths.txt` CLI usage.
+
+### NEW: python/larch/lint/lint_tier1a.py
+
+Add the line-count ratchet.
+
+- Implement `main(argv: list[str] | None = None) -> int`.
+- Support `--root PATH`, defaulting to the repo root.
+- Define one constant mapping for caps:
+  - `AGENTS.md`
+  - `KARPATHY_CLAUDE.md`
+  - `BASH_AUTHORING.md`
+- Count physical lines using `splitlines()`.
+- Fail closed:
+  - missing file exits `2`,
+  - unreadable file exits `2`,
+  - malformed cap configuration exits `2`,
+  - over-cap file exits `1`,
+  - all files at or below cap exits `0`.
+- Print one clear stderr row per failure, for example:
+  - `AGENTS.md: 114 lines exceeds cap 105`
+  - `BASH_AUTHORING.md: missing`
+- Keep the module stdlib-only.
+
+### NEW: python/test_lint_tier1a.py
+
+Add unit coverage for `lint_tier1a`.
+
+- Test passing files at their caps.
+- Test one file over cap exits `1`.
+- Test missing file exits `2`.
+- Test `--root` points at a temp repo.
+- Test default cap constants stay below the current pre-trim counts:
+  - `AGENTS.md < 113`
+  - `KARPATHY_CLAUDE.md < 65`
+  - `BASH_AUTHORING.md < 111`
+- Test the live repo files pass once prose is trimmed.
+
+### UPDATED: python/larch/cli.py
+
+Register the new command.
+
+- Add `("lint", "tier1a-size"): ("larch.lint.lint_tier1a", "main")`.
+- Keep registration near the other `lint` verbs.
+
+### UPDATED: Makefile
+
+Wire local targets.
+
+- Add `.PHONY` entries for:
+  - `lint-tier1a-size`
+  - `test-lint-tier1a-size`
+- Add:
+  - `lint-tier1a-size:`
+  - `python3 python/cli.py lint tier1a-size`
+- Add:
+  - `test-lint-tier1a-size:`
+  - `python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_tier1a.py -q`
+- Add `lint-tier1a-size` to the local `lint` aggregate.
+- Do not add the pytest target to `test-harnesses-N`; Python tests already run under `make py-test`.
+
+### UPDATED: .github/workflows/ci.yaml
+
+Wire CI.
+
+- Add a named step in the `lint-local` job:
+  - `Run Tier-1a size ratchet`
+  - `make lint-tier1a-size`
+- Place it before or after `make lint-only`.
+- Keep the step independent of Python dev dependencies.
+
+### UPDATED: docs/linting.md
+
+Document the ratchet.
+
+- Add a table row for `Tier-1a import size`.
+- Mention `python3 python/cli.py lint tier1a-size`.
+- Mention `make lint-tier1a-size`.
+- State that caps cover `AGENTS.md`, `KARPATHY_CLAUDE.md`, and `BASH_AUTHORING.md`.
+
+## Edge cases
+
+- Markdown wrapping can raise line count while reducing bytes. Prefer compact physical lines for these three files.
+- Do not collapse pinned literals across line breaks.
+- Do not delete rules only because they appear verbose.
+- `BASH_AUTHORING.md` may cross-link `AGENTS.md` for the shared residual-Bash rule, but only the shared rule.
+- `AGENTS.md` Honesty can point to `KARPATHY_CLAUDE.md` §1 only for overlapping philosophy, not for concrete reporting obligations.
+
+## Failure modes
+
+- CI fails if caps are set before prose is trimmed.
+- CI fails if an exact `AGENTS.md` literal pinned by `scripts/test-implement-anti-polling-rule.sh` is rewrapped or renamed.
+- CI fails if `BASH_AUTHORING.md` drops its unique hook, sessionstart fallback, or residual-bash-paths guidance while cross-linking `AGENTS.md`.
+- A too-low cap may tempt semantic deletion. Raise the cap to the final safe trimmed count instead.
+- A linter path outside `python/cli.py` would violate the Python-first convention. Keep the ratchet behind `python3 python/cli.py`.
+
+## Testing strategy
+
+Run focused checks first.
+
+```bash
+python3 python/cli.py lint tier1a-size
+python3 -m pytest python/test_lint_tier1a.py -q
+make lint-tier1a-size
+make test-lint-tier1a-size
+bash scripts/test-implement-anti-polling-rule.sh
+```
+
+Then run relevant existing gates.
+
+```bash
+make py-lint
+make py-test
+make lint
+```
+
+Acceptance:
+
+- The three Tier-1a files are below their previous line counts.
+- The new ratchet passes on the live repo.
+- Existing anti-polling literal pins pass.
+- No behavior rule is deleted or weakened.
+
+diff_added: 236
+diff_deleted: 109
+mechanical_churn: false
+diff_lines: 345
