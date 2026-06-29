@@ -10,7 +10,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -907,6 +907,69 @@ def _top_reviewers_from_classification(
             counts[reviewer] = counts.get(reviewer, 0) + points
     return list(sorted(counts.items(), key=lambda item: (-item[1], item[0]))[:top_n])
 
+
+def _executing_tool_by_norm_basename(collector_env: Path) -> dict[str, str]:
+    """Map normalized reviewer basename -> executing tool from ``collector-results.env``.
+
+    ``collect_results.derive_tool`` records the tool that actually produced each
+    reviewer output (``TOOL=``); on vendor fallback this differs from the slot's
+    nominal vendor. Keyed by ``voting.normalize_reviewer_basename`` so manifest
+    ``output`` paths line up with collector ``REVIEWER_FILE`` entries. ``unknown``
+    provenance is dropped so it never displaces a real tool.
+    """
+    if not collector_env.is_file() or collector_env.is_symlink():
+        return {}
+    result: dict[str, str] = {}
+    for record in collect_results.parse_collector_records("\n".join(_read_lines_best_effort(collector_env))):
+        reviewer_file = record.get("REVIEWER_FILE", "")
+        tool = record.get("TOOL", "")
+        if reviewer_file and tool and tool != "unknown":
+            result[voting.normalize_reviewer_basename(reviewer_file)] = tool
+    return result
+
+
+def _fallback_label_remap(round_dirs: list[Path]) -> dict[str, str]:
+    """Map slot human label -> reconciled ``(via <Tool>)`` label for fallback slots.
+
+    Reconciles the panel-assigned slot label with the executing tool recorded in
+    ``collector-results.env`` so Top-reviewers attribution does not credit a vendor
+    whose slots actually fell back to another tool (issue #5838). Only slots whose
+    executing tool differs from their nominal vendor produce an entry.
+    """
+    remap: dict[str, str] = {}
+    for round_dir in round_dirs:
+        design = round_dir.parent.parent
+        tool_by_norm = _executing_tool_by_norm_basename(design / "collector-results.env")
+        if not tool_by_norm:
+            continue
+        for manifest in (round_dir / "panel-manifest.ndjson", design / "plan-review-slots.ndjson"):
+            for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
+                slot = row.get("slot")
+                output = row.get("output")
+                if not isinstance(slot, str) or not isinstance(output, str):
+                    continue
+                tool = tool_by_norm.get(voting.normalize_reviewer_basename(output), "")
+                if not tool:
+                    continue
+                reconciled = plan_review_round.reconciled_reviewer_label(slot, executing_tool=tool)
+                base = plan_review_round._slot_human_label(slot)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+                if reconciled != base:
+                    remap[base] = reconciled
+    return remap
+
+
+def _apply_fallback_remap(
+    top_reviewers: Sequence[tuple[str, float]], round_dirs: list[Path]
+) -> list[tuple[str, float]]:
+    """Relabel Top-reviewers entries for vendor-fallback slots (issue #5838).
+
+    Slots whose executing tool differs from their nominal vendor are annotated
+    ``(via <Tool>)``; all other labels pass through unchanged.
+    """
+    remap = _fallback_label_remap(round_dirs)
+    return [(remap.get(label, label), score) for label, score in top_reviewers]
+
+
 def _collector_substantive_failure_records(text: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
     parsed = collect_results.parse_collector_records(text)
@@ -1124,6 +1187,7 @@ def render_phase_detail(
         top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n, label_map=label_map)
     else:
         top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
+    top_reviewers = _apply_fallback_remap(top_reviewers, round_dirs)
     fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
     lines = [
         "## Review Phase Detail",
