@@ -112,7 +112,8 @@ def _write_slot_manifest(manifest: Path, outputs: list[Path]) -> None:
 def test_fallback_label_remap_annotates_executing_tool(tmp_path: Path) -> None:
     """_fallback_label_remap maps a slot's human label to a ``(via <Tool>)`` label
     when collector-results.env shows the slot was executed by a tool other than its
-    nominal vendor; same-vendor slots produce no entry (issue #5838)."""
+    nominal vendor; same-vendor slots produce no entry (issue #5838).
+    """
     design = tmp_path
     round_dir = design / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
@@ -142,7 +143,7 @@ def test_fallback_label_remap_empty_without_collector(tmp_path: Path) -> None:
         json.dumps({"slot": "cursor-plan-arch", "tool": "cursor", "output": str(round_dir / "cursor-plan-arch-output.txt")}) + "\n",
         encoding="utf-8",
     )
-    assert progress_report._fallback_label_remap([round_dir]) == {}
+    assert not progress_report._fallback_label_remap([round_dir])
 
 
 def _write_output(path: Path, ts: int, text: str = "done\n") -> Path:

@@ -96,7 +96,7 @@ def reconciled_reviewer_label(slot: str, *, executing_tool: str) -> str:
     label = _slot_human_label(slot)
     nominal = _nominal_vendor_from_slot(slot)
     tool = (executing_tool or "").strip()
-    if nominal and tool and tool != "unknown" and tool != nominal:
+    if nominal and tool and tool not in ("unknown", nominal):
         return f"{label} (via {tool.title()})"
     return label
 

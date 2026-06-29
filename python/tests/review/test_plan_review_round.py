@@ -923,7 +923,8 @@ def test_write_reviewer_status_tsv_maps_status_per_slot(tmp_path: Path) -> None:
 def test_write_reviewer_status_tsv_annotates_vendor_fallback(tmp_path: Path) -> None:
     """A slot executed by a tool other than its nominal vendor is annotated
     ``(via <Tool>)`` so the reviewer-status table does not credit a vendor that
-    fell back to another tool (issue #5838)."""
+    fell back to another tool (issue #5838).
+    """
     design = tmp_path
     round_dir = design / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
@@ -964,7 +965,8 @@ def test_write_reviewer_status_tsv_annotates_vendor_fallback(tmp_path: Path) -> 
 
 def test_reconciled_reviewer_label_only_annotates_real_divergent_tool() -> None:
     """reconciled_reviewer_label annotates only when a known executing tool differs
-    from the slot's nominal vendor; matching, empty, and ``unknown`` tools pass through."""
+    from the slot's nominal vendor; matching, empty, and ``unknown`` tools pass through.
+    """
     assert plan_review_round.reconciled_reviewer_label("cursor-plan-arch", executing_tool="codex") == "Cursor-Arch (via Codex)"
     assert plan_review_round.reconciled_reviewer_label("cursor-plan-arch", executing_tool="cursor") == "Cursor-Arch"
     assert plan_review_round.reconciled_reviewer_label("cursor-plan-arch", executing_tool="") == "Cursor-Arch"
