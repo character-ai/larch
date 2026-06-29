@@ -52,7 +52,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 - Applies to new prose only. Do not restyle existing text. Every changed line traces to the task.
 - Precedence: explicit format contracts, exact meaning, then these style rules.
 
-**Style rules.** Lead with the answer. Keep one idea per short sentence. Prefer bullets. **Bold** scan keys. Use short headers when helpful. In chat, confirm or correct up front. Stop early. Avoid walls of prose, em dashes, over-hedging, and passive filler. Use concrete nouns and verbs.
+**Style rules.** Lead with the answer. Keep one idea per short sentence. Prefer bullets. **Bold** scan keys. Use short headers when helpful. In chat, confirm or correct up front. Stop early. Never use em dashes. Use periods, commas, colons, or semicolons instead. Avoid walls of prose, over-hedging, and passive filler. Use concrete nouns and verbs.
 
 ## Conventions
 
