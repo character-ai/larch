@@ -34,6 +34,7 @@ paths = [
     '''^python/\.venv/''',
     '''^python/\.pytest_cache/''',
     '''^python/__pycache__/''',
+    '''^python/tests/''',
 ]
 # Commits that add synthetic test-fixture keys (sk-ant-* and PEM/RSA) to test
 # scripts or changelog prose. All are historically published patterns, not real credentials.

@@ -345,7 +345,7 @@ contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=true` 
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`' 'Step 1d.7 must fail closed on pause failure or missing skip-approve directive'
 not_contains "$SKILL_MD" 'Run exactly once after skip or finish' 'Step 1d.5 must not describe completion fence as after skip'
 
-contains "$MAKEFILE" 'python3 -m pytest python/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
+contains "$MAKEFILE" 'python3 -m pytest python/tests/design/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 
 g6_terminal_retired_paths='design-stage-terminal-state.sh design-stage-terminal-state.md test-design-stage-terminal-state.sh test-design-stage-terminal-state.md design-failure-report.sh design-failure-report.md test-design-failure-report.sh test-design-failure-report.md design-step-final-summary.sh design-step-final-summary.md _dbg-stage.sh _debug-step5c.sh'
 for retired in $g6_terminal_retired_paths; do
@@ -551,7 +551,7 @@ contains "$SETTLE_SH" '--site "$POSTPLAN_SITE"' 'settle must pass mapped postpla
 contains "$SETTLE_SH" '"${PUBLIC_ARGV_WORDS[@]}"' 'settle must forward caller tail after --'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site gate-b' 'settle doc must name gate-b postplan authority'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site discussion-round2' 'settle doc must name discussion postplan authority'
-contains "$SETTLE_MD" 'python/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
+contains "$SETTLE_MD" 'python/tests/design/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
 contains "$SETTLE_MD" 'The process rc remains a wrapper diagnostic and legacy process contract.' 'settle doc must describe process rc as diagnostic only'
 not_contains "$SETTLE_MD" 'compatibility fallback' 'settle doc must not call process rc a prompt fallback'
 

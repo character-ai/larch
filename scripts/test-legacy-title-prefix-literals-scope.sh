@@ -27,10 +27,10 @@ ALLOW=(
   python/issue_wire.py
   python/larch/issue/tracking_issue.py
   python/test_admission.py
-  python/test_ci_agentic_fix.py
+  python/tests/implement/test_ci_agentic_fix.py
   scripts/test-legacy-title-prefix-literals-scope.sh
   python/test_issue_wire.py
-  python/test_tracking_issue.py
+  python/tests/issue/test_tracking_issue.py
   skills/deps/SKILL.md
 )
 

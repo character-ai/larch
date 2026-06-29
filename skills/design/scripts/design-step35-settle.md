@@ -101,7 +101,7 @@ Pause output or a fresh `.pause-save-complete` breadcrumb exits `11`. Pause neve
 
 ## Harness
 
-Covered by `scripts/test-design-structure.sh`, `python/test_design_lifecycle.py`, and `skills/design/scripts/test-gate-b-apply-mode.sh`.
+Covered by `scripts/test-design-structure.sh`, `python/tests/design/test_design_lifecycle.py`, and `skills/design/scripts/test-gate-b-apply-mode.sh`.
 
 Compatibility grep note: historical launcher-fence rows still resolve through the launcher:
 

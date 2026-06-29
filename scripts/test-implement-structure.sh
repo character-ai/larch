@@ -100,7 +100,7 @@ require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.s
 # Collapsed Preflight helper surface.
 for path in [
     'python/larch/implement/preflight.py',
-    'python/test_preflight.py',
+    'python/tests/implement/test_preflight.py',
 ]:
     if not Path(path).is_file():
         checks.append(f'missing {path}')
@@ -128,17 +128,17 @@ require('python/larch/implement/preflight.py', '"ISSUE_JSON_PATH"', 'preflight e
 require('python/larch/implement/preflight.py', '"BYPASS_COUNT"', 'preflight emits bypass count')
 require('python/larch/implement/preflight.py', 'force-bypass.log', 'preflight bypass log destination')
 require('python/larch/implement/preflight.py', 'json.load', 'preflight uses stdlib json')
-require('python/test_preflight.py', 'test_preflight_success_emits_kv_and_forwards_repo', 'preflight test success coverage')
-require('python/test_preflight.py', 'test_preflight_force_missing_plan_uses_raw_body', 'preflight test force coverage')
-require('python/test_preflight.py', 'test_preflight_force_short_flag_missing_plan_uses_raw_body', 'preflight test -f coverage')
+require('python/tests/implement/test_preflight.py', 'test_preflight_success_emits_kv_and_forwards_repo', 'preflight test success coverage')
+require('python/tests/implement/test_preflight.py', 'test_preflight_force_missing_plan_uses_raw_body', 'preflight test force coverage')
+require('python/tests/implement/test_preflight.py', 'test_preflight_force_short_flag_missing_plan_uses_raw_body', 'preflight test -f coverage')
 require(skill, '`--force` and `-f` both set `force_requested=true`', 'SKILL -f alias parse rule')
 require(skill, '`--force` / `-f` and `--draft` together', 'SKILL -f draft mutex wording')
 require('skills/im/SKILL.md', '`--force`, `-f`', 'im SKILL forwards -f alias')
-require('python/test_bootstrap.py', 'test_invoke_refuses_symlinked_bootstrap_routing_env', 'bootstrap refusal-path test')
-require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=cleanup', 'bootstrap refusal-path emits directive')
-require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=step2', 'bootstrap invoke emits step2 directive')
-require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=degraded-prompt', 'bootstrap invoke emits degraded directive')
-require('python/test_bootstrap.py', 'BOOTSTRAP_NEXT=rebase-routing', 'bootstrap resume malformed route directive test')
+require('python/tests/state/test_bootstrap.py', 'test_invoke_refuses_symlinked_bootstrap_routing_env', 'bootstrap refusal-path test')
+require('python/tests/state/test_bootstrap.py', 'BOOTSTRAP_NEXT=cleanup', 'bootstrap refusal-path emits directive')
+require('python/tests/state/test_bootstrap.py', 'BOOTSTRAP_NEXT=step2', 'bootstrap invoke emits step2 directive')
+require('python/tests/state/test_bootstrap.py', 'BOOTSTRAP_NEXT=degraded-prompt', 'bootstrap invoke emits degraded directive')
+require('python/tests/state/test_bootstrap.py', 'BOOTSTRAP_NEXT=rebase-routing', 'bootstrap resume malformed route directive test')
 forbid(skill, '${force_requested:+--force}', 'SKILL preflight force argv')
 forbid(skill, 'If `false` and `force_requested=false`, print `**❌ Issue #<N> has no larch:plan block', 'SKILL prompt-side missing-plan fallback prose')
 forbid(skill, 'If the script exits **1** and prints `MALFORMED=...`, then when `force_requested=false`', 'SKILL prompt-side malformed-plan fallback prose')
