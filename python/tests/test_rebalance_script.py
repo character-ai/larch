@@ -14,7 +14,7 @@ import pytest
 from larch.core.proc import CommandResult
 
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[2]
 _REBALANCE_PATH = (
     _REPO_ROOT / ".claude" / "skills" / "rebalance-tests" / "scripts" / "rebalance.py"
 )
