@@ -1512,7 +1512,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "qualified_symbol": "_load_refresh_session_env",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -1521,7 +1521,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "qualified_symbol": "larch_log_flush_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",
@@ -1530,7 +1530,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "qualified_symbol": "larch_log_flush_main",
     "env_name": "LARCH_NO_LOGS_COMMIT",
     "constant": "ENV_LARCH_NO_LOGS_COMMIT",
@@ -1539,7 +1539,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "qualified_symbol": "refresh_run_logs_main",
     "env_name": "IMPLEMENT_TMPDIR",
     "constant": "ENV_IMPLEMENT_TMPDIR",

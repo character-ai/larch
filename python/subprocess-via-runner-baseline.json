@@ -1323,21 +1323,21 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "qualified_symbol": "_git_stdout",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_manifest.py",
     "qualified_symbol": "_resolve_consumer_repo_root",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "qualified_symbol": "capture_transcript_main",
     "callee": "run",
     "occurrence": 1,
