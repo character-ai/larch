@@ -9,7 +9,7 @@ SKILL="$REPO_ROOT/skills/implement/SKILL.md"
 PREFLIGHT_AUDIT_REF="$REPO_ROOT/skills/implement/references/preflight-plan-audit.md"
 FORCE_MODE_REF="$REPO_ROOT/skills/implement/references/force-mode.md"
 PREFLIGHT_HELPER="$REPO_ROOT/python/larch/implement/preflight.py"
-PREFLIGHT_HELPER_TEST="$REPO_ROOT/python/test_preflight.py"
+PREFLIGHT_HELPER_TEST="$REPO_ROOT/python/tests/implement/test_preflight.py"
 
 fail() { echo "FAIL: $1" >&2; exit 1; }
 contains() {
