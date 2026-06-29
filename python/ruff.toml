@@ -843,8 +843,29 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
+"run_log_batch.py" = [
+    "C901",
+    "PLR0913",
+]
+"run_log_commit.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+]
+"run_log_flush.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+]
+"run_log_manifest.py" = [
+    "C901",
+    "PLR0911",
+]
 "run_logs.py" = [
     "C901",
+    "F401",
+    "F811",
     "PLR0911",
     "PLR0912",
     "PLR0913",

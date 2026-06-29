@@ -15,6 +15,7 @@ import pytest
 from larch.core import config
 from larch.report import final_report
 from larch.report import run_logs
+from larch.report import run_log_commit, run_log_flush
 from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
@@ -1295,6 +1296,8 @@ def test_larch_log_flush_warns_when_commit_run_fails(
 
     monkeypatch.setattr(run_logs, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
+    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)
 
     rc = run_logs.larch_log_flush_main([])
 
@@ -1472,6 +1475,7 @@ def test_larch_log_commit_skips_volatile_refresh_only_and_cleans(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1506,6 +1510,7 @@ def test_flush_logs_pre_reports_volatile_only_skip_reason(
         return CommandResult(("larch-log-volatile-only",), 0, "", "", 0.01)
 
     monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert skip.skipped
     assert skip.reason == config.REFRESH_SKIP_VOLATILE_ONLY
@@ -1523,6 +1528,7 @@ def test_larch_log_commit_commits_canonical_token_report_delta(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1555,6 +1561,7 @@ def test_larch_log_commit_commits_mixed_volatile_and_canonical_deltas(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1593,6 +1600,7 @@ def test_larch_log_commit_volatile_cleanup_fails_closed_on_dirty_repo(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1641,6 +1649,7 @@ def test_larch_log_commit_volatile_cleanup_git_failures_fail_closed(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1670,12 +1679,14 @@ def test_larch_log_commit_scrubbed_volatile_sidecar_skips_commit_and_cleans(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
 
     def fake_scrub(_directory: Path) -> tuple[int, int]:
         return 1, 1
 
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fake_scrub)
+    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)
     runner = RecordingRunner(
         responses=[
             CommandResult(("git", "status"), 0, f" M {rel}/token-report-refresh.json\n", "", 0.01),
@@ -1707,6 +1718,7 @@ def test_larch_log_commit_volatile_session_transcript_refresh_skips_commit(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     runner = RecordingRunner(
         responses=[
@@ -1743,6 +1755,7 @@ def test_larch_log_commit_volatile_cleanup_restores_am_porcelain(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     path = f"{rel}/token-report-refresh.json"
     runner = RecordingRunner(
@@ -1779,6 +1792,7 @@ def test_larch_log_commit_volatile_cleanup_resets_staged_before_restore(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     rel = "larch-logs/implement/run-abc"
     path = f"{rel}/timing-report-refresh.json"
     runner = RecordingRunner(
@@ -1818,6 +1832,7 @@ def test_publish_run_tree_uses_repo_root_not_cwd_subdir(
     subdir = repo / "python"
     subdir.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     ctx = _ctx(tmp_path, str(state))
     rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
         ctx=ctx,
@@ -1897,6 +1912,7 @@ def test_render_ledger_reports_uses_direct_renderers(
         return (input_file, True, False)
 
     monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
+    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
     ctx = _ctx(tmp_path, str(state))
     runner = RecordingRunner()
     run_logs._render_ledger_reports(runner=runner, ctx=ctx, log_root=tmp_path / "logs")  # pyright: ignore[reportPrivateUsage]
@@ -1930,6 +1946,7 @@ def _ledger_report_fixture(
         return (input_file, True, False)
 
     monkeypatch.setattr(run_logs, "_write_batch", fake_write_batch)
+    monkeypatch.setattr(run_log_flush, "_write_batch", fake_write_batch)
     return RecordingRunner(), _ctx(tmp_path, str(state)), write_batches
 
 

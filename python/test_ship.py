@@ -13,6 +13,7 @@ import pytest
 
 from larch.core import config
 from larch.report import final_report
+from larch.report import run_log_flush
 from larch.report import run_logs
 from larch.implement import ship
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
@@ -565,6 +566,11 @@ def test_happy_path_stage_order(
     )
     monkeypatch.setattr(
         ship.run_logs,
+        "flush_logs_post",
+        lambda *_a, **_k: order.append("flush-post") or run_logs.RefreshSkip(skipped=False, reason=""),
+    )
+    monkeypatch.setattr(  # also patch the submodule binding used internally
+        run_log_flush,
         "flush_logs_post",
         lambda *_a, **_k: order.append("flush-post") or run_logs.RefreshSkip(skipped=False, reason=""),
     )

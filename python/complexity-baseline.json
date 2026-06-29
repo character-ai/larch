@@ -4596,25 +4596,25 @@
     "metric": 12
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_batch.py",
     "code": "C901",
     "qualified_symbol": "_append_execution_issue",
     "metric": 11
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "_commit_run",
     "metric": 12
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "_copy_tree_to_repo",
     "metric": 12
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "_larch_log_commit",
     "metric": 15
@@ -4626,7 +4626,7 @@
     "metric": 15
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "_volatile_file_paths",
     "metric": 11
@@ -4638,13 +4638,13 @@
     "metric": 12
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "C901",
     "qualified_symbol": "capture_transcript_main",
     "metric": 16
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "C901",
     "qualified_symbol": "flush_logs_pre",
     "metric": 13
@@ -4656,19 +4656,19 @@
     "metric": 26
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_manifest.py",
     "code": "C901",
     "qualified_symbol": "load_or_recover_manifest_checked",
     "metric": 11
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "C901",
     "qualified_symbol": "publish_breadcrumbs_main",
     "metric": 11
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "C901",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 11
@@ -4680,13 +4680,13 @@
     "metric": 18
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "PLR0911",
     "qualified_symbol": "_commit_run",
     "metric": 12
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
     "qualified_symbol": "_step9a1_heuristic",
     "metric": 8
@@ -4698,37 +4698,37 @@
     "metric": 14
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "PLR0911",
     "qualified_symbol": "_volatile_file_paths",
     "metric": 7
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
     "qualified_symbol": "capture_transcript_main",
     "metric": 13
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
     "qualified_symbol": "flush_logs_pre",
     "metric": 11
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_manifest.py",
     "code": "PLR0911",
     "qualified_symbol": "load_or_recover_manifest_checked",
     "metric": 9
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "PLR0911",
     "qualified_symbol": "publish_breadcrumbs_main",
     "metric": 8
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0911",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 7
@@ -4740,7 +4740,7 @@
     "metric": 11
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_commit.py",
     "code": "PLR0912",
     "qualified_symbol": "_larch_log_commit",
     "metric": 14
@@ -4752,7 +4752,7 @@
     "metric": 14
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0912",
     "qualified_symbol": "capture_transcript_main",
     "metric": 16
@@ -4764,7 +4764,7 @@
     "metric": 25
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0912",
     "qualified_symbol": "refresh_run_logs_main",
     "metric": 13
@@ -4776,13 +4776,13 @@
     "metric": 17
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_batch.py",
     "code": "PLR0913",
     "qualified_symbol": "_emit_larch_log_envelope",
     "metric": 6
   },
   {
-    "file": "larch/report/run_logs.py",
+    "file": "larch/report/run_log_flush.py",
     "code": "PLR0913",
     "qualified_symbol": "_execution_issue_record",
     "metric": 6
