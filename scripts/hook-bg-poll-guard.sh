@@ -544,8 +544,8 @@ bash_is_step3_recovery_waiter() {
 }
 
 bash_is_terminal_sentinel_foreground_probe() {
-  local cmd="$1" normalized sentinel_path sentinel_name dir sentinel_abs assigned_tmpdir assigned_canon
-  local probe_target_re test_re bracket_re live_dir_count=0 matched_live_dir=0
+  local cmd="$1" normalized sentinel_path sentinel_name sentinel_abs target_dir
+  local probe_target_re test_re bracket_re
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
   bash_is_control_loop "$normalized" && return 1
@@ -565,38 +565,15 @@ bash_is_terminal_sentinel_foreground_probe() {
   else
     return 1
   fi
-  if [ -n "${live_dirs_file:-}" ] && [ -f "$live_dirs_file" ]; then
-    assigned_tmpdir=""
-    if printf '%s' "$normalized" | grep -Eq '^DESIGN_TMPDIR=[^;]+;'; then
-      assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^DESIGN_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
-      assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
-      while IFS= read -r dir || [ -n "$dir" ]; do
-        [ -n "$dir" ] || continue
-        live_dir_count=$((live_dir_count + 1))
-        if [ "$assigned_canon" = "$dir" ]; then
-          matched_live_dir=1
-        fi
-      done <"$live_dirs_file"
-      [ "$matched_live_dir" -eq 1 ] || return 1
-    else
-      while IFS= read -r dir || [ -n "$dir" ]; do
-        [ -n "$dir" ] || continue
-        live_dir_count=$((live_dir_count + 1))
-      done <"$live_dirs_file"
-      [ "$live_dir_count" -eq 1 ] || return 1
-    fi
-    while IFS= read -r dir || [ -n "$dir" ]; do
-      [ -n "$dir" ] || continue
-      # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
-      sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-4|step-5c-terminal|step-final-summary).*/\2/')
-      sentinel_name="$sentinel_path"
-      [ -n "$sentinel_name" ] || return 1
-      terminal_sentinel_allowed_for_live_step "$dir" "$sentinel_name" || return 1
-      sentinel_abs="$dir/.completed/$sentinel_name"
-      if [ -L "$sentinel_abs" ]; then
-        return 1
-      fi
-    done <"$live_dirs_file"
+  target_dir=$(probe_target_live_dir "$normalized") || return 1
+  # shellcheck disable=SC2016 # Match literal $DESIGN_TMPDIR in the candidate Bash command.
+  sentinel_path=$(printf '%s' "$normalized" | sed -E 's/.*(\$DESIGN_TMPDIR|\$\{DESIGN_TMPDIR\})\/\.completed\/(step-3-terminal|step-4|step-5c-terminal|step-final-summary).*/\2/')
+  sentinel_name="$sentinel_path"
+  [ -n "$sentinel_name" ] || return 1
+  terminal_sentinel_allowed_for_live_step "$target_dir" "$sentinel_name" || return 1
+  sentinel_abs="$target_dir/.completed/$sentinel_name"
+  if [ -L "$sentinel_abs" ]; then
+    return 1
   fi
   return 0
 }

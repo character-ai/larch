@@ -780,6 +780,8 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         final_summary_path = ctx.final_summary_path or str(design_tmpdir / "final-summary.md")
         if (design_tmpdir / ".pause-requested").is_file():
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx), []
+        with contextlib.suppress(OSError):
+            (design_tmpdir / ".completed" / "step-final-summary").unlink(missing_ok=True)
         with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step-final-summary", claude_pid=parsed.claude_pid):
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.

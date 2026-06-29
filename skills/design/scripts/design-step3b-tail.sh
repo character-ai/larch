@@ -98,6 +98,7 @@ design_step4_tail_marker() {
   local start claude_pid
   [ -n "${DESIGN_TMPDIR:-}" ] || return 0
   rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
   start=$(date +%s 2>/dev/null) || start=0
   case "$start" in ''|*[!0-9]*) start=0 ;; esac
   claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${CLAUDE_PID:-${PPID:-}}}"
