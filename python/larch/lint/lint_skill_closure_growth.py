@@ -6,7 +6,7 @@ import argparse
 import json
 import re
 import sys
-from collections.abc import Iterable, Mapping
+from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TypedDict, cast
@@ -341,7 +341,7 @@ def _validate_files(value: object, *, source: Path, index: int) -> tuple[str, ..
 def _validate_baseline_row(item: object, *, source: Path, index: int) -> BaselineRow:
     if not isinstance(item, dict):
         raise BaselineError(f"{source}: record {index} must be an object")
-    row = cast("Mapping[str, object]", item)
+    row = cast("dict[str, object]", item)
     if set(row.keys()) != set(BASELINE_KEYS):
         raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
     skill = row["skill"]
