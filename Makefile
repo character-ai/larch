@@ -26,12 +26,13 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: lint-readability-preamble test-lint-readability-preamble
 .PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-skill-description-length
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
+.PHONY: lint-tier1a-size test-lint-tier1a-size
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
 .PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-awk-multibyte-regex lint-retired-scripts lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -135,6 +136,12 @@ py-test:
 
 lint-only:
 	pre-commit run --all-files
+
+lint-tier1a-size:
+	python3 python/cli.py lint tier1a-size
+
+test-lint-tier1a-size:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_tier1a.py -q
 
 lint-readability-preamble:
 	python3 python/cli.py lint readability-preamble
