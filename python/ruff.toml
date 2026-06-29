@@ -884,6 +884,32 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
+"ship_state.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"ship_resume.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"ship_pr.py" = [
+    "PLR0913",
+    "PLR0915",
+]
+"ship_merge.py" = [
+    "PLR0913",
+]
+"ship_result.py" = [
+    "PLR0913",
+]
+"ship_seed.py" = [
+    "C901",
+]
 "_classify.py" = [
     "C901",
     "PLR0911",
