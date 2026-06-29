@@ -100,7 +100,7 @@ chmod +x "$run_external_stub"
 
 # ── review dispatch-panel prompt source assertions ───────────────────────────
 
-DISPATCH_PANEL="$REPO_ROOT/python/larch/review/review_pipeline.py"
+DISPATCH_PANEL="$REPO_ROOT/python/larch/review/review_dispatch_panel.py"
 panel_out="$TMP/dispatch-panel.py"
 cp "$DISPATCH_PANEL" "$panel_out"
 
