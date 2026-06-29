@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review keep validity Cursor-primary, run plan-fidelity and pragmatism as Codex-primary with Cursor fallback, and use a single Claude validity fallback only when both external tools are unavailable. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review run validity Cursor-primary (Cursor, then Codex, then Claude), and run plan-fidelity and pragmatism Codex-primary (Codex, then Cursor, then Claude); the panel degrades to a single Claude validity voter only when both external tools are unavailable. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|

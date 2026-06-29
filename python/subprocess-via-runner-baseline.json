@@ -71,7 +71,7 @@
   },
   {
     "file": "larch/agents/agent_voters.py",
-    "qualified_symbol": "_launch_voter1_cursor_only",
+    "qualified_symbol": "_launch_voter1_external",
     "callee": "Popen",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

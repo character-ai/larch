@@ -18,7 +18,6 @@ from pathlib import Path
 from collections.abc import Sequence
 from typing import cast
 
-from larch.agents import agent_voters
 from larch.review import findings_ledger
 from larch.core import external_defaults
 from larch.review import review_pipeline
@@ -873,6 +872,32 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
                 basename="cursor-plan-voter-prompt-claude.txt",
             ),
         )
+        # Cross-vendor middle tiers (issue #5817): voter-2 (Codex) falls to
+        # Cursor before Claude; voter-3 (Cursor) falls to Codex before Claude.
+        codex_cursor_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="codex",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="cursor",
+                basename="codex-plan-voter-prompt-cursor.txt",
+            ),
+        )
+        cursor_codex_prompt = _make_voter_prompt(
+            design=design,
+            ballot=ballot,
+            tool="cursor",
+            render_options=_voter_prompt_render_options(
+                design=design,
+                scope_anchor=scope_anchor,
+                calibration_stats_file=calibration_stats_file,
+                voter_tool="codex",
+                basename="cursor-plan-voter-prompt-codex.txt",
+            ),
+        )
     except RuntimeError:
         return 2
 
@@ -911,30 +936,18 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     manifest = design / "plan-voter-slots.ndjson"
     manifest_lines: list[str] = []
     prompt_maps_by_slot = {
-        "voter-2": {"codex": str(codex_prompt), "claude": str(codex_claude_prompt)},
-        "voter-3": {"cursor": str(cursor_prompt), "claude": str(cursor_claude_prompt)},
+        "voter-2": {"codex": str(codex_prompt), "cursor": str(codex_cursor_prompt), "claude": str(codex_claude_prompt)},
+        "voter-3": {"cursor": str(cursor_prompt), "codex": str(cursor_codex_prompt), "claude": str(cursor_claude_prompt)},
     }
     output_by_slot = {"voter-2": voter_2_path, "voter-3": voter_3_path}
-    availability_by_tool = {"codex": ns.codex_available, "cursor": ns.cursor_available}
+    # Always enqueue both slots (issue #5817): the waterfall routes each voter
+    # through primary -> alt external -> Claude, so a slot is no longer dropped
+    # when its primary vendor is unavailable. This branch runs only when at
+    # least one external is present (both-absent returns early above), and the
+    # Claude floor guarantees output for every enqueued slot.
     for slot_name in ("voter-2", "voter-3"):
         policy = policies[slot_name]
-        _ = agent_voters._launchable_base_tools_for_slot(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
-            agent_voters.VoterSlotPolicy(
-                policy.slot_num,
-                policy.slot_name,
-                policy.primary_tool,
-                policy.default_label,
-                policy.archetype,
-                policy.prompt_label,
-                policy.output_name,
-                dict(policy.semantic_labels),
-            ),
-            codex_present=ns.codex_available == "true",
-            cursor_present=ns.cursor_available == "true",
-            no_fallback=True,
-        )
-        if availability_by_tool.get(policy.primary_tool) == "true":
-            manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_files": prompt_maps_by_slot[slot_name]}))
+        manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_files": prompt_maps_by_slot[slot_name]}))
     _ = manifest.write_text("\n".join(manifest_lines) + ("\n" if manifest_lines else ""), encoding="utf-8")
 
     waterfall_output = ""
@@ -959,9 +972,6 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             "--timeout",
             "1860",
         ]
-        dispatch_policy = external_defaults.voter_dispatch_policy("design.plan_voters")
-        if dispatch_policy and dispatch_policy.voter_waterfall_no_fallback:
-            wf_args.insert(-4, "--no-fallback")
         # lint-subprocess-via-runner: ok waterfall dispatch is a blocking raw subprocess for the codex/cursor voters
         wf = subprocess.run(
             wf_args,
@@ -985,6 +995,11 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         _ = Path(f"{voter_1_path}.done").write_text(f"{voter1_rc}\n", encoding="utf-8")
 
     wf_kv = _parse_kv(waterfall_output)
+    # The waterfall picks the tier per slot (issue #5817), so the running tool
+    # may differ from the primary; derive it from the binding for accurate
+    # status, parse-rate retries, and tool attribution.
+    voter_2_tool = "codex"
+    voter_3_tool = "cursor"
     if manifest_lines:
         from larch.agents import agent_waterfall  # noqa: PLC0415
 
@@ -995,14 +1010,19 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             voter_2_path = Path(voter_2_binding.path)
         if voter_3_binding.path:
             voter_3_path = Path(voter_3_binding.path)
+        voter_2_tool = voter_2_binding.tool or voter_2_tool
+        voter_3_tool = voter_3_binding.tool or voter_3_tool
+
+    voter_2_prompt = Path(prompt_maps_by_slot["voter-2"].get(voter_2_tool, str(codex_prompt)))
+    voter_3_prompt = Path(prompt_maps_by_slot["voter-3"].get(voter_3_tool, str(cursor_prompt)))
 
     voter_1_status = "launched" if (voter1_rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0) else "failed"
-    voter_2_status = "failed" if ns.codex_available != "true" else ("launched" if voter_2_path.is_file() and voter_2_path.stat().st_size > 0 else "failed")
-    voter_3_status = "failed" if ns.cursor_available != "true" else ("launched" if voter_3_path.is_file() and voter_3_path.stat().st_size > 0 else "failed")
+    voter_2_status = "launched" if voter_2_path.is_file() and voter_2_path.stat().st_size > 0 else "failed"
+    voter_3_status = "launched" if voter_3_path.is_file() and voter_3_path.stat().st_size > 0 else "failed"
 
     voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
-    voter_2_parse = "SKIPPED" if voter_2_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="2", voter_file=voter_2_path, voter_tool="codex", prompt_file=codex_prompt)
-    voter_3_parse = "SKIPPED" if voter_3_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="3", voter_file=voter_3_path, voter_tool="cursor", prompt_file=cursor_prompt)
+    voter_2_parse = "SKIPPED" if voter_2_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="2", voter_file=voter_2_path, voter_tool=voter_2_tool, prompt_file=voter_2_prompt)
+    voter_3_parse = "SKIPPED" if voter_3_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="3", voter_file=voter_3_path, voter_tool=voter_3_tool, prompt_file=voter_3_prompt)
 
     if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
         voter_1_status = "failed"
@@ -1065,11 +1085,11 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             voter_1_status,
             voter_1_parse,
             str(voter_2_path),
-            "codex",
+            voter_2_tool,
             voter_2_status,
             voter_2_parse,
             str(voter_3_path),
-            "cursor",
+            voter_3_tool,
             voter_3_status,
             voter_3_parse,
             str(paths_file),

@@ -328,18 +328,12 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
         config.VoterPolicyDefault("3", "voter-3", "cursor", "cursor", "pragmatism-cost", "cursor", "cursor-custom.txt", (("cursor", "cursor"),)),
     )
     seen_policies: list[str] = []
-    seen_dispatch: list[str] = []
     run_commands: list[list[str]] = []
 
     def fake_voter_policies(role_id: str) -> tuple[config.VoterPolicyDefault, ...]:
         seen_policies.append(role_id)
         assert role_id == "design.plan_voters"
         return policies
-
-    def fake_dispatch_policy(role_id: str) -> config.VoterDispatchPolicy:
-        seen_dispatch.append(role_id)
-        assert role_id == "design.plan_voters"
-        return config.VoterDispatchPolicy(voter_waterfall_no_fallback=True)
 
     class FakePopen:
         def __init__(self, cmd: list[str], **_kwargs: object) -> None:
@@ -380,7 +374,6 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: x\n", encoding="utf-8")
     monkeypatch.setattr(plan_review_panel.external_defaults, "voter_policies", fake_voter_policies)
-    monkeypatch.setattr(plan_review_panel.external_defaults, "voter_dispatch_policy", fake_dispatch_policy)
     monkeypatch.setattr(plan_review_panel, "_make_voter_prompt", fake_prompt)
     monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", fake_parse_rate)
     monkeypatch.setattr(plan_review_panel.subprocess, "Popen", FakePopen)
@@ -403,9 +396,9 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
     manifest_rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
     assert rc == 0
     assert [row["output"] for row in manifest_rows] == [str(tmp_path / "codex-custom.txt"), str(tmp_path / "cursor-custom.txt")]
-    assert any("--no-fallback" in cmd for cmd in run_commands if "dispatch-waterfall" in cmd)
+    # issue #5817: plan voters waterfall fully; the dispatch no longer injects --no-fallback.
+    assert not any("--no-fallback" in cmd for cmd in run_commands if "dispatch-waterfall" in cmd)
     assert seen_policies == ["design.plan_voters"]
-    assert seen_dispatch == ["design.plan_voters"]
 
 
 def test_review_aggregate_selects_code_and_plan_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

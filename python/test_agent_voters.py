@@ -369,7 +369,7 @@ def test_wait_timeout_blocks_voter1_late_sentinel(tmp_path: Path, monkeypatch: p
     harness.claude_write_done = False
     harness.wait_stdout = f"TIMEOUT 1 {review / 'claude-vote-output.txt.done'}\n"
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review, cursor="false")) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="false")) == 0
 
     out = capsys.readouterr().out
     assert "VOTER_1_STATUS=failed" in out
@@ -385,11 +385,33 @@ def test_successful_voter1_without_launcher_done_gets_local_sentinel_after_wait(
     harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
     harness.claude_write_done = False
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review, cursor="false")) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="false")) == 0
 
     out = capsys.readouterr().out
     assert "VOTER_1_STATUS=launched" in out
     assert (review / "claude-vote-output.txt.done").read_text(encoding="utf-8") == "0\n"
+
+
+@pytest.mark.voter_happy
+def test_voter1_waterfalls_to_codex_when_cursor_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # issue #5817: Cursor down but Codex up -> voter 1 falls to its Codex middle
+    # tier instead of dropping straight to the Claude floor.
+    review = tmp_path / "review"
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="true", cursor="false")) == 0
+
+    out = capsys.readouterr().out
+    assert "VOTER_1_TOOL=codex-validity" in out
+    assert "VOTER_1_STATUS=launched" in out
+    voter1_launch = next(
+        argv for argv, _so, _se in harness.popen_calls if _verb(argv) == ("agent", "launch-review") and _value_after(argv, "--tool") == "codex"
+    )
+    assert _value_after(voter1_launch, "--model-role") == "vote"
+    assert not any(_verb(argv) == ("agent", "launch-claude-review") for argv, _so, _se in harness.popen_calls)
+    assert (review / "cursor-validity-vote-output.txt").is_file()
 
 
 @pytest.mark.voter_happy
@@ -1060,6 +1082,7 @@ def test_voter1_delayed_done_subprocess_uses_stub_plugin_root(tmp_path: Path) ->
         ballot,
         stub_bin=stub_bin,
         plugin_root=plugin,
+        codex_available="false",
         cursor_available="false",
         env={
             "LARCH_VOTER1_DONE_DELAY": "1",
@@ -1177,6 +1200,7 @@ def test_prod_shape_claude_parse_retry_appends_issues_log(tmp_path: Path) -> Non
         review,
         ballot,
         stub_bin=stub_bin,
+        codex_available="false",
         cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
@@ -1202,6 +1226,7 @@ def test_retry_success_claude_preserves_first_pass_sidecar(tmp_path: Path) -> No
         review,
         ballot,
         stub_bin=stub_bin,
+        codex_available="false",
         cursor_available="false",
         env={"CLAUDE_STUB_MODE": "parse_retry_success", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
@@ -1224,6 +1249,7 @@ def test_retry_fail_claude_preserves_narrative_and_diag(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        codex_available="false",
         cursor_available="false",
         env={"CLAUDE_STUB_MODE": "parse_retry_fail", "CLAUDE_STUB_COUNT_FILE": str(count)},
     )
@@ -1333,6 +1359,7 @@ def test_env_isolation_suppresses_parent_issues_log(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        codex_available="false",
         cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
@@ -1356,6 +1383,7 @@ def test_harness_path_guard_writes_local_diag_only(tmp_path: Path) -> None:
         review,
         ballot,
         stub_bin=stub_bin,
+        codex_available="false",
         cursor_available="false",
         env={
             "CLAUDE_STUB_MODE": "parse_retry_fail",
