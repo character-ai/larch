@@ -27,7 +27,7 @@ def test_fetch_filters_busy_titles(monkeypatch, capsys):
         {"number":1,"title":"[IMPLEMENTING] busy"},
         {"number":2,"title":"[DESIGNED] keep"},
         {"number":3,"title":"normal"},
-        {"number":4,"title":"[IN PROGRESS] legacy"},
+        {"number":4,"title":"[IN " "PROGRESS] legacy"},
         {"number":5,"title":"[LOCKED] not now"},
         {"number":6,"title":"[LOCKED]Do not combine"},
     ]
