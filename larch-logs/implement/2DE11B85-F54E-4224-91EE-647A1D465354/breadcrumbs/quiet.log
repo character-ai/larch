@@ -20,9 +20,12 @@ usage: cli.py implement recovery-paths [-h] --repo-root REPO_ROOT --tmpdir
 cli.py implement recovery-paths: error: the following arguments are required: --repo-root, --tmpdir, --prelaunch-porcelain, --postlaunch-porcelain, --prelaunch-digests, --out-file
 === larch-quiet-cli.py-23654.log ===
 === larch-quiet-cli.py-24169.log ===
+=== larch-quiet-cli.py-24521.log ===
 === larch-quiet-cli.py-3111.log ===
 === larch-quiet-cli.py-33808.log ===
 === larch-quiet-cli.py-34233.log ===
+=== larch-quiet-cli.py-37800.log ===
+=== larch-quiet-cli.py-37903.log ===
 === larch-quiet-cli.py-38623.log ===
 === larch-quiet-cli.py-43724.log ===
 === larch-quiet-cli.py-45288.log ===
@@ -52,3 +55,4 @@ cli.py implement recovery-paths: error: the following arguments are required: --
 === larch-quiet-sessionstart-health.sh-5280.log ===
 === larch-quiet-ship.py-21190.log ===
 === larch-quiet-tracking-issue-read-87080.log ===
+=== larch-quiet-tracking-issue-upsert-summary-38008.log ===
