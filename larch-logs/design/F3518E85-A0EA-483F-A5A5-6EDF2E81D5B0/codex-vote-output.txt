@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- the plan already says to scan every prose section and preserve load-bearing tokens, so this omission is not real.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- the existing preserve-token and byte-stable fence rules already cover those anchors, so an extra explicit freeze list is not necessary.
