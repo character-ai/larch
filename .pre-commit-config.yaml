@@ -642,6 +642,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-skill-closure-growth
+        name: lint /design and /implement markdown closure growth
+        entry: python3 python/cli.py lint skill-closure-growth
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: test-legacy-title-prefix-literals-scope
         name: Check legacy title-prefix literal scope
         entry: bash scripts/test-legacy-title-prefix-literals-scope.sh
