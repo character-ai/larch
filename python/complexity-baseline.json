@@ -5787,7 +5787,7 @@
     "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 153
+    "metric": 155
   },
   {
     "file": "larch/review/snapshot.py",

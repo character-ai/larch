@@ -21,6 +21,7 @@ from pathlib import Path
 from collections.abc import Callable
 
 from larch.core import config
+from larch.report import progress_report
 from larch.review import review_pipeline
 from larch.review import review_tally
 from larch.review._raf_util import (
@@ -623,6 +624,8 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     )
     _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 5) or 5))
     flush_scout_manifest(implement_tmpdir=implement_tmpdir, run_id=getattr(args, "run_id", "") or "", round_num=round_num, round_dir=round_dir, core=core)
+    with contextlib.suppress(Exception):
+        progress_report.write_implement_round_meta(round_dir)
     flush_round_log_after_coder(impl_tmpdir=implement_tmpdir, run_id=getattr(args, "run_id", "") or "", round_num=round_num, round_dir=round_dir)
     env_file = round_dir / "review-and-fix.env"
     _write_text(path=env_file, text=f"REVIEW_AND_FIX_STATUS={status}\n")

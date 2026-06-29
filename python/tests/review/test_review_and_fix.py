@@ -1948,7 +1948,10 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     def track_flush(*_args, **_kwargs):
         flush_called.append(True)
 
+    meta_called: list[bool] = []
+
     def failing_meta(*_args, **_kwargs):
+        meta_called.append(True)
         raise RuntimeError("meta write failed")
 
     monkeypatch.setattr(round_runner, "review_core_capture", fake_capture)
@@ -1956,7 +1959,7 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     monkeypatch.setattr(round_runner, "_compose_review_findings_output", lambda *_a, **_k: False)
     monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda *_a, **_k: True)
     monkeypatch.setattr(round_runner, "flush_round_log_after_coder", track_flush)
-    monkeypatch.setattr(review_and_fix.progress_report, "write_implement_round_meta", failing_meta)
+    monkeypatch.setattr(round_runner.progress_report, "write_implement_round_meta", failing_meta)
     monkeypatch.setattr(round_runner, "_run", lambda argv, **_kw: review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0))
     args = review_and_fix._build_step5_parser().parse_args([
         "--implement-tmpdir", str(impl), "--round-num", "1", "--mode", "single",
@@ -1969,6 +1972,7 @@ def test_implement_round_meta_write_failure_does_not_block_flush(tmp_path, monke
     ])
     result = review_and_fix._run_round(args, suppress_emit=True)
     assert result.status == "fix-applied"
+    assert meta_called
     assert flush_called
 
 
