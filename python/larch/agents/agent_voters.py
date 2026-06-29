@@ -322,12 +322,22 @@ def _launch_voter1(
     *,
     opts: Options,
     review_tmpdir: Path,
-    cursor_present: bool,
+    availability: tuple[bool, bool],
     calibration_stats_file: str | None,
     ctx_args: Sequence[str],
 ) -> tuple[str, subprocess.Popen[bytes], str]:
+    # Voter 1 waterfalls Cursor -> Codex -> Claude by availability (issue #5817):
+    # the first launchable tool from its policy order runs instead of dropping
+    # straight to Claude when Cursor is unavailable.
+    codex_present, cursor_present = availability
     policy = VOTER_SLOT_POLICIES[0]
-    if cursor_present:
+    base_tool = _first_launch_base_tool_for_slot(
+        policy,
+        codex_present=codex_present,
+        cursor_present=cursor_present,
+        no_fallback=False,
+    )
+    if base_tool in {"cursor", "codex"}:
         voter_path = str(review_tmpdir / policy.output_name)
         prompt = _make_voter_prompt_file(
             opts=opts,
@@ -335,10 +345,14 @@ def _launch_voter1(
             label=policy.prompt_label,
             archetype=policy.archetype,
             calibration_stats_file=calibration_stats_file,
-            voter_tool="cursor",
-            output_basename="validity-vote-prompt-cursor.txt",
+            voter_tool=base_tool,
+            output_basename=f"validity-vote-prompt-{base_tool}.txt",
         )
-        return voter_path, _launch_voter1_cursor_only(opts=opts, voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args), "cursor-validity"
+        return (
+            voter_path,
+            _launch_voter1_external(opts=opts, voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args, tool=base_tool),
+            _semantic_label(policy=policy, tool=base_tool),
+        )
     voter_path = str(review_tmpdir / "claude-vote-output.txt")
     prompt = _make_voter_prompt_file(
         opts=opts,
@@ -391,24 +405,26 @@ def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict
     return str(manifest)
 
 
-def _launch_voter1_cursor_only(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
+def _launch_voter1_external(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str], tool: str) -> subprocess.Popen[bytes]:
     stderr_path = f"{voter_1_path}.launcher-stderr"
     with Path(stderr_path).open("wb") as stderr_handle:
         return subprocess.Popen(
             [
                 *_cli_argv("agent", "launch-review"),
                 "--tool",
-                "cursor",
+                tool,
                 "--output",
                 voter_1_path,
                 "--prompt-file",
                 prompt_file,
                 "--mode",
                 MODE,
+                "--model-role",
+                "vote",
                 "--timeout",
                 "1200",
                 "--timing-task-kind",
-                "cursor-code-voter-validity",
+                f"{tool}-code-voter-validity",
                 "--site",
                 opts.site,
                 *ctx_args,
@@ -669,14 +685,14 @@ def dispatch_voters(opts: Options) -> int:
         calibration_stats_file=calibration_stats_file,
     )
 
-    # Voter 1 launches asynchronously on both the cursor and claude paths so it
-    # runs in parallel with the voters 2+3 waterfall dispatched below; its exit
-    # code is collected at the voter1_process.wait() barrier after dispatch
-    # (issue #5448).
+    # Voter 1 launches asynchronously on both the external (cursor/codex) and
+    # claude paths so it runs in parallel with the voters 2+3 waterfall
+    # dispatched below; its exit code is collected at the voter1_process.wait()
+    # barrier after dispatch (issue #5448).
     voter_1_path, voter1_process, voter_1_tool = _launch_voter1(
         opts=opts,
         review_tmpdir=review_tmpdir,
-        cursor_present=cursor_present,
+        availability=(codex_present, cursor_present),
         calibration_stats_file=calibration_stats_file,
         ctx_args=ctx_args,
     )
@@ -709,7 +725,7 @@ def dispatch_voters(opts: Options) -> int:
     voter1_rc = voter1_process.wait()
     if voter1_rc != 0 or not _file_nonempty(voter_1_path):
         _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
-    if cursor_present and not Path(f"{voter_1_path}.done").is_file() and voter1_rc == 0 and _file_nonempty(voter_1_path):
+    if voter_1_tool != "claude" and not Path(f"{voter_1_path}.done").is_file() and voter1_rc == 0 and _file_nonempty(voter_1_path):
         Path(f"{voter_1_path}.done").write_text("0\n", encoding="utf-8")
     sentinels.insert(0, f"{voter_1_path}.done")
     voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)

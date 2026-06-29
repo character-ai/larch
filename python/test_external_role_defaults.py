@@ -79,13 +79,16 @@ def test_voter_and_decompose_roles() -> None:
         ("voter-2", "codex", "codex-vote-output.txt"),
         ("voter-3", "cursor", "cursor-vote-output.txt"),
     ]
-    voter_policy = external_defaults.voter_dispatch_policy("design.plan_voters")
-    assert voter_policy is not None
-    assert voter_policy.voter_waterfall_no_fallback is True
-    assert voter_policy.no_fallback_slots == frozenset({"voter-2", "voter-3"})
+    # Plan voters waterfall fully now (issue #5817): no always-on --no-fallback,
+    # and each external voter carries its cross-vendor middle tier.
+    assert external_defaults.voter_dispatch_policy("design.plan_voters") is None
+    assert dict(plan_voters[1].semantic_labels) == {"codex": "codex", "cursor": "cursor", "claude": "claude"}
+    assert dict(plan_voters[2].semantic_labels) == {"cursor": "cursor", "codex": "codex", "claude": "claude"}
 
     review_voters = external_defaults.voter_policies("review.voters")
-    assert review_voters[0].allow_codex_fallback is False
+    # Voter 1 waterfalls Cursor -> Codex -> Claude (issue #5817).
+    assert review_voters[0].allow_codex_fallback is True
+    assert dict(review_voters[0].semantic_labels) == {"cursor": "cursor-validity", "codex": "codex-validity", "claude": "claude"}
     assert review_voters[0].archetype == "validity-correctness"
     assert review_voters[1].default_label == "codex-plan-fidelity"
 

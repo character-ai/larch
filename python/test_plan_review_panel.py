@@ -518,20 +518,89 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     assert ("codex", "voter-calibration-stats.tsv") in voter_tools
     assert ("cursor", "voter-calibration-stats.tsv") in voter_tools
     rows = _manifest_rows(design / "plan-voter-slots.ndjson")
-    for slot_name, expected_tools in (("voter-2", {"codex", "claude"}), ("voter-3", {"cursor", "claude"})):
+    for slot_name, expected_tools in (("voter-2", {"codex", "cursor", "claude"}), ("voter-3", {"cursor", "codex", "claude"})):
         row = next(r for r in rows if r.get("slot") == slot_name)
         prompt_files = row.get("prompt_files")
         assert isinstance(prompt_files, dict)
         assert set(prompt_files) == expected_tools  # type: ignore[arg-type]
     waterfall = next(a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
-    assert "--no-fallback" in waterfall
+    # Plan voters now waterfall through their cross-vendor + Claude tiers (issue #5817).
+    assert "--no-fallback" not in waterfall
     for basename in (
         "codex-plan-voter-prompt-codex.txt",
+        "codex-plan-voter-prompt-cursor.txt",
         "codex-plan-voter-prompt-claude.txt",
         "cursor-plan-voter-prompt-cursor.txt",
+        "cursor-plan-voter-prompt-codex.txt",
         "cursor-plan-voter-prompt-claude.txt",
     ):
         assert (design / basename).is_file()
+
+
+def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # issue #5817: with Codex down but Cursor up, voter-2 (Codex-primary) is no
+    # longer dropped -- both slots are enqueued and the waterfall (no
+    # --no-fallback) carries the cursor middle tier so voter-2 can run on Cursor.
+    consumer = tmp_path / "consumer"
+    (consumer / "larch-logs").mkdir(parents=True)
+    design = tmp_path / "design-codex-down"
+    design.mkdir()
+    _ = (design / "source-env.sh").write_text(f"REPO_ROOT={consumer}\n", encoding="utf-8")
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            assert "--no-fallback" not in a
+            outs: list[str] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        out = str(json.loads(line)["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        outs.append(out)
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join("cursor" for _ in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="3\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    class _FakePopen:
+        def __init__(self, argv: object, **_kwargs: object) -> None:
+            a = [str(x) for x in argv]  # type: ignore[union-attr]
+            for i, tok in enumerate(a):
+                if tok == "--output" and i + 1 < len(a):
+                    _ = Path(a[i + 1]).write_text("vote\n", encoding="utf-8")
+                    _ = Path(a[i + 1] + ".done").write_text("0\n", encoding="utf-8")
+            self.returncode = 0
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setenv("LARCH_VOTER_CALIBRATION_FEEDBACK", "0")
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "false",
+        "--cursor-available", "true",
+    ])
+    assert rc == 0
+    rows = _manifest_rows(design / "plan-voter-slots.ndjson")
+    assert {r.get("slot") for r in rows} == {"voter-2", "voter-3"}
+    voter2 = next(r for r in rows if r.get("slot") == "voter-2")
+    prompt_files = voter2.get("prompt_files")
+    assert isinstance(prompt_files, dict)
+    assert "cursor" in prompt_files  # cross-vendor middle tier present
 
 
 def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
