@@ -249,7 +249,7 @@ forbid(skill, launcher + 'python/cli.py oos file --implement-tmpdir "$IMPLEMENT_
 require('skills/implement/scripts/step-0-bootstrap.sh', 'LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"', 'step-0 wrapper claude pid export')
 require(skill, 'python/cli.py ship seed-initial-state', 'ship state initial seeder authority')
 require('skills/implement/scripts/step-8-seed-initial.sh', '--no-admin-fallback', 'ship state no-admin fallback seeder argv')
-require('python/larch/implement/ship.py', 'NO_ADMIN_FALLBACK', 'ship state no-admin fallback allowed key')
+require('python/larch/implement/ship_state.py', 'NO_ADMIN_FALLBACK', 'ship state no-admin fallback allowed key')
 require(skill, '## NEVER List', 'NEVER list heading')
 require(skill, 'NEVER call `ScheduleWakeup`', 'NEVER #8 ScheduleWakeup pin')
 require(skill, 'Do not spawn a Monitor', 'NEVER #8 background-monitor ban')
