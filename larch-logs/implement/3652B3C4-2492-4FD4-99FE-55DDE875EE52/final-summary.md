@@ -10,7 +10,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, producer empty
 - **Code review**: self-review: 0 findings
-- **Lines (PR diff)**: code +1654/-1653, larch-logs +213/-0
+- **Lines (PR diff)**: code +1655/-1654, larch-logs +228/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
