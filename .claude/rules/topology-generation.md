@@ -22,6 +22,7 @@ paths:
   - "skills/research/references/validation-phase.md"
   - "python/larch/review/review_pipeline.py"
   - "python/larch/review/plan_review.py"
+  - "python/larch/review/plan_review_loop.py"
   - "python/larch/review/plan_review_panel.py"
   - "python/larch/git/pr.py"
   - "python/migrated-scripts.tsv"

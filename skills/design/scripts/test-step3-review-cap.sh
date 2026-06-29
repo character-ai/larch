@@ -52,7 +52,7 @@ grep -Fq 'design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase 
 if grep -Fq -- '--mode single' "$SKILL_MD" "$APPROVAL_GATES"; then
     fail 'SKILL/approval-gates must not retain legacy --mode single prose'
 fi
-grep -Fq 'plan-review continuation' "$ROOT/python/larch/review/plan_review.py" \
+grep -Fq 'plan-review continuation' "$ROOT/python/larch/review/plan_review_loop.py" \
     || fail 'plan_review.py missing native continuation entry point'
 
 TMP_PARENT="${TMPDIR:-/tmp}"
