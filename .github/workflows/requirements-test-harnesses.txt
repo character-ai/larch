@@ -1,4 +1,6 @@
 # PyYAML supports workflow/harness parsers.
+# pytest supports harness targets that use python3 -m pytest directly.
 # pre-commit is not needed here; it is installed via requirements-lint.txt
 # for the lint/shellcheck/agent-sync jobs only.
 pyyaml==6.0.2
+pytest==9.0.3

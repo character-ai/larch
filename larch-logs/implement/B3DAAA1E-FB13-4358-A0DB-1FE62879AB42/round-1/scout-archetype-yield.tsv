@@ -1,0 +1,12 @@
+archetype_name	focus_area	weight	findings_total	findings_accepted	findings_rejected	yield_ratio
+correctness	correctness	1	0	0	0	n/a
+correctness	correctness	1	0	0	0	n/a
+edge-cases	correctness	1	0	0	0	n/a
+edge-cases	correctness	1	0	0	0	n/a
+testing	risk-integration	1	0	0	0	n/a
+testing	risk-integration	1	0	0	0	n/a
+generic	code-quality	1	0	0	0	n/a
+dyn-dyn-closure-parser	correctness	1	0	0	0	n/a
+dyn-dyn-closure-parser-codex	correctness	1	0	0	0	n/a
+dyn-dyn-lint-wiring	risk-integration	1	0	0	0	n/a
+dyn-dyn-lint-wiring-codex	risk-integration	1	0	0	0	n/a

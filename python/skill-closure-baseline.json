@@ -1,0 +1,36 @@
+[
+  {
+    "closure_estimated_tokens": 70506,
+    "closure_lines": 2047,
+    "files": [
+      "skills/design/SKILL.md",
+      "skills/design/references/flags.md",
+      "skills/shared/design-background-wait.md",
+      "skills/design/references/discussion-rounds.md",
+      "skills/design/references/design-outline.md",
+      "skills/design/references/approval-gates.md",
+      "skills/design/references/settle-rc-dispatch.md",
+      "skills/design/references/step2b5-rc-handling.md",
+      "skills/design/references/decompose-panel.md",
+      "skills/design/references/plan-review.md",
+      "skills/design/references/finalize-step5.md",
+      "skills/design/references/validator-failure.md"
+    ],
+    "skill": "design",
+    "skill_md_estimated_tokens": 30185,
+    "skill_md_lines": 705
+  },
+  {
+    "closure_estimated_tokens": 38486,
+    "closure_lines": 941,
+    "files": [
+      "skills/implement/SKILL.md",
+      "skills/implement/references/self-review.md",
+      "skills/implement/references/ship-pr-exit-matrix.md",
+      "skills/implement/references/step18-cleanup.md"
+    ],
+    "skill": "implement",
+    "skill_md_estimated_tokens": 33760,
+    "skill_md_lines": 789
+  }
+]

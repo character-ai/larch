@@ -1,0 +1,74 @@
+=== larch-quiet-cli.py-32573.log ===
+=== larch-quiet-cli.py-43671.log ===
+=== larch-quiet-cli.py-48590.log ===
+=== larch-quiet-cli.py-89954.log ===
+=== larch-quiet-cli.py-96470.log ===
+=== larch-quiet-read-session-env-key.sh-40792.log ===
+=== larch-quiet-read-session-env-key.sh-40803.log ===
+=== larch-quiet-read-session-env-key.sh-40806.log ===
+=== larch-quiet-read-session-env-key.sh-86380.log ===
+=== larch-quiet-read-session-env-key.sh-86382.log ===
+=== larch-quiet-read-session-env-key.sh-86384.log ===
+=== larch-quiet-read-session-env-key.sh-86396.log ===
+=== larch-quiet-read-session-env-key.sh-86398.log ===
+=== larch-quiet-read-session-env-key.sh-86400.log ===
+=== larch-quiet-read-session-env-key.sh-86402.log ===
+=== larch-quiet-read-session-env-key.sh-86430.log ===
+=== larch-quiet-read-session-env-key.sh-86432.log ===
+=== larch-quiet-read-session-env-key.sh-86434.log ===
+=== larch-quiet-sessionstart-health.sh-59028.log ===
+=== larch-quiet-sessionstart-health.sh-66631.log ===
+=== larch-quiet-sessionstart-health.sh-96263.log ===
+=== larch-quiet-sessionstart-health.sh-98645.log ===
+=== larch-quiet-sessionstart-health.sh-99184.log ===
+=== larch-quiet-ship.py-26673.log ===
+=== larch-quiet-ship.py-38627.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 15s
+ci_monitor: poll 2/180 pending after 20s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 30s
+ci_monitor: poll 3/180 pending after 34s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 44s
+ci_monitor: poll 4/180 pending after 49s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 59s
+ci_monitor: poll 5/180 pending after 63s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 73s
+ci_monitor: poll 6/180 pending after 78s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 88s
+ci_monitor: poll 7/180 pending after 92s; sleeping 10s
+ci_monitor: CI status query #8 in progress after 102s
+ci_monitor: poll 8/180 pending after 107s; sleeping 10s
+ci_monitor: CI status query #9 in progress after 117s
+ci_monitor: poll 9/180 pending after 122s; sleeping 10s
+ci_monitor: CI status query #10 in progress after 132s
+ci_monitor: poll 10/180 pending after 136s; sleeping 10s
+ci_monitor: CI status query #11 in progress after 146s
+ci_monitor: poll 11/180 pending after 151s; sleeping 10s
+ci_monitor: CI status query #12 in progress after 161s
+ci_monitor: poll 12/180 pending after 165s; sleeping 10s
+ci_monitor: CI status query #13 in progress after 175s
+ci_monitor: poll 13/180 pending after 180s; sleeping 10s
+ci_monitor: CI status query #14 in progress after 190s
+ci_monitor: poll 14/180 pending after 194s; sleeping 10s
+ci_monitor: CI status query #15 in progress after 204s
+ci_monitor: poll 15/180 pending after 209s; sleeping 10s
+ci_monitor: CI status query #16 in progress after 219s
+ci_monitor: poll 16/180 pending after 223s; sleeping 10s
+ci_monitor: CI status query #17 in progress after 233s
+ci_monitor: poll 17/180 pending after 238s; sleeping 10s
+ci_monitor: CI status query #18 in progress after 248s
+ci_monitor: poll 18/180 pending after 253s; sleeping 10s
+ci_monitor: CI status query #19 in progress after 263s
+ci_monitor: poll 19/180 pending after 268s; sleeping 10s
+ci_monitor: CI status query #20 in progress after 278s
+ci_monitor: poll 20/180 pending after 282s; sleeping 10s
+ci_monitor: CI status query #21 in progress after 292s
+ci_monitor: poll 21/180 pending after 297s; sleeping 10s
+ci_monitor: CI status query #22 in progress after 307s
+ci_monitor: CI NO_CHECKS after 312s -> bail (no-ci-checks-observed)
+ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=no-ci-checks-observed
+=== larch-quiet-ship.py-8482.log ===
+=== larch-quiet-tracking-issue-read-86409.log ===

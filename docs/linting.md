@@ -22,6 +22,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 | Bash 3.2 portability | `.sh`, `.inc.bash` | `scripts/lint-bash32.sh` rejects Bash 4+ constructs such as associative arrays, namerefs, `mapfile`/`readarray`, case-conversion expansions (`${var^^}` / `${var^}` / `${var,,}` / `${var,}`), `&>>`, and coprocs. The `lint-bash32` pre-commit hook is incremental and receives staged filenames positionally; whole-repo scans still run via `make lint-bash32` (untracked-aware), `make lint`, and CI `make lint-only`. |
 | Renderer substitution safety | runtime `.sh` | `scripts/lint-renderer-substitution-safety.sh` rejects `${var//pattern/$replacement}` where the replacement is a shell variable expansion, preventing bash 5.x `&` replacement corruption in prompt renderers. Run via `make lint-renderer-substitution-safety`, pre-commit hook `lint-renderer-substitution-safety`, local `make lint`, and relevant-checks. |
 | SKILL.md flag signatures | `skills/**/SKILL.md` plus target `.sh` scripts | `python3 python/cli.py lint skill-md-flag-signature` scans fenced shell invocations in public skill prompts, assembles multiline commands, and verifies each `--flag` has a matching case arm in the shipped target script. Run via `make lint-skill-md-flag-signature`, pre-commit hook `lint-skill-md-flag-signature`, local `make lint`, and relevant-checks. |
+| SKILL.md closure growth | `skills/design/SKILL.md`, `skills/implement/SKILL.md`, direct always-loaded `.md` references | `python3 python/cli.py lint skill-closure-growth` compares live `/design` and `/implement` markdown closure size with `python/skill-closure-baseline.json`. Report current size with `python3 python/cli.py skill-closure report`. Regenerate with `python3 python/cli.py lint skill-closure-growth --write`; committing that baseline update is the justification token. |
 | Unwired `codex exec` call sites | `scripts/*.sh`, `skills/*/scripts/*.sh`, orchestrator markdown bash fences | `python3 python/cli.py lint codex-exec-auth` rejects raw `codex exec` unless the shell basename is allowlisted (`agent launch-review`, `launch-codex-ci.sh`, `review-and-fix.sh`, `launch-codex-exec.sh`) or the Python call site is allowlisted (`python/larch/agents/agents.py`) or the line carries `# lint-codex-exec-auth: ok <reason>`. Run via `make lint-codex-exec-auth`, pre-commit hook `lint-codex-exec-auth`, local `make lint`, and pytest coverage in `python/test_lint_codex_exec_auth.py`. |
 | Consecutive Bash tool-call fences | `skills/*/SKILL.md`, `.claude/skills/*/SKILL.md`, `skills/*/references/*.md` | `python3 python/cli.py lint consecutive-bash` rejects two source-adjacent fenced blocks whose info string starts with `bash` when only blank lines, HTML comments, or short breadcrumb prose separates them. The fence parser accepts 0 to 3 leading spaces on matching backtick openers and closers. It ignores explicit WRONG/CORRECT examples, foreground recovery probes for known `.completed/` sentinels, pause/resume design-launcher boundaries, and immediate-background `<task-notification>` boundaries. An unclosed fence opener is skipped rather than treated as a fence running to end of file, so later fences stay visible to the linter. Suppress an intentional boundary with trailing `# lint-consecutive-bash: ok <reason>` on the Bash command line, which is required for single-line `skills/implement/SKILL.md` launcher fences by `test-implement-fence-shape.sh`, or with a standalone body comment in a multi-line fence. First-run cleanup requires every in-scope violation to pass or carry a justified suppression before merge. Follow-up issue filing is optional, not a merge gate. Run via `make lint-consecutive-bash`, pre-commit hook `lint-consecutive-bash`, local `make lint`, and pytest coverage in `python/test_lint_consecutive_bash.py`. |
 | Bare top-level grep in orchestrator markdown | `skills/**/*.md`, `.claude/skills/**/*.md`, `.claude/rules/*.md` | `scripts/lint-bare-grep-probe.sh` scans fenced `bash`, `sh`, and `shell` blocks. It rejects bare top-level `grep` wrapper-trap shapes, plus no-path grep-family probes (`rg`, `ripgrep`, `grep`, including `command` and subshell forms) because background Bash stdin can stay open. A safe grep-family producer probe passes an explicit path or redirects stdin from `/dev/null`. Unquoted `< /dev/null` on the candidate command is recognized before redirect-based argv truncation; quoted and commented substrings do not count. Piped forms such as `cmd PIPE rg` and `cmd PIPE grep` remain allowed, where PIPE means a shell pipe operator. Argv parsing ignores suffix tokens after shell pipe, logical-or, logical-and, semicolon, background, pipe-stderr, and redirect operators when checking for paths. Existing wrapper-safe `command grep` guidance still applies for the exit-code trap, but path-or-`/dev/null` is also required for producer probes. Suppress fixture lines only with a trailing `# lint-bare-grep-probe: ok <reason>` pragma. Run via `make lint-bare-grep-probe`, pre-commit hook `lint-bare-grep-probe`, local `make lint`, and `scripts/test-lint-bare-grep-probe.sh`. |
@@ -49,6 +50,22 @@ The audit treats ruff exit `0` and `1` as success when JSON parses, because exit
 The combined mechanism primarily blocks new production modules through per-file grandfather bookkeeping, and blocks new complexity anywhere through the baseline manifest. Tests are exempt through the existing `"test_*.py"` block. Pytest harness modules outside that glob, `conftest.py`, `test_support.py`, and `review_test_support.py`, are exempt through dedicated per-file ignore entries with the same five codes.
 
 When a production file is simplified, remove matching per-file ignore codes from `python/ruff.toml`, remove the corresponding `(file, code, qualified_symbol)` rows from `python/complexity-baseline.json`, and remove the whole per-file entry when no ignored codes remain.
+
+### SKILL.md closure growth ratchet
+
+`python3 python/cli.py skill-closure report` prints `/design` and `/implement` separately. It reports each `SKILL.md` size plus its direct always-loaded markdown closure.
+
+`python3 python/cli.py lint skill-closure-growth` compares those live metrics with `python/skill-closure-baseline.json`. It fails when `SKILL.md` lines, `SKILL.md` estimated tokens, closure lines, or closure estimated tokens grow past the baseline.
+
+`python3 python/cli.py lint skill-closure-growth --write` regenerates the baseline. Commit the changed baseline as the explicit justification token when growth is intentional.
+
+Scope is narrow by design:
+
+- Count only `/design` and `/implement`.
+- Count each `SKILL.md` plus direct always-loaded markdown references.
+- Do not recurse from a referenced file into its references.
+- Exclude conditional bullets, branch-only routing-table rows, other route-predicate contexts, and the `/implement` `Checks Failure Entry Macro` and `Durable Bail to Step 18 Macro` sections.
+- Harvest only the directive read clause from matching lines. Later citations, harness docs, and non-markdown references on the same line do not enter the closure.
 
 ### Python subprocess and environment ratchets
 
@@ -209,6 +226,10 @@ The PR creation surface now lives in `python/cli.py pr create`. Before cutting a
 | Target | Description |
 |--------|-------------|
 | `make lint` | Run all linters repo-wide |
+| `make skill-closure-size` | Report `/design` and `/implement` direct always-loaded markdown closure size. |
+| `make lint-skill-closure-growth` | Fail when `/design` or `/implement` markdown closure metrics grow past `python/skill-closure-baseline.json`. |
+| `make regen-skill-closure-baseline` | Regenerate `python/skill-closure-baseline.json` after intentional growth. |
+| `make test-lint-skill-closure-growth` | Run pytest coverage for the skill closure scanner and baseline ratchet. |
 | `make shellcheck` | Run shellcheck only |
 | `make markdownlint` | Run markdownlint only |
 | `make jsonlint` | Run JSON validation only |
