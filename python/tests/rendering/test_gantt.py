@@ -172,7 +172,7 @@ def test_cli_matches_direct_render_and_reports_malformed_rows(tmp_path: Path) ->
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t100\t120\n", encoding="utf-8")
     expected = render_gantt(window_start_s=100, window_end_s=140, rows=[GanttRow("a", 100, 120)], width=12) + "\n"
-    cli = str(Path(__file__).with_name("cli.py"))
+    cli = str(Path(__file__).resolve().parents[2] / "cli.py")
     result = subprocess.run(
         [
             sys.executable,
@@ -221,7 +221,7 @@ def test_cli_omitted_width_uses_default_path(tmp_path: Path) -> None:
     label = "codex/dyn-dyn-skill-contract-codex"
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text(f"{label}\t0\t69\n", encoding="utf-8")
-    cli = str(Path(__file__).with_name("cli.py"))
+    cli = str(Path(__file__).resolve().parents[2] / "cli.py")
     result = subprocess.run(
         [
             sys.executable,
@@ -247,7 +247,7 @@ def test_cli_omitted_width_uses_default_path(tmp_path: Path) -> None:
 def test_cli_explicit_width_forms_are_preserved(tmp_path: Path) -> None:
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t0\t20\n", encoding="utf-8")
-    cli = str(Path(__file__).with_name("cli.py"))
+    cli = str(Path(__file__).resolve().parents[2] / "cli.py")
     width_forms = [("--width", "80"), ("--width=80",)]
     for width_form in width_forms:
         result = subprocess.run(
@@ -276,7 +276,7 @@ def test_cli_explicit_width_forms_are_preserved(tmp_path: Path) -> None:
 def test_cli_empty_stdout_when_all_rows_filtered_outside_window(tmp_path: Path) -> None:
     rows = tmp_path / "rows.tsv"
     _ = rows.write_text("a\t50\t90\nb\t200\t250\n", encoding="utf-8")
-    cli = str(Path(__file__).with_name("cli.py"))
+    cli = str(Path(__file__).resolve().parents[2] / "cli.py")
     result = subprocess.run(
         [
             sys.executable,

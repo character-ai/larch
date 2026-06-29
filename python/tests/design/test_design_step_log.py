@@ -22,7 +22,7 @@ def _make_exec(path: Path, body: str) -> None:
 
 
 def test_step1_log_overrides_compose_and_log(tmp_path: Path) -> None:
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     work = tmp_path / "impl"
     work.mkdir()
     _ = (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")
@@ -64,7 +64,7 @@ def test_step1_log_overrides_compose_and_log(tmp_path: Path) -> None:
 
 
 def test_step1_log_requires_conventional_plan_file(tmp_path: Path) -> None:
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     work = tmp_path / "impl"
     work.mkdir()
     _ = (work / "session-env.sh").write_text("LARCH_CLAUDE_PLUGIN_ROOT=/repo\n", encoding="utf-8")

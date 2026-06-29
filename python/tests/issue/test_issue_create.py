@@ -10,7 +10,7 @@ from typing import Any
 from larch.issue import issue_create
 from larch.core import proc
 
-SKILL_PATH = Path(__file__).resolve().parents[1] / "skills/issue/SKILL.md"
+SKILL_PATH = Path(__file__).resolve().parents[3] / "skills/issue/SKILL.md"
 
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:

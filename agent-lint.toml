@@ -811,10 +811,10 @@ exclude = [
   # sibling scripts/test-bug-structure.md. Same Makefile-only pattern.
   "scripts/test-bug-structure.sh",
   "scripts/test-design-structure.sh",
-  # python/test_design_lifecycle.py is a Makefile-only harness for
+  # python/tests/design/test_design_lifecycle.py is a Makefile-only harness for
   # python/design_lifecycle.py (/design Step 0b lifecycle port);
   # the test covers reentry guard and router flag recovery.
-  "python/test_design_lifecycle.py",
+  "python/tests/design/test_design_lifecycle.py",
   "python/test_design_publish.py",
   # upgrade-larch release-step7-root is invoked by /release Step 7 and upgrade-larch run;
   # agent-lint's dead-script graph does not follow source directives or prompt
@@ -1048,7 +1048,7 @@ exclude = [
   # Makefile-only regression targets after the /design Python migration.
   # The primary modules are cited from /design runtime prose; the
   # harnesses are referenced only from Makefile.
-  "python/test_design_lifecycle.py",
+  "python/tests/design/test_design_lifecycle.py",
   "python/test_design_publish.py",
   "python/test_design_pause.py",
   "python/test_plan_review.py",

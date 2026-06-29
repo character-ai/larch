@@ -3138,7 +3138,7 @@ raise SystemExit(0)
     _ = (design / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
     (design / ".gate-b-postapply-ready-1").touch()
 
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["RECORD_FILE"] = str(recorder)

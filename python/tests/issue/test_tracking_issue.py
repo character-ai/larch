@@ -33,14 +33,14 @@ def _tracking_issue_subprocess(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
     if extra_env is not None:
         env.update(extra_env)
     return subprocess.run(
         [sys.executable, "python/cli.py", "tracking-issue", *args],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,
@@ -56,7 +56,7 @@ def _tracking_issue_subprocess_redirected(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
     if extra_env is not None:
@@ -64,7 +64,7 @@ def _tracking_issue_subprocess_redirected(
     with stdout_path.open("w", encoding="utf-8") as stdout:
         return subprocess.run(
             [sys.executable, "python/cli.py", "tracking-issue", *args],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=Path(__file__).resolve().parents[3],
             text=True,
             stdout=stdout,
             stderr=subprocess.PIPE,
@@ -81,7 +81,7 @@ def _tracking_issue_subprocess_stderr_redirected(
     extra_env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
     if extra_env is not None:
@@ -89,7 +89,7 @@ def _tracking_issue_subprocess_stderr_redirected(
     with stderr_path.open("w", encoding="utf-8") as stderr:
         return subprocess.run(
             [sys.executable, "python/cli.py", "tracking-issue", *args],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=Path(__file__).resolve().parents[3],
             text=True,
             stdout=subprocess.PIPE,
             stderr=stderr,

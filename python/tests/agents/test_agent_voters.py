@@ -17,7 +17,7 @@ import pytest
 from larch.agents import agent_voters
 from larch.core import proc
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
 
 
@@ -462,7 +462,7 @@ def test_default_round_num_cli_smoke_with_stub_plugin_root(tmp_path: Path, monke
     result = subprocess.run(
         [
             "python3",
-            str(Path(__file__).with_name("cli.py")),
+            str(Path(__file__).resolve().parents[2] / "cli.py"),
             "agent",
             "dispatch-voters",
             "--ballot-file",

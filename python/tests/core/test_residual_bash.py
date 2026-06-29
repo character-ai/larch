@@ -8,12 +8,12 @@ from larch.core import residual_bash
 
 
 def test_manifest_includes_combine_issues_helper() -> None:
-    paths = residual_bash.read_residual_paths(Path(__file__).resolve().parents[1])
+    paths = residual_bash.read_residual_paths(Path(__file__).resolve().parents[3])
     assert ".claude/skills/combine-issues/scripts/search-implementing-issue.sh" in paths
 
 
 def test_manifest_excludes_retired_bash_artifacts() -> None:
-    paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[1]))
+    paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[3]))
     # Split retired-path literals at the directory boundary so this fixture
     # file does not itself reference a retired path. See docs/python-migration.md:
     # "Do NOT write retired-path literals in test fixtures."
@@ -34,7 +34,7 @@ def test_manifest_excludes_retired_bash_artifacts() -> None:
 
 
 def test_manifest_excludes_non_residual_orchestration() -> None:
-    paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[1]))
+    paths = set(residual_bash.read_residual_paths(Path(__file__).resolve().parents[3]))
     orchestration = {
         "skills/design/scripts/design-step3-review.sh",
         "skills/implement/scripts/cleanup.sh",
@@ -47,12 +47,12 @@ def test_manifest_excludes_non_residual_orchestration() -> None:
 
 
 def test_manifest_paths_exist_on_disk() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     assert residual_bash.paths_main(["--root", str(root), "--check-exists"]) == 0
 
 
 def test_intersect_git_limits_to_tracked_manifest_rows(tmp_path: Path) -> None:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     root = tmp_path
     manifest = root / "scripts" / "residual-bash-paths.txt"
     manifest.parent.mkdir(parents=True)
@@ -79,7 +79,7 @@ def test_manifest_excludes_vendored_paths(tmp_path: Path) -> None:
 
 
 def test_cli_newline_and_null_delimited() -> None:
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     base = [sys.executable, str(root / "python" / "cli.py"), "residual-bash", "paths", "--root", str(root)]
     newline = subprocess.run(base, check=True, text=True, capture_output=True)
     assert "scripts/sleep-seconds.sh\n" in newline.stdout

@@ -176,7 +176,7 @@ def test_all_open_cli_subprocess(tmp_path: Path) -> None:
     env["PATH"] = f"{tmp_path}:{env['PATH']}"
     result = subprocess.run(
         ["python3", "python/cli.py", "blocker", "all-open", "--issue", "1", "--repo", "o/r"],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         env=env,
         text=True,
         capture_output=True,

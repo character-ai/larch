@@ -10,7 +10,7 @@ import pytest
 
 from larch.core import redact
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 SECRETS_SH = REPO_ROOT / "scripts" / "redact-secrets.sh"
 TMPDIR_SH = REPO_ROOT / "scripts" / "redact-tmpdir-paths.sh"
 

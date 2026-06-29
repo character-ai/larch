@@ -20,7 +20,7 @@ from larch.core import logging_util
 from larch.core import proc as proc_module
 from test_support import ROOT
 
-CLI = Path(__file__).with_name("cli.py")
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _write(path: Path, text: str) -> Path:

@@ -24,7 +24,7 @@ from test_support import (
     merge_admin_responses,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 MERGE_SH = REPO_ROOT / "scripts" / "merge-pr.sh"
 
 pytestmark = pytest.mark.skipif(

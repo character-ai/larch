@@ -7,7 +7,7 @@ import importlib
 import sys
 from pathlib import Path
 
-PYTHON_DIR = Path(__file__).resolve().parent
+PYTHON_DIR = Path(__file__).resolve().parents[1]
 PACKAGE_NAME = "larch"
 
 

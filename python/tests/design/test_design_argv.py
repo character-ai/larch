@@ -9,7 +9,7 @@ from pathlib import Path
 import pytest
 
 
-CLI = Path(__file__).with_name("cli.py")
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _run_parse(*args: str) -> subprocess.CompletedProcess[str]:

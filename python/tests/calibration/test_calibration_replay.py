@@ -12,7 +12,7 @@ import pytest
 
 from larch.calibration import calibration_replay
 
-REPO_ROOT = Path(__file__).resolve().parent.parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
 TEST_RUN_ID = "AAAAAAAA-BBBB-CCCC-DDDD-EEEEEEEEEEEE"
 
 

@@ -11,7 +11,7 @@ import pytest
 
 from larch.state import bootstrap
 
-_REPO_ROOT = Path(__file__).resolve().parents[1]
+_REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def test_filtered_envelope_allowlist_and_resume_empty_coder() -> None:

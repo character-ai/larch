@@ -16,7 +16,7 @@ from larch.review import voting
 from larch.core import config
 from larch.review.review_types import JudgeSeverity, ReviewVote
 
-CLI = Path(__file__).with_name("cli.py")
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def run_cli(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:

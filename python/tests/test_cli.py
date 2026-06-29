@@ -14,7 +14,7 @@ from larch import cli
 import importlib
 
 
-CLI_PATH = Path(__file__).with_name("cli.py")
+CLI_PATH = Path(__file__).resolve().parents[1] / "cli.py"
 
 
 # ---------------------------------------------------------------------------

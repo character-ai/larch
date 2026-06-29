@@ -54,7 +54,7 @@ def _operator_repo_with_remote(tmp_path: Path) -> Path:
 
 
 def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.CompletedProcess[str]:
-    real_cli = Path(__file__).with_name("cli.py")
+    real_cli = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     # The real cli is used for run-log init/commit + redact; all git writes are
@@ -82,7 +82,7 @@ def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.Complete
 
 
 def test_log_publish_dry_run_success(tmp_path: Path) -> None:
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     design = tmp_path / "design"
     design.mkdir()
     bin_dir = tmp_path / "bin"
@@ -372,7 +372,7 @@ def test_copy_tree_redacted_fail_closed_on_residual(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     source = tmp_path / "source.txt"
     _ = source.write_text(
         "crsr_1620abcdefghijklmnopqrstuvwxyz0123456789\n",
@@ -405,7 +405,7 @@ def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     source = tmp_path / "source.txt"
     _ = source.write_text("plain\n", encoding="utf-8")
 
@@ -418,7 +418,7 @@ def test_copy_tree_redacted_scrubber_exception_is_secret_scrub_failure(
 
 
 def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: Path) -> None:
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     target = tmp_path / "target.txt"
     _ = target.write_text("plain\n", encoding="utf-8")
     source = tmp_path / "source-link.txt"
@@ -431,7 +431,7 @@ def test_copy_tree_redacted_symlink_skip_is_not_secret_scrub_failure(tmp_path: P
 
 
 def test_copy_tree_redacted_writes_same_scrubbed_text_used_for_count(tmp_path: Path) -> None:
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     source = tmp_path / "source.txt"
     raw = "token=xoxb-1234567890abcdef"
     _ = source.write_text(raw, encoding="utf-8")

@@ -13,7 +13,7 @@ import pytest
 
 from larch.issue import file_oos
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 OOS_ISSUE_CAP_OPERATOR_WARNING = (
     "**⚠ /implement: oos-issue-cap helper failed (exit <N>) — OOS batch NOT filed; "
     "review accepted-OOS Descriptions and re-run with corrected env, or have the items filed manually**"
@@ -278,7 +278,7 @@ def run_issue_cap(
     output: Path | None = None,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     merged_env = os.environ.copy()
     _ = merged_env.pop("OOS_ISSUES_PER_RUN_CAP", None)
     if env:
@@ -665,7 +665,7 @@ def run_file_conflict_deps(
     output: Path,
     env: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     merged_env = os.environ.copy()
     _ = merged_env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
     _ = merged_env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)
@@ -1094,7 +1094,7 @@ def test_file_conflict_deps_defaults_output_to_implement_tmpdir(tmp_path: Path) 
     src = make_file_conflict_deps_input(tmp_path, "default-output")
     append_oos(src, 1, "First", "Touches skills/foo/a.sh")
     append_oos(src, 2, "Second", "Touches skills/foo/a.sh")
-    repo = Path(__file__).resolve().parents[1]
+    repo = Path(__file__).resolve().parents[3]
     env = os.environ.copy()
     _ = env.pop("OOS_FILE_CONFLICT_CLUSTER_CAP", None)
     _ = env.pop("OOS_FILE_CONFLICT_GLOBAL_CAP", None)

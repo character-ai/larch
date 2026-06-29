@@ -65,7 +65,7 @@ def _session(tmp_path: Path) -> Path:
     tmp.mkdir()
     (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
     (tmp / "feature-description.txt").write_text("feature\n", encoding="utf-8")
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     (tmp / "session-env.sh").write_text(
         f"CURSOR_PRESENT=false\nCODEX_BINARY_FOUND=true\nCURSOR_BINARY_FOUND=true\nLARCH_CLAUDE_PLUGIN_ROOT={plugin_root}\n",
         encoding="utf-8",
@@ -1291,7 +1291,7 @@ def test_run_dispatch_permission_error_not_reported_as_contention(
 
 def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
@@ -1329,7 +1329,7 @@ def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: 
 
 def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "recovered.txt").write_text("done\n", encoding="utf-8")
@@ -1357,7 +1357,7 @@ def test_step2_dispatch_malformed_manifest_recovery(repo: Path, tmp_path: Path, 
 def test_step2_dispatch_malformed_manifest_empty_delta_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(implement_dispatch, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
     monkeypatch.setattr(dispatch_step2, "_run_launcher", _malformed_launcher(lambda _repo, _st: None))
     rc = implement_dispatch.step2_dispatch_main([
@@ -1374,7 +1374,7 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
     tmp = _session(tmp_path)
     (repo / "staged.txt").write_text("prelaunch staged\n", encoding="utf-8")
     _git(repo, "add", "staged.txt")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def edit_readme(repo_root: Path, _st: implement_dispatch.DispatchState) -> None:
         (repo_root / "README.md").write_text("recovered edit\n", encoding="utf-8")
@@ -1399,7 +1399,7 @@ def test_step2_dispatch_prelaunch_staged_index_blocks_recovery(repo: Path, tmp_p
 def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def edit(repo_root: Path, _st: implement_dispatch.DispatchState) -> None:
         _git(repo_root, "mv", "README.md", "RENAMED.md")
@@ -1421,7 +1421,7 @@ def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_pa
 
 def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     state = {"round": 0}
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -1472,7 +1472,7 @@ def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_
 
 def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         readme = repo / "README.md"
@@ -1498,7 +1498,7 @@ def test_step2_dispatch_non_v1_schema_version_hard_bails(repo: Path, tmp_path: P
 
 def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     launcher_calls = 0
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -1531,7 +1531,7 @@ def test_step2_dispatch_launcher_retries_on_clean_post_failure(repo: Path, tmp_p
 
 def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_TEST_MATERIALIZE_FORCE_FAIL", "true")
 
@@ -2421,7 +2421,7 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
     )
     assert implement_dispatch.CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS == 32_700_000
 
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[3]
     structure = (root / "scripts" / "test-implement-structure.sh").read_text(encoding="utf-8")
     skill = (root / "skills" / "implement" / "SKILL.md").read_text(encoding="utf-8")
     self_review_ref = (root / "skills" / "implement" / "references" / "self-review.md").read_text(
@@ -3038,7 +3038,7 @@ def test_step2_dispatch_main_answers_redispatch_no_timing_mark(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     answers = tmp / "answers.json"
     answers.write_text('{"answers":[{"id":"q1","text":"yes"}]}\n', encoding="utf-8")
     timing_calls: list[list[str]] = []
@@ -3761,7 +3761,7 @@ def test_commit_main_pathspec_with_spaced_paths(repo: Path, tmp_path: Path, monk
 
 def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
@@ -3809,7 +3809,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
     subprocess.run(["git", "-C", str(repo), "checkout", "-B", "main"], check=True, stdout=subprocess.DEVNULL)
     tmp = _session(tmp_path)
     (tmp / "session-env.sh").write_text("ISSUE_NUMBER=123\n", encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     rc = implement_dispatch.step2_dispatch_main([
         "--tmpdir", str(tmp),
         "--plan-file", str(tmp / "plan.txt"),
@@ -3826,7 +3826,7 @@ def test_step2_dispatch_main_branch_prohibited(repo: Path, tmp_path: Path, monke
 def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -3968,7 +3968,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
     subprocess.run(["git", "-C", str(repo), "checkout", "--detach"], check=True, stdout=subprocess.DEVNULL)
     tmp = _session(tmp_path)
     (tmp / "session-env.sh").write_text("ISSUE_NUMBER=2486\nFORKED_TARGET=false\n", encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     launcher_calls = 0
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
@@ -3998,7 +3998,7 @@ def test_step2_dispatch_detached_head_prohibited(repo: Path, tmp_path: Path, mon
 def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "false", "STATUS": "cap_hit"}, ""
@@ -4022,7 +4022,7 @@ def test_step2_dispatch_cap_hit_bails(repo: Path, tmp_path: Path, monkeypatch: p
 def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
         return implement_dispatch.WRAPPER_VALIDATION_RC, dict[str, str](), ""
@@ -4045,7 +4045,7 @@ def test_step2_dispatch_wrapper_validation_failure_bails(repo: Path, tmp_path: P
 
 def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(_st: implement_dispatch.DispatchState):
         (repo / "dirty-after-timeout.txt").write_text("x\n", encoding="utf-8")
@@ -4069,7 +4069,7 @@ def test_step2_dispatch_dirty_state_after_timeout_bails(repo: Path, tmp_path: Pa
 
 def test_step2_dispatch_codex_nonzero_exit_salvages_complete(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("edited by stub\n", encoding="utf-8")
@@ -4134,7 +4134,7 @@ def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
 ) -> None:
     _ = repo
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
@@ -4163,7 +4163,7 @@ def test_step2_dispatch_codex_nonzero_exit_does_not_salvage_non_complete(
 
 def test_step2_dispatch_complete_emits_scout_kv(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
@@ -4239,7 +4239,7 @@ def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path)
 
 def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         plugin_json = repo / ".claude-plugin" / "plugin.json"
@@ -4272,7 +4272,7 @@ def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: P
 
 def test_step2_dispatch_undeclared_path_warning(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     tmp = _session(tmp_path)
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4318,7 +4318,7 @@ def test_step2_dispatch_plan_coverage_warns_for_untouched_plan_path(
         "### MAY_UPDATE: `docs/optional.md`\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4358,7 +4358,7 @@ def test_step2_dispatch_plan_coverage_no_warning_when_all_plan_paths_touched(
 ) -> None:
     tmp = _session(tmp_path)
     (tmp / "plan.txt").write_text("## Files to modify/create\n### UPDATED: `README.md`\n", encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4395,7 +4395,7 @@ def test_step2_dispatch_plan_coverage_no_warning_for_optional_only_scope(
 ) -> None:
     tmp = _session(tmp_path)
     (tmp / "plan.txt").write_text("## Files to modify/create\n### MAY_UPDATE: `docs/optional.md`\n", encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4433,7 +4433,7 @@ def test_step2_dispatch_plan_coverage_no_warning_without_explicit_scope(
 ) -> None:
     tmp = _session(tmp_path)
     (tmp / "plan.txt").write_text("## Plan\n", encoding="utf-8")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4476,7 +4476,7 @@ def test_step2_dispatch_plan_coverage_no_warning_without_files_section_and_unrel
         "## Acceptance\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4519,7 +4519,7 @@ def test_step2_dispatch_git_probe_failure_suppresses_plan_and_undeclared_warning
         "### UPDATED: `docs/expected.md`\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")
@@ -4576,7 +4576,7 @@ def test_step2_dispatch_plan_read_failure_suppresses_coverage_kv(
         "### UPDATED: `docs/expected.md`\n",
         encoding="utf-8",
     )
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
         (repo / "README.md").write_text("declared edit\n", encoding="utf-8")

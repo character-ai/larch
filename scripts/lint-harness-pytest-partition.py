@@ -68,7 +68,7 @@ ENFORCED = (
     "python/test_implement_dispatch.py",
     "python/test_redact.py",
     "python/test_release.py",
-    "python/test_design_lifecycle.py",
+    "python/tests/design/test_design_lifecycle.py",
     "python/test_plan_review_panel.py",
     "python/test_decompose.py",
     "python/test_plan_scout.py",

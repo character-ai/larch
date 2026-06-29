@@ -448,7 +448,7 @@ def test_pr_create_success_without_resolvable_pr_raises_ship_error() -> None:
 
 
 def test_pr_create_recorded_gh_transcript_no_json_flag() -> None:
-    transcript_stdout = (Path(__file__).parent / "fixtures" / "gh-pr-create-success.txt").read_text(
+    transcript_stdout = (Path(__file__).resolve().parents[2] / "fixtures" / "gh-pr-create-success.txt").read_text(
         encoding="utf-8",
     )
     runner = RecordingRunner(

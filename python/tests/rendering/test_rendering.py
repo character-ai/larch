@@ -20,8 +20,8 @@ from larch.review import voting
 if TYPE_CHECKING:
     import pytest
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
-PYTHON_DIR = Path(__file__).resolve().parent
+REPO_ROOT = Path(__file__).resolve().parents[3]
+PYTHON_DIR = Path(__file__).resolve().parents[2]
 
 
 def _reset_quiet(monkeypatch: pytest.MonkeyPatch) -> None:

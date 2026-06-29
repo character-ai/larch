@@ -23,7 +23,7 @@ from larch.core.proc import CommandResult
 from larch.core.run_context import RunContext
 from test_support import make_run_context
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def _new_response_map() -> dict[tuple[str, ...], CommandResult]:

@@ -45,7 +45,7 @@ def test_postplan_with_plan_size_returns_pause_code(tmp_path: Path) -> None:
     _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
     _ = (design / ".pause-requested").write_text("", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     result = subprocess.run(
@@ -66,7 +66,7 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     design.mkdir()
     _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     result = subprocess.run(
@@ -120,7 +120,7 @@ def test_postplan_check_size_failure_self_logs(tmp_path: Path) -> None:
     design.mkdir()
     _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     result = subprocess.run(
@@ -184,7 +184,7 @@ def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: 
     _ = (design / "plan.txt").write_text("# Plan\n\ndiff_lines: 1\n", encoding="utf-8")
     _ = (design / "run-params.json").write_text('{"partition_requested": false}\n', encoding="utf-8")
 
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["RECORD_FILE"] = str(recorder)

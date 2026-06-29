@@ -29,7 +29,7 @@ from larch.agents import _review_launcher
 from larch.agents import _drafter
 from larch.agents import _claude_runner
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 @pytest.fixture(autouse=True)

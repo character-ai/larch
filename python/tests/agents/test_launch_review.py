@@ -17,7 +17,7 @@ import pytest
 from larch.agents import agents
 from larch.agents import _review_launcher
 
-REPO_ROOT = Path(__file__).resolve().parents[1]
+REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
 # Subprocess stub tests can cold-start slowly under suite load, so keep the
 # inner stub-agent timeout generous.

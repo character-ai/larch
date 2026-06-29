@@ -376,12 +376,12 @@ def test_plan_block_strip_body_quiet_subprocess_routes_kv_to_stdout(tmp_path: Pa
     out = tmp_path / "out.md"
     _ = body.write_text("<!-- larch:plan:start -->\n", encoding="utf-8")
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
     result = subprocess.run(
         [sys.executable, "python/cli.py", "plan-block", "strip-body", "--file", str(body), "--output", str(out)],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,
@@ -394,7 +394,7 @@ def test_plan_block_strip_body_quiet_subprocess_routes_kv_to_stdout(tmp_path: Pa
 def test_plan_block_strip_body_inherited_quiet_diagnostic_uses_stderr(tmp_path: Path) -> None:
     side_fd4 = tmp_path / "fd4.txt"
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_LARCH_QUIET_ACTIVE] = "1"
     env[config.ENV_LARCH_QUIET_PID] = "999999"
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
@@ -416,7 +416,7 @@ def test_plan_block_strip_body_inherited_quiet_diagnostic_uses_stderr(tmp_path: 
                 "--file",
                 str(tmp_path / "missing.md"),
             ],
-            cwd=Path(__file__).resolve().parents[1],
+            cwd=Path(__file__).resolve().parents[3],
             text=True,
             capture_output=True,
             check=False,
@@ -439,12 +439,12 @@ def test_plan_block_strip_body_inherited_quiet_diagnostic_uses_stderr(tmp_path: 
 def test_plan_block_read_quiet_subprocess_routes_usage_to_stderr(tmp_path: Path) -> None:
     out = tmp_path / "plan.md"
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     env[config.ENV_IMPLEMENT_TMPDIR] = str(tmp_path)
     _ = env.pop(config.ENV_LARCH_QUIET_DISABLE, None)
     result = subprocess.run(
         [sys.executable, "python/cli.py", "plan-block", "read", "--issue", "0", "--output", str(out)],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,
@@ -513,10 +513,10 @@ def test_title_eligibility_and_insert_signal_marker() -> None:
 
 def test_title_cli_leading_hyphen_subprocess() -> None:
     env = os.environ.copy()
-    env["PYTHONPATH"] = str(Path(__file__).resolve().parent)
+    env["PYTHONPATH"] = str(Path(__file__).resolve().parents[2])
     result = subprocess.run(
         [sys.executable, "python/cli.py", "issue", "title-eligibility", "--title", "-starts-with-hyphen"],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,
@@ -527,7 +527,7 @@ def test_title_cli_leading_hyphen_subprocess() -> None:
 
     result_eq = subprocess.run(
         [sys.executable, "python/cli.py", "issue", "insert-signal-marker", "--title=-starts-with-hyphen", "--marker", "X"],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,

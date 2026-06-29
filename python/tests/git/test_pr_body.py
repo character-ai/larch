@@ -35,7 +35,7 @@ class _NoopRunner:
 
 
 def test_py_cli_resolves_to_repo_python_cli() -> None:
-    expected = Path(__file__).resolve().parent / "cli.py"
+    expected = Path(__file__).resolve().parents[2] / "cli.py"
     assert expected == pr_body._PY_CLI
     assert pr_body._PY_CLI.is_file()
 

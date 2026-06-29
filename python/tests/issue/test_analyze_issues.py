@@ -42,7 +42,7 @@ def test_analyze_fixture_runs(tmp_path: Path, capsys) -> None:
 
 
 def test_analyze_rich_fixture_pins_categories_duplicates_and_reviewers(tmp_path: Path, capsys) -> None:
-    fixture = Path(__file__).with_name("analyze-issues-fixture.json")
+    fixture = Path(__file__).resolve().parents[2] / "analyze-issues-fixture.json"
     assert analyze_issues.analyze_main(["--json", str(fixture), "--top-k", "3", "--log-root", str(tmp_path / "missing")]) == 0
     out = capsys.readouterr().out
     assert "Bug fix: 3 (" in out

@@ -785,7 +785,7 @@ def test_implement_finalize_teardown_rejects_disallowed_implement_tmpdir(
 ) -> None:
     state = tmp_path / "finalize-state.sh"
     finalize.write_finalize_state(ctx=_ctx(tmp_path), path=state)
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[3]
     rc = finalize.implement_finalize_teardown_main([
         "--state-file", str(state),
         "--implement-tmpdir", str(repo_root),

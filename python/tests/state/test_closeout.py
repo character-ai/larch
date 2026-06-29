@@ -29,7 +29,7 @@ def _install_closeout_stub(
     summary_body: str = "# Summary\n",
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setenv("STEP16_FAIL", "true" if step16_fail else "false")
     monkeypatch.setenv("SLACK_STATUS", slack_status)
     monkeypatch.setenv("STEP17_MODE", step17_mode)
@@ -110,7 +110,7 @@ def test_step_16_17_attempts_architectural_guidelines_pin_before_step16(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     calls: list[str] = []
 
     def fake_pin(**_kwargs: object) -> str:
@@ -422,7 +422,7 @@ def test_step_16_17_empty_failure_prints_no_markers(
 
 
 def test_read_key_returns_cli_stdout(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[1]))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     session = tmp_path / "session-env.sh"
     session.write_text("LARCH_RUN_ID=session-run\n", encoding="utf-8")
     assert closeout._read_key(path=session, key="LARCH_RUN_ID", default="") == "session-run"
@@ -444,7 +444,7 @@ def test_step_16_forwards_run_id_from_state_files(
     finalize_text: str,
     expected_run_id: str,
 ) -> None:
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     (tmp_path / "session-env.sh").write_text(session_text, encoding="utf-8")

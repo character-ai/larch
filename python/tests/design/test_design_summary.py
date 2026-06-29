@@ -10,7 +10,7 @@ import pytest  # noqa: TC002
 from larch.design import design_summary
 from larch.design import design_lifecycle
 from larch.report import progress_report
-from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
+from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
 
 def test_issue_counts_counts_h3_warnings(tmp_path: Path) -> None:

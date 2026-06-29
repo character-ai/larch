@@ -14,8 +14,8 @@ from larch.core import logging_util
 from larch.design import plan_quality
 from larch.core import config
 
-CLI = Path(__file__).with_name("cli.py")
-REPO_ROOT = Path(__file__).resolve().parents[1]
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
+REPO_ROOT = Path(__file__).resolve().parents[3]
 
 
 def run_cli(*args: str, cwd: Path | None = None, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -1045,7 +1045,7 @@ PLAN
     assert plan.read_text(encoding="utf-8") == original
 
 
-FIXTURES_DIR = Path(__file__).resolve().parents[1] / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands"
+FIXTURES_DIR = Path(__file__).resolve().parents[3] / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands"
 def _parse_plan_fixture_tsv(plan_path: Path) -> Path:
     return plan_path.with_name(plan_path.stem.removesuffix("-plan") + ".tsv")
 

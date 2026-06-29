@@ -202,13 +202,13 @@ def test_report_cli_stdout_not_rerouted_by_quiet_env(tmp_path: Path) -> None:
     result = subprocess.run(
         [
             sys.executable,
-            str(Path(__file__).resolve().with_name("cli.py")),
+            str(Path(__file__).resolve().parents[2] / "cli.py"),
             "progress",
             "report",
             "--cwd",
             str(cwd),
         ],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         text=True,
         capture_output=True,
         check=False,

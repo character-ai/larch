@@ -178,7 +178,7 @@ def test_plugin_read_version_cli_captures_stdout_with_inherited_quiet(tmp_path: 
         "LARCH_QUIET_PID": "999999",
         "LARCH_QUIET_LOG_FILE": str(tmp_path / "quiet.log"),
     })
-    res = subprocess.run([sys.executable, str(Path(__file__).with_name("cli.py")), "plugin", "read-version"], capture_output=True, text=True, env=env, check=False)
+    res = subprocess.run([sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "plugin", "read-version"], capture_output=True, text=True, env=env, check=False)
     assert res.returncode == 0
     assert res.stdout == "LARCH_PLUGIN_VERSION=9.8.7\n"
 

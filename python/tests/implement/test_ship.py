@@ -3665,7 +3665,7 @@ print(os.environ[config.ENV_LARCH_QUIET_LOG_FILE], file=logging_util.contract_st
     """
     _quiet_vars = {config.ENV_LARCH_QUIET_ACTIVE, config.ENV_LARCH_QUIET_PID, config.ENV_LARCH_QUIET_LOG_FILE, config.ENV_LARCH_QUIET_DISABLE}
     clean_env = {k: v for k, v in os.environ.items() if k not in _quiet_vars}
-    python_dir = Path(__file__).resolve().parent
+    python_dir = Path(__file__).resolve().parents[2]
     completed = subprocess.run(
         [sys.executable, "-c", script],
         check=True,
@@ -3740,7 +3740,7 @@ def test_ci_fix_exhausted_terminal_state_sets_bail_reason(tmp_path: Path) -> Non
 
 def test_ci_fix_exhausted_detail_log_classified_by_stall_recovery(tmp_path: Path) -> None:
     """Stall-recovery classifier on the new envelope yields unrecoverable/none."""
-    stall_recovery = Path(__file__).resolve().parents[1] / "python" / "cli.py"
+    stall_recovery = Path(__file__).resolve().parents[3] / "python" / "cli.py"
 
     ci_detail = "ci-fix-exhausted: python-lint\nFAIL test_foo.py asserted False\n"
     detail_log = tmp_path / "ci-fix-exhausted-detail.log"

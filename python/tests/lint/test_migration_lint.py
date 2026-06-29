@@ -13,7 +13,7 @@ if TYPE_CHECKING:
 from larch.lint import migration_lint
 
 
-CLI_PATH = Path(__file__).with_name("cli.py")
+CLI_PATH = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _make_git_repo(tmp_path: Path) -> Path:

@@ -14,7 +14,7 @@ from larch.core import forked_repo
 from larch.core import proc
 import pytest
 
-CLI = Path(__file__).resolve().parent / "cli.py"
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:

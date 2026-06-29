@@ -39,7 +39,7 @@ from larch.state import stall_recovery
 from larch.design.design_lifecycle import load_bash_quoted_env, phase_driver_read_result_env
 
 
-CLI = Path(__file__).with_name("cli.py")
+CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _fake_parse_none(*_args: object, **_kwargs: object) -> tuple[int, dict[str, str], str]:

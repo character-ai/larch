@@ -22,7 +22,7 @@ from larch.core import proc
 from larch.outcomes import Outcome
 from larch.core.proc import CommandResult
 
-CLI_PATH = Path(__file__).resolve().parent / "cli.py"
+CLI_PATH = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 def _empty_responses() -> list[CommandResult]:

@@ -301,7 +301,7 @@ def test_determine_step_after_step4_resumes_gate_c_not_diagram(tmp_path: Path) -
     design = tmp_path / "design"
     completed = design / ".completed"
     completed.mkdir(parents=True)
-    plugin_root = Path(__file__).resolve().parents[1]
+    plugin_root = Path(__file__).resolve().parents[3]
     for step in (
         "0",
         "0c",

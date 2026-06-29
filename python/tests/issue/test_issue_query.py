@@ -185,7 +185,7 @@ def _write_gh_stub(tmp_path: Path, body: str) -> dict[str, str]:
 def _run_cli(args: list[str], env: dict[str, str]) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
         ["python3", "python/cli.py", *args],
-        cwd=Path(__file__).resolve().parents[1],
+        cwd=Path(__file__).resolve().parents[3],
         env=env,
         text=True,
         capture_output=True,

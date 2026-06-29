@@ -535,7 +535,7 @@ def test_default_vendor_models_match_agent_model_args(monkeypatch: pytest.Monkey
         monkeypatch.delenv(key, raising=False)
 
     def resolved(tool: str, flag: str) -> str:
-        cli = Path(__file__).resolve().parents[0] / "cli.py"
+        cli = Path(__file__).resolve().parents[2] / "cli.py"
         result = subprocess.run(
             [sys.executable, str(cli), "agent", "model-args", "--tool", tool],
             capture_output=True,

@@ -14,7 +14,7 @@ from larch.issue import oos
 from larch.issue import oos_priority
 
 
-CLI_PATH = Path(__file__).with_name("cli.py")
+CLI_PATH = Path(__file__).resolve().parents[2] / "cli.py"
 
 
 FIXTURE_FINDINGS = """### FINDING_1: [OUT_OF_SCOPE] Public cleanup

@@ -13,7 +13,7 @@ from larch.design import design_lifecycle
 from larch.design import design_step5b
 from larch.design import design_oos
 from larch.design import design_pause
-from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import  # pyright: ignore[reportUnusedImport]
+from test_design_cli_ports import test_design_port_registry_entries_are_machine_stdout  # noqa: F401  # pylint: disable=unused-import,import-error  # pyright: ignore[reportUnusedImport]
 
 
 def _kv(stdout: str) -> dict[str, str]:
@@ -195,7 +195,7 @@ def test_annotate_empty_stdout_fails(tmp_path: Path, capsys: pytest.CaptureFixtu
 
 
 def _plugin_root() -> str:
-    return str(Path(__file__).resolve().parents[1])
+    return str(Path(__file__).resolve().parents[3])
 
 
 def _step5b_argv() -> list[str]:

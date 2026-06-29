@@ -186,7 +186,7 @@ def _run_publish_with_fake_cli(
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env.update(env_overrides)
@@ -275,7 +275,7 @@ def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     _ = (design / "architecture-diagram.md").write_text("stale diagram\n", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -312,7 +312,7 @@ def test_publish_main_completes_step5b5_with_missing_candidate(tmp_path: Path) -
 
 
 def test_publish_requires_composed_plan(tmp_path: Path) -> None:
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     design = tmp_path / "design"
     (design / ".completed").mkdir(parents=True)
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
@@ -363,7 +363,7 @@ def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: P
         encoding="utf-8",
     )
 
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["RECORD_FILE"] = str(recorder)
@@ -409,7 +409,7 @@ def test_publish_reports_missing_script_count_from_validate_log(tmp_path: Path) 
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     log = tmp_path / "validate-plan-commands.log"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["VALIDATE_LOG"] = str(log)
@@ -448,7 +448,7 @@ def test_publish_success_writes_result_env(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     result = subprocess.run(
@@ -490,7 +490,7 @@ def test_publish_suppresses_named_block_stdout_noise(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_NAMED_BLOCK_STDOUT"] = "NAMED_BLOCK_STDOUT_SENTINEL"
@@ -531,7 +531,7 @@ def test_publish_present_empty_session_id_skips_log_publish(tmp_path: Path) -> N
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
@@ -573,7 +573,7 @@ def test_publish_omitted_session_id_fails_closed_before_plan_write(tmp_path: Pat
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     call_log = tmp_path / "fake-cli-calls.ndjson"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_CALL_LOG"] = str(call_log)
@@ -613,7 +613,7 @@ def test_publish_refuses_cap_hit_without_step3_sentinel(tmp_path: Path) -> None:
         "STEP3_REVIEW_LOOP_STATUS=cap-hit\nLOOP_STATUS=cap-reached\nROUNDS_COMPLETED=5\n",
         encoding="utf-8",
     )
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     result = subprocess.run(
         [
             sys.executable,
@@ -647,7 +647,7 @@ def test_publish_refuses_complete_without_step3_sentinel(tmp_path: Path) -> None
         "STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\nROUNDS_COMPLETED=3\n",
         encoding="utf-8",
     )
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     result = subprocess.run(
         [
             sys.executable,
@@ -687,7 +687,7 @@ def test_publish_splices_provenance_above_diff_lines(tmp_path: Path) -> None:
         "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
         encoding="utf-8",
     )
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     result = subprocess.run(
@@ -731,7 +731,7 @@ def test_publish_upserts_architecture_diagram_when_present(tmp_path: Path) -> No
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
     )
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -785,7 +785,7 @@ def test_publish_promotes_valid_candidate_before_upsert(tmp_path: Path) -> None:
     _ = candidate.write_text(diagram, encoding="utf-8")
     _ = (design / "architecture-diagram.skipped").write_text("", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -835,7 +835,7 @@ def test_publish_rejected_candidate_skips_and_sanitizes_logs(tmp_path: Path) -> 
     )
     _ = (design / "architecture-diagram.md").write_text("stale diagram\n", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -891,7 +891,7 @@ def test_publish_clears_architecture_when_skipped(tmp_path: Path) -> None:
     # and no architecture-diagram.md; the publish tail must clear the section.
     _ = (design / "architecture-diagram.skipped").write_text("", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -932,7 +932,7 @@ def test_publish_skips_upsert_when_no_diagram(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     upsert_log = tmp_path / "upsert-invocation.json"
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_LOG"] = str(upsert_log)
@@ -975,7 +975,7 @@ def test_publish_nonfatal_when_architecture_upsert_fails(tmp_path: Path) -> None
     _ = (design / "architecture-diagram.md").write_text(
         "## Architecture Diagram\n```mermaid\ngraph TD; A-->B;\n```\n", encoding="utf-8"
     )
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_UPSERT_FAIL"] = "1"
@@ -1017,7 +1017,7 @@ def test_publish_warns_rotate_on_secret_scrub_violations(tmp_path: Path) -> None
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_SCRUB_VIOLATIONS"] = "2"
@@ -1056,7 +1056,7 @@ def test_publish_no_rotate_warning_when_zero_violations(tmp_path: Path) -> None:
     _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
-    cli_py = Path(__file__).with_name("cli.py")
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
     env = os.environ.copy()
     env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     env["FAKE_CLI_SCRUB_VIOLATIONS"] = "0"
