@@ -105,6 +105,7 @@ def test_flush_logs_pre_state_file_less_commits_with_repo_cwd(
         return CommandResult(("git", "commit"), 0, "", "", 0.01)
 
     monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_pre(runner=runner, ctx=_ctx(tmp_path), cwd=str(tmp_path))
     assert not skip.skipped
     assert runner.git_commits == 1
@@ -142,6 +143,7 @@ def test_flush_logs_post_does_not_write_done_manifest_before_reports(
         raise ShipError("write-final-report failed")
 
     monkeypatch.setattr(run_logs, "_write_final_report", fail_report)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_post(
         ctx,
         merge_result=config.MERGE_RESULT_MERGED,
@@ -165,6 +167,7 @@ def test_flush_logs_post_manifest_write_oserror_returns_recovery_skip(
         raise OSError("disk full")
 
     monkeypatch.setattr(run_logs, "_write_manifest", boom)
+    monkeypatch.setattr(run_log_flush, "_write_manifest", boom)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_post(ctx, merge_result=config.MERGE_RESULT_MERGED)
     assert skip.skipped is True
     assert skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED
@@ -443,6 +446,7 @@ def test_publish_run_tree_copies_run_id_pathspec(
     repo = tmp_path / "repo"
     repo.mkdir()
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
     ctx = _ctx(tmp_path, str(state))
     rel = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
         ctx=ctx,
@@ -572,6 +576,9 @@ def test_flush_logs_pre_happy_path_commits(
     monkeypatch.setattr(run_logs, "_write_final_report", noop_write_final_report)
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop_capture)
     monkeypatch.setattr(run_logs, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop_write_final_report)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop_capture)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
     runner = RecordingRunner()
     skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx, cwd=str(tmp_path / "repo"))
     assert not skip.skipped
@@ -597,6 +604,7 @@ def test_flush_logs_pre_update_manifest_failure_returns_recovery_skip(
         raise ShipError("manifest recovery failed")
 
     monkeypatch.setattr(run_logs, "update_manifest", fail_update)
+    monkeypatch.setattr(run_log_flush, "update_manifest", fail_update)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert skip.skipped is True
     assert skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED
@@ -713,6 +721,10 @@ def test_flush_logs_pre_downgrades_stale_step9a1_true_with_ndjson_only(
         return CommandResult(("",), 0, "", "", 0.0)
 
     monkeypatch.setattr(run_logs, "_commit_run", noop_commit)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", noop_commit)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip.skipped
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
@@ -744,6 +756,9 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
         "_commit_run",
         lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0),  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     )
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0))  # type: ignore[arg-type]
 
     skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip1.skipped
@@ -792,6 +807,10 @@ def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
 
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
 
@@ -846,6 +865,10 @@ def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
     monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
     monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
     monkeypatch.setattr(run_logs, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fake_write_final_report)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", lambda *_a, **_k: CommandResult(("git", "commit"), 0, "", "", 0.0))  # type: ignore[arg-type]
 
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
 
@@ -976,11 +999,13 @@ def test_publish_run_tree_preserves_existing_dest_when_copy_fails(
     dest.mkdir(parents=True)
     _ = (dest / "old.txt").write_text("old\n", encoding="utf-8")
     monkeypatch.setattr(run_logs, "_REPO_ROOT", repo)
+    monkeypatch.setattr(run_log_commit, "_REPO_ROOT", repo)
 
     def fail_copy(*_a: object, **_k: object) -> None:
         raise ShipError("copy failed")
 
     monkeypatch.setattr(run_logs, "_safe_copy_run_tree", fail_copy)
+    monkeypatch.setattr(run_log_commit, "_safe_copy_run_tree", fail_copy)  # type: ignore[arg-type]
     ctx = _ctx(tmp_path, str(state))
     with pytest.raises(ShipError, match="copy failed"):
         _ = run_logs._publish_run_tree_to_repo(  # pyright: ignore[reportPrivateUsage]
@@ -1028,6 +1053,7 @@ def test_commit_run_reports_copy_tree_scrub_count(
         return 2, 1
 
     monkeypatch.setattr(run_logs, "_scrub_run_tree", fake_scrub)
+    monkeypatch.setattr(run_log_commit, "_scrub_run_tree", fake_scrub)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=log_root,
@@ -1173,6 +1199,8 @@ def test_commit_run_warns_when_manifest_update_fails(
 
     monkeypatch.setattr(run_logs, "_update_manifest_v2", fail_update)
     monkeypatch.setattr(run_logs, "_copy_tree_to_repo", no_rels)
+    monkeypatch.setattr(run_log_commit, "_update_manifest_v2", fail_update)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", no_rels)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=log_root,
@@ -1206,6 +1234,8 @@ def test_commit_run_warns_when_breadcrumb_publish_returns_nonzero(
 
     monkeypatch.setattr(run_logs, "_copy_tree_to_repo", copied_rels)
     monkeypatch.setattr(run_logs, "publish_breadcrumbs_main", fail_breadcrumbs)
+    monkeypatch.setattr(run_log_commit, "_copy_tree_to_repo", copied_rels)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_commit, "publish_breadcrumbs_main", fail_breadcrumbs)  # type: ignore[arg-type]
 
     result = run_logs._commit_run(  # pyright: ignore[reportPrivateUsage]
         log_root=log_root,
@@ -1269,6 +1299,7 @@ def test_larch_log_flush_warns_when_stage_fails(
         raise OSError("stage unavailable")
 
     monkeypatch.setattr(run_logs, "_stage_pre_commit", fail_stage)
+    monkeypatch.setattr(run_log_flush, "_stage_pre_commit", fail_stage)  # type: ignore[arg-type]
 
     rc = run_logs.larch_log_flush_main([])
 
