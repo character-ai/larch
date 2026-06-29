@@ -500,6 +500,23 @@ def _compose_findings_from_collector(
     return in_scope, oos_md, ok_count, failure_count
 
 
+def _lookup_by_output(
+    *, norm: str, output: str, by_norm: dict[str, str], by_output: dict[str, str]
+) -> str | None:
+    """Resolve a per-slot value (status or executing tool) for a manifest ``output``.
+
+    Mirrors the collector lookup waterfall: normalized basename, then the raw
+    output path, then the realpath of the output (issue #4848 / #5838).
+    """
+    value = by_norm.get(norm)
+    if value is None:
+        value = by_output.get(output)
+    if value is None:
+        with contextlib.suppress(OSError):
+            value = by_output.get(os.path.realpath(output))
+    return value
+
+
 def write_reviewer_status_tsv(
     *,
     design: Path,
@@ -563,22 +580,12 @@ def write_reviewer_status_tsv(
         slot = str(row.get("slot") or "")
         output = str(row.get("output") or "")
         norm = voting.normalize_reviewer_basename(output)
-        raw_status = status_by_norm_basename.get(norm)
-        if raw_status is None:
-            raw_status = status_by_output.get(output)
-        if raw_status is None:
-            with contextlib.suppress(OSError):
-                raw_status = status_by_output.get(os.path.realpath(output))
+        raw_status = _lookup_by_output(norm=norm, output=output, by_norm=status_by_norm_basename, by_output=status_by_output)
         if raw_status is not None:
             status = "done" if raw_status == "OK" else "failed"
         else:
             status = "skipped"
-        executing_tool = tool_by_norm_basename.get(norm)
-        if executing_tool is None:
-            executing_tool = tool_by_output.get(output)
-        if executing_tool is None:
-            with contextlib.suppress(OSError):
-                executing_tool = tool_by_output.get(os.path.realpath(output))
+        executing_tool = _lookup_by_output(norm=norm, output=output, by_norm=tool_by_norm_basename, by_output=tool_by_output)
         lines.append(f"{reconciled_reviewer_label(slot, executing_tool=executing_tool or '')}\t{status}\t")
     _ = out.write_text("".join(f"{line}\n" for line in lines), encoding="utf-8")
     _ = _write_reviewer_status_table_artifacts(design=design, source_tsv=out, round_num=round_num)

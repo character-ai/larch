@@ -10,7 +10,7 @@ import json
 import os
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -958,6 +958,18 @@ def _fallback_label_remap(round_dirs: list[Path]) -> dict[str, str]:
     return remap
 
 
+def _apply_fallback_remap(
+    top_reviewers: Sequence[tuple[str, float]], round_dirs: list[Path]
+) -> list[tuple[str, float]]:
+    """Relabel Top-reviewers entries for vendor-fallback slots (issue #5838).
+
+    Slots whose executing tool differs from their nominal vendor are annotated
+    ``(via <Tool>)``; all other labels pass through unchanged.
+    """
+    remap = _fallback_label_remap(round_dirs)
+    return [(remap.get(label, label), score) for label, score in top_reviewers]
+
+
 def _collector_substantive_failure_records(text: str) -> list[tuple[str, str]]:
     records: list[tuple[str, str]] = []
     parsed = collect_results.parse_collector_records(text)
@@ -1171,13 +1183,11 @@ def render_phase_detail(
     total_time = sum(row.seconds or 0 for row in phase_rounds)
     any_time = any(row.seconds is not None for row in phase_rounds)
     costs = [float(row.cost[1:]) for row in phase_rounds if row.cost.startswith("$")]
-    fallback_remap = _fallback_label_remap(round_dirs)
     if _classification_tsv_available(round_dirs):
         top_reviewers = _top_reviewers_from_classification(round_dirs, top_n=top_n, label_map=label_map)
     else:
         top_reviewers = _top_reviewers(findings_file, label_map=label_map, top_n=top_n)
-    if fallback_remap:
-        top_reviewers = [(fallback_remap.get(label, label), score) for label, score in top_reviewers]
+    top_reviewers = _apply_fallback_remap(top_reviewers, round_dirs)
     fail_total, failures = _failed_reviewers(round_dirs, label_map=label_map)
     lines = [
         "## Review Phase Detail",
