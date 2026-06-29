@@ -611,7 +611,18 @@ ignore = [
     "C901",
     "PLR0911",
     "PLR0912",
+    "PLR0915",
+]
+"plan_review_loop.py" = [
+    "C901",
+    "PLR0912",
     "PLR0913",
+    "PLR0915",
+]
+"plan_review_normalize.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
     "PLR0915",
 ]
 "plan_review_panel.py" = [
