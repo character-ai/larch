@@ -1,8 +1,8 @@
 ## /implement run 2DE11B85-F54E-4224-91EE-647A1D465354 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$17.88 — Claude $0.44, Codex-5.5 $14.22, Codex-mini $2.90, Cursor $0.00, Claude (subprocess) $0.32  |  Tokens: 39566k
+- **Duration**: 02:55:43
+- **Cost**: 💰 TOTAL ~$24.82 — Claude $7.38, Codex-5.5 $14.22, Codex-mini $2.90, Cursor $0.00, Claude (subprocess) $0.32  |  Tokens: 57491k
 - **Issue**: #5781 — https://github.com/character-ai/larch/issues/5781
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
