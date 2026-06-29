@@ -233,6 +233,14 @@ repos:
         always_run: true
         files: ^(skills|\.claude/skills)/[^/]+/SKILL\.md$
 
+      - id: lint-skill-description-length
+        name: Lint skill description length
+        entry: python3 python/cli.py lint skill-description-length
+        language: system
+        pass_filenames: false
+        always_run: true
+        files: ^(skills|\.claude/skills)/[^/]+/SKILL\.md$
+
   - repo: local
     hooks:
       - id: lint-literal-counts

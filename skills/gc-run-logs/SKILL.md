@@ -1,6 +1,6 @@
 ---
 name: gc-run-logs
-description: "Use when slimming or deleting aged larch run-log directories to cap repository growth. Applies age-based retention to larch-logs/{design,implement,review}/ and creates a log-only PR for operator merge."
+description: "Use when slimming or deleting aged larch run-log directories to cap repo growth. Applies age retention and creates a log-only PR for operator merge."
 allowed-tools: Bash
 ---
 

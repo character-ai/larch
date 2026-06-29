@@ -1,6 +1,6 @@
 ---
 name: alias
-description: "Use when creating shortcut aliases for existing larch skills with preset flags. Auto-routes to plugin tree skills/ inside Claude plugin source repos, dev-only .claude/skills/ elsewhere; --private forces dev-only."
+description: "Use when creating shortcut aliases for existing larch skills with preset flags. Routes plugin-source aliases to skills/ unless --private forces .claude/skills/."
 argument-hint: "[--merge] [--private] <alias-name> <target-skill> [preset-flags...]"
 allowed-tools: Bash, Skill
 ---

@@ -1,6 +1,6 @@
 ---
 name: agnix-fix
-description: "Use when fixing an open agent-sh/agnix issue end-to-end via fork-CI dry-run from this larch clone. Fetches the upstream issue body, idempotently provisions the skip-changelog label on the fork, then forwards to `/implement --forked` with a positional upstream issue number after `/design` has written `larch:plan` to that issue. Private to the larch source tree (dev-only)."
+description: "Use when fixing an open agent-sh/agnix issue from this larch clone. Prepares fork label state, then forwards to /implement --forked after /design writes the plan."
 argument-hint: "<upstream-issue-number> [extra-flags...]"
 allowed-tools: Bash, Skill
 ---

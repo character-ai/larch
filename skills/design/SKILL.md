@@ -1,6 +1,6 @@
 ---
 name: design
-description: "Use when authoring or vetting an issue-anchored implementation plan in GitHub (plan markers in the issue body). Single direct-drafting flow with full plan review and clarify loop; verbal prompts create an issue first."
+description: "Use when authoring or vetting an issue-anchored GitHub implementation plan. Runs direct drafting, plan review, clarify loop, and issue-body plan markers."
 argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---

@@ -1,6 +1,6 @@
 ---
 name: voter-calibration
-description: "Use when analyzing voter agreement, severity calibration score, and chronic outlier voters from committed larch run logs; diagnostic only; does not affect spawning, thresholds, tokens, or reviewer/proposer points."
+description: "Use when analyzing voter agreement, severity calibration, and chronic outliers from committed larch run logs. Diagnostic only; changes no thresholds or points."
 allowed-tools: Bash, Read
 ---
 
