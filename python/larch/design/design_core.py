@@ -129,6 +129,15 @@ def _append_execution_issue(*, design_tmpdir: Path, message: str) -> None:
 
 _PROBE_CLAMP_COUNTER_BY_STEP = {
     "design-step3-review": "step-3-terminal",
+    "design-step4-tail": "step-4",
+    "design-step5c": "step-5c-terminal",
+    "design-step-final-summary": "step-final-summary",
+}
+
+
+_TERMINAL_SENTINEL_BY_STEP = {
+    "design-step3-review": "step-3-terminal",
+    "design-step4-tail": "step-4",
     "design-step5c": "step-5c-terminal",
     "design-step-final-summary": "step-final-summary",
 }
@@ -141,12 +150,20 @@ def _clear_probe_clamp_counter(*, design_tmpdir: Path, step: str) -> None:
             (design_tmpdir / f"bg-poll-guard-probe-denials.{sentinel}.count").unlink(missing_ok=True)
 
 
+def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
+    sentinel = _TERMINAL_SENTINEL_BY_STEP.get(step)
+    if sentinel:
+        with contextlib.suppress(OSError):
+            (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
+
+
 @contextlib.contextmanager
 def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
     tmpdir = Path(design_tmpdir)
     marker = tmpdir / ".bg-wait-active"
     tmp = tmpdir / f".bg-wait-active.tmp.{os.getpid()}"
     active = False
+    _clear_terminal_sentinel(design_tmpdir=tmpdir, step=step)
     _clear_probe_clamp_counter(design_tmpdir=tmpdir, step=step)
     try:
         text = "\n".join(

@@ -35,3 +35,5 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 ## Invariants
 
 The harness treats empty copied script globs as valid so fixture setup stays portable when no root `scripts/*.sh` stubs are installed.
+The fixture plugin copies the canonical `python/larch` package next to the shimmed `python/cli.py`, so migrated Step 7a imports exercise the production package layout.
+String assertions use here-strings rather than producer pipes so `grep -q` early exits do not trip `pipefail` on large SKILL.md bodies.

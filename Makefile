@@ -16,6 +16,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-auto-fix-plan-commands test-design-step2b-drafter test-gate-b-apply-mode
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
+.PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
 .PHONY: test-step-7a test-step-8-ship test-step-8-oos-checkpoint
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
@@ -32,7 +33,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -176,6 +177,12 @@ lint-consecutive-bash:
 
 test-lint-consecutive-bash:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_consecutive_bash.py -q
+
+lint-bg-wait-coverage:
+	python3 python/cli.py lint bg-wait-coverage
+
+test-lint-bg-wait-coverage:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_bg_wait_coverage.py -q
 
 lint-awk-multibyte-regex:
 	bash scripts/lint-awk-multibyte-regex.sh

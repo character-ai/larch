@@ -446,6 +446,21 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/implement/SKILL.md",), ("test-implement-structure", "test-render-cost-line-callsites"), False, False),
     (("skills/*/SKILL.md", "skills/*/references/*.md"), ("test-references-headers",), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
+    (
+        (
+            "python/larch/lint/lint_bg_wait_coverage.py",
+            "python/test_lint_bg_wait_coverage.py",
+            "Makefile",
+            ".pre-commit-config.yaml",
+        ),
+        (
+            "test-lint-bg-wait-coverage",
+            "test-hook-bg-poll-guard",
+            "test-hook-no-progress-guard",
+        ),
+        False,
+        False,
+    ),
 
     (("python/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters", "test-aggregate-findings"), False, False),
     (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),

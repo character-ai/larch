@@ -28,7 +28,7 @@ fail() {
 
 assert_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -Fq -- "$needle"; then
+    if grep -Fq -- "$needle" <<<"$haystack"; then
         pass "$label"
     else
         fail "$label (missing: $needle)"
@@ -37,7 +37,7 @@ assert_contains() {
 
 assert_not_contains() {
     local needle=$1 haystack=$2 label=$3
-    if printf '%s' "$haystack" | grep -Fq -- "$needle"; then
+    if grep -Fq -- "$needle" <<<"$haystack"; then
         fail "$label (unexpected: $needle)"
     else
         pass "$label"
@@ -105,6 +105,7 @@ setup_plugin() {
     local root=$1
     mkdir -p "$root/scripts" "$root/skills/implement/scripts" "$root/python/stubs/session"
     cp "$REPO_ROOT"/python/*.py "$root/python/"
+    cp -R "$REPO_ROOT/python/larch" "$root/python/"
     mv "$root/python/cli.py" "$root/python/real-cli.py"
     cat > "$root/python/cli.py" <<'DISPATCHER'
 #!/usr/bin/env python3

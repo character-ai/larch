@@ -42,6 +42,7 @@ Valid routing records are newline-delimited and line-anchored:
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- Arms `.bg-wait-active` with `STEP=implement-step6-checks` for the outer Step 6 background fence, clears stale no-progress sidecars before marker write, and writes `.completed/step-6-terminal` before marker removal on exit.
 - The wrapper does not call `review-and-fix check-changes` directly. Python owns the composite routing.
 
 ## Edit-in-sync

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import os
 import re
 import subprocess
@@ -50,6 +51,63 @@ from larch.implement.dispatch_leg import (
 )
 from larch.implement.dispatch_helpers import _derive_pathspec_via_recovery_paths
 
+
+
+def _clear_no_progress_sidecars(tmpdir: Path) -> None:
+    for name in ("no-progress-turns.count", "no-progress-circuit-breaker-armed"):
+        with contextlib.suppress(OSError):
+            (tmpdir / name).unlink()
+
+
+def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
+    _clear_no_progress_sidecars(tmpdir)
+    start = int(time.time())
+    claude_pid = os.environ.get("LARCH_BG_POLL_GUARD_SESSION_PID", "") or str(os.getppid())
+    text = (
+        f"PID={os.getpid()}\n"
+        f"CLAUDE_PID={claude_pid}\n"
+        f"START_EPOCH={start}\n"
+        f"STEP={step}\n"
+        f"TIMEOUT_S={timeout_s}\n"
+    )
+    with contextlib.suppress(OSError):
+        (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
+
+
+def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
+    path = tmpdir / sentinel
+    with contextlib.suppress(OSError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text("", encoding="utf-8")
+
+
+@contextlib.contextmanager
+def _bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int, terminal_sentinel: str):
+    _write_bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
+    try:
+        yield
+    finally:
+        _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
+        with contextlib.suppress(OSError):
+            (tmpdir / ".bg-wait-active").unlink()
+
+
+@contextlib.contextmanager
+def _optional_bg_wait_marker(*, tmpdir: Path, marker: tuple[str, int, str] | None):
+    if marker is None:
+        yield
+        return
+    step, timeout_s, terminal_sentinel = marker
+    with _bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s, terminal_sentinel=terminal_sentinel):
+        yield
+
+
+def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
+    if checks_site == "step3":
+        return "implement-step3-checks", 15600, ".completed/step-3-terminal"
+    if checks_site == "step5-self-review":
+        return "implement-step5-self-review", 14700, ".completed/step-5-self-review-terminal"
+    return None
 
 def step5_review_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-5-review").parse_args(argv)
@@ -733,6 +791,14 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
+    marker = _checks_commit_route_marker(args.checks_site)
+    with _optional_bg_wait_marker(tmpdir=implement_tmpdir, marker=marker):
+        return _checks_commit_route_main_impl(args, implement_tmpdir)
+
+
+def _checks_commit_route_main_impl(  # noqa: C901,PLR0911,RUF100
+    args: argparse.Namespace, implement_tmpdir: Path
+) -> int:
     captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,
@@ -793,6 +859,16 @@ def checks_step5_resume_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
+    with _bg_wait_marker(
+        tmpdir=implement_tmpdir,
+        step="implement-step5-resume",
+        timeout_s=32700,
+        terminal_sentinel=".completed/step-5-resume-terminal",
+    ):
+        return _checks_step5_resume_main_impl(args, implement_tmpdir)
+
+
+def _checks_step5_resume_main_impl(args: argparse.Namespace, implement_tmpdir: Path) -> int:
     captured, timed_out = _run_relevant_checks_for_site(
         implement_tmpdir=implement_tmpdir,
         checks_site=args.checks_site,

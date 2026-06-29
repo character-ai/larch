@@ -276,6 +276,55 @@ else
 fi
 rm -f "$D/.step-8-ship-handoff.rc" "$D/.step-8-real-rc" "$MARKER"
 
+for spec in \
+  'design-step4-tail:.completed/step-4' \
+  'implement-step7a:.completed/step-7a-terminal' \
+  'implement-step6-checks:.completed/step-6-terminal' \
+  'implement-step5-resume:.completed/step-5-resume-terminal' \
+  'implement-step5-self-review:.completed/step-5-self-review-terminal'
+do
+  step=${spec%%:*}
+  sentinel=${spec#*:}
+  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER" "$D/.completed/"*
+  mkdir -p "$D/.completed"
+  write_marker $$ "$(( $(date +%s) - 10 ))" 21600 "$step"
+  out=$(run_hook "$(stop_event)")
+  cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+  if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+    pass "new marker coverage: $step increments no-progress counter"
+  else
+    fail "new marker coverage: expected $step count=1: out='$out' cnt=$cnt"
+  fi
+  LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
+  LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
+  LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 \
+    "$HOOK" < <(stop_event) >/dev/null
+  if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+    pass "new marker coverage: $step breaker arms at low threshold"
+  else
+    fail "new marker coverage: $step breaker did not arm"
+  fi
+  : >"$D/$sentinel"
+  out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
+  if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ]; then
+    pass "new marker coverage: $step terminal sentinel clears breaker"
+  else
+    fail "new marker coverage: $step terminal sentinel should clear: out='$out' armed=$(test -f "$D/no-progress-circuit-breaker-armed" && echo yes || echo no)"
+  fi
+  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/$sentinel"
+  : >"$D/.completed/real-target"
+  ln -s "$D/.completed/real-target" "$D/$sentinel"
+  write_marker $$ "$(( $(date +%s) - 10 ))" 21600 "$step"
+  out=$(run_hook "$(stop_event)")
+  cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
+  if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+    pass "new marker coverage: symlinked $step sentinel does not complete wait"
+  else
+    fail "new marker coverage: symlinked $step sentinel expected live marker: out='$out' cnt=$cnt"
+  fi
+  rm -f "$D/$sentinel" "$D/.completed/real-target" "$D/no-progress-turns.count" "$MARKER"
+done
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

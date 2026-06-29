@@ -16,6 +16,8 @@ Offline regression harness for `scripts/hook-bg-poll-guard.sh`.
 - Pins symlink denial, non-terminal `step-3` / `step-5c` denial, result-env denial, sleep-loop denial, and appended `cat` / `ls` / `stat` / `jq` denial.
 - Covers the #5610 compound-probe bypass shape: one command referencing both a `tasks/*.output` file and `.completed/step-3-terminal` denies while a live marker exists, exercising the generic `bash_has_probe_verb` + `bash_has_probe_target` deny path rather than the simple foreground-probe clamp (which excludes `tasks/*.output`).
 - Pins the Step 5c release split: `.completed/step-5c` does not release the marker, and `.completed/step-5c-terminal` does.
+- Covers marker denial, terminal-sentinel release, and symlink-sentinel refusal for `design-step4-tail`, `implement-step5-resume`, `implement-step5-self-review`, `implement-step6-checks`, and `implement-step7a`.
+- Pins the Step 4 foreground probe carve-out for `.completed/step-4`, including repeated-probe clamp behavior and denial of non-Step-4 terminal probes while the Step 4 tail marker is live.
 - Uses a temporary marker path supplied through `LARCH_BG_POLL_GUARD_MARKER`; it does not depend on a real Claude Code session.
 
 ## Harness
