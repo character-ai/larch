@@ -1,0 +1,58 @@
+### FINDING_1: Tier-1a edits skip run-relevant size ratchet
+- **Reviewer(s)**: Cursor-Arch Phase2
+- **Severity**: important
+- **Concern**: `checks run-relevant` does not add `lint-tier1a-size` when Tier-1a files change, so the main local verification path can bypass the new ratchet.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch Phase2: Add a direct-target rule for the three Tier-1a files that appends `lint-tier1a-size`, and update the AGENTS expectations in `python/test_checks.py` to include it.
+
+### FINDING_2: Residual Bash cross-link would drop unique always-loaded contracts
+- **Reviewer(s)**: Codex-Innovation, Codex-Generic, Codex-dyn-Tier1A Rule Preservation
+- **Severity**: blocking
+- **Concern**: Replacing the whole `Residual Bash after E3` section with an `AGENTS.md` cross-reference would remove unique `BASH_AUTHORING.md` guidance for hook output contracts, `sessionstart-health.sh` stdout fallback behavior, and residual-bash-paths CLI usage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Keep the section, but compress it further in place. Cross-link `AGENTS.md` for the shared residual-Bash policy, and retain the unique hook and `sessionstart-health.sh` contract lines here.
+  - From Codex-Generic: Revise the `BASH_AUTHORING.md` step to cross-link only the duplicated residual-Bash scope sentence and explicitly preserve the non-duplicated hook contract, sessionstart fallback, and residual-bash-paths CLI guidance in condensed form.
+  - From Codex-dyn-Tier1A Rule Preservation: Keep those unique sentences inline in BASH_AUTHORING.md and cross-link only the duplicated residual-Bash intro, not the whole section.
+
+### FINDING_3: Malformed cap-map fail-closed coverage is missing
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The test plan does not cover malformed cap configuration, so a bad cap map shape could fail open and silently skip enforcement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add a unit test that feeds malformed cap configuration and asserts exit 2 with a clear stderr row.
+
+### FINDING_4: Cap-key coverage may omit a Tier-1a file
+- **Reviewer(s)**: Cursor-Requirements Phase2
+- **Severity**: blocking
+- **Concern**: The tests do not assert that enforcement covers exactly the three Tier-1a files, so one always-loaded file could be omitted from the cap map without detection.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements Phase2: Have the unit test assert the cap-key set is exactly AGENTS.md, KARPATHY_CLAUDE.md, and BASH_AUTHORING.md
+
+### FINDING_5: Unreadable Tier-1a file fail-closed coverage is missing
+- **Reviewer(s)**: Cursor-Requirements Phase2, Codex-Requirements
+- **Severity**: important
+- **Concern**: The tests do not cover the unreadable-file path, so permission or read failures could crash or pass instead of producing the intended exit-2 failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements Phase2: Add a small chmod-unreadable fixture and assert rc 2 plus the stderr row for the unreadable file
+  - From Codex-Requirements: Add focused cases for invoking without `--root` from a nested cwd and for an unreadable target file, or narrow the contract if those paths are intentionally unsupported.
+
+### FINDING_6: Default repo-root CLI behavior lacks coverage
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The tests do not cover invoking `lint tier1a-size` without `--root` from a nested cwd, so the linter could check the wrong tree without detection.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add focused cases for invoking without `--root` from a nested cwd and for an unreadable target file, or narrow the contract if those paths are intentionally unsupported.
+
+### FINDING_7: AGENTS anti-polling preserve list misses /design non-empty recovery literal
+- **Reviewer(s)**: Codex-dyn-Tier1A Rule Preservation
+- **Severity**: important
+- **Concern**: The preserve list omits the pinned literal for the non-empty `/design` premature-notification recovery branch, so edits could drop that foreground-probe rule without the harness catching it.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Tier1A Rule Preservation: Add that exact literal to the preserve list and keep it verbatim in AGENTS.md.
+
+### FINDING_8: User-facing tier1a-size CLI entry point lacks smoke coverage
+- **Reviewer(s)**: Codex-dyn-Tier1A Ratchet Wiring
+- **Severity**: important
+- **Concern**: Module-level tests may pass even if the `python3 python/cli.py lint tier1a-size` registry or dispatch path is broken.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Tier1A Ratchet Wiring: Add a tiny subprocess test that invokes `python3 python/cli.py lint tier1a-size` and asserts it dispatches successfully from a temp root

@@ -1,0 +1,19 @@
+# md-to-py-IX: tighten CLAUDE.md @-import prose (AGENTS/KARPATHY/BASH_AUTHORING)
+
+In-place prose density on the three `@`-imported files that `CLAUDE.md` pulls into **every conversation**.
+
+#### Goal
+
+Tighten prose in `AGENTS.md` (113 lines), `KARPATHY_CLAUDE.md` (65), and `BASH_AUTHORING.md` (111) — 289 always-loaded lines, Tier-1. #2241 sections B and C flag this as the highest-payoff tier. Candidate trims: the `KARPATHY` "Honesty" overlap with the `AGENTS.md` "Honesty" section (cross-link instead of restate); `BASH_AUTHORING.md` shell-only relevance.
+
+#### High blast radius — guards
+
+These files govern the agent's own behavior. **In-place density only.** Preserve every load-bearing rule and contract token; no rule deletions; no semantic change. Verify against existing structure tests and a full lint sweep.
+
+#### Out of scope
+
+- Conditional `@`-imports (needs a Claude Code harness feature, #2241 section M — not actionable inside larch).
+- `description:` fields (sibling child A1).
+- `SKILL.md` bodies (children B1/B2).
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569, VIII #5696). Round IX pivots from md-to-py migration and fold/relocate to Tier-1 autoload + in-place prose density, fronted by a CI closure-size ratchet. Designed independently.

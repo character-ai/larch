@@ -1,0 +1,50 @@
+In-place prose density on the three `@`-imported files that `CLAUDE.md` pulls into **every conversation**.
+
+#### Goal
+
+Tighten prose in `AGENTS.md` (113 lines), `KARPATHY_CLAUDE.md` (65), and `BASH_AUTHORING.md` (111) — 289 always-loaded lines, Tier-1. #2241 sections B and C flag this as the highest-payoff tier. Candidate trims: the `KARPATHY` "Honesty" overlap with the `AGENTS.md` "Honesty" section (cross-link instead of restate); `BASH_AUTHORING.md` shell-only relevance.
+
+#### High blast radius — guards
+
+These files govern the agent's own behavior. **In-place density only.** Preserve every load-bearing rule and contract token; no rule deletions; no semantic change. Verify against existing structure tests and a full lint sweep.
+
+#### Out of scope
+
+- Conditional `@`-imports (needs a Claude Code harness feature, #2241 section M — not actionable inside larch).
+- `description:` fields (sibling child A1).
+- `SKILL.md` bodies (children B1/B2).
+
+Part of the md-to-py orchestrator-slimming program (round V #5278, VI #5409, VII #5569, VIII #5696). Round IX pivots from md-to-py migration and fold/relocate to Tier-1 autoload + in-place prose density, fronted by a CI closure-size ratchet. Designed independently.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce Tier-1a autoload byte footprint by in-place prose condensing in AGENTS.md, KARPATHY_CLAUDE.md, and BASH_AUTHORING.md (289 total lines).
+- Add a CI ratchet (lint target + CI wire) that hard-caps line counts on the three files, preventing future prose creep.
+- Cross-link overlapping AGENTS.md Honesty bullets to KARPATHY §1 instead of restating them.
+
+### Non-goals
+- No rule deletions; no semantic changes to any load-bearing instruction.
+- No conditional @-imports (separate issue #2241).
+- No changes to `description:` fields or SKILL.md bodies (sibling children).
+- No restructuring (sections stay in place; only prose inside sections is trimmed).
+
+### Approach sketch
+- AGENTS.md: condense Canonical sources inline descriptions; tighten Output Style and Conventions prose; collapse 1–2 Honesty bullets that restate KARPATHY §1 into a single cross-link. Preserve 7 structure-test-pinned token strings verbatim.
+- KARPATHY_CLAUDE.md: tighten preamble and trailing summary line; shorten bullet explanations without removing any of the four §§.
+- BASH_AUTHORING.md: remove or cross-link the "Residual Bash after E3" section (near-duplicate of AGENTS.md Conventions); condense the wrapped-grep trap explanation in §1.
+- CI ratchet: new `python/cli.py lint tier1a-size` verb + Makefile target that fails if any file exceeds a threshold set to current-minus-trim count; wire to CI lint job. Python-only per G-Skill-2.
+
+### Surfaces in scope
+- `AGENTS.md`
+- `KARPATHY_CLAUDE.md`
+- `BASH_AUTHORING.md`
+- `python/lint_tier1a.py` (new ratchet implementation)
+- `python/test_lint_tier1a.py` (new harness)
+- `Makefile` (new lint target `lint-tier1a-size`, test target `test-lint-tier1a-size`)
+- `.github/workflows/` (wire ratchet step to CI lint job)
+
+### Open questions
+- None.

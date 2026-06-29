@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `test-lint-tier1a-size` is redundant but harmless; keeping it in the plan does not make the feature incomplete, broken, or regressed, so no necessity gate is cleared; same substance as round-1 OOS_1 rejection without materially new evidence.
