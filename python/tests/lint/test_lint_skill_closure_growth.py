@@ -308,3 +308,24 @@ def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(t
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
+
+
+def test_committed_baseline_matches_fresh_scan(tmp_path: Path) -> None:
+    """STRICT freshness gate: committed baseline must equal a fresh ``--write``.
+
+    The growth check in ``main`` is one-directional (``live > baseline``), so a
+    closure *shrink* passes silently and never forces a re-baseline. This asserts
+    byte-exact equality against the same serialization ``--write`` emits, in both
+    directions, mirroring the regen-enforced complexity-baseline contract. When it
+    fails, run ``make regen-skill-closure-baseline`` and commit the result (#5840).
+    """
+    repo_root = Path(__file__).resolve().parents[3]
+    fresh_path = tmp_path / "fresh-skill-closure-baseline.json"
+    scg.write_baseline(fresh_path, scg.scan_all(repo_root))
+
+    committed = (repo_root / scg.BASELINE_RELPATH).read_text(encoding="utf-8")
+    fresh = fresh_path.read_text(encoding="utf-8")
+    assert committed == fresh, (
+        "python/skill-closure-baseline.json is stale; run "
+        "`make regen-skill-closure-baseline` and commit the refreshed data."
+    )
