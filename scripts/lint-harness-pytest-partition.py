@@ -44,35 +44,35 @@ MAKEFILE = os.path.join(REPO_ROOT, "Makefile")
 # guards against a duplicate full-file target being reintroduced
 # (e.g. test_research.py after the Trick A3 de-duplication).
 ENFORCED = (
-    "python/test_review_tally.py",
-    "python/test_review_pipeline.py",
-    "python/test_research.py",
-    "python/test_agents.py",
-    "python/test_tokens.py",
-    "python/test_report_tokens_cost.py",
-    "python/test_timing.py",
-    "python/test_clarify.py",
+    "python/tests/review/test_review_tally.py",
+    "python/tests/review/test_review_pipeline.py",
+    "python/tests/research/test_research.py",
+    "python/tests/agents/test_agents.py",
+    "python/tests/report/test_tokens.py",
+    "python/tests/report/test_report_tokens_cost.py",
+    "python/tests/report/test_timing.py",
+    "python/tests/design/test_clarify.py",
     # #4459 follow-up batch: already-`-k`-sliced files whose selections had
     # coverage gaps / overlaps, closed into strict partitions with negligible
     # shard-timing shift (each catch-all absorbs only a handful of tests).
-    "python/test_review_dispatch.py",
-    "python/test_execution_issues.py",
-    "python/test_dirty_tree.py",
-    "python/test_finalize.py",
-    "python/test_admission.py",
-    "python/test_stall_recovery.py",
-    "python/test_plan_review.py",
+    "python/tests/agents/test_review_dispatch.py",
+    "python/tests/issue/test_execution_issues.py",
+    "python/tests/state/test_dirty_tree.py",
+    "python/tests/state/test_finalize.py",
+    "python/tests/state/test_admission.py",
+    "python/tests/state/test_stall_recovery.py",
+    "python/tests/review/test_plan_review.py",
     # #4459 Bucket 1: files that previously paid full-file pytest runtime
     # under several target names, now sliced into strict per-target partitions.
-    "python/test_run_logs.py",
-    "python/test_implement_dispatch.py",
-    "python/test_redact.py",
-    "python/test_release.py",
+    "python/tests/report/test_run_logs.py",
+    "python/tests/implement/test_implement_dispatch.py",
+    "python/tests/core/test_redact.py",
+    "python/tests/release/test_release.py",
     "python/tests/design/test_design_lifecycle.py",
-    "python/test_plan_review_panel.py",
-    "python/test_decompose.py",
-    "python/test_plan_scout.py",
-    "python/test_design_summary.py",
+    "python/tests/review/test_plan_review_panel.py",
+    "python/tests/design/test_decompose.py",
+    "python/tests/design/test_plan_scout.py",
+    "python/tests/design/test_design_summary.py",
 )
 
 # Mirrors CARVE_OUTS in scripts/test-harness-shards-coverage.sh: targets that
