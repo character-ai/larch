@@ -96,6 +96,7 @@ class Options:
     site: str = "review Step 2"
     session_env_path: str = ""
     model_role: str = ""
+    claude_read_tools_add_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -185,6 +186,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "site": "review Step 2",
         "session_env_path": "",
         "model_role": "",
+        "claude_read_tools_add_dir": "",
     }
     idx = 0
     while idx < len(argv):
@@ -207,6 +209,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--site": "site",
             "--session-env-path": "session_env_path",
             "--model-role": "model_role",
+            "--claude-read-tools-add-dir": "claude_read_tools_add_dir",
         }
         if arg in {"--codex-present", "--codex-available"}:
             if idx + 1 >= len(argv):
@@ -285,6 +288,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         site=site,
         session_env_path=str(values["session_env_path"]),
         model_role=model_role,
+        claude_read_tools_add_dir=str(values["claude_read_tools_add_dir"]),
     )
 
 
@@ -478,6 +482,8 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             output,
         ]
         argv.extend(["--prompt-file", prompt_file] if prompt_file else ["--agent-file", slot.agent])
+        if opts.claude_read_tools_add_dir:
+            argv.extend(["--read-tools-add-dir", opts.claude_read_tools_add_dir])
     else:
         argv = [
             sys.executable,

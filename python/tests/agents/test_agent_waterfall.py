@@ -934,6 +934,43 @@ def test_metadata_passthrough_on_launcher_argv(tmp_path: Path, stub_env: dict[st
     assert str(plan) in joined
 
 
+def test_claude_read_tools_add_dir_reaches_phase3_claude_only_when_set(tmp_path: Path, stub_env: dict[str, str], monkeypatch: pytest.MonkeyPatch) -> None:
+    # issue #5837 Mode B: the opt-in --claude-read-tools-add-dir grants the terminal
+    # Claude voter tier ballot read access. It must reach the phase3 claude launch
+    # argv only when set; callers (reviewers) that omit it are unaffected.
+    for key, value in stub_env.items():
+        monkeypatch.setenv(key, value)
+
+    def _claude_launch_argv(*extra: str, tag: str) -> list[str]:
+        manifest, _output = _slot(tmp_path, name=tag, tool="codex", output_name=f"{tag}.txt")
+        launched: list[list[str]] = []
+        real_popen = subprocess.Popen
+
+        def recording_popen(argv: Sequence[str], **kwargs: object) -> subprocess.Popen[bytes]:
+            argv_list = list(argv)
+            if "launch-claude-review" in argv_list:
+                launched.append(argv_list)
+            return real_popen(argv, **kwargs)  # type: ignore[arg-type]
+
+        monkeypatch.setattr(agent_waterfall.subprocess, "Popen", recording_popen)
+        logging_util.reset_quiet_state()
+        # Both externals absent -> the single codex-primary slot cascades to phase3 Claude.
+        argv = ["--slots-file", str(manifest), "--codex-present", "false", "--cursor-present", "false", "--mode", "diff", "--timeout", "5", *extra]
+        out = io.StringIO()
+        with redirect_stdout(out), redirect_stderr(io.StringIO()):
+            rc = agent_waterfall.dispatch_waterfall_main(argv)
+        assert rc == 0
+        assert launched, "expected a phase3 claude launch"
+        return launched[0]
+
+    with_grant = _claude_launch_argv("--claude-read-tools-add-dir", str(tmp_path), tag="grant")
+    assert "--read-tools-add-dir" in with_grant
+    assert str(tmp_path) in with_grant
+
+    without_grant = _claude_launch_argv(tag="nogrant")
+    assert "--read-tools-add-dir" not in without_grant
+
+
 def test_dropped_slots_tab_cr_flattening(tmp_path: Path, stub_env: dict[str, str]) -> None:
     manifest = tmp_path / "tab-cr.ndjson"
     out = tmp_path / "nf-tab.txt"

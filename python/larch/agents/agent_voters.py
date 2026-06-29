@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 from contextlib import suppress
@@ -87,14 +86,6 @@ class DispatchState:
 
 class ValidationError(RuntimeError):
     pass
-
-
-def _bounded_prefix_text(*, path: Path, limit: int) -> str:
-    try:
-        with path.open("rb") as handle:
-            return handle.read(limit).decode("utf-8", errors="replace")
-    except OSError:
-        return ""
 
 
 def _plugin_root() -> Path:
@@ -219,22 +210,6 @@ def _launchable_base_tools_for_slot(
     return [tool for tool in dict.fromkeys(tools) if tool in semantic_tools]
 
 
-def _first_launch_base_tool_for_slot(
-    policy: VoterSlotPolicy,
-    *,
-    codex_present: bool,
-    cursor_present: bool,
-    no_fallback: bool,
-) -> str | None:
-    tools = _launchable_base_tools_for_slot(
-        policy,
-        codex_present=codex_present,
-        cursor_present=cursor_present,
-        no_fallback=no_fallback,
-    )
-    return tools[0] if tools else None
-
-
 def _make_voter_prompt_file(  # noqa: PLR0913
     *,
     opts: Options,
@@ -278,26 +253,18 @@ def _make_voter_prompt_file(  # noqa: PLR0913
     return str(prompt_file)
 
 
-def _build_voter23_prompt_files(
+def _build_voter_prompt_files(
     *,
     opts: Options,
     review_tmpdir: Path,
+    policies: Sequence[VoterSlotPolicy],
     availability: tuple[bool, bool],
     calibration_stats_file: str | None,
 ) -> dict[str, dict[str, str]]:
     prompt_files: dict[str, dict[str, str]] = {}
     codex_present, cursor_present = availability
-    external_voter23 = codex_present or cursor_present
-    for policy in VOTER_SLOT_POLICIES[1:]:
-        if not external_voter23:
-            continue
+    for policy in policies:
         tools = _launchable_base_tools_for_slot(
-            policy,
-            codex_present=codex_present,
-            cursor_present=cursor_present,
-            no_fallback=False,
-        )
-        _ = _first_launch_base_tool_for_slot(
             policy,
             codex_present=codex_present,
             cursor_present=cursor_present,
@@ -318,83 +285,10 @@ def _build_voter23_prompt_files(
     return prompt_files
 
 
-def _launch_voter1(
-    *,
-    opts: Options,
-    review_tmpdir: Path,
-    availability: tuple[bool, bool],
-    calibration_stats_file: str | None,
-    ctx_args: Sequence[str],
-) -> tuple[str, subprocess.Popen[bytes], str]:
-    # Voter 1 waterfalls Cursor -> Codex -> Claude by availability (issue #5817):
-    # the first launchable tool from its policy order runs instead of dropping
-    # straight to Claude when Cursor is unavailable.
-    codex_present, cursor_present = availability
-    policy = VOTER_SLOT_POLICIES[0]
-    base_tool = _first_launch_base_tool_for_slot(
-        policy,
-        codex_present=codex_present,
-        cursor_present=cursor_present,
-        no_fallback=False,
-    )
-    if base_tool in {"cursor", "codex"}:
-        voter_path = str(review_tmpdir / policy.output_name)
-        prompt = _make_voter_prompt_file(
-            opts=opts,
-            review_tmpdir=review_tmpdir,
-            label=policy.prompt_label,
-            archetype=policy.archetype,
-            calibration_stats_file=calibration_stats_file,
-            voter_tool=base_tool,
-            output_basename=f"validity-vote-prompt-{base_tool}.txt",
-        )
-        return (
-            voter_path,
-            _launch_voter1_external(opts=opts, voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args, tool=base_tool),
-            _semantic_label(policy=policy, tool=base_tool),
-        )
-    voter_path = str(review_tmpdir / "claude-vote-output.txt")
-    prompt = _make_voter_prompt_file(
-        opts=opts,
-        review_tmpdir=review_tmpdir,
-        label=policy.prompt_label,
-        archetype=policy.archetype,
-        calibration_stats_file=calibration_stats_file,
-        voter_tool="claude",
-        output_basename="validity-vote-prompt-claude.txt",
-    )
-    return voter_path, _launch_claude_voter(voter_1_path=voter_path, prompt_file=prompt, ctx_args=ctx_args), "claude"
-
-
-def _launch_claude_voter(*, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str]) -> subprocess.Popen[bytes]:
-    stderr_path = f"{voter_1_path}.launcher-stderr"
-    with Path(stderr_path).open("wb") as stderr_handle:
-        return subprocess.Popen(
-            [
-                *_cli_argv("agent", "launch-claude-review"),
-                "--output",
-                voter_1_path,
-                "--prompt-file",
-                prompt_file,
-                "--mode",
-                MODE,
-                "--role",
-                "voter",
-                "--timeout",
-                "1200",
-                "--timing-task-kind",
-                "claude-code-voter",
-                *ctx_args,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_handle,
-        )
-
-
-def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict[str, dict[str, str]]) -> str:
+def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[VoterSlotPolicy], prompt_files: dict[str, dict[str, str]]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
-        for policy in VOTER_SLOT_POLICIES[1:]:
+        for policy in policies:
             row = {
                 "slot": policy.slot_name,
                 "tool": policy.primary_tool,
@@ -405,36 +299,7 @@ def _write_voter23_waterfall_manifest(*, review_tmpdir: Path, prompt_files: dict
     return str(manifest)
 
 
-def _launch_voter1_external(*, opts: Options, voter_1_path: str, prompt_file: str, ctx_args: Sequence[str], tool: str) -> subprocess.Popen[bytes]:
-    stderr_path = f"{voter_1_path}.launcher-stderr"
-    with Path(stderr_path).open("wb") as stderr_handle:
-        return subprocess.Popen(
-            [
-                *_cli_argv("agent", "launch-review"),
-                "--tool",
-                tool,
-                "--output",
-                voter_1_path,
-                "--prompt-file",
-                prompt_file,
-                "--mode",
-                MODE,
-                "--model-role",
-                "vote",
-                "--timeout",
-                "1200",
-                "--timing-task-kind",
-                f"{tool}-code-voter-validity",
-                "--site",
-                opts.site,
-                *ctx_args,
-            ],
-            stdout=subprocess.DEVNULL,
-            stderr=stderr_handle,
-        )
-
-
-def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]) -> str:
+def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:
     result = proc.run(
         [
             *_cli_argv("agent", "dispatch-waterfall"),
@@ -452,64 +317,17 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
             "vote",
             "--site",
             opts.site,
+            # Grant the terminal Claude voter tier read access to the round dir so it
+            # can Read the ballot file without a permission prompt, mirroring the
+            # design plan-voter path (issue #5837). Reviewers do not pass this flag.
+            "--claude-read-tools-add-dir",
+            str(review_tmpdir),
             *ctx_args,
         ]
     )
     if result.returncode != 0:
         _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode} — proceeding with partial or empty result")
     return result.stdout
-
-
-def _append_voter1_failure(*, opts: Options, review_tmpdir: Path, voter_1_path: str, voter1_rc: int) -> None:
-    diag = review_tmpdir / "voter1-diag.txt"
-    output_path = Path(voter_1_path)
-    output_bytes = 0
-    try:
-        output_bytes = output_path.stat().st_size
-    except OSError:
-        output_bytes = 0
-    lines = [f"voter1_rc={voter1_rc}", f"output_bytes={output_bytes}"]
-    if voter1_rc != 0 and output_path.is_file() and output_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of voter output ---", _bounded_prefix_text(path=output_path, limit=200)])
-    diag_path = Path(f"{voter_1_path}.diag")
-    if diag_path.is_file() and diag_path.stat().st_size > 0:
-        lines.extend(["--- first 200 bytes of .diag ---", _bounded_prefix_text(path=diag_path, limit=200)])
-    stderr_path = Path(f"{voter_1_path}.launcher-stderr")
-    if stderr_path.is_file() and stderr_path.stat().st_size > 0:
-        lines.extend(["--- launcher stderr (first 500 bytes) ---", _bounded_prefix_text(path=stderr_path, limit=500)])
-    with diag.open("w", encoding="utf-8") as handle:
-        _ = handle.write("\n".join(lines) + "\n")
-
-    issues_log = os.environ.get("LARCH_EXECUTION_ISSUES_LOG", "")
-    if not issues_log and opts.session_env_path:
-        issues_log = str(Path(opts.session_env_path).parent / "execution-issues.md")
-    if not issues_log and os.environ.get("IMPLEMENT_TMPDIR"):
-        issues_log = str(Path(os.environ["IMPLEMENT_TMPDIR"]) / "execution-issues.md")
-    if not issues_log:
-        issues_log = str(review_tmpdir / "execution-issues.md")
-    status_label = "warning" if voter1_rc == 0 else "failed"
-    proc.run(
-        [
-            *_cli_argv("run-log", "append-failure"),
-            "--log",
-            issues_log,
-            "--site",
-            "agent dispatch-voters voter1",
-            "--tool",
-            "agent launch-claude-review (claude voter)",
-            "--exit-code",
-            str(voter1_rc),
-            "--status-label",
-            status_label,
-            "--category",
-            "Warnings",
-            "--output-file",
-            str(diag),
-            "--redact",
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
 
 
 def _parse_waterfall_output(output: str) -> tuple[list[str], list[str], str]:
@@ -538,37 +356,6 @@ def _read_done_exit_code(path: str) -> str:
         return Path(path).read_text(encoding="utf-8", errors="replace").splitlines()[0]
     except (OSError, IndexError):
         return ""
-
-
-def _wait_sentinels(*, review_tmpdir: Path, sentinels: Sequence[str]) -> tuple[bool, int]:
-    voter1_timed_out = False
-    wait_rc = 0
-    if not sentinels:
-        return voter1_timed_out, wait_rc
-    timeout = os.environ.get("LARCH_VOTER_WAIT_TIMEOUT", "60")
-    fd, wait_out = tempfile.mkstemp(prefix="voter-wait.", dir=str(review_tmpdir))
-    os.close(fd)
-    wait_path = Path(wait_out)
-    try:
-        with wait_path.open("wb") as handle:
-            result = proc.run(
-                [*_cli_argv("agent", "wait-reviewers"), "--timeout", timeout, *sentinels],
-                stdout=handle.fileno(),
-                stderr=handle.fileno(),
-            )
-        wait_rc = result.returncode
-        lines = wait_path.read_text(encoding="utf-8", errors="replace").splitlines()
-        for line in lines:
-            if line.startswith("TIMEOUT "):
-                _err(f"agent dispatch-voters: voter sentinel {line}")
-                if line.startswith("TIMEOUT 1 "):
-                    voter1_timed_out = True
-        if wait_rc != 0:
-            _err(f"agent dispatch-voters: wait-reviewers exited {wait_rc} (usage/config error) - proceeding with whatever state exists")
-    finally:
-        with suppress(FileNotFoundError):
-            wait_path.unlink()
-    return voter1_timed_out, wait_rc
 
 
 def _run_parse_rate_retry(vpr_args: Sequence[str], *, slot: str, voter_file: str, voter_tool: str) -> str:
@@ -646,23 +433,31 @@ def _semantic_label(*, policy: VoterSlotPolicy, tool: str) -> str:
     return policy.semantic_labels.get(tool, policy.default_label)
 
 
-def _state_from_voter23_bindings(*, review_tmpdir: Path, bindings: Mapping[str, agent_waterfall.SlotOutputBinding]) -> tuple[str, str, str, str]:
-    del review_tmpdir
-    policy2 = VOTER_SLOT_POLICIES[1]
-    policy3 = VOTER_SLOT_POLICIES[2]
-    binding2 = bindings.get(policy2.slot_name, agent_waterfall.SlotOutputBinding())
-    binding3 = bindings.get(policy3.slot_name, agent_waterfall.SlotOutputBinding())
-    if binding2.dropped or not binding2.path:
-        path2, tool2 = "", ""
-    else:
-        path2 = binding2.path
-        tool2 = _semantic_label(policy=policy2, tool=binding2.tool or policy2.primary_tool)
-    if binding3.dropped or not binding3.path:
-        path3, tool3 = "", ""
-    else:
-        path3 = binding3.path
-        tool3 = _semantic_label(policy=policy3, tool=binding3.tool or policy3.primary_tool)
-    return path2, path3, tool2, tool3
+def _state_from_bindings(*, bindings: Mapping[str, agent_waterfall.SlotOutputBinding], launched_policies: Sequence[VoterSlotPolicy]) -> DispatchState:
+    launched = {policy.slot_name for policy in launched_policies}
+
+    def _resolve(policy: VoterSlotPolicy) -> tuple[str, str, str]:
+        if policy.slot_name not in launched:
+            return "", policy.default_label, "skipped"
+        binding = bindings.get(policy.slot_name, agent_waterfall.SlotOutputBinding())
+        if binding.dropped or not binding.path:
+            return "", policy.default_label, "failed"
+        return binding.path, _semantic_label(policy=policy, tool=binding.tool or policy.primary_tool), "launched"
+
+    path1, tool1, status1 = _resolve(VOTER_SLOT_POLICIES[0])
+    path2, tool2, status2 = _resolve(VOTER_SLOT_POLICIES[1])
+    path3, tool3, status3 = _resolve(VOTER_SLOT_POLICIES[2])
+    return DispatchState(
+        voter_1_path=path1,
+        voter_2_path=path2,
+        voter_3_path=path3,
+        voter_1_tool=tool1,
+        voter_2_tool=tool2,
+        voter_3_tool=tool3,
+        voter_1_status=status1,
+        voter_2_status=status2,
+        voter_3_status=status3,
+    )
 
 
 def dispatch_voters(opts: Options) -> int:
@@ -678,85 +473,41 @@ def dispatch_voters(opts: Options) -> int:
     codex_present = opts.codex_available == "true"
     external_voter23 = cursor_present or codex_present
     calibration_stats_file = _fresh_calibration_stats_file(review_tmpdir=review_tmpdir)
-    voter23_prompt_files = _build_voter23_prompt_files(
-        opts=opts,
-        review_tmpdir=review_tmpdir,
-        availability=(codex_present, cursor_present),
-        calibration_stats_file=calibration_stats_file,
-    )
 
-    # Voter 1 launches asynchronously on both the external (cursor/codex) and
-    # claude paths so it runs in parallel with the voters 2+3 waterfall
-    # dispatched below; its exit code is collected at the voter1_process.wait()
-    # barrier after dispatch (issue #5448).
-    voter_1_path, voter1_process, voter_1_tool = _launch_voter1(
-        opts=opts,
-        review_tmpdir=review_tmpdir,
-        availability=(codex_present, cursor_present),
-        calibration_stats_file=calibration_stats_file,
-        ctx_args=ctx_args,
-    )
-
-    voter_2_path = str(review_tmpdir / VOTER_SLOT_POLICIES[1].output_name) if external_voter23 else ""
-    voter_3_path = str(review_tmpdir / VOTER_SLOT_POLICIES[2].output_name) if external_voter23 else ""
-    voter_2_tool = "codex-plan-fidelity"
-    voter_3_tool = "codex-pragmatism"
-    voter_2_status = "launched" if external_voter23 else "skipped"
-    voter_3_status = "launched" if external_voter23 else "skipped"
-    sentinels: list[str] = []
-    dispatch_ok = "true"
-
+    # All voters flow through the shared waterfall so a runtime tool failure (nonzero
+    # exit, empty output, or a billing-class block that passes the static probe)
+    # re-dispatches to the next tier exactly like a statically-unavailable tool, and
+    # the terminal Claude tier can read the ballot. Voter 1 always runs; voters 2/3
+    # run only when at least one external tool is present, so a both-external-down
+    # panel shrinks to the single Claude anchor rather than spawning redundant
+    # same-model voters (issue #5837). All launched slots are dispatched together in
+    # one manifest, preserving the parallelism of #5448.
+    launched_policies = [VOTER_SLOT_POLICIES[0]]
     if external_voter23:
-        manifest = _write_voter23_waterfall_manifest(review_tmpdir=review_tmpdir, prompt_files=voter23_prompt_files)
-        waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args)
-        _outputs, _tools, raw_dispatch_ok = _parse_waterfall_output(waterfall_output)
-        dispatch_ok = raw_dispatch_ok
-        bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
-        voter_2_path, voter_3_path, voter_2_tool, voter_3_tool = _state_from_voter23_bindings(review_tmpdir=review_tmpdir, bindings=bindings)
-        if voter_2_path:
-            sentinels.append(f"{voter_2_path}.done")
-        else:
-            voter_2_status = "failed"
-        if voter_3_path:
-            sentinels.append(f"{voter_3_path}.done")
-        else:
-            voter_3_status = "failed"
+        launched_policies.extend(VOTER_SLOT_POLICIES[1:])
 
-    voter1_rc = voter1_process.wait()
-    if voter1_rc != 0 or not _file_nonempty(voter_1_path):
-        _append_voter1_failure(opts=opts, review_tmpdir=review_tmpdir, voter_1_path=voter_1_path, voter1_rc=voter1_rc)
-    if voter_1_tool != "claude" and not Path(f"{voter_1_path}.done").is_file() and voter1_rc == 0 and _file_nonempty(voter_1_path):
-        Path(f"{voter_1_path}.done").write_text("0\n", encoding="utf-8")
-    sentinels.insert(0, f"{voter_1_path}.done")
-    voter1_timed_out, wait_rc = _wait_sentinels(review_tmpdir=review_tmpdir, sentinels=sentinels)
-    if (
-        not Path(f"{voter_1_path}.done").is_file()
-        and voter1_rc == 0
-        and _file_nonempty(voter_1_path)
-        and not voter1_timed_out
-        and wait_rc == 0
-    ):
-        Path(f"{voter_1_path}.done").write_text("0\n", encoding="utf-8")
-
-    state = DispatchState(
-        voter_1_path=voter_1_path,
-        voter_2_path=voter_2_path,
-        voter_3_path=voter_3_path,
-        voter_1_tool=voter_1_tool,
-        voter_2_tool=voter_2_tool,
-        voter_3_tool=voter_3_tool,
-        voter_2_status=voter_2_status,
-        voter_3_status=voter_3_status,
+    prompt_files = _build_voter_prompt_files(
+        opts=opts,
+        review_tmpdir=review_tmpdir,
+        policies=launched_policies,
+        availability=(codex_present, cursor_present),
+        calibration_stats_file=calibration_stats_file,
     )
+    manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files)
+    waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args, review_tmpdir=review_tmpdir)
+    _outputs, _tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
+    bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))
+
+    state = _state_from_bindings(bindings=bindings, launched_policies=launched_policies)
 
     voter1_done_rc = _read_done_exit_code(f"{state.voter_1_path}.done")
     voter2_done_rc = _read_done_exit_code(f"{state.voter_2_path}.done")
     voter3_done_rc = _read_done_exit_code(f"{state.voter_3_path}.done")
-    if not (_file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
+    if state.voter_1_status != "skipped" and not (_file_nonempty(state.voter_1_path) and voter1_done_rc == "0"):
         state.voter_1_status = "failed"
-    if not (state.voter_2_status == "skipped" or (_file_nonempty(state.voter_2_path) and voter2_done_rc == "0")):
+    if state.voter_2_status != "skipped" and not (_file_nonempty(state.voter_2_path) and voter2_done_rc == "0"):
         state.voter_2_status = "failed"
-    if not (state.voter_3_status == "skipped" or (_file_nonempty(state.voter_3_path) and voter3_done_rc == "0")):
+    if state.voter_3_status != "skipped" and not (_file_nonempty(state.voter_3_path) and voter3_done_rc == "0"):
         state.voter_3_status = "failed"
 
     vpr_args = [
@@ -772,14 +523,14 @@ def dispatch_voters(opts: Options) -> int:
         DISPATCH_LABEL,
         *_parse_rate_ctx_args(bounded_diff=bounded_diff, bounded_plan=bounded_plan),
     ]
-    if state.voter_1_status != "failed":
+    if state.voter_1_status not in {"failed", "skipped"}:
         state.voter_1_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="1", voter_file=state.voter_1_path, voter_tool=state.voter_1_tool)
     if state.voter_2_status not in {"failed", "skipped"}:
         state.voter_2_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="2", voter_file=state.voter_2_path, voter_tool=state.voter_2_tool)
     if state.voter_3_status not in {"failed", "skipped"}:
         state.voter_3_parse_rate_status = _run_parse_rate_retry(vpr_args, slot="3", voter_file=state.voter_3_path, voter_tool=state.voter_3_tool)
 
-    expected_judges = 3 if external_voter23 else 1
+    expected_judges = len(launched_policies)
     effective_judges = _effective_judges(state)
     if effective_judges < expected_judges:
         warn_msg = f"**⚠ Degraded code-review panel: {effective_judges}/{expected_judges} effective judges produced output.**"
