@@ -3,7 +3,7 @@
 - **Outcome**: bailed
 - **Mode**: N/A
 - **Duration**: 00:21:29
-- **Cost**: 💰 TOTAL ~$8.44 — Claude $1.94, Codex-5.5 $4.27, Codex-mini $0.90, Cursor $1.33, Claude (subprocess) $0.00  |  Tokens: 16157k
+- **Cost**: 💰 TOTAL ~$9.58 — Claude $1.94, Codex-5.5 $4.27, Codex-mini $0.90, Cursor $2.47, Claude (subprocess) $0.00  |  Tokens: 16157k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)

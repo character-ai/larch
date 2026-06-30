@@ -3,7 +3,7 @@
 - **Mode**: SIMPLE
 - **Path**: SIMPLE
 - **Duration**: 00:29:09
-- **Cost**: 💰 TOTAL ~$12.55 — Claude $8.11, Codex $3.55, Cursor $0.89, Claude (subprocess) $0.00  |  Tokens: 14040k
+- **Cost**: 💰 TOTAL ~$13.19 — Claude $8.11, Codex $3.55, Cursor $1.53, Claude (subprocess) $0.00  |  Tokens: 14040k
 - **Issue**: N/A
 - **Plan review**: 0 findings
 - **OOS filed**: 0

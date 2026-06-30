@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:25:52
-- **Cost**: 💰 TOTAL ~$4.49 — Claude $2.94, Codex-5.5 $0.53, Codex-mini $0.26, Cursor $0.76, Claude (subprocess) $0.00  |  Tokens: 7661k
+- **Cost**: 💰 TOTAL ~$5.09 — Claude $2.94, Codex-5.5 $0.53, Codex-mini $0.26, Cursor $1.36, Claude (subprocess) $0.00  |  Tokens: 7661k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, producer missing-or-invalid

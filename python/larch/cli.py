@@ -428,6 +428,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("run-log", "render-session-transcript"): ("larch.rendering.render_session_transcript", "main"),
     ("run-log", "cleanup-implement-logs"): ("larch.report.cleanup_implement_logs", "main"),
     ("run-log", "retro-v3-sweep"): ("larch.report.retro_v3_sweep", "main"),
+    ("run-log", "retro-fix-cursor"): ("larch.report.retro_fix_cursor", "main"),
     ("run-log", "verify-completeness"): ("larch.report.run_logs", "verify_completeness_main"),
     ("run-log", "append-failure"): ("larch.report.run_logs", "append_failure_main"),
     ("run-log", "append-entry"): ("larch.report.run_logs", "append_entry_main"),
