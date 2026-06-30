@@ -4,7 +4,7 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 
 ## Cases
 
-1. `green path`: diagram generation succeeds, `code-flow-section.md` is written, the shared diagrams helper is invoked, rebase runs, pre-bump flush succeeds, transcript status is relayed, and final KVs report `ok`.
+1. `green path`: diagram generation succeeds, `code-flow-section.md` is written, the shared diagrams helper is invoked, rebase runs, pre-ship log flush succeeds, transcript status is relayed, and final KVs report `ok`.
 2. `architecture-env-ignored`: `ARCHITECTURE_DIAGRAM_FILE` is ignored and only Code Flow content is written.
 3. `diagram-skip`: a one-file `docs/` diff triggers the small/non-runtime skip, diagram generation is not invoked, `code-flow-section.md` is omitted, and the upsert is skipped.
 4. `diagram-skip-forked`: a one-file fork-style `docs/` diff compares against `upstream/main`, skips generation, and skips the upsert.
@@ -26,8 +26,8 @@ Offline regression harness for `skills/implement/scripts/step-7a.sh`.
 20. `forked-target rebase argv`: `--forked-target true` passes `--base-remote upstream --base-ref main` to the rebase probe.
 21. `ISSUE_NUMBER empty gate`: empty issue number suppresses the summary upsert while the rest of the pipeline runs.
 22. `generator-crash`: a crashing diagram helper is treated like generation failure, skips the upsert, and logs a warning.
-23. `rebase-conflict`: `REBASE_OUTCOME=conflict` and `CHECKPOINT_NEXT=load-routing` exit `1`, relay the probe KVs, run the pre-bump flush, and defer the git-backed log commit.
-24. `rebase-failed`: `REBASE_OUTCOME=failed` and `CHECKPOINT_NEXT=load-routing` exit `3`, relay the probe KVs, run the pre-bump flush, and defer the git-backed log commit.
+23. `rebase-conflict`: `REBASE_OUTCOME=conflict` and `CHECKPOINT_NEXT=load-routing` exit `1`, relay the probe KVs, run the pre-ship log flush, and defer the git-backed log commit.
+24. `rebase-failed`: `REBASE_OUTCOME=failed` and `CHECKPOINT_NEXT=load-routing` exit `3`, relay the probe KVs, run the pre-ship log flush, and defer the git-backed log commit.
 25. `rebase-unexpected-rc`: preserves probe rc `5`, relays `REBASE_OUTCOME=failed` / `ROUTE=bail` / `CHECKPOINT_NEXT=load-routing`, runs the flush, and defers the git-backed log commit.
 26. `quiet-rebase-contract`: with quiet mode enabled, the helper still relays `REBASE_OUTCOME` and `CHECKPOINT_NEXT` on the caller-visible contract stream.
 27. `argv error`: missing `--implement-tmpdir` exits `2` and emits `STEP_7A_BAIL_REASON=argv`.

@@ -127,12 +127,14 @@ def _result_from_error(exc: Exception, *, status: str = "stalled") -> FinalizeRe
 
 @dataclass(frozen=True)
 class PostbumpPreflight:
+    # Historical name; no version bump occurs — /release owns versions (Phase 1 #3364 retired per-PR bumping).
     ok: bool
     status: str = "ok"
     detail: str = ""
     branch: str = ""
 
 
+# Historical name; validates branch/cwd before the force-push gate (no bump).
 def postbump_preflight(
     *,
     runner: Runner,
@@ -158,6 +160,7 @@ def postbump_preflight(
 
 
 def _postbump_checkpoint_status(ctx: RunContext) -> str:
+    # Historical name; checks the force-push-gate sentinel (no bump occurs).
     path = Path(ctx.tmpdir) / ".postbump-phase"
     if not path.exists():
         return "ok"
@@ -282,7 +285,7 @@ def postbump(
     ctx: RunContext,
     cwd: str | None = None,
 ) -> FinalizeResult:
-    """Rebase and force-push before PR creation."""
+    """Rebase and force-push before PR creation. Name is a historical holdover; /release owns versions."""
     try:
         preflight = postbump_preflight(runner=runner, ctx=ctx, cwd=cwd)
         if not preflight.ok:
