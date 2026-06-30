@@ -354,6 +354,39 @@ def test_scan_reads_manifest_main_model(tmp_path: Path) -> None:
     assert result.records[0].main_model == "claude-sonnet-4-6"
 
 
+def test_scan_totals_falls_back_to_buckets_when_cache_read_absent(tmp_path: Path) -> None:
+    # Runs produced by the old Bash token-report.sh (vendor_json) only emitted
+    # {input, output, total} for external vendor totals; cache_read was absent.
+    # _totals() must recover cache_read from BUCKETS_<vendor> (issue #5838).
+    run = tmp_path / "larch-logs" / "implement" / "run1"
+    run.mkdir(parents=True)
+    _ = (run / "manifest.json").write_text(
+        json.dumps({"issue_number": 1, "started_at": "2026-06-03T00:00:00Z"}),
+        encoding="utf-8",
+    )
+    report = {
+        "vendors": ["claude", "codex", "cursor", "claude_sub"],
+        "claude": {"totals": {"input": 30, "cache_read": 2704290, "output": 9915, "total": 2827278}},
+        # old-format vendor totals: only {input, output, total}, cache_read absent
+        "codex": {"totals": {"input": 1372678, "output": 136032, "total": 31941606}},
+        "cursor": {"totals": {"input": 7274822, "output": 446446, "total": 88537990}},
+        "claude_sub": {"totals": {"input": 5000, "output": 1000, "total": 86000}},
+        "BUCKETS_claude": {"input": 30, "cache_read": 2704290, "output": 9915, "total": 2827278},
+        "BUCKETS_codex": {"input": 1372678, "cached_input": 30432896, "output": 136032, "total": 31941606},
+        "BUCKETS_cursor": {"input": 7274822, "cache_read": 80816722, "output": 446446, "total": 88537990},
+        "BUCKETS_claude_sub": {"input": 5000, "cache_read": 80000, "output": 1000, "total": 86000},
+    }
+    _ = (run / "token-report.json").write_text(json.dumps(report), encoding="utf-8")
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+    assert len(result.records) == 1
+    rec = result.records[0]
+    assert rec.cursor.cache_read == 80816722, "cursor.cache_read must fall back to BUCKETS_cursor.cache_read"
+    assert rec.codex.cached_input == 30432896, "codex.cached_input must fall back to BUCKETS_codex.cached_input"
+    assert rec.claude_sub.cache_read == 80000, "claude_sub.cache_read must fall back to BUCKETS_claude_sub.cache_read"
+    assert rec.cursor.input == 7274822, "cursor.input must come from totals (present)"
+    assert rec.cursor.total == 88537990, "cursor.total must come from totals (present)"
+
+
 def test_scan_enriches_missing_claude_sub_by_model_from_ledger(tmp_path: Path) -> None:
     run = tmp_path / "larch-logs" / "implement" / "run1"
     run.mkdir(parents=True)

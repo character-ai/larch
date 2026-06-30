@@ -798,3 +798,26 @@ def test_build_report_from_ledgers_no_marks_raises(tmp_path: Path) -> None:
     )
     with pytest.raises(ValueError, match="no step marks"):
         _ = tokens.build_report_from_ledgers([ledger])
+
+
+def test_build_report_vendor_totals_cache_read_is_integer(tmp_path: Path) -> None:
+    # Regression test for issue #5838: external-vendor totals.cache_read must be
+    # a non-null integer, never absent. Covers the live build + re-render path via
+    # build_report_from_ledgers (which uses _full_json → _per_step_json → _totals).
+    ledger = _ledger(
+        tmp_path / "larch-tokens-abc.jsonl",
+        (
+            {"type": "mark", "step": "s0", "ts": "2026-06-15T00:00:00Z"},
+            {"type": "vendor", "vendor": "cursor", "input": 10, "output": 2, "cache_read": 80, "total": 92, "ts": "2026-06-15T00:00:01Z"},
+            {"type": "vendor", "vendor": "codex", "input": 100, "output": 20, "cache_read": 50, "total": 170, "ts": "2026-06-15T00:00:02Z"},
+            {"type": "vendor", "vendor": "claude_sub", "input": 5, "output": 1, "cache_read": 40, "total": 46, "ts": "2026-06-15T00:00:03Z"},
+        ),
+    )
+    report = tokens.build_report_from_ledgers([ledger])
+    for vendor in ("cursor", "codex", "claude_sub"):
+        totals = report[vendor]["totals"]  # type: ignore[index]
+        assert "cache_read" in totals, f"{vendor}.totals must contain cache_read"
+        assert isinstance(totals["cache_read"], int), f"{vendor}.totals.cache_read must be int"
+    assert report["cursor"]["totals"]["cache_read"] == 80  # type: ignore[index]
+    assert report["codex"]["totals"]["cache_read"] == 50  # type: ignore[index]
+    assert report["claude_sub"]["totals"]["cache_read"] == 40  # type: ignore[index]

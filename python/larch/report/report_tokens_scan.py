@@ -84,15 +84,28 @@ def _workflow(*, _run_dir: Path, _skill: Skill) -> str:
 def _totals(*, report: Mapping[str, object], vendor: VendorName) -> VendorTotals:
     vendor_obj = _as_mapping(report.get(vendor))
     totals = _as_mapping(vendor_obj.get("totals"))
+    # Fall back to BUCKETS_<vendor> for fields absent from totals. The old Bash
+    # report builder (vendor_json in token-report.sh) only emitted {input, output,
+    # total} for external vendor lanes; cache_read/cache_create/cached_input were
+    # missing. BUCKETS_<vendor> is always correct, so use it when totals omits a
+    # field (issue #5838).
+    buckets = _as_mapping(report.get(f"BUCKETS_{vendor}"))
+
+    def _f(key: str) -> int:
+        v = totals.get(key)
+        if v is not None:
+            return safe_int(value=v)
+        return safe_int(value=buckets.get(key, 0))
+
     return VendorTotals(
-        input=safe_int(value=totals.get("input")),
-        cache_read=safe_int(value=totals.get("cache_read")),
-        cache_create=safe_int(value=totals.get("cache_create")),
-        cache_create_5m=safe_int(value=totals.get("cache_create_5m")),
-        cache_create_1h=safe_int(value=totals.get("cache_create_1h")),
-        cached_input=safe_int(value=totals.get("cached_input")),
-        output=safe_int(value=totals.get("output")),
-        total=safe_int(value=totals.get("total")),
+        input=_f("input"),
+        cache_read=_f("cache_read"),
+        cache_create=_f("cache_create"),
+        cache_create_5m=_f("cache_create_5m"),
+        cache_create_1h=_f("cache_create_1h"),
+        cached_input=_f("cached_input"),
+        output=_f("output"),
+        total=_f("total"),
     )
 
 def _has_numeric_tokens(report: Mapping[str, object]) -> bool:
