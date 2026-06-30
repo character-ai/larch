@@ -19,7 +19,7 @@ from larch.report.report_tokens_cost import (
     DEFAULT_CLAUDE_BLENDED_PER_M,
     DEFAULT_RATE_TABLE_PER_M,
     DEFAULT_VENDOR_MODEL,
-    _CURSOR_COMPOSER_BASE,
+    CURSOR_COMPOSER_BASE,
     display_rates,
     env_rate,
     price_run,
@@ -620,49 +620,49 @@ def test_token_cost_argv_without_by_model_prices_as_default() -> None:
 
 def test_cursor_non_auto_rates_include_teams_surcharge() -> None:
     row = DEFAULT_RATE_TABLE_PER_M[("cursor", "composer-2.5")]
-    assert row["input"] == _CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
-    assert row["cache_read"] == _CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
-    assert row["output"] == _CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
-    assert row["input"] == pytest.approx(0.75)
-    assert row["cache_read"] == pytest.approx(0.45)
-    assert row["output"] == pytest.approx(2.75)
+    assert row["input"] == CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["cache_read"] == CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["output"] == CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["input"] == 0.75
+    assert row["cache_read"] == 0.45
+    assert row["output"] == 2.75
 
 
 def test_cursor_auto_rate_row_no_surcharge() -> None:
     row = DEFAULT_RATE_TABLE_PER_M[("cursor", larch_config.CURSOR_AUTO_MODEL)]
-    assert row["input"] == pytest.approx(1.25)
-    assert row["cache_read"] == pytest.approx(0.25)
-    assert row["output"] == pytest.approx(6.00)
+    assert row["input"] == 1.25
+    assert row["cache_read"] == 0.25
+    assert row["output"] == 6.00
 
 
 def test_display_rates_cursor_non_auto_default_is_surcharged() -> None:
     rates = display_rates(environ={})
-    assert rates.cursor_input == pytest.approx(0.75)
-    assert rates.cursor_cache_read == pytest.approx(0.45)
-    assert rates.cursor_output == pytest.approx(2.75)
+    assert rates.cursor_input == 0.75
+    assert rates.cursor_cache_read == 0.45
+    assert rates.cursor_output == 2.75
 
 
 def test_display_rates_cursor_auto_defaults() -> None:
     rates = display_rates(environ={})
-    assert rates.cursor_auto_input == pytest.approx(1.25)
-    assert rates.cursor_auto_cache_read == pytest.approx(0.25)
-    assert rates.cursor_auto_output == pytest.approx(6.00)
+    assert rates.cursor_auto_input == 1.25
+    assert rates.cursor_auto_cache_read == 0.25
+    assert rates.cursor_auto_output == 6.00
 
 
 def test_cursor_teams_surcharge_env_override() -> None:
     rates = display_rates(environ={"LARCH_CURSOR_TEAMS_SURCHARGE_PER_M": "0.50"})
-    assert rates.cursor_input == pytest.approx(_CURSOR_COMPOSER_BASE["input"] + 0.50)
-    assert rates.cursor_cache_read == pytest.approx(_CURSOR_COMPOSER_BASE["cache_read"] + 0.50)
-    assert rates.cursor_output == pytest.approx(_CURSOR_COMPOSER_BASE["output"] + 0.50)
+    assert rates.cursor_input == CURSOR_COMPOSER_BASE["input"] + 0.50
+    assert rates.cursor_cache_read == CURSOR_COMPOSER_BASE["cache_read"] + 0.50
+    assert rates.cursor_output == CURSOR_COMPOSER_BASE["output"] + 0.50
     # auto rates are unaffected by the non-auto surcharge override
-    assert rates.cursor_auto_input == pytest.approx(1.25)
+    assert rates.cursor_auto_input == 1.25
 
 
 def test_cursor_auto_rate_env_overrides() -> None:
     rates = display_rates(environ={"LARCH_CURSOR_AUTO_INPUT_RATE_PER_M": "2.00", "LARCH_CURSOR_AUTO_OUTPUT_RATE_PER_M": "8.00"})
-    assert rates.cursor_auto_input == pytest.approx(2.00)
-    assert rates.cursor_auto_output == pytest.approx(8.00)
-    assert rates.cursor_auto_cache_read == pytest.approx(0.25)
+    assert rates.cursor_auto_input == 2.00
+    assert rates.cursor_auto_output == 8.00
+    assert rates.cursor_auto_cache_read == 0.25
 
 
 def test_cursor_auto_tokens_price_at_auto_rates(capsys: pytest.CaptureFixture[str]) -> None:

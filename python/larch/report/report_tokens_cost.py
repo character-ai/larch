@@ -33,7 +33,7 @@ DEFAULT_VENDOR_MODEL = {
 CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M = config.CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
 
 # Published Cursor composer-2.5 list rates before the Teams surcharge.
-_CURSOR_COMPOSER_BASE = {"input": 0.50, "cache_read": 0.20, "output": 2.50}
+CURSOR_COMPOSER_BASE = {"input": 0.50, "cache_read": 0.20, "output": 2.50}
 
 DEFAULT_RATE_TABLE_PER_M = {
     ("codex", "gpt-5.5"): {
@@ -48,9 +48,9 @@ DEFAULT_RATE_TABLE_PER_M = {
     },
     # Effective non-auto rates include the $0.25/M Teams surcharge per token.
     ("cursor", "composer-2.5"): {
-        "input": _CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
-        "cache_read": _CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
-        "output": _CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+        "input": CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+        "cache_read": CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+        "output": CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     },
     # Auto mode: flat rate card, no Teams surcharge. Auto bundles input+cache-write.
     ("cursor", config.CURSOR_AUTO_MODEL): {
@@ -179,9 +179,9 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
         codex_mini_input=env_rate(names=("LARCH_CODEX_MINI_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_INPUT"), default=codex_mini["input"], environ=env),
         codex_mini_cached_input=env_rate(names=("LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_CACHE_READ", "LARCH_RATE_CODEX_MINI_CACHED_INPUT"), default=codex_mini["cache_read"], environ=env),
         codex_mini_output=env_rate(names=("LARCH_CODEX_MINI_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_OUTPUT"), default=codex_mini["output"], environ=env),
-        cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=_CURSOR_COMPOSER_BASE["input"] + _surcharge, environ=env),
-        cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=_CURSOR_COMPOSER_BASE["cache_read"] + _surcharge, environ=env),
-        cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=_CURSOR_COMPOSER_BASE["output"] + _surcharge, environ=env),
+        cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=CURSOR_COMPOSER_BASE["input"] + _surcharge, environ=env),
+        cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=CURSOR_COMPOSER_BASE["cache_read"] + _surcharge, environ=env),
+        cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=CURSOR_COMPOSER_BASE["output"] + _surcharge, environ=env),
         claude_blended=env_rate(names=("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), default=DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
         codex_blended=env_rate(names=("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), default=_blended_default("codex"), environ=env),
         cursor_blended=env_rate(names=("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), default=_blended_default("cursor"), environ=env),
