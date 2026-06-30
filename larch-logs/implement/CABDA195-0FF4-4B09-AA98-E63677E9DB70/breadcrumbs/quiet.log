@@ -1,10 +1,16 @@
 === larch-quiet-cli.py-11703.log ===
 === larch-quiet-cli.py-21652.log ===
+=== larch-quiet-cli.py-45843.log ===
 === larch-quiet-cli.py-79994.log ===
 === larch-quiet-cli.py-9447.log ===
 === larch-quiet-read-session-env-key.sh-23992.log ===
 === larch-quiet-read-session-env-key.sh-23996.log ===
 === larch-quiet-read-session-env-key.sh-23998.log ===
+=== larch-quiet-read-session-env-key.sh-33795.log ===
+=== larch-quiet-read-session-env-key.sh-34291.log ===
+=== larch-quiet-read-session-env-key.sh-34307.log ===
+=== larch-quiet-read-session-env-key.sh-34533.log ===
+=== larch-quiet-read-session-env-key.sh-34583.log ===
 === larch-quiet-scout-plan-archetypes-wrapper.sh-8468.log ===
 === larch-quiet-sessionstart-health.sh-27128.log ===
 === larch-quiet-ship.py-31652.log ===
@@ -17,3 +23,4 @@ ci_monitor: CI status query #2 in progress after 13s
 ci_monitor: poll 2/180 pending after 17s; sleeping 10s
 ci_monitor: CI status query #3 in progress after 27s
 ci_monitor: CI fail after 30s -> evaluate_failure
+=== larch-quiet-tracking-issue-upsert-summary-47313.log ===
