@@ -26,6 +26,7 @@ import json
 import re
 import sys
 from pathlib import Path
+from typing import cast
 
 # Rate correction: Teams $0.25/M surcharge on cache reads only.
 # Old rate (wrong): $0.20/M.  Corrected rate: $0.45/M.
@@ -36,6 +37,12 @@ _OUTPUT_RATE = 2.50
 # Cursor cost line regex (matches both old and new Cost-line formats).
 _RE_CURSOR = re.compile(r"Cursor \$(\d+\.\d+)")
 _RE_TOTAL = re.compile(r"TOTAL ~\$(\d+\.\d+)")
+
+
+def _to_int(v: object) -> int:
+    if isinstance(v, (int, float)):
+        return int(v)
+    return 0
 
 
 def _cost_bucket(tokens: int, rate: float) -> float:
@@ -84,19 +91,21 @@ def transform_file(final_summary_path: Path, *, dry_run: bool = False) -> str:
         return "skipped-no-report"
     if not isinstance(report, dict):
         return "skipped-no-report"
+    report_d = cast("dict[str, object]", report)
 
-    raw_buckets = report.get("BUCKETS_cursor")
+    raw_buckets = report_d.get("BUCKETS_cursor")
     if not raw_buckets or not isinstance(raw_buckets, dict):
         return "skipped-no-buckets"
+    buckets_d = cast("dict[str, object]", raw_buckets)
 
-    cache_read = int(raw_buckets.get("cache_read", 0))
+    cache_read = _to_int(buckets_d.get("cache_read", 0))
     if cache_read == 0:
         return "skipped-no-cache-read"
 
     buckets: dict[str, int] = {
-        "input": int(raw_buckets.get("input", 0)),
+        "input": _to_int(buckets_d.get("input", 0)),
         "cache_read": cache_read,
-        "output": int(raw_buckets.get("output", 0)),
+        "output": _to_int(buckets_d.get("output", 0)),
     }
 
     new_cursor = _cursor_cost(buckets, _NEW_CACHE_READ_RATE)
@@ -119,7 +128,7 @@ def transform_file(final_summary_path: Path, *, dry_run: bool = False) -> str:
         return "skipped-format-mismatch"
 
     if not dry_run:
-        final_summary_path.write_text(updated, encoding="utf-8")
+        _ = final_summary_path.write_text(updated, encoding="utf-8")
     return "fixed"
 
 
