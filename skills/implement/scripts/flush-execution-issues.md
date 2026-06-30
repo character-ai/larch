@@ -1,8 +1,8 @@
 # flush-execution-issues.sh
 
 `flush-execution-issues.sh` appends `$IMPLEMENT_TMPDIR/execution-issues.md` to
-the committed `execution-issues` larch-log batch before the bump/post-bump
-phase. Primary caller: `/implement` Step 7a pre-bump log flush.
+the committed `execution-issues` larch-log batch before the pre-ship phase.
+Primary caller: `/implement` Step 7a pre-ship log flush.
 
 Usage:
 
@@ -35,14 +35,15 @@ Invariants:
 - Empty or absent `--issue-log` is a successful skip.
 - Default Step 7a calls create `$IMPLEMENT_TMPDIR/.execution-issues-step7a-reached`
   (or the issue-log directory equivalent) even when the flush is a skip, so
-  later commit-tail / pre-push helpers know the pre-bump checkpoint already ran.
+  later commit-tail / pre-push helpers know the pre-ship checkpoint already ran.
 - Idempotency uses both `$IMPLEMENT_TMPDIR/.execution-issues-flushed.sha` and an
   existing batch `source_sha256` probe. When the sentinel is missing, the batch
   probe matches the normalized per-section hashes that `write_execution_issues_records`
   stores, with a whole-file SHA fallback for backward compatibility.
 - Records are composed by `python/cli.py execution-issues flush` with
-  `step="7a"` and `source="execution-issues.md pre-bump"` unless overridden by
-  `--step-label` / `--source-label`.
+  `step="7a"` and `source="execution-issues.md pre-bump"` (historical label;
+  no version bump occurs — kept for data contract compatibility) unless
+  overridden by `--step-label` / `--source-label`.
 - On `FLUSH_STATUS=ok` or `FLUSH_STATUS=no-records`, the flushed
   `execution-issues.md` file is cleared so later flushes append only the
   unflushed tail entries.
