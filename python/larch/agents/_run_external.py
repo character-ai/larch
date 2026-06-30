@@ -1182,7 +1182,7 @@ def _run_external_agent_with_auth_retries(
         return result
 
 
-def _record_cursor_usage_from_output(*, output: Path, label: str) -> None:
+def _record_cursor_usage_from_output(*, output: Path, label: str, model: str = "") -> None:
     try:
         obj = json.loads(_read_text(output))
     except json.JSONDecodeError:
@@ -1200,10 +1200,10 @@ def _record_cursor_usage_from_output(*, output: Path, label: str) -> None:
         return
     total = input_tokens + output_tokens + cache_read + cache_create
     token_record = output.with_suffix(output.suffix + ".token-record")
-    _write(
-        path=token_record,
-        text=f"TOOL=cursor\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={label}\n"
-    )
+    text = f"TOOL=cursor\nINPUT={input_tokens}\nOUTPUT={output_tokens}\nCACHE_READ={cache_read}\nCACHE_CREATE={cache_create}\nTOTAL={total}\nRAW={label}\n"
+    if model:
+        text += f"MODEL={model}\n"
+    _write(path=token_record, text=text)
     proc.run(
         [sys.executable, str(_PY_CLI), "token", "record-vendor-sidecar", "--input", str(token_record)],
         check=False,

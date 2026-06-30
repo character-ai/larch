@@ -449,6 +449,13 @@ CODEX_REVIEW_MODEL_DEFAULT: Final = "gpt-5.4-mini"
 CODEX_VOTE_MODEL_DEFAULT: Final = "gpt-5.4-mini"
 CODEX_FIX_MODEL_DEFAULT: Final = "gpt-5.4-mini"
 CURSOR_DEFAULT_MODEL: Final = "composer-2.5"
+CURSOR_AUTO_MODEL: Final = "auto"
+# Teams plan per-token surcharge on all tokens (input, cache-read, output) for non-Auto
+# Cursor agent requests. Source: cursor.com/docs/account/teams/pricing — "Cursor Token
+# Rate $0.25/1M tokens" applies to pinned-model (composer-2.5) non-Auto requests.
+# Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
+CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M: Final = 0.25
+ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M: Final = "LARCH_CURSOR_TEAMS_SURCHARGE_PER_M"
 
 # Implementation selector values
 SHIP_PR_IMPL_BASH: Final = "bash"

@@ -612,6 +612,18 @@ def _full_json(*, marks: list[dict[str, Any]], claude: list[dict[str, Any]], ven
             data["BUCKETS_codex_by_model"] = by_model
         elif name == "cursor":
             data["BUCKETS_cursor"] = {"input": totals["input"], "cache_read": totals["cache_read"], "output": totals["output"], "total": totals["total"]}
+            # Per-model split so pricing keys on (vendor, model). Rows without a model
+            # field default to composer-2.5 (non-auto), matching pre-recording behavior.
+            # BUCKETS_cursor_by_model is parallel to BUCKETS_codex_by_model.
+            by_model_cursor: dict[str, dict[str, int]] = {}
+            for row in rows:
+                model = str(row.get("model") or "") or config.CURSOR_DEFAULT_MODEL
+                mt = by_model_cursor.setdefault(model, {"input": 0, "cache_read": 0, "output": 0, "total": 0})
+                mt["input"] += _int_field(data=row, key="input")
+                mt["cache_read"] += _int_field(data=row, key="cache_read")
+                mt["output"] += _int_field(data=row, key="output")
+                mt["total"] += _int_field(data=row, key="total")
+            data["BUCKETS_cursor_by_model"] = by_model_cursor
         else:
             data["BUCKETS_claude_sub"] = {"input": totals["input"], "cache_read": totals["cache_read"], "cache_create_5m": totals["cache_create"], "cache_create_1h": 0, "output": totals["output"], "total": totals["total"]}
             by_model: dict[str, dict[str, int]] = {}

@@ -360,11 +360,12 @@ def launch_cursor_ci_main(argv: list[str] | None = None) -> int:
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
 
+    cursor_ci_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-ci\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
             lambda: _record_launch_timing(tool="cursor", task_kind=args.timing_task_kind or "cursor-ci", start_s=start, output=output, exit_code=result.exit_code),
-            lambda: _record_cursor_usage_from_output(output=output, label="cursor_ci_fix"),
+            lambda: _record_cursor_usage_from_output(output=output, label="cursor_ci_fix", model=cursor_ci_model),
             lambda: _emit_token_record_if_present(paths.token_record),
             lambda: _write_timeout_stall_json(paths.stall_json, tool="cursor", exit_code=result.exit_code, timeout_seconds=int(args.timeout, 10), overwrite=False),
             lambda: _promote_inner_done(output),
@@ -718,7 +719,7 @@ def launch_codex_implement_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _record_cursor_implement_usage(output: Path) -> None:
+def _record_cursor_implement_usage(output: Path, model: str = "") -> None:
     try:
         obj = json.loads(_read_text(output))
     except json.JSONDecodeError:
@@ -735,7 +736,7 @@ def _record_cursor_implement_usage(output: Path) -> None:
         _append(path=output.with_suffix(output.suffix + ".sidecar"), text=f"agent parse-cursor-usage: {exc}\n")
         return
     total = input_tokens + output_tokens + cache_read + cache_create
-    proc.run([
+    cmd = [
         sys.executable,
         str(_PY_CLI),
         "token",
@@ -747,7 +748,10 @@ def _record_cursor_implement_usage(output: Path) -> None:
         f"cache_create={cache_create}",
         f"total={total}",
         "raw=cursor_implement",
-    ], check=False)
+    ]
+    if model:
+        cmd.append(f"model={model}")
+    proc.run(cmd, check=False)
 
 def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
@@ -815,11 +819,12 @@ def launch_cursor_implement_main(argv: list[str] | None = None) -> int:
     finally:
         shutil.rmtree(cfg_tmp, ignore_errors=True)
 
+    cursor_impl_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
     _finalize_launch(
         hooks=(
             lambda: _append(path=paths.meta, text=f"OUTER_LAUNCHER=agent launch-cursor-implement\nOUTER_LAUNCHER_PROMPT_FILE={paths.prompt}\nOUTER_LAUNCHER_WORKDIR={workdir}\n"),
             lambda: _record_implement_timing(tool="cursor", task_kind=task_kind, start=start, output=output, exit_code=result.exit_code),
-            lambda: _record_cursor_implement_usage(output),
+            lambda: _record_cursor_implement_usage(output, model=cursor_impl_model),
             lambda: _append_implement_failure_if_nonzero(tool="cursor", output=output, sidecar_log=sidecar, exit_code=result.exit_code),
             lambda: _promote_inner_done(output),
             lambda: _emit_implement_launcher_envelope(args=args, launcher_exit=result.exit_code),

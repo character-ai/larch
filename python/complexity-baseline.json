@@ -111,7 +111,7 @@
     "file": "larch/agents/_ci_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_cursor_implement_main",
-    "metric": 53
+    "metric": 54
   },
   {
     "file": "larch/agents/_claude_runner.py",
@@ -405,7 +405,7 @@
     "file": "larch/agents/_review_launcher.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_launch_cursor",
-    "metric": 56
+    "metric": 57
   },
   {
     "file": "larch/agents/_run_external.py",

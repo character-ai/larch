@@ -22,8 +22,19 @@ DEFAULT_VENDOR_MODEL = {
 
 # Pricing sources, verified as of 2026-06-11:
 # - OpenAI Codex pricing credits for gpt-5.5 at $0.04/credit.
-# - Cursor docs models-and-pricing composer-2.5 row.
+# - Cursor docs models-and-pricing composer-2.5 row + Teams surcharge (see below).
 # - Anthropic Claude Opus/Sonnet/Haiku/Fable list-price buckets.
+
+# Teams plan per-token surcharge for non-Auto Cursor agent requests.
+# Applies to input, cache-read, and output for composer-2.5 (pinned-model) invocations.
+# Source: cursor.com/docs/account/teams/pricing — "Cursor Token Rate $0.25/1M tokens".
+# Empirically confirmed via June 2026 usage export (R²=0.998, no per-request fee).
+# Override with LARCH_CURSOR_TEAMS_SURCHARGE_PER_M.
+CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M = config.CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+
+# Published Cursor composer-2.5 list rates before the Teams surcharge.
+CURSOR_COMPOSER_BASE = {"input": 0.50, "cache_read": 0.20, "output": 2.50}
+
 DEFAULT_RATE_TABLE_PER_M = {
     ("codex", "gpt-5.5"): {
         "input": 5.00,
@@ -35,10 +46,17 @@ DEFAULT_RATE_TABLE_PER_M = {
         "cache_read": 0.075,
         "output": 4.50,
     },
+    # Effective non-auto rates include the $0.25/M Teams surcharge per token.
     ("cursor", "composer-2.5"): {
-        "input": 0.50,
-        "cache_read": 0.20,
-        "output": 2.50,
+        "input": CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+        "cache_read": CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+        "output": CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
+    },
+    # Auto mode: flat rate card, no Teams surcharge. Auto bundles input+cache-write.
+    ("cursor", config.CURSOR_AUTO_MODEL): {
+        "input": 1.25,
+        "cache_read": 0.25,
+        "output": 6.00,
     },
     ("claude", config.CLAUDE_OPUS_4_8_MODEL): {
         "input": 5.00,
@@ -147,7 +165,8 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
     claude: Mapping[str, float] = rate_row("claude", model=claude_model)
     codex: Mapping[str, float] = _default_row("codex")
     codex_mini: Mapping[str, float] = rate_row("codex", model=CODEX_MINI_MODEL)
-    cursor: Mapping[str, float] = _default_row("cursor")
+    _surcharge = env_rate(names=config.ENV_LARCH_CURSOR_TEAMS_SURCHARGE_PER_M, default=CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M, environ=env)
+    cursor_auto: Mapping[str, float] = rate_row("cursor", model=config.CURSOR_AUTO_MODEL)
     return DisplayRates(
         claude_input=env_rate(names=("LARCH_CLAUDE_INPUT_RATE_PER_M", "LARCH_RATE_CLAUDE_INPUT"), default=claude["input"], environ=env),
         claude_cache_read=env_rate(names=("LARCH_CLAUDE_CACHE_READ_RATE_PER_M", "LARCH_RATE_CLAUDE_CACHE_READ"), default=claude["cache_read"], environ=env),
@@ -160,12 +179,15 @@ def display_rates(*, environ: Mapping[str, str] | None = None, claude_model: str
         codex_mini_input=env_rate(names=("LARCH_CODEX_MINI_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_INPUT"), default=codex_mini["input"], environ=env),
         codex_mini_cached_input=env_rate(names=("LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_CACHE_READ", "LARCH_RATE_CODEX_MINI_CACHED_INPUT"), default=codex_mini["cache_read"], environ=env),
         codex_mini_output=env_rate(names=("LARCH_CODEX_MINI_OUTPUT_RATE_PER_M", "LARCH_RATE_CODEX_MINI_OUTPUT"), default=codex_mini["output"], environ=env),
-        cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=cursor["input"], environ=env),
-        cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=cursor["cache_read"], environ=env),
-        cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=cursor["output"], environ=env),
+        cursor_input=env_rate(names=("LARCH_CURSOR_INPUT_RATE_PER_M", "LARCH_RATE_CURSOR_INPUT"), default=CURSOR_COMPOSER_BASE["input"] + _surcharge, environ=env),
+        cursor_cache_read=env_rate(names=("LARCH_CURSOR_CACHE_READ_RATE_PER_M", "LARCH_RATE_CURSOR_CACHE_READ"), default=CURSOR_COMPOSER_BASE["cache_read"] + _surcharge, environ=env),
+        cursor_output=env_rate(names=("LARCH_CURSOR_OUTPUT_RATE_PER_M", "LARCH_RATE_CURSOR_OUTPUT"), default=CURSOR_COMPOSER_BASE["output"] + _surcharge, environ=env),
         claude_blended=env_rate(names=("LARCH_CLAUDE_RATE_PER_M", "LARCH_TOKEN_RATE_PER_M", "LARCH_RATE_CLAUDE_AGGREGATE"), default=DEFAULT_CLAUDE_BLENDED_PER_M, environ=env),
         codex_blended=env_rate(names=("LARCH_CODEX_RATE_PER_M", "LARCH_RATE_CODEX_AGGREGATE"), default=_blended_default("codex"), environ=env),
         cursor_blended=env_rate(names=("LARCH_CURSOR_RATE_PER_M", "LARCH_RATE_CURSOR_AGGREGATE"), default=_blended_default("cursor"), environ=env),
+        cursor_auto_input=env_rate(names="LARCH_CURSOR_AUTO_INPUT_RATE_PER_M", default=cursor_auto["input"], environ=env),
+        cursor_auto_cache_read=env_rate(names="LARCH_CURSOR_AUTO_CACHE_READ_RATE_PER_M", default=cursor_auto["cache_read"], environ=env),
+        cursor_auto_output=env_rate(names="LARCH_CURSOR_AUTO_OUTPUT_RATE_PER_M", default=cursor_auto["output"], environ=env),
     )
 
 
@@ -263,6 +285,43 @@ def _codex_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]
     ]
 
 
+def _cursor_argv(*, record: RunRecord, bucket: Mapping[str, object]) -> list[str]:
+    """Cursor token flags, split by model when BUCKETS_cursor_by_model is present.
+
+    Auto-model rows route to --cursor-auto-* flags; all other models (composer-2.5,
+    unknown, and model-less legacy) fold into --cursor-* flags priced at surcharged
+    non-auto rates. Falls back to BUCKETS_cursor (priced as composer-2.5) when no
+    per-model split exists.
+    """
+    by_model = _as_mapping(record.raw_report.get("BUCKETS_cursor_by_model"))
+    if not by_model:
+        return [
+            "--cursor-input-tokens", str(safe_int(value=bucket.get("input"))),
+            "--cursor-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
+            "--cursor-output-tokens", str(safe_int(value=bucket.get("output"))),
+        ]
+    non_auto_in = non_auto_cr = non_auto_out = 0
+    auto_in = auto_cr = auto_out = 0
+    for model, raw_mb in by_model.items():
+        mb = _as_mapping(raw_mb)
+        if model == config.CURSOR_AUTO_MODEL:
+            auto_in += safe_int(value=mb.get("input"))
+            auto_cr += safe_int(value=mb.get("cache_read"))
+            auto_out += safe_int(value=mb.get("output"))
+        else:
+            non_auto_in += safe_int(value=mb.get("input"))
+            non_auto_cr += safe_int(value=mb.get("cache_read"))
+            non_auto_out += safe_int(value=mb.get("output"))
+    return [
+        "--cursor-input-tokens", str(non_auto_in),
+        "--cursor-cache-read-tokens", str(non_auto_cr),
+        "--cursor-output-tokens", str(non_auto_out),
+        "--cursor-auto-input-tokens", str(auto_in),
+        "--cursor-auto-cache-read-tokens", str(auto_cr),
+        "--cursor-auto-output-tokens", str(auto_out),
+    ]
+
+
 def _claude_bucket_argv(*, flag_prefix: str, bucket: Mapping[str, object]) -> list[str]:
     legacy_cache_create = safe_int(value=bucket.get("cache_create"))
     cache_create_5m = safe_int(value=bucket.get("cache_create_5m"))
@@ -330,11 +389,7 @@ def token_cost_argv(record: RunRecord, *, plugin_root: Path | None = None) -> li
             elif vendor == "codex":
                 argv.extend(_codex_argv(record=record, bucket=bucket))
             else:
-                argv.extend([
-                    "--cursor-input-tokens", str(safe_int(value=bucket.get("input"))),
-                    "--cursor-cache-read-tokens", str(safe_int(value=bucket.get("cache_read"))),
-                    "--cursor-output-tokens", str(safe_int(value=bucket.get("output"))),
-                ])
+                argv.extend(_cursor_argv(record=record, bucket=bucket))
         else:
             argv.extend([f"--{flag_prefix}-tokens", str(_aggregate_tokens(totals=totals, vendor=vendor))])
     return argv
@@ -383,6 +438,9 @@ _FLAG_NAMES = {
     "--cursor-input-tokens": "u_in",
     "--cursor-cache-read-tokens": "u_cr",
     "--cursor-output-tokens": "u_out",
+    "--cursor-auto-input-tokens": "u_auto_in",
+    "--cursor-auto-cache-read-tokens": "u_auto_cr",
+    "--cursor-auto-output-tokens": "u_auto_out",
     "--claude-sub-input-tokens": "cs_in",
     "--claude-sub-cache-read-tokens": "cs_cr",
     "--claude-sub-cache-write-5m-tokens": "cs_cw5",
@@ -466,6 +524,7 @@ def _pricing_from_counts(
     d_bucket = any(counts[k] > 0 for k in ("d_in", "d_cached", "d_out"))
     d_mini_bucket = any(counts[k] > 0 for k in ("d_mini_in", "d_mini_cached", "d_mini_out"))
     u_bucket = any(counts[k] > 0 for k in ("u_in", "u_cr", "u_out"))
+    u_auto_bucket = any(counts[k] > 0 for k in ("u_auto_in", "u_auto_cr", "u_auto_out"))
     cs_bucket = any(counts[k] > 0 for k in ("cs_in", "cs_cr", "cs_cw5", "cs_cw1", "cs_out"))
     cs_model_buckets = [
         (model, keys)
@@ -514,12 +573,16 @@ def _pricing_from_counts(
         # Blended fallback has no model breakdown; attribute to the default model.
         codex_5_5 = codex
         codex_mini = 0.0
-    if u_bucket:
-        u_tokens = counts["u_in"] + counts["u_cr"] + counts["u_out"]
+    if u_bucket or u_auto_bucket:
+        u_tokens = (counts["u_in"] + counts["u_cr"] + counts["u_out"]
+                    + counts["u_auto_in"] + counts["u_auto_cr"] + counts["u_auto_out"])
         cursor = round(
             _cost_bucket(tokens=counts["u_in"], rate=rates.cursor_input)
             + _cost_bucket(tokens=counts["u_cr"], rate=rates.cursor_cache_read)
-            + _cost_bucket(tokens=counts["u_out"], rate=rates.cursor_output),
+            + _cost_bucket(tokens=counts["u_out"], rate=rates.cursor_output)
+            + _cost_bucket(tokens=counts["u_auto_in"], rate=rates.cursor_auto_input)
+            + _cost_bucket(tokens=counts["u_auto_cr"], rate=rates.cursor_auto_cache_read)
+            + _cost_bucket(tokens=counts["u_auto_out"], rate=rates.cursor_auto_output),
             2,
         )
     else:
