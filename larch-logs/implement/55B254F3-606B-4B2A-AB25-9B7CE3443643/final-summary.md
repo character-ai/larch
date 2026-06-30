@@ -4,7 +4,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 00:43:14
-- **Cost**: 💰 TOTAL ~$14.32 — Claude $8.44, Codex-5.5 $3.05, Codex-mini $0.61, Cursor $2.11, Claude (subprocess) $0.11  |  Tokens: 23830k
+- **Cost**: 💰 TOTAL ~$16.48 — Claude $8.44, Codex-5.5 $3.05, Codex-mini $0.61, Cursor $4.27, Claude (subprocess) $0.11  |  Tokens: 23830k
 - **Issue**: N/A
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
