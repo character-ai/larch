@@ -1446,7 +1446,7 @@ def test_recovery_paths_git_mv_includes_source_path_and_commit_is_clean(repo: Pa
     assert "RENAMED.md" in paths
     result = subprocess.run(
         ["git", "-C", str(repo), "commit", "--only", "--pathspec-from-file", str(out), "--pathspec-file-nul", "-m", "mv"],
-        capture_output=True, text=True,
+        capture_output=True, text=True, check=False,
     )
     assert result.returncode == 0, result.stderr
     assert _git(repo, "diff", "--cached", "--name-only").stdout == ""
