@@ -142,7 +142,12 @@ def _parse_porcelain_z(path: Path) -> RecoveryParse:
         status = rec[:2].decode("ascii", "replace")
         rel = rec[3:].decode("utf-8", "surrogateescape")
         if ("R" in status or "C" in status) and idx < len(items):
+            old_item = items[idx]
             idx += 1
+            if old_item:
+                old_rel = old_item.decode("utf-8", "surrogateescape")
+                tuples.add(("D ", old_rel))
+                paths.add(old_rel)
         tuples.add((status, rel))
         paths.add(rel)
     return RecoveryParse(tuples, paths)
