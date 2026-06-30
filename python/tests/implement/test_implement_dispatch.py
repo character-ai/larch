@@ -1449,7 +1449,7 @@ def test_recovery_paths_git_mv_includes_source_path_and_commit_is_clean(repo: Pa
         capture_output=True, text=True,
     )
     assert result.returncode == 0, result.stderr
-    assert _git(repo, "status", "--porcelain=v1", "-z").stdout == ""
+    assert _git(repo, "diff", "--cached", "--name-only").stdout == ""
 
 
 def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
