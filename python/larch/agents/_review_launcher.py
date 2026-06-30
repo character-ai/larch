@@ -1023,7 +1023,7 @@ def _review_cursor_write_result(*, output: Path, result: str, obj: object) -> No
     _review_atomic_write_text(path=output, text=result)
 
 
-def _review_cursor_postprocess(*, output: Path, transient_attempt: int) -> None:
+def _review_cursor_postprocess(*, output: Path, transient_attempt: int, model: str = "") -> None:
     if not output.is_file() or output.stat().st_size == 0:
         return
     raw = output.read_bytes()
@@ -1041,7 +1041,7 @@ def _review_cursor_postprocess(*, output: Path, transient_attempt: int) -> None:
     if isinstance(result, str) and result:
         result = _review_cursor_normalize_no_issues(result)
         _review_cursor_write_result(output=output, result=result, obj=obj)
-    _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review")
+    _record_cursor_usage_from_output(output=json_sidecar, label="cursor_review", model=model)
     token_record = json_sidecar.with_suffix(json_sidecar.suffix + ".token-record")
     if token_record.is_file():
         token_record.replace(output.with_suffix(output.suffix + ".token-record"))
@@ -1165,8 +1165,9 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
         model_role=getattr(args, "model_role", "default"),
     )
     _review_run_test_trap_after_inner_done_if_enabled()
+    resolved_model = next((model_args[i + 1] for i, arg in enumerate(model_args) if arg == "--model" and i + 1 < len(model_args)), "")
     if result.exit_code == 0:
-        _review_cursor_postprocess(output=output, transient_attempt=transient_attempt)
+        _review_cursor_postprocess(output=output, transient_attempt=transient_attempt, model=resolved_model)
     _review_write_cursor_dirty_tree_from_baseline(output=output, baseline=baseline)
     _review_record_timing(vendor="cursor", task_kind=timing_kind, start_s=start, output=output, exit_code=result.exit_code)
     _promote_inner_done(output)

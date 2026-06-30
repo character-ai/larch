@@ -105,6 +105,9 @@ class DisplayRates:
     claude_blended: float
     codex_blended: float
     cursor_blended: float
+    cursor_auto_input: float = 0.0
+    cursor_auto_cache_read: float = 0.0
+    cursor_auto_output: float = 0.0
 
 
 def safe_int(*, value: object, default: int = 0) -> int:

@@ -15,9 +15,11 @@ from larch.core.proc import CommandResult
 from larch.report.report_tokens_cost import (
     CODEX_CURSOR_BLENDED_FLEET_MIX,
     CODEX_MINI_MODEL,
+    CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M,
     DEFAULT_CLAUDE_BLENDED_PER_M,
     DEFAULT_RATE_TABLE_PER_M,
     DEFAULT_VENDOR_MODEL,
+    _CURSOR_COMPOSER_BASE,
     display_rates,
     env_rate,
     price_run,
@@ -27,6 +29,7 @@ from larch.report.report_tokens_cost import (
     token_cost_from_args,
     token_cost_main,
 )
+from larch.core import config as larch_config
 from larch.report.report_tokens_models import RunRecord, VendorTotals
 
 
@@ -613,3 +616,127 @@ def test_token_cost_argv_without_by_model_prices_as_default() -> None:
     argv = token_cost_argv(record)
     assert "--codex-mini-input-tokens" not in argv
     assert argv[argv.index("--codex-input-tokens") + 1] == "100"
+
+
+def test_cursor_non_auto_rates_include_teams_surcharge() -> None:
+    row = DEFAULT_RATE_TABLE_PER_M[("cursor", "composer-2.5")]
+    assert row["input"] == _CURSOR_COMPOSER_BASE["input"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["cache_read"] == _CURSOR_COMPOSER_BASE["cache_read"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["output"] == _CURSOR_COMPOSER_BASE["output"] + CURSOR_TEAMS_TOKEN_RATE_SURCHARGE_PER_M
+    assert row["input"] == pytest.approx(0.75)
+    assert row["cache_read"] == pytest.approx(0.45)
+    assert row["output"] == pytest.approx(2.75)
+
+
+def test_cursor_auto_rate_row_no_surcharge() -> None:
+    row = DEFAULT_RATE_TABLE_PER_M[("cursor", larch_config.CURSOR_AUTO_MODEL)]
+    assert row["input"] == pytest.approx(1.25)
+    assert row["cache_read"] == pytest.approx(0.25)
+    assert row["output"] == pytest.approx(6.00)
+
+
+def test_display_rates_cursor_non_auto_default_is_surcharged() -> None:
+    rates = display_rates(environ={})
+    assert rates.cursor_input == pytest.approx(0.75)
+    assert rates.cursor_cache_read == pytest.approx(0.45)
+    assert rates.cursor_output == pytest.approx(2.75)
+
+
+def test_display_rates_cursor_auto_defaults() -> None:
+    rates = display_rates(environ={})
+    assert rates.cursor_auto_input == pytest.approx(1.25)
+    assert rates.cursor_auto_cache_read == pytest.approx(0.25)
+    assert rates.cursor_auto_output == pytest.approx(6.00)
+
+
+def test_cursor_teams_surcharge_env_override() -> None:
+    rates = display_rates(environ={"LARCH_CURSOR_TEAMS_SURCHARGE_PER_M": "0.50"})
+    assert rates.cursor_input == pytest.approx(_CURSOR_COMPOSER_BASE["input"] + 0.50)
+    assert rates.cursor_cache_read == pytest.approx(_CURSOR_COMPOSER_BASE["cache_read"] + 0.50)
+    assert rates.cursor_output == pytest.approx(_CURSOR_COMPOSER_BASE["output"] + 0.50)
+    # auto rates are unaffected by the non-auto surcharge override
+    assert rates.cursor_auto_input == pytest.approx(1.25)
+
+
+def test_cursor_auto_rate_env_overrides() -> None:
+    rates = display_rates(environ={"LARCH_CURSOR_AUTO_INPUT_RATE_PER_M": "2.00", "LARCH_CURSOR_AUTO_OUTPUT_RATE_PER_M": "8.00"})
+    assert rates.cursor_auto_input == pytest.approx(2.00)
+    assert rates.cursor_auto_output == pytest.approx(8.00)
+    assert rates.cursor_auto_cache_read == pytest.approx(0.25)
+
+
+def test_cursor_auto_tokens_price_at_auto_rates(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
+    rc = token_cost_main([
+        "--cursor-auto-input-tokens", "1000000",
+        "--cursor-auto-cache-read-tokens", "1000000",
+        "--cursor-auto-output-tokens", "1000000",
+    ])
+    assert rc == 0
+    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    expected = f"{rates.cursor_auto_input + rates.cursor_auto_cache_read + rates.cursor_auto_output:.2f}"
+    assert parsed["CURSOR_COST"] == expected
+
+
+def test_cursor_non_auto_tokens_price_at_surcharged_rates(capsys: pytest.CaptureFixture[str]) -> None:
+    rates = display_rates(environ={})
+    rc = token_cost_main([
+        "--cursor-input-tokens", "1000000",
+        "--cursor-cache-read-tokens", "1000000",
+        "--cursor-output-tokens", "1000000",
+    ])
+    assert rc == 0
+    parsed = dict(line.split("=", 1) for line in capsys.readouterr().out.strip().splitlines() if "=" in line)
+    expected = f"{rates.cursor_input + rates.cursor_cache_read + rates.cursor_output:.2f}"
+    assert parsed["CURSOR_COST"] == expected
+
+
+def test_token_cost_argv_splits_cursor_by_model() -> None:
+    report = {
+        "BUCKETS_cursor": {"input": 1_100_000, "cache_read": 2_200_000, "output": 100_000, "total": 3_400_000},
+        "BUCKETS_cursor_by_model": {
+            "composer-2.5": {"input": 1_000_000, "cache_read": 2_000_000, "output": 80_000, "total": 3_080_000},
+            "auto": {"input": 100_000, "cache_read": 200_000, "output": 20_000, "total": 320_000},
+        },
+    }
+    record = RunRecord(
+        number=0, title="t", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=3_400_000),
+        phase_rows=(), raw_report=report,
+    )
+    argv = token_cost_argv(record)
+    # non-auto routes to --cursor-*, auto routes to --cursor-auto-*
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "1000000"
+    assert argv[argv.index("--cursor-cache-read-tokens") + 1] == "2000000"
+    assert argv[argv.index("--cursor-output-tokens") + 1] == "80000"
+    assert argv[argv.index("--cursor-auto-input-tokens") + 1] == "100000"
+    assert argv[argv.index("--cursor-auto-cache-read-tokens") + 1] == "200000"
+    assert argv[argv.index("--cursor-auto-output-tokens") + 1] == "20000"
+    # end-to-end: the two mode costs price differently
+    kv = dict(line.split("=", 1) for line in token_cost_from_args(argv[4:]).strip().splitlines())
+    rates = display_rates(environ={})
+    expected_non_auto = round(
+        (1_000_000 / 1e6) * rates.cursor_input
+        + (2_000_000 / 1e6) * rates.cursor_cache_read
+        + (80_000 / 1e6) * rates.cursor_output,
+        2,
+    )
+    expected_auto = round(
+        (100_000 / 1e6) * rates.cursor_auto_input
+        + (200_000 / 1e6) * rates.cursor_auto_cache_read
+        + (20_000 / 1e6) * rates.cursor_auto_output,
+        2,
+    )
+    assert abs(float(kv["CURSOR_COST"]) - round(expected_non_auto + expected_auto, 2)) < 0.01
+
+
+def test_token_cost_argv_cursor_without_by_model_falls_back_to_sum_bucket() -> None:
+    report = {"BUCKETS_cursor": {"input": 100, "cache_read": 200, "output": 30, "total": 330}}
+    record = RunRecord(
+        number=0, title="t", url="", started_at="", closed_at="", workflow="implement",
+        claude=VendorTotals(), codex=VendorTotals(), cursor=VendorTotals(total=330),
+        phase_rows=(), raw_report=report,
+    )
+    argv = token_cost_argv(record)
+    assert "--cursor-auto-input-tokens" not in argv
+    assert argv[argv.index("--cursor-input-tokens") + 1] == "100"
