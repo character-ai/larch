@@ -36,7 +36,7 @@ Larch uses [pre-commit](https://pre-commit.com/) as the source of truth for lint
 
 `make py-lint` enforces ruff `C901`, `PLR0911`, `PLR0912`, `PLR0913`, and `PLR0915` as hard errors for new `python/` production code. Current production debt is grandfathered in `python/ruff.toml` per-file ignores generated from a live ruff baseline, not from a checked-in static inventory in this document.
 
-Production per-file ignore entries suppress the listed complexity codes for the entire module until cleanup removes the entry. They are cleanup bookkeeping, not per-function budgets inside grandfathered files. The primary ratchet for growth inside already-grandfathered modules is `python/cli.py lint complexity-baseline`, which runs an audit-config ruff scan and compares it with `python/complexity-baseline.json`.
+Production per-file ignore entries suppress only the listed complexity codes for the matched module until cleanup removes the entry. They are cleanup bookkeeping, not per-function budgets inside grandfathered files. After package splits, production complexity grandfathering must stay per-code tight so a cleaned file or sibling package does not inherit stale suppressions. The primary ratchet for growth inside already-grandfathered modules is `python/cli.py lint complexity-baseline`, which runs an audit-config ruff scan and compares it with `python/complexity-baseline.json`.
 
 The baseline audit fails when it finds either of these regressions:
 
@@ -47,7 +47,9 @@ The audit treats ruff exit `0` and `1` as success when JSON parses, because exit
 
 `python/complexity-baseline.json` is a sorted top-level JSON array of `{file, code, qualified_symbol, metric}` records. `qualified_symbol` is AST-derived and class-qualified when applicable because PLR rules do not include function names in messages, and bare names are ambiguous within a module. `file` paths are normalized without leading `./` or `python/` prefixes so audit runs from `cwd=python/` do not create duplicate keys. Baseline keys omit line numbers so innocent line shifts above a grandfathered function do not require rebaselining. Renaming or moving a function changes `qualified_symbol` and requires intentional baseline cleanup.
 
-The combined mechanism primarily blocks new production modules through per-file grandfather bookkeeping, and blocks new complexity anywhere through the baseline manifest. Tests are exempt through the existing `"test_*.py"` block. Pytest harness modules outside that glob, `conftest.py`, `test_support.py`, and `review_test_support.py`, are exempt through dedicated per-file ignore entries with the same five codes.
+The combined mechanism primarily blocks new production modules through per-file grandfather bookkeeping, and blocks new complexity anywhere through the baseline manifest. `make regen-complexity-baseline` is the source of truth for live baseline rows. `python/ruff.toml` production per-file ignores keep only complexity codes still present in the regenerated baseline for the matched production path, while unrelated suppressions stay intact.
+
+Tests are exempt through the existing `"test_*.py"` block. Pytest harness modules outside that glob, `conftest.py`, `test_support.py`, and `review_test_support.py`, are exempt through dedicated per-file ignore entries with the same five codes. These test-facing exemptions are permanent and are not part of production split cleanup.
 
 When a production file is simplified, remove matching per-file ignore codes from `python/ruff.toml`, remove the corresponding `(file, code, qualified_symbol)` rows from `python/complexity-baseline.json`, and remove the whole per-file entry when no ignored codes remain.
 
