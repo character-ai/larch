@@ -492,24 +492,6 @@
     "metric": 59
   },
   {
-    "file": "larch/agents/agent_voters.py",
-    "code": "C901",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 15
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
-    "code": "PLR0912",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 16
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
-    "code": "PLR0915",
-    "qualified_symbol": "dispatch_voters",
-    "metric": 70
-  },
-  {
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "_apply_collector_block",
@@ -5247,7 +5229,7 @@
     "file": "larch/review/plan_review_round.py",
     "code": "C901",
     "qualified_symbol": "write_reviewer_status_tsv",
-    "metric": 13
+    "metric": 11
   },
   {
     "file": "larch/review/plan_review_round.py",
@@ -5266,12 +5248,6 @@
     "code": "PLR0912",
     "qualified_symbol": "execute_round",
     "metric": 33
-  },
-  {
-    "file": "larch/review/plan_review_round.py",
-    "code": "PLR0912",
-    "qualified_symbol": "write_reviewer_status_tsv",
-    "metric": 14
   },
   {
     "file": "larch/review/plan_review_round.py",

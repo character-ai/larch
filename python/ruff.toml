@@ -130,19 +130,7 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"agent_voters.py" = [
-    "C901",
-    "PLR0912",
-    "PLR0915",
-]
 "agent_waterfall.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
-]
-"_types.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
@@ -152,16 +140,7 @@ ignore = [
 "_launch_failure.py" = [
     "C901",
     "PLR0911",
-    "PLR0912",
     "PLR0913",
-    "PLR0915",
-]
-"_failure_diag.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "_run_external.py" = [
     "C901",
@@ -175,7 +154,6 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0913",
-    "PLR0915",
 ]
 "_drafter.py" = [
     "C901",
@@ -188,7 +166,6 @@ ignore = [
     "C901",
     "PLR0911",
     "PLR0912",
-    "PLR0913",
     "PLR0915",
 ]
 "_review_launcher.py" = [
@@ -219,7 +196,12 @@ ignore = [
     "PLR0913",
     "PLR0915",
 ]
-"_report.py" = [
+"larch/issue/_report.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0915",
+]
+"larch/state/_report.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
@@ -255,16 +237,9 @@ ignore = [
 "checks_run_relevant.py" = [
     "C901",
     "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "checks_lint_fix.py" = [
     "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "ci.py" = [
     "C901",
@@ -305,7 +280,7 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"cli.py" = [
+"larch/cli.py" = [
     "C901",
     "PLR0911",
 ]
@@ -347,16 +322,9 @@ ignore = [
     "PLR0915",
 ]
 "design_argv.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0915",
     "S106",
 ]
 "design_core.py" = [
-    "C901",
-    "PLR0911",
-    "PLR0912",
     "PLR0913",
     "PLR0915",
 ]
@@ -369,30 +337,22 @@ ignore = [
 ]
 "design_session.py" = [
     "C901",
-    "PLR0911",
     "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "design_step0.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
-    "PLR0913",
     "PLR0915",
 ]
 "design_step0_env.py" = [
     "C901",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
     "PLR0915",
 ]
 "design_step1.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
-    "PLR0913",
     "PLR0915",
 ]
 "design_step2b.py" = [
@@ -400,14 +360,10 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0913",
-    "PLR0915",
 ]
 "design_step5b.py" = [
     "C901",
     "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "design_step5c.py" = [
     "C901",
@@ -419,9 +375,6 @@ ignore = [
 "design_step6.py" = [
     "C901",
     "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "design_terminal.py" = [
     "C901",
@@ -626,8 +579,6 @@ ignore = [
     "PLR0915",
 ]
 "plan_review_panel.py" = [
-    "C901",
-    "PLR0912",
     "PLR0913",
     "PLR0915",
 ]
@@ -726,10 +677,6 @@ ignore = [
 "report_tokens_render.py" = [
     "PLR0913",
 ]
-"report_tokens_scan.py" = [
-    "C901",
-    "PLR0911",
-]
 "research.py" = [
     "C901",
     "PLR0911",
@@ -757,31 +704,19 @@ ignore = [
     "PLR0911",
     "PLR0912",
     "PLR0913",
-    "PLR0915",
 ]
 "_raf_util.py" = [
-    "C901",
     "F401",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "batch_report.py" = [
     "C901",
     "F401",
-    "PLR0911",
-    "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "coder_runner.py" = [
-    "C901",
     "F401",
     "PLR0911",
     "PLR0912",
     "PLR0913",
-    "PLR0915",
 ]
 "review_and_fix.py" = [
     "C901",
@@ -794,7 +729,6 @@ ignore = [
 "round_runner.py" = [
     "C901",
     "F401",
-    "PLR0911",
     "PLR0912",
     "PLR0913",
     "PLR0915",
@@ -802,10 +736,7 @@ ignore = [
 "snapshot.py" = [
     "C901",
     "F401",
-    "PLR0911",
     "PLR0912",
-    "PLR0913",
-    "PLR0915",
 ]
 "review_dispatch.py" = [
     "C901",
@@ -910,7 +841,6 @@ ignore = [
 ]
 "ship_pr.py" = [
     "PLR0913",
-    "PLR0915",
 ]
 "ship_merge.py" = [
     "PLR0913",
@@ -954,7 +884,6 @@ ignore = [
     "C901",
     "PLR0911",
     "PLR0912",
-    "PLR0913",
     "PLR0915",
 ]
 "step_7a.py" = [
