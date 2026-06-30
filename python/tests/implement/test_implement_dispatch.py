@@ -1416,7 +1416,40 @@ def test_step2_dispatch_rename_recovery_uses_destination_path(repo: Path, tmp_pa
     out = capsys.readouterr().out
     _assert_recovery_envelope(out, "codex")
     recovery_file = Path(_kv_value(out, "RECOVERY_PATHS_FILE"))
-    assert _recovery_paths_from_file(recovery_file) == ["RENAMED.md"]
+    assert _recovery_paths_from_file(recovery_file) == ["README.md", "RENAMED.md"]
+
+
+def test_recovery_paths_git_mv_includes_source_path_and_commit_is_clean(repo: Path) -> None:
+    tmp = repo / ".tmp-impl"
+    tmp.mkdir()
+    pre = tmp / "pre.nul"
+    post = tmp / "post.nul"
+    digests = tmp / "digests.txt"
+    out = tmp / "out.nul"
+    pre.write_bytes(_git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout.encode())
+    digests.write_text("", encoding="utf-8")
+    _git(repo, "mv", "README.md", "RENAMED.md")
+    post.write_bytes(_git(repo, "status", "--porcelain=v1", "-z", "--untracked-files=all").stdout.encode())
+    ok = implement_dispatch.compute_recovery_paths(
+        repo_root=repo,
+        tmpdir=tmp,
+        porcelain=implement_dispatch.RecoveryPorcelainInputs(
+            prelaunch_porcelain=pre,
+            postlaunch_porcelain=post,
+            prelaunch_digests=digests,
+        ),
+        out_file=out,
+    )
+    assert ok is True
+    paths = _recovery_paths_from_file(out)
+    assert "README.md" in paths
+    assert "RENAMED.md" in paths
+    result = subprocess.run(
+        ["git", "-C", str(repo), "commit", "--only", "--pathspec-from-file", str(out), "--pathspec-file-nul", "-m", "mv"],
+        capture_output=True, text=True, check=False,
+    )
+    assert result.returncode == 0, result.stderr
+    assert _git(repo, "diff", "--cached", "--name-only").stdout == ""
 
 
 def test_step2_dispatch_baseline_persists_across_answers_resume(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
