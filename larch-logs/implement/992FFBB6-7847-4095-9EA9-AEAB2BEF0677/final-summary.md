@@ -2,15 +2,15 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$6.27 — Claude $0.58, Codex-5.5 $1.20, Codex-mini $1.31, Cursor $2.48, Claude (subprocess) $0.70  |  Tokens: 14015k
+- **Duration**: 02:39:15
+- **Cost**: 💰 TOTAL ~$64.79 — Claude $59.10, Codex-5.5 $1.20, Codex-mini $1.31, Cursor $2.48, Claude (subprocess) $0.70  |  Tokens: 103745k
 - **Issue**: #5891 — https://github.com/character-ai/larch/issues/5891
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: N/A
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 1
+- **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/992FFBB6-7847-4095-9EA9-AEAB2BEF0677/`
 - **Main agent model**: claude-sonnet-5
@@ -20,10 +20,9 @@
 <!-- larch:run-summary v=1 -->
 
 ## Exec Issues and Warnings
-Exec Issues (1):
-  1. Step step4 — python/cli.py implement commit failed (exit 1)
+Exec Issues (0):
 Warnings (1):
-  1. Step 4: The `implementation-commit-failed` Tool Failure above was benign, not a real defect: main Claude had already committed the pending changes directly (`git commit`, sha `b494dfae7`) to fix a...
+  1. Step 7a (architectural guidelines): One deliberate deviation identified — `_abandoned_checks_marker_stall_step` (`python/larch/state/_tokens.py`) treats any `OSError` other than `ProcessLookupError...
 
 ## Review Phase Detail
 
@@ -62,3 +61,7 @@ cursor/apply             │                                                 █
 2. codex/testing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
