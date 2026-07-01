@@ -1,0 +1,1 @@
+1	after markdown shrinks, `make lint-skill-closure-growth` alone is one-directional and can pass against a stale higher baseline. without regen plus a committed-baseline freshness check (`test_committed_baseline_matches_fresh_scan`), local validation can look green while ci fails because `python/skill-closure-baseline.json` was not updated.

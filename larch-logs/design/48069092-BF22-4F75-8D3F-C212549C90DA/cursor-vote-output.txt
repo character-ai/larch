@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of round-1 rejected FINDING_2; harness feedback loop and literal-preservation edge case already cover the risk without plan anchor-layout tables

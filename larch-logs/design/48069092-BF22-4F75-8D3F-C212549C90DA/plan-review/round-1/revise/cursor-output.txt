@@ -1,0 +1,124 @@
+I'll verify the testing commands and baseline workflow in the repo so the revised plan matches what actually exists.
+## Plan
+
+## Approach
+
+Use the approved outline as binding scope. `approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection only.
+
+Make a narrow prose-density pass. Do not change behavior, headings, sentinel names, timeout literals, env-file names, probe targets, or quoted/backticked strings.
+
+Target roughly 15% fewer estimated tokens in `skills/shared/design-background-wait.md`, using `bytes/4` as the practical local estimate. Current file is 58 lines and about 2,217 estimated tokens.
+
+## Files to modify/create
+
+### UPDATED: skills/shared/design-background-wait.md
+
+Compress prose in place.
+
+Keep these headings byte-identical:
+
+- `## Immediate-background wait rule`
+- `## Step 3 task notification boundary`
+- `## Step 3 post-notification sequence`
+- `## Step 4 post-notification sequence`
+- `## Update Triggers`
+
+Preserve the current section structure. Do not merge, split, remove, or rename headings.
+
+Preserve every protected literal needed by the harnesses, including:
+
+- `Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.`
+- `Foreground terminal-sentinel probe: after a premature notification with non-empty task output`
+- `Foreground probes are non-sleeping `[ -f … ]` or `test -f …` checks only.`
+- `prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment`
+- `prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment`
+- `the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion`
+- `end the turn without probing`
+- fallback text: `**⚠ Reviewer status table omitted: pre-rendered table not found.**`
+
+Safe compression moves:
+
+- Cut repeated rationale after each rule has already stated the action.
+- Merge adjacent sentences that repeat the same guard.
+- Shorten explanatory clauses around `#5240`, `#5418`, `#5478`, and `#5639` without changing the rule.
+- Keep the parameter list and Step 3 numbered sequence recognizable.
+- Keep all backticked paths, sentinels, env vars, and command fragments byte-identical unless they are clearly non-contract prose.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate after the markdown edit with:
+
+```bash
+make regen-skill-closure-baseline
+```
+
+Do not hand-edit the JSON. The expected change is a lower `/design` closure token baseline. `/implement` rows should remain unchanged unless the generator rewrites formatting without semantic changes.
+
+Baseline refresh is mandatory after the prose shrink, not optional. `python/tests/lint/test_lint_skill_closure_growth.py::test_committed_baseline_matches_fresh_scan` requires the committed baseline to byte-match a fresh scan. `make lint-skill-closure-growth` is one-directional (growth-only) and can pass locally while CI fails if the baseline was not regenerated and committed.
+
+## Edge cases
+
+- A prose edit can delete a literal that `scripts/test-design-structure.sh` or `scripts/test-implement-anti-polling-rule.sh` greps exactly. Keep those literals verbatim.
+- Over-compression can weaken the anti-halt semantics. Keep all action rules explicit, especially empty-output notification handling, one-probe recovery, duplicate notification fingerprint handling, and the no-background-waiter ban.
+- Regenerating the closure baseline before the markdown edit, or hand-editing it, can hide the intended token reduction or create a stale ratchet row.
+- Running `make lint-skill-closure-growth` alone after a shrink can look green while `test_committed_baseline_matches_fresh_scan` still fails in CI because the committed baseline is stale.
+- Wrapping long lines can inflate diff size. Prefer targeted sentence edits over whole-file reflow.
+
+## Failure modes
+
+- **Harness failure from missing literal**: restore the exact missing string, then compress nearby non-contract prose instead.
+- **Closure ratchet failure**: rerun `make regen-skill-closure-baseline`, then rerun the ratchet. If it still fails, inspect the generated design row for unexpected growth.
+- **Baseline freshness failure**: prose shrink lowers `closure_estimated_tokens` while one-directional `lint-skill-closure-growth` still passes. CI fails on `test_committed_baseline_matches_fresh_scan` until regen output is committed. Fix by rerunning `make regen-skill-closure-baseline`, committing `python/skill-closure-baseline.json`, then rerunning `make test-lint-skill-closure-growth`.
+- **Token reduction too small**: make another local pass on repeated explanatory clauses only. Do not alter rule substance or protected literals to chase the percentage.
+- **Unexpected consumer regression risk**: stop and inspect all direct references to `skills/shared/design-background-wait.md`; do not edit consumers because the approved scope excludes them.
+
+## Testing strategy
+
+Run focused checks in this order:
+
+1. After the markdown edit, run harness guards:
+
+```bash
+make test-design-structure
+make test-implement-anti-polling-rule
+```
+
+2. Regenerate and commit the closure baseline:
+
+```bash
+make regen-skill-closure-baseline
+```
+
+Commit `python/skill-closure-baseline.json` before closure validation. Do not skip this step on shrink; the freshness gate is not optional.
+
+3. Verify committed baseline matches a fresh scan (CI parity):
+
+```bash
+make test-lint-skill-closure-growth
+```
+
+Equivalent:
+
+```bash
+python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q
+```
+
+This exercises `test_committed_baseline_matches_fresh_scan`, which `make lint-skill-closure-growth` alone does not cover on shrink.
+
+4. Rerun the one-directional ratchet and inspect the report:
+
+```bash
+make lint-skill-closure-growth
+python3 python/cli.py skill-closure report
+```
+
+Use the report to compare the new `/design` closure token count with the old baseline. Confirm the reduction comes from `skills/shared/design-background-wait.md`.
+
+Optionally run the relevant-checks dispatcher as a final local sweep:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+mechanical_churn: false
+diff_lines: 95

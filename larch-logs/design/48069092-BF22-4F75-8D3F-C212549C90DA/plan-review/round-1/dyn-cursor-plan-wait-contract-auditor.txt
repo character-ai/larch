@@ -1,0 +1,29 @@
+Reviewing the plan against the current contract file and harness grep targets.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/shared/design-background-wait.md:25-31	Protected-literal list omits harness-exact strings the anti-polling harness greps	`scripts/test-implement-anti-polling-rule.sh` and `scripts/test-design-structure.sh` require verbatim `NEVER poll `.step3-review-result.env` with a sleep loop.` and `NEVER launch a background recovery waiter` (lines 41, 216-226, 497-499; structure checks at 200-205). The plan's explicit protected list omits both, and `call no tool` is only implied via a nearby context check (`check_context` at 230-239). A prose pass that follows only the eight listed literals can delete or paraphrase these and still look compliant.	Add those three harness literals to the protected list (same block as the Step 3 recovery note), and state that `test-implement-anti-polling-rule.sh` context checks require `When task output is empty` and `call no tool` to stay within two lines of `After the background launch ack`.
+1	in_scope	important	correctness	skills/shared/design-background-wait.md:29-31	Safe-compression merge guidance conflicts with dual-phrasing waiter ban	The plan allows merging adjacent sentences that repeat the same guard. Lines 29 and 31 both ban background recovery waiters but use different wording: harness needs exact `NEVER launch a background recovery waiter` (line 29); line 31 uses `Do not launch a background recovery waiter such as`. Merging into one `Do not launch…` sentence drops the harness literal and fails CI even though semantics look preserved.	Add an explicit carve-out: when two sentences repeat the same guard, keep every harness-grepped exact string even if redundant; do not collapse `NEVER launch a background recovery waiter` into the `Do not launch a background recovery waiter such as…` variant.
+
+## Findings
+
+### 1. correctness — Incomplete protected-literal inventory (`skills/shared/design-background-wait.md:25-31`)
+
+The plan lists eight protected literals and says harness-needed strings are included, but `scripts/test-implement-anti-polling-rule.sh` also exact-greps:
+
+- `NEVER poll `.step3-review-result.env` with a sleep loop.` (line 25; harness `STEP3_LITERAL` at script line 41)
+- `NEVER launch a background recovery waiter` (line 29; harness lines 225-226, 497-499)
+
+`call no tool` is required by a `check_context` probe near `After the background launch ack` (script lines 230-239) but is not named in the protected list.
+
+**Suggested revision:** Extend the protected-literal block with those three strings and note the two-line proximity requirement for empty-output / no-tool phrases.
+
+### 2. correctness — Merge guidance vs. dual waiter-ban phrasing (`skills/shared/design-background-wait.md:29-31`)
+
+The safe-compression bullet to merge repeated guards is risky here. The file intentionally uses two phrasings for the same rule; only the `NEVER launch…` form is harness-pinned.
+
+**Suggested revision:** Add a merge carve-out: preserve every harness-exact substring even when redundant with a paraphrase nearby.
+
+---
+
+**Assessment:** The plan is otherwise well aligned with minimum-change scope: one markdown file, mechanical baseline regen, focused harness checks, and explicit preservation of headings, sentinels, one-probe recovery, empty-notification handling, and #5418 duplicate-notification semantics (edge cases, not harness-grepped). No consumer edits. Baseline regen after the markdown edit is correct.
+
+**[OUT_OF_SCOPE]** `python/cli.py skill-closure report` prints only per-skill closure aggregates, not per-file token counts (`python/larch/lint/lint_skill_closure_growth.py:468-481`), so the testing step to confirm attribution via the report alone is not executable; file-level `(len+3)//4` from the approach section is the workable check.
