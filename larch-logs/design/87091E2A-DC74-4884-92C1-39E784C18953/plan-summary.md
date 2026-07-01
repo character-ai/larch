@@ -1,0 +1,1 @@
+Update the skill closure scanner so conditional design references are reported separately from eager closure metrics. Keep the baseline schema unchanged, regenerate only the design eager baseline, and cover the new classification/reporting paths in existing Python tests.
