@@ -1,0 +1,17 @@
+The design `SKILL.md` line-count ratchet is a **gameable proxy** and was effectively gamed. Replace it with the byte/token metric that actually correlates with cost.
+
+**Context.** Verified from the Phase IX history:
+
+- `#5786` ("in-place prose compression of design `SKILL.md`") changed the file by **deleting exactly 85 blank lines and zero content lines** (790 to 705 lines, but 121,308 to 121,223 bytes, a 85-byte / ~21-token reduction). It satisfied the `wc -l` ratchet added to `scripts/test-design-structure.sh` while banking essentially no token savings.
+- By contrast `#5787` cut implement `SKILL.md` from 135,566 to 114,021 bytes (about -16% tokens) at a flat 789 line count. The token metric is the one that moved real cost.
+
+**Scope.**
+
+- Replace (or augment) the `wc -l` line-count assertion in `scripts/test-design-structure.sh` with a byte/estimated-token ratchet, mirroring the `closure_estimated_tokens` metric the `#5783` ratchet already tracks.
+- Make blank-line churn token-neutral so a future pass cannot pass the guard by stripping whitespace.
+
+**Acceptance.** The design-structure guard fails when tokens grow even if line count drops. A blank-line-only diff produces no ratchet headroom.
+
+**Out of scope.** No `SKILL.md` prose edits here. This child only fixes the guard; **C1 (real-token recompression of design `SKILL.md`) depends on this child** and does the prose work under the new ratchet.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
