@@ -639,6 +639,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("RUN_ID", "ENV")
     monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("self_implement", "true")
     monkeypatch.setenv("coder", "cursor")
 
     def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
@@ -668,6 +669,8 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
             "false",
             "--self-review-requested",
             "false",
+            "--self-implement-requested",
+            "false",
             "--coder",
             "codex",
         ],
@@ -682,6 +685,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     assert opts.run_id == "ARG"
     assert opts.force_requested == "false"
     assert opts.self_review_requested == "false"
+    assert opts.self_implement_requested == "false"
     assert opts.coder_opt == "codex"
 
 
@@ -695,6 +699,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     monkeypatch.setenv("RUN_ID", "ENV")
     monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("self_implement", "true")
     monkeypatch.setenv("coder", "cursor")
 
     def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
@@ -713,6 +718,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     assert opts.run_id == "ENV"
     assert opts.force_requested == "true"
     assert opts.self_review_requested == "true"
+    assert opts.self_implement_requested == "true"
     assert opts.coder_opt == "cursor"
 
 
