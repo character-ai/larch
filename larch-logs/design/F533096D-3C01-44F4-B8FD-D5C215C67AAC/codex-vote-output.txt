@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the plan already threads the needed inputs in code; the extra checks-repair-loop/doc binding is outside the anchored scope and not necessary for the SIGTERM fix.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the unknown-exit fallback is only relevant if exit-code plumbing fails, so this scope reduction is not necessary to ship the anchored SIGTERM fix.
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false

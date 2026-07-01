@@ -1,0 +1,7 @@
+I'm unable to read the ballot file. The system is blocking file reads with:
+
+> An immediate-background wait is active. End the turn and wait for `<task-notification>`; do not poll progress artifacts.
+
+This appears to be a larch harness guard preventing access to session artifacts while a background task is still running. The ballot at `<TMPDIR>/ballot.txt` is inaccessible until that background task completes and fires its notification.
+
+Please wait for the `<task-notification>` to arrive and then re-invoke me — I'll read the ballot and cast all votes at that point.

@@ -1,0 +1,110 @@
+## Summary
+
+Two compounding defects cause `checks-child-failed EXIT_CODE=-15` (SIGTERM from the checks wrapper timing out) to exit the run as a terminal unrecoverable failure instead of a retryable transient event. First, the stall recovery Step 18a procedure does not pass `--in-memory-stall-tracking` to `stall-recovery classify`, so `any_stall=False` and the classifier returns `no-stall` without even inspecting the bail reason. Second, `_classify_text` has a blanket early-return for `step in {"3", "6"}` that classifies every step-3 stall as `contract-failure / step-contract` regardless of whether the bail reason signals a timeout (SIGTERM), making the run terminal even when the checks genuinely pass standalone.
+
+## Original report
+
+stall-recovery classify returns FAILURE_CLASS=unrecoverable for checks-child-failed EXIT_CODE=-15 (SIGTERM) instead of transient-infra, preventing automatic retry when the test runner is killed by timeout
+
+## Reproduction scenario
+
+1. Run `/implement` on a large PR where the test suite takes >450 seconds (e.g. a 4-module split touching 4,000+ tests).
+2. The `checks-commit-route --checks-site step3` subprocess is killed by SIGTERM before the test runner finishes.
+3. `checks-repair-loop` sees no `REDACTED_LOG_FILE` → routes to stall with `STALL_TRACKING=true` in memory.
+4. Step 18a orchestrator calls `stall-recovery classify --stall-step 3 --phase checks --bail-reason checks-child-failed --exit-code -15` — without `--in-memory-stall-tracking true`.
+5. Result: `MATCHED_CLASSIFIER_PATTERN=no-stall FAILURE_CLASS=unrecoverable RESUME_HINT=none` → terminal.
+6. Even if `--in-memory-stall-tracking true` is passed, `_classify_text` returns `("contract-failure", "none", "step-contract")` at line 125-126 for any step-3 stall.
+
+Standalone `python/cli.py checks run-relevant --site step3` in the same tree: `RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full`. The checks pass; only the wrapper timed out.
+
+## Expected behavior
+
+`checks-child-failed` with a negative exit code (SIGTERM) at step 3 should be classified as `transient-infra` with a retryable resume hint (e.g. `step3-checks`), so the stall recovery procedure retries the checks rather than terminating the run.
+
+At minimum, the `no-stall` path should not fire when `STALL_TRACKING=true` was set in memory; the stall-recovery Step 18a procedure should pass `--in-memory-stall-tracking "${STALL_TRACKING:-false}"`.
+
+## Observed behavior
+
+- Bug 1 (immediate): `stall-recovery classify` receives no `--in-memory-stall-tracking` flag. `any_stall=False`. Returns `MATCHED_CLASSIFIER_PATTERN=no-stall FAILURE_CLASS=unrecoverable` without evaluating bail reason.
+- Bug 2 (structural): Even with `--in-memory-stall-tracking true`, `_classify_text` line 125-126 returns `("contract-failure", "none", "step-contract")` for any step 3 bail, including SIGTERM timeouts.
+- Combined: run terminates as a filed stall issue rather than retrying.
+
+## Root cause analysis
+
+**Bug 1 — missing `--in-memory-stall-tracking` argument** (stall-recovery.md / orchestrator):
+
+The stall-recovery.md Step 3 directive says "Classify. Pass any validated BAIL_FAILURE_DETAIL_LOG." It does not instruct the orchestrator to pass `--in-memory-stall-tracking`. But `any_stall` at `_classify.py:211` requires at least one truthy source. When STALL_TRACKING=true is only in-memory (not yet written to disk state files), all disk sources read `false`, so `any_stall=False` → line 218 returns `no-stall` unconditionally.
+
+**Bug 2 — blanket step-3 contract-failure** (`python/larch/state/_classify.py:125-126`):
+
+```python
+if step in {"3", "6"}:
+    return "contract-failure", "none", "step-contract"
+```
+
+This fires before any bail-reason inspection. `checks-child-failed EXIT_CODE=-15` (SIGTERM) is a transient infrastructure event, not a step-contract violation. A step-contract violation means the orchestrator or wrapper misbehaved; a SIGTERM means the operating system killed the process due to timeout. They warrant different treatment.
+
+Additionally, `_resume_hint_for` at line 100-101 returns `"none"` for `safe_step in {"3", "6"}` even for classes like `transient-infra`, meaning there is currently no retry path for step-3 transient failures at all.
+
+## Evidence
+
+- `python/larch/state/_classify.py:125-126`: blanket step-3 → contract-failure.
+- `python/larch/state/_classify.py:100-101`: resume hint for step 3 always `none`.
+- `python/larch/state/_classify.py:211-218`: `any_stall` gate — `no-stall` fires when all four tracking sources are false/empty.
+- `python/cli.py stall-recovery classify --help`: confirms `--in-memory-stall-tracking` flag exists but is not mentioned in stall-recovery.md's Step 3.
+- stall-recovery.md step 3: "Classify. Pass any validated BAIL_FAILURE_DETAIL_LOG." — no mention of `--in-memory-stall-tracking`.
+- Observed classifier output with missing flag: `MATCHED_CLASSIFIER_PATTERN=no-stall FAILURE_CLASS=unrecoverable STALL_TRACKING=false`.
+- Standalone checks: `RELEVANT_CHECKS_OK=true SITE=step3 COVERAGE=full` — confirms the code is correct and this is a pure timeout issue.
+
+## Affected files
+
+- `python/larch/state/_classify.py` — lines 121-164 (`_classify_text`), lines 96-118 (`_resume_hint_for`), lines 217-220 (`any_stall` gate).
+- `skills/implement/references/stall-recovery.md` — Step 3 should document passing `--in-memory-stall-tracking "${STALL_TRACKING:-false}"`.
+
+## Suggested fix(es)
+
+1. **In stall-recovery.md Step 3**: update the `stall-recovery classify` invocation template to always pass `--in-memory-stall-tracking "${STALL_TRACKING:-false}"`.
+
+2. **In `_classify_text`** (before the step 3/6 check at line 125): add a bail-reason / exit-code guard:
+   ```python
+   if bail == "checks-child-failed" and (exit_code.startswith("-") or exit_code == "unknown"):
+       return "transient-infra", "step3-checks", "checks-sigterm"
+   ```
+   This intercepts SIGTERM kills before the blanket `step-contract` return.
+
+3. **In `_resume_hint_for`**: add a `step3-checks` branch that re-routes to an orchestrator retry of Step 3 (similar to `step8-shippr` for ship retries). The retry cap should be 1-2 attempts to avoid infinite loops on persistent slow environments.
+
+## Open questions
+
+- Should step-3 and step-6 transient retries be capped differently from step-8 retries?
+- Is there a reason `step-3` was excluded from `_resume_hint_for` retry paths? Possibly to prevent a loop if the checks themselves are broken — that justification does not apply to SIGTERM/timeout.
+- Should `checks-child-failed` be split into `checks-child-sigterm` (timeout) vs `checks-child-failed` (other non-zero exits) for finer classification?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix Bug 1: `stall-recovery.md` Step 3 always passes `--in-memory-stall-tracking` so an in-memory-only `STALL_TRACKING=true` is not silently dropped before it reaches disk.
+- Fix Bug 2: `_classify_text` distinguishes a SIGTERM-killed checks child (`checks-child-failed` + a negative/unresolvable `EXIT_CODE`) from a genuine step-3/6 content failure, classifying the former as `transient-infra` instead of `contract-failure`.
+- Wire an actual retry path for the Step 3 SIGTERM case by reusing the existing `checks-commit-route-retry` resume hint and its already-documented Step 3 re-invocation.
+
+### Non-goals
+- No new bail token at the `checks-commit-route` producer; `dispatch_commit_route.py` stays untouched. Classification inspects `EXIT_CODE` sign on the existing `checks-child-failed` token.
+- No new or tighter retry cap; reuse the existing `transient-infra` cap (4 attempts, 5s delay) in `retry_policy()`.
+- No automatic retry dispatch for Step 6. The classification fix applies to both steps (accurate `FAILURE_CLASS` either way), but retry dispatch stays Step-3-only, mirroring the existing `checks-leg-abandoned` precedent.
+
+### Approach sketch
+- `_classify.py`: thread `exit_code` into `_classify_text` (compute it before the call in both the `classify()` implement-profile path and the generic-profile path); add a guard before the blanket `step in {"3", "6"}` return that matches `bail == "checks-child-failed"` with a negative or unresolvable exit code.
+- `_classify.py`: extend `_resume_hint_for`'s existing step-3-only `checks-commit-route-retry` condition to also match the new pattern, without changing its Step-6 exclusion.
+- `_tokens.py`: add the new pattern token to `_safe_matched_pattern_value`'s allowlist so `MATCHED_CLASSIFIER_PATTERN` isn't silently rewritten to `redacted`.
+- `stall-recovery.md`: Step 3's "Classify" bullet documents always passing `--in-memory-stall-tracking` (bound from the Step 18a gate's `STALL_TRACKING_MEMORY`); item 5's retry-dispatch paragraph documents the new pattern alongside the existing `checks-leg-abandoned` case.
+
+### Surfaces in scope
+- `python/larch/state/_classify.py`
+- `python/larch/state/_tokens.py`
+- `skills/implement/references/stall-recovery.md`
+- `python/tests/state/test_stall_recovery.py`
+
+### Open questions
+- None.
