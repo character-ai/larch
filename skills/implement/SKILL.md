@@ -124,7 +124,7 @@ Standardizes post-step rebase checkpoints 1.r, 4.r, 7.r, and 7a.r. Step 4.r is f
 
 **Registry identifiers:** `1.r` / `1.m` remain stable macro `<step-prefix>` tokens listed in `skills/implement/scripts/step-name-registry.tsv`; they label internal rebase checkpoints, not standalone orchestrator steps after plan materialization folded into Step 0.
 
-**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. In that branch, parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*`. If `ROUTE=conflict` but no conflict files are present because the rebase auto-committed after earlier conflict resolution, follow `rebase-checkpoint-routing.md` phantom-probe instructions. For checkpoints `4.r`, `7.r`, and `7a.r`, after each checkpoint wrapper or folded composite returns, parse `CHECKPOINT_NEXT=continue|load-routing` from the captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7.r` macro skip is `CHECKPOINT_NEXT`-only. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.
+**Conditional routing reference**: Absorbed `1.r`: branch only on `BOOTSTRAP_NEXT=rebase-routing` from the Step 0 bootstrap stdout envelope. Parse `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*`. If `ROUTE=conflict` but no conflict files are present because the rebase auto-committed after earlier conflict resolution, follow `rebase-checkpoint-routing.md` phantom-probe instructions. When `DEGRADED_PROMPT_REQUIRED=true` on the absorbed `1.r` path, **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure. Folded `4.r`, `7.r`, and `7a.r`: parse `CHECKPOINT_NEXT=continue|load-routing` from captured stdout. `CHECKPOINT_NEXT=continue` is the only macro no-op predicate (skip the routing reference). Missing or malformed `CHECKPOINT_NEXT` fails closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. On `CHECKPOINT_NEXT=load-routing`, load that reference and branch on `ROUTE=`, `REBASE_RC=`, `REBASE_OUTCOME=`, and related KVs inside it. Do not use `ROUTE=continue` alone as the skip predicate when `CHECKPOINT_NEXT` is missing or malformed. The `7.r` macro skip is `CHECKPOINT_NEXT`-only. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only.
 
 ## Checks Failure Entry Macro
 
@@ -229,7 +229,7 @@ Run **before Step 0** after `TARGET_ISSUE_NUMBER` is known and flag mutex checks
 
 Print: `> **🔶 /implement 0: setup**`
 
-Step 0 is owned by `python/bootstrap.py` via `python/cli.py bootstrap invoke` (`--mode initial` / `--mode resume`). The foreground bootstrap handles infrastructure setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). The wrapper conditionally forwards `/implement --force` and `/implement --self-review` state via `case "${force_requested:-}" in` / `case "${self_review:-}" in` so omitted flags stay omitted from bootstrap argv. Do not duplicate absorbed helper calls prompt-side. When `force_requested=true`, `phase_coder_select` forces `coder=claude` regardless of `--coder` or tool availability. The `SELF_REVIEW_REQUESTED` key is included in the routing envelope and should be used to set the orchestrator's `self_review` variable after envelope parse if it was not already set at flag-parse time.
+Step 0 is owned by `python/bootstrap.py` via `python/cli.py bootstrap invoke` (`--mode initial` / `--mode resume`). The foreground bootstrap handles setup, tracking adoption, plan materialization, dirty-tree checkpointing, branch capture, plan logging, and implementer selection (`phase_coder_select`). The wrapper forwards `/implement --force` and `/implement --self-review` via `case "${force_requested:-}" in` / `case "${self_review:-}" in` so omitted flags stay omitted from bootstrap argv. Do not duplicate absorbed helper calls prompt-side. When `force_requested=true`, `phase_coder_select` forces `coder=claude` regardless of `--coder` or tool availability. Use `SELF_REVIEW_REQUESTED` from the routing envelope to set `self_review` after parse when flag parsing did not already set it.
 
 Wrapper reachability: `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh` delegates to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bootstrap invoke`; the prompt-side entry remains the Step 0 wrapper below. `python/bootstrap.py` captures `BRANCH_NAME` after branch creation via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git current-branch`.
 
@@ -251,12 +251,12 @@ Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/boots
 | `BOOTSTRAP_NEXT` | Routing |
 |---|---|
 | `BOOTSTRAP_NEXT=step2` | Proceed directly to Step 2 with `--coder "$coder"`. |
-| `BOOTSTRAP_NEXT=degraded-prompt` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. Then execute the degraded-prompt branch. |
-| `BOOTSTRAP_NEXT=rebase-routing` | **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. Parse `ROUTE`, `REBASE_RC`, conflict detail KVs, and advisory `PHANTOM_*` KVs from the Step 0 envelope; Python has already selected this directive for conflict, bail, or malformed/absent post-1.r `ROUTE` details. |
-| `BOOTSTRAP_NEXT=dirty-recovery` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. Then execute the dirty-recovery branch. |
-| `BOOTSTRAP_NEXT=cleanup` | Do not enter Step 2; skip to Step 18 cleanup after any local-only cleanup required for the run. |
+| `BOOTSTRAP_NEXT=degraded-prompt` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. Execute the degraded-prompt branch. |
+| `BOOTSTRAP_NEXT=rebase-routing` | **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`. Parse `ROUTE`, `REBASE_RC`, conflict detail KVs, and advisory `PHANTOM_*` KVs from the Step 0 envelope; Python already selected conflict, bail, or malformed/absent post-1.r `ROUTE` details. |
+| `BOOTSTRAP_NEXT=dirty-recovery` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. Execute the dirty-recovery branch. |
+| `BOOTSTRAP_NEXT=cleanup` | Do not enter Step 2; skip to Step 18 cleanup after required local-only cleanup. |
 
-**Absorbed continue tail.** On the continue path (`IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, readable `PLAN_FILE`, non-empty `coder`), `python/cli.py bootstrap invoke` runs the degraded-tools gate and checkpoint `1.r` internally, folding KVs into Step 0 stdout. `step-0-bootstrap.sh` forwards `--non-interactive true|false` from the canonical predicate in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`; do not rely on `LARCH_SKILL_NON_INTERACTIVE` alone. One-down bootstrap emits `DEGRADED_PROMPT_REQUIRED=true` and stops before 1.r until the explicit Continue sentinel exists. Both-down emits `DEGRADED_HARD_FAIL=true` and stops in every mode. Advisory `PHANTOM_*` KVs appear only on Step 0 stdout, not in `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. Do not use `CODEX_STATE` or `CURSOR_STATE` as the operator explanation when stderr relayed the full degraded block.
+**Absorbed continue tail.** On the continue path (`IMPLEMENT_BAIL_REASON` empty, `STALL_TRACKING=false`, readable `PLAN_FILE`, non-empty `coder`), `python/cli.py bootstrap invoke` runs the degraded-tools gate and checkpoint `1.r` internally and folds KVs into Step 0 stdout. `step-0-bootstrap.sh` forwards `--non-interactive true|false` from the canonical predicate in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`; do not rely on `LARCH_SKILL_NON_INTERACTIVE` alone. One-down bootstrap emits `DEGRADED_PROMPT_REQUIRED=true` and stops before 1.r until the explicit Continue sentinel exists. Both-down emits `DEGRADED_HARD_FAIL=true` and stops in every mode. Advisory `PHANTOM_*` KVs appear only on Step 0 stdout, not `$IMPLEMENT_TMPDIR/bootstrap-routing.env`. Do not use `CODEX_STATE` or `CURSOR_STATE` as the operator explanation when stderr relayed the full degraded block.
 
 **Step 1.r routing.** For checkpoint `1.r`, enter rebase handling only when `BOOTSTRAP_NEXT=rebase-routing` appears in the Step 0 bootstrap envelope. In that branch, use `ROUTE=`, `REBASE_RC=`, conflict detail KVs, and advisory `PHANTOM_*` from the same envelope. Step `4.r` is folded into the Step 3 `checks-commit-route` composite; `7.r` is folded into the Step 6 `step-6-entry` composite and `7a.r` into `step-7a`, each relaying `CHECKPOINT_NEXT=continue|load-routing` for the same **Rebase Checkpoint Macro** routing (`continue` skips the reference; `load-routing` or missing/malformed values load it).
 
@@ -619,7 +619,7 @@ On each retry (CI failure, merge conflict, rebase), the active Python driver ref
 
 Steps 8-14 are driven by the **Python ship driver wrapper** inside `step-8-ship.sh`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr`, delegates Python 3.11 checks to `step-8-python-guard.sh`, rehydrates state, runs advisory phantom probes, and writes the durable handoff sidecars for notification routing.
 
-Run `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver` before reading the Step 8+ matrix. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` before routing any Step 8+ driver outcome.
+Run `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver` before reading the Step 8+ matrix.
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
 
 **Post-ship durable handoff.** When `<task-notification>` fires for `step-8-ship.sh`, first run exactly one foreground non-sleeping probe: `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"`. **If absent**, the notification is premature; end the turn immediately. **If present** but `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent, treat it as setup failure per the matrix. Otherwise, read the rc/json handoff and continue to `route-exit` in the same turn. Do not poll, sleep, use Monitor, or inspect process state. The handoff is durable across turn breaks; after an unexpected turn end, resume by reading it before any Step 8+ branch action.
@@ -628,7 +628,7 @@ Run `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver` before
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR" --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"
 ```
 
-**Pre-driver predicate** (orchestrator evaluates before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): state file absent or empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. Seeded-but-no-PR state is still pre-driver. This is the only prompt-side predicate for running `ship pre-driver`.
+**Pre-driver predicate** (evaluate before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): state file absent/empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. Seeded-but-no-PR state is still pre-driver. Run `ship pre-driver` only for this prompt-side predicate.
 
 ```bash
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver
@@ -646,13 +646,13 @@ Branch on pre-driver `NEXT_ACTION`:
 
 Invoke `step-8-ship.sh` in immediate-background mode.
 
-Immediately before every Step 8+ `step-8-ship.sh` background launch in the same turn, run one separate foreground Bash call to clear stale handoff sidecars: `rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" 2>/dev/null || true`.
+Before every same-turn Step 8+ `step-8-ship.sh` background launch, run one separate foreground Bash call to clear stale handoff sidecars: `rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" 2>/dev/null || true`.
 
-This prevents stale rc/json from a prior reship or ci-fix from satisfying the notification probe before wrapper entry cleanup. Keep the foreground clear outside the launcher fence. Apply it to initial ship, reship, ci-fix, conflict-resolution Phase 4, stall-recovery `step8-shippr`, `ship-pr-exit-matrix.md` re-entries, and every other Step 8+ relaunch. Wrapper entry cleanup remains defense in depth.
+This prevents prior reship/ci-fix rc/json from satisfying the notification probe before wrapper cleanup. Keep the clear outside the launcher fence. Apply it to initial ship, reship, ci-fix, conflict-resolution Phase 4, stall-recovery `step8-shippr`, `ship-pr-exit-matrix.md` re-entries, and every other Step 8+ relaunch. Wrapper entry cleanup remains defense in depth.
 
-**Post-driver Step 8+ continuations:** when the pre-driver predicate no longer matches, invoke only `step-8-ship.sh`. Do not rerun the pre-driver verb. The wrapper still runs its guard and advisory phantom probe before the driver.
+**Post-driver Step 8+ continuations:** when the pre-driver predicate no longer matches, invoke only `step-8-ship.sh`; do not rerun pre-driver. The wrapper still runs its guard and advisory phantom probe before the driver.
 
-> **Long-running active driver call.** Set `run_in_background: true` and `timeout: 21600000`; the harness notifies via `<task-notification>`. **Recovery after unexpected turn end**: every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only for the active driver call, after the foreground stale-handoff clear above. The Python driver resumes from persisted `ship-pr-state.sh` and phase14 flag. If the **Pre-driver predicate** still matches, re-run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
+> **Long-running active driver call.** Set `run_in_background: true` and `timeout: 21600000`; wait for `<task-notification>`. **Recovery after unexpected turn end**: every Step 8+ re-entry goes through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-8-ship.sh` only for the active driver call, after the foreground stale-handoff clear above. The Python driver resumes from persisted `ship-pr-state.sh` and phase14 flag. If the **Pre-driver predicate** still matches, re-run `python/cli.py ship pre-driver` before `step-8-ship.sh`. Do not call `python/cli.py ship pr` directly from a separate foreground shell. Do not pass `--resume-phase`; resume is state-file driven.
 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
@@ -667,12 +667,12 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 **Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
 
 - **`complete`**: continue to Step 16.
-- **`reship`**: run the foreground stale-handoff clear, then re-invoke `step-8-ship.sh` with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
+- **`reship`**: run the foreground stale-handoff clear, then re-invoke `step-8-ship.sh` with the same `RESUME_PHASE` carve-out. Do not sleep.
 - **`oos-pipeline`**: security sidecar disposition only. Do not load `execution-issues-tracking.md`, do not load or run `oos-pipeline.md`, and do not call `/issue` on this branch. Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` `## Security Findings in OOS Workflows` privately, and clear the sidecar only after private disposition completes. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely before the `step-8-oos-checkpoint.sh` fence. Expect the checkpoint to stall while `security-oos-observations.md` remains non-empty or private SECURITY.md disposition is pending.
 - **`ci-fix`**: If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to **operator-bail**. Otherwise, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely when not skipped to operator-bail and before autonomous repair / `step-8-ship.sh` re-entry.
-- **`operator-bail`**: use `AskUserQuestion` and the existing Step 12d path after any ledger recording required by `ship-pr-exit-matrix.md`.
+- **`operator-bail`**: use `AskUserQuestion` and the existing Step 12d path after ledger recording required by `ship-pr-exit-matrix.md`.
 - **`stall`** (post-driver only): when `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely, then run conflict-resolution first. Otherwise continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
-- **`tool-failure`**: append Tool Failures and hard stop. Do not run Step 18 stall rename.
+- **`tool-failure`**: append Tool Failures and stop hard. Do not run Step 18 stall rename.
 
 **OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
 
@@ -680,7 +680,7 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
 ```
 
-- **`NEXT_ACTION=reship`**: run the foreground stale-handoff clear, then re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep in the orchestrator.
+- **`NEXT_ACTION=reship`**: run the foreground stale-handoff clear, then re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep.
 - **`NEXT_ACTION=stall`** (OOS-checkpoint stall): halt Step 8+ until resolved. Do not write stats, do not clear `OOS_PENDING=false`, and do not route to the post-driver Step 16 stall path.
 
 When `ship-pr-exit-matrix.md` requires tracking metadata projection refresh, run this fence; skip it when `ISSUE_NUMBER` is empty or `0`.
