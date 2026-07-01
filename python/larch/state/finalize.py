@@ -54,6 +54,7 @@ class FinalizeResult:
     log_write_status: str = ""
     branch_deleted: bool = False
     issue_url: str = ""
+    conflict_files: str = ""
 
 
 def _bool_text(value: object) -> str:
@@ -200,22 +201,89 @@ def _retry_fetch(*, runner: Runner, remote: str, ref: str, cwd: str | None) -> b
     return retry.with_transient_retry(attempt).last_returncode == 0
 
 
+@dataclass(frozen=True)
+class RebaseNoPushResult:
+    """Outcome of the pre-PR (postbump) rebase gate.
+
+    ``status`` is one of ``already-fresh`` / ``rebased`` / ``failed``.
+    ``conflict_files`` carries the unmerged paths captured before aborting a
+    failed rebase so the stall is actionable (issue #5930).
+    """
+
+    status: str
+    conflict_files: tuple[str, ...] = ()
+
+
+def _regenerate_generated_file(
+    runner: Runner,
+    *,
+    regen_argv: tuple[str, ...],
+    cwd: str | None,
+) -> bool:
+    """Regenerate a generated file in place via ``python/cli.py`` (mirrors the
+    matching ``make regen-*`` recipe). Returns True on success.
+    """
+    result = runner.run([sys.executable, "python/cli.py", *regen_argv], cwd=cwd)
+    return result.returncode == 0
+
+
+def _autoresolve_generated_conflicts(runner: Runner, *, cwd: str | None) -> RebaseNoPushResult:
+    """Auto-resolve an in-progress rebase whose conflicts are confined to known
+    regeneratable generated files by regenerating each and running
+    ``git rebase --continue``.
+
+    Returns ``rebased`` on full success, or ``failed`` (carrying the current
+    unmerged paths) when a conflict falls outside the allow-list, regeneration
+    fails, or the continue loop cannot make progress. Does not abort; the caller
+    aborts any still-in-progress rebase on failure.
+    """
+    allow = config.REBASE_AUTORESOLVE_GENERATED_FILES
+    for _ in range(config.REBASE_AUTORESOLVE_MAX_STEPS):
+        unmerged = tuple(git.try_unmerged_paths(runner, cwd=cwd))
+        if not unmerged:
+            # Non-conflict rebase failure: nothing to auto-resolve.
+            return RebaseNoPushResult("failed")
+        if any(path not in allow for path in unmerged):
+            return RebaseNoPushResult("failed", conflict_files=unmerged)
+        for path in unmerged:
+            if not _regenerate_generated_file(runner, regen_argv=allow[path], cwd=cwd):
+                return RebaseNoPushResult("failed", conflict_files=unmerged)
+            _ = git.add(runner, path, cwd=cwd)
+        continue_result = git.rebase_continue(runner, cwd=cwd)
+        if continue_result.returncode == 0 and not git.rebase_in_progress(runner, cwd=cwd):
+            logging_util.BreadcrumbWriter().emit(
+                f"postbump: auto-resolved rebase conflict in generated file(s): {', '.join(unmerged)}",
+                quiet=False,
+            )
+            return RebaseNoPushResult("rebased")
+        if continue_result.returncode != 0 and not git.try_unmerged_paths(runner, cwd=cwd):
+            # rebase --continue failed without new conflicts (e.g. empty commit):
+            # not something we can mechanically resolve here.
+            return RebaseNoPushResult("failed", conflict_files=unmerged)
+        # Otherwise the next replayed commit conflicts again → loop and resolve.
+    return RebaseNoPushResult("failed")
+
+
 def _rebase_no_push(
     runner: Runner,
     *,
     base_remote: str,
     cwd: str | None,
-) -> str:
+) -> RebaseNoPushResult:
     if not _retry_fetch(runner=runner, remote=base_remote, ref="main", cwd=cwd):
-        return "failed"
+        return RebaseNoPushResult("failed")
     base = f"{base_remote}/main"
     if git.is_ancestor(runner, base, "HEAD", cwd=cwd):
-        return "already-fresh"
+        return RebaseNoPushResult("already-fresh")
     result = git.rebase(runner, base, cwd=cwd)
     if result.returncode == 0:
-        return "rebased"
-    _ = git.rebase(runner, "--abort", cwd=cwd)
-    return "failed"
+        return RebaseNoPushResult("rebased")
+    resolved = _autoresolve_generated_conflicts(runner, cwd=cwd)
+    if resolved.status == "rebased":
+        return resolved
+    if git.rebase_in_progress(runner, cwd=cwd):
+        _ = git.rebase(runner, "--abort", cwd=cwd)
+    return resolved
 
 
 @dataclass(frozen=True)
@@ -308,15 +376,20 @@ def postbump(
             )
         branch = preflight.branch
         base_remote = "upstream" if ctx.forked or ctx.forked_target else "origin"
-        rebase_status = _rebase_no_push(runner, base_remote=base_remote, cwd=cwd)
+        rebase = _rebase_no_push(runner, base_remote=base_remote, cwd=cwd)
+        rebase_status = rebase.status
         if rebase_status == "failed":
+            detail = "rebase failed"
+            if rebase.conflict_files:
+                detail = f"rebase failed; conflicts in: {', '.join(rebase.conflict_files)}"
             return FinalizeResult(
                 Outcome.STALLED,
                 "rebase-failed",
-                "rebase failed",
+                detail,
                 rebase_status="failed",
                 force_push_status="absent",
                 log_write_status="skipped",
+                conflict_files=",".join(rebase.conflict_files),
             )
         if ctx.repo_unavailable:
             return FinalizeResult(
@@ -931,6 +1004,7 @@ def _emit_finalize_result(result: FinalizeResult, *, subcommand: str = "") -> No
     print(f"FINALIZE_WARNINGS={result.detail}")
     print(f"LOG_WRITE_STATUS={result.log_write_status}")
     print(f"REBASE_STATUS={result.rebase_status}")
+    print(f"CONFLICT_FILES={result.conflict_files}")
     print(f"FORCE_PUSH_STATUS={result.force_push_status}")
     print(f"LOCAL_CLEANUP_STATUS={result.local_cleanup_status}")
     print(f"VERIFY_MAIN_STATUS={result.verify_main_status}")

@@ -88,7 +88,7 @@ Every step MUST print breadcrumb status lines per shared/progress-reporting.md: 
 
 **Phase 1 (#3364)**: Do not print orchestrator `🔶` / `⏩` / `✅` breadcrumbs for ship-pr substeps **8** — the ship PR state machine is Python-driver-owned; the Python ship driver owns any internal ship stdout only.
 
-**Step 8b force-push-gate rebase conflicts (accepted degradation):** when the active Python driver hits a Step 8b rebase conflict, it stalls (`STALL_STEP=rebase-failed`) without `CONFLICT_FILES` or `conflict-resolution.md` handoff. Operators must resolve these Step 8b rebase conflicts manually (abort or finish the rebase locally). Step 18a classifies this as `transient-infra` / `step8-shippr` so a Step 8 retry can be dispatched after the operator resolves the conflict. Do not paper over the missing earlier handoff by inventing conflict metadata prompt-side.
+**Step 8b force-push-gate rebase conflicts (partial auto-resolution):** when the active Python driver hits a Step 8b rebase conflict, `postbump` auto-resolves conflicts confined to known regeneratable generated files (`config.REBASE_AUTORESOLVE_GENERATED_FILES`, currently `python/skill-closure-baseline.json`) by regenerating them and continuing the rebase. Any conflict outside that allow-list still stalls (`STALL_STEP=rebase-failed`) with no `conflict-resolution.md` agent handoff, but now carries `CONFLICT_FILES`; operators must resolve those Step 8b rebase conflicts manually (abort or finish the rebase locally). Step 18a classifies this as `transient-infra` / `step8-shippr` so a Step 8 retry can be dispatched after the operator resolves the conflict. Do not invent conflict metadata prompt-side beyond the driver-provided `CONFLICT_FILES`.
 
 ## Extracted Script Registry
 
