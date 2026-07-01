@@ -319,7 +319,7 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
 
     result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
     assert result.status == "rebased"
-    assert result.conflict_files == ()
+    assert not result.conflict_files
     assert calls == [
         "regen:lint skill-closure-growth --write",
         "add:python/skill-closure-baseline.json",
@@ -386,7 +386,7 @@ def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
         "python/skill-closure-baseline.json",
         "python/larch/state/finalize.py",
     )
-    assert regen_called == []  # bails before regenerating a mixed conflict set
+    assert not regen_called  # bails before regenerating a mixed conflict set
 
 
 def test_autoresolve_generated_conflicts_stalls_when_regen_fails(

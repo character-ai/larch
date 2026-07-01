@@ -214,6 +214,12 @@ class RebaseNoPushResult:
     conflict_files: tuple[str, ...] = ()
 
 
+def _rebase_failed_detail(conflict_files: tuple[str, ...]) -> str:
+    if conflict_files:
+        return f"rebase failed; conflicts in: {', '.join(conflict_files)}"
+    return "rebase failed"
+
+
 def _regenerate_generated_file(
     runner: Runner,
     *,
@@ -379,13 +385,10 @@ def postbump(
         rebase = _rebase_no_push(runner, base_remote=base_remote, cwd=cwd)
         rebase_status = rebase.status
         if rebase_status == "failed":
-            detail = "rebase failed"
-            if rebase.conflict_files:
-                detail = f"rebase failed; conflicts in: {', '.join(rebase.conflict_files)}"
             return FinalizeResult(
                 Outcome.STALLED,
                 "rebase-failed",
-                detail,
+                _rebase_failed_detail(rebase.conflict_files),
                 rebase_status="failed",
                 force_push_status="absent",
                 log_write_status="skipped",
