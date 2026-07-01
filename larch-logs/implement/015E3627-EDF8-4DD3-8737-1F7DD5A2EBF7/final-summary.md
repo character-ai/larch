@@ -1,8 +1,8 @@
 ## /implement run 015E3627-EDF8-4DD3-8737-1F7DD5A2EBF7 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$10.09 — Claude $0.52, Codex-5.5 $6.09, Codex-mini $0.92, Cursor $2.33, Claude (subprocess) $0.23  |  Tokens: 15379k
+- **Duration**: 01:00:01
+- **Cost**: 💰 TOTAL ~$21.21 — Claude $11.64, Codex-5.5 $6.09, Codex-mini $0.92, Cursor $2.33, Claude (subprocess) $0.23  |  Tokens: 30650k
 - **Issue**: #5884 — https://github.com/character-ai/larch/issues/5884
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
@@ -58,3 +58,7 @@ codex/pragmatism-vote             │                                 ███�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
