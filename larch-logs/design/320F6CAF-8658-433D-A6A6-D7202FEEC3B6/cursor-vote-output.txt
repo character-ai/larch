@@ -1,0 +1,4 @@
+Reading the ballot and verifying findings against the codebase.
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- py-lint-checks-fast and CI enforce the ratchet; wiring into make lint is local-dev consistency, not a scope acceptance requirement.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- "Create by moving" already implies removing the flat source; copy-only fails acceptance and lint flat-tests without an extra plan bullet.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates rejected round-1 FINDING_4; run-relevant gaps for tier1a/skill-description tests do not block delivering the relocate-and-ratchet feature.

@@ -1,0 +1,39 @@
+Reviewing the plan against the codebase: locating lint modules, Makefile targets, and shard assignments.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/larch/implement/checks_run_relevant.py:449-463	Bg-wait test move omits run-relevant path update	The plan relocates python/test_lint_bg_wait_coverage.py but leaves the direct-target tuple listing the deleted flat path. Edits to python/tests/lint/test_lint_bg_wait_coverage.py will not append test-lint-bg-wait-coverage under checks run-relevant, regressing focused verification and conflicting with issue scope item 4 (no behavior change).	Add ### UPDATED: python/larch/implement/checks_run_relevant.py: replace python/test_lint_bg_wait_coverage.py with python/tests/lint/test_lint_bg_wait_coverage.py in the bg-wait direct-target rule (keep python/larch/lint/lint_bg_wait_coverage.py and Makefile triggers).
+
+### 1. risk-integration — `python/larch/implement/checks_run_relevant.py:449-463`
+
+The plan updates Makefile paths for the three moved lint pytest modules and wires the new ratchet into `py-lint-checks-fast`, but it does not update the existing bg-wait direct-target rule that still keys off the flat harness path.
+
+```449:463:python/larch/implement/checks_run_relevant.py
+    (
+        (
+            "python/larch/lint/lint_bg_wait_coverage.py",
+            "python/test_lint_bg_wait_coverage.py",
+            "Makefile",
+            ".pre-commit-config.yaml",
+        ),
+        (
+            "test-lint-bg-wait-coverage",
+            "test-hook-bg-poll-guard",
+            "test-hook-no-progress-guard",
+        ),
+        False,
+        False,
+    ),
+```
+
+After the move, changes to `python/tests/lint/test_lint_bg_wait_coverage.py` will not match this rule, so `/implement` `checks run-relevant` can skip `test-lint-bg-wait-coverage` even though that focused target still exists. CI and `make py-test` stay green; this is a behavioral regression on the implement local path.
+
+**Suggested revision:** Add a firm `### UPDATED: python/larch/implement/checks_run_relevant.py` step that repoints the trigger path to `python/tests/lint/test_lint_bg_wait_coverage.py`.
+
+---
+
+**Verified plan coverage (no additional in-scope gaps):**
+
+- **Root-test ratchet:** `lint_flat_tests` spec correctly limits scope to flat `python/test_*.py`, exempts only `test_support.py`, and can use `lint_common.git_ls_files_z` (`python/larch/lint/lint_common.py:50-57`) for tracked plus non-ignored untracked files in a git worktree, with a non-git glob fallback described in tests.
+- **CI wiring:** `Makefile:43-51` shows `py-lint-checks-fast` is the fast lint bundle; shard 1 runs it via `Makefile:70` and `.github/workflows/ci.yaml:559`.
+- **Makefile harness paths:** Plan updates the three stale targets at `Makefile:154-155`, `Makefile:184-185`, and `Makefile:597-598`.
+- **Shard churn:** `python/shard-assignments.json` has no entries for the three flat lint modules; `python/conftest.py:119-120` round-robins unassigned tests, so the move plus new `test_lint_flat_tests.py` needs no shard edit.
+- **`test_lint_tier1a.py` repo root:** `parents[1]` at `python/test_lint_tier1a.py:76` must become `parents[3]`; mirrored tests already use that depth (`python/tests/lint/test_lint_skill_closure_growth.py:322`).

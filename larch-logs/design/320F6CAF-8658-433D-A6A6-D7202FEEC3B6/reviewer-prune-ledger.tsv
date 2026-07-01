@@ -1,0 +1,21 @@
+round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
+1	cursor	cursor-plan-arch	Cursor-Arch	2	3	0	2
+1	codex	codex-plan-arch	Codex-Arch	1	1	0	1
+1	cursor	cursor-plan-innovation	Cursor-Innovation	1	1	0	1
+1	codex	codex-plan-innovation	Codex-Innovation	1	1	0	1
+1	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	1	1	0	1
+1	codex	codex-plan-pragmatic	Codex-Pragmatic	1	1	1	2
+1	cursor	cursor-plan-requirements	Cursor-Requirements	1	1	0	1
+1	codex	codex-plan-requirements	Codex-Requirements	0	0	0	1
+1	codex	codex-plan-generic	Codex-Generic	1	1	0	1
+1	cursor	dyn-cursor-plan-flat-test-ratchet	Cursor-dyn-Flat Test Ratchet	1	1	0	1
+1	codex	dyn-codex-plan-flat-test-ratchet	Codex-dyn-Flat Test Ratchet	1	1	1	2
+2	cursor	cursor-plan-arch	Cursor-Arch	0	0	0	0
+2	codex	codex-plan-arch	Codex-Arch	0	0	1	1
+2	cursor	cursor-plan-innovation	Cursor-Innovation	0	0	1	1
+2	codex	codex-plan-innovation	Codex-Innovation	0	0	1	1
+2	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	0	0	0	0
+2	codex	codex-plan-pragmatic	Codex-Pragmatic	0	0	1	1
+2	cursor	cursor-plan-requirements	Cursor-Requirements	0	0	0	0
+2	codex	codex-plan-requirements	Codex-Requirements	0	0	0	0
+2	codex	codex-plan-generic	Codex-Generic	0	0	0	0
