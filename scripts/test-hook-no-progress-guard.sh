@@ -340,6 +340,85 @@ else
 fi
 rm -f "$MARKER_IMPL"
 
+# --- T17: clone-scoped blocking — two markers with distinct CLONE_PATH identities (#5927) ---
+# MA belongs to clone-a, MB belongs to clone-b. Each is armed. A UserPromptSubmit whose cwd
+# matches a marker's own recorded clone is still blocked (owning session); a UserPromptSubmit
+# whose cwd matches the OTHER clone is not blocked by that foreign marker.
+D_A="$TMP/claude-design-clonea-marker"
+D_B="$TMP/claude-implement-cloneb-marker"
+mkdir -p "$D_A" "$D_B"
+CLONE_A="$TMP/clone-a-repo"
+CLONE_B="$TMP/clone-b-repo"
+mkdir -p "$CLONE_A" "$CLONE_B"
+MARKER_A="$D_A/.bg-wait-active"
+MARKER_B="$D_B/.bg-wait-active"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER_A"
+printf 'CLONE_PATH=%s\nSESSION_ID=test-clone-a\n' "$CLONE_A" >"$D_A/.larch-keepalive"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=implement-step3-checks" "TIMEOUT_S=21600" >"$MARKER_B"
+printf 'CLONE_PATH=%s\nSESSION_ID=test-clone-b\n' "$CLONE_B" >"$D_B/.larch-keepalive"
+touch "$D_A/no-progress-circuit-breaker-armed" "$D_B/no-progress-circuit-breaker-armed"
+
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_B" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+if [ -z "$out" ]; then
+  pass "T17: armed marker in clone-a does not block UserPromptSubmit from clone-b"
+else
+  fail "T17: expected clone-b prompt unblocked by foreign clone-a marker: out='$out'"
+fi
+
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T17: armed marker in clone-a still blocks UserPromptSubmit from clone-a (owning clone)" ;;
+  *) fail "T17: expected clone-a prompt blocked by own clone-a marker: out='$out'" ;;
+esac
+
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_B" "$HOOK")
+if [ -z "$out" ]; then
+  pass "T17: armed marker in clone-b does not block UserPromptSubmit from clone-a"
+else
+  fail "T17: expected clone-a prompt unblocked by foreign clone-b marker: out='$out'"
+fi
+
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_B" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_B" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T17: armed marker in clone-b still blocks UserPromptSubmit from clone-b (owning clone)" ;;
+  *) fail "T17: expected clone-b prompt blocked by own clone-b marker: out='$out'" ;;
+esac
+
+# --- T20: subdirectory cwd within owning clone still blocks (#5927) ---
+CLONE_A_SUB="$CLONE_A/docs"
+mkdir -p "$CLONE_A_SUB"
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A_SUB" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T20: subdirectory cwd still blocked for owning clone" ;;
+  *) fail "T20: subdirectory cwd bypassed armed breaker: out='$out'" ;;
+esac
+
+rm -f "$MARKER_A" "$MARKER_B" "$D_A/.larch-keepalive" "$D_B/.larch-keepalive" \
+      "$D_A/no-progress-circuit-breaker-armed" "$D_B/no-progress-circuit-breaker-armed"
+
+# --- T18: unknown clone identity (no .larch-keepalive) still blocks regardless of cwd (fail-safe default) ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
+touch "$D/no-progress-circuit-breaker-armed"
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T18: marker with no .larch-keepalive still blocks regardless of cwd mismatch" ;;
+  *) fail "T18: expected block for unknown-clone marker (fail-safe default): out='$out'" ;;
+esac
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count" "$MARKER"
+
+# --- T19: block message identifies exact marker path and recovery files (#5927) ---
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
+touch "$D/no-progress-circuit-breaker-armed"
+out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" run_hook "$(prompt_event)")
+D_CANON=$(cd "$D" && pwd -P)
+case "$out" in
+  *"$D_CANON/.bg-wait-active"*"$D_CANON/no-progress-circuit-breaker-armed"*"$D_CANON/no-progress-turns.count"*)
+    pass "T19: block message includes marker path and recovery file paths" ;;
+  *) fail "T19: expected marker/recovery paths in message: out='$out'" ;;
+esac
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count" "$MARKER"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
