@@ -1,0 +1,19 @@
+Verifying key claims in the codebase before casting votes.
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger items; stale SKILL prose does not block Python-enforced cap-2 dispatch on the shipped path.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger items; Gate C reference drift is docs-only while the driver enforces ROUND_CAP=2.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger items; plan already schedules plan-review.md matrix updates and broader rewrites are not required for acceptance.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected ledger item; plan clamps scout producers at 1 and resume with a stale multi-archetype manifest is an edge case, not the main execution path.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Both-vendors-down runs hard-fail at Step 0 degraded-tools gate, so the all-slots-dropped panel-failed path is not reachable on shipped skill flows.
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan intentionally keeps explicit --round-cap for tests; Step 5 launcher binds cap 2 on the normal /implement path.
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already mandates plan_scout.py default and validation change from 3 to 1 plus matching tests.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of OOS_1 with no new evidence.
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected in-scope FINDING_1.
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of rejected in-scope FINDING_2.
+OOS_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of OOS_2.
+OOS_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of OOS_1.
+OOS_10: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of OOS_7/OOS_1 themes.
+OOS_11: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of OOS_2.

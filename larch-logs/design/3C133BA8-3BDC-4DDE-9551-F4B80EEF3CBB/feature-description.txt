@@ -1,0 +1,42 @@
+# Cap reviews at 2 rounds; front-load round 1; rework reviewer pruning to round-2-on-round-1-data
+
+**Skills:** /implement Step 5, /review, /design plan review.
+
+**Initiative:** Cursor-cost reviewer/voter rebalance. Cursor costs ran about 2.3X higher than the waterfall ladders assumed. Goal: cut Cursor use and review latency by front-loading round-1 review strength and capping rounds. Parallel sessions are retrofitting run-log costs and fixing the cost machinery; this issue is the structural review-loop change. This is the largest and most structural of the four initiative issues; recommended to land first because it delivers the latency relief that is the main operator pain.
+
+**Rationale:** Each extra review round adds large latency and Cursor spend. Front-load review strength into round 1; treat round 2 as a verify/backup pass. We accept a round-1 cost rise from the Codex model bump and expect a net cost win plus major latency relief from dropping rounds 3 through 5. Evaluations will be run later and compared to prior results; no catastrophic quality regression is anticipated.
+
+**Changes:**
+
+- Round cap = 2 for all three skills. Replace every cap-of-5 literal together: `ROUND_CAP` in `plan_review_common.py`, the `--round-cap` default in `review_and_fix.py`, the `round_num >= 5` branch in `review_core_body.py`, and the `round_runner.py` fallback.
+- Round 1 = full paired panel. Round 2 = backup with only non-pruned reviewers. Remove the legacy "spawn every reviewer on the final round" behavior; round 2 is no longer a full panel.
+- Rework reviewer pruning in `review_prune.py`: evaluate pruning only at round 2, using round-1-only reviewer performance, and retune the acceptance floor for a single-round window. This rewrites the `round_num <= 2` / `>= 5` guard, the `len(recent) >= 2` two-round history requirement, and `prune_window_evaluated` (currently true only for rounds 3 and 4).
+- If no reviewers are eligible for round 2, review is considered converged at round 1.
+- Round-1 panel composition: for each static and at-most-one dynamic archetype, spawn a Codex/gpt-5.5 plus Cursor/composer-2.5 pair. Bump the archetype Codex half from gpt-5.4-mini to gpt-5.5 (intentional upgrade; set the specialist slots' `model_role` so they resolve to `CODEX_DEFAULT_MODEL`). Applies to both `review.panel` and `design.plan_review_panel` archetypes.
+- Drop the generic Codex/gpt-5.5 reviewer in all rounds (empty `generic_codex_rounds`) for both `review.panel` and `design.plan_review_panel`.
+- Dynamic archetypes max = 1 (was up to 3) for all three skills. Update the `--dynamic-archetypes` 0..3 validation and default, the scout filter max, and the `skills/shared/topology.tsv` "up to 3" rows, then regenerate `docs/topology.md`.
+- Reviewers get no waterfall backup: an unavailable vendor drops that half of the pair, since the Codex plus Cursor pair is the redundancy. Panels dispatch `--no-fallback` always; drop the per-slot Cursor-then-Codex-then-Claude reviewer fallback and the round-1-only no-fallback special case.
+
+**Acceptance:**
+
+- Cap = 2 honored across /implement Step 5, /review, and /design plan review.
+- Round 2 contains only reviewers that were productive in round 1; no generic reviewer in any round; at most one dynamic pair.
+- A missing vendor simply drops its slot, with no cross-vendor or Claude reviewer backfill.
+- Pruning evaluates at round 2 on round-1 data only.
+
+**Prior art and guardrails (critical — read before implementing):**
+
+This issue's round-2-prune-on-round-1-data is not new ground. It was implemented once and reverted two days before this issue was filed:
+
+- #5463 (DONE) implemented exactly this: moved prune activation to rounds 2-4 with `min_recent = 1 if round_num == 2 else 2`, letting round 2 prune on a single prior (round-1) ledger row.
+- #5733 (DONE BUG) found that #5463 wiped the entire round-2 panel. A slot-label join-key mismatch (`_normalize_code_label` did not strip the `-output` suffix) made the round-1 ledger record all-zero productivity, so `weighted_accepted - rejected = 0 <= 0` pruned every combo. This was /implement code-review-specific; /design plan review uses a label-map join that was unaffected. #5733 fixed the join (the `-output` strip now lives in `review_prune.py`).
+- #5730 / #5731 (DONE) then reverted #5463 to round-3 activation (`round_num <= 2` skip, `len(recent) >= 2`). That revert is the current state this issue changes.
+
+Implications for the design:
+
+- Preserve the #5733 join fix. Do not regress the `-output` stripping, or round-2 pruning wipes the panel again. Add a regression test that the round-1 ledger populates non-zero before round 2 relies on it.
+- Under cap=2 there is no round-3 fallback, so the #5730 revert's safer alternative no longer exists. Round-2 pruning on one round of evidence is the only option and must be robust. Re-tune the acceptance floor for a single-round window and verify against real round-1 ledgers from the cost-retrofit run logs.
+- Prune-to-empty must converge, not re-probe. #5255 (DONE) already makes a prune-to-empty panel complete the loop for both skills. This issue's "no reviewers eligible for round 2 -> converged at round 1" is the cap=2 instance of that rule; reuse the #5255 path, do not reintroduce a re-probe round.
+- #3662 (DONE) set the cap to 5 as a deliberate ceiling and removed vestigial round-cap knobs. This issue lowers that ceiling to 2; mirror #3662's surface list when moving the literal.
+
+**Out of scope:** voter, aggregator, coder, and availability-policy changes are separate issues in this initiative.

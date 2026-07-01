@@ -1,0 +1,10 @@
+slot=1
+voter_tool=claude
+judge_error_count=18
+total_findings=18
+total_ballot_items=18
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=6f8e19eec132c8973856444654ff9c85a813c0bc3ab1b9fb739137df5b3ed074
+--- first 200 bytes of voter output ---
+UserPromptSubmit operation blocked by hook:
+No-progress circuit breaker: 8 consecutive turns detected under an active background-wait marker without real progress (threshold: 5 turns). The harness may

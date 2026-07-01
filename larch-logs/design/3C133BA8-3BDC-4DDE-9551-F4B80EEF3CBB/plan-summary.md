@@ -1,0 +1,1 @@
+Cap review loops at 2 rounds. Make round 1 the full paired reviewer panel, make round 2 a pruned backup based only on round-1 ledger data, remove generic Codex reviewers, cap dynamic archetypes at 1, and always dispatch reviewer panels with no fallback.
