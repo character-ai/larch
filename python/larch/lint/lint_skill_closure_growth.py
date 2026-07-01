@@ -25,6 +25,12 @@ METRIC_FIELDS = (
 BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files"})
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
 SUPPRESSED_IMPLEMENT_SECTIONS = frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"})
+CONDITIONAL_DESIGN_SECTIONS = frozenset(
+    {
+        "Plan command validator failure (shared)",
+        "Split-path (decomposition panel)",
+    }
+)
 
 MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY\s+(?:[—-]\s+)?READ\s+ENTIRE\s+FILE", re.IGNORECASE)
 READ_COMPLETELY_RE = re.compile(r"\bread\b(?P<body>.*?\.md.*?)\bcompletely\b", re.IGNORECASE)
@@ -34,17 +40,22 @@ MARKDOWN_PATH_RE = re.compile(
 NON_MD_PATH_RE = re.compile(
     r"`[^`\n]+\.[A-Za-z0-9]+`|(?:\$\{CLAUDE_PLUGIN_ROOT\}/|\./|/)?[A-Za-z0-9_./{}$+-]+\.[A-Za-z0-9]+"
 )
-HEADING_RE = re.compile(r"^#{1,6}\s+(?P<title>.+?)\s*$")
+HEADING_RE = re.compile(r"^(?P<marks>#{1,6})\s+(?P<title>.+?)\s*$")
+STEP_COMMENT_RE = re.compile(r"^<!--\s*step:", re.IGNORECASE)
 BULLET_RE = re.compile(r"^\s*(?:[-*+]\s+|\d+\.\s+)(?P<body>.*)$")
 CONDITIONAL_PREFIX_RE = re.compile(
     r"^(?:if|when|whenever|only\s+if|only\s+when|for\s+`|for\s+\*\*`|on\s+`)",
     re.IGNORECASE,
 )
 CONDITIONAL_TEXT_RE = re.compile(
-    r"\b(?:if|when|whenever|only\s+if|only\s+when|conditional|branch(?:es|ing)?|route(?:s|ing)?|predicate)\b",
+    r"\b(?:if|when|whenever|only\s+if|only\s+when|conditional|branch(?:es|ing)?|route(?:s|ing)?|predicate|retained)\b",
     re.IGNORECASE,
 )
+CONDITIONAL_SUFFIX_RE = re.compile(r"\((?:if|when|only\s+if|only\s+when)\b", re.IGNORECASE)
 BRANCH_BULLET_RE = re.compile(r"^(?:\*\*)?`[^`]+`(?:\*\*)?\s*(?:\([^)]*\))?\s*:")
+RUNTIME_MARKDOWN_OPERAND_RE = re.compile(
+    r"^\$(?:[A-Z_][A-Z0-9_]*|\{(?!CLAUDE_PLUGIN_ROOT\})[A-Z_][A-Z0-9_]*\})/"
+)
 
 
 class BaselineRowDict(TypedDict):
@@ -83,6 +94,10 @@ class SkillClosureResult:
     closure_estimated_tokens: int
     closure_content_estimated_tokens: int
     files: tuple[str, ...]
+    conditional_lines: int
+    conditional_estimated_tokens: int
+    conditional_content_estimated_tokens: int
+    conditional_files: tuple[str, ...]
 
     def to_baseline_row(self) -> BaselineRowDict:
         return {
@@ -117,8 +132,17 @@ class DirectiveMatch:
 
 
 @dataclass(frozen=True)
+class DirectiveContext:
+    line: str
+    line_number: int
+    match: DirectiveMatch
+    conditional_section: bool
+
+
+@dataclass(frozen=True)
 class ScanState:
     suppressed_section: str | None = None
+    conditional_section_depth: int | None = None
 
 
 def _estimated_tokens(text: str) -> int:
@@ -155,6 +179,11 @@ def _clean_raw_path(raw: str) -> str:
     return raw.strip().strip("`.,);]")
 
 
+def _is_runtime_markdown_operand(raw: str) -> bool:
+    cleaned = _clean_raw_path(raw)
+    return RUNTIME_MARKDOWN_OPERAND_RE.match(cleaned) is not None
+
+
 def _resolve_markdown_path(root: Path, source_path: Path, raw_path: str) -> str:
     cleaned = _clean_raw_path(raw_path)
     if cleaned.startswith(PLUGIN_ROOT_PREFIX):
@@ -173,18 +202,36 @@ def _resolve_markdown_path(root: Path, source_path: Path, raw_path: str) -> str:
     return rel
 
 
-def _extract_markdown_paths(root: Path, source_path: Path, clause: str) -> list[str]:
+def _extract_markdown_paths(root: Path, source_path: Path, clause: str, *, strict: bool) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
     for match in MARKDOWN_PATH_RE.finditer(clause):
         raw_path = match.group("ticked") or match.group("bare")
         if raw_path is None:
             continue
-        rel = _resolve_markdown_path(root, source_path, raw_path)
+        if _is_runtime_markdown_operand(raw_path):
+            continue
+        try:
+            rel = _resolve_markdown_path(root, source_path, raw_path)
+        except ScanError:
+            if strict:
+                raise
+            continue
         if rel not in seen:
             seen.add(rel)
             paths.append(rel)
     return paths
+
+
+def _has_markdown_operand(clause: str) -> bool:
+    return MARKDOWN_PATH_RE.search(clause) is not None
+
+
+def _read_completely_crosses_mandatory(line: str, read_match: re.Match[str]) -> bool:
+    for mandatory in MANDATORY_DIRECTIVE_RE.finditer(line):
+        if read_match.start() < mandatory.start() < read_match.end():
+            return True
+    return False
 
 
 def _mandatory_clause(remainder: str) -> str:
@@ -194,9 +241,10 @@ def _mandatory_clause(remainder: str) -> str:
     path_match = MARKDOWN_PATH_RE.search(remainder)
     if path_match is None:
         return remainder
-    sentence_end = remainder.find(".", path_match.end())
-    if sentence_end == -1:
+    sentence_end_match = re.search(r"\.(?:\s|$)", remainder[path_match.end() :])
+    if sentence_end_match is None:
         return remainder
+    sentence_end = path_match.end() + sentence_end_match.start()
     return remainder[: sentence_end + 1]
 
 
@@ -211,6 +259,8 @@ def _directive_matches(line: str) -> list[DirectiveMatch]:
     ]
     for match in READ_COMPLETELY_RE.finditer(line):
         if any(existing.index <= match.start() for existing in matches):
+            continue
+        if _read_completely_crosses_mandatory(line, match):
             continue
         matches.append(DirectiveMatch(index=match.start(), clause=match.group(0), supported=True))
     return sorted(matches, key=lambda item: item.index)
@@ -254,12 +304,30 @@ def _line_is_conditional(line: str, directive_index: int) -> bool:
         return True
 
     prefix = line[:directive_index]
-    return CONDITIONAL_TEXT_RE.search(prefix) is not None
+    if CONDITIONAL_TEXT_RE.search(prefix) is not None:
+        return True
+
+    suffix = line[directive_index:]
+    return CONDITIONAL_SUFFIX_RE.search(suffix) is not None
 
 
-def _update_scan_state(skill: str, line: str, state: ScanState) -> ScanState:
-    if skill != "implement":
+def _update_design_scan_state(line: str, state: ScanState) -> ScanState:
+    if STEP_COMMENT_RE.match(line):
+        return ScanState()
+    heading_match = HEADING_RE.match(line)
+    if heading_match is None:
         return state
+    heading_depth = len(heading_match.group("marks"))
+    title = heading_match.group("title").strip("# ").strip()
+    next_state = state
+    if state.conditional_section_depth is not None and heading_depth <= state.conditional_section_depth:
+        next_state = ScanState()
+    if next_state.conditional_section_depth is None and title in CONDITIONAL_DESIGN_SECTIONS:
+        return ScanState(conditional_section_depth=heading_depth)
+    return next_state
+
+
+def _update_implement_scan_state(line: str, state: ScanState) -> ScanState:
     heading_match = HEADING_RE.match(line)
     if heading_match is None:
         return state
@@ -271,14 +339,34 @@ def _update_scan_state(skill: str, line: str, state: ScanState) -> ScanState:
     return state
 
 
-def _paths_for_directive_match(root: Path, skill_path: Path, line: str, line_number: int, match: DirectiveMatch) -> list[str]:
-    if _line_is_conditional(line, match.index):
-        return []
-    paths = _extract_markdown_paths(root, skill_path, match.clause)
-    if paths or NON_MD_PATH_RE.search(match.clause):
-        return paths
+def _update_scan_state(skill: str, line: str, state: ScanState) -> ScanState:
+    if skill == "design":
+        return _update_design_scan_state(line, state)
+    if skill == "implement":
+        return _update_implement_scan_state(line, state)
+    return state
+
+
+def _paths_for_directive_match(
+    root: Path,
+    skill_path: Path,
+    context: DirectiveContext,
+) -> tuple[bool, list[str]]:
+    is_conditional = context.conditional_section or _line_is_conditional(context.line, context.match.index)
+    paths = _extract_markdown_paths(root, skill_path, context.match.clause, strict=not is_conditional)
+    if is_conditional:
+        return True, paths
+    if paths:
+        return False, paths
+    if _has_markdown_operand(context.match.clause):
+        raise ScanError(
+            f"{_repo_relative(root, skill_path)}:{context.line_number}: "
+            "supported read directive has no resolvable markdown path"
+        )
+    if NON_MD_PATH_RE.search(context.match.clause):
+        return False, paths
     raise ScanError(
-        f"{_repo_relative(root, skill_path)}:{line_number}: "
+        f"{_repo_relative(root, skill_path)}:{context.line_number}: "
         "supported read directive has no resolvable markdown path"
     )
 
@@ -290,23 +378,35 @@ def _append_unique_paths(references: list[str], seen: set[str], paths: Iterable[
             references.append(rel)
 
 
-def parse_direct_markdown_references(root: Path, skill: str, skill_path: Path) -> tuple[str, ...]:
+def parse_direct_markdown_references(root: Path, skill: str, skill_path: Path) -> tuple[tuple[str, ...], tuple[str, ...]]:
     try:
         lines = skill_path.read_text(encoding="utf-8").splitlines()
     except (OSError, UnicodeDecodeError) as exc:
         raise ScanError(f"cannot read {skill_path}: {exc}") from exc
 
-    references: list[str] = []
-    seen: set[str] = set()
+    eager_references: list[str] = []
+    eager_seen: set[str] = set()
+    conditional_references: list[str] = []
+    conditional_seen: set[str] = set()
     state = ScanState()
     for line_number, line in enumerate(lines, start=1):
         state = _update_scan_state(skill, line, state)
         if state.suppressed_section is not None:
             continue
         for match in _directive_matches(line):
-            paths = _paths_for_directive_match(root, skill_path, line, line_number, match)
-            _append_unique_paths(references, seen, paths)
-    return tuple(references)
+            context = DirectiveContext(
+                line,
+                line_number,
+                match,
+                conditional_section=state.conditional_section_depth is not None,
+            )
+            is_conditional, paths = _paths_for_directive_match(root, skill_path, context)
+            if is_conditional:
+                _append_unique_paths(conditional_references, conditional_seen, paths)
+            else:
+                _append_unique_paths(eager_references, eager_seen, paths)
+    conditional_only = tuple(rel for rel in conditional_references if rel not in eager_seen)
+    return tuple(eager_references), conditional_only
 
 
 def scan_skill(root: Path, skill: str) -> SkillClosureResult:
@@ -314,13 +414,17 @@ def scan_skill(root: Path, skill: str) -> SkillClosureResult:
     if not skill_path.is_file():
         raise ScanError(f"skill root not found: skills/{skill}/SKILL.md")
     skill_rel = _repo_relative(root, skill_path)
-    references = parse_direct_markdown_references(root, skill, skill_path)
-    files = (skill_rel, *references)
+    eager_references, conditional_references = parse_direct_markdown_references(root, skill, skill_path)
+    files = (skill_rel, *eager_references)
     metrics = {rel: _read_file_metrics(root / rel) for rel in files}
+    conditional_metrics = {rel: _read_file_metrics(root / rel) for rel in conditional_references}
     skill_metrics = metrics[skill_rel]
     closure_lines = sum(item.lines for item in metrics.values())
     closure_tokens = sum(item.estimated_tokens for item in metrics.values())
     closure_content_tokens = sum(item.content_estimated_tokens for item in metrics.values())
+    conditional_lines = sum(item.lines for item in conditional_metrics.values())
+    conditional_tokens = sum(item.estimated_tokens for item in conditional_metrics.values())
+    conditional_content_tokens = sum(item.content_estimated_tokens for item in conditional_metrics.values())
     return SkillClosureResult(
         skill=skill,
         skill_md_lines=skill_metrics.lines,
@@ -330,6 +434,10 @@ def scan_skill(root: Path, skill: str) -> SkillClosureResult:
         closure_estimated_tokens=closure_tokens,
         closure_content_estimated_tokens=closure_content_tokens,
         files=files,
+        conditional_lines=conditional_lines,
+        conditional_estimated_tokens=conditional_tokens,
+        conditional_content_estimated_tokens=conditional_content_tokens,
+        conditional_files=conditional_references,
     )
 
 
@@ -466,6 +574,7 @@ def _coerce_root(root_text: str, *, prog: str) -> Path | None:
 
 
 def _print_report(results: list[SkillClosureResult]) -> None:
+    print("Eager closure (ratcheted)")
     print("skill      skill_lines  skill_tokens  skill_content_tokens  closure_lines  closure_tokens  closure_content_tokens")
     for result in results:
         print(
@@ -478,6 +587,18 @@ def _print_report(results: list[SkillClosureResult]) -> None:
             f"{result.closure_content_estimated_tokens:>24}"
         )
         for rel in result.files:
+            print(f"  - {rel}")
+    print()
+    print("Conditional closure (reported only)")
+    print("skill      conditional_lines  conditional_tokens  conditional_content_tokens")
+    for result in results:
+        print(
+            f"{result.skill:<10}"
+            f"{result.conditional_lines:>19}"
+            f"{result.conditional_estimated_tokens:>20}"
+            f"{result.conditional_content_estimated_tokens:>28}"
+        )
+        for rel in result.conditional_files:
             print(f"  - {rel}")
 
 
