@@ -10,6 +10,7 @@ import sys
 import time
 from pathlib import Path
 
+from larch.core import config
 from larch.core import env_file
 from larch.core import proc
 
@@ -36,6 +37,48 @@ TMP_PATTERNS = (
 )
 SECONDS_PER_DAY = 86400
 TMP_FALLBACK = "/tmp"  # noqa: S108 - parity with cleanup.sh preserved /tmp root
+
+
+def _tmp_roots() -> list[Path]:
+    """Return the temp-dir root(s) to sweep for stale ``larch-*`` entries.
+
+    ``tempfile.mkdtemp()``/``mkstemp()`` resolve ``$TMPDIR`` first, which on
+    macOS is a per-user path distinct from ``/tmp``, so leaked entries land
+    there rather than in the legacy ``/tmp`` root this sweep used to target
+    exclusively (issue #5923). Scan both, deduped, so a host where they
+    coincide (``$TMPDIR`` unset, or explicitly set to ``/tmp``) is scanned
+    once.
+    """
+    override = os.environ.get("LARCH_TEST_TMP_ROOT")
+    if override:
+        return [Path(override)]
+    roots: list[Path] = []
+    seen: set[Path] = set()
+    for candidate in (os.environ.get(config.ENV_TMPDIR) or TMP_FALLBACK, TMP_FALLBACK):
+        resolved = Path(candidate).resolve()
+        if resolved not in seen:
+            seen.add(resolved)
+            roots.append(resolved)
+    return roots
+
+
+def _sweep_tmp_root(*, tmp_root: Path, retention_days: int) -> int:
+    if not tmp_root.is_dir():
+        return 0
+    removed = 0
+    try:
+        tmp_entries: list[Path] = list(tmp_root.iterdir())
+    except OSError:
+        tmp_entries = []
+        _warn(f"Warning: failed to enumerate '{tmp_root}'; skipping tmp-root cleanup.")
+    for entry in tmp_entries:
+        if entry.is_symlink() or not any(fnmatch.fnmatch(entry.name, pattern) for pattern in TMP_PATTERNS):
+            continue
+        remove_file = entry.is_file() and _older_than(path=entry, days=retention_days)
+        remove_dir = entry.is_dir() and _older_than(path=entry, days=retention_days) and _should_remove_by_age(entry=entry, retention_days=retention_days)
+        if (remove_file or remove_dir) and _remove_entry(entry):
+            removed += 1
+    return removed
 
 
 def _emit(*, key: str, value: object) -> None:
@@ -118,21 +161,7 @@ def run_main(argv: list[str]) -> int:
             if _should_remove_by_age(entry=entry, retention_days=retention) and _remove_entry(entry):
                 cache_removed += 1
     _emit(key="CACHE_REMOVED", value=cache_removed)
-    tmp_removed = 0
-    tmp_root = Path(os.environ.get("LARCH_TEST_TMP_ROOT") or TMP_FALLBACK)
-    if tmp_root.is_dir():
-        try:
-            tmp_entries: list[Path] = list(tmp_root.iterdir())
-        except OSError:
-            tmp_entries = []
-            _warn(f"Warning: failed to enumerate '{tmp_root}'; skipping /tmp cleanup.")
-        for entry in tmp_entries:
-            if entry.is_symlink() or not any(fnmatch.fnmatch(entry.name, pattern) for pattern in TMP_PATTERNS):
-                continue
-            remove_file = entry.is_file() and _older_than(path=entry, days=retention)
-            remove_dir = entry.is_dir() and _older_than(path=entry, days=retention) and _should_remove_by_age(entry=entry, retention_days=retention)
-            if (remove_file or remove_dir) and _remove_entry(entry):
-                tmp_removed += 1
+    tmp_removed = sum(_sweep_tmp_root(tmp_root=tmp_root, retention_days=retention) for tmp_root in _tmp_roots())
     _emit(key="TMP_REMOVED", value=tmp_removed)
     symlinks_removed = 0
     if sessions_parent.is_dir():

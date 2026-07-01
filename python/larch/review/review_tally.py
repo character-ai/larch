@@ -205,8 +205,8 @@ def _voter_votes_and_severities(
     )
 
 
-def _block_files(ballot_file: Path) -> list[Path]:
-    block_dir = Path(tempfile.mkdtemp(prefix="larch-tally-blocks-"))
+def _block_files(*, ballot_file: Path, review_tmpdir: Path) -> list[Path]:
+    block_dir = Path(tempfile.mkdtemp(prefix="larch-tally-blocks-", dir=str(review_tmpdir)))
     try:
         voting.split_ballot(ballot_file=ballot_file, out_dir=block_dir)
     except SystemExit as exc:
@@ -633,7 +633,7 @@ def tally_code_votes(argv: list[str]) -> int:
     if oos_accepted_out != oos_accepted_file:
         _write(path=oos_accepted_out, text="")
     try:
-        blocks = _block_files(ballot_file)
+        blocks = _block_files(ballot_file=ballot_file, review_tmpdir=review_tmpdir)
     except RuntimeError:
         return _error("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
     _write(path=class_tsv, text=voting.code_review_classification_header() + "\n" if three_slot else _CLASSIFICATION_HEADER + "\n")
