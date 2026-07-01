@@ -1,0 +1,60 @@
+### FINDING_1: ship-pr-exit-matrix preservation pins are incomplete
+- **Reviewer(s)**: Cursor-Arch Phase2, Codex-Arch, Cursor-Pragmatic Phase2, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The plan does not pin several load-bearing `ship-pr-exit-matrix.md` headers, state invariants, guard clauses, and terminal/post-CI bookkeeping strings. A prose compression could delete Step 8 seed-state, resume-state, terminal manifest, or execution-issues contracts while preserving only the named route tokens.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch Phase2: Add those exact headers and invariants to the preservation list, and keep the `FORKED_TARGET=true` skip clause before the `ship-pr-ci-fix.md` mandatory-read marker.
+  - From Codex-Arch: If A1 retains this file, add those two sections or their exact sentences to the non-compressible list so the prose pass cannot trim away the canonical seed-state and post-CI bookkeeping rules.
+  - From Cursor-Pragmatic Phase2: Add those exact sentences to the required-preserve list before editing `ship-pr-exit-matrix.md`, so the compression pass cannot drop the Step 8+ resume-state and terminal-manifest guarantees.
+  - From Codex-Requirements: Add explicit preservation bullets for the Initial state seeder contract, MANIFEST_PATH precondition, Terminal manifest contract, and Execution-issues checkpoint and metadata refresh sections.
+
+### FINDING_2: self-review preservation pins are incomplete
+- **Reviewer(s)**: Cursor-Arch Phase2
+- **Severity**: blocking
+- **Concern**: The `self-review.md` keep list omits harness-pinned review-flow markers, `NEXT_ACTION` parsing prose, rubric labels, and OOS triage text. Compression could strip byte-stable contract text while leaving accepted/rejected headings and Bash fences intact.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch Phase2: Add those exact strings to the preservation list so the review rubric and `NEXT_ACTION` parsing prose stay byte-stable.
+
+### FINDING_3: conflict-resolution preservation pins are incomplete
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: important
+- **Concern**: The `conflict-resolution.md` preservation list omits the required `git rebase-abort` before caller-family bail, plus forked-target and unavailable-repo CI-fix bypass conditions. Compression could leave repos mid-rebase or route forked/unavailable conflicts into unsafe autonomous repair.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add the Bail invariant sentence and the git rebase-abort call as non-compressible text alongside the Phase 4 rules.
+  - From Codex-Requirements: Add explicit preservation bullets for the ci-fix operator-bail bypass conditions and the git rebase-abort-before-bail requirement.
+
+### FINDING_4: stall-recovery reship carve-out is not pinned
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The `stall-recovery.md` preserve list omits the ordinary-reship no-escalation exception. Compression could remove the rule that transient Step 8 reships with no Main Claude edits must not call `record-escalation`, polluting the shared escalation ledger.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add the no Main Claude code edits reship exception and the direct step-8-ship.sh re-invoke wording to the pinned text.
+
+### FINDING_5: dispatcher harness is missing from extraction and validation
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: Step 1 and Step 5 omit `python/tests/implement/test_implement_dispatch.py`, which exercises dispatcher-facing manifest, path normalization, recovery, plan coverage, and Step 2 branch contracts. Compression could preserve shell-visible pins while breaking Python-tested contracts.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add `python/tests/implement/test_implement_dispatch.py` to the Step 1 contract extraction and Step 5 validation set, and use the actual repo path instead of the stale `python/test_implement_dispatch.py` reference.
+
+### FINDING_6: dedicated ship-pr exit-matrix harness is missing
+- **Reviewer(s)**: Codex-Innovation, Cursor-Requirements Phase2
+- **Severity**: important
+- **Concern**: The plan omits `scripts/test-implement-step8-exit3-first-fixer.sh`, which separately pins `ship-pr-exit-matrix.md` CI-fix slicing and stale-prose forbids. Generic structure and fence-shape checks may miss regressions in the CI-fix body.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add `scripts/test-implement-step8-exit3-first-fixer.sh` to the Step 1 extraction list and rerun it in the targeted validation set before editing `ship-pr-exit-matrix.md`.
+  - From Cursor-Requirements Phase2: Add `bash scripts/test-implement-step8-exit3-first-fixer.sh` to the retained-file validation set whenever `ship-pr-exit-matrix.md` is compressed.
+
+### FINDING_7: dedicated conflict-resolution rebase harness is missing
+- **Reviewer(s)**: Cursor-Requirements Phase2
+- **Severity**: important
+- **Concern**: The validation list omits `scripts/test-implement-rebase-macro.sh`, which separately pins `conflict-resolution.md` Phase 1-4 conflict-routing behavior. Generic structure and fence-shape checks may miss rebase-macro regressions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements Phase2: Add `bash scripts/test-implement-rebase-macro.sh` to the targeted validation list whenever `conflict-resolution.md` stays in scope.
+
+### FINDING_8: checks-repair-loop Step 5 routing pins are incomplete
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The `checks-repair-loop.md` preservation list focuses on Step 6 launchers but omits Step 5 self-review, MAV, coder-main-agent routing, and special Step 5 stall handling. Compression could drop the folded Step 5 failure-routing contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add explicit preservation bullets for the Step 5 self-review, Step 5 MAV, and coder-main-agent-required site matrix and their distinct stall behavior.

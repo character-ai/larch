@@ -1,0 +1,48 @@
+Compress implement's most-loaded references once A1 reveals their real per-run load frequency.
+
+**Context.** Implement is well-factored: nearly every reference is conditionally loaded, so its eager closure is small. Two tiers are worth compressing once measured:
+
+- **Eager (load every run):** `ship-pr-exit-matrix.md` (68 lines), `self-review.md` (49), `step18-cleanup.md` (35).
+- **High-frequency conditional (load on common branches):** `step2-dispatch.md` (192 lines, Step 2 vendor dispatch), `checks-repair-loop.md` (99), `codex-manifest-schema.md` (154), `conflict-resolution.md` (107), `stall-recovery.md` (100).
+
+Multiplied across about 1,281 implement invocations, even small per-file cuts compound.
+
+**Scope.** In-place prose-density pass on the references A1 confirms are highest realized-load. Preserve all KV grammar, manifest schema literals, fenced commands, and routing tokens verbatim.
+
+**Acceptance.** Measurable token reduction on the targeted references with zero behavior change; implement structural and fence-shape pins pass.
+
+**Out of scope.** No control-flow changes; keep load-bearing duplication. **Blocked by A1**: the realized-load table determines which conditional references justify the work, so this child should not start until A1 lands.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Cut prose density in the 8 implement references named in the issue (3 eager, 5 conditional), keeping every KV grammar token, manifest schema literal, fenced command, and routing token byte-identical.
+- Preserve every prose substring pinned by `scripts/test-implement-structure.sh` and `scripts/test-implement-fence-shape.sh` so both harnesses keep passing unchanged.
+- Show a measurable per-file token or byte reduction with zero control-flow change.
+
+### Non-goals
+- No control-flow, routing, or KV-grammar changes.
+- No edits to `skills/implement/SKILL.md` itself; only the 8 reference files.
+- No new measurement tooling. The just-landed heatmap is directional context only; its sample is too thin to gate file selection.
+
+### Approach sketch
+- Per file: snapshot the exact `require()` / `forbid()` substrings in `test-implement-structure.sh` and `test-implement-fence-shape.sh` that target it, then compress only the surrounding, unpinned prose.
+- Sequence low-pin-risk files first (`step2-dispatch.md`, `codex-manifest-schema.md`) to prove the method, then the higher-pin files (`self-review.md`, `ship-pr-exit-matrix.md`).
+- After each file, run both harnesses plus a before/after byte or token count to prove reduction and zero regressions.
+
+### Surfaces in scope
+- `skills/implement/references/ship-pr-exit-matrix.md`
+- `skills/implement/references/self-review.md`
+- `skills/implement/references/step18-cleanup.md`
+- `skills/implement/references/step2-dispatch.md`
+- `skills/implement/references/checks-repair-loop.md`
+- `skills/implement/references/codex-manifest-schema.md`
+- `skills/implement/references/conflict-resolution.md`
+- `skills/implement/references/stall-recovery.md`
+- `scripts/test-implement-structure.sh`, `scripts/test-implement-fence-shape.sh` (read-only pin inventory)
+
+### Open questions
+- None.
