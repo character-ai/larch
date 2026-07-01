@@ -828,7 +828,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -918,7 +918,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "HOME",
     "constant": "ENV_HOME",
@@ -927,7 +927,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "LOGNAME",
     "constant": "ENV_LOGNAME",
@@ -936,7 +936,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "PATH",
     "constant": "ENV_PATH",
@@ -945,7 +945,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "TMPDIR",
     "constant": "ENV_TMPDIR",
@@ -954,7 +954,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "USER",
     "constant": "ENV_USER",
@@ -963,7 +963,7 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "env_name": "USER",
     "constant": "ENV_USER",

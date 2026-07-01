@@ -721,7 +721,7 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "_redact_capture",
     "callee": "run",
     "occurrence": 1,
@@ -784,14 +784,14 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
+    "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "callee": "run",
     "occurrence": 2,
@@ -1232,7 +1232,7 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/rendering/rendering.py",
+    "file": "larch/rendering/_rendering_generators.py",
     "qualified_symbol": "generate_pre_rendered_reviewer_prompts_main",
     "callee": "run",
     "occurrence": 1,

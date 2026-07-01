@@ -888,6 +888,108 @@
     "metric": 17
   },
   {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "_parse_command_segment",
+    "metric": 23
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "_split_segments",
+    "metric": 18
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "_strip_heredoc_multiline",
+    "metric": 12
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "_tokenize",
+    "metric": 13
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "parse_plan_commands",
+    "metric": 23
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "C901",
+    "qualified_symbol": "validate_plan_command_rows",
+    "metric": 27
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_parse_command_segment",
+    "metric": 9
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_parse_command_segment",
+    "metric": 23
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_split_segments",
+    "metric": 17
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0912",
+    "qualified_symbol": "parse_plan_commands",
+    "metric": 16
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0912",
+    "qualified_symbol": "validate_plan_command_rows",
+    "metric": 25
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_parse_command_segment",
+    "metric": 6
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0913",
+    "qualified_symbol": "validate_plan_command_rows",
+    "metric": 7
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_parse_command_segment",
+    "metric": 63
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0915",
+    "qualified_symbol": "_split_segments",
+    "metric": 67
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0915",
+    "qualified_symbol": "parse_plan_commands",
+    "metric": 69
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "code": "PLR0915",
+    "qualified_symbol": "validate_plan_command_rows",
+    "metric": 95
+  },
+  {
     "file": "larch/design/clarify.py",
     "code": "C901",
     "qualified_symbol": "_evaluate_events",
@@ -1670,25 +1772,7 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "C901",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 23
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
     "qualified_symbol": "_rehydrate_validator_env",
-    "metric": 12
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_split_segments",
-    "metric": 18
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_strip_heredoc_multiline",
     "metric": 12
   },
   {
@@ -1696,12 +1780,6 @@
     "code": "C901",
     "qualified_symbol": "_tmpdir_guard_restore",
     "metric": 12
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
-    "qualified_symbol": "_tokenize",
-    "metric": 13
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1736,12 +1814,6 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "C901",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 23
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
     "qualified_symbol": "revise_plan_with_waterfall_main",
     "metric": 32
   },
@@ -1754,20 +1826,8 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "C901",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 27
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "C901",
     "qualified_symbol": "validator_autofix_main",
     "metric": 13
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 9
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1786,18 +1846,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_git_status_snapshot",
     "metric": 13
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 23
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_split_segments",
-    "metric": 17
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1826,12 +1874,6 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "PLR0912",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 16
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0912",
     "qualified_symbol": "revise_plan_with_waterfall_main",
     "metric": 15
   },
@@ -1840,12 +1882,6 @@
     "code": "PLR0912",
     "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
     "metric": 13
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0912",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 25
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1861,30 +1897,6 @@
   },
   {
     "file": "larch/design/plan_quality.py",
-    "code": "PLR0913",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 6
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0913",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 7
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_parse_command_segment",
-    "metric": 63
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_split_segments",
-    "metric": 67
-  },
-  {
-    "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
     "qualified_symbol": "auto_fix_plan_commands_main",
     "metric": 155
@@ -1894,18 +1906,6 @@
     "code": "PLR0915",
     "qualified_symbol": "check_plan_size_main",
     "metric": 123
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "parse_plan_commands",
-    "metric": 69
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "code": "PLR0915",
-    "qualified_symbol": "validate_plan_command_rows",
-    "metric": 95
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -4050,6 +4050,18 @@
     "metric": 80
   },
   {
+    "file": "larch/rendering/_rendering_generators.py",
+    "code": "C901",
+    "qualified_symbol": "generate_check_main",
+    "metric": 15
+  },
+  {
+    "file": "larch/rendering/_rendering_generators.py",
+    "code": "PLR0912",
+    "qualified_symbol": "generate_check_main",
+    "metric": 14
+  },
+  {
     "file": "larch/rendering/render_session_transcript.py",
     "code": "C901",
     "qualified_symbol": "first_pass",
@@ -4106,12 +4118,6 @@
   {
     "file": "larch/rendering/rendering.py",
     "code": "C901",
-    "qualified_symbol": "generate_check_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/rendering/rendering.py",
-    "code": "C901",
     "qualified_symbol": "mermaid_sanitize_main",
     "metric": 13
   },
@@ -4142,12 +4148,6 @@
   {
     "file": "larch/rendering/rendering.py",
     "code": "PLR0912",
-    "qualified_symbol": "generate_check_main",
-    "metric": 14
-  },
-  {
-    "file": "larch/rendering/rendering.py",
-    "code": "PLR0912",
     "qualified_symbol": "mermaid_sanitize_main",
     "metric": 13
   },
@@ -4174,6 +4174,24 @@
     "code": "PLR0915",
     "qualified_symbol": "split_finding_items",
     "metric": 61
+  },
+  {
+    "file": "larch/report/_progress_report_live.py",
+    "code": "C901",
+    "qualified_symbol": "_latest_timing_ledger_activity_ts",
+    "metric": 11
+  },
+  {
+    "file": "larch/report/_progress_report_live.py",
+    "code": "C901",
+    "qualified_symbol": "_round_vendor_cost",
+    "metric": 14
+  },
+  {
+    "file": "larch/report/_progress_report_live.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_round_vendor_cost",
+    "metric": 13
   },
   {
     "file": "larch/report/cleanup_implement_logs.py",
@@ -4304,12 +4322,6 @@
   {
     "file": "larch/report/progress_report.py",
     "code": "C901",
-    "qualified_symbol": "_latest_timing_ledger_activity_ts",
-    "metric": 11
-  },
-  {
-    "file": "larch/report/progress_report.py",
-    "code": "C901",
     "qualified_symbol": "_oos_result_rows",
     "metric": 11
   },
@@ -4330,12 +4342,6 @@
     "code": "C901",
     "qualified_symbol": "_render_design_plan_review",
     "metric": 13
-  },
-  {
-    "file": "larch/report/progress_report.py",
-    "code": "C901",
-    "qualified_symbol": "_round_vendor_cost",
-    "metric": 14
   },
   {
     "file": "larch/report/progress_report.py",
@@ -4372,12 +4378,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_render_design_plan_review",
     "metric": 14
-  },
-  {
-    "file": "larch/report/progress_report.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_round_vendor_cost",
-    "metric": 13
   },
   {
     "file": "larch/report/progress_report.py",
@@ -5014,6 +5014,12 @@
     "code": "PLR0915",
     "qualified_symbol": "eval_research",
     "metric": 70
+  },
+  {
+    "file": "larch/review/_voting_calibration.py",
+    "code": "C901",
+    "qualified_symbol": "_resolve_voter_calibration_log_root",
+    "metric": 11
   },
   {
     "file": "larch/review/batch_report.py",
@@ -5782,12 +5788,6 @@
     "code": "PLR0912",
     "qualified_symbol": "_verify_post_cleanup_state",
     "metric": 14
-  },
-  {
-    "file": "larch/review/voting.py",
-    "code": "C901",
-    "qualified_symbol": "_resolve_voter_calibration_log_root",
-    "metric": 11
   },
   {
     "file": "larch/review/voting.py",
