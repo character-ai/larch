@@ -20,6 +20,7 @@ from larch.state._tokens import (
     _DEFAULT_ESCALATION_FALLBACK,
     _DEFAULT_ESCALATION_LEDGER,
     _DISPATCH_BAIL_TOKENS,
+    _abandoned_checks_marker_stall_step,
     _read_state_file,
     _render_safe_bail_reason_value,
     _render_safe_source_script_value,
@@ -93,16 +94,16 @@ def _merged_state(
     return _read_state_file(state_file) | _read_state_file(finalize_file) | _read_state_file(session_file)
 
 
-def _resume_hint_for(*, klass: str, step: str, phase: str) -> str:
+def _resume_hint_for(*, klass: str, step: str, phase: str, pattern: str = "") -> str:
     safe_step = _safe_step_value(step)
     if klass in {"contract-failure", "same-cause-repeat", "unrecoverable", "submodule-restricted"}:
         return "none"
     if safe_step in {"3", "6", "12d", "bump-branch-guard"}:
-        return "none"
+        return "checks-commit-route-retry" if pattern == "checks-leg-abandoned" and safe_step == "3" else "none"
     if safe_step == "2":
         return "step2-impl"
     if safe_step == "5":
-        return "step5-review"
+        return "checks-commit-route-retry" if pattern == "checks-leg-abandoned" else "step5-review"
     if safe_step in {"8", "9", "10", "11", "12", "13", "14", "15", "rebase-failed"}:
         return "step8-shippr"
     if safe_step and re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", safe_step):
@@ -164,6 +165,21 @@ def _classify_text(*, text: str, bail: str, step: str, phase: str, detail_log_va
     return "unrecoverable", "none", "fallback"
 
 
+def _resolve_step_with_abandoned_marker(*, tmpdir: Path, any_stall: bool, step: str) -> tuple[bool, str, str | None]:
+    abandoned_marker_step = None if any_stall else _abandoned_checks_marker_stall_step(tmpdir)
+    if abandoned_marker_step is None:
+        return any_stall, step, None
+    return True, step or abandoned_marker_step, abandoned_marker_step
+
+
+def _classify_short_circuit(*, abandoned_marker_step: str | None, any_stall: bool) -> tuple[str, str, str] | None:
+    if abandoned_marker_step is not None:
+        return "transient-infra", "checks-commit-route-retry", "checks-leg-abandoned"
+    if not any_stall:
+        return "unrecoverable", "none", "no-stall"
+    return None
+
+
 def classify(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     primary_state_file = getattr(args, "primary_state_file", "") or ""
@@ -209,16 +225,15 @@ def classify(args: argparse.Namespace) -> int:
     finalize_stall = _read_state_file(Path(finalize_state_file) if finalize_state_file else tmpdir / "finalize-state.sh").get("STALL_TRACKING", "false")
     session_stall = _read_state_file(Path(session_env_file) if session_env_file else tmpdir / "session-env.sh").get("STALL_TRACKING", "false")
     any_stall = _truthy(memory_stall) or _truthy(primary_stall) or _truthy(finalize_stall) or _truthy(session_stall)
+    any_stall, step, abandoned_marker_step = _resolve_step_with_abandoned_marker(tmpdir=tmpdir, any_stall=any_stall, step=step)
     evidence = detail
     if not detail_log_valid:
         for name in ("ship-pr-state.sh", "finalize-state.sh", "session-env.sh"):
             state_path = tmpdir / name
             evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
-    if not any_stall:
-        klass, _hint, pattern = ("unrecoverable", "none", "no-stall")
-    else:
-        klass, _hint, pattern = _classify_text(text=evidence, bail=bail, step=step, phase=phase, detail_log_valid=detail_log_valid)
-    hint = _resume_hint_for(klass=klass, step=step, phase=phase)
+    short_circuit = _classify_short_circuit(abandoned_marker_step=abandoned_marker_step, any_stall=any_stall)
+    klass, _hint, pattern = short_circuit or _classify_text(text=evidence, bail=bail, step=step, phase=phase, detail_log_valid=detail_log_valid)
+    hint = _resume_hint_for(klass=klass, step=step, phase=phase, pattern=pattern)
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     signature = hashlib.sha256(
         f"class={klass}\nhint={hint}\nstep={step}\nphase={phase}\nbail={bail}\nevidence={evidence_digest}\n".encode(),

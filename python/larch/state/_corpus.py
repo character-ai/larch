@@ -67,7 +67,7 @@ def _sensitive_value_is_allowlisted(value: str) -> bool:
         "transient-output", "test-output", "lint-output", "lint-fix-bail-token",
         "dispatch-output", "dispatch-bail-token", "terminal-bail", "terminal-step",
         "rebase-transient", "recovery-out-of-scope", "ci-fix-exhausted-with-detail",
-        "step2-impl", "step5-review", "step8-shippr",
+        "step2-impl", "step5-review", "step8-shippr", "checks-commit-route-retry",
     }:
         return True
     if _safe_token(kind="source-script", value=value, generic=True):
