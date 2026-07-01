@@ -70,7 +70,7 @@ def _sweep_tmp_root(*, tmp_root: Path, retention_days: int) -> int:
         tmp_entries: list[Path] = list(tmp_root.iterdir())
     except OSError:
         tmp_entries = []
-        _warn(f"Warning: failed to enumerate '{tmp_root}'; skipping /tmp cleanup.")
+        _warn(f"Warning: failed to enumerate '{tmp_root}'; skipping tmp-root cleanup.")
     for entry in tmp_entries:
         if entry.is_symlink() or not any(fnmatch.fnmatch(entry.name, pattern) for pattern in TMP_PATTERNS):
             continue
