@@ -287,7 +287,7 @@ def _safe_matched_pattern_value(value: str) -> str:
         "recovery-out-of-scope", "test-output", "lint-output", "dispatch-output",
         "dispatch-bail-token", "transient-output", "ci-fix-exhausted-with-detail",
         "same-cause-repeat", "fallback", "bail-token", "lint-fix-bail-token",
-        "checks-leg-abandoned",
+        "checks-leg-abandoned", "checks-child-sigterm",
     }
     return value if value in allowed else "redacted"
 

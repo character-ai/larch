@@ -10,6 +10,7 @@ Structural reasons include `tmpdir-validation`, `site-validation`, `repo-root-un
 
 Act on the reason.
 Do not invoke repair-loop when no `REDACTED_LOG_FILE` exists.
+Before skipping to Step 18 on this no-log path, whitespace-token-scan the first physical line of captured composite stdout for `EXIT_CODE`, `FAILURE_REASON`, and `PHASE`. Mirror `FAILURE_REASON` into `IMPLEMENT_BAIL_REASON` and `FINAL_BAIL_REASON`. Set `STALL_STEP` from the pinned site (`3` for `--site step3`, `6` for `--site step6`, `5` for Step 5 self-review). Default `PHASE` to `checks` when the composite line omits it.
 Then route to the default stall semantics in section 4: set `STALL_TRACKING=true`, skip to Step 18, and do not proceed on the site success path.
 
 ## 2. Repair-loop invocation
@@ -82,6 +83,8 @@ Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` stil
 Preserve the structural `FAILURE_REASON` handling in section 1 on each re-entry.
 
 ### `NEXT_ACTION=stall`
+
+Before skipping to Step 18, bind `EXIT_CODE`, `FAILURE_REASON` (into `IMPLEMENT_BAIL_REASON` and `FINAL_BAIL_REASON`), `STALL_STEP`, and `PHASE` from captured composite stdout when those prompt-side values are not already set. Whitespace-token-scan the first physical line the same way as section 1.
 
 Use the default implement contract: set `STALL_TRACKING=true` and skip to Step 18.
 Applies to Step 3, Step 6, and Step 5 self-review only.

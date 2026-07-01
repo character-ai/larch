@@ -1243,6 +1243,16 @@ def _write_state(tmp_path: Path, step: str, phase: str, bail: str = "", extra: s
     _ = (tmp_path / "ship-pr-state.sh").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _write_state_no_exit_code(tmp_path: Path, step: str, phase: str, bail: str = "") -> None:
+    lines = [
+        f"PHASE={phase}",
+        "STALL_TRACKING=true",
+        f"STALL_STEP={step}",
+        f"BAIL_REASON={bail}",
+    ]
+    _ = (tmp_path / "ship-pr-state.sh").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
 def test_classify_rejects_oversize_failure_detail_log(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _write_state(tmp_path, "8", "ci-initial")
     oversize = tmp_path / "oversize.log"
@@ -1722,6 +1732,104 @@ def test_classify_step6_contract_failure_despite_lint_evidence(tmp_path: Path, c
     assert rc == 0
     out = capsys.readouterr().out
     assert "FAILURE_CLASS=contract-failure" in out
+
+
+def test_classify_step3_checks_child_sigterm_retries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_state(tmp_path, "3", "checks", bail="checks-child-failed")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--in-memory-stall-tracking", "true",
+        "--exit-code", "-15",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_TRACKING=true" in out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=checks-commit-route-retry" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-child-sigterm" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=no-stall" not in out
+
+
+def test_classify_step3_checks_child_unknown_exit_retries(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state(tmp_path, "3", "checks", bail="checks-child-failed")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--in-memory-stall-tracking", "true",
+        "--exit-code", "unknown",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_TRACKING=true" in out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=checks-commit-route-retry" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-child-sigterm" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=no-stall" not in out
+
+
+def test_classify_step3_checks_child_positive_exit_stays_contract(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state(tmp_path, "3", "checks", bail="checks-child-failed")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--in-memory-stall-tracking", "true",
+        "--exit-code", "1",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=contract-failure" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=step-contract" in out
+
+
+def test_classify_step3_checks_child_positive_exit_without_disk_exit_code(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state_no_exit_code(tmp_path, "3", "checks", bail="checks-child-failed")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--in-memory-stall-tracking", "true",
+        "--stall-step", "3",
+        "--phase", "checks",
+        "--bail-reason", "checks-child-failed",
+        "--exit-code", "1",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=contract-failure" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=step-contract" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-child-sigterm" not in out
+
+
+def test_classify_step6_checks_child_sigterm_has_no_retry(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_state(tmp_path, "6", "checks", bail="checks-child-failed")
+
+    rc = stall_recovery.classify_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--in-memory-stall-tracking", "true",
+        "--exit-code", "-15",
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=none" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-child-sigterm" in out
 
 
 def test_classify_test_failure_step8_uses_shippr_resume_hint(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
