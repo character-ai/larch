@@ -1,0 +1,136 @@
+## Plan
+
+## Approach
+
+A3 appears present: `skill_md_estimated_tokens`, `skill_md_content_estimated_tokens`, closure token fields, and `test_committed_baseline_matches_fresh_scan` exist. Treat that as a precondition. If those fields or the freshness test are absent in the implementer checkout, stop and land A3 first.
+
+Use a conservative prose-density pass over `skills/design/SKILL.md`.
+
+- Keep behavior unchanged.
+- Preserve byte-for-byte:
+  - YAML frontmatter `description:` (verbatim; see non-compressible carve-out below)
+  - fenced commands and code blocks
+  - `<!-- step:N -->` anchors
+  - step banners and `Print:` lines
+  - flags, env vars, KV names, sentinel names, CLI verbs, marker names
+  - NEVER blocks and anti-halt / continuation blocks
+  - load-bearing pause/resume, background-wait, and Final summary contracts
+  - the exact Step 0a sentence about presence keys for the immediate degraded-tools gate and binary-found keys for later vendor launch guards
+  - every `MANDATORY — READ ENTIRE FILE` line and every `Read … *.md … completely` harvest anchor (see non-compressible carve-out below)
+- Tighten normal prose around those contracts.
+- Prefer shorter sentences and fewer repeated sibling-contract phrases.
+- Do not replace in-file content with cross-file pointerization. That is out of scope.
+- Do not remove compaction-resilience repetition where the skill intentionally repeats safety rules.
+
+**Non-compressible carve-outs (do not paraphrase, shorten, or merge):**
+
+1. **Frontmatter `description:`** — keep the existing value verbatim, including the `Use when …` trigger wording. `agent-lint` S017 (`desc-no-trigger`) requires that form; rewriting it into a bare summary fails lint before closure checks run.
+2. **`MANDATORY — READ ENTIRE FILE` and `Read … completely` harvest anchors** — keep each baseline occurrence with exact `MANDATORY — READ ENTIRE FILE` and `completely` tokens and the same referenced path(s). The closure scanner harvests these direct-markdown loads; paraphrasing or splitting them drops `files` entries from `skill-closure report` while prose metrics can still improve. This includes unconditional anchors such as `Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely` and conditional `MANDATORY — READ ENTIRE FILE` Step 4 lines, not only step-local conditional loads.
+
+Before editing, capture current metrics with:
+
+```bash
+python3 python/cli.py skill-closure report
+```
+
+After editing `skills/design/SKILL.md`, regenerate the committed baseline:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+Then confirm the report shows a real `design` token drop. Target `skill_md_estimated_tokens` and `skill_md_content_estimated_tokens` at least 10% below the current 30,131 / 30,076 values. Before `--write`, diff fresh `skill-closure report` `files` membership against the pre-edit baseline; any dropped harvested path is a hard stop even when token counts improve.
+
+Focus the highest-value edits first:
+
+1. Compress the Step 3 `plan-review` mega-citation paragraph.
+   - Keep every agent-lint S030/S017 literal path pin.
+   - Mention each implementation, harness, and prompt-render surface once per fact.
+   - Remove repeated `python/plan_review.py` / `python/test_plan_review.py` sibling-contract restatement.
+   - Do not touch adjacent `MANDATORY — READ ENTIRE FILE` / `Read … completely` lines in that region.
+2. Compress the end-of-file **Plan helper contracts** list.
+   - Keep each CLI surface and harness path literal.
+   - Drop repeated phrases like "Implementation:", "Offline harness:", and "Coverage:" when one compact clause preserves the same meaning.
+3. Sweep the remaining narrative paragraphs.
+   - Keep directives direct.
+   - Collapse repeated "read/apply/follow" prose only when the exact mandatory load contract remains clear **and** the line is not a harvested `MANDATORY — READ ENTIRE FILE` / `Read … completely` anchor.
+   - Avoid blank-line-only churn. The acceptance target is real token reduction.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+In-place prose compression only.
+
+Required constraints:
+
+- Preserve runtime flow.
+- Preserve all fences and contract literals.
+- Preserve agent-lint pins, including the Step 3 S030 literals and the retained migration inventory comment.
+- Preserve all `### NEW:` / `### UPDATED:` / `### REWRITTEN:` / `### MAY_UPDATE:` plan grammar mentions.
+- Preserve the exact Step 0a degraded-tools sentence noted in the approved outline.
+- Preserve frontmatter `description:` verbatim (S017 `Use when …` trigger).
+- Preserve every baseline `MANDATORY — READ ENTIRE FILE` line and every `Read … *.md … completely` harvest anchor with exact directive tokens and path literals.
+- Do not edit `skills/implement/SKILL.md`; the implement-fence-shape reminder does not apply.
+
+Suggested compression patterns:
+
+- Replace repeated "contract / sibling / harness" prose with one compact sentence per surface.
+- Combine adjacent explanatory sentences when they repeat the same actor or file.
+- Prefer "X owns Y; tests: A, B" over repeated "Implementation: X. Offline harness: A."
+- Keep warning words only where they change behavior.
+- Skip the YAML frontmatter `description:` line and all mandatory-read harvest anchors when applying compression patterns.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate only through:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+Do not hand-edit numbers. The freshness test expects byte-exact canonical JSON from the writer. Run only after confirming harvested `files` membership is unchanged or intentionally equivalent per pre-write report diff.
+
+## Edge cases
+
+- **Agent-lint pins:** A shorter paragraph can still fail if a literal path pin disappears. Keep exact pinned path strings.
+- **S017 frontmatter:** The `description:` line is outside the prose body but still lint-gated. Any edit to that line risks `desc-no-trigger` even when token targets are met.
+- **Closure harvesting:** `MANDATORY — READ ENTIRE FILE` and `Read … completely` clauses are harvest anchors, not generic prose. Paraphrasing them alters direct markdown closure membership. Do not add or remove always-loaded references unless already required by the existing prose.
+- **design-background-wait.md anchors:** Multiple `Read and apply … design-background-wait.md completely` lines are separate harvest surfaces; compress surrounding prose only.
+- **Line ratchet headroom:** Avoid increasing `skill_md_lines` while reducing tokens. The new ratchet includes lines and tokens.
+- **Contract prose:** Some repetition is intentional for compaction resilience. Leave repeated NEVER, anti-halt, background wait, and continuation directives intact.
+- **Baseline freshness:** A shrink passes the one-way growth check but fails `test_committed_baseline_matches_fresh_scan` unless the baseline is regenerated.
+
+## Failure modes
+
+- The token reduction is too small because edits only remove blank lines or light wording.
+- `scripts/test-design-structure.sh` fails because a pinned literal moved, disappeared, or changed spelling.
+- `agent-lint` fails because an S030/S017 literal was removed or because `description:` lost its `Use when …` trigger form.
+- `agent-lint` or closure drift because a `MANDATORY — READ ENTIRE FILE` / `Read … completely` line was paraphrased and no longer harvests the same reference file.
+- `skill-closure-growth` fails because the baseline was not regenerated, closure references changed unintentionally, or `--write` ran after a harvested `files` entry dropped.
+- Plan-review behavior changes if mandatory Step 3 launch, dynamic scout, voting, or tally wording is weakened. Keep those directives explicit.
+
+## Testing strategy
+
+Run targeted checks after the edit:
+
+```bash
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth --skill design
+python3 python/cli.py lint skill-closure-growth
+python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q
+bash scripts/test-design-structure.sh
+```
+
+Also run the relevant-checks path if available in the final checkout:
+
+```bash
+python3 python/cli.py checks run-relevant --site design-skill-compress --tmpdir "${TMPDIR:-/tmp}"
+```
+
+If `agent-lint` is available, ensure relevant checks run it or run the repo's normal agent-lint target. Confirm S017 passes on `skills/design/SKILL.md` and that pre/post `skill-closure report` `files` lists match for all mandatory-read anchors.
+
+diff_added: 125
+diff_deleted: 210
+mechanical_churn: false
+diff_lines: 335

@@ -1,0 +1,2 @@
+Reading the ballot and verifying key claims against the plan and repo.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

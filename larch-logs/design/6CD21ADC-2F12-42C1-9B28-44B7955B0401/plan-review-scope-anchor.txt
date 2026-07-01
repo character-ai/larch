@@ -1,0 +1,43 @@
+Redo design `SKILL.md` prose compression for **real tokens**, since `#5786` only deleted blank lines.
+
+**Context.** Verified: `#5786` removed 85 blank lines and zero content from design `SKILL.md` (790 to 705 lines but only -85 bytes / ~-21 tokens). The 30,131-token design `SKILL.md` prose is still uncompressed, and design's realized per-invocation cost (~29,373 tokens) is unchanged from before Phase IX. This is the same Strunk-and-White pass `#5787` ran on implement `SKILL.md` for a real -16%.
+
+**Scope.**
+
+- In-place prose-density pass on `skills/design/SKILL.md` targeting real token reduction.
+- Include the dense mega-citation lines, for example the Step 3 `plan-review` force-load directive (around line 382) that repeats `python/plan_review.py` / `python/test_plan_review.py` four-plus times. Keep agent-lint S030/S017 pins literal; cut only the redundant sibling-contract repetition.
+- Preserve all contract literals, fenced commands, NEVER / anti-halt blocks, and step banners verbatim.
+
+**Acceptance.** Measurable token reduction (target -10% or better) under the **new byte/token ratchet from A3**, not the old line ratchet. Behavior unchanged; all design structural and fence-shape pins pass.
+
+**Out of scope.** No control-flow changes. Do not remove load-bearing compaction-resilience duplication. **Blocked by A3** (the token ratchet must exist first so this pass cannot game line count again).
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Cut real token count of `skills/design/SKILL.md` (currently 30,131 estimated tokens / 705 lines) by tightening prose density, targeting -10% or better, measured by the new byte/token ratchet (not line count).
+- Collapse the Step 3 plan-review mega-citation (line 382, repeats `plan_review.py` / `test_plan_review.py` 4+ times) and other dense citation paragraphs (e.g. the end-of-file "Plan-helper contracts" list) to one mention per fact, while keeping every agent-lint S030/S017 literal path pin intact.
+- Regenerate `python/skill-closure-baseline.json` so the byte/token ratchet's committed baseline matches the shrunk file (required by `test_committed_baseline_matches_fresh_scan`).
+
+### Non-goals
+- No control-flow, step-sequencing, gate, or KV-routing changes.
+- No removal of load-bearing compaction-resilience duplication (repeated NEVER / anti-halt / continuation blocks stay verbatim).
+- No cross-file dedup or pointerization of shared boilerplate (that is in-flight issue #5883's scope); this pass is in-place density only within `SKILL.md` itself.
+
+### Approach sketch
+- Apply `readability-style.md` axes (Strunk & White, dyslexia-friendly, brevity, no em dashes) paragraph-by-paragraph across the whole file.
+- Tighten the line-382 mega-citation and the "Plan-helper contracts" bullet list: state each fact and each S030-pinned literal path once; drop restatement.
+- Leave the exact Step 0a "presence keys only for the immediate degraded-tools gate; binary-found keys for later vendor launch guards" sentence untouched: in-flight issue #5883 already has a reviewed plan replacing it with a citation, so editing it here would conflict.
+- Preserve every `<!-- step:N -->` anchor, step banner, fenced bash block, KV contract name, flag name, and NEVER-block byte-for-byte.
+- Regenerate `python/skill-closure-baseline.json` via `python3 python/cli.py lint skill-closure-growth --write` after the prose edit.
+
+### Surfaces in scope
+- `skills/design/SKILL.md` (whole file, prose density only).
+- `python/skill-closure-baseline.json` (mandatory metadata refresh, no manual edits).
+
+### Open questions
+- None.

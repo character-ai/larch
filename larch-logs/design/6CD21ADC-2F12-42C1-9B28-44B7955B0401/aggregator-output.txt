@@ -1,0 +1,24 @@
+### FINDING_1: Baseline regen command missing from plan Files/Testing blocks
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: The `### UPDATED: python/skill-closure-baseline.json` subsection and related plan baseline-update text end at "Regenerate only through:" without naming the writer command. Testing strategy also omits a `--write` step. An implementer following only the Files/Testing subsections can pass shrink checks yet skip baseline regeneration, hand-edit JSON, or guess a different writer, causing `test_committed_baseline_matches_fresh_scan` to fail in CI or a stale `python/skill-closure-baseline.json` to ship even though Approach names `python3 python/cli.py lint skill-closure-growth --write` elsewhere.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add the exact `--write` command to the baseline Files subsection and make Testing strategy step 1: run `--write`, commit `python/skill-closure-baseline.json`, then rerun growth lint and pytest freshness
+  - From Codex-Arch: Add the concrete regen command in this section, for example `make regen-skill-closure-baseline` or the equivalent `python3 python/cli.py lint skill-closure-growth --write`, before the "Do not hand-edit numbers" note.
+  - From Cursor-Innovation: Copy the full `python3 python/cli.py lint skill-closure-growth --write` fence into the `### UPDATED:` subsection (after the pre-`--write` token/files gates).
+  - From Cursor-Requirements: Put `python3 python/cli.py lint skill-closure-growth --write` (or `make regen-skill-closure-baseline`) directly under `Regenerate only through:` in the UPDATED block, matching Approach and Testing strategy.
+  - From Codex-Requirements: Fill that block with the canonical writer already named elsewhere in the plan, `python3 python/cli.py lint skill-closure-growth --write`, and keep the no-hand-edit note.
+
+### FINDING_2: EOF compatibility/lint comment preservation incomplete
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The preservation contract names only the migration-inventory HTML comment (~line 701), not the trailing compatibility grep / `lint references` comments (~703-705). Item 3 allows a narrative sweep across the file tail. Lines 703-705 are the only `SKILL.md` references keeping `skills/design/scripts/design-step3b-sanitize.{md,sh}` reachable for agent-lint S030 (no `agent-lint.toml` exclude). Compressing or deleting them orphans those scripts and fails the dedicated CI `agent-lint` job even when structure tests pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend the preserve list to require verbatim retention of all EOF `<!-- compatibility grep note: … -->` and `<!-- lint references: … -->` comments, not only the migration-inventory comment
+
+### FINDING_3: −10% token acceptance gate sequenced after `--write`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The −10% token acceptance check is sequenced after `lint skill-closure-growth --write`, while the files-membership gate is the only pre-`--write` check. Growth lint only fails when live > baseline, so after `--write` the new baseline equals the post-edit scan and cannot prove the issue's −10% acceptance. An implementer can commit a 3–5% shrink and pass every listed check.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add an explicit pre-`--write` gate: diff post-edit `skill-closure report` against the pre-edit capture and require both `skill_md_estimated_tokens` and `skill_md_content_estimated_tokens` ≤90% of the captured values; run `--write` only after that passes. Keep the existing `files` membership diff in the same pre-`--write` step.
