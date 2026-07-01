@@ -1,0 +1,228 @@
+Reviewing the six implement wrapper docs and current Step 0 parse/bind patterns so the revised plan matches the repo.
+## Plan
+
+## Approach
+
+Draft from direct repo inspection because `approach-synthesis.txt` is `NO_SKETCHES`.
+
+Make the minimum docs-only change:
+
+1. Add one shared `--run-id` reference.
+2. Add one shared session-setup output reference.
+3. Replace repeated skill-local boilerplate with short anchors.
+4. Keep local binding details only where the skill needs unique behavior.
+5. For session-setup dedup, use the design template: cite `skills/shared/session-setup-output.md` for semantics, but **retain** each consumer's explicit Step 0 parse/bind enumeration for keys it consumes before degraded-tools gating or downstream publish/cleanup. Do not replace parse lists with citation-only prose.
+6. Extend dedup to the six `/implement` wrapper docs that repeat the telemetry-triple sentence.
+7. Do not edit any anti-halt, NEVER, handoff, continuation, or #5788-protected text.
+
+## Files to modify/create
+
+### NEW: skills/shared/run-id-flag.md
+
+Create the normative `--run-id <ID>` text.
+
+Include:
+
+- Purpose: optional stable run identifier.
+- Default: empty, auto-generated.
+- Validation owner: the consuming skill or Python parser.
+- Forwarding note: some skills consume it locally instead of passing it to child CLIs.
+
+Keep this file short.
+
+### NEW: skills/shared/session-setup-output.md
+
+Create the normative session setup output-key reference.
+
+Cover:
+
+- Always-emitted core keys: `SESSION_TMPDIR`, `SESSION_ID`, `LARCH_RENDER_CACHE_DIR`.
+- Reviewer probe keys when `--check-reviewers` is used: `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`.
+- Optional caller-derived keys: `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, `LARCH_TIMING_LEDGER`.
+- Optional repo keys when repo probing is not skipped: `REPO`, `REPO_UNAVAILABLE`.
+- Semantics: presence keys are only for the immediate degraded-tools gate; binary-found keys are for later launch guards.
+- Note: telemetry keys such as `LARCH_TIMING_LEDGER` are consumed from `session-env.sh` on some paths and are not always present on `session setup` stdout.
+
+Keep this file short.
+
+### UPDATED: skills/cleanup/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Do not change cleanup behavior.
+
+### UPDATED: skills/upgrade-larch/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Do not change upgrade steps or sparse-install prose.
+
+### UPDATED: skills/report-tokens/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Keep the existing note that `/report-tokens` consumes `--run-id` and does not forward it to the CLI.
+
+### UPDATED: skills/research/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+In Step 0, add a short citation to `skills/shared/session-setup-output.md` for key semantics. **Retain** the explicit parse/bind line for every key this step consumes before the degraded-tools gate:
+
+- `SESSION_TMPDIR`
+- `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`
+
+Keep local requirements:
+
+- `RESEARCH_TMPDIR = SESSION_TMPDIR`.
+- Presence keys feed only the degraded-tools gate.
+- Binary-found keys drive lane launch guards or fresh executable checks.
+
+Do not replace the parse line with citation-only prose. Do not add a mandatory-read gate as a substitute for the retained parse list.
+
+Do not edit the anti-halt continuation reminder.
+
+### UPDATED: skills/alias/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Do not edit alias forwarding semantics.
+
+### UPDATED: skills/block-issue/SKILL.md
+
+Shorten the inline `--run-id` mention in the Arguments paragraph.
+
+Keep the Step 1 instruction to strip `--run-id <ID>` before invoking the script, because that is behavior-bearing.
+
+### UPDATED: skills/set-up-forked-open-source-repo/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Do not alter fork safety rules.
+
+### UPDATED: skills/issue/SKILL.md
+
+Replace the long `--run-id` flag description with a short shared-reference line.
+
+Do not change `/issue` parsing, dedup, dependency, redaction, or sentinel behavior.
+
+### UPDATED: skills/review/SKILL.md
+
+In Step 0, add a short citation to `skills/shared/session-setup-output.md` for key semantics. **Retain** the explicit parse/bind enumeration for every key this step consumes before the degraded-tools gate:
+
+- `SESSION_TMPDIR`
+- `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, `CURSOR_PRESENT`
+- token-session fields (`LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`)
+- nested timing ledger (`LARCH_TIMING_LEDGER`)
+
+Keep local requirements:
+
+- `REVIEW_TMPDIR = SESSION_TMPDIR`.
+- Export `CODEX_BINARY_FOUND` and `CURSOR_BINARY_FOUND`.
+- Preserve token-session fields and the nested timing ledger.
+- Preserve the degraded-tools gate contract.
+
+Do not replace the parse enumeration with citation-only prose. Do not add a mandatory-read gate as a substitute for the retained parse list.
+
+Do not edit the anti-halt continuation reminder.
+
+### UPDATED: skills/design/SKILL.md
+
+In Step 0a, add a short citation to `skills/shared/session-setup-output.md` for key semantics. Replace only incidental session-setup output-key duplication; **retain** the explicit parse/bind line and single-Bash-block handoff for every key this step consumes:
+
+- Parse printed output for `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`.
+- Keep the single Bash block so `session setup` stdout is parsed and `session write-design-env` runs in the same subshell as the emitted `SESSION_TMPDIR=` / `SESSION_ID=` / reviewer KV lines.
+
+Keep load-bearing local constraints:
+
+- Use the single Bash block.
+- Do not split setup and writer across separate Bash invocations.
+- `DESIGN_TMPDIR = SESSION_TMPDIR`.
+- `SESSION_ID` remains required for clarify publish rename, Step 5c footer/cleanup gating, and `source-env.sh` refresh.
+- Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
+- Step 0a wrapper owns the degraded-tools gate.
+
+Do not edit NEVER blocks, continuation prose, handoff prose, or #5788-protected text.
+
+### UPDATED: skills/implement/scripts/step-0-bootstrap.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local invariants: Bash 3.2 portability, `CLAUDE_PLUGIN_ROOT` self-rehydration from `$IMPLEMENT_TMPDIR/plugin-root.env`, resume-mode `bootstrap-routing.env` restore, and all KV grammar / routing keys in this file.
+
+### UPDATED: skills/implement/scripts/step-0-degraded-gate.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local degraded-gate routing semantics and any file-specific KV contract prose.
+
+### UPDATED: skills/implement/scripts/run-step-checks.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local check-routing and tmpdir notes unique to this wrapper.
+
+### UPDATED: skills/implement/scripts/step-5-resume.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local resume routing, checkpoint, and tmpdir notes unique to this wrapper.
+
+### UPDATED: skills/implement/scripts/step-6-entry.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local Step 6 entry routing and tmpdir notes unique to this wrapper.
+
+### UPDATED: skills/implement/scripts/step-8-oos-checkpoint.md
+
+Replace the repeated telemetry-triple invariant sentence with a short citation to `skills/shared/session-setup-output.md`.
+
+Preserve local OOS checkpoint routing and tmpdir notes unique to this wrapper.
+
+### MAY_UPDATE: docs/skills.md
+
+Update only if the changed skill prose leaves public docs inconsistent.
+
+Do not churn `docs/skills.md` just to mirror internal anchor wording.
+
+## Edge cases
+
+- Keep shared-anchor replacement lines short enough that the new anchor prose does not create a fresh repeated 6-gram hotspot.
+- Do not replace unique behavioral notes, such as `/report-tokens` not forwarding `--run-id`.
+- Do not remove local tmpdir binding statements or per-skill Step 0 parse/bind enumerations. The shared session reference defines key semantics, not each skill's variable names or parse contract.
+- Session-setup dedup must not drop keys required before degraded-tools gating, clarify publish rename, Step 5c footer/cleanup, lane launch guards, or review token/timing propagation.
+- Do not edit repeated anti-halt or NEVER prose, even if it appears in duplication reports.
+- For `/implement` wrapper docs, replace only the duplicated telemetry sentence; do not collapse file-specific routing or KV grammar into the shared reference.
+
+## Failure modes
+
+- A shared reference can become too vague. Avoid this by keeping exact key names and routing semantics in the new files and retaining per-consumer parse lists where Step 0 binds keys.
+- A replacement line can create a new duplicate n-gram. Avoid repeated six-word anchor sentences across many skills; vary implement-wrapper anchor wording slightly if needed while still pointing at the same shared file.
+- Session setup can lose runtime clarity if local parse/bind instructions are removed. Citation plus retained parse list is the required pattern for design, research, and review Step 0.
+- Leaving the six implement wrapper docs unchanged would leave the targeted session-setup hotspot in place and fail the n-gram acceptance goal.
+- Measurement may still show deliberate anti-halt duplication. Treat that as expected and unchanged.
+
+## Testing strategy
+
+1. Run targeted grep before and after:
+   - `rg -n "when set, used as the run ID for this invocation instead of the auto-generated one" skills/*/SKILL.md`
+   - Expected after: no skill-local hits.
+2. Run targeted grep for the implement telemetry hotspot:
+   - `rg -n "Telemetry consumers read .LARCH_TOKEN_SESSION_ID., .LARCH_CLAUDE_SOURCE_FILE., and .LARCH_TIMING_LEDGER." skills/implement/scripts/*.md`
+   - Expected after: no hits; each updated wrapper cites `skills/shared/session-setup-output.md` instead.
+3. Verify Step 0 parse contracts remain explicit:
+   - Spot-check `skills/design/SKILL.md`, `skills/research/SKILL.md`, and `skills/review/SKILL.md` still enumerate consumed keys inline (including design `SESSION_ID` and review token/timing keys) alongside the shared citation.
+4. Run the n-gram measurement:
+   - `LARCH_MEASURE_DATE=<stamp> python3 python/cli.py token measure-ngram-duplication`
+   - Compare the generated report to confirm the targeted `--run-id`, session-setup, and implement-wrapper shingles drop.
+   - Do not commit measurement artifacts unless the repo normally expects them for this change.
+5. Verify protected duplication remains:
+   - Spot-check that anti-halt, NEVER, continuation, handoff, and “do not write a summary” blocks are unchanged.
+6. Lint changed Markdown:
+   - `pre-commit run markdownlint --files <changed-md-files>`
+
+diff_added: 52
+diff_deleted: 31
+mechanical_churn: false
+diff_lines: 98
