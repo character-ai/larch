@@ -1,0 +1,127 @@
+## Plan
+
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so implement from direct repository inspection. The approved outline has no open questions and limits source prose work to `skills/design/references/plan-review.md`.
+
+Perform an in-place prose-density pass with no semantic changes.
+
+1. Keep the opening header block intact. Preserve these labeled lines; tighten wording only, never remove:
+   - `**Consumer**:`
+   - `**Contract**:`
+   - `**Topology anchor**:`
+   - `**When to load**:`
+   - `**Failure logging**:`
+2. Compress repeated ownership language:
+   - State once that scout, panel dispatch, collection, aggregation, ballot rebuild, voter dispatch, tally, and finalize writes are loop-internal to `python/plan_review.py`.
+   - In later sections, refer back to that ownership instead of restating it.
+3. Tighten these prose-heavy areas:
+   - Header block (including Topology anchor and Failure logging; compress-only).
+   - Static and dynamic slot identity.
+   - Dispatch and panel pruning.
+   - Single-pass review.
+   - Semantic dedup rules.
+   - Voting tally interpretation.
+   - Deferred MainAgent adjudication.
+4. Preserve these byte-stable surfaces verbatim:
+   - All `python/cli.py` invocations.
+   - All file paths required by agent-lint S030.
+   - The `FINDING_N` and `OOS_N` templates.
+   - The voter line format code fence.
+   - The `<READABILITY_STYLE>` token.
+   - `design-step3-mav.sh --phase pre` and related MAV prose pins.
+5. Do not edit `skills/design/SKILL.md`, `python/plan_review.py`, or any Python implementation code.
+6. Aim for about 15% fewer estimated tokens in `plan-review.md`. Prefer safe repetition when it carries a distinct contract.
+7. After the prose shrink, regenerate `python/skill-closure-baseline.json`. Any `plan-review.md` edit changes design closure metrics listed there; `test_committed_baseline_matches_fresh_scan` requires byte-exact equality. Baseline refresh is mandatory, not conditional on test failure discovery.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/plan-review.md
+
+Compress normative prose only. Keep headings, literals, templates, and command examples stable unless the same contract can be expressed more tightly without changing behavior.
+
+Suggested section-level edits:
+
+- Header block:
+  - Shorten `Consumer` to a compact scope list plus one sentence that loop internals live in `python/plan_review.py`.
+  - Shorten `Contract` to name runtime render owners and prompt-side scopes once.
+  - Preserve `**Topology anchor**:` (sync with `python/larch/review/plan_review_panel.py`); compress wording only.
+  - Shorten `When to load` without changing excluded steps.
+  - Preserve `**Failure logging**:` (loop-internal failure capture; prompt-side must not append failure logs in loop mode); compress wording only.
+- Static slots:
+  - Keep slug list unchanged.
+  - Replace explanatory repeats with a short pointer to Dispatch and Panel pruning.
+- Dynamic archetypes:
+  - Keep Step 2b producer, manifest path, empty fallback, cap/filter behavior, and Codex twin round gate.
+  - Remove repeated descriptions already covered by dispatch ownership.
+- Single-pass review:
+  - Preserve loop statuses, round cap, resume statuses, panel pruning rules, zero-finding evidence rules, tally failure behavior, severity default, and accumulation semantics.
+  - Cut filler and merge adjacent sentences where safe.
+- Claude fallback and voter sections:
+  - Preserve the both-absent Claude floor and Voter 1 subprocess scope.
+  - Do not duplicate rendered prompt text.
+- Dedup and tally:
+  - Keep semantic dedup warnings against string-key clustering.
+  - Keep in-scope precedence over OOS.
+  - Preserve the voter line code fence verbatim.
+- Finalize and rejected findings:
+  - Preserve artifact names and byte-preserved templates.
+  - Compress prose around templates, not template content.
+- Scope anchor and MainAgent adjudication:
+  - Keep `SCOPE_ANCHOR_FILE` handoff rules and forbidden inline writes.
+  - Preserve `design-step3-mav.sh --phase pre` / `--phase post` delegation.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Mandatory metadata refresh after the prose shrink. Any `plan-review.md` edit changes design closure files listed in this baseline; `python/tests/lint/test_lint_skill_closure_growth.py::test_committed_baseline_matches_fresh_scan` requires byte-exact equality with a fresh scan. Shrink lowers `closure_estimated_tokens` while `python3 python/cli.py lint skill-closure-growth` only fails on growth, so step 7 alone is not ratchet confirmation.
+
+Regenerate unconditionally after `plan-review.md` lands:
+
+- `python3 python/cli.py lint skill-closure-growth --write`
+
+Do not edit Python code for this file.
+
+## Edge cases
+
+- Do not remove load-bearing duplication where the same command or path is intentionally repeated for a different consumer.
+- Do not delete or merge away `**Topology anchor**:` or `**Failure logging**:`; compress their sentences only.
+- Do not merge the `Contract` paragraph across a blank line; reference-header tests parse it as a single paragraph.
+- Do not introduce em dashes or line-range citations like `L10-20` in the `Contract` paragraph.
+- Do not replace byte-preserved template text with paraphrases.
+- Do not remove the single `<READABILITY_STYLE>` token expected by readability lint.
+- Do not skip baseline regen because `lint skill-closure-growth` passes on shrink; CI byte-match pytest is the ratchet gate.
+
+## Failure modes
+
+- **Semantic drift**: over-compression may change panel, voting, dedup, OOS, or MAV behavior. Compare each edited section against the original before testing.
+- **Header pin loss**: removing or over-shortening `**Topology anchor**:` or `**Failure logging**:` drops panel sync and loop-internal failure-logging boundaries without tripping triplet, readability, or MAV harnesses.
+- **Structural pin breakage**: tests grep for exact MAV and SKILL delegation prose. Preserve those exact literals.
+- **Baseline freshness failure**: skipping regen passes one-directional `lint skill-closure-growth` on shrink but fails `test_committed_baseline_matches_fresh_scan` in CI.
+- **Template damage**: changing fenced voter lines or finding/OOS templates can break render or parser expectations.
+
+## Testing strategy
+
+Run targeted checks for the changed markdown surface:
+
+1. `python3 python/cli.py lint readability-preamble`
+2. `bash scripts/test-effort-prose.sh`
+3. `bash scripts/test-references-headers.sh`
+4. `bash scripts/test-design-structure.sh`
+5. `bash skills/design/scripts/test-design-step3-mav.sh`
+6. `bash skills/design/scripts/test-step3-orchestrator-fence.sh`
+7. `python3 python/cli.py lint skill-closure-growth` (growth ratchet only; passing here does not confirm baseline freshness after shrink)
+8. `python3 python/cli.py skill-closure report`
+
+Run plan-review tests named in the acceptance criteria:
+
+9. `python3 -m pytest python/tests/review/test_plan_review.py -q`
+10. `python3 -m pytest python/tests/review/test_plan_review_panel.py -q`
+
+Mandatory baseline confirmation after regen:
+
+11. `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q`
+
+diff_added: 12
+diff_deleted: 45
+mechanical_churn: false
+diff_lines: 57

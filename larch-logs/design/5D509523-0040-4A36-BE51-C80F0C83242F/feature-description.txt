@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded plan-review.md (~6k tok)
+
+In-place prose-density pass on the second-largest always-loaded design reference.
+
+**Context.** `skills/design/references/plan-review.md` is 215 lines / ~6,077 tokens, force-read every design run at Step 3 ("before launching reviewers"). Never prose-compressed. The matching `SKILL.md` force-load directive (around line 382) is itself a ~1,900-character citation line that repeats `python/plan_review.py` and `python/test_plan_review.py` as "sibling contract" four-plus times; that line is handled in C1, this child handles the reference body.
+
+**Scope.** Tighten the normative prose for panel topology, static slot identity, semantic-dedup judgment, and tally interpretation. Preserve all `python/cli.py` invocations, agent-lint S030 path pins, and rendering-contract literals verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed. `python/test_plan_review*.py` and structural pins still pass.
+
+**Out of scope.** No panel/voting/dedup semantics changes. Density only; keep load-bearing duplication.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

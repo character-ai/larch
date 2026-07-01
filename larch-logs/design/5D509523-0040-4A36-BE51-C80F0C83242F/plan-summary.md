@@ -1,0 +1,1 @@
+Compress `skills/design/references/plan-review.md` in place. Preserve all command literals, S030 pins, and byte-preserved templates. Conditionally refresh the skill-closure baseline only if the strict freshness test requires it.

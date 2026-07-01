@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the prior-round OOS tally-error routing concern, so it is not a new necessary acceptance issue
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the prior-round readability-preamble concern, already treated out of scope
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- real, but the stale-manifest invalidation prose is outside the anchored compression target and not necessary for this pass
+FINDING_5: NO CORRECTNESS=uncertain SEVERITY=major QUALITY=good UNCERTAIN=true -- the plan does not clearly propose weakening these boundaries, so this is too speculative to clear the necessity gate
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity cannot clear the in-scope necessity gate
