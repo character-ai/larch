@@ -2,8 +2,8 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$0.62 — Claude $0.44, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.18  |  Tokens: 171k
+- **Duration**: 01:15:54
+- **Cost**: 💰 TOTAL ~$31.04 — Claude $30.86, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.18  |  Tokens: 45777k
 - **Issue**: #5923 — https://github.com/character-ai/larch/issues/5923
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -27,3 +27,7 @@ Warnings (1):
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
