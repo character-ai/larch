@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded finalize-step5.md (~5k tok)
+
+In-place prose-density pass on the Step 5 finalize reference.
+
+**Context.** `skills/design/references/finalize-step5.md` is 128 lines / ~5,206 tokens, force-read every design run at Step 5 entry. Never prose-compressed.
+
+**Scope.** Tighten finalize / OOS-filing / teardown prose. Preserve fenced commands, `NEXT_ACTION` grammar, sentinel names, and `python/cli.py` invocations verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed; finalize structural pins still pass.
+
+**Out of scope.** No Step 5 control-flow changes. Density only; keep load-bearing duplication.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
