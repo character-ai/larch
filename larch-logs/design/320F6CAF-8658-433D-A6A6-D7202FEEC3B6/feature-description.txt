@@ -1,0 +1,31 @@
+# [py-code-quality] [pkg-payoff] Enforce flat-test mirror ratchet
+
+**Follow-up to #5782 (packaging-payoff umbrella) and #5779 (test-tree mirror).**
+
+## Problem
+
+#5779 mirrored 150 `test_*.py` modules into `python/tests/<package>/` to match the runtime package tree, but added no ratchet. The mirror is point-in-time and has already drifted. Four flat `test_*.py` remain at `python/` root:
+
+- `python/test_support.py`: shared pytest helper, not a test. Pre-existing (added 2026-06-05).
+- `python/test_lint_tier1a.py`: tests `larch.lint.lint_tier1a`. Added 2026-06-29 by #5785.
+- `python/test_lint_bg_wait_coverage.py`: tests `larch.lint.lint_bg_wait_coverage`. Added 2026-06-29 by #5781.
+- `python/test_lint_skill_description_length.py`: tests `larch.lint.lint_skill_description_length`. Added 2026-06-29 by #5784.
+
+The three lint tests landed flat the day after #5779 merged, because nothing prevents new flat root tests.
+
+## Scope
+
+1. Relocate the three lint tests to `python/tests/lint/` (mirrors `larch/lint/`).
+2. Decide consistently on `test_support.py`: move it under `python/tests/`, or document it as an intentional flat helper.
+3. Add a lint that fails on any new flat `python/test_*.py` at root (the missing ratchet), with an explicit exemption list if any flat file is kept.
+4. No behavior change. Keep the `python3 python/cli.py <domain> <verb>` contract and the CI sharding and timing harness working.
+
+## Acceptance
+
+- `make py-test` green from the new locations.
+- The new lint fails when a flat `python/test_*.py` is introduced at root.
+- No flat `test_*.py` at `python/` root, or a documented, lint-enforced exemption list.
+
+## Value
+
+LOW. In an LLM-only repo agents grep tests by name regardless of location, so there is no token, error, or concurrency payoff. This is the enforcement counterpart to #5779. Without it the mirror invariant keeps eroding. Filed to capture the finding; deprioritize against functional work.
