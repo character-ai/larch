@@ -338,6 +338,30 @@ def test_oos_pipeline_runtime_operand_branch_collects_only_repo_reference(tmp_pa
     assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.conditional_files
 
 
+def test_oos_pipeline_line_671_does_not_harvest_security_md(tmp_path: Path) -> None:
+    """Regression for implement SKILL.md line 671 oos-pipeline bullet."""
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "- **`oos-pipeline`**: security sidecar disposition only. Read "
+            "`$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` "
+            "`## Security Findings in OOS Workflows` privately. "
+            "**MANDATORY — READ ENTIRE FILE**: Read "
+            "`${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` "
+            "completely before the `step-8-oos-checkpoint.sh` fence.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/ship-pr-oos-checkpoint-router.md", "router\n")
+    write(tmp_path, "SECURITY.md", "# security\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+    assert result.conditional_files == ("skills/implement/references/ship-pr-oos-checkpoint-router.md",)
+    assert "SECURITY.md" not in result.conditional_files
+
+
 def test_invalid_utf8_referenced_markdown_reports_scan_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     fixture_project(tmp_path)
     _ = (tmp_path / "skills/design/references/flags.md").write_bytes(b"\xff\xfe")

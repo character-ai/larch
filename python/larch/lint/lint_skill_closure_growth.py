@@ -227,6 +227,13 @@ def _has_markdown_operand(clause: str) -> bool:
     return MARKDOWN_PATH_RE.search(clause) is not None
 
 
+def _read_completely_crosses_mandatory(line: str, read_match: re.Match[str]) -> bool:
+    for mandatory in MANDATORY_DIRECTIVE_RE.finditer(line):
+        if read_match.start() < mandatory.start() < read_match.end():
+            return True
+    return False
+
+
 def _mandatory_clause(remainder: str) -> str:
     read_match = READ_COMPLETELY_RE.search(remainder)
     if read_match is not None:
@@ -252,6 +259,8 @@ def _directive_matches(line: str) -> list[DirectiveMatch]:
     ]
     for match in READ_COMPLETELY_RE.finditer(line):
         if any(existing.index <= match.start() for existing in matches):
+            continue
+        if _read_completely_crosses_mandatory(line, match):
             continue
         matches.append(DirectiveMatch(index=match.start(), clause=match.group(0), supported=True))
     return sorted(matches, key=lambda item: item.index)
