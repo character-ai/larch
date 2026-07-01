@@ -1079,6 +1079,16 @@ def test_clear_stall_rejects_dangling_state_symlink(tmp_path: Path, capsys: pyte
     assert "CLEARED=false" in capsys.readouterr().out
 
 
+def test_clear_stall_unlinks_dead_checks_bg_wait_marker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=_dead_pid())
+
+    rc = stall_recovery.clear_stall_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert not (tmp_path / ".bg-wait-active").exists()
+    assert "CLEARED=true" in capsys.readouterr().out
+
+
 def test_seed_terminal_state_rewrite_honors_stall_step(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     state = tmp_path / "ship-pr-state.sh"
     _ = state.write_text(
@@ -1214,6 +1224,10 @@ def test_compose_report_allows_lint_fix_bail_classifier_pattern() -> None:
     assert stall_recovery._sensitive_value_is_allowlisted("lint-fix-bail-token")  # pyright: ignore[reportPrivateUsage]
     for token in _LINT_FIX_BAIL_TOKENS:
         assert stall_recovery._sensitive_value_is_allowlisted(token)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_compose_report_allows_checks_commit_route_retry_resume_hint() -> None:
+    assert stall_recovery._sensitive_value_is_allowlisted("checks-commit-route-retry")  # pyright: ignore[reportPrivateUsage]
 
 
 def _write_state(tmp_path: Path, step: str, phase: str, bail: str = "", extra: str = "") -> None:
@@ -1762,7 +1776,7 @@ def test_classify_step3_live_marker_stays_no_stall(tmp_path: Path, capsys: pytes
     assert "MATCHED_CLASSIFIER_PATTERN=no-stall" in out
 
 
-def test_classify_step5_self_review_abandoned_marker_uses_step5_review_hint(
+def test_classify_step5_self_review_abandoned_marker_retries_checks_commit_route(
     tmp_path: Path, capsys: pytest.CaptureFixture[str],
 ) -> None:
     _write_bg_wait_marker(tmp_path, step="implement-step5-self-review", pid=_dead_pid())
@@ -1772,8 +1786,9 @@ def test_classify_step5_self_review_abandoned_marker_uses_step5_review_hint(
     assert rc == 0
     out = capsys.readouterr().out
     assert "FAILURE_CLASS=transient-infra" in out
-    assert "RESUME_HINT=step5-review" in out
+    assert "RESUME_HINT=checks-commit-route-retry" in out
     assert "STALL_STEP=5" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned" in out
 
 
 def test_classify_non_checks_marker_stays_no_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

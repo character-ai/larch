@@ -103,7 +103,7 @@ def _resume_hint_for(*, klass: str, step: str, phase: str, pattern: str = "") ->
     if safe_step == "2":
         return "step2-impl"
     if safe_step == "5":
-        return "step5-review"
+        return "checks-commit-route-retry" if pattern == "checks-leg-abandoned" else "step5-review"
     if safe_step in {"8", "9", "10", "11", "12", "13", "14", "15", "rebase-failed"}:
         return "step8-shippr"
     if safe_step and re.fullmatch(r"(8|9|10|11|12|13|14|15)([a-z][0-9]?|-[a-z0-9]+(-[a-z0-9]+)*)?", safe_step):

@@ -13,6 +13,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from larch.state._tokens import (
+    _abandoned_checks_marker_stall_step,
     _safe_phase_value,
     _safe_step_value,
     _state_file_syntax_ok,
@@ -65,6 +66,9 @@ def clear_stall(args: argparse.Namespace) -> int:
             emit(key="CLEARED", value="false")
             return 3
     if not present:
+        if _abandoned_checks_marker_stall_step(tmpdir) is not None:
+            with contextlib.suppress(OSError):
+                (tmpdir / ".bg-wait-active").unlink()
         emit(key="CLEARED", value="true")
         return 0
     for path in _state_layer_paths(tmpdir):
@@ -82,6 +86,9 @@ def clear_stall(args: argparse.Namespace) -> int:
         if read_kv(path=path, key="STALL_TRACKING") != "false" or read_kv(path=path, key="STALL_STEP") != "":
             emit(key="CLEARED", value="false")
             return 1
+    if _abandoned_checks_marker_stall_step(tmpdir) is not None:
+        with contextlib.suppress(OSError):
+            (tmpdir / ".bg-wait-active").unlink()
     emit(key="CLEARED", value="true")
     return 0
 
