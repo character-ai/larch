@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Refine-loop behavior is already stated in the file; adding more explicit freezes is optional, not necessary for the density pass.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The readability-style read line is useful, but the outline-compression feature still ships without preserving it verbatim.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The breadcrumb text is observable, but this is still a docs/logging consistency issue rather than a necessary feature defect.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan can still meet the token target with the broader section pass, so narrowing the files list is proportionality tuning, not a necessity.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate stale-reference cleanup, but not material enough to clear the OOS bar.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Same stale-reference cleanup as OOS_1, still not material enough to clear the OOS bar.

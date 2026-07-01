@@ -1,0 +1,101 @@
+## Plan
+
+## Approach
+
+- Do a whole-file prose-density pass on `skills/design/references/design-outline.md`.
+- Preserve behavior and byte-stable contract text:
+  - Step 1d.7 banner literal.
+  - `AskUserQuestion` question, header, and option labels.
+  - Sentinel names and file paths.
+  - Fenced commands and markdown schema fence.
+  - Existing section headers.
+  - Cancel hygiene literals (byte-stable; shorten surrounding prose only):
+    - `SUMMARY_OUTCOME=cancelled-outline`
+    - `### Final summary block` fenced bash block cross-reference to `SKILL.md` Step 0b
+    - `**ℹ /design cancelled by operator (outline gate).**`
+- Prefer shorter sentences and fewer repeated clauses.
+- Keep the outline-gate semantics unchanged.
+- Target at least a 15% reduction for `skills/design/references/design-outline.md`, using the repo `(len(text)+3)//4` estimator from `python/larch/lint/lint_skill_closure_growth.py::_estimated_tokens`. Current file is 10,218 bytes / 10,175 characters, about 2,544 estimated tokens. Target is at or below about 8,685 bytes / about 2,162 estimated tokens (at least ~382-token / ~15% drop). This per-file gate is the primary issue acceptance criterion; aggregate `/design` closure shrink is secondary confirmation only.
+- Regenerate `python/skill-closure-baseline.json` with the existing ratchet target after the prose reduction.
+- Do not edit `skills/design/SKILL.md` unless testing reveals a broken reference, which is not expected.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/design-outline.md
+
+- Tighten all sections named by the approved outline:
+  - Entry guard.
+  - Inputs.
+  - Architectural guideline presentation.
+  - Approval prompt.
+  - Refine loop.
+  - Cancel hygiene.
+  - Downstream consumer contract.
+  - Never-written invariant.
+  - Plan-review scope anchor.
+- Remove redundant restatement, filler, and repeated justification.
+- Keep all literal contract strings unchanged.
+- Keep the five-section outline schema fence unchanged except surrounding prose.
+- In **Cancel hygiene**, shorten wrapper prose only; do not paraphrase, omit, or reorder the outcome token, Final summary block anchor, or operator cancellation line listed in Approach.
+
+### UPDATED: python/skill-closure-baseline.json
+
+- Regenerate with `make regen-skill-closure-baseline`.
+- Commit the lower `/design` closure metrics.
+- Expect the `/implement` row to remain unchanged except for formatter-stable rewrite effects, if any.
+
+## Edge cases
+
+- Do not shorten text by weakening required sequencing, especially the same-turn continuation to folded Step 2a / Step 2b.
+- Do not merge bullets if that makes sentinel or prompt conditions ambiguous.
+- Do not change `AskUserQuestion` strings, option labels, or breadcrumbs.
+- Do not remove the warning that design-log publishing may capture `design-outline.md`.
+- Do not alter Cancel hygiene outcome tokens, the `### Final summary block` Step 0b cross-reference, or the outline-gate cancellation line; paraphrasing there can export an unknown `SUMMARY_OUTCOME` or break Final summary fence lookup while aggregate closure tests still pass.
+- A modest trim that lowers aggregate `/design` closure but falls short of the per-file ~15% bar is insufficient; iterate on redundant prose outside frozen literals until the file-level gate passes.
+
+## Failure modes
+
+- **Behavior drift**: compressed prose may accidentally change a gate branch. Avoid by preserving condition/action pairs.
+- **Cancel hygiene string drift**: tightening Cancel hygiene may drop or paraphrase `SUMMARY_OUTCOME=cancelled-outline`, the `### Final summary block` Step 0b anchor, or the outline-gate cancellation line. Gate with targeted grep before merge.
+- **Per-file under-compression**: aggregate `skill-closure report` and `lint skill-closure-growth` can pass after baseline regen even when `design-outline.md` missed the ~15% file-level target, because the growth lint is one-directional and closure totals dilute this file's share. Gate acceptance on the file itself before merge.
+- **Ratchet miss**: baseline regeneration may not show the target reduction if edits are too small. Measure before and after with the per-file estimator and `python3 python/cli.py skill-closure report`.
+- **String drift**: exact harnesses may depend on literals. Use targeted grep or tests before finalizing.
+
+## Testing strategy
+
+Per-file acceptance gate (primary; run before and after the edit, record both numbers in the PR or implementer notes):
+
+```bash
+python3 -c "t=open('skills/design/references/design-outline.md', encoding='utf-8').read(); est=(len(t)+3)//4; print(f'bytes={len(t.encode())} est_tokens={est}')"
+```
+
+Pass when post-edit `est_tokens` is at or below 2,162 (equivalently, live before/after delta is at least ~15% / ~382 tokens). Re-run until the gate passes or further safe compression is impossible without touching frozen literals.
+
+Cancel hygiene literal gate (run after the edit; must pass before merge):
+
+```bash
+rg -F 'SUMMARY_OUTCOME=cancelled-outline' skills/design/references/design-outline.md
+rg -F '### Final summary block' skills/design/references/design-outline.md
+rg -F '**ℹ /design cancelled by operator (outline gate).**' skills/design/references/design-outline.md
+```
+
+Secondary closure checks (ratchet confirmation only; do not substitute for the per-file gate):
+
+- Run `python3 python/cli.py skill-closure report` before and after the edit to confirm the `/design` closure shrank.
+- Run `make regen-skill-closure-baseline`.
+- Run `python3 python/cli.py lint skill-closure-growth --skill design`.
+- Run `make lint-readability-preamble`.
+- Run `make test-design-structure`.
+- Run `python3 python/cli.py checks run-relevant` if available in the local environment.
+
+## Acceptance
+
+- `skills/design/references/design-outline.md` estimated tokens drop by at least 15% per the `(len(text)+3)//4` estimator (baseline ~2,544; target at or below ~2,162).
+- Zero outline-gate behavior change; all frozen literals, prompts, sentinels, fenced commands, and Cancel hygiene outcome/anchor/cancellation lines preserved byte-stable.
+- `python/skill-closure-baseline.json` regenerated and matches a fresh scan.
+- `python3 python/cli.py lint skill-closure-growth --skill design` passes after baseline regen.
+- `make test-design-structure` and `make lint-readability-preamble` pass.
+
+review_status: complete
+rounds_completed: 3
+diff_lines: 80

@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already requires unchanged literal contracts, unchanged gate semantics, and preserved condition/action pairs; explicit Refine-loop enumeration is defensive, not necessary.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Dropping the readability-style Read line would not break outline-gate control flow or the ~15% compression acceptance criteria.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- Edge cases already forbid changing breadcrumbs; skip/approve/auto-approve lines are covered without extra Approach preserve bullets.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of twice-rejected scope-reduction finding; issue-scoped compression can still satisfy the per-file gate without reframing Files.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate stale-reference OOS from round 1; doc-only inaccuracy fails backlog materiality and issue-overhead gates.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of OOS_1; same stale plan-review-loop.sh citation with no new evidence.

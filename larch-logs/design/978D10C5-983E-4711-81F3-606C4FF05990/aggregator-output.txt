@@ -1,0 +1,23 @@
+Reviewing the referenced file to normalize findings and verify merge boundaries.
+### FINDING_1: Refine-loop semantics and operator literals unprotected during compression
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The planned whole-file density pass treats the Refine loop (lines 106–116) as compressible prose while the Approach byte-stable preserve list only freezes `AskUserQuestion` question/header/option labels (and Cancel hygiene after round 2). Load-bearing Refine-loop rules are not named in Approach or Edge cases: empty/non-actionable replies must not approve; free-form operator messages are refinement input, not implicit approve/cancel; **Refine outline** must not write `$DESIGN_TMPDIR/.outline-approved`; the loop must continue until explicit **Approve outline** or **Cancel**. Operator-visible literals at risk include the free-form refine question (`"What would you like to refine? …"`), the `## Updated Design Outline` reprint header, and the re-fire-the-same-approval-prompt rule. A ~15% cut can paraphrase or drop these while frozen `AskUserQuestion` labels and Cancel-hygiene `rg` checks still pass, letting empty refinement advance, changing refine UX/loop termination, or writing `.outline-approved` on Refine.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add Edge-case bullets (or one Approach preserve bullet) naming these Refine-loop condition/action pairs as frozen semantics; prose may tighten but the rules must remain explicit and unmerged.
+  - From Cursor-Innovation: Add Refine-loop literals to the Approach byte-stable preserve list (mirror Cancel hygiene): the free-form question string, `## Updated Design Outline`, empty/non-actionable reply handling, and the re-fire-the-same-approval-prompt rule. Optionally add matching `rg -F` checks beside the Cancel hygiene gate.
+  - From Cursor-Pragmatic: Add these operator-visible literals to Approach byte-stable preserve (same treatment as Cancel hygiene) and extend post-edit rg gates beyond the three Cancel lines to cover at least the skip/approve/auto-approve breadcrumbs and the Refine free-form question.
+
+### FINDING_2: Readability-style Read directive unprotected during whole-file compression
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Line 43 (`Read skills/design/references/readability-style.md before composing the outline.`) sits outside the frozen schema fence and is not in the Approach preserve list or Edge cases (only the design-log publish warning is named). A whole-file density pass can delete or inline-merge it while frozen prompts still pass, so outlines may omit the readability contract (em-dash ban, brevity axes) despite acceptance requiring zero outline-gate behavior change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add the readability-style Read directive to Approach byte-stable preserve text or an Edge case ("do not remove the readability-style Read line"). Keep tightening limited to surrounding prose.
+
+### FINDING_3: Entry-guard skip breadcrumbs and approve/auto-approve success lines unprotected during compression
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: After round 2, Cancel hygiene literals are enumerated and `rg`-gated, but Entry guard skip breadcrumbs and approve/auto-approve success lines remain compression targets. A pass can paraphrase the three `⏩ 1d.7: outline — skipped …` lines (lines 23–25), `✅ 1d.7: outline approved — proceeding to plan drafting` (line 100), and `⏩ 1d.7: outline — auto-approved (--skip-approve)` (line 93) while `AskUserQuestion` labels and Cancel hygiene pass checks. That breaks zero-behavior-change acceptance and can desync the auto-approve breadcrumb duplicated in `skills/design/SKILL.md:250`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add these operator-visible literals to Approach byte-stable preserve (same treatment as Cancel hygiene) and extend post-edit rg gates beyond the three Cancel lines to cover at least the skip/approve/auto-approve breadcrumbs and the Refine free-form question.
