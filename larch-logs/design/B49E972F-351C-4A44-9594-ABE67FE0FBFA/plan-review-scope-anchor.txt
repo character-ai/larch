@@ -1,0 +1,14 @@
+Consolidate incidental cross-file duplication that is **not** load-bearing, leaving the deliberate anti-halt duplication intact.
+
+**Context.** `python/cli.py token measure-ngram-duplication` shows the `--run-id` flag-doc block repeated across 8 occurrences / 4-8 files ("optional run identifier when set used as the run id for this invocation instead of the auto-generated one"), and session-setup boilerplate repeated about 5 times. Distinct from the load-bearing anti-halt continuation duplication, which `#5788` marks explicitly off-limits.
+
+**Scope.**
+
+- Identify the incidental duplicated blocks (flag docs, session-setup prose) that can collapse to one normative statement plus a cited anchor, without harming compaction resilience.
+- Apply only where the duplication is incidental. Explicitly **preserve** all repeated NEVER / anti-halt / continuation blocks.
+
+**Acceptance.** N-gram duplication score drops for the targeted incidental blocks; anti-halt duplication unchanged; no behavior change.
+
+**Out of scope.** Do not touch compaction-resilience duplication (#5788 deliberately-out-of-scope). Lower confidence; **A1 measurement recommended** to confirm the targeted blocks sit on hot paths before editing.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

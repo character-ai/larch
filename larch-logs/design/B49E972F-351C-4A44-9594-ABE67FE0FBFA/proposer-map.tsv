@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=bd42405f15721297ab7f481e488256b9dc326eae98338d693d968febdfae8f2b
+# neutral_ballot_sha256=fc03444ad33c3b4f669be1eabba753960f0084e481c1f45fcb98a3923dbc12eb
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements
+FINDING_2	Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements
+FINDING_3	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
