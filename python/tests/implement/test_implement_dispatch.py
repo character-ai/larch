@@ -662,6 +662,39 @@ def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
     assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
 
 
+def test_step18_gate_finalize_abandoned_checks_marker_breaks_out_without_finalize(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    dead = subprocess.Popen(["true"])
+    dead.wait()
+    (tmp / ".bg-wait-active").write_text(
+        f"PID={dead.pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S=15600\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        implement_dispatch,
+        "_run_cli_capture",
+        lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"),
+    )
+    monkeypatch.setattr(dispatch_step18, "_run_cli_capture", lambda *_a, **_k: pytest.fail("normalize-outcome should not run for active stall"))
+    monkeypatch.setattr(
+        implement_dispatch.subprocess,
+        "run",
+        lambda *_a, **_k: pytest.fail("finalize should not run for active stall"),
+    )
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", str(tmp)]) == 0
+
+    captured = capsys.readouterr()
+    assert "STALL_TRACKING_ABANDONED_MARKER=true\n" in captured.out
+    assert "STALL_TRACKING_DISK=false\n" in captured.out
+    assert "STALL_RECOVERY_REQUIRED=true\n" in captured.out
+    assert captured.out.rstrip().endswith("NEXT_ACTION=stall-recovery")
+
+
 def test_step18_gate_finalize_outcome_false_skips_filing_even_with_evidence(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

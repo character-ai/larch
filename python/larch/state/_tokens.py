@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
@@ -182,6 +183,46 @@ def _read_state_file(path: Path) -> dict[str, str]:
     return out
 
 
+# STEP values written to .bg-wait-active by checks-commit-route sites (see
+# dispatch_commit_route.py _checks_commit_route_marker), mapped to the
+# STALL_STEP token stall-recovery classification expects for that site.
+_CHECKS_MARKER_STALL_STEPS: dict[str, str] = {
+    "implement-step3-checks": "3",
+    "implement-step5-self-review": "5",
+}
+
+
+def _abandoned_checks_marker_stall_step(tmpdir: Path) -> str | None:
+    """Detect a checks-commit-route .bg-wait-active marker left by a dead process.
+
+    A process killed before it can run its own cleanup (external kill, not the
+    in-process graceful timeout handled by _run_leg_with_timeout) never gets a
+    chance to write STALL_TRACKING=true anywhere, so the normal stall layers
+    all read false. The marker written before the risky leg starts is the only
+    surviving evidence in that case. Returns the STALL_STEP token for the
+    marked site only when the recorded PID is confirmed dead; returns None
+    when there is no marker, it belongs to a non-checks site (step5-review,
+    step8-ship), or its PID is still alive or unreadable.
+    """
+    marker = tmpdir / ".bg-wait-active"
+    if not marker.is_file() or marker.is_symlink():
+        return None
+    values = _read_state_file(marker)
+    stall_step = _CHECKS_MARKER_STALL_STEPS.get(values.get("STEP", ""))
+    if stall_step is None:
+        return None
+    pid_raw = values.get("PID", "")
+    if not pid_raw.isdigit():
+        return None
+    try:
+        os.kill(int(pid_raw), 0)
+    except ProcessLookupError:
+        return stall_step
+    except OSError:
+        return None
+    return None
+
+
 def _text_file_contains(*, path: Path, needle: str) -> bool:
     if not path.is_file():
         return False
@@ -246,6 +287,7 @@ def _safe_matched_pattern_value(value: str) -> str:
         "recovery-out-of-scope", "test-output", "lint-output", "dispatch-output",
         "dispatch-bail-token", "transient-output", "ci-fix-exhausted-with-detail",
         "same-cause-repeat", "fallback", "bail-token", "lint-fix-bail-token",
+        "checks-leg-abandoned",
     }
     return value if value in allowed else "redacted"
 

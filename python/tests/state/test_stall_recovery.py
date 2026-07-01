@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import argparse
+import os
 import subprocess
 import tempfile
 import pytest
@@ -1721,6 +1722,69 @@ def test_classify_test_failure_step8_uses_shippr_resume_hint(tmp_path: Path, cap
     out = capsys.readouterr().out
     assert "FAILURE_CLASS=test-failure" in out
     assert "RESUME_HINT=step8-shippr" in out
+
+
+def _write_bg_wait_marker(tmp_path: Path, *, step: str, pid: int) -> None:
+    _ = (tmp_path / ".bg-wait-active").write_text(
+        f"PID={pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP={step}\nTIMEOUT_S=15600\n",
+        encoding="utf-8",
+    )
+
+
+def _dead_pid() -> int:
+    proc = subprocess.Popen(["true"])
+    _ = proc.wait()
+    return proc.pid
+
+
+def test_classify_step3_abandoned_checks_marker_retries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=_dead_pid())
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_TRACKING=true" in out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=checks-commit-route-retry" in out
+    assert "STALL_STEP=3" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=checks-leg-abandoned" in out
+
+
+def test_classify_step3_live_marker_stays_no_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_bg_wait_marker(tmp_path, step="implement-step3-checks", pid=os.getpid())
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=no-stall" in out
+
+
+def test_classify_step5_self_review_abandoned_marker_uses_step5_review_hint(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str],
+) -> None:
+    _write_bg_wait_marker(tmp_path, step="implement-step5-self-review", pid=_dead_pid())
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=transient-infra" in out
+    assert "RESUME_HINT=step5-review" in out
+    assert "STALL_STEP=5" in out
+
+
+def test_classify_non_checks_marker_stays_no_stall(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_bg_wait_marker(tmp_path, step="implement-step8-ship", pid=_dead_pid())
+
+    rc = stall_recovery.classify_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "FAILURE_CLASS=unrecoverable" in out
+    assert "MATCHED_CLASSIFIER_PATTERN=no-stall" in out
 
 
 def test_classify_dispatch_bail_token_manifest_missing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
