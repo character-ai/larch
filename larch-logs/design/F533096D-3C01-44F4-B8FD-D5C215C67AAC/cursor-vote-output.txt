@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- FINDING_1 EXIT_CODE argv wiring prevents EXIT_CODE=1 misclassification; dropping the unknown arm is optional scope trim beyond the SIGTERM fix
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- checks-leg-timeout is a separate 3h internal path, not the wrapper SIGTERM failure this issue targets
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 on the same checks-leg-timeout gap
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- generic negative EXIT_CODE plumbing is inert today but the plan already treats generic coverage as optional
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_3 on generic-path dead code

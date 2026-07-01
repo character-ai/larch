@@ -1,0 +1,1 @@
+Plan fixes stall recovery classification for `checks-child-failed` signal exits. It passes in-memory stall state in Step 18a docs, classifies Step 3/6 negative or unknown checks exits as `transient-infra`, retries only Step 3 through the existing checks retry path, and adds focused regression tests.
