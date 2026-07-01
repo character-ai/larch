@@ -475,6 +475,27 @@ else
 fi
 rm -f "$MARKER_SCOPE"
 
+# --- T22: many TMPDIR larch-*/claude-*-prefixed dirs stay well under the hook's 10s
+# budget and correct discovery still finds/counts the live marker (#5943 regression
+# guard: marker_candidates() used to spawn one find subprocess per matched dir).
+mkdir -p "$TMP"/larch-perf-{1..3000}
+D_PERF="$TMP/claude-implement-perf-xyz"
+mkdir -p "$D_PERF"
+MARKER_PERF="$D_PERF/.bg-wait-active"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=implement-step3-checks" "TIMEOUT_S=21600" >"$MARKER_PERF"
+rm -f "$D_PERF/no-progress-turns.count"
+start_ts=$(date +%s)
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$D_PERF" | "$HOOK")
+elapsed=$(( $(date +%s) - start_ts ))
+cnt=$(cat "$D_PERF/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ] && [ "$elapsed" -le 5 ]; then
+  pass "T22: discovery over 3000 TMPDIR session dirs stays bounded (elapsed=${elapsed}s) and finds the live marker"
+else
+  fail "T22: expected count=1 and elapsed<=5s over 3000 dirs: out='$out' cnt=$cnt elapsed=${elapsed}s"
+fi
+rm -f "$MARKER_PERF"
+rm -rf "$TMP"/larch-perf-*
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

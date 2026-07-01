@@ -31,7 +31,11 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   prefixed dirs under `$TMPDIR` (maxdepth 2 within each), not the full TMPDIR tree. This
   avoids the macOS per-user `$TMPDIR` timeout issue (#5868): the full tree can reach 77k+
   dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`
-  branch is unaffected.
+  branch is unaffected. The matched dirs are collected and passed to a single `find`
+  invocation (multiple start-paths) rather than spawning one `find` subprocess per dir
+  (#5943 recurrence of #5868): with the accumulated `larch-*`/`claude-design-*`/`claude-implement-*`
+  dir count unbounded, per-dir subprocess spawn overhead alone could exceed the hook's
+  timeout even though each individual `find` was already depth-scoped.
 - Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
 - Both handlers are scoped by repo-clone identity when it is knowable (#5927 and its follow-up): they read the candidate marker's sibling `.larch-keepalive` `CLONE_PATH=` value (the same identity file `session_env.py` writes at bootstrap) via `marker_foreign_clone` and skip that marker only when its canonicalized `CLONE_PATH` is not the same clone tree as the current session's canonicalized `cwd` (also read from the hook's own JSON input, mirroring `hook-bg-poll-guard.sh`). Same-clone means exact path match or either path is a subdirectory of the other, so a prompt from `/repo/docs` still matches a marker whose `CLONE_PATH` is `/repo`. `UserPromptSubmit` skips the block for a foreign-clone marker; `Stop` skips the turn count for a foreign-clone marker, so an unrelated clone's slow-but-live wait neither arms nor consumes this marker's breaker and cannot make the owning clone block its own next prompt. A marker with no readable `CLONE_PATH`, or an invocation with no readable `cwd`, is treated as same-clone and still counts/blocks — unknown identity never introduces a new false negative, it only preserves the pre-fix global behavior.
 - Checks `is_step_completed` (terminal sentinel present) before declaring a marker live, mirroring

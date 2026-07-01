@@ -551,6 +551,26 @@ out=$(run_payload_auto_markers "$(payload_monitor "$D_IMPL")")
 assert_deny "$out" 'TMPDIR claude-implement-* fallback discovery without marker override denies Monitor'
 rm -f "$MARKER_IMPL"
 
+# Many TMPDIR larch-*/claude-*-prefixed dirs stay well under the hook's 10s PreToolUse
+# budget and discovery still finds the live marker (#5943 regression guard:
+# marker_candidates() used to spawn one find subprocess per matched dir).
+mkdir -p "$TMP"/larch-perf-{1..3000}
+D_PERF="$TMP/claude-implement-perf-xyz"
+mkdir -p "$D_PERF/.completed"
+MARKER_PERF="$D_PERF/.bg-wait-active"
+write_marker_at "$MARKER_PERF" $$ "$(date +%s)" 21600 implement-step3-checks
+start_ts=$(date +%s)
+out=$(run_payload_auto_markers "$(payload_monitor "$D_PERF")")
+elapsed=$(( $(date +%s) - start_ts ))
+assert_deny "$out" '#5943: discovery over 3000 TMPDIR session dirs still denies Monitor'
+if [ "$elapsed" -le 5 ]; then
+  pass "#5943: discovery over 3000 TMPDIR session dirs stays bounded (elapsed=${elapsed}s)"
+else
+  fail "#5943: discovery over 3000 TMPDIR session dirs exceeded bound (elapsed=${elapsed}s, want <=5s)"
+fi
+rm -f "$MARKER_PERF"
+rm -rf "$TMP"/larch-perf-*
+
 # Monitor and TaskOutput are always denied while any live marker is active.
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload "$(payload_monitor)")
