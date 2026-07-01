@@ -21,7 +21,7 @@ Collaborative best-effort read-only-repo research task with a fixed-shape lane t
 **Flags**: Parse flags from the start of `$ARGUMENTS` before treating the remainder as the research question. Flags may appear in any order; stop at the first non-flag token. After stripping all flags, save the remainder as `RESEARCH_QUESTION`.
 
 - `--no-issue` (boolean): Set a mental flag `RESEARCH_NO_ISSUE=true`. When set, Step 3.5 (auto-issue) is skipped — no GitHub issue is created for the research results. Default: `RESEARCH_NO_ISSUE=false`. When `RESEARCH_NO_ISSUE=false` (default), Step 3.5 creates a GitHub issue containing the research question, full report, and token spend metadata via `/issue` single mode.
-- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>`: Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md` for the shared contract.
 
 **Fail-closed unknown-flag guard**: After flag parsing finishes, inspect the next token of `$ARGUMENTS`. If it begins with `--`, abort:
 
@@ -119,15 +119,11 @@ Print: `> **🔶 /research 0: setup**`
 
 ### 0a — Session Setup and Reviewer Check
 
-Run the shared session setup script:
-
-```bash
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-research --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers
-```
+Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for the shared session setup stem, reviewer tail, and output-key semantics. When executing, combine that shared invocation shape with local delta `--prefix claude-research`.
 
 If the script exits non-zero, print the error and abort.
 
-Parse the output for `SESSION_TMPDIR`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`. Use presence only for the immediate degraded-tools gate.
+Parse the output for `SESSION_TMPDIR`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`. Set `RESEARCH_TMPDIR` = `SESSION_TMPDIR`.
 
 Set lane launch guards from `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or fresh executable checks, and remember each lane's pre-launch attribution status (`ok` / `fallback_binary_missing`):
 

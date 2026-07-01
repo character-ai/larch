@@ -8,7 +8,7 @@ Upgrade the larch plugin to the latest stable version. This skill is for the sta
 
 ## Flags
 
-- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>`: Details live in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md`.
 
 ## Steps
 

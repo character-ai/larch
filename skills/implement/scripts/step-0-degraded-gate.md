@@ -14,7 +14,7 @@ The wrapper relays the underlying helper stdout unchanged unless this file names
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
-- Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- `skills/shared/session-setup-output.md` names the session telemetry keys; this gate reads persisted values from `$IMPLEMENT_TMPDIR/session-env.sh`.
 
 ## Edit-in-sync
 

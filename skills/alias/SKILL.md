@@ -42,7 +42,7 @@ Parse flags from the start of `$ARGUMENTS` before treating the remainder as posi
 
 - `--merge`: Set `alias_merge=true`. Default: `alias_merge=false`. When true, `--merge` is forwarded to the `/implement` invocation so the resulting PR is also merged.
 - `--private`: Set `alias_private=true`. Default: `alias_private=false`. When true, the new alias is forced under `.claude/skills/<alias-name>/` regardless of plugin-repo detection (escape hatch for creating a private alias inside a plugin source repo). When absent: target is `skills/<alias-name>/` if running in a plugin source repo, else `.claude/skills/<alias-name>/`. In non-plugin repos `--private` is a no-op (the default is already `.claude/skills/`). The flag is consumed by `/alias` only — it does NOT appear in the generated alias's preset flags.
-- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>`: Flag semantics are in `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md`.
 
 | Position | Meaning |
 |----------|---------|

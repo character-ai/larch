@@ -33,7 +33,7 @@ This capture is required so usage errors, seed failures, and commit-route stalls
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
-- Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- For telemetry key definitions, see `skills/shared/session-setup-output.md`; resume paths use `$IMPLEMENT_TMPDIR/session-env.sh`.
 - The round-timing duplicate probe uses awk success-on-match semantics: `found` must exit `0`, and missing rows must exit `1`.
 - `--ready-to-commit` exits before `review-and-fix step5` unless the parsed route is exactly `NEXT_ACTION=continue`.
 - Porcelain probing for the resume-handoff site lives inside `commit-route`, not in this wrapper.
