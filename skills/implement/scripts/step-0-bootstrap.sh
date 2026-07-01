@@ -12,6 +12,7 @@ PREFLIGHT_TMPDIR_ARG=""
 CODER_ARG=""
 FORCE_REQUESTED_ARG=""
 SELF_REVIEW_ARG=""
+SELF_IMPLEMENT_ARG=""
 FORKED_TARGET_ARG=""
 MERGE_REQUESTED_ARG=""
 DRAFT_REQUESTED_ARG=""
@@ -36,6 +37,8 @@ while [ $# -gt 0 ]; do
 ' 'step-0-bootstrap.sh: --force-requested requires a value' >&2; exit 2; }; FORCE_REQUESTED_ARG=$2; shift 2 ;;
         --self-review-requested) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --self-review-requested requires a value' >&2; exit 2; }; SELF_REVIEW_ARG=$2; shift 2 ;;
+        --self-implement-requested) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --self-implement-requested requires a value' >&2; exit 2; }; SELF_IMPLEMENT_ARG=$2; shift 2 ;;
         --forked-target) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --forked-target requires a value' >&2; exit 2; }; FORKED_TARGET_ARG=$2; shift 2 ;;
         --merge-requested) [ $# -ge 2 ] || { printf '%s
@@ -57,7 +60,7 @@ while [ $# -gt 0 ]; do
         --non-interactive) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --non-interactive requires a value' >&2; exit 2; }; NON_INTERACTIVE_ARG=$2; shift 2 ;;
         --help) printf '%s
-' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--force-requested true|false] [--self-review-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
+' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--force-requested true|false] [--self-review-requested true|false] [--self-implement-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
         *) printf '%s
 ' "step-0-bootstrap.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -68,6 +71,8 @@ case "$FORCE_REQUESTED_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --force-requested must be true or false' >&2; exit 2 ;; esac
 case "$SELF_REVIEW_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --self-review-requested must be true or false' >&2; exit 2 ;; esac
+case "$SELF_IMPLEMENT_ARG" in ""|true|false) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --self-implement-requested must be true or false' >&2; exit 2 ;; esac
 case "$FORKED_TARGET_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --forked-target must be true or false' >&2; exit 2 ;; esac
 case "$MERGE_REQUESTED_ARG" in ""|true|false) ;; *) printf '%s
@@ -120,6 +125,7 @@ export IMPLEMENT_TMPDIR
 [ -n "$CODER_ARG" ] && coder="$CODER_ARG"
 case "$FORCE_REQUESTED_ARG" in true|false) force_requested="$FORCE_REQUESTED_ARG" ;; esac
 case "$SELF_REVIEW_ARG" in true|false) self_review="$SELF_REVIEW_ARG" ;; esac
+case "$SELF_IMPLEMENT_ARG" in true|false) self_implement="$SELF_IMPLEMENT_ARG" ;; esac
 case "$FORKED_TARGET_ARG" in true|false) forked_target="$FORKED_TARGET_ARG" ;; esac
 case "$MERGE_REQUESTED_ARG" in true|false) merge="$MERGE_REQUESTED_ARG" ;; esac
 case "$DRAFT_REQUESTED_ARG" in true|false) draft="$DRAFT_REQUESTED_ARG" ;; esac
@@ -165,6 +171,11 @@ if [ "$MODE" = resume ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     case "${self_review:-}" in true|false) ;; *)
         _run_self_review=$(read_run_flag_key SELF_REVIEW_REQUESTED "")
         case "$_run_self_review" in true|false) self_review="$_run_self_review" ;; esac
+        ;;
+    esac
+    case "${self_implement:-}" in true|false) ;; *)
+        _run_self_implement=$(read_run_flag_key SELF_IMPLEMENT_REQUESTED "")
+        case "$_run_self_implement" in true|false) self_implement="$_run_self_implement" ;; esac
         ;;
     esac
     read_ship_seed_key() {
@@ -230,7 +241,7 @@ fi
 if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     rehydrate_larch_triplet
 fi
-export forked_target force_requested self_review coder RUN_ID PREFLIGHT_TMPDIR
+export forked_target force_requested self_review self_implement coder RUN_ID PREFLIGHT_TMPDIR
 export merge draft no_admin_fallback no_logs_commit
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO FORK_REPO FORK_OWNER
 export LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"
@@ -239,7 +250,7 @@ if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
 fi
 set +e
-_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --force-requested "${force_requested:-false}"     --self-review-requested "${self_review:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
+_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --force-requested "${force_requested:-false}"     --self-review-requested "${self_review:-false}"     --self-implement-requested "${self_implement:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
 _inv_rc=$?
 set -e
 if [ "$_inv_rc" -eq 2 ]; then

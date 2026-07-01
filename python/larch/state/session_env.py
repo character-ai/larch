@@ -70,7 +70,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "CLAUDE_PLUGIN_ROOT",
     "LARCH_CLAUDE_SOURCE_FILE",
 })
-RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED"})
+RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED", "SELF_IMPLEMENT_REQUESTED"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
 # Single source of truth so the two lists cannot drift (and to avoid
 # duplicate-code, pylint R0801).
@@ -1244,13 +1244,14 @@ def persist_run_flags_main(argv: list[str]) -> int:
     parser.add_argument("--no-issues", default="")
     parser.add_argument("--force-requested", default="false")
     parser.add_argument("--self-review-requested", default="false")
+    parser.add_argument("--self-implement-requested", default="false")
     try:
         args = parser.parse_args(argv)
         if not args.implement_tmpdir:
             raise ValueError("--implement-tmpdir is required")
         if not Path(args.implement_tmpdir).is_dir():
             raise ValueError("--implement-tmpdir not a directory")
-        for flag in ("quick_mode", "no_issues", "force_requested", "self_review_requested"):
+        for flag in ("quick_mode", "no_issues", "force_requested", "self_review_requested", "self_implement_requested"):
             value = getattr(args, flag)
             if value not in _BOOL:
                 raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
@@ -1259,6 +1260,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
             "NO_ISSUES": args.no_issues,
             "FORCE_REQUESTED": args.force_requested,
             "SELF_REVIEW_REQUESTED": args.self_review_requested,
+            "SELF_IMPLEMENT_REQUESTED": args.self_implement_requested,
         }
         target = Path(args.implement_tmpdir) / "run-flags.sh"
         if not _writer_target_allowed(target):
