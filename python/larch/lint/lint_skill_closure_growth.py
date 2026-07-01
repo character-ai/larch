@@ -17,8 +17,10 @@ GATED_SKILLS = ("design", "implement")
 METRIC_FIELDS = (
     "skill_md_lines",
     "skill_md_estimated_tokens",
+    "skill_md_content_estimated_tokens",
     "closure_lines",
     "closure_estimated_tokens",
+    "closure_content_estimated_tokens",
 )
 BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files"})
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
@@ -49,8 +51,10 @@ class BaselineRowDict(TypedDict):
     skill: str
     skill_md_lines: int
     skill_md_estimated_tokens: int
+    skill_md_content_estimated_tokens: int
     closure_lines: int
     closure_estimated_tokens: int
+    closure_content_estimated_tokens: int
     files: list[str]
 
 
@@ -66,6 +70,7 @@ class BaselineError(ValueError):
 class FileMetrics:
     lines: int
     estimated_tokens: int
+    content_estimated_tokens: int
 
 
 @dataclass(frozen=True)
@@ -73,8 +78,10 @@ class SkillClosureResult:
     skill: str
     skill_md_lines: int
     skill_md_estimated_tokens: int
+    skill_md_content_estimated_tokens: int
     closure_lines: int
     closure_estimated_tokens: int
+    closure_content_estimated_tokens: int
     files: tuple[str, ...]
 
     def to_baseline_row(self) -> BaselineRowDict:
@@ -82,8 +89,10 @@ class SkillClosureResult:
             "skill": self.skill,
             "skill_md_lines": self.skill_md_lines,
             "skill_md_estimated_tokens": self.skill_md_estimated_tokens,
+            "skill_md_content_estimated_tokens": self.skill_md_content_estimated_tokens,
             "closure_lines": self.closure_lines,
             "closure_estimated_tokens": self.closure_estimated_tokens,
+            "closure_content_estimated_tokens": self.closure_content_estimated_tokens,
             "files": list(self.files),
         }
 
@@ -93,8 +102,10 @@ class BaselineRow:
     skill: str
     skill_md_lines: int
     skill_md_estimated_tokens: int
+    skill_md_content_estimated_tokens: int
     closure_lines: int
     closure_estimated_tokens: int
+    closure_content_estimated_tokens: int
     files: tuple[str, ...]
 
 
@@ -114,12 +125,20 @@ def _estimated_tokens(text: str) -> int:
     return (len(text) + 3) // 4
 
 
+def _content_text(text: str) -> str:
+    return "".join(f"{line}\n" for line in text.splitlines() if line.strip())
+
+
 def _read_file_metrics(path: Path) -> FileMetrics:
     try:
         text = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError) as exc:
         raise ScanError(f"cannot read {path}: {exc}") from exc
-    return FileMetrics(lines=len(text.splitlines()), estimated_tokens=_estimated_tokens(text))
+    return FileMetrics(
+        lines=len(text.splitlines()),
+        estimated_tokens=_estimated_tokens(text),
+        content_estimated_tokens=_estimated_tokens(_content_text(text)),
+    )
 
 
 def _repo_relative(root: Path, path: Path) -> str:
@@ -301,12 +320,15 @@ def scan_skill(root: Path, skill: str) -> SkillClosureResult:
     skill_metrics = metrics[skill_rel]
     closure_lines = sum(item.lines for item in metrics.values())
     closure_tokens = sum(item.estimated_tokens for item in metrics.values())
+    closure_content_tokens = sum(item.content_estimated_tokens for item in metrics.values())
     return SkillClosureResult(
         skill=skill,
         skill_md_lines=skill_metrics.lines,
         skill_md_estimated_tokens=skill_metrics.estimated_tokens,
+        skill_md_content_estimated_tokens=skill_metrics.content_estimated_tokens,
         closure_lines=closure_lines,
         closure_estimated_tokens=closure_tokens,
+        closure_content_estimated_tokens=closure_content_tokens,
         files=files,
     )
 
@@ -356,12 +378,24 @@ def _validate_baseline_row(item: object, *, source: Path, index: int) -> Baselin
             index=index,
             key="skill_md_estimated_tokens",
         ),
+        skill_md_content_estimated_tokens=_validate_int(
+            row["skill_md_content_estimated_tokens"],
+            source=source,
+            index=index,
+            key="skill_md_content_estimated_tokens",
+        ),
         closure_lines=_validate_int(row["closure_lines"], source=source, index=index, key="closure_lines"),
         closure_estimated_tokens=_validate_int(
             row["closure_estimated_tokens"],
             source=source,
             index=index,
             key="closure_estimated_tokens",
+        ),
+        closure_content_estimated_tokens=_validate_int(
+            row["closure_content_estimated_tokens"],
+            source=source,
+            index=index,
+            key="closure_content_estimated_tokens",
         ),
         files=_validate_files(row["files"], source=source, index=index),
     )
@@ -414,6 +448,7 @@ def _parse_args(argv: list[str], *, prog: str, allow_write: bool) -> argparse.Na
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
     if allow_write:
         _ = parser.add_argument("--write", action="store_true", help="regenerate the committed baseline")
+        _ = parser.add_argument("--skill", choices=GATED_SKILLS, help="check one gated skill")
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:
@@ -431,14 +466,16 @@ def _coerce_root(root_text: str, *, prog: str) -> Path | None:
 
 
 def _print_report(results: list[SkillClosureResult]) -> None:
-    print("skill      skill_lines  skill_tokens  closure_lines  closure_tokens")
+    print("skill      skill_lines  skill_tokens  skill_content_tokens  closure_lines  closure_tokens  closure_content_tokens")
     for result in results:
         print(
             f"{result.skill:<10}"
             f"{result.skill_md_lines:>11}"
             f"{result.skill_md_estimated_tokens:>14}"
+            f"{result.skill_md_content_estimated_tokens:>22}"
             f"{result.closure_lines:>15}"
             f"{result.closure_estimated_tokens:>16}"
+            f"{result.closure_content_estimated_tokens:>24}"
         )
         for rel in result.files:
             print(f"  - {rel}")
@@ -476,10 +513,13 @@ def main(argv: list[str] | None = None) -> int:
     if root is None:
         return TOOL_FAILURE_EXIT
     try:
-        results = scan_all(root)
+        if parsed.write and parsed.skill:
+            raise BaselineError("--skill is check-only; --write regenerates all gated skills")
         if parsed.write:
+            results = scan_all(root)
             write_baseline(root / BASELINE_RELPATH, results)
             return 0
+        results = [scan_skill(root, parsed.skill)] if parsed.skill else scan_all(root)
         baseline = load_baseline(root / BASELINE_RELPATH)
     except (BaselineError, ScanError) as exc:
         print(f"lint skill-closure-growth: {exc}", file=sys.stderr)

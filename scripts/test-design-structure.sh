@@ -53,9 +53,9 @@ STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.s
 
 fail() { printf '%s\n' "$1" >&2; exit 1; }
 
-skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')
-[ "$skill_lines" -le 705 ] \
-  || fail "skills/design/SKILL.md must stay <= 705 lines after prose compression (found $skill_lines)"
+if ! python3 "$ROOT/python/cli.py" lint skill-closure-growth --skill design; then
+  fail "skills/design/SKILL.md closure growth ratchet failed"
+fi
 
 contains() {
   file="$1"

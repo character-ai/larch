@@ -246,6 +246,68 @@ def test_baseline_check_fails_when_estimated_tokens_grow(tmp_path: Path, capsys:
     assert "design: closure_estimated_tokens" in err or "design: skill_md_estimated_tokens" in err
 
 
+def test_blank_line_only_deletion_leaves_content_tokens_unchanged(tmp_path: Path) -> None:
+    write_roots(tmp_path, design="alpha\n\nbeta\n")
+    baseline = scg.scan_skill(tmp_path, "design")
+
+    write(tmp_path, "skills/design/SKILL.md", "alpha\nbeta\n")
+    live = scg.scan_skill(tmp_path, "design")
+
+    assert live.skill_md_lines < baseline.skill_md_lines
+    assert live.skill_md_content_estimated_tokens == baseline.skill_md_content_estimated_tokens
+    assert live.closure_content_estimated_tokens == baseline.closure_content_estimated_tokens
+
+
+def test_content_growth_fails_even_when_line_count_drops(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    write_roots(tmp_path, design="a\n" + ("\n" * 100))
+    _ = write_baseline_from_live(tmp_path)
+    write(tmp_path, "skills/design/SKILL.md", "a" + ("b" * 80) + "\n")
+
+    assert scg.main(["--root", str(tmp_path)]) == 1
+
+    err = capsys.readouterr().err
+    assert "design: skill_md_content_estimated_tokens" in err
+
+
+def test_skill_filter_ignores_other_skill_growth(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/implement/SKILL.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra implement growth\n")
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "design"]) == 0, capsys.readouterr().err
+    assert scg.main(["--root", str(tmp_path)]) == 1
+    assert "implement:" in capsys.readouterr().err
+
+
+def test_unknown_skill_filter_exits_tool_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "unknown"]) == 2
+    assert "invalid choice" in capsys.readouterr().err
+
+
+def test_write_rejects_skill_filter_without_rewriting(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    baseline_path = tmp_path / "python/skill-closure-baseline.json"
+    original = baseline_path.read_text(encoding="utf-8")
+    with (tmp_path / "skills/design/SKILL.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("changed after baseline\n")
+
+    assert scg.main(["--root", str(tmp_path), "--write", "--skill", "design"]) == 2
+
+    assert baseline_path.read_text(encoding="utf-8") == original
+    assert "--skill is check-only" in capsys.readouterr().err
+
+
 def test_write_regenerates_canonical_json(tmp_path: Path) -> None:
     fixture_project(tmp_path)
 
@@ -254,7 +316,35 @@ def test_write_regenerates_canonical_json(tmp_path: Path) -> None:
     baseline_path = tmp_path / "python/skill-closure-baseline.json"
     payload = json.loads(baseline_path.read_text(encoding="utf-8"))
     assert [row["skill"] for row in payload] == ["design", "implement"]
+    assert all(set(row.keys()) == set(scg.BASELINE_KEYS) for row in payload)
     assert baseline_path.read_text(encoding="utf-8").endswith("\n")
+
+
+@pytest.mark.parametrize(
+    ("field", "replacement"),
+    [
+        ("skill_md_content_estimated_tokens", None),
+        ("closure_content_estimated_tokens", True),
+    ],
+)
+def test_baseline_rejects_missing_or_malformed_content_metrics(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    field: str,
+    replacement: object,
+) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    baseline_path = tmp_path / "python/skill-closure-baseline.json"
+    payload = json.loads(baseline_path.read_text(encoding="utf-8"))
+    if replacement is None:
+        del payload[0][field]
+    else:
+        payload[0][field] = replacement
+    _ = baseline_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert scg.main(["--root", str(tmp_path)]) == 2
+    assert field in capsys.readouterr().err
 
 
 def test_report_mode_prints_design_and_implement(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -263,6 +353,8 @@ def test_report_mode_prints_design_and_implement(tmp_path: Path, capsys: pytest.
     assert scg.report_main(["--root", str(tmp_path)]) == 0
 
     out = capsys.readouterr().out
+    assert "skill_content_tokens" in out
+    assert "closure_content_tokens" in out
     assert "design" in out
     assert "implement" in out
     assert "skills/design/SKILL.md" in out

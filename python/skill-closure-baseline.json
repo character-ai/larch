@@ -1,5 +1,6 @@
 [
   {
+    "closure_content_estimated_tokens": 69046,
     "closure_estimated_tokens": 69234,
     "closure_lines": 2040,
     "files": [
@@ -17,10 +18,12 @@
       "skills/design/references/validator-failure.md"
     ],
     "skill": "design",
+    "skill_md_content_estimated_tokens": 30076,
     "skill_md_estimated_tokens": 30131,
     "skill_md_lines": 705
   },
   {
+    "closure_content_estimated_tokens": 33086,
     "closure_estimated_tokens": 33177,
     "closure_lines": 941,
     "files": [
@@ -30,6 +33,7 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
+    "skill_md_content_estimated_tokens": 28374,
     "skill_md_estimated_tokens": 28451,
     "skill_md_lines": 789
   }
