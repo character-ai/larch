@@ -1,11 +1,8 @@
 """Agent/reviewer file generators extracted from rendering.py."""
-# ruff: noqa: F401
 # pylint: skip-file
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedImport=false, reportUnusedFunction=false
 
 from __future__ import annotations
-
-import argparse
 import difflib
 import hashlib
 import os

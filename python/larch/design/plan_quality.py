@@ -1,4 +1,4 @@
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportPrivateUsage=false, reportUnusedImport=false
 # ruff: noqa: S607, PLR2004, PIE810, F401
 # pylint: disable=unused-import
 """Plan-quality helpers for /design plan validation and revision flows.
@@ -19,11 +19,9 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
-from dataclasses import dataclass
 from pathlib import Path
 from larch import io as larch_io
-from collections.abc import Callable, Iterable
+from collections.abc import Callable
 
 from larch.agents import agents
 from larch.core import config

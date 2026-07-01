@@ -1,7 +1,7 @@
 """Prompt rendering, Mermaid sanitizing, diagram upsert, and generators."""
 # ruff: noqa: S608, F401
 # pylint: disable=unused-import
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedImport=false
 
 from __future__ import annotations
 
@@ -1707,4 +1707,3 @@ from larch.rendering._rendering_generators import (  # noqa: E402
     generate_reviewer_security_structure_tests_agent_main,
     generate_topology_docs_main,
 )
-
