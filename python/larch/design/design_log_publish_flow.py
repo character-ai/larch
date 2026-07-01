@@ -120,6 +120,7 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
 _PUBLISH_EXCLUDE_DIRS = frozenset({
     "plan-autofix",
     ".completed",
+    "larch-logs",
 })
 
 # GitHub-redundant snapshots: top-level duplicates of content already on GitHub.

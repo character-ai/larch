@@ -1583,3 +1583,28 @@ def test_write_implement_env_rejects_bad_pid(tmp_path: Path, monkeypatch: pytest
 
     assert rc == 1
     assert not (home / ".cache" / "larch" / "sessions").exists()
+
+
+def test_write_design_env_persists_claude_source_file(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    out = tmp_path / "source-env.sh"
+    source_file = design / "claude-source.env"
+    result = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        "--claude-source-file",
+        str(source_file),
+        env={"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": "/tmp/plugin"},
+    )
+    assert result.returncode == 0, result.stderr
+    assert f"LARCH_CLAUDE_SOURCE_FILE={source_file}\n" in out.read_text(encoding="utf-8")

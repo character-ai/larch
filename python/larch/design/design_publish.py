@@ -7,14 +7,26 @@ import os
 import re
 import subprocess
 import sys
+from dataclasses import dataclass
 from pathlib import Path
-from larch import io as larch_io
 from collections.abc import Sequence
 
+from larch import io as larch_io
 from larch.report import design_diagram_log
 from larch.core import proc
 from larch.report import run_logs
+from larch.design import design_step0_env
 from larch.git.repo_roots import consumer_repo_root
+
+
+@dataclass(frozen=True)
+class _TranscriptCaptureContext:
+    design_tmpdir: Path
+    plugin_root: Path
+    session_id: str
+    issue: str
+    repo: str
+    claude_pid: str
 
 
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
@@ -294,6 +306,231 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         + "".join(optional_lines)
         + "".join(lines[diff_idx:])
     )
+
+
+
+
+def _append_transcript_warning(*, design_tmpdir: Path, status: str, message: str) -> None:
+    run_logs.append_execution_issue(
+        log_file=design_tmpdir / "execution-issues.md",
+        category="Warnings",
+        entry=f"design Step 5c session-transcript {status}: {message}",
+    )
+
+
+def _remove_root_transcript(design_tmpdir: Path) -> bool:
+    root_transcript = design_tmpdir / "session-transcript.jsonl"
+    try:
+        if root_transcript.exists() or root_transcript.is_symlink():
+            root_transcript.unlink()
+    except OSError as exc:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="stale-root-removal-failed",
+            message=f"could not remove stale root transcript before publish: {exc}",
+        )
+        return False
+    return True
+
+
+def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, session_id: str) -> Path | None:
+    snapshot = design_tmpdir / "claude-source.env"
+    try:
+        if snapshot.is_file() and snapshot.stat().st_size > 0:
+            return snapshot
+    except OSError:
+        return None
+    if not session_id:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="snapshot-skipped",
+            message="SESSION_ID was absent from source-env.sh; transcript capture skipped.",
+        )
+        return None
+    result = proc.run(
+        [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "claude-source"],
+        env={**os.environ, "LARCH_TOKEN_SESSION_ID": session_id},
+    )
+    if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="snapshot-skipped",
+            message="Claude source snapshot materialization failed; transcript capture skipped.",
+        )
+        return None
+    try:
+        larch_io.atomic_write(snapshot, result.stdout, prefix=f".{snapshot.name}.", nofollow=True)
+    except OSError as exc:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="snapshot-write-failed",
+            message=f"Claude source snapshot write failed; transcript capture skipped: {exc}",
+        )
+        return None
+    return snapshot
+
+
+def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:
+    result = proc.run(
+        [
+            sys.executable,
+            str(ctx.plugin_root / "python" / "cli.py"),
+            "session",
+            "write-design-env",
+            "--output",
+            str(source_env),
+            "--design-tmpdir",
+            str(ctx.design_tmpdir),
+            "--session-id",
+            session_id,
+            "--issue-number",
+            ctx.issue,
+            "--claude-pid",
+            ctx.claude_pid,
+            "--claude-source-file",
+            str(snapshot),
+            *(["--repo", ctx.repo] if ctx.repo else []),
+        ],
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(ctx.plugin_root)},
+    )
+    if result.returncode == 0:
+        return True
+    _append_transcript_warning(
+        design_tmpdir=ctx.design_tmpdir,
+        status="source-env-refresh-failed",
+        message="could not persist LARCH_CLAUDE_SOURCE_FILE; transcript capture skipped.",
+    )
+    return False
+
+
+def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
+    """Capture and hoist a design session transcript before committed log publish.
+
+    Returns False only for publish-blocking hygiene failures. Capture skip statuses
+    leave the root transcript absent and return True so log publish can continue.
+    """
+    if not _remove_root_transcript(ctx.design_tmpdir):
+        return False
+    source_env = ctx.design_tmpdir / "source-env.sh"
+    source_data = design_step0_env._load_source_env(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        path=source_env,
+        allow_keys={"SESSION_ID"},
+    )
+    source_session_id = source_data.get("SESSION_ID", "") or ctx.session_id
+    snapshot = _materialize_claude_source_snapshot(
+        design_tmpdir=ctx.design_tmpdir,
+        plugin_root=ctx.plugin_root,
+        session_id=source_session_id,
+    )
+    if snapshot is None:
+        return True
+    if not _refresh_design_source_env(
+        ctx=ctx,
+        source_env=source_env,
+        snapshot=snapshot,
+        session_id=source_session_id,
+    ):
+        return True
+    staging_root = ctx.design_tmpdir / "larch-logs"
+    capture = proc.run(
+        [
+            sys.executable,
+            str(ctx.plugin_root / "python" / "cli.py"),
+            "run-log",
+            "capture-transcript",
+            "--source-file",
+            str(snapshot),
+            "--skill",
+            "design",
+            "--run-id",
+            ctx.session_id,
+            "--log-root",
+            str(staging_root),
+            "--defer-commit",
+            "true",
+            "--execution-issues-log",
+            str(ctx.design_tmpdir / "execution-issues.md"),
+            "--warning-step-label",
+            "5c",
+        ],
+    )
+    status = ""
+    for line in capture.stdout.splitlines():
+        if line.startswith("SESSION_TRANSCRIPT_STATUS="):
+            print(line)
+            status = line.split("=", 1)[1]
+    root_transcript = ctx.design_tmpdir / "session-transcript.jsonl"
+    staged = staging_root / "design" / ctx.session_id / "session-transcript.jsonl"
+    if capture.returncode != 0 or status != "captured":
+        with contextlib.suppress(OSError):
+            root_transcript.unlink(missing_ok=True)
+        return True
+    try:
+        _ = staged.replace(root_transcript)
+    except OSError as exc:
+        with contextlib.suppress(OSError):
+            root_transcript.unlink(missing_ok=True)
+        _append_transcript_warning(
+            design_tmpdir=ctx.design_tmpdir,
+            status="hoist-failed",
+            message=f"capture succeeded but transcript hoist failed: {exc}",
+        )
+        return False
+    return True
+
+
+def _run_log_publish_after_capture(
+    *,
+    ctx: _TranscriptCaptureContext,
+    kvs: list[tuple[str, str]],
+    result_env: Path,
+) -> int | None:
+    if not _capture_design_transcript(ctx=ctx):
+        _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
+        _emit_rows(kvs)
+        _ = _write_result_env(path=result_env, rows=kvs)
+        return 5
+    publish = proc.run(
+        [
+            sys.executable,
+            str(ctx.plugin_root / "python" / "cli.py"),
+            "design",
+            "log-publish",
+            "--design-tmpdir",
+            str(ctx.design_tmpdir),
+            "--run-id",
+            ctx.session_id,
+            "--issue",
+            ctx.issue,
+            *(["--repo", ctx.repo] if ctx.repo else []),
+        ],
+    )
+    publish_kv = _parse_kv(publish.stdout)
+    if "PUBLISH_OK" in publish_kv:
+        kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
+    for key in ("PR_NUMBER", "PR_URL", "RECOVERY_BRANCH"):
+        if publish_kv.get(key):
+            kvs.append((key, publish_kv[key]))
+            if key == "RECOVERY_BRANCH":
+                kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
+    if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
+        _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
+        _emit_rows(kvs)
+        _ = _write_result_env(path=result_env, rows=kvs)
+        return 5
+    scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
+    if scrub_violations.isdigit() and int(scrub_violations) > 0:
+        print(
+            f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
+            "secret-shaped value(s) from this /design run's logs before flush. "
+            "A credential was almost certainly exposed in the session; ROTATE it now "
+            "and check chat/PRs for the same value.**",
+            flush=True,
+        )
+    if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
+        _emit_rows(kvs)
+        return 0 if _write_result_env(path=result_env, rows=kvs) else 3
+    return None
 
 
 def publish_core(argv: Sequence[str]) -> int:
@@ -590,55 +827,20 @@ def publish_core(argv: Sequence[str]) -> int:
         kvs[-1] = ("DESIGNED_ADMISSION_READY", "true")
 
     if parsed["--session-id"]:
-        publish: subprocess.CompletedProcess[str] = subprocess.run(
-            [
-                sys.executable,
-                str(plugin_root / "python" / "cli.py"),
-                "design",
-                "log-publish",
-                "--design-tmpdir",
-                str(design_tmpdir),
-                "--run-id",
-                parsed["--session-id"],
-                "--issue",
-                parsed["--issue"],
-                *(["--repo", parsed["--repo"]] if parsed["--repo"] else []),
-            ],
-            capture_output=True,
-            text=True,
-            check=False,
+        publish_rc = _run_log_publish_after_capture(
+            ctx=_TranscriptCaptureContext(
+                design_tmpdir=design_tmpdir,
+                plugin_root=plugin_root,
+                session_id=parsed["--session-id"],
+                issue=parsed["--issue"],
+                repo=parsed["--repo"],
+                claude_pid=parsed["--claude-pid"],
+            ),
+            kvs=kvs,
+            result_env=result_env,
         )
-        publish_kv = _parse_kv(publish.stdout)
-        if "PUBLISH_OK" in publish_kv:
-            kvs.append(("PUBLISH_OK", publish_kv["PUBLISH_OK"]))
-        for key in ("PR_NUMBER", "PR_URL", "RECOVERY_BRANCH"):
-            if publish_kv.get(key):
-                kvs.append((key, publish_kv[key]))
-                if key == "RECOVERY_BRANCH":
-                    kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
-        if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
-            _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
-            _emit_rows(kvs)
-            _ = _write_result_env(path=result_env, rows=kvs)
-            return 5
-        # Re-surface the dropped secret-rotation warning: the design log is scrubbed
-        # before commit, and a non-zero SECRET_SCRUB_VIOLATIONS count from log-publish
-        # means a secret-shaped value was redacted from the committed logs. Warn the
-        # operator to rotate it (the scrub itself prevents the leak; the operator was
-        # no longer being told to rotate after the #3681 port). Emit on recoverable
-        # PUBLISH_OK=false paths too; only scrub-fatal rc 5 above suppresses it.
-        scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
-        if scrub_violations.isdigit() and int(scrub_violations) > 0:
-            print(
-                f"**⚠ SECURITY: redact scrub-log-secrets redacted {scrub_violations} "
-                "secret-shaped value(s) from this /design run's logs before flush. "
-                "A credential was almost certainly exposed in the session; ROTATE it now "
-                "and check chat/PRs for the same value.**",
-                flush=True,
-            )
-        if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
-            _emit_rows(kvs)
-            return 0 if _write_result_env(path=result_env, rows=kvs) else 3
+        if publish_rc is not None:
+            return publish_rc
     _emit_rows(kvs)
     return 0 if _write_result_env(path=result_env, rows=kvs) else 3
 

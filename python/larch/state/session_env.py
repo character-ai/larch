@@ -68,6 +68,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "CURSOR_BINARY_FOUND",
     "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT",
     "CLAUDE_PLUGIN_ROOT",
+    "LARCH_CLAUDE_SOURCE_FILE",
 })
 RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
@@ -522,6 +523,32 @@ def _validate_plugin_root_value(value: str) -> bool:
     return bool(value) and len(value) <= MAX_PATH_VALUE_LEN and value.startswith("/") and bool(_SAFE_PATH_RE.match(value))
 
 
+def _validate_path_arg_value(*, value: str, flag: str) -> None:
+    if value and (len(value) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(value)):
+        raise ValueError(f"Invalid {flag}: must match ^[A-Za-z0-9_./~+-]{{1,512}}$")
+
+
+def _add_optional_design_source_file(*, values: dict[str, str], claude_source_file: str) -> None:
+    if claude_source_file:
+        values["LARCH_CLAUDE_SOURCE_FILE"] = claude_source_file
+
+
+def _base_design_writer_values(args: argparse.Namespace) -> dict[str, str]:
+    values: dict[str, str] = {
+        "DESIGN_TMPDIR": args.design_tmpdir,
+        "SESSION_TMPDIR": args.design_tmpdir,
+        "SESSION_ID": args.session_id,
+    }
+    if args.repo:
+        values["REPO"] = args.repo
+    repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    if repo_root:
+        values["REPO_ROOT"] = repo_root
+    if args.issue_number:
+        values["ISSUE_NUMBER"] = args.issue_number
+    return values
+
+
 def _write_plugin_root_env(*, output: Path, value: str) -> None:
     if not value:
         return
@@ -615,8 +642,7 @@ def write_env_main(argv: list[str]) -> int:
         if args.token_session_id and not _SAFE_ID_RE.match(args.token_session_id):
             raise ValueError("Invalid --token-session-id: must match ^[A-Za-z0-9_.-]{1,128}$")
         for flag, value in (("--claude-source-file", args.claude_source_file), ("--timing-ledger", args.timing_ledger)):
-            if value and (len(value) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(value)):
-                raise ValueError(f"Invalid {flag}: must match ^[A-Za-z0-9_./~+-]{{1,512}}$")
+            _validate_path_arg_value(value=value, flag=flag)
         if args.prev_implement_tmpdir:
             if len(args.prev_implement_tmpdir) > MAX_PATH_VALUE_LEN or not _SAFE_PATH_RE.match(args.prev_implement_tmpdir):
                 raise ValueError("Invalid --prev-implement-tmpdir: must match ^[A-Za-z0-9_./~+-]{1,512}$")
@@ -902,7 +928,7 @@ def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) ->
 
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
-    for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "issue-number", "claude-pid"):
+    for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "issue-number", "claude-pid", "claude-source-file"):
         parser.add_argument(f"--{flag}", default="")
     try:
         args = parser.parse_args(argv)
@@ -924,6 +950,7 @@ def write_design_env_main(argv: list[str]) -> int:
             raise ValueError("Invalid --session-id: must match ^[A-Za-z0-9_.-]{1,128}$")
         if args.claude_pid and not re.match(r"^[1-9][0-9]{0,6}$", args.claude_pid):
             raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
+        _validate_path_arg_value(value=args.claude_source_file, flag="--claude-source-file")
         ok, message = validate_design_tmpdir(args.design_tmpdir)
         if not ok:
             raise ValueError(message)
@@ -939,18 +966,7 @@ def write_design_env_main(argv: list[str]) -> int:
             raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
         if args.claude_pid and not plugin_root:
             raise ValueError("Missing CLAUDE_PLUGIN_ROOT: required when --claude-pid is set")
-        values: dict[str, str] = {
-            "DESIGN_TMPDIR": args.design_tmpdir,
-            "SESSION_TMPDIR": args.design_tmpdir,
-            "SESSION_ID": args.session_id,
-        }
-        if args.repo:
-            values["REPO"] = args.repo
-        repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
-        if repo_root:
-            values["REPO_ROOT"] = repo_root
-        if args.issue_number:
-            values["ISSUE_NUMBER"] = args.issue_number
+        values = _base_design_writer_values(args)
         code_bin_set = "--codex-binary-found" in argv
         cur_bin_set = "--cursor-binary-found" in argv
         recovered: dict[str, str] = {
@@ -966,6 +982,7 @@ def write_design_env_main(argv: list[str]) -> int:
                 _parse_bool_arg(value=value, flag=f"--{key.lower().replace('_', '-')}")
                 values[key] = value
         values["LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT"] = _external_timeout()
+        _add_optional_design_source_file(values=values, claude_source_file=args.claude_source_file)
         if plugin_root:
             values["CLAUDE_PLUGIN_ROOT"] = plugin_root
         _validate_writer_keys(data=values, allowed=WRITE_DESIGN_ENV_KEYS)

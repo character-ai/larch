@@ -6,6 +6,7 @@ import json
 import subprocess
 import sys
 from pathlib import Path
+from collections.abc import Mapping, Sequence
 from types import SimpleNamespace
 
 import pytest
@@ -674,7 +675,7 @@ def test_measure_realized_cost_writes_schema(tmp_path: Path, monkeypatch: pytest
     skill_dir = repo / "skills" / "review"
     skill_dir.mkdir(parents=True)
     _ = (skill_dir / "SKILL.md").write_text("review skill body\n", encoding="utf-8")
-    run_dir = repo / "larch-logs" / "implement" / "RUN1"
+    run_dir = repo / "larch-logs" / "review" / "RUN1"
     run_dir.mkdir(parents=True)
     _ = (run_dir / "manifest.json").write_text('{"issue_number": 42, "skill": "review"}', encoding="utf-8")
     _ = (run_dir / "timing-report.md").write_text(
@@ -686,13 +687,16 @@ def test_measure_realized_cost_writes_schema(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [11 for _ in texts])  # type: ignore[arg-type]
     out = tokens.measure_realized_cost()
     text = out.read_text(encoding="utf-8")
-    assert text.startswith("skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n")
+    assert text.startswith("skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\tskill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\n")
     row = text.strip().splitlines()[1].split("\t")
     assert row[0] == "review"
     assert row[1] == "1"
     assert row[2] == "1"
-    assert row[3] == "11"
+    assert row[3] == "11.00"
     assert row[4] == "11"
+    assert row[5] == "11"
+    assert row[6] == "0.00"
+    assert row[7] == "0"
 
 
 def test_measure_md_cost_main_prints_relative_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -821,3 +825,125 @@ def test_build_report_vendor_totals_cache_read_is_integer(tmp_path: Path) -> Non
     assert report["cursor"]["totals"]["cache_read"] == 80  # type: ignore[index]
     assert report["codex"]["totals"]["cache_read"] == 50  # type: ignore[index]
     assert report["claude_sub"]["totals"]["cache_read"] == 40  # type: ignore[index]
+
+
+def _setup_reference_repo(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    for rel, text in {
+        "skills/design/SKILL.md": "design skill tokens",
+        "skills/implement/SKILL.md": "implement skill tokens",
+        "skills/design/references/approval-gates.md": "approval gates reference",
+        "skills/design/references/plan-review.md": "plan review reference",
+        "skills/design/references/finalize-step5.md": "finalize step five reference",
+        "skills/shared/topology.md": "shared topology reference words",
+        "docs/ignored.md": "ignored docs",
+    }.items():
+        path = tmp_path / rel
+        path.parent.mkdir(parents=True, exist_ok=True)
+        _ = path.write_text(text, encoding="utf-8")
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_tiktoken_count_texts", _count_words)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setenv("LARCH_MEASURE_DATE", "2026-06-30")
+
+
+def _count_words(texts: list[str]) -> list[int]:
+    return [len(text.split()) for text in texts]
+
+
+def _write_valid_run(tmp_path: Path, *, skill: str, run_id: str, issue: int = 1) -> Path:
+    run_dir = tmp_path / "larch-logs" / skill / run_id
+    run_dir.mkdir(parents=True, exist_ok=True)
+    _ = (run_dir / "manifest.json").write_text(json.dumps({"issue_number": issue, "skill": skill}), encoding="utf-8")
+    return run_dir
+
+
+def _write_transcript(run_dir: Path, rows: Sequence[Mapping[str, object]]) -> None:
+    _ = (run_dir / "session-transcript.jsonl").write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+
+def _tsv_rows(path: Path) -> list[dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    return [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:]]
+
+
+def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup_reference_repo(tmp_path, monkeypatch)
+    run = _write_valid_run(tmp_path, skill="design", run_id="run1")
+    transcript_rows = [
+        {
+            "message": {
+                "content": [
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": f"{tmp_path}/skills/design/references/plan-review.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": f"{config.REDACTED_OPERATOR_REPO}/skills/design/references/finalize-step5.md"}},
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "docs/ignored.md"}},
+                ]
+            }
+        },
+        {
+            "blocks": [
+                {"type": "tool_call", "name": "Read", "input": {"file_path": "/Users/me/.claude/plugins/cache/larch-local/larch/abc/skills/shared/topology.md"}},
+                {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/design/references/approval-gates.md"}},
+            ]
+        },
+    ]
+    _write_transcript(run, transcript_rows)
+    _ = _write_valid_run(tmp_path, skill="design", run_id="run2", issue=2)
+    manifestless = tmp_path / "larch-logs" / "design" / "not-a-run"
+    manifestless.mkdir()
+    bad_manifest = tmp_path / "larch-logs" / "design" / "bad-run"
+    bad_manifest.mkdir()
+    _ = (bad_manifest / "manifest.json").write_text("{}", encoding="utf-8")
+
+    out = tokens.measure_references_heatmap()
+
+    rows = {(row["skill"], row["reference_path"]): row for row in _tsv_rows(out)}
+    assert rows[("design", "skills/design/references/approval-gates.md")]["reads_observed"] == "2"
+    assert rows[("design", "skills/design/references/approval-gates.md")]["runs_observed"] == "2"
+    assert rows[("design", "skills/design/references/approval-gates.md")]["loads_per_run"] == "1.000000"
+    assert rows[("design", "skills/design/references/plan-review.md")]["reads_observed"] == "1"
+    assert rows[("design", "skills/design/references/finalize-step5.md")]["reads_observed"] == "1"
+    assert rows[("design", "skills/shared/topology.md")]["reads_observed"] == "1"
+    assert all("docs/ignored.md" not in row["reference_path"] for row in rows.values())
+
+
+def test_measure_references_heatmap_skips_symlinked_transcript(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup_reference_repo(tmp_path, monkeypatch)
+    run = _write_valid_run(tmp_path, skill="design", run_id="run1")
+    outside = tmp_path / "outside.jsonl"
+    _ = outside.write_text(json.dumps({"blocks": [{"type": "tool_use", "name": "Read", "input": {"file_path": "skills/shared/topology.md"}}]}) + "\n", encoding="utf-8")
+    (run / "session-transcript.jsonl").symlink_to(outside)
+
+    out = tokens.measure_references_heatmap()
+
+    assert _tsv_rows(out) == []
+
+
+def test_measure_realized_cost_averages_reference_reads_across_missing_transcripts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup_reference_repo(tmp_path, monkeypatch)
+    run1 = _write_valid_run(tmp_path, skill="design", run_id="run1")
+    _ = _write_valid_run(tmp_path, skill="design", run_id="run2", issue=2)
+    _write_transcript(
+        run1,
+        [
+            {
+                "blocks": [
+                    {"type": "tool_use", "name": "Read", "input": {"file_path": "skills/shared/topology.md"}},
+                ]
+            }
+        ],
+    )
+    bad = tmp_path / "larch-logs" / "design" / "issue-less"
+    bad.mkdir()
+    _ = (bad / "manifest.json").write_text(json.dumps({"title": "bad"}), encoding="utf-8")
+
+    out = tokens.measure_realized_cost()
+
+    rows = {row["skill"]: row for row in _tsv_rows(out)}
+    design = rows["design"]
+    assert design["invocations"] == "2"
+    assert design["skill_md_tokens"] == "3"
+    assert design["reference_reads_observed"] == "1"
+    assert design["reference_tokens_per_invocation"] == "2.00"
+    assert design["realized_tokens"] == "10"
+    assert design["tokens_per_invocation"] == "5.00"

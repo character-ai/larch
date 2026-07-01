@@ -14,6 +14,7 @@ from collections.abc import Mapping
 from larch.core import config
 from larch.core import redact
 from larch.report import tokens
+from larch.report import run_log_corpus
 from larch.errors import ShipError
 from larch.core.proc import Runner
 from larch.report.report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
@@ -239,20 +240,10 @@ def _resolve_report(run_dir: Path, *, skill: Skill) -> Mapping[str, object] | No
 
 
 def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord | None:
-    manifest_obj = _json_file(run_dir / "manifest.json")
-    if manifest_obj is _JSON_ERROR:
-        return None
-    manifest = _as_mapping(manifest_obj)
-    if not isinstance(manifest_obj, dict):
-        _warn(f"manifest for {run_dir} is not a JSON object; skipping")
-        return None
-    if not manifest:
-        _warn(f"manifest for {run_dir} is empty and lacks numeric issue_number; skipping")
+    manifest = run_log_corpus.load_run_manifest(run_dir)
+    if manifest is None:
         return None
     number = safe_int(value=manifest.get("issue_number"))
-    if number <= 0:
-        _warn(f"manifest for {run_dir} lacks numeric issue_number; skipping")
-        return None
     report = _resolve_report(run_dir, skill=skill)
     if report is None:
         return None
@@ -275,28 +266,7 @@ def _record(run_dir: Path, *, skill: Skill, repo_slug: str | None) -> RunRecord 
     )
 
 def _run_dirs(log_base: Path) -> list[Path]:
-    dirs: list[Path] = []
-    try:
-        resolved_base = log_base.resolve(strict=True)
-    except OSError as exc:
-        _warn(f"log root {log_base} is missing or unreadable: {exc}; no run logs scanned")
-        return []
-    for path in sorted(log_base.glob("*")):
-        if path.is_symlink():
-            _warn(f"run directory {path} is a symlink; skipping")
-            continue
-        if not path.is_dir():
-            continue
-        try:
-            resolved = path.resolve(strict=True)
-        except OSError as exc:
-            _warn(f"could not resolve run directory {path}: {exc}; skipping")
-            continue
-        if not (resolved == resolved_base or resolved_base in resolved.parents):
-            _warn(f"run directory {path} resolves outside {log_base}; skipping")
-            continue
-        dirs.append(path)
-    return dirs
+    return run_log_corpus.run_dirs(log_base, warn=_warn)
 
 def _limit_value(limit: int | None) -> int | None:
     if limit is not None:
