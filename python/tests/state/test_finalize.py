@@ -327,6 +327,43 @@ def test_autoresolve_generated_conflicts_regenerates_and_continues(
     ]
 
 
+def test_autoresolve_generated_conflicts_resolves_across_multiple_commits(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    # Two replayed commits both conflict on the generated baseline: the first
+    # `rebase --continue` re-conflicts, the loop regenerates again, and the
+    # second continue completes the rebase (issue #5930 "remaining commits").
+    state: dict[str, int] = {"continue_calls": 0}
+
+    def fake_unmerged(*_args: object, **_kwargs: object) -> list[str]:
+        return ["python/skill-closure-baseline.json"]
+
+    def fake_regen(*_args: object, **_kwargs: object) -> bool:
+        return True
+
+    def fake_add(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("git", "add"), 0, "", "", 0.01)
+
+    def fake_continue(*_args: object, **_kwargs: object) -> CommandResult:
+        state["continue_calls"] += 1
+        rc = 1 if state["continue_calls"] == 1 else 0
+        return CommandResult(("git", "rebase", "--continue"), rc, "", "", 0.01)
+
+    def fake_in_progress(*_args: object, **_kwargs: object) -> bool:
+        return False
+
+    monkeypatch.setattr(finalize.git, "try_unmerged_paths", fake_unmerged)
+    monkeypatch.setattr(finalize, "_regenerate_generated_file", fake_regen)
+    monkeypatch.setattr(finalize.git, "add", fake_add)
+    monkeypatch.setattr(finalize.git, "rebase_continue", fake_continue)
+    monkeypatch.setattr(finalize.git, "rebase_in_progress", fake_in_progress)
+
+    result = finalize._autoresolve_generated_conflicts(RecordingRunner(), cwd=str(tmp_path))
+    assert result.status == "rebased"
+    assert state["continue_calls"] == 2  # looped once after the first continue re-conflicted
+
+
 def test_autoresolve_generated_conflicts_stalls_on_out_of_scope_conflict(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
