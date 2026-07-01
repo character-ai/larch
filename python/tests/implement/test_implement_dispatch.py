@@ -2920,7 +2920,7 @@ def test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noo
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
     assert "already-committed" in captured.out
-    assert calls == []
+    assert not calls
 
 
 def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(

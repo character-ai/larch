@@ -609,6 +609,15 @@ def _pathspec_clean_relative_to_head(pathspec_file: Path) -> bool:
     return not result.stdout.strip()
 
 
+def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
+    commit_sha = ""
+    commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
+    if commit.returncode == 0 and commit.stdout.strip():
+        commit_sha = commit.stdout.strip()
+    print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s")
+    return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
+
+
 def _step4_commit_failure(
     implement_tmpdir: Path,
     *,
@@ -664,12 +673,7 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
     manifest_path = _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip()
     dispatcher_committed = _read_kv_file(path=seed_file, key="DISPATCHER_COMMITTED", default="").strip() == "true"
     if dispatcher_committed and manifest_path and _path_readable_nonempty(Path(manifest_path)):
-        commit_sha = ""
-        commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
-        if commit.returncode == 0 and commit.stdout.strip():
-            commit_sha = commit.stdout.strip()
-        print(f"⏩ 4: commit (impl) status=skip reason=dispatcher-committed sha={commit_sha} elapsed=0s")
-        return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
+        return _step4_noop("dispatcher-committed")
 
     recovery_metadata = implement_tmpdir / "recovery-metadata.json"
     recovery_message = implement_tmpdir / "recovery-commit-message.txt"
@@ -693,12 +697,7 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
         return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
 
     if _pathspec_clean_relative_to_head(pathspec):
-        commit_sha = ""
-        commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
-        if commit.returncode == 0 and commit.stdout.strip():
-            commit_sha = commit.stdout.strip()
-        print(f"⏩ 4: commit (impl) status=skip reason=already-committed sha={commit_sha} elapsed=0s")
-        return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
+        return _step4_noop("already-committed")
 
     result = _run_leg_with_timeout(
         argv=[
