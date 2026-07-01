@@ -17,6 +17,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-token-report-dedup test-token-cost-per-bucket test-render-cost-line-realism test-render-cost-line-callsites test-token-report-summary-format test-parse-bootstrap-routing-envelope test-step-telemetry-mark lint-retired-scripts skill-closure-size lint-skill-closure-growth regen-skill-closure-baseline test-lint-skill-closure-growth
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage
+.PHONY: lint-flat-tests test-lint-flat-tests
 .PHONY: test-step-7a test-step-8-ship test-step-8-oos-checkpoint
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
@@ -49,6 +50,7 @@ py-lint-checks-fast:
 	$(PYTHON) python/cli.py lint subprocess-via-runner
 	$(PYTHON) python/cli.py lint env-via-config-constant
 	$(PYTHON) python/cli.py lint layering
+	$(PYTHON) python/cli.py lint flat-tests
 
 # Local full Python lint: fast checks + pylint over the whole tree. pylint runs
 # with all cores when the host supports the required process-pool semaphore
@@ -152,7 +154,7 @@ lint-tier1a-size:
 	python3 python/cli.py lint tier1a-size
 
 test-lint-tier1a-size:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_tier1a.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_tier1a.py -q
 
 lint-readability-preamble:
 	python3 python/cli.py lint readability-preamble
@@ -181,8 +183,14 @@ test-lint-consecutive-bash:
 lint-bg-wait-coverage:
 	python3 python/cli.py lint bg-wait-coverage
 
+lint-flat-tests:
+	python3 python/cli.py lint flat-tests
+
 test-lint-bg-wait-coverage:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_bg_wait_coverage.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_bg_wait_coverage.py -q
+
+test-lint-flat-tests:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_flat_tests.py -q
 
 lint-awk-multibyte-regex:
 	bash scripts/lint-awk-multibyte-regex.sh
@@ -595,7 +603,7 @@ test-lint-skill-md-flag-signature:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_md_flag_signature.py -q
 
 test-lint-skill-description-length:
-	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/test_lint_skill_description_length.py -q
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_description_length.py -q
 
 test-lint-codex-exec-auth:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_codex_exec_auth.py -q

@@ -449,7 +449,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (
         (
             "python/larch/lint/lint_bg_wait_coverage.py",
-            "python/test_lint_bg_wait_coverage.py",
+            "python/tests/lint/test_lint_bg_wait_coverage.py",
             "Makefile",
             ".pre-commit-config.yaml",
         ),
