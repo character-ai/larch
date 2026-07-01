@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 59375,
-    "closure_estimated_tokens": 59532,
-    "closure_lines": 1708,
+    "closure_content_estimated_tokens": 58842,
+    "closure_estimated_tokens": 58999,
+    "closure_lines": 1703,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
