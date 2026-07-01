@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress shared design-background-wait.md (~2.2k tok)
+
+In-place prose-density pass on the shared background-wait reference that design force-loads every run.
+
+**Context.** `skills/shared/design-background-wait.md` is 58 lines / ~2,217 tokens. It is the only `skills/shared/` file in design's eager closure, force-read at Step 1c/3 (Immediate-background wait rule, Step 3 task-notification boundary). Never prose-compressed.
+
+**Scope.** Tighten the wait-rule and notification-boundary prose. Preserve the `## Immediate-background wait rule`, `## Step 3 task notification boundary`, and `## Step 3 post-notification sequence` anchors (the `SKILL.md` cites them by anchor) and all sentinel / timeout literals verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change. Anchors that `SKILL.md` reads-and-applies remain stable.
+
+**Out of scope.** Shared file: verify no other consumer regresses. Density only. Do not touch the load-bearing anti-halt semantics.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

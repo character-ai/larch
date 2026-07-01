@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round waiter-literal concern; real risk, but not new or necessary enough to accept in this pass.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round anchor-window concern; plausible, but still an out-of-scope hardening issue rather than a must-fix for this density pass.

@@ -1,0 +1,38 @@
+In-place prose-density pass on the shared background-wait reference that design force-loads every run.
+
+**Context.** `skills/shared/design-background-wait.md` is 58 lines / ~2,217 tokens. It is the only `skills/shared/` file in design's eager closure, force-read at Step 1c/3 (Immediate-background wait rule, Step 3 task-notification boundary). Never prose-compressed.
+
+**Scope.** Tighten the wait-rule and notification-boundary prose. Preserve the `## Immediate-background wait rule`, `## Step 3 task notification boundary`, and `## Step 3 post-notification sequence` anchors (the `SKILL.md` cites them by anchor) and all sentinel / timeout literals verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change. Anchors that `SKILL.md` reads-and-applies remain stable.
+
+**Out of scope.** Shared file: verify no other consumer regresses. Density only. Do not touch the load-bearing anti-halt semantics.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce prose density in `skills/shared/design-background-wait.md` by roughly 15% estimated tokens (bytes/4), zero behavior change.
+- Preserve the three cited anchors (`## Immediate-background wait rule`, `## Step 3 task notification boundary`, `## Step 3 post-notification sequence`) and every sentinel/literal string pinned by `scripts/test-implement-anti-polling-rule.sh` and `scripts/test-design-structure.sh`.
+- Keep both harnesses green without editing the harnesses themselves.
+
+### Non-goals
+- No restructuring of headings: no merging, splitting, or removing sections (including `## Step 4 post-notification sequence` and `## Update Triggers`).
+- No change to any consumer file (`skills/design/SKILL.md`, `AGENTS.md`, `skills/shared/orchestrator-never.md`, harness scripts) — scope is the shared file only.
+- No behavior change: sentinel names, timeouts, `NEXT_ACTION`/`STEP*` grammar, and quoted literal strings stay byte-identical.
+
+### Approach sketch
+- In-place sentence-level prose tightening only, matching the precedent style from sibling task #5876 (`finalize-step5.md`): shorten qualifying clauses, cut redundant words, merge sentences repeating the same qualifier.
+- Preserve every backtick-quoted token, file path, and issue-number citation verbatim; only touch connective prose around them.
+- Keep one paragraph per subsection as today; no bullet-list conversion.
+- After editing, regenerate `python/skill-closure-baseline.json` via `make regen-skill-closure-baseline` so the /design closure ratchet reflects the smaller file (matches #5876 precedent).
+
+### Surfaces in scope
+- `skills/shared/design-background-wait.md`
+- `python/skill-closure-baseline.json` (regenerated, not hand-edited)
+
+### Open questions
+- None.
