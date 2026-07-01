@@ -2783,6 +2783,8 @@ def test_run_step4_commit_leg_commits_ordinary_pathspec(
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
     monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(implement_dispatch, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
+    monkeypatch.setattr(dispatch_commit_route, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 
@@ -2808,6 +2810,8 @@ def test_run_step4_commit_leg_failure_seeds_step4_stall(
     (impl / "implementation-commit-paths.nul").write_bytes(b"file.txt\0")
     seed_calls: list[tuple[str, str]] = []
 
+    monkeypatch.setattr(implement_dispatch, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
+    monkeypatch.setattr(dispatch_commit_route, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
     monkeypatch.setattr(
         implement_dispatch,
         "_run_leg_with_timeout",
@@ -2868,6 +2872,57 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     assert "dispatcher-committed" in captured.out
 
 
+def test_pathspec_clean_relative_to_head_detects_dirty_and_clean(repo: Path) -> None:
+    (repo / "changed.txt").write_text("v1\n", encoding="utf-8")
+    _git(repo, "add", "changed.txt")
+    _git(repo, "commit", "-m", "add changed.txt")
+    pathspec = repo / "pathspec.nul"
+    pathspec.write_bytes(b"changed.txt\0")
+
+    assert dispatch_commit_route._pathspec_clean_relative_to_head(pathspec) is True
+
+    (repo / "changed.txt").write_text("v2\n", encoding="utf-8")
+
+    assert dispatch_commit_route._pathspec_clean_relative_to_head(pathspec) is False
+
+
+def test_pathspec_clean_relative_to_head_empty_pathspec_is_not_clean(tmp_path: Path) -> None:
+    pathspec = tmp_path / "empty.nul"
+    pathspec.write_bytes(b"")
+
+    assert dispatch_commit_route._pathspec_clean_relative_to_head(pathspec) is False
+
+
+def test_run_step4_commit_leg_already_committed_by_main_agent_short_circuits_noop(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    (impl / "implementation-commit-message.txt").write_text("Implement thing\n", encoding="utf-8")
+    (impl / "implementation-commit-paths.nul").write_bytes(b"already-committed.txt\0")
+    (repo / "already-committed.txt").write_text("done\n", encoding="utf-8")
+    _git(repo, "add", "already-committed.txt")
+    _git(repo, "commit", "-m", "ad hoc lint fix commit covering the implementation path")
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 1, "COMMITTED=false\nERROR=nothing to commit, working tree clean\n", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    captured = capsys.readouterr()
+    assert outcome == "noop"
+    assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
+    assert "already-committed" in captured.out
+    assert calls == []
+
+
 def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -2884,6 +2939,8 @@ def test_run_step4_commit_leg_recovery_branch_uses_recovery_pathspec(
 
     monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
     monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(implement_dispatch, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
+    monkeypatch.setattr(dispatch_commit_route, "_pathspec_clean_relative_to_head", lambda _pathspec: False)
 
     outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
 

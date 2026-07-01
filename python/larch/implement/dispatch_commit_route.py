@@ -591,6 +591,24 @@ def _read_redacted_message(path: Path) -> str:
         return ""
 
 
+def _read_nul_pathspec(path: Path) -> list[str]:
+    try:
+        raw = path.read_bytes()
+    except OSError:
+        return []
+    return [p.decode("utf-8", "surrogateescape") for p in raw.split(b"\0") if p]
+
+
+def _pathspec_clean_relative_to_head(pathspec_file: Path) -> bool:
+    paths = _read_nul_pathspec(pathspec_file)
+    if not paths:
+        return False
+    result = _run([GIT_BIN, "status", "--porcelain", "--", *paths])
+    if result.returncode != 0:
+        return False
+    return not result.stdout.strip()
+
+
 def _step4_commit_failure(
     implement_tmpdir: Path,
     *,
@@ -673,6 +691,14 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
         pathspec = implementation_paths
     else:
         return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
+
+    if _pathspec_clean_relative_to_head(pathspec):
+        commit_sha = ""
+        commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
+        if commit.returncode == 0 and commit.stdout.strip():
+            commit_sha = commit.stdout.strip()
+        print(f"⏩ 4: commit (impl) status=skip reason=already-committed sha={commit_sha} elapsed=0s")
+        return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
 
     result = _run_leg_with_timeout(
         argv=[
