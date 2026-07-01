@@ -1,0 +1,48 @@
+# [BUG] bg-wait coverage gaps: brainstorm + /research fences unmarked; lint escapes
+
+## Summary
+
+#5781 aimed to make every backgrounded fence carry a bg-wait marker and to have a lint force future backgrounded fences to comply (notification-storm hook safety). Coverage is not complete: the `brainstorm.md` background launch and all four `/research` background fences have no bg-wait markers, and the coverage lint has two escape holes (a `<placeholder>` heuristic and a scope-pattern gap) that let a future backgrounded fence avoid the requirement.
+
+## Original report
+
+Audit of #5781's merged fix found remaining `run_in_background: true` launches with no marker, plus a lint that a future backgrounded fence can slip past.
+
+## Reproduction scenario
+
+1. `git grep -n "run_in_background: true" skills/` — observe `skills/design/references/brainstorm.md:66`, `skills/research/references/research-phase.md:133,159`, and `skills/research/references/validation-phase.md:110,144` launch background work with no bg-wait marker armed.
+2. Add a new backgrounded fence whose args contain a `<placeholder>` token, or place it under `skills/research/` — `python3 python/cli.py lint bg-wait-coverage` does not flag it (placeholder heuristic skips it; research/ is out of scope).
+
+## Expected behavior
+
+Every real `run_in_background: true` launch maps to a bg-wait marker, and the lint forces any future backgrounded fence to add one — the #5781 acceptance criterion ("every backgrounded fence maps to a marker; forces any future backgrounded fence to add a marker").
+
+## Observed behavior
+
+`brainstorm.md` + 4 `/research` fences are unmarked, and the lint has placeholder + scope escapes, so the "forces any future fence" guarantee does not hold.
+
+## Root cause analysis
+
+- `python/larch/lint/lint_bg_wait_coverage.py:137` `_is_illustrative_placeholder` treats any fence whose body contains a `<...>` token as an illustrative example and skips it (invoked at line 197). Real launch fences that use `<resolved>` / `<...PROMPT>` args (e.g. `brainstorm.md`) are skipped.
+- `SCOPE_PATTERNS` (line 12) covers design/implement/review/review-and-fix only; `skills/research/` is outside scope, so the four `/research` background fences are never linted.
+Verified by direct read. Mitigations that lower severity: `brainstorm.md` uses a foreground-collect wait, and the `/research` fences use long timeouts — so the storm risk is lower than an immediate-background fence, but the lint's stated generalization is still overstated.
+
+## Evidence
+
+- `python/larch/lint/lint_bg_wait_coverage.py:12` (`SCOPE_PATTERNS`), `:137` (`_is_illustrative_placeholder`), `:197` (skip call).
+- `skills/design/references/brainstorm.md:66`; `skills/research/references/research-phase.md:133,159`; `skills/research/references/validation-phase.md:110,144` — all `run_in_background: true`, none armed with a marker.
+
+## Affected files
+
+- `python/larch/lint/lint_bg_wait_coverage.py` — the placeholder heuristic and `SCOPE_PATTERNS`.
+- `skills/design/references/brainstorm.md`, `skills/research/references/research-phase.md`, `skills/research/references/validation-phase.md` — unmarked background fences.
+
+## Suggested fix(es)
+
+- Narrow `_is_illustrative_placeholder` so it exempts only genuine documentation examples, not real launch fences that happen to use `<...>` argument placeholders.
+- Either add `skills/research/` to `SCOPE_PATTERNS` and arm bg-wait markers for the four `/research` fences, or explicitly document that `/research` background flows are out of notification-storm scope (and why).
+- Arm a bg-wait marker for the `brainstorm.md` background launch (or confirm its foreground-collect wait is a sanctioned exemption and encode that exemption in the lint, not via the `<...>` accident).
+
+## Open questions
+
+- Is the `/research` background flow intended to be covered by the notification-storm hooks at all? If out of scope by design, encode that exemption explicitly; if in scope, widen `SCOPE_PATTERNS` and arm markers.

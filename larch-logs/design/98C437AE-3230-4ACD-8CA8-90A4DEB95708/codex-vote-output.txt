@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- /research is explicitly out of the approved scope, so this is not necessary to ship the accepted plan.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The overmatch concern is plausible, but it is a robustness issue, not a necessary condition for this feature.

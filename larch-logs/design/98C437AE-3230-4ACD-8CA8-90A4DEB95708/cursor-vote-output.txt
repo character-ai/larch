@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Approved non-goal documents /research exemption; widening SCOPE_PATTERNS is out of scoped deliverable.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Latent over-match risk for hypothetical future fences; plan already flags it and permits split/narrow mappings at implement time.
