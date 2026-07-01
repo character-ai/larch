@@ -77,7 +77,7 @@ def test_direct_mandatory_markdown_references_are_counted(tmp_path: Path) -> Non
     )
 
 
-def test_conditional_references_are_excluded_by_text_rules(tmp_path: Path) -> None:
+def test_conditional_references_are_reported_by_text_rules(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
         design=(
@@ -94,6 +94,10 @@ def test_conditional_references_are_excluded_by_text_rules(tmp_path: Path) -> No
     result = scg.scan_skill(tmp_path, "design")
 
     assert result.files == ("skills/design/SKILL.md", "skills/design/references/always.md")
+    assert result.conditional_files == (
+        "skills/design/references/conditional.md",
+        "skills/design/references/bullet.md",
+    )
 
 
 def test_branch_only_routing_table_rows_are_excluded(tmp_path: Path) -> None:
@@ -111,6 +115,7 @@ def test_branch_only_routing_table_rows_are_excluded(tmp_path: Path) -> None:
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/general.md")
+    assert result.conditional_files == ("skills/implement/references/repair.md",)
 
 
 def test_branch_context_bullets_are_excluded(tmp_path: Path) -> None:
@@ -128,6 +133,86 @@ def test_branch_context_bullets_are_excluded(tmp_path: Path) -> None:
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/always.md")
+    assert result.conditional_files == ("skills/implement/references/stall.md",)
+
+
+def test_design_split_path_section_closes_at_step_comment(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "### Step 2b.5 — Plan-size threshold check\n"
+            "#### Split-path (decomposition panel)\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely.\n"
+            "##### Nested split heading\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/nested.md` completely.\n"
+            "<!-- step:3 — Plan Review -->\n"
+            "**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/decompose-panel.md", "decompose\n")
+    write(tmp_path, "skills/design/references/nested.md", "nested\n")
+    write(tmp_path, "skills/design/references/plan-review.md", "plan\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md", "skills/design/references/plan-review.md")
+    assert result.conditional_files == (
+        "skills/design/references/decompose-panel.md",
+        "skills/design/references/nested.md",
+    )
+
+
+def test_design_validator_failure_section_is_conditional_until_next_peer_heading(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "### Plan command validator failure (shared)\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` completely.\n"
+            "### Plan helper contracts\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/always.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/validator-failure.md", "validator\n")
+    write(tmp_path, "skills/design/references/always.md", "always\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md", "skills/design/references/always.md")
+    assert result.conditional_files == ("skills/design/references/validator-failure.md",)
+
+
+def test_suffix_condition_marks_settle_dispatch_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/settle-rc-dispatch.md", "settle\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == ("skills/design/references/settle-rc-dispatch.md",)
+
+
+def test_retained_prefix_marks_step2b5_rc_handling_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "3. **Retained callers that ran items 1-2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/step2b5-rc-handling.md", "rc\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == ("skills/design/references/step2b5-rc-handling.md",)
 
 
 def test_non_markdown_references_are_ignored(tmp_path: Path) -> None:
@@ -187,6 +272,70 @@ def test_missing_referenced_markdown_fails_closed(tmp_path: Path) -> None:
 
     with pytest.raises(ScanError):
         _ = scg.scan_skill(tmp_path, "design")
+
+
+def test_conditional_runtime_markdown_operands_are_skipped(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "If main agent finds a pre-existing code issue, **MANDATORY — READ ENTIRE FILE** before dual-writing to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/execution-issues-tracking.md", "tracking\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+    assert result.conditional_files == ("skills/implement/references/execution-issues-tracking.md",)
+    assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.files
+    assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.conditional_files
+
+
+def test_conditional_runtime_only_markdown_operand_does_not_fail(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "If needed, **MANDATORY — READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
+        ),
+    )
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+    assert result.conditional_files == ()
+
+
+def test_eager_runtime_only_markdown_operand_fails_closed(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "**MANDATORY — READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
+        ),
+    )
+
+    with pytest.raises(ScanError):
+        _ = scg.scan_skill(tmp_path, "implement")
+
+
+def test_oos_pipeline_runtime_operand_branch_collects_only_repo_reference(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "- **`oos-pipeline`**: Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/ship-pr-oos-checkpoint-router.md", "router\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+    assert result.conditional_files == ("skills/implement/references/ship-pr-oos-checkpoint-router.md",)
+    assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.files
+    assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.conditional_files
 
 
 def test_invalid_utf8_referenced_markdown_reports_scan_error(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -348,17 +497,36 @@ def test_baseline_rejects_missing_or_malformed_content_metrics(
 
 
 def test_report_mode_prints_design_and_implement(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    fixture_project(tmp_path)
+    write_roots(
+        tmp_path,
+        design=(
+            "Design root\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "If extra, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n"
+        ),
+        implement=(
+            "Implement root\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/flags.md", "flag one\nflag two\n")
+    write(tmp_path, "skills/design/references/conditional.md", "conditional\n")
+    write(tmp_path, "skills/implement/references/self-review.md", "review one\n")
 
     assert scg.report_main(["--root", str(tmp_path)]) == 0
 
     out = capsys.readouterr().out
+    assert "Eager closure (ratcheted)" in out
+    assert "Conditional closure (reported only)" in out
     assert "skill_content_tokens" in out
     assert "closure_content_tokens" in out
+    assert "conditional_content_tokens" in out
     assert "design" in out
     assert "implement" in out
     assert "skills/design/SKILL.md" in out
     assert "skills/implement/SKILL.md" in out
+    assert out.index("skills/design/references/flags.md") < out.index("Conditional closure")
+    assert out.index("Conditional closure") < out.index("skills/design/references/conditional.md")
 
 
 def test_rebase_or_bootstrap_mandatory_reads_stay_excluded(tmp_path: Path) -> None:
@@ -378,6 +546,10 @@ def test_rebase_or_bootstrap_mandatory_reads_stay_excluded(tmp_path: Path) -> No
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
+    assert result.conditional_files == (
+        "skills/implement/references/rebase-checkpoint-routing.md",
+        "skills/implement/references/bootstrap-recovery.md",
+    )
 
 
 def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(tmp_path: Path) -> None:
@@ -400,6 +572,38 @@ def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(t
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
+    assert result.conditional_files == ()
+
+
+def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+
+    result = scg.scan_skill(repo_root, "design")
+
+    assert "skills/design/references/plan-review.md" in result.files
+    assert "skills/design/references/plan-review.md" not in result.conditional_files
+    assert "skills/design/references/decompose-panel.md" not in result.files
+    assert "skills/design/references/validator-failure.md" not in result.files
+    assert "skills/design/references/settle-rc-dispatch.md" not in result.files
+    assert "skills/design/references/step2b5-rc-handling.md" not in result.files
+    assert "skills/design/references/decompose-panel.md" in result.conditional_files
+    assert "skills/design/references/validator-failure.md" in result.conditional_files
+    assert "skills/design/references/settle-rc-dispatch.md" in result.conditional_files
+    assert "skills/design/references/step2b5-rc-handling.md" in result.conditional_files
+
+
+def test_real_implement_scan_keeps_eager_baseline_unchanged() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    result = scg.scan_skill(repo_root, "implement")
+    baseline = next(row for row in scg.load_baseline(repo_root / scg.BASELINE_RELPATH) if row.skill == "implement")
+
+    assert result.files == baseline.files
+    assert result.closure_lines == baseline.closure_lines
+    assert result.closure_estimated_tokens == baseline.closure_estimated_tokens
+    assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.files
+    assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.conditional_files
+    assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.files
+    assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.conditional_files
 
 
 def test_committed_baseline_matches_fresh_scan(tmp_path: Path) -> None:

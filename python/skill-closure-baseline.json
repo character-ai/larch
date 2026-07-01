@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 67525,
-    "closure_estimated_tokens": 67713,
-    "closure_lines": 2026,
+    "closure_content_estimated_tokens": 59376,
+    "closure_estimated_tokens": 59534,
+    "closure_lines": 1708,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
@@ -10,12 +10,8 @@
       "skills/design/references/discussion-rounds.md",
       "skills/design/references/design-outline.md",
       "skills/design/references/approval-gates.md",
-      "skills/design/references/settle-rc-dispatch.md",
-      "skills/design/references/step2b5-rc-handling.md",
-      "skills/design/references/decompose-panel.md",
       "skills/design/references/plan-review.md",
-      "skills/design/references/finalize-step5.md",
-      "skills/design/references/validator-failure.md"
+      "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
     "skill_md_content_estimated_tokens": 30076,
