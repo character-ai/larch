@@ -1324,6 +1324,13 @@
   },
   {
     "file": "larch/report/tokens.py",
+    "qualified_symbol": "_resolve_claude_source_from_project",
+    "callee": "check_output",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/report/tokens.py",
     "qualified_symbol": "_tiktoken_count_texts",
     "callee": "run",
     "occurrence": 1,
@@ -1339,13 +1346,6 @@
   {
     "file": "larch/report/tokens.py",
     "qualified_symbol": "measure_md_cost",
-    "callee": "check_output",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "qualified_symbol": "token_claude_source",
     "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"

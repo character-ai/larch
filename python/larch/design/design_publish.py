@@ -340,8 +340,7 @@ def _snapshot_session_uuid(snapshot: Path) -> str:
         return ""
 
 
-def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, session_id: str) -> Path | None:
-    snapshot = design_tmpdir / "claude-source.env"
+def _reuse_cached_claude_source_snapshot(*, snapshot: Path, session_id: str) -> Path | None:
     try:
         if snapshot.is_file() and snapshot.stat().st_size > 0:
             if _snapshot_session_uuid(snapshot) == session_id:
@@ -350,13 +349,10 @@ def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Pat
                 snapshot.unlink()
     except OSError:
         return None
-    if not session_id:
-        _append_transcript_warning(
-            design_tmpdir=design_tmpdir,
-            status="snapshot-skipped",
-            message="SESSION_ID was absent from source-env.sh; transcript capture skipped.",
-        )
-        return None
+    return None
+
+
+def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, snapshot: Path, session_id: str) -> Path | None:
     result = proc.run(
         [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "claude-source"],
         env={**os.environ, "LARCH_TOKEN_SESSION_ID": session_id},
@@ -390,6 +386,21 @@ def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Pat
         )
         return None
     return snapshot
+
+
+def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, session_id: str) -> Path | None:
+    snapshot = design_tmpdir / "claude-source.env"
+    cached = _reuse_cached_claude_source_snapshot(snapshot=snapshot, session_id=session_id)
+    if cached is not None:
+        return cached
+    if not session_id:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="snapshot-skipped",
+            message="SESSION_ID was absent from source-env.sh; transcript capture skipped.",
+        )
+        return None
+    return _fetch_claude_source_snapshot(design_tmpdir=design_tmpdir, plugin_root=plugin_root, snapshot=snapshot, session_id=session_id)
 
 
 def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:

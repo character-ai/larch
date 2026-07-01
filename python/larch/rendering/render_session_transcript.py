@@ -109,9 +109,7 @@ def strip_plugin_cache_read_suffix(path: str) -> str | None:
         if (
             part == "plugins"
             and index + 4 < len(parts)
-            and parts[index + 1] == "cache"
-            and parts[index + 2] == "larch-local"
-            and parts[index + 3] == "larch"
+            and parts[index + 1 : index + 4] == ["cache", "larch-local", "larch"]
             and parts[index + 4]
         ):
             if index == 0 or parts[index - 1] == ".claude":

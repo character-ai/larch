@@ -942,22 +942,41 @@ def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str
     return {"status": "cap_hit" if total >= cap else "under_cap", "total": total, "cap": cap, "step": step}
 
 
-def token_claude_source(
+def _cached_claude_source_replay(
     *,
-    claude_source_file: Path | None = None,
-    env: Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    env_map = os.environ if env is None else env
+    claude_source_file: Path | None,
+    env_map: Mapping[str, str],
+) -> dict[str, str] | None:
     snap = claude_source_file or (Path(env_map["LARCH_CLAUDE_SOURCE_FILE"]) if env_map.get("LARCH_CLAUDE_SOURCE_FILE") else None)
-    if snap is not None and snap.is_file():
-        data = larch_io.parse_kv(
-            larch_io.read_text(snap, errors="replace"),
-            allowed_keys={"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"},
-        )
-        if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
-            replay = _validate_snapshot_replay(data, env=env_map)
-            if replay is not None:
-                return replay
+    if snap is None or not snap.is_file():
+        return None
+    data = larch_io.parse_kv(
+        larch_io.read_text(snap, errors="replace"),
+        allowed_keys={"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"},
+    )
+    if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
+        return _validate_snapshot_replay(data, env=env_map)
+    return None
+
+
+def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, str]) -> tuple[Path | None, str]:
+    latest: Path | None = None
+    requested_sid = ""
+    for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
+        sid = env_map.get(key, "")
+        if sid and _SAFE_SESSION_RE.fullmatch(sid):
+            requested_sid = sid
+            candidate = project_dir / f"{sid}.jsonl"
+            if candidate.is_file():
+                latest = candidate
+            break
+    if latest is None and not requested_sid:
+        files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        latest = files[0] if files else None
+    return latest, requested_sid
+
+
+def _resolve_claude_source_from_project(env_map: Mapping[str, str]) -> dict[str, str]:
     try:
         repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
@@ -969,25 +988,25 @@ def token_claude_source(
     project_dir = Path(home) / ".claude" / "projects" / repo_root.replace("/", "-")
     if not project_dir.is_dir():
         return {"STATUS": "unavailable", "REASON": "Claude project directory not found"}
-    latest: Path | None = None
-    requested_sid = ""
-    for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
-        sid = env_map.get(key, "")
-        if sid and _SAFE_SESSION_RE.fullmatch(sid):
-            requested_sid = sid
-            candidate = project_dir / f"{sid}.jsonl"
-            if candidate.is_file():
-                latest = candidate
-            break
+    latest, requested_sid = _find_latest_claude_transcript(project_dir=project_dir, env_map=env_map)
     if requested_sid and latest is None:
         return {"STATUS": "unavailable", "REASON": f"Claude transcript for session {requested_sid} not found"}
-    if latest is None:
-        files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        latest = files[0] if files else None
     if latest is None:
         return {"STATUS": "unavailable", "REASON": "no Claude transcript jsonl files found"}
     uuid = latest.stem
     return {"TRANSCRIPT_PATH": str(latest), "SESSION_DIR": str(project_dir / uuid), "SESSION_UUID": uuid}
+
+
+def token_claude_source(
+    *,
+    claude_source_file: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    env_map = os.environ if env is None else env
+    replay = _cached_claude_source_replay(claude_source_file=claude_source_file, env_map=env_map)
+    if replay is not None:
+        return replay
+    return _resolve_claude_source_from_project(env_map)
 
 
 def _assistant_model_from_line(raw: str) -> str:
