@@ -12,6 +12,6 @@ The harness pins the mixed Step 0/1 migration surface:
 
 It also pins the Python lifecycle strings for parsed argv persistence, degraded-tools relay, route/init result-env handling, pause-aware sentinel ordering, clarify hard halt staging, brainstorm collection idempotency, and re-entry cleanup.
 
-It pins the `/design` hot-path `SKILL.md` line count after in-place prose compression.
+It runs the `/design` `SKILL.md` closure growth ratchet after in-place prose compression. The ratchet includes blank-line-neutral content-token metrics.
 
 The harness also pins the post-approval Step 5 reference split: `skills/design/SKILL.md` keeps the Step 5 entry read, prepare fence, `oos-step5b-dispatch.md` adjacency, diagram/Step 5c fences, and final-summary bindings; `skills/design/references/finalize-step5.md` owns the moved OOS, diagram, compose/publish, readability-anchor, and warning-replay body prose. It verifies sanitizer fail-closed paths write `architecture-diagram.skipped`, chat diagram markers remain absent, and moved Step 5 body needles are not duplicated inline.
