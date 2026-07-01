@@ -99,7 +99,7 @@ def _resume_hint_for(*, klass: str, step: str, phase: str, pattern: str = "") ->
     if klass in {"contract-failure", "same-cause-repeat", "unrecoverable", "submodule-restricted"}:
         return "none"
     if safe_step in {"3", "6", "12d", "bump-branch-guard"}:
-        return "checks-commit-route-retry" if pattern == "checks-leg-abandoned" and safe_step == "3" else "none"
+        return "checks-commit-route-retry" if safe_step == "3" and pattern in {"checks-leg-abandoned", "checks-child-sigterm"} else "none"
     if safe_step == "2":
         return "step2-impl"
     if safe_step == "5":
@@ -119,22 +119,46 @@ def _resume_hint_for(*, klass: str, step: str, phase: str, pattern: str = "") ->
     return "step8-shippr"
 
 
-def _classify_text(*, text: str, bail: str, step: str, phase: str, detail_log_valid: bool = False) -> tuple[str, str, str]:
-    _ = phase
+def _checks_child_sigterm_or_unresolved(*, bail: str, step: str, exit_code: str) -> bool:
+    if bail != "checks-child-failed" or step not in {"3", "6"}:
+        return False
+    raw_exit_code = (exit_code or "").strip()
+    if raw_exit_code == "unknown":
+        return True
+    try:
+        parsed_exit_code = int(raw_exit_code, 10)
+    except ValueError:
+        return True
+    return parsed_exit_code < 0
+
+
+_DIRECT_BAIL_CLASSIFICATIONS: dict[str, tuple[str, str, str]] = {
+    "protected-path-edit-required-out-of-scope": ("protected-path", "step2-impl", "protected-path-bail-token"),
+    "submodule-edit-required-out-of-scope": ("submodule-restricted", "none", "submodule-restricted-bail-token"),
+    "adopted-issue-closed": ("unrecoverable", "none", "terminal-bail"),
+    "tracking-init-failed": ("unrecoverable", "none", "terminal-bail"),
+    "recovery-out-of-scope": ("unrecoverable", "none", "recovery-out-of-scope"),
+}
+
+
+def _classify_text(
+    *,
+    text: str,
+    bail: str,
+    step: str,
+    detail_log_valid: bool = False,
+    exit_code: str = "unknown",
+) -> tuple[str, str, str]:
     if step == "rebase-failed":
         return "transient-infra", "step8-shippr", "rebase-transient"
+    if _checks_child_sigterm_or_unresolved(bail=bail, step=step, exit_code=exit_code):
+        return "transient-infra", "checks-commit-route-retry", "checks-child-sigterm"
     if step in {"3", "6"}:
         return "contract-failure", "none", "step-contract"
     if step == "merge-loop-iteration-cap":
         return "unrecoverable", "none", "terminal-step"
-    if bail == "protected-path-edit-required-out-of-scope":
-        return "protected-path", "step2-impl", "protected-path-bail-token"
-    if bail == "submodule-edit-required-out-of-scope":
-        return "submodule-restricted", "none", "submodule-restricted-bail-token"
-    if bail in {"adopted-issue-closed", "tracking-init-failed"}:
-        return "unrecoverable", "none", "terminal-bail"
-    if bail == "recovery-out-of-scope":
-        return "unrecoverable", "none", "recovery-out-of-scope"
+    if bail in _DIRECT_BAIL_CLASSIFICATIONS:
+        return _DIRECT_BAIL_CLASSIFICATIONS[bail]
     if bail == "ci-fix-exhausted":
         pattern = "ci-fix-exhausted-with-detail" if detail_log_valid else "terminal-bail"
         return "unrecoverable", "none", pattern
@@ -232,7 +256,14 @@ def classify(args: argparse.Namespace) -> int:
             state_path = tmpdir / name
             evidence = f"{evidence}\n{_read_optional_evidence(state_path)}"
     short_circuit = _classify_short_circuit(abandoned_marker_step=abandoned_marker_step, any_stall=any_stall)
-    klass, _hint, pattern = short_circuit or _classify_text(text=evidence, bail=bail, step=step, phase=phase, detail_log_valid=detail_log_valid)
+    raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
+    klass, _hint, pattern = short_circuit or _classify_text(
+        text=evidence,
+        bail=bail,
+        step=step,
+        detail_log_valid=detail_log_valid,
+        exit_code=raw_exit_code,
+    )
     hint = _resume_hint_for(klass=klass, step=step, phase=phase, pattern=pattern)
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     signature = hashlib.sha256(
@@ -247,7 +278,6 @@ def classify(args: argparse.Namespace) -> int:
             hint = "none"
             pattern = "same-cause-repeat"
     classification_file = _artifact_path(tmpdir=tmpdir, default_name=_DEFAULT_CLASSIFICATION_FILE, prefix=getattr(args, "artifact_prefix", "") or "")
-    raw_exit_code = args.exit_code or st.get("EXIT_CODE", "unknown")
     exit_code = raw_exit_code if re.fullmatch(r"[0-9]+|unknown", raw_exit_code or "") else "unknown"
     raw_dispatcher = args.dispatcher or st.get("DISPATCHER", "") or st.get("CODER_TOOL", "")
     values = {
@@ -294,7 +324,13 @@ def _classify_generic_from_terminal_state(*, args: argparse.Namespace, tmpdir: P
     )
     if not detail_log_valid:
         evidence = _read_optional_evidence(state_file)
-    klass, _hint, pattern = _classify_text(text=evidence, bail=bail_reason, step=stall_step, phase=phase, detail_log_valid=detail_log_valid)
+    klass, _hint, pattern = _classify_text(
+        text=evidence,
+        bail=bail_reason,
+        step=stall_step,
+        detail_log_valid=detail_log_valid,
+        exit_code=exit_code,
+    )
     resume_hint = "none"
     evidence_digest = hashlib.sha256(evidence[:2048].encode()).hexdigest()[:16] if evidence else ""
     skill_label = _report_skill_label(profile="generic", prefix=prefix)
