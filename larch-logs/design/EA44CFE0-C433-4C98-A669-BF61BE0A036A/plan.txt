@@ -1,0 +1,91 @@
+## Plan
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection only. No local `discussion-round1.md`, approved outline, or brainstorm file was found.
+
+Do a prose-density pass only.
+
+- Keep all Step 5 control flow unchanged.
+- Preserve fenced commands verbatim.
+- Preserve `NEXT_ACTION`, `STEP5B_STATUS`, `PLAN_WRITE_OK`, `_publish_rc`, sentinel names, and `python/cli.py` invocations verbatim.
+- Preserve literals pinned by `scripts/test-design-structure.sh` and `scripts/test-render-cost-line-callsites.sh`.
+- Target at least a 15% reduction for `skills/design/references/finalize-step5.md`, using the repo estimator of bytes divided by 4. Current file is 20,825 bytes, about 5,207 estimated tokens. Target is at or below about 17,704 bytes, about 4,426 estimated tokens.
+- Keep load-bearing duplication where the file repeats rare `_publish_rc` handling and Step 5c abort behavior for safety, except where harness pins allow safe removal of the unpinned duplicate block (see Step 5c guidance below).
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+Compress prose in place.
+
+Focus edits on:
+
+- **Intro and ordering contract**: shorten descriptive text, but keep the `Consumer`, `Contract`, `When to load`, and the single `readability-style.md` reference.
+- **Step 5b OOS filing body**: reduce repeated setup prose around privacy, idempotency, priority labels, skip pipeline, file-issues, label-only, and manual recovery. Keep branch semantics and all machine tokens unchanged.
+- **Step 5b.5 diagram composition**: condense bounded-warning and sanitizer ownership prose. Keep the pinned `design_diagram_log.write_bounded_diagram_failure_log` sentence and sanitizer ownership sentence.
+- **Step 5c publish handling**: compress only unpinned surrounding prose. The file currently has two `_publish_rc` blocks: an abbreviated `## Step 5c _publish_rc abort contract` block (lines 76-83) and a compose-block section (lines 94-98) with different typography (`_publish_rc`=N vs backtick forms). `scripts/test-design-structure.sh:542-544` requires byte-exact `contains` needles that exist only in the compose block (lines 94-98), not in the earlier abbreviated block:
+  - `When `_publish_rc=2` or an unexpected non-zero value outside `{0,1,3,4}` appears, abort after best-effort `python/cli.py design stage-terminal-state` staging as `failed-publish-tail`.`
+  - `This includes `_publish_rc=5`.`
+  - `When `_publish_rc=3`, the publish tail may have completed but `.design-publish-result.env` could not be written.`
+  Treat these two blocks as non-mergeable by paraphrase or normalization. Safe compression: delete the earlier `## Step 5c _publish_rc abort contract` block (lines 76-83) and keep lines 94-98 verbatim, or retain one block whose text still contains all three pins byte-identically. Do not consolidate, reword, or abbreviate the pinned sentences. Tighten wording only in unpinned prose around them. Also preserve `test-render-cost-line-callsites.sh:126` and `:130` needles byte-identically:
+  - `parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile`
+  - `Complete the shared sidecar follow-on before stopping.`
+  Keep explicit `_publish_rc=2`, `_publish_rc=3`, `_publish_rc=5`, `{0,1,3,4}`, `PLAN_WRITE_OK`, `VALIDATE_STATUS`, and final-summary behavior unchanged.
+- **Step 5d and failure reporting**: shorten examples and teardown prose without changing sentinel precedence or report-gate behavior.
+
+Do not alter fenced command blocks or manual recovery command lines.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate after the markdown shrink with:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+Commit only the expected lower `design` closure metrics. The file list should remain unchanged.
+
+## Edge cases
+
+- Structural tests grep exact prose. Preserve all pinned substrings in `scripts/test-design-structure.sh` (including `FINALIZE_STEP5_MD` needles at lines 542-544) and `scripts/test-render-cost-line-callsites.sh` (finalize-step5 pins at lines 126 and 130).
+- `readability-style.md` must remain referenced exactly once in `finalize-step5.md`.
+- The shrink makes the committed skill-closure baseline stale in strict unit tests unless regenerated.
+- Markdown prose may mention public GitHub filing and security guardrails. Keep those warnings clear.
+- Merging or paraphrasing duplicate Step 5c `_publish_rc` prose can pass a partial harness run yet still fail `scripts/test-design-structure.sh` or `scripts/test-render-cost-line-callsites.sh` because pins require byte-identical copies in specific locations.
+
+## Failure modes
+
+- Over-compression removes a rare recovery branch, changing operator behavior.
+- Rewording a pinned literal breaks `scripts/test-design-structure.sh` or `scripts/test-render-cost-line-callsites.sh`.
+- Consolidating the two Step 5c `_publish_rc` blocks without preserving the three `test-design-structure.sh:542-544` needles drops the only harness-visible copies and fails structural tests even when behavior looks equivalent.
+- Reducing duplicate `_publish_rc` prose too far makes abort and stdout-fallback handling ambiguous.
+- Updating only markdown leaves `python/skill-closure-baseline.json` stale for the freshness unit test.
+
+## Testing strategy
+
+Run focused checks:
+
+bash scripts/test-design-structure.sh
+bash scripts/test-render-cost-line-callsites.sh
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth
+python3 -m pytest -q python/tests/lint/test_lint_skill_closure_growth.py
+
+`python/larch/implement/checks_run_relevant.py` runs both harnesses for `skills/design/references/*.md` changes; both must pass before merge.
+
+Optionally run markdown lint for the changed file if local dependencies are available:
+
+pre-commit run markdownlint --files skills/design/references/finalize-step5.md
+
+Acceptance criteria:
+
+- `skills/design/references/finalize-step5.md` estimated tokens drop by at least 15%.
+- `scripts/test-design-structure.sh` passes, including byte-exact presence of the three `FINALIZE_STEP5_MD` `_publish_rc` needles at lines 542-544 after compression.
+- `scripts/test-render-cost-line-callsites.sh` passes, including the two finalize-step5 pins at lines 126 and 130.
+- Skill-closure report shows a lower `design` closure token count.
+- No Step 5 control-flow or machine grammar changes.
+- `python/skill-closure-baseline.json` matches the fresh scan.
+
+diff_added: 2
+diff_deleted: 18
+mechanical_churn: false
+diff_lines: 95

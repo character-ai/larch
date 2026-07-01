@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The exact readability-load substring is already present in finalize-step5.md, so the claimed omission is not real.
