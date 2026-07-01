@@ -738,13 +738,26 @@ EOF_MARKERS
 
 [ -s "$live_dirs_file" ] || exit 0
 
-# Monitor and TaskOutput are always denied while any immediate-background wait is active.
-# Arming Monitor to watch a bg fence is the primary amplifier of premature-notification
-# storms; TaskOutput polling during a wait creates the same re-engagement loop.
+cwd_canon=""
+if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+  cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
+fi
+
+# Monitor and TaskOutput are denied only while an immediate-background wait owned by THIS
+# repo clone is live. #5925 follow-up: the deny was previously unconditional on any live
+# marker anywhere on the machine, so a foreign clone's live marker denied this session's
+# Monitor/TaskOutput calls (cross-clone false positive, same class as #5925/#5927). It also
+# stalled a session that read its own just-completed bg task output while another clone had
+# a live wait. bash_probe_target_dir_plausible gates on cwd<->marker clone-tag correlation,
+# mirroring the Bash-probe paths below; when cwd cannot be correlated the call is allowed
+# rather than falsely blocking an unrelated clone. Arming Monitor to watch a bg fence is the
+# primary amplifier of premature-notification storms; TaskOutput polling during a wait
+# creates the same re-engagement loop, so the in-clone case still denies.
 case "$tool_name" in
   Monitor|TaskOutput)
     while IFS= read -r dir || [ -n "$dir" ]; do
       [ -n "$dir" ] || continue
+      bash_probe_target_dir_plausible "$dir" "$cwd_canon" || continue
       json_deny_monitor
       increment_denial_count "$dir" || true
       exit 0
@@ -752,11 +765,6 @@ case "$tool_name" in
     exit 0
     ;;
 esac
-
-cwd_canon=""
-if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-  cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
-fi
 
 if [ "$tool_name" = "Read" ]; then
   read_path=$(printf '%s' "$INPUT" | jq -r '.tool_input.file_path // ""' 2>/dev/null) || exit 0
@@ -769,7 +777,15 @@ if [ "$tool_name" = "Read" ]; then
   esac
   while IFS= read -r dir || [ -n "$dir" ]; do
     [ -n "$dir" ] || continue
-    if path_under_dir "$read_abs" "$dir" || path_is_task_output "$read_path" || { path_is_known_result "$read_path" && { path_under_dir "$read_abs" "$dir" || [ "$cwd_canon" = "$dir" ]; }; }; then
+    # #5925 follow-up: path_is_task_output matches the tasks/*.output read-path pattern
+    # regardless of which live marker $dir this loop iteration holds, so it previously
+    # denied a session's read of its OWN just-completed bg task output whenever ANY clone
+    # (including a foreign one) had a live marker — the model then misread the deny as its
+    # own wait still running and stalled. Gate it on clone correlation like the Bash paths.
+    # path_under_dir (task output is never under the marker tmpdir) and the known-result
+    # branch already require the read to bind to this session, so only path_is_task_output
+    # needs the plausibility gate.
+    if path_under_dir "$read_abs" "$dir" || { path_is_task_output "$read_path" && bash_probe_target_dir_plausible "$dir" "$cwd_canon"; } || { path_is_known_result "$read_path" && { path_under_dir "$read_abs" "$dir" || [ "$cwd_canon" = "$dir" ]; }; }; then
       deny_if_needed "$dir"
     fi
   done <"$live_dirs_file"
