@@ -27,7 +27,7 @@ def load_run_manifest(run_dir: Path, warn: Callable[[str], None] | None = None) 
     else:
         try:
             parsed = json.loads(manifest_path.read_text(encoding="utf-8"))
-        except (OSError, json.JSONDecodeError) as exc:
+        except (OSError, json.JSONDecodeError, UnicodeDecodeError) as exc:
             message = f"invalid manifest.json at {manifest_path}: {exc}; skipping"
     if message:
         _warn(warn, message)

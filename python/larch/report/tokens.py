@@ -970,13 +970,17 @@ def token_claude_source(
     if not project_dir.is_dir():
         return {"STATUS": "unavailable", "REASON": "Claude project directory not found"}
     latest: Path | None = None
+    requested_sid = ""
     for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
         sid = env_map.get(key, "")
         if sid and _SAFE_SESSION_RE.fullmatch(sid):
+            requested_sid = sid
             candidate = project_dir / f"{sid}.jsonl"
             if candidate.is_file():
                 latest = candidate
-                break
+            break
+    if requested_sid and latest is None:
+        return {"STATUS": "unavailable", "REASON": f"Claude transcript for session {requested_sid} not found"}
     if latest is None:
         files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
         latest = files[0] if files else None

@@ -63,7 +63,6 @@ from larch.core import config
 SCHEMA_VERSION = 3
 _SHARED_REFERENCE_PARTS = 3
 SKILL_REFERENCE_PARTS = 4
-_PLUGIN_CACHE_READ_SUFFIX_RE = re.compile(r"(?:^|/)plugins/cache/larch-local/larch/[^/]+/(.+)$")
 
 HOUSEKEEPING_TYPES = {
     "permission-mode",
@@ -105,8 +104,22 @@ def _in_scope_reference(rel: str) -> bool:
 
 def strip_plugin_cache_read_suffix(path: str) -> str | None:
     """Return the repo-relative suffix after a known Claude plugin-cache root."""
-    match = _PLUGIN_CACHE_READ_SUFFIX_RE.search(path)
-    return match.group(1) if match else None
+    parts = path.split("/")
+    for index, part in enumerate(parts):
+        if (
+            part == "plugins"
+            and index + 4 < len(parts)
+            and parts[index + 1] == "cache"
+            and parts[index + 2] == "larch-local"
+            and parts[index + 3] == "larch"
+            and parts[index + 4]
+        ):
+            if index == 0 or parts[index - 1] == ".claude":
+                suffix_parts = parts[index + 5 :]
+                if suffix_parts:
+                    return "/".join(suffix_parts)
+            return None
+    return None
 
 
 def normalize_reference_read_path(raw: object, *, repo: Path | None = None) -> str | None:

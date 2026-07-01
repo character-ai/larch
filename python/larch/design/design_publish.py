@@ -368,6 +368,18 @@ def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Pat
             message="Claude source snapshot materialization failed; transcript capture skipped.",
         )
         return None
+    snapshot_data = _parse_kv(result.stdout)
+    snapshot_uuid = snapshot_data.get("SESSION_UUID", "")
+    if snapshot_uuid != session_id:
+        _append_transcript_warning(
+            design_tmpdir=design_tmpdir,
+            status="snapshot-skipped",
+            message=(
+                "Claude source snapshot SESSION_UUID disagrees with publish --session-id; "
+                "transcript capture skipped."
+            ),
+        )
+        return None
     try:
         larch_io.atomic_write(snapshot, result.stdout, prefix=f".{snapshot.name}.", nofollow=True)
     except OSError as exc:
@@ -436,7 +448,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
                 "transcript capture skipped."
             ),
         )
-        return False
+        return True
     canonical_session_id = ctx.session_id
     snapshot = _materialize_claude_source_snapshot(
         design_tmpdir=ctx.design_tmpdir,
