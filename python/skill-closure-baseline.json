@@ -1,7 +1,7 @@
 [
   {
-    "closure_estimated_tokens": 70464,
-    "closure_lines": 2047,
+    "closure_estimated_tokens": 69234,
+    "closure_lines": 2040,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
