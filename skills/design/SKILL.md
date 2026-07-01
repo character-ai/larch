@@ -412,7 +412,7 @@ Plan-review scope anchoring: Step 3 entry creates `$DESIGN_TMPDIR/plan-review-sc
 Before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and a readable `.step3-review-result.env`; if either is absent, treat the notification as premature and yield or probe without parsing. Before routing to Step 3b or later, additionally require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`; do not advance to Step 3b or later steps from `.step3-review-result.env` alone without both sentinels.
 
 - `NEXT_ACTION=step3b` — proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
-- `NEXT_ACTION=step3b-bypass` — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort on non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass`. Covers cap-hit, panel-failed, tally-error, degraded-empty-collector, and MAV re-tally tally-error. When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface. The helper lands pause/resume at Step 3b; Step 3 loop owns `.completed/step-3*`.
+- `NEXT_ACTION=step3b-bypass` — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort on non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass`. Covers cap-hit, including `LOOP_STATUS=panel-failed`, `LOOP_STATUS=tally-error`, `TALLY_PLAN_REVIEW_STATUS=tally-error`, `tally-error`, degraded-empty-collector, and MAV re-tally tally-error. The round counter MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`. When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface. The helper lands pause/resume at Step 3b; Step 3 loop owns `.completed/step-3*`.
 - `NEXT_ACTION=mav` — perform the MainAgent vote/re-tally block below. `design-step3-mav.sh --phase post` refreshes envs, records warnings/timing, and writes the round phase. On successful post, resume the same round with the phase emitted by the wrapper.
 - `NEXT_ACTION=gate-b` — bind `STEP3_RESUME_ROUND` as below, then run the Gate B body for `main-agent-apply-required` or `per-round-approval-required`. `DEDUP_RC` identifies dedup-origin bail-outs.
 - `NEXT_ACTION=postplan-operator` — route `POSTPLAN_RC=10/13` through existing postplan prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase=awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** resume with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --postplan-operator-continue`; **plan-changing Fix-and-retry/autofix:** resume with `--phase awaiting-post-apply`. `POSTPLAN_RC=12` is handled inline as warn-and-continue.
@@ -467,7 +467,7 @@ If **all reviewers** report no in-scope issues and no OOS observations, the driv
 
 Print: `> **🔶 /design 3.5: gate B**`
 
-Bind `approve_requested` from `APPROVE_REQUESTED=`. Gate B apply UX uses it (`false` auto-apply, `true` explicit prompt) per `approval-gates.md` §Gate B. Do not load `approval-gates-explicit.md` here; Gate B loads it only after zero-findings, idempotency guard, and Presentation.
+Bind `approve_requested` from `APPROVE_REQUESTED=`. Gate B apply UX uses it (`false` auto-apply, `true` explicit per-round prompt) per `approval-gates.md` §Gate B. Do not load `approval-gates-explicit.md` here; Gate B loads it only after zero-findings, idempotency guard, and Presentation.
 
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
@@ -480,13 +480,13 @@ Execute Gate B in `approval-gates.md`. Its settle wrapper delegates merged post-
 
 If Round 2-style follow-up questions need to be asked (decisions emerging from the plan that were not covered in Round 1), the default path reaches them via Gate C's **Discuss further** → Gate A loop after the auto-applied plan reaches final review. Under `--per-round-approval`, Gate B's explicit **Switch to discussion mode** option may also route to the same Gate A loop. Round 2 is no longer a forced auto-step.
 
-**Continuation helper diagnostics**: the script-internal loop owns automatic continuation. `python/cli.py plan-review continuation --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` is diagnostic only and emits `PLAN_REVIEW_CONTINUE*` KVs. With `--per-round-approval`, it returns false with reason `explicit-approve`. For manual recovery, run the continuation entry wrapper:
+**Continuation helper diagnostics**: the script-internal loop owns automatic continuation. `python/cli.py plan-review continuation --design-tmpdir "$DESIGN_TMPDIR" --approve-requested "$_approve_requested"` is diagnostic only and emits `PLAN_REVIEW_CONTINUE*` KVs. With `--per-round-approval`, it returns false with reason `PLAN_REVIEW_CONTINUE_REASON=explicit-approve`. For manual recovery, run the continuation entry wrapper:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-continuation-entry.sh
 ```
 
-Loop back through the launcher-only Step 3 resume fence. Invoke `design-step3-review.sh` via `design-run-$PPID.sh` (never `--no-preview`) with `run_in_background: true`, `timeout: 21600000`, and `<task-notification>` wait before parsing. The wrapper owns rehydration/pause checks. Normal runs use the script-internal loop; Step 3.5 must not re-drive continuation.
+Loop back through the launcher-only Step 3 resume fence before launching the next review. Invoke `design-step3-review.sh` via `design-run-$PPID.sh` (never `--no-preview`) with `run_in_background: true`, `timeout: 21600000`, and `<task-notification>` wait before parsing. The wrapper owns rehydration/pause checks. Normal runs use the script-internal loop; Step 3.5 must not re-drive continuation.
 
 <!-- step:3b — Finalize plan-review artifacts -->
 
