@@ -553,6 +553,13 @@ ignore = [
 "phantom.py" = [
     "PLR0911",
 ]
+"_plan_quality_commands.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 "plan_quality.py" = [
     "C901",
     "PLR0911",
@@ -622,6 +629,13 @@ ignore = [
 "proc.py" = [
     "PLR0913",
 ]
+"_progress_report_live.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
 "progress_report.py" = [
     "C901",
     "PLR0911",
@@ -659,6 +673,12 @@ ignore = [
 "render_session_transcript.py" = [
     "C901",
     "PLR0912",
+]
+"_rendering_generators.py" = [
+    "C901",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
 ]
 "rendering.py" = [
     "C901",
@@ -922,6 +942,13 @@ ignore = [
     "PLR0912",
 ]
 "version_bump.py" = [
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLR0913",
+    "PLR0915",
+]
+"_voting_calibration.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
