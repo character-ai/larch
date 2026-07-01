@@ -1,0 +1,22 @@
+### FINDING_1: Split-path section scope leaks into Step 3 and misclassifies plan-review.md
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: The planned section-scoped conditional detector closes `#### Split-path (decomposition panel)` only at the next equal-or-shallower markdown heading. In `skills/design/SKILL.md`, that next heading is `### External Reviewer Setup` (line 385), with no intervening `## Step 3`. Step 3 prose at `<!-- step:3 — Plan Review -->` (line 366) and the eager `plan-review.md` MANDATORY READ at line 382 therefore sit inside the open Split-path scope. With no other eager directive for `plan-review.md`, eager-wins dedup cannot recover it; the file moves from eager to conditional-only. That drops roughly 215 lines / ~6k tokens below the issue acceptance target while a regenerated baseline can still look self-consistent. Planned isolated fixtures and byte-equality baseline checks do not exercise this Split-path-then-Step-3 layout, so the regression would not be caught.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: End named conditional sections at the next `<!-- step:` HTML comment boundary (e.g. close Split-path at line 366 `<!-- step:3 — Plan Review -->`) in addition to heading-depth closure, or limit section-scoped classification to directives within a small line window under the heading. Add an explicit regression test that `skills/design/references/plan-review.md` stays in the eager section.
+  - From Cursor-Pragmatic: End design conditional section scope at <!-- step:N --> HTML comment boundaries (already used throughout skills/design/SKILL.md), not heading depth alone. Add a regression test on the real design scan (or a fixture mirroring Split-path then step comment then eager read) asserting skills/design/references/plan-review.md stays in result.files.
+  - From Cursor-Pragmatic: Add one integration test that scans a fixture (or repo design SKILL) where #### Split-path precedes <!-- step:3 --> and a subsequent eager MANDATORY READ, and assert that file remains eager-only while decompose-panel.md is conditional-only.
+
+### FINDING_2: Post-directive suffix guard missing for `(if not already loaded ...)`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `_line_is_conditional` inspects only text before the directive index. For `settle-rc-dispatch.md` at `skills/design/SKILL.md:268` and `:477`, the conditional marker `(if not already loaded ...)` appears after `completely`, not before `MANDATORY`. The prefix is just `1. `, so both settle reads stay eager and the planned ~46-line baseline reduction for that file fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In `_line_is_conditional`, after existing prefix/table/bullet checks, also test `line[directive_index:]` (or the extracted read clause tail) for `(if not already loaded` before returning eager. Add a unit test mirroring line 268's layout: conditional marker after `completely`, not before `MANDATORY`.
+
+### FINDING_3: Missing regression test for dual-context eager-wins dedup
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The plan covers overlap cases such as `approval-gates.md`, but the proposed test list only targets the four newly conditional files. A file that is both eagerly referenced and conditionally referenced elsewhere has no dedicated regression test. A broken eager-wins rule could silently drop an eagerly ratcheted ref from `result.files` or leak it into `result.conditional_files` while the split still looks plausible.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add one small regression test that exercises a dual-context file and asserts eager wins: it stays in `result.files` and is absent from `result.conditional_files`.

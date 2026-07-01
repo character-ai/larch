@@ -1,0 +1,53 @@
+The closure ratchet **over-counts**: it labels branch-conditional references as always-loaded, inflating the baseline by roughly 8k tokens and mismeasuring real per-run cost.
+
+**Context.** `python/larch/lint/lint_skill_closure_growth.py` walks `SKILL.md` for `MANDATORY READ ENTIRE FILE` / `read X.md completely` directives and excludes lines it detects as conditional. Its `_line_is_conditional` check looks at the text **before** the directive and at bullet structure, so it misses mid-line and section-scoped guards. As a result these references are counted in the design "always-loaded" closure (70,464 tokens / 2047 lines) although they only load on rare branches:
+
+- `decompose-panel.md` (218 lines): loads only on `--partition` / Step 2b.5 Split-path.
+- `validator-failure.md` (28 lines): loads only on plan-command validator failure.
+- `settle-rc-dispatch.md` (46 lines): Step 1e / discussion settle re-entry only.
+- `step2b5-rc-handling.md` (26 lines): retained-caller plan-size paths only.
+
+Together about **318 lines / ~8k tokens** are mislabeled always-loaded.
+
+**Scope.**
+
+- Teach the detector to recognize section-scoped and mid-line conditional guards (for example a directive inside a `## Split-path` section, or trailing `(if not already loaded ...)`), or annotate conditional reads with an explicit machine marker the lint honors.
+- Split the report into an **eager closure** (gated by the ratchet) and a **conditional closure** (reported, not gated).
+- Regenerate `python/skill-closure-baseline.json` so the eager baseline reflects only references that load on the common path.
+
+**Acceptance.** `skill-closure report` lists the four references above under conditional, not eager. The eager design closure drops to roughly the verified common-path total (`SKILL.md` plus ~32k reference tokens). Existing `test_lint_skill_closure_growth.py` updated.
+
+**Out of scope.** No prose edits. Detector and baseline only.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reclassify the four mislabeled references (decompose-panel.md, validator-failure.md, settle-rc-dispatch.md, step2b5-rc-handling.md) from eager to conditional in the closure scanner.
+- Split `skill-closure report` output into an eager section (ratcheted) and a conditional section (reported only).
+- Regenerate `python/skill-closure-baseline.json` so eager metrics reflect only common-path references.
+
+### Non-goals
+- No edits to SKILL.md or any other skill markdown file (machine markers are out of scope; "Detector and baseline only").
+- No changes to the JSON baseline schema (same keys, regenerated values for design skill only).
+- No changes to `/implement` skill closure (unaffected).
+
+### Approach sketch
+- Extend `_line_is_conditional` with a suffix check for "(if not already loaded" patterns (fixes settle-rc-dispatch.md occurrences).
+- Add section-scoped tracking to `ScanState` and `_update_scan_state`: when a heading matches CONDITIONAL_SECTION_HEADINGS ("Split-path (decomposition panel)", "Plan command validator failure (shared)"), mark entries as conditional until a heading of equal or lower depth ends the section.
+- Add "retained" to `CONDITIONAL_TEXT_RE` (fixes step2b5-rc-handling.md line 349 where the prefix "Retained callers..." lacks conditional keywords).
+- Change `parse_direct_markdown_references` to return `(eager_refs, conditional_refs)` as two tuples; propagate through `scan_skill` and `SkillClosureResult` (add `conditional_files`).
+- Update `_print_report` to show two sections.
+- Update `_growth_violations` to compare only eager metrics.
+- Update tests and regenerate baseline.
+
+### Surfaces in scope
+- `python/larch/lint/lint_skill_closure_growth.py`
+- `python/skill-closure-baseline.json`
+- `python/tests/lint/test_lint_skill_closure_growth.py`
+
+### Open questions
+- None.
