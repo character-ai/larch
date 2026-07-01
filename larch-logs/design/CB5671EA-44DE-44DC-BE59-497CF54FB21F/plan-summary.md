@@ -1,0 +1,1 @@
+Compress `skills/design/references/discussion-rounds.md` in place. Preserve schemas, filenames, step anchors, and settle dispatch pins. Regenerate `python/skill-closure-baseline.json` to bank the smaller `/design` closure.

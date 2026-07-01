@@ -1,0 +1,117 @@
+Verifying exact breadcrumb strings and test command names in the repo so the revised plan is accurate.
+## Plan
+
+## Approach
+
+Do a prose-only density pass on the always-loaded discussion reference.
+
+Use `NO_SKETCHES` as binding. Draft from direct repo inspection, not planning-panel consensus.
+
+Keep scope to the approved outline:
+
+- No flow changes.
+- No cap changes.
+- No prompt or schema literals changed unless they are pure prose around the literal.
+- No edits outside the two approved surfaces.
+
+Compress for token reduction, not style churn. Target at least a real 15% reduction in `skills/design/references/discussion-rounds.md` prose tokens while preserving behavior.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/discussion-rounds.md
+
+Tighten the reference in place.
+
+Preserve byte-stable or behavior-bearing lines:
+
+- The opening mandatory readability line.
+- All step-anchor HTML comments, including the legacy `<!-- step:3.5 ... -->` anchor.
+- `$DESIGN_TMPDIR/discussion-round1.md`.
+- `$DESIGN_TMPDIR/discussion-round2.md`.
+- Both fenced Q&A schema blocks.
+- The two adjacent settle dispatch lines:
+  1. `1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.`
+  2. `2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.`
+- Operator-visible breadcrumb strings (verbatim, including `<elapsed>` placeholders where shown):
+  - `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)`
+  - `⏩ Remaining scope questions deferred to implementation.`
+  - `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)`
+  - `⏩ Remaining design questions deferred to implementation.`
+- Existing prohibited substrings must stay absent:
+  - `Branch on the settle wrapper rc`
+  - `Branch on wrapper rc`
+  - `fallback row`
+
+Compression targets:
+
+- Front matter:
+  - Shorten Consumer, Contract, When to load, and Binding convention.
+  - Keep the same ownership claims and Round 2 re-entry meaning.
+- Step 1c:
+  - Collapse repeated “highest-value question point” prose.
+  - Keep the 1 to 4 question batch rule.
+  - Keep the semantic sprawl heuristic semantics: Split / Cancel only, no Continue, once per Step 1c, preserve tmpdir on cancel; preserve the sprawl cancel line verbatim: `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`
+- Step 1d:
+  - Merge duplicate scope-boundary, hard-constraint, non-goal, and must-have wording.
+  - Keep the explicit prohibition against implementation approach questions.
+  - Keep the short-circuit destination and Step 1d.7 note.
+  - Keep the 7-call cap and terse-answer behavior.
+- Post-plan Round 2 body:
+  - Shorten input descriptions without changing source precedence.
+  - Keep “not covered in Round 1” and “challenged by reviewers” criteria.
+  - Keep Gate A return behavior, not Step 3b.
+  - Keep plan revision authority, optional trailer preservation, settle wrapper invocation, dedup ownership, stale dialectic clearing order, and wrapper-only compatibility meaning.
+  - Remove redundant restatements only when the remaining text still states the invariant.
+
+Do not add new examples, new headings, or new flow rules.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate after the Markdown compression with:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+This should update the `/design` closure metrics only by shrinking or holding steady. Do not hand-edit the numbers except as an emergency repair after comparing against the CLI output.
+
+## Edge cases
+
+- `scripts/test-design-structure.sh` pins the exact two-line settle dispatch directive. Keep those two lines adjacent.
+- Markdown compression can accidentally change behavior by deleting repeated guardrails. Keep load-bearing duplication where it prevents misrouting or stale state.
+- Rewording operator-visible `⏩` breadcrumb strings saves tokens but changes live `/design` output; those four lines stay verbatim even though `make test-design-structure` does not pin them.
+- Blank-line-only reductions do not count as useful ratchet headroom. The acceptance needs real content-token reduction.
+- The baseline writer regenerates both gated skills. Verify that `/implement` metrics do not change unexpectedly.
+
+## Failure modes
+
+- If `lint skill-closure-growth --write` increases any metric, revert the baseline update and compress the Markdown further.
+- If Markdown shrinks but baseline regen is skipped or not committed, `python3 python/cli.py lint skill-closure-growth --skill design` still passes (one-directional growth only); CI fails on `test_committed_baseline_matches_fresh_scan` in `python/tests/lint/test_lint_skill_closure_growth.py`.
+- If `make test-design-structure` fails, restore the exact pinned literals it names.
+- If markdownlint fails, fix formatting without expanding prose unless needed.
+- If the 15% reduction is not reached, make a second pass on duplicated setup, behavior, and output wording before touching any behavior-bearing text.
+
+## Testing strategy
+
+Run the focused checks:
+
+```bash
+pre-commit run markdownlint --files skills/design/references/discussion-rounds.md
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth --skill design
+make test-lint-skill-closure-growth
+make test-design-structure
+```
+
+(`make test-lint-skill-closure-growth` runs `python/tests/lint/test_lint_skill_closure_growth.py`, including `test_committed_baseline_matches_fresh_scan`; that pytest is the byte-exact baseline freshness gate required for ratchet-confirmed shrink. Equivalent: `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q`.)
+
+Before finalizing, inspect the regenerated baseline diff and confirm:
+
+- `skills/design/references/discussion-rounds.md` is smaller in real prose.
+- `python/skill-closure-baseline.json` reflects the new smaller `/design` closure and matches a fresh scan.
+- No non-scope files changed.
+
+diff_added: 70
+diff_deleted: 105
+mechanical_churn: false
+diff_lines: 175

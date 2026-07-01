@@ -1,0 +1,9 @@
+Reading the ballot and verifying findings against the plan and source files.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_1 already on the in-scope ballot
+OOS_2: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_2 already on the in-scope ballot

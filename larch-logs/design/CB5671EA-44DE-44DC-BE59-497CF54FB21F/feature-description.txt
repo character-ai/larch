@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded discussion-rounds.md (~3k tok)
+
+In-place prose-density pass on the Step 1c/1d discussion reference.
+
+**Context.** `skills/design/references/discussion-rounds.md` is 137 lines / ~3,230 tokens, force-read every design run at Step 1c/1d. Never prose-compressed.
+
+**Scope.** Tighten discussion-loop and Q/A-schema prose. Preserve the Q/A schema literals, file names (`discussion-round1.md`, `discussion-round2.md`), and any fenced commands verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed.
+
+**Out of scope.** No discussion-flow semantics changes. Density only; keep load-bearing duplication.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
