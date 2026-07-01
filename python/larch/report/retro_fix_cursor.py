@@ -1,9 +1,10 @@
 # ruff: noqa: C901,PLR0911,PLC0415
 """retro_fix_cursor.py — retro-fix Cursor pricing in committed final-summary.md files.
 
-Recomputes the Cursor dollar figure and TOTAL in each ``**Cost**`` line by
-applying the Teams $0.25/M cache-read surcharge that was omitted when these
-run logs were first written.  Only files with ``BUCKETS_cursor`` and a
+Recomputes the Cursor dollar figure and TOTAL in each ``**Cost**`` line using
+the same composer-2.5 rate row (``report_tokens_cost.rate_row``) consumed by
+the live, going-forward pricer, so the Teams $0.25/M surcharge is applied to
+input, cache-read, and output alike.  Only files with ``BUCKETS_cursor`` and a
 non-zero ``cache_read`` count can be precisely repriced; all others are
 skipped and logged.
 
@@ -11,11 +12,6 @@ Designed as a one-time sweep to correct larch-logs committed before the
 pricing fix in issue #5854.  Safe to re-run: files whose Cursor figure
 already matches the corrected rate are reported as
 ``skipped-already-correct``.
-
-Old (wrong) rate for composer-2.5 cache_read: $0.20/M
-Corrected rate (+ Teams surcharge):            $0.45/M
-
-Input and output rates are unchanged at $0.50/M and $2.50/M.
 
 Exit codes: 0 on success (including nothing-to-do).  Non-zero on hard I/O
 errors.
@@ -28,11 +24,8 @@ import sys
 from pathlib import Path
 from typing import cast
 
-# Rate correction: Teams $0.25/M surcharge on cache reads only.
-# Old rate (wrong): $0.20/M.  Corrected rate: $0.45/M.
-_NEW_CACHE_READ_RATE = 0.45
-_INPUT_RATE = 0.50
-_OUTPUT_RATE = 2.50
+from larch.core import config
+from larch.report.report_tokens_cost import rate_row
 
 # Cursor cost line regex (matches both old and new Cost-line formats).
 _RE_CURSOR = re.compile(r"Cursor \$(\d+\.\d+)")
@@ -51,11 +44,12 @@ def _cost_bucket(tokens: int, rate: float) -> float:
     return round((tokens / 1_000_000) * rate, 6)
 
 
-def _cursor_cost(buckets: dict[str, int], cache_read_rate: float) -> float:
+def _cursor_cost(buckets: dict[str, int]) -> float:
+    rates = rate_row("cursor", model=config.CURSOR_DEFAULT_MODEL)
     return round(
-        _cost_bucket(buckets.get("input", 0), _INPUT_RATE)
-        + _cost_bucket(buckets.get("cache_read", 0), cache_read_rate)
-        + _cost_bucket(buckets.get("output", 0), _OUTPUT_RATE),
+        _cost_bucket(buckets.get("input", 0), rates["input"])
+        + _cost_bucket(buckets.get("cache_read", 0), rates["cache_read"])
+        + _cost_bucket(buckets.get("output", 0), rates["output"]),
         2,
     )
 
@@ -108,7 +102,7 @@ def transform_file(final_summary_path: Path, *, dry_run: bool = False) -> str:
         "output": _to_int(buckets_d.get("output", 0)),
     }
 
-    new_cursor = _cursor_cost(buckets, _NEW_CACHE_READ_RATE)
+    new_cursor = _cursor_cost(buckets)
     stored_cursor = float(m_cursor.group(1))
 
     if new_cursor == stored_cursor:

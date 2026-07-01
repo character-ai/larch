@@ -6,6 +6,7 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from larch.report import report_tokens_cost
 from larch.report import retro_fix_cursor as rfc
 
 
@@ -29,17 +30,42 @@ def _write_report(run_dir: Path, input_t: int, cache_read: int, output_t: int) -
     (run_dir / "token-report-final.json").write_text(json.dumps(data))
 
 
+def _live_cursor_cost(*, input_t: int, cache_read: int, output_t: int) -> str:
+    """Cursor $ figure per the going-forward pricer, for cross-checking retro-fixer output.
+
+    Passes ``env={}`` so ambient rate-override env vars cannot make this
+    comparison flaky; the retro-fixer itself has no env-override path.
+    """
+    lines = report_tokens_cost.token_cost_from_args(
+        [
+            "--cursor-input-tokens", str(input_t),
+            "--cursor-cache-read-tokens", str(cache_read),
+            "--cursor-output-tokens", str(output_t),
+        ],
+        env={},
+    )
+    for line in lines.splitlines():
+        key, _, value = line.partition("=")
+        if key == "CURSOR_COST":
+            return value
+    raise AssertionError("CURSOR_COST missing from token_cost_from_args output")
+
+
 def test_transform_fixes_cost_line(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "RUN1"
-    # cursor=$2.66 with input=1030521, cache_read=9188853, output=122940
+    # cursor=$2.66 is the fully-unsurcharged (pre-#5854) figure for these buckets.
+    input_t, cache_read, output_t = 1030521, 9188853, 122940
     p = _write_summary(run_dir, cursor="2.66", total="20.97")
-    _write_report(run_dir, input_t=1030521, cache_read=9188853, output_t=122940)
+    _write_report(run_dir, input_t=input_t, cache_read=cache_read, output_t=output_t)
 
     result = rfc.transform_file(p)
     assert result == "fixed"
     text = p.read_text()
-    assert "Cursor $4.96" in text
-    assert "TOTAL ~$23.27" in text
+    # Cross-check against the going-forward pricer rather than a self-pinned
+    # literal, so the two paths cannot silently drift apart again.
+    expected_cursor = _live_cursor_cost(input_t=input_t, cache_read=cache_read, output_t=output_t)
+    assert f"Cursor ${expected_cursor}" in text
+    assert f"TOTAL ~${20.97 - 2.66 + float(expected_cursor):.2f}" in text
     assert "Claude $10.00" in text  # unchanged
 
 
@@ -128,11 +154,13 @@ def test_main_run_id_targets_single_run(tmp_path: Path) -> None:
 def test_fallback_to_token_report_json(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "design" / "RUN8"
     run_dir.mkdir(parents=True)
+    input_t, cache_read, output_t = 1030521, 9188853, 122940
     p = _write_summary(run_dir, cursor="2.66", total="20.97")
     # Use token-report.json (not -final)
-    data = {"BUCKETS_cursor": {"input": 1030521, "cache_read": 9188853, "output": 122940}}
+    data = {"BUCKETS_cursor": {"input": input_t, "cache_read": cache_read, "output": output_t}}
     (run_dir / "token-report.json").write_text(json.dumps(data))
 
     result = rfc.transform_file(p)
     assert result == "fixed"
-    assert "Cursor $4.96" in p.read_text()
+    expected_cursor = _live_cursor_cost(input_t=input_t, cache_read=cache_read, output_t=output_t)
+    assert f"Cursor ${expected_cursor}" in p.read_text()

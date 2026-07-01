@@ -1651,7 +1651,7 @@ def measure_realized_cost() -> Path:
             all_refs.extend(read.reference_path for read in run_reads)
         reads_by_skill[skill] = skill_reads
     ref_info = _token_counts_for_repo_paths(repo=repo, rels=all_refs)
-    rows: list[tuple[str, int, int, str, int, str, int, int]] = []
+    rows: list[tuple[str, int, int, str, int, str, int, int, str]] = []
     for skill, dirs in run_dirs_by_skill.items():
         if skill not in skill_tokens:
             continue
@@ -1663,6 +1663,11 @@ def measure_realized_cost() -> Path:
         realized_tokens = invocations * skill_md_tokens + reference_tokens_total
         tokens_per_invocation = realized_tokens / invocations if invocations else 0.0
         reference_tokens_per_invocation = reference_tokens_total / invocations if invocations else 0.0
+        # A skill with zero observed reference reads is indistinguishable from a
+        # skill with no transcript capture at all unless we report which case it
+        # is: distinguish a real, measured zero from "no data yet".
+        has_capture = any(run_log_corpus.safe_transcript_path(run_dir) is not None for run_dir in dirs)
+        capture_status = "measured" if has_capture else "not-yet-measured"
         rows.append((
             skill,
             invocations,
@@ -1672,16 +1677,18 @@ def measure_realized_cost() -> Path:
             f"{reference_tokens_per_invocation:.2f}",
             skill_md_tokens,
             reference_reads,
+            capture_status,
         ))
     rows.sort(key=lambda row: (-row[4], row[0]))
     _atomic_text(
         path=out_path,
         text=(
             "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\t"
-            "skill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\n"
+            "skill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\t"
+            "reference_capture_status\n"
             + "".join(
-                f"{skill}\t{count}\t{issue_count}\t{tokens_per_invocation}\t{realized}\t{skill_md_tokens}\t{ref_tokens_per_invocation}\t{ref_reads}\n"
-                for skill, count, issue_count, tokens_per_invocation, realized, ref_tokens_per_invocation, skill_md_tokens, ref_reads in rows
+                f"{skill}\t{count}\t{issue_count}\t{tokens_per_invocation}\t{realized}\t{skill_md_tokens}\t{ref_tokens_per_invocation}\t{ref_reads}\t{capture_status}\n"
+                for skill, count, issue_count, tokens_per_invocation, realized, ref_tokens_per_invocation, skill_md_tokens, ref_reads, capture_status in rows
             )
         ),
     )
