@@ -187,8 +187,8 @@ def _read_state_file(path: Path) -> dict[str, str]:
 # dispatch_commit_route.py _checks_commit_route_marker), mapped to the
 # STALL_STEP token stall-recovery classification expects for that site.
 _CHECKS_MARKER_STALL_STEPS: dict[str, str] = {
-    "implement-step3-checks": "3",
-    "implement-step5-self-review": "5",
+    config.CHECKS_COMMIT_ROUTE_MARKER_STEP3: "3",
+    config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW: "5",
 }
 
 

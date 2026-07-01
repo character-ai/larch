@@ -104,9 +104,9 @@ def _optional_bg_wait_marker(*, tmpdir: Path, marker: tuple[str, int, str] | Non
 
 def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
     if checks_site == "step3":
-        return "implement-step3-checks", 15600, ".completed/step-3-terminal"
+        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP3, 15600, ".completed/step-3-terminal"
     if checks_site == "step5-self-review":
-        return "implement-step5-self-review", 14700, ".completed/step-5-self-review-terminal"
+        return config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW, 14700, ".completed/step-5-self-review-terminal"
     return None
 
 def step5_review_main(argv: list[str] | None = None) -> int:
