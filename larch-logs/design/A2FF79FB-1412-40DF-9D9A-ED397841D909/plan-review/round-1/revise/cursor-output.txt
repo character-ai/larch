@@ -1,0 +1,142 @@
+Verifying codebase details so the revised plan matches the implementation.
+## Plan
+
+## Context
+
+`approach-synthesis.txt` is `NO_SKETCHES`. Draft from direct repo inspection.
+
+`design-outline.md` is non-empty, but `.outline-approved` is absent. Do not treat it as binding.
+
+No `discussion-round1.md` or `brainstorm.md` was present.
+
+## Approach
+
+Replace the standalone `wc -l` cap in `scripts/test-design-structure.sh` with the Python skill-closure ratchet.
+
+Add a blank-line-neutral content-token metric so blank-line deletion cannot create future content headroom.
+
+Use the existing estimated-token model from `python/larch/lint/lint_skill_closure_growth.py`. Do not add a real tokenizer. Do not edit `skills/design/SKILL.md`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/lint_skill_closure_growth.py
+
+Add a normalized content-token metric:
+
+- Ignore lines where `line.strip()` is empty.
+- Preserve one newline after each retained line.
+- Estimate tokens with the same `_estimated_tokens()` helper.
+
+Add fields such as:
+
+- `skill_md_content_estimated_tokens`
+- `closure_content_estimated_tokens`
+
+Include them in:
+
+- `FileMetrics`
+- `SkillClosureResult`
+- `BaselineRow`
+- `METRIC_FIELDS`
+- baseline validation
+- JSON serialization
+- report output, if practical without making it noisy
+
+Add an optional `--skill {design,implement}` filter for check mode only:
+
+- **Check mode (no `--write`)**: when `--skill` is set, call `scan_skill(root, skill)` (not `scan_all`), load the baseline, and run `_growth_violations` only on that single result. Reject unknown skill names with exit `2`.
+- **Default (no `--skill`)**: keep today's behavior: `scan_all(root)`, then `_growth_violations` across all gated skills.
+- **`--write` mode**: always call `scan_all(root)` and write the full two-row canonical baseline. **Reject `--skill` when `--write` is present** with exit `2` and a concise stderr message (e.g. `--skill is check-only; --write regenerates all gated skills`). Never let a filtered write produce a one-row baseline.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate the baseline with the new content-token fields.
+
+The current design values observed during planning were:
+
+- `skill_md_estimated_tokens`: `30131`
+- blank-line-neutral design `SKILL.md` content estimate: `30076`
+
+Let the implementation regenerate exact committed values rather than hand-editing them.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Remove the early `wc -l` block:
+
+- `skill_lines=$(wc -l < "$SKILL_MD" | tr -d ' ')`
+- the `<= 705` assertion
+
+Replace it with a direct ratchet check, after `fail()` is defined:
+
+- invoke the **entry shim**, not `CLI_PY`: `python3 "$ROOT/python/cli.py" lint skill-closure-growth --skill design`
+- fail with a concise design-structure message if it exits non-zero
+
+Do **not** repoint `CLI_PY` (still `python/larch/cli.py` for registry/grep structural checks). Only the new ratchet call uses `python/cli.py`, which executes `larch.cli.main()` under `if __name__ == "__main__"`. `python/larch/cli.py` defines `main()` but does not run it when invoked as a script.
+
+### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py
+
+Update fixtures and baseline validation for the new fields.
+
+Add focused tests:
+
+- blank-line-only deletion leaves the content-token metric unchanged
+- content growth fails even when total line count drops
+- `--skill design` ignores an implement-only growth case (check mode scans only design via `scan_skill`)
+- `--skill` combined with `--write` exits `2` and does not rewrite the baseline
+- `--write` alone still emits the canonical two-row baseline with all `BASELINE_KEYS`
+- baseline rows reject missing or malformed content-token fields
+- report or serialization remains canonical
+
+Keep existing line and raw-token tests unless they become redundant. The content-token and `--skill`/`--write` guard tests are acceptance-critical.
+
+### UPDATED: docs/linting.md
+
+Update the "SKILL.md closure growth ratchet" section.
+
+Mention that the ratchet now includes blank-line-neutral content-token metrics, so blank-line-only churn does not create useful ratchet headroom.
+
+Document `--skill` as a check-only filter for a single gated skill.
+
+Document that `--write` always regenerates both skills and cannot be combined with `--skill`.
+
+Do not change unrelated linting prose.
+
+## Edge cases
+
+- A file with only blank lines should produce zero content tokens.
+- A file without a trailing newline should still get stable content-token output.
+- Non-ASCII text should follow the existing estimator unless the implementation deliberately changes `_estimated_tokens()`. Avoid changing that estimator in this child.
+- `--skill` must reject unknown skill names with exit `2`.
+- `--skill` combined with `--write` must exit `2` before any baseline write.
+
+## Failure modes
+
+- If baseline JSON is stale after adding fields, lint exits `2` or freshness tests fail.
+- If `scripts/test-design-structure.sh` calls the all-skill ratchet instead of `--skill design`, implement-only growth may fail the design harness. Avoid that coupling.
+- If `scripts/test-design-structure.sh` uses `CLI_PY` (`python/larch/cli.py`) for the ratchet call, the script can exit `0` without running the linter. Use `python/cli.py` for that invocation only.
+- If `--write` honors `--skill` and writes a one-row baseline, `load_baseline()` fails closed on the next default lint run until manual repair. Reject the combination at argparse time.
+- If blank-line-normalization removes indentation-only code fences, it is acceptable for this metric because it is a ratchet signal only, not rendered content.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py`
+- `make test-design-structure`
+- `make lint-skill-closure-growth`
+
+Then run relevant checks for changed files if dependencies are available:
+
+- `python3 python/cli.py checks run-relevant`
+
+Acceptance checks to verify manually or with tests:
+
+- A fixture that deletes blank lines and adds content fails the ratchet.
+- A blank-line-only fixture does not lower the content-token baseline metric.
+- `main(["--write", "--skill", "design", ...])` exits `2` and leaves the baseline unchanged.
+- The real repo passes after regenerating `python/skill-closure-baseline.json`.
+
+diff_added: 165
+diff_deleted: 25
+mechanical_churn: false
+diff_lines: 190
