@@ -29,10 +29,13 @@ Emitted when `--check-reviewers` is used:
 - `CODEX_PRESENT`
 - `CURSOR_PRESENT`
 
-Optional caller-derived keys:
+Optional caller-derived stdout keys (when present in caller-env and forwarded):
 
 - `LARCH_TOKEN_SESSION_ID`
 - `LARCH_CLAUDE_SOURCE_FILE`
+
+Session-env-only telemetry (not emitted on `session setup` stdout; rehydrate from `session-env.sh` or `$SESSION_ENV_PATH`):
+
 - `LARCH_TIMING_LEDGER`
 
 Optional repo keys when repo probing is not skipped:

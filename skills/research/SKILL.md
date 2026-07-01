@@ -119,7 +119,11 @@ Print: `> **🔶 /research 0: setup**`
 
 ### 0a — Session Setup and Reviewer Check
 
-Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for the shared session setup stem, reviewer tail, and output-key semantics. When executing, combine that shared invocation shape with local delta `--prefix claude-research`.
+Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for the shared session setup stem, reviewer tail, and output-key semantics. Local delta: `--prefix claude-research`.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session setup --prefix claude-research --skip-preflight --skip-branch-check --skip-repo-check --check-reviewers
+```
 
 If the script exits non-zero, print the error and abort.
 
