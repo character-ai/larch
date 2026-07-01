@@ -792,6 +792,15 @@ out=$(run_payload_auto_markers "$(payload_bash "$design_tmpdir_ls" "$CWD_DESIGN_
 assert_deny "$out" '#5925: same-clone live design marker denies bare DESIGN_TMPDIR reference from its own repo cwd'
 rm -f "$MARKER_DESIGN_OWN"
 
+# Missing/empty cwd cannot establish plausibility for the bare-reference
+# match (no cwd-equals-dir signal, no clone tag to compare), so it fails
+# open rather than denying — consistent with this hook's documented
+# fail-open-on-uncertain-input posture.
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+out=$(printf '%s' "$(jq -cn --arg cmd "$implement_probe_bare" '{tool_name:"Bash",tool_input:{command:$cmd},cwd:""}')" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
+assert_allow "$out" '#5925: empty cwd cannot establish plausibility, bare IMPLEMENT_TMPDIR reference allows'
+rm -f "$MARKER"
+
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"
 out=$(run_payload "$(payload_monitor)")

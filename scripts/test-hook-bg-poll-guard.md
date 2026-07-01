@@ -18,7 +18,7 @@ Offline regression harness for `scripts/hook-bg-poll-guard.sh`.
 - Pins the Step 5c release split: `.completed/step-5c` does not release the marker, and `.completed/step-5c-terminal` does.
 - Covers marker denial, terminal-sentinel release, and symlink-sentinel refusal for `design-step4-tail`, `implement-step5-resume`, `implement-step5-self-review`, `implement-step6-checks`, and `implement-step7a`.
 - Pins the Step 4 foreground probe carve-out for `.completed/step-4`, including repeated-probe clamp behavior and denial of non-Step-4 terminal probes while the Step 4 tail marker is live.
-- Covers the #5925 cross-session fix: a live marker belonging to an unrelated repo clone (different embedded clone tag) does not deny a bare `$IMPLEMENT_TMPDIR`/`$DESIGN_TMPDIR` reference from a different clone's cwd, a marker whose embedded clone tag matches the probing cwd's basename still denies (including hyphenated clone tags), and both the `IMPLEMENT_TMPDIR` and `DESIGN_TMPDIR` shapes are covered.
+- Covers the #5925 cross-session fix: a live marker belonging to an unrelated repo clone (different embedded clone tag) does not deny a bare `$IMPLEMENT_TMPDIR`/`$DESIGN_TMPDIR` reference from a different clone's cwd, a marker whose embedded clone tag matches the probing cwd's basename still denies (including hyphenated clone tags and both the `IMPLEMENT_TMPDIR` and `DESIGN_TMPDIR` shapes), and an empty/missing `cwd` fails open rather than denying.
 - Uses a temporary marker path supplied through `LARCH_BG_POLL_GUARD_MARKER`; it does not depend on a real Claude Code session.
 
 ## Harness
