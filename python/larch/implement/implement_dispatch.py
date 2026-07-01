@@ -138,6 +138,7 @@ from larch.implement.dispatch_commit_route import (
     _parse_line_anchored_commit_kv,
     _parse_whitespace_kv_line,
     _path_readable_nonempty,
+    _pathspec_clean_relative_to_head,
     _read_redacted_message,
     _relay_checks_stdout,
     _relay_commit_kvs,
