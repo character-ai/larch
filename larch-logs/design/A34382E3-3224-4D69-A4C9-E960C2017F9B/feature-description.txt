@@ -1,0 +1,13 @@
+# md-to-py-X: second density pass on implement SKILL.md
+
+A second targeted density pass on the **single largest always-loaded surface** on the most-run skill.
+
+**Context.** `skills/implement/SKILL.md` is 789 lines / 28,451 tokens, the largest always-loaded file, on the highest-volume skill (about 1,281 measured invocations). `#5787` cut it -16% in bytes but at a flat line count, because lint and structural pins blocked line removal. Residual headroom remains in the densest sections.
+
+**Scope.** Targeted density pass on the densest blocks, for example the line-127 rebase / `CHECKPOINT_NEXT` conditional-routing paragraph, the 254-256 `BOOTSTRAP_NEXT` dispatch-matrix rows, and the Step 8+ routing prose. Preserve all KV grammar, fenced commands, the NEVER list, and structural pins verbatim.
+
+**Acceptance.** Measurable token reduction with zero behavior change. `scripts/test-implement-fence-shape.sh` (`make test-implement-fence-shape`) and all structural pins pass.
+
+**Out of scope.** No control-flow changes; keep load-bearing duplication. Independent of the design children (verb-disjoint).
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

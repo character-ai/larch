@@ -1,0 +1,1 @@
+- **G-Skill-1** (load phase-local content lazily): the plan tightens the named blocks in place rather than relocating them to a lazily-loaded reference file. This follows the issue's explicit out-of-scope ("No control-flow changes; keep load-bearing duplication"), which forecloses relocation for this pass. No other guideline is implicated; the plan makes no Python code changes.

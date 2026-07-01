@@ -1,0 +1,1 @@
+Single-file density pass on `skills/implement/SKILL.md`. Preserve all behavioral contracts, pinned literals, Bash fences, KV grammar, NEVER rules, and structural anchors. Validate with implement prompt structure harnesses and closure-growth metrics.

@@ -1,0 +1,41 @@
+### FINDING_1: Step 8+ preserve omits `Python ship driver wrapper` pin
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The Step 8+ preserve inventory does not byte-stabilize the structure-pinned `Python ship driver wrapper` substring. Item 3 authorizes tightening the Step 8+ opening paragraph, but `scripts/test-implement-structure.sh` (lines 839–845) requires that exact substring in `SKILL.md`. A density edit can satisfy routing semantics yet fail `make test-implement-structure`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `Python ship driver wrapper` to the Step 8+ byte-stable preserve list, Edge cases, and acceptance checks.
+
+
+### FINDING_2: Anti-halt preserve list incomplete vs harness
+- **Reviewer(s)**: Cursor-Arch, Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan’s anti-halt acceptance checklist does not enumerate all continuation literals that `scripts/test-implement-anti-halt.sh` requires. It currently freezes only `Continue to Step 15.` and `Continue to Step 16.`; the harness also checks `Continue to Step 8 IMMEDIATELY` (line 68) and `Continue to Step 17.` / `Continue to Step 18.`. Density passes in the Step 8 boundary or Step 16–18 tail can remove unpinned literals and fail the harness while Item 4 or adjacent tightening still appears in scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend acceptance and Edge cases to require all anti-halt literals the harness checks, including `Continue to Step 8 IMMEDIATELY`, or delete Item 4.
+  - From Codex-Requirements: Add `Continue to Step 17.` and `Continue to Step 18.` to the preserved anti-halt literals and edge-case pin list, and mention them in the validation checklist.
+
+
+### FINDING_3: Step 1.r / macro rewrite lacks forbidden ROUTE prose guard
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Macro or Step 1.r condensation lacks a guard against reintroducing forbidden absorbed-1.r ROUTE prose. Items 1 and 2 invite rewriting the long `CHECKPOINT_NEXT` macro and Step 1.r routing text; `scripts/test-implement-structure.sh` forbids reintroducing `branch on envelope \`ROUTE=\` and \`REBASE_RC=\` from the Step 0 bootstrap stdout envelope` (line 495). A shorter rewrite can accidentally restore that retired wording and fail structure tests without changing runtime behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit do-not-reintroduce pin for the line-495 `forbid()` substring to the Rebase Checkpoint Macro and Step 1.r preserve bullets.
+
+
+### FINDING_5: Step 8+ omits pre-driver re-run recovery pin
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Step 8+ post-driver continuation omits a preserve pin for the recovery pre-driver re-run sentence. Item 3 tells implementers to tighten post-driver continuations and the long-running driver blockquote but does not freeze `If the **Pre-driver predicate** still matches, re-run python/cli.py ship pre-driver before step-8-ship.sh`. That sentence is not harness-pinned; condensing the blockquote can drop it while `every Step 8+ re-entry goes through step-8-ship.sh` remains, so turn recovery on seeded-but-no-PR state can skip the pre-driver verb and invert Step 8+ bootstrap order.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add that recovery substring to Item 3 preserve inventory, Edge cases, and Failure modes alongside the four existing pre-driver predicate pins.
+
+
+### FINDING_6: Step 0 bootstrap preserve lacks exact malformed-envelope substring
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Step 0 bootstrap condensation cites only keeping the malformed `BOOTSTRAP_NEXT` sentence “intact enough for structure tests” without the exact `require()` substring. `scripts/test-implement-structure.sh` line 485 requires the verbatim sentence `if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2``. A density pass can paraphrase that line while editing the Step 0 routing paragraph or `BOOTSTRAP_NEXT` table preamble, preserving intent but failing `make test-implement-structure`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add the exact malformed-envelope substring to the Step 2 preserve inventory and Edge cases (same treatment as pre-driver predicate pins and `bootstrap_recovery_read_degraded`), and replace "intact enough" with "byte-stable".
+
+
