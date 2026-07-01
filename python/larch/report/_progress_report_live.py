@@ -1,7 +1,7 @@
 """Live run discovery, timing helpers, and terminal rendering for progress_report."""
 # ruff: noqa: F401
 # pylint: skip-file
-# pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedImport=false, reportUnusedFunction=false
+# pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportUnusedImport=false, reportUnusedFunction=false, reportUnusedClass=false
 
 from __future__ import annotations
 

@@ -1,7 +1,7 @@
 """On-demand progress reports for live larch runs."""
 # ruff: noqa: F401
 # pylint: disable=unused-import
-# pyright: reportUnknownVariableType=false, reportUnusedCallResult=false
+# pyright: reportUnknownVariableType=false, reportUnusedCallResult=false, reportPrivateUsage=false, reportUnusedImport=false
 
 from __future__ import annotations
 
