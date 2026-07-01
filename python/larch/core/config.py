@@ -386,6 +386,19 @@ def claude_sub_default_model(raw: str) -> str:
 CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
+# Rebase conflicts confined to these generated files are mechanically
+# auto-resolvable: regenerate the file from the working tree (mirroring the
+# matching `make regen-*` recipe) and continue, rather than attempting a textual
+# merge. Maps the tracked repo-relative path to the `python/cli.py` argv that
+# regenerates it. Consumed by finalize._rebase_no_push to auto-resolve pre-PR
+# (postbump) rebase conflicts confined to these files instead of stalling
+# unconditionally. See issue #5930.
+REBASE_AUTORESOLVE_GENERATED_FILES: Final[dict[str, tuple[str, ...]]] = {
+    "python/skill-closure-baseline.json": ("lint", "skill-closure-growth", "--write"),
+}
+# Defensive bound on the postbump auto-resolve `rebase --continue` loop; the
+# realistic case resolves in one or two steps.
+REBASE_AUTORESOLVE_MAX_STEPS: Final = 32
 SHIP_PR_RRR_RESUME_PHASE: Final = "ship-pr-rrr-phase14"
 SHIP_PR_PRE_PUSH_CALLER_KIND: Final = "ship_pr_pre_push"
 SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME: Final = "ship-pr-rrr-after-phase14.flag"

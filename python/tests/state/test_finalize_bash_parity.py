@@ -49,9 +49,9 @@ def test_postbump_branch_mismatch_uses_resume_skip_status(tmp_path: Path) -> Non
 def test_postbump_uses_rebase_without_changelog(monkeypatch, tmp_path: Path) -> None:  # type: ignore[no-untyped-def]
     calls: list[str] = []
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> str:
+    def fake_rebase(*_args: object, **_kwargs: object) -> finalize.RebaseNoPushResult:
         calls.append("rebase")
-        return "already-fresh"
+        return finalize.RebaseNoPushResult("already-fresh")
 
     monkeypatch.setattr(finalize, "_rebase_no_push", fake_rebase)
     monkeypatch.setattr(finalize.git, "remote_branch_state", lambda *_a, **_k: type("R", (), {"state": "absent"})())
