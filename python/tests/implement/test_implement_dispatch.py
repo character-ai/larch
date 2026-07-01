@@ -668,10 +668,11 @@ def test_step18_gate_finalize_abandoned_checks_marker_breaks_out_without_finaliz
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     tmp = _session(tmp_path)
-    dead = subprocess.Popen(["true"])
-    dead.wait()
+    with subprocess.Popen(["true"]) as dead:
+        dead.wait()
+        dead_pid = dead.pid
     (tmp / ".bg-wait-active").write_text(
-        f"PID={dead.pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S=15600\n",
+        f"PID={dead_pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S=15600\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(

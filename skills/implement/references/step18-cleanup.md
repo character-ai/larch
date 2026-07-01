@@ -12,7 +12,7 @@ Step 18a runs first on every Step 18 entry, before teardown. By the recover-then
 
 Standalone `step-18.sh --phase finalize` remains only on the stall-recovery breakout branch. Do not reintroduce the retired two-fence no-stall sequence of `--phase gate` followed by `--phase finalize`.
 
-Resolve `STALL_TRACKING` from four textual layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` semantics, plus a derived signal: a dead-PID `.bg-wait-active` marker for a checks-commit-route site (`implement-step3-checks`, `implement-step5-self-review`), covering a process killed before it wrote `STALL_TRACKING` anywhere; see `stall-recovery.md` `RESUME_HINT=checks-commit-route-retry`.
+Resolve `STALL_TRACKING` from four layers: the in-memory orchestrator variable, `$IMPLEMENT_TMPDIR/ship-pr-state.sh`, `$IMPLEMENT_TMPDIR/finalize-state.sh`, then `$IMPLEMENT_TMPDIR/session-env.sh` via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session read-key` semantics. A fifth, derived signal joins these: a dead-PID `.bg-wait-active` marker for a checks-commit-route site (`implement-step3-checks`, `implement-step5-self-review`), covering a process killed before it wrote `STALL_TRACKING` anywhere; see `stall-recovery.md` `RESUME_HINT=checks-commit-route-retry`.
 
 Treat all five layers under the inverted all-false-or-empty rule: a layer is active when it is not `false` and not empty. Skip active-stall recovery only when every layer is false or empty. The composite emits `⏩ 18a: stall recovery — no stall detected` when `STALL_RECOVERY_REQUIRED=false` on the green path.
 

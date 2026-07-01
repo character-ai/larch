@@ -1746,9 +1746,9 @@ def _write_bg_wait_marker(tmp_path: Path, *, step: str, pid: int) -> None:
 
 
 def _dead_pid() -> int:
-    proc = subprocess.Popen(["true"])
-    _ = proc.wait()
-    return proc.pid
+    with subprocess.Popen(["true"]) as proc:
+        _ = proc.wait()
+        return proc.pid
 
 
 def test_classify_step3_abandoned_checks_marker_retries(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
