@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 58024,
-    "closure_estimated_tokens": 58178,
-    "closure_lines": 1680,
+    "closure_content_estimated_tokens": 52808,
+    "closure_estimated_tokens": 52963,
+    "closure_lines": 1671,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
@@ -14,9 +14,9 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 30075,
-    "skill_md_estimated_tokens": 30129,
-    "skill_md_lines": 705
+    "skill_md_content_estimated_tokens": 24859,
+    "skill_md_estimated_tokens": 24914,
+    "skill_md_lines": 696
   },
   {
     "closure_content_estimated_tokens": 33159,
