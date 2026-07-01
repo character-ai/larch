@@ -1,0 +1,8 @@
+Reading the ballot and verifying findings against the plan and harness pins.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-4 OOS execution-issues refresh item; unpinned prose and general zero-behavior-change acceptance already cover it
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real recovery risk but unpinned; plan's route-semantics and zero-behavior-change gates suffice without another explicit pin
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- named zones avoid Step 16-18 pins and CI relevant-checks still run the harness; local checklist gap is not backlog-material

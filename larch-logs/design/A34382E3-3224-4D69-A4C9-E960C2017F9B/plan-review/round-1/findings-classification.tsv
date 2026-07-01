@@ -1,0 +1,16 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Prompt Contract Minifier	accepted	YES	true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Pragmatic, Cursor-dyn-Prompt Contract Minifier, Codex-dyn-Prompt Contract Minifier	accepted	YES	true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_3	Cursor-Arch, Cursor-Innovation, Cursor-Requirements	accepted	YES	true	major	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Prompt Contract Minifier	accepted	YES	true	major	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_5	Cursor-Arch	accepted	YES	true	major	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_6	Cursor-dyn-Prompt Contract Minifier	neutral	YES	true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	NO	partially-true	minor	good	false	Cursor	important	oos
+FINDING_7	Cursor-Requirements	accepted	YES	true	major	good	false	Claude	NO	partially-true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_8	Codex-dyn-Prompt Contract Minifier	accepted	YES	true	major	good	false	Claude	NO	false-positive	minor	adequate	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_9	Codex-dyn-Prompt Contract Minifier	accepted	YES	true	major	good	false	Claude	NO	false-positive	minor	adequate	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_10	Cursor-Arch	rejected	NO	partially-true	minor	adequate	false	Claude	NO	false-positive	minor	adequate	false	Codex	NO	true	major	good	false	Cursor	important	in_scope
+FINDING_11	Cursor-Innovation	rejected	NO	partially-true	minor	adequate	false	Claude	NO	false-positive	minor	adequate	false	Codex	NO	true	major	good	false	Cursor	important	in_scope
+FINDING_12	Cursor-Pragmatic	rejected	NO	partially-true	minor	adequate	false	Claude	NO	false-positive	minor	adequate	false	Codex	NO	true	major	good	false	Cursor	important	in_scope
+FINDING_13	Codex-Generic	neutral	NO	partially-true	minor	adequate	false	Claude	NO	false-positive	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+FINDING_14	Cursor-dyn-Prompt Contract Minifier	rejected	NO	partially-true	minor	weak	false	Claude	NO	false-positive	minor	adequate	false	Codex	NO	true	major	adequate	false	Cursor	important	in_scope
+OOS_1	Cursor-Pragmatic	rejected	NO	true	minor	weak	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	latent	oos
