@@ -542,6 +542,15 @@ assert_allow "$out" 'parallel clamp: dir B unaffected after dir A clamp tripped'
 rm -f "$MARKER_A" "$MARKER_B" \
   "$D_A"/bg-poll-guard-probe-denials.*.count "$D_B"/bg-poll-guard-probe-denials.*.count
 
+# TMPDIR claude-implement-* fallback discovery without marker override.
+D_IMPL="$TMP/claude-implement-fallback-xyz"
+mkdir -p "$D_IMPL/.completed"
+MARKER_IMPL="$D_IMPL/.bg-wait-active"
+write_marker_at "$MARKER_IMPL" $$ "$(date +%s)" 21600 implement-step3-checks
+out=$(run_payload_auto_markers "$(payload_monitor "$D_IMPL")")
+assert_deny "$out" 'TMPDIR claude-implement-* fallback discovery without marker override denies Monitor'
+rm -f "$MARKER_IMPL"
+
 # Monitor and TaskOutput are always denied while any live marker is active.
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload "$(payload_monitor)")

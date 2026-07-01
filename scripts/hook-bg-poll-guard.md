@@ -11,7 +11,12 @@ PreToolUse guard that blocks progress-observation probes (and Monitor / TaskOutp
 ## Invariants
 
 - Fails open on malformed hook input, missing `jq`, unreadable or malformed markers, telemetry write failure, and unexpected runtime errors.
-- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` (or the allowed `${TMPDIR}` design/larch parents) plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production because the hook's `PPID`/input never matched the stored value, so no probe was ever denied. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
+- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` (or the allowed `${TMPDIR}` design/implement/larch parents) plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production because the hook's `PPID`/input never matched the stored value, so no probe was ever denied. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
+- The `$TMPDIR` branch of `marker_candidates` scans only `larch-*`, `claude-design-*`, and `claude-implement-*`
+  prefixed dirs under `$TMPDIR` (maxdepth 2 within each), not the full TMPDIR tree. This
+  avoids the macOS per-user `$TMPDIR` timeout issue (#5868): the full tree can reach 77k+
+  dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`
+  branch is unaffected.
 - Denies Monitor and TaskOutput tool calls unconditionally while any bg-wait marker is live (design or implement). This is the primary defense against the BC8DDA64 Monitor-arming amplifier.
 - Denies progress-observation probes aimed at the live tmpdir (design or implement), task output files, result env files, reviewer output files, or `plan-review` artifacts.
 - Allows wrapper-routed calls through `design-run-*.sh` so `/design` can launch or resume the background work.
