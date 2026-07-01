@@ -6,3 +6,5 @@
 === larch-quiet-sessionstart-health.sh-99707.log ===
 === larch-quiet-ship.py-10942.log ===
 design-log-sweep: PR #5918 skipped-not-green - required checks status pending
+ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=rebase-failed
+=== larch-quiet-ship.py-33729.log ===
