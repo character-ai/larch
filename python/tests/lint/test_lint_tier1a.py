@@ -73,7 +73,7 @@ def test_malformed_cap_configuration_exits_2(tmp_path: Path) -> None:
 
 
 def test_live_repo_files_pass() -> None:
-    repo_root = Path(__file__).resolve().parents[1]
+    repo_root = Path(__file__).resolve().parents[3]
 
     code, rows = lint_tier1a.check_root(repo_root)
 

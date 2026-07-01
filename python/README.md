@@ -34,8 +34,8 @@ Mostly-flat `python/` tree for larch's stdlib-only runtime modules (Python ≥ 3
   documented in `config.MERGE_RESULT_DRIVER_ALREADY_MERGED` for `flush_logs_pre` skip parity.
   Tool-failure batch capture remains deferred to Phase 7 wiring; bash launchers still own
   `append-tool-failure.sh` calls on the live path.
-- `test_rendering.py` — pytest coverage replacing the retired renderer/generator bash harnesses.
-- `test_<module>.py` — colocated unit tests; `test_support.py` provides the shared list-queue `RecordingRunner` (with `test_run_logs.py` preserving `git_commits` via a subclass and `test_ci_monitor.py` retaining its keyed runner); `test_stdlib_only.py` enforces stdlib-only imports
+- `tests/`: unit tests mirror package layout under `python/tests/`.
+- `test_support.py`: intentionally remains at `python/` root as a shared pytest helper exempted by `python3 python/cli.py lint flat-tests`. It provides the shared list-queue `RecordingRunner` used by tests such as `test_run_logs.py` and `test_ci_monitor.py`.
 
 ## Dependencies
 

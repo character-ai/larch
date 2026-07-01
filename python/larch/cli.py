@@ -368,6 +368,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "retired-scripts"): ("larch.lint.migration_lint", "main"),
     ("lint", "literal-counts"): ("larch.lint.lint_literal_counts", "main"),
     ("lint", "tier1a-size"): ("larch.lint.lint_tier1a", "main"),
+    ("lint", "flat-tests"): ("larch.lint.lint_flat_tests", "main"),
     ("lint", "no-raw-stderr-after-quiet-init"): (
         "larch.lint.lint_no_raw_stderr_after_quiet_init",
         "main",
