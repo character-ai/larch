@@ -698,7 +698,11 @@ def test_measure_realized_cost_writes_schema(tmp_path: Path, monkeypatch: pytest
     monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [11 for _ in texts])  # type: ignore[arg-type]
     out = tokens.measure_realized_cost()
     text = out.read_text(encoding="utf-8")
-    assert text.startswith("skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\tskill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\n")
+    assert text.startswith(
+        "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\t"
+        "skill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\t"
+        "reference_capture_status\n"
+    )
     row = text.strip().splitlines()[1].split("\t")
     assert row[0] == "review"
     assert row[1] == "1"
@@ -708,6 +712,9 @@ def test_measure_realized_cost_writes_schema(tmp_path: Path, monkeypatch: pytest
     assert row[5] == "11"
     assert row[6] == "0.00"
     assert row[7] == "0"
+    # No session-transcript.jsonl was ever committed for this run, so the zero
+    # reference-read count above is an unmeasured blind spot, not a confirmed zero.
+    assert row[8] == "not-yet-measured"
 
 
 def test_measure_md_cost_main_prints_relative_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -816,7 +823,7 @@ def test_build_report_from_ledgers_no_marks_raises(tmp_path: Path) -> None:
 
 
 def test_build_report_vendor_totals_cache_read_is_integer(tmp_path: Path) -> None:
-    # Regression test for issue #5838: external-vendor totals.cache_read must be
+    # Regression test for issue #5852: external-vendor totals.cache_read must be
     # a non-null integer, never absent. Covers the live build + re-render path via
     # build_report_from_ledgers (which uses _full_json → _per_step_json → _totals).
     ledger = _ledger(
@@ -958,3 +965,6 @@ def test_measure_realized_cost_averages_reference_reads_across_missing_transcrip
     assert design["reference_tokens_per_invocation"] == "2.00"
     assert design["realized_tokens"] == "10"
     assert design["tokens_per_invocation"] == "5.00"
+    # run1's transcript is present (even though run2's is missing), so this
+    # reference-read count is a confirmed measurement, not a blind spot.
+    assert design["reference_capture_status"] == "measured"

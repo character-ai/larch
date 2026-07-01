@@ -89,7 +89,7 @@ def _totals(*, report: Mapping[str, object], vendor: VendorName) -> VendorTotals
     # report builder (vendor_json in token-report.sh) only emitted {input, output,
     # total} for external vendor lanes; cache_read/cache_create/cached_input were
     # missing. BUCKETS_<vendor> is always correct, so use it when totals omits a
-    # field (issue #5838).
+    # field (issue #5852).
     buckets = _as_mapping(report.get(f"BUCKETS_{vendor}"))
 
     def _f(key: str) -> int:

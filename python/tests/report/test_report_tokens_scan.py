@@ -357,7 +357,7 @@ def test_scan_reads_manifest_main_model(tmp_path: Path) -> None:
 def test_scan_totals_falls_back_to_buckets_when_cache_read_absent(tmp_path: Path) -> None:
     # Runs produced by the old Bash token-report.sh (vendor_json) only emitted
     # {input, output, total} for external vendor totals; cache_read was absent.
-    # _totals() must recover cache_read from BUCKETS_<vendor> (issue #5838).
+    # _totals() must recover cache_read from BUCKETS_<vendor> (issue #5852).
     run = tmp_path / "larch-logs" / "implement" / "run1"
     run.mkdir(parents=True)
     _ = (run / "manifest.json").write_text(
