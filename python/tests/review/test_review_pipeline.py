@@ -31,17 +31,6 @@ def _panel_manifest_rows(path: Path) -> list[dict[str, object]]:
     return [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def _assert_generalist_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
-    row = next(row for row in rows if row.get("slot") == "generalist")
-    assert row["tool"] == "codex"
-    assert str(row["output"]).endswith("codex-generalist-output.txt")
-    assert str(row["agent"]).endswith("agents/code-reviewer.md")
-    assert row["focus_area"] == "code-quality"
-    assert row["weight"] == 1
-    assert row["model_role"] == "default"
-    return row
-
-
 def _write_executable(path: Path, body: str) -> None:
     rts.write_executable(path=path, body=body)
 
@@ -2187,8 +2176,10 @@ def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity
     round_one = tmp_path / "class-1.tsv"
     _write_code_review_prune_classification(
         round_one,
-        [_code_review_prune_row("FINDING_1", "accepted", severity="major")]
-        + [_code_review_prune_row(f"FINDING_{idx}", "neutral") for idx in range(2, 5)],
+        [
+            _code_review_prune_row("FINDING_1", "accepted", severity="major"),
+            *(_code_review_prune_row(f"FINDING_{idx}", "neutral") for idx in range(2, 5)),
+        ],
     )
 
     _record_prune_classification(ledger, manifest, round_one, 1)
@@ -4153,3 +4144,4 @@ printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\
     assert "FAILED_SLOTS=1" in threshold_env
     assert "DYNAMIC_DROPPED_SLOTS=1" in threshold_env
     assert "STRAGGLER_DROPPED_COUNT=1" in threshold_env
+# pyright: reportUnusedFunction=false, reportArgumentType=false

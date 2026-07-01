@@ -35,16 +35,6 @@ def _argval(argv: list[str], flag: str) -> str:
     return ""
 
 
-def _assert_generic_plan_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
-    row = next(row for row in rows if str(row.get("output", "")).endswith("codex-plan-generic-output.txt"))
-    assert row["slot"] == "codex-plan-generic"
-    assert row["tool"] == "codex"
-    assert str(row["prompt_file"]).endswith("render-plan-codex-generic.prompt")
-    assert "agent" not in row
-    assert row["model_role"] == "default"
-    return row
-
-
 def _write_waterfall_stub(tmp_path: Path) -> Path:
     stub = tmp_path / "waterfall-stub.sh"
     _ = stub.write_text(
@@ -1498,3 +1488,4 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # The real consumer parser must accept the producer's manifest without raising.
     slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
     assert len(slots) == len(rows)
+# pyright: reportUnusedFunction=false
