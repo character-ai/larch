@@ -1,0 +1,17 @@
+# md-to-py-X: real-token recompression of design SKILL.md (redo #5786)
+
+Redo design `SKILL.md` prose compression for **real tokens**, since `#5786` only deleted blank lines.
+
+**Context.** Verified: `#5786` removed 85 blank lines and zero content from design `SKILL.md` (790 to 705 lines but only -85 bytes / ~-21 tokens). The 30,131-token design `SKILL.md` prose is still uncompressed, and design's realized per-invocation cost (~29,373 tokens) is unchanged from before Phase IX. This is the same Strunk-and-White pass `#5787` ran on implement `SKILL.md` for a real -16%.
+
+**Scope.**
+
+- In-place prose-density pass on `skills/design/SKILL.md` targeting real token reduction.
+- Include the dense mega-citation lines, for example the Step 3 `plan-review` force-load directive (around line 382) that repeats `python/plan_review.py` / `python/test_plan_review.py` four-plus times. Keep agent-lint S030/S017 pins literal; cut only the redundant sibling-contract repetition.
+- Preserve all contract literals, fenced commands, NEVER / anti-halt blocks, and step banners verbatim.
+
+**Acceptance.** Measurable token reduction (target -10% or better) under the **new byte/token ratchet from A3**, not the old line ratchet. Behavior unchanged; all design structural and fence-shape pins pass.
+
+**Out of scope.** No control-flow changes. Do not remove load-bearing compaction-resilience duplication. **Blocked by A3** (the token ratchet must exist first so this pass cannot game line count again).
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
