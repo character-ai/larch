@@ -1,4 +1,6 @@
 """On-demand progress reports for live larch runs."""
+# ruff: noqa: F401
+# pylint: disable=unused-import
 # pyright: reportUnknownVariableType=false, reportUnusedCallResult=false
 
 from __future__ import annotations
@@ -65,7 +67,7 @@ _MD_HEADING_RE = re.compile(r"^#{1,6} ")
 
 
 # Re-exports from sibling module — preserves `progress_report.X` access for callers.
-from larch.report._progress_report_live import (  # noqa: F401,E402
+from larch.report._progress_report_live import (  # noqa: E402
     LiveRun,
     _add_round_vendor_cost_row,
     _all_round_dirs_inflight,

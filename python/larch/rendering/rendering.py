@@ -1,5 +1,6 @@
 """Prompt rendering, Mermaid sanitizing, diagram upsert, and generators."""
-# ruff: noqa: S608
+# ruff: noqa: S608, F401
+# pylint: disable=unused-import
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false
 
 from __future__ import annotations
@@ -1691,7 +1692,7 @@ def diagrams_upsert_main(argv: list[str]) -> int:
 # ---------------------------------------------------------------------------
 
 # Re-exports from sibling module — preserves `rendering.X` access for callers.
-from larch.rendering._rendering_generators import (  # noqa: F401,E402
+from larch.rendering._rendering_generators import (  # noqa: E402
     RenderError,
     _conflict_resolution_code_reviewer_text,
     _implementer_text,

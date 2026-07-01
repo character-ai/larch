@@ -1,36 +1,26 @@
 """Plan command data types, parsing, and validation helpers."""
-# ruff: noqa: S108, PLR2004, PLW2901, PLR1714, F401
+# ruff: noqa: S108, PLR2004, PLW2901, PLR1714
 # pylint: skip-file
-# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false
+# pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportOperatorIssue=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false
 
 from __future__ import annotations
 
 import argparse
-import contextlib
 import hashlib
-import io
 import os
 import re
-import shlex
-import shutil
 import subprocess
 import sys
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from larch import io as larch_io
-from collections.abc import Callable, Iterable
+from collections.abc import Iterable
 
-from larch.agents import agents
 from larch.core import config
-from larch.core import external_defaults
 from larch.core.ctx import Ctx
-from larch.design import design_pause
-from larch.issue.issue_wire import emit_untrusted_file_block
-from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
-from larch.core.redact import redact_secrets_only
+from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init
 from larch.git.repo_roots import consumer_repo_root
-from larch.state import session_env
 from larch.state.session_env import validate_design_tmpdir
 
 HEADER = "row_type\tsource_line\tscript_path\tflag\tflag_value\tnote\tcmd_uid"

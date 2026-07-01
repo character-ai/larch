@@ -118,6 +118,7 @@ from larch.review._voting_calibration import (
     voter_calibration_snapshot_main,
     voter_calibration_stats_from_logs,
     write_voter_calibration_stats,
+    _normalize_vote_cell,
     _resolve_voter_calibration_log_root,
     _resolve_voter_calibration_window,
 )
