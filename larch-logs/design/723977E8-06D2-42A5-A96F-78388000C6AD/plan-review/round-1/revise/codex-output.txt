@@ -1,0 +1,135 @@
+## Plan
+
+Perform a prose-density pass only on the A1-confirmed highest realized-load implement references. If the A1 realized-load table is unavailable or unusable, stop and report the work blocked.
+
+1. Gate scope on A1 first.
+   - Read the A1 realized-load table.
+   - Prune the candidate list to only the references A1 confirms as highest realized-load.
+   - Do not edit any file until the retained set is known.
+   - Then read `scripts/test-implement-structure.sh` and `scripts/test-implement-fence-shape.sh`.
+   - Extract every exact `require()`, `require_near()`, and `forbid()` substring that targets the retained files.
+   - Preserve dynamic harness checks for branch names, stale-prose forbids, required headings, and required near-ordering.
+
+2. Record baseline size for the retained files.
+   - Capture `wc -l -c` for each retained file.
+   - Optionally capture `python3 python/cli.py skill-closure report --skill implement` for realized-load context.
+   - Do not add new measurement tooling.
+
+3. Compress one retained file at a time.
+   - Keep all fenced commands and JSON or text schema examples byte-identical unless a harness requires otherwise.
+   - Keep KV grammar, manifest schema literals, routing tokens, file paths, flag names, headings referenced by tests, and mandatory-read markers byte-identical.
+   - Preserve manifest path validation rule 4 exactly: repo-relative-only paths, rejection of absolute paths and `..`, submodule-root rejection, and the note that symlink containment is not mechanically enforced.
+   - Shorten only surrounding prose.
+   - Prefer deleting repetition, merging nearby duplicate rules, and replacing narrative setup with direct bullets.
+   - Do not change control flow, routing, load semantics, or consumer contracts.
+
+4. Sequence retained files by risk and pin density.
+   - Start with the low-density retained files.
+   - Move next to the medium-density retained files.
+   - Finish with any retained eager or high-pin files, using the original priority order only for files that survive A1 pruning.
+
+5. After each file, re-check reduction.
+   - Confirm the file is smaller by bytes.
+   - If a retained file cannot shrink without touching pinned or load-bearing text, leave it unchanged and document why in the implementation summary.
+
+## Files to modify/create
+
+Only the A1-confirmed subset of the candidate references below remains in scope after Step 1.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+If A1 retains this file, compress surrounding prose while preserving:
+- Branch tokens: `complete`, `reship`, `oos-pipeline`, `ci-fix`, `operator-bail`, post-driver `stall`, and `tool-failure`.
+- Required references to `ship-pr-oos-checkpoint-router.md`, `ship-pr-ci-fix.md`, `python/cli.py pr checks`, `python/cli.py ship seed-initial-state`, and `python/cli.py final-report write`.
+- Harness-pinned stale-prose forbids, especially retired CI-fix body details and numbered CI-fix sub-step patterns.
+
+### UPDATED: skills/implement/references/self-review.md
+If A1 retains this file, compress self-review prose while preserving:
+- All Bash fences byte-identical.
+- `timeout: 14700000`.
+- `Immediate-background required`.
+- The exact invalid-envelope stall text pinned by the harness.
+- The accepted and rejected finding heading literals.
+- `Checks Failure Entry Macro`, `--site step5-self-review`, and `NEXT_ACTION=main-agent-edit` routing text.
+
+### UPDATED: skills/implement/references/step18-cleanup.md
+If A1 retains this file, shorten cleanup and recovery prose while preserving:
+- Four-layer `STALL_TRACKING` interpretation.
+- Green-path composite ownership.
+- Breakout finalize ownership.
+- Mode-specific warning reminder text pinned by the harness.
+- Token/timing ledger ordering rationale.
+- Forbids around removed escalation-success filing authority.
+
+### UPDATED: skills/implement/references/step2-dispatch.md
+If A1 retains this file, compress dispatcher contract prose while preserving:
+- Stdout grammar and all KV names.
+- Manifest path semantics.
+- Bail and fallback tokens.
+- Command examples and fenced usage blocks.
+- Edit-in-sync lists.
+- No control-flow or dispatcher behavior changes.
+
+### UPDATED: skills/implement/references/checks-repair-loop.md
+If A1 retains this file, tighten checks repair-loop prose while preserving:
+- The Step 6 launcher strings pinned by tests.
+- The exact rule that both `continue` and `main-agent-edit` Step 6 paths use `--force-checks true`.
+- `NEXT_ACTION` parse order and exit-code semantics.
+- Ledger recording command fence and site/trigger wording.
+
+### UPDATED: skills/implement/references/codex-manifest-schema.md
+If A1 retains this file, compress explanatory prose while preserving:
+- JSON manifest examples byte-identical unless reduced only outside schema literals.
+- Required-key table semantics.
+- Preserve validation rule 4 exactly: repo-relative-only paths, rejection of absolute paths and `..`, submodule-root rejection, and the note that symlink containment is not mechanically enforced.
+- Bail-reason token list.
+- `jq` validation semantics.
+- Sanitization and atomic-write rules.
+- Edit-in-sync list.
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+If A1 retains this file, shorten conflict-resolution narrative while preserving:
+- Phase 1 to 4 ordering.
+- `early_rebase` and `ship_pr_pre_push` distinctions.
+- Upstream/main and feature-branch label convention.
+- Per-file reviewer context block format.
+- Reviewer and voter panel contracts.
+- Phase 4 no-push and `step-8-ship.sh` re-entry rules.
+
+### UPDATED: skills/implement/references/stall-recovery.md
+If A1 retains this file, compress stall-recovery prose while preserving:
+- Artifact path list.
+- Nine-step active-stall procedure.
+- Tier A and Tier B public/private policy.
+- Root-cause schema fenced block.
+- `step2-impl` and `step8-shippr` dispatch semantics.
+- `step-8-ship.sh`, `run_in_background: true`, `timeout: 21600000`, and `&lt;task-notification&gt;` pins.
+
+## Edge cases
+
+- A line may look like prose but be harness-pinned. Preserve exact substrings from both harnesses before editing nearby text.
+- Some duplication is load-bearing. Keep it when it restates a safety rule at a separate call site.
+- Markdown tables, fenced commands, JSON examples, and KV blocks are byte-sensitive. Avoid reflow unless the exact block is not consumed or pinned.
+- Do not edit `skills/implement/SKILL.md`; the approved outline excludes it.
+- Do not edit harness expected counts. No Bash fence shape changes are planned.
+
+## Failure modes
+
+- **Harness substring loss**: restore the exact pinned substring and compress different prose.
+- **Behavior drift**: if compression changes a routing condition, revert and keep the original wording.
+- **No measurable reduction in a file**: leave the file unchanged rather than risk contract drift.
+- **Markdown lint reflow noise**: prefer smaller local edits over whole-file wrapping.
+
+## Testing strategy
+
+Run targeted validation only on the retained files.
+
+1. `bash scripts/test-implement-structure.sh`
+2. `bash scripts/test-implement-fence-shape.sh`
+3. `pre-commit run markdownlint --files <A1-confirmed retained files>`
+4. `python3 python/cli.py lint skill-closure-growth --skill implement`
+5. Re-run `wc -l -c` for the retained files and report before/after byte reduction.
+
+diff_added: 338
+diff_deleted: 472
+mechanical_churn: false
+diff_lines: 810

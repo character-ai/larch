@@ -1,0 +1,10 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch Phase2, Codex-Arch, Cursor-Pragmatic Phase2, Codex-Requirements	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Codex	blocking	oos
+FINDING_2	Cursor-Arch Phase2	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Codex	blocking	oos
+FINDING_3	Codex-Arch, Codex-Requirements	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Codex	important	oos
+FINDING_4	Codex-Arch	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Codex	important	oos
+FINDING_5	Codex-Innovation	rejected	NO	false-positive	minor	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	NO	true	minor	adequate	false	Codex	important	in_scope
+FINDING_6	Codex-Innovation, Cursor-Requirements Phase2	rejected	NO	false-positive	minor	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	NO	true	minor	adequate	false	Codex	important	in_scope
+FINDING_7	Cursor-Requirements Phase2	rejected	NO	false-positive	minor	adequate	false	Claude	NO	partially-true	minor	good	false	Codex	NO	true	minor	adequate	false	Codex	important	in_scope
+FINDING_8	Codex-Requirements	neutral	NO	partially-true	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Codex	important	oos
+FINDING_9	Codex-Generic	accepted	NO	partially-true	minor	adequate	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Codex	important	in_scope

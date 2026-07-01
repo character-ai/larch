@@ -1,0 +1,1 @@
+Compress the 8 named `/implement` reference files in place. Preserve every pinned literal, command fence, KV token, schema literal, and routing token. Validate with the implement structure and fence-shape harnesses plus per-file size reduction checks.

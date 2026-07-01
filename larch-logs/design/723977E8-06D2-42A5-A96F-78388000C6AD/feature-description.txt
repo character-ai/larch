@@ -1,0 +1,18 @@
+# md-to-py-X: compress implement most-loaded references
+
+Compress implement's most-loaded references once A1 reveals their real per-run load frequency.
+
+**Context.** Implement is well-factored: nearly every reference is conditionally loaded, so its eager closure is small. Two tiers are worth compressing once measured:
+
+- **Eager (load every run):** `ship-pr-exit-matrix.md` (68 lines), `self-review.md` (49), `step18-cleanup.md` (35).
+- **High-frequency conditional (load on common branches):** `step2-dispatch.md` (192 lines, Step 2 vendor dispatch), `checks-repair-loop.md` (99), `codex-manifest-schema.md` (154), `conflict-resolution.md` (107), `stall-recovery.md` (100).
+
+Multiplied across about 1,281 implement invocations, even small per-file cuts compound.
+
+**Scope.** In-place prose-density pass on the references A1 confirms are highest realized-load. Preserve all KV grammar, manifest schema literals, fenced commands, and routing tokens verbatim.
+
+**Acceptance.** Measurable token reduction on the targeted references with zero behavior change; implement structural and fence-shape pins pass.
+
+**Out of scope.** No control-flow changes; keep load-bearing duplication. **Blocked by A1**: the realized-load table determines which conditional references justify the work, so this child should not start until A1 lands.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

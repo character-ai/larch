@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dedicated harness coverage is useful but not necessary for this prose-only compression feature
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dedicated exit-matrix harness coverage is optional validation, not required to ship the feature
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dedicated rebase harness coverage is optional validation, not required to ship the feature
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

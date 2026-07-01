@@ -1,0 +1,13 @@
+### FINDING_1: A1 retention must not shrink eager `### UPDATED` scope
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Step 1 makes `a1-retained-paths.txt` the sole authority for active scope, but step 2 keeps all `### UPDATED` eager references active regardless of A1 retention. An implementer can treat `ship-pr-exit-matrix.md`, `self-review.md`, and `step18-cleanup.md` as out of scope when A1 retains only conditional references, skipping the firm eager tier the issue requires.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Reword step 1 so a1-retained-paths.txt governs only ### MAY_UPDATE conditional paths; state that firm ### UPDATED paths are always active and still require harness pin extraction before edits.
+
+### FINDING_2: Pin inventory omits embedded Python harness needles
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Step 1 limits harness pin extraction to `require()`, `require_near()`, and `forbid()` substrings, but `test-implement-structure.sh` also pins reference prose through embedded Python `for-needle`, `require_text`, `branch_slice`, and `require_near` blocks. Compression can delete load-bearing prose while leaving explicit `require()` needles intact; `structure.sh` ship-pr-exit-matrix, self-review, step18-cleanup, stall-recovery, and conflict-resolution checks fail only after edits land.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Expand step 1 to harvest every literal needle those harness blocks assert for each active-scope path, including scripts/test-implement-step8-exit3-first-fixer.sh when ship-pr-exit-matrix.md is active; write the merged pin inventory before editing.

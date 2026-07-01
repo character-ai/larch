@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: plan.txt:7-14
+- **Concern**: [SCOPE-REDUCTION] Step 1 blocks on an unnamed A1 realized-load artifact and never defines how to populate a1-retained-paths.txt from it.. Scenario: The A1 child is supposed to emit a per-reference loads-per-run table (for example larch-logs/measure-references-heatmap/*.tsv with reference_path and loads_per_run columns per python/larch/report/tokens.py), but the plan only says read the artifact and keep paths A1 marks as highest realized-load. An implementer cannot mechanically map rows to the five ### MAY_UPDATE candidates or decide whether zero, one, or many paths qualify, so they may retain and edit all five conditionals or the wrong subset before harnesses run.
+- **Proposed resolution**: Add an explicit A1 handoff contract in Step 1: artifact path or discovery rule, column semantics, filter to skills/implement/references/*.md paths that match the ### MAY_UPDATE list, and a deterministic retention predicate (for example all rows with loads_per_run above an A1-published threshold or ranked top-N among those five) before writing $IMPLEMENT_TMPDIR/a1-retained-paths.txt.
