@@ -19,7 +19,7 @@ Pass any of these after the skill name (for example, `/report-tokens --skill imp
 - `--skill <name>` (**required**): `design` or `implement`. Enum-validate before invoking the CLI; pass through to the module.
 - `--no-issue` — skip posting the analysis report GitHub issue. `LARCH_REPORT_TOKENS_NO_ISSUE=1` has the same effect.
 - `--no-plot` — skip plot generation; text analysis is still printed. `LARCH_REPORT_TOKENS_NO_PLOT=1` has the same effect.
-- `--run-id <ID>` — optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>` — flag reference: `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md`.
 
 <!-- step:1 — Run analysis -->
 

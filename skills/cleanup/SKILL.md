@@ -15,7 +15,7 @@ Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the
 
 ## Flags
 
-- `--run-id <ID>`: Optional run identifier; when set, used as the run ID for this invocation instead of the auto-generated one. Default: empty (auto-generate).
+- `--run-id <ID>`: Shared flag contract: `${CLAUDE_PLUGIN_ROOT}/skills/shared/run-id-flag.md`.
 
 <!-- step:1 — Run cleanup -->
 

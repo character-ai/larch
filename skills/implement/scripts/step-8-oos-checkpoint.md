@@ -28,7 +28,7 @@ OOS-checkpoint `NEXT_ACTION=stall` is not the post-driver Step 16 stall path. It
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
-- Telemetry consumers read `LARCH_TOKEN_SESSION_ID`, `LARCH_CLAUDE_SOURCE_FILE`, and `LARCH_TIMING_LEDGER` from `$IMPLEMENT_TMPDIR/session-env.sh` internally instead of relying on inline SKILL.md triplets.
+- OOS checkpoint telemetry follows `skills/shared/session-setup-output.md`; values come from `$IMPLEMENT_TMPDIR/session-env.sh`.
 
 ## Edit-in-sync
 
