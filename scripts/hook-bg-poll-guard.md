@@ -16,7 +16,11 @@ PreToolUse guard that blocks progress-observation probes (and Monitor / TaskOutp
   prefixed dirs under `$TMPDIR` (maxdepth 2 within each), not the full TMPDIR tree. This
   avoids the macOS per-user `$TMPDIR` timeout issue (#5868): the full tree can reach 77k+
   dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`
-  branch is unaffected.
+  branch is unaffected. The matched dirs are collected and passed to a single `find`
+  invocation (multiple start-paths) rather than spawning one `find` subprocess per dir
+  (#5943 recurrence of #5868): with the accumulated `larch-*`/`claude-design-*`/`claude-implement-*`
+  dir count unbounded, per-dir subprocess spawn overhead alone could exceed the hook's
+  timeout even though each individual `find` was already depth-scoped.
 - Denies Monitor and TaskOutput tool calls unconditionally while any bg-wait marker is live (design or implement). This is the primary defense against the BC8DDA64 Monitor-arming amplifier.
 - Denies progress-observation probes aimed at the live tmpdir (design or implement), task output files, result env files, reviewer output files, or `plan-review` artifacts.
 - Scopes the generic bare `$DESIGN_TMPDIR`/`$IMPLEMENT_TMPDIR`/`$SESSION_TMPDIR` literal-text match in `bash_has_probe_target` to dirs the command plausibly targets, via `bash_probe_target_dir_plausible`: the call's own `cwd` equals that dir, or the dir's embedded repo-clone tag (the same `claude-<skill>-<clone-tag>-<suffix>` naming `_make_session_tmpdir()` uses) matches the tag derived from `cwd`'s basename. Previously the bare variable-name text alone matched every live marker on the machine regardless of session, so an unrelated `/implement`/`/design` session in a different repo clone denied this session's commands whenever it had a genuinely live wait (#5925). Two repo clones sharing an identical directory basename still collide under this heuristic, the same known limitation #5684 already accepts for marker liveness.

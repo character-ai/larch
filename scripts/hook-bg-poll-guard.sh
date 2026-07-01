@@ -56,10 +56,17 @@ marker_candidates() {
   if [ -d "${TMPDIR:-/tmp}" ]; then
     # Scope to larch-/claude-design-/claude-implement-prefixed session dirs only; avoids
     # scanning all of the macOS per-user $TMPDIR (~77k+ dirs) which exceeds the 5-10s hook timeout.
+    # Collect matched dirs and run ONE find over all of them (#5943): a find subprocess
+    # per dir makes discovery cost O(N) in accumulated session-dir count, and per-spawn
+    # overhead alone exceeded the 10s hook budget at ~2k dirs.
+    _lmc_dirs=()
     for _lmc_d in "${TMPDIR:-/tmp}"/larch-* "${TMPDIR:-/tmp}"/claude-design-* "${TMPDIR:-/tmp}"/claude-implement-*; do
       [ -d "$_lmc_d" ] || continue
-      find "$_lmc_d" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+      _lmc_dirs+=("$_lmc_d")
     done
+    if [ "${#_lmc_dirs[@]}" -gt 0 ]; then
+      find "${_lmc_dirs[@]}" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+    fi
   fi
 }
 
