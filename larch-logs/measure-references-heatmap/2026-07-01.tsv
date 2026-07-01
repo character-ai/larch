@@ -1,0 +1,8 @@
+skill	reference_path	reads_observed	runs_observed	loads_per_run	bytes	tokens
+implement	skills/implement/references/conflict-resolution.md	2	1294	0.001546	18449	4452
+implement	skills/implement/references/stall-recovery.md	2	1294	0.001546	11311	2682
+implement	skills/implement/references/architectural-guidelines-present.md	1	1294	0.000773	2041	427
+implement	skills/implement/references/oos-pipeline.md	1	1294	0.000773	13527	3246
+implement	skills/implement/references/preflight-plan-audit.md	1	1294	0.000773	6362	1593
+implement	skills/implement/references/ship-pr-ci-fix.md	1	1294	0.000773	3245	832
+implement	skills/shared/subskill-invocation.md	1	1294	0.000773	25323	5792

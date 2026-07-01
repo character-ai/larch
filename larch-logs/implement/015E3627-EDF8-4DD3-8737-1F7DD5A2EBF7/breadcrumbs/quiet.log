@@ -1,0 +1,42 @@
+=== larch-quiet-cli.py-17347.log ===
+=== larch-quiet-cli.py-35526.log ===
+=== larch-quiet-cli.py-58062.log ===
+=== larch-quiet-cli.py-86789.log ===
+=== larch-quiet-read-session-env-key.sh-8261.log ===
+=== larch-quiet-read-session-env-key.sh-8289.log ===
+=== larch-quiet-read-session-env-key.sh-8319.log ===
+=== larch-quiet-sessionstart-health.sh-18626.log ===
+=== larch-quiet-ship.py-5727.log ===
+ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 15s
+ci_monitor: poll 2/180 pending after 19s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 29s
+ci_monitor: poll 3/180 pending after 34s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 44s
+ci_monitor: poll 4/180 pending after 47s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 57s
+ci_monitor: CI fail after 61s -> evaluate_failure
+=== larch-quiet-ship.py-70233.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: CI fail after 19s -> rebase_then_evaluate
+ship.py: rebase: Flush+Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 5s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 15s
+ci_monitor: poll 2/180 pending after 19s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 29s
+ci_monitor: poll 3/180 pending after 33s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 43s
+ci_monitor: poll 4/180 pending after 47s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 57s
+ci_monitor: CI fail after 61s -> evaluate_failure
+=== larch-quiet-tracking-issue-upsert-summary-23810.log ===
+=== larch-quiet-tracking-issue-upsert-summary-64455.log ===

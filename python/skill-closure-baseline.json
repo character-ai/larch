@@ -19,9 +19,9 @@
     "skill_md_lines": 696
   },
   {
-    "closure_content_estimated_tokens": 33017,
-    "closure_estimated_tokens": 33108,
-    "closure_lines": 941,
+    "closure_content_estimated_tokens": 32699,
+    "closure_estimated_tokens": 32791,
+    "closure_lines": 939,
     "files": [
       "skills/implement/SKILL.md",
       "skills/implement/references/self-review.md",
