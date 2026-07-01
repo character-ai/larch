@@ -1,13 +1,14 @@
-## /implement run AD71FB01-24F3-4F0B-8640-903142FB58A7 — shipping
+## /implement run AD71FB01-24F3-4F0B-8640-903142FB58A7 — pr-created
 
 - **Mode**: N/A
 - **Duration**: 01:27:28
-- **Cost**: 💰 TOTAL ~$11.94 — Claude $4.25, Codex-5.5 $3.79, Codex-mini $0.86, Cursor $1.75, Claude (subprocess) $1.29  |  Tokens: 20511k
+- **Cost**: 💰 TOTAL ~$13.71 — Claude $6.02, Codex-5.5 $3.79, Codex-mini $0.86, Cursor $1.75, Claude (subprocess) $1.29  |  Tokens: 23130k
 - **Issue**: #5883 — https://github.com/character-ai/larch/issues/5883
+- **PR**: #5912 — https://github.com/character-ai/larch/pull/5912
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +95/-23, larch-logs +750/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
