@@ -821,6 +821,30 @@ out=$(printf '%s' "$(jq -cn --arg cmd "$implement_probe_bare" '{tool_name:"Bash"
 assert_allow "$out" '#5925: empty cwd cannot establish plausibility, bare IMPLEMENT_TMPDIR reference allows'
 rm -f "$MARKER"
 
+# #5925 follow-up (cross-clone Monitor/TaskOutput + task-output Read): the
+# unconditional Monitor/TaskOutput deny and the ungated path_is_task_output Read
+# match denied a session's OWN just-completed bg task output whenever ANY other
+# clone had a live wait, stalling parallel runs. Both are now clone-scoped like the
+# Bash-probe paths: a foreign clone's live marker no longer blocks this session,
+# while the owning clone's live marker still does.
+write_marker_at "$MARKER_UNRELATED" $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny Monitor from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny TaskOutput from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny own tasks/*.output Read from a different clone cwd'
+rm -f "$MARKER_UNRELATED"
+
+write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
+assert_deny "$out" '#5925 follow-up: same-clone live marker still denies Monitor from its own repo cwd'
+out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
+assert_deny "$out" '#5925 follow-up: same-clone live marker still denies TaskOutput from its own repo cwd'
+out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
+assert_deny "$out" '#5925 follow-up: same-clone live marker still denies own tasks/*.output Read from its own repo cwd'
+rm -f "$MARKER_OWN"
+
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"
 out=$(run_payload "$(payload_monitor)")
