@@ -1,0 +1,44 @@
+### FINDING_1: `design.plan_review_panel` registry updates are missing
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The plan does not explicitly update the `design.plan_review_panel` registry defaults, so plan review can still emit generic Codex rows and inherit the outer review model role instead of using the new no-generic, default-role specialist topology.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add the missing `design.plan_review_panel` config changes alongside the review.panel edits: empty `generic_codex_rounds`, set Codex specialist `SlotDefault.model_role="default"`, and refresh the fallback prose.
+  - From Codex-Requirements: Add explicit `design.plan_review_panel` bullets mirroring `review.panel`: set Codex specialist `SlotDefault` rows to `model_role="default"`, set `generic_codex_rounds=frozenset()`, and update the `doc_fallback` text to match the no-generic, no-fallback plan-review contract.
+
+### FINDING_2: Coder scout manifest path can still allow three dynamic archetypes
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `normalize_coder_scout()` still filters coder manifests with `--max-archetypes 3`, so Step 5 paths can write up to three dynamic archetypes despite the new at-most-one dynamic pair contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `### UPDATED: python/larch/implement/dispatch_manifest.py` and thread the shared `0..1` cap (constant or session-derived) into the `filter-manifest` argv; extend `python/tests/implement/test_implement_dispatch.py` normalize-coder-scout cases to assert two-archetype raw input filters down to one.
+
+### FINDING_3: Live `/design` surfaces still describe cap 5 and old dynamic panel shape
+- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Requirements Phase2
+- **Severity**: blocking
+- **Concern**: The active `/design` skill and Gate C/flag reference files still document cap 5, six dynamic slots, and round-5 rerun behavior, which contradicts the new cap-2 and one-dynamic-pair contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `### UPDATED: skills/design/SKILL.md` to retune Step 3 panel-size prose (one dynamic pair), the review-round cap breadcrumb/guard text, and Gate C "Re-run review panel" threshold to cap 2; refresh any harness pins that grep these literals if present.
+  - From Codex-Innovation: Add `skills/design/references/approval-gates.md` to the plan and rewrite the Gate C cap text and option set for a 2-round limit with round-2-only pruning behavior.
+  - From Cursor-Requirements Phase2: Add the missing /design surface files to the plan and rewrite their Step 3 prose to cap 2, one dynamic pair max, and no round-5 re-run or Claude-fallback language.
+
+### FINDING_4: Gate C and flag reference authorities retain stale cap-5 semantics
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `skills/design/references/approval-gates.md` and `skills/design/references/flags.md` still hardcode cap 5 and old rerun semantics, leaving authoritative Gate C references inconsistent with the new cap-2 behavior.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: `approval-gates.md` §Review-round cap and `flags.md` §Step 3 review env vars still hardcode cap 5 and old rerun semantics. Plan updates `plan-review.md` but not these Gate C / flag authorities, so Gate C can keep offering "Re-run review panel" against a cap-5 mental model after `ROUND_CAP` becomes 2. Add `### UPDATED: skills/design/references/approval-gates.md` and `### UPDATED: skills/design/references/flags.md` to set the flattened cap to 2 and drop round-3/4/5 pruning references; keep Gate B/Gate C control flow otherwise unchanged.
+
+### FINDING_5: `plan-review.md` prose can remain internally contradictory
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan mentions `plan-review.md` but does not explicitly rewrite its existing cap-5, generic Codex fallback, round-gating, and Claude-floor prose, so implementers can update the matrix while leaving stale normative paragraphs behind.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Expand the `plan-review.md` entry to explicitly rewrite §Single-pass cap prose, §Dispatch (remove generic Codex round-gating and round-1-only no-fallback), and §Claude archetype floor so they match the new round-2-only prune and vendor-drop semantics.
+
+### FINDING_6: Plan-review dispatcher does not cap loaded dynamic rows
+- **Reviewer(s)**: Cursor-Pragmatic Phase2
+- **Severity**: important
+- **Concern**: `plan_review_panel.py` still trusts the loaded scout manifest, so a stale or manually rehydrated manifest with multiple archetypes can launch more than one dynamic pair even if the scout producer was clamped.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic Phase2: Filter or cap the loaded dynamic rows in `dispatch_panel()` or `_load_dynamic_rows()` before building the panel, so the dispatcher itself cannot exceed one dynamic archetype pair.

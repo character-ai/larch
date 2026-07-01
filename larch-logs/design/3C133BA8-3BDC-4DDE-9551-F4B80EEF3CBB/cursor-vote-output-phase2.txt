@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate out-of-scope doc concern; the feature can ship without this update.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate out-of-scope doc concern; not required for the feature.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale plan prose is out-of-scope and not necessary for feature correctness.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale workflow doc guidance is low-impact and not material enough to file here.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the already-rejected stale installation-doc concern.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the existing implementer-prompt wording concern and not feature-critical.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate stale-test concern; it does not clear the materiality gate here.

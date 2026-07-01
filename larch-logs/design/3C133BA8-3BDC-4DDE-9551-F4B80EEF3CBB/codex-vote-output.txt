@@ -1,0 +1,18 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real doc drift, but this surface is out of scope and already rejected as a duplicate concern.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real gate-doc drift, but it is out of scope and duplicative of prior rejected OOS items.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same consumer-side clamp concern was already rejected earlier; no new necessity evidence changes that.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plausible edge case, but the issue does not clearly require special handling for total vendor absence.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate installation-doc drift already routed out of scope in prior rounds.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate prompt-staleness issue already routed out of scope in prior rounds.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate overview-doc drift already routed out of scope in prior rounds.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate install-guide cap drift already routed out of scope in prior rounds.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate plan-review prose concern already captured as out of scope or prior rejection.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate active skill-prose drift already routed out of scope in prior rounds.
+OOS_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate flags-reference drift already routed out of scope in prior rounds.
+OOS_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scout-guidance issue already routed out of scope in prior rounds.
+OOS_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate install-guide cap drift already routed out of scope in prior rounds.
+OOS_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate flags-reference issue already routed out of scope in prior rounds.
+OOS_11: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scout-prompt issue already routed out of scope in prior rounds.
