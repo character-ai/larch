@@ -1,0 +1,37 @@
+In-place prose-density pass on the second-largest always-loaded design reference.
+
+**Context.** `skills/design/references/plan-review.md` is 215 lines / ~6,077 tokens, force-read every design run at Step 3 ("before launching reviewers"). Never prose-compressed. The matching `SKILL.md` force-load directive (around line 382) is itself a ~1,900-character citation line that repeats `python/plan_review.py` and `python/test_plan_review.py` as "sibling contract" four-plus times; that line is handled in C1, this child handles the reference body.
+
+**Scope.** Tighten the normative prose for panel topology, static slot identity, semantic-dedup judgment, and tally interpretation. Preserve all `python/cli.py` invocations, agent-lint S030 path pins, and rendering-contract literals verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed. `python/test_plan_review*.py` and structural pins still pass.
+
+**Out of scope.** No panel/voting/dedup semantics changes. Density only; keep load-bearing duplication.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce `skills/design/references/plan-review.md` by ~15% tokens in-place.
+- Keep all normative contracts byte-stable: `python/cli.py` invocations, agent-lint S030 path pins, voter line format, and `FINDING_N`/`OOS_N` templates.
+- Zero behavior change; all structural pins and tests still pass.
+
+### Non-goals
+- No changes to panel, voting, or dedup semantics.
+- No edits to `python/plan_review.py` or any Python code.
+- No changes to `SKILL.md`'s citation line (C1 scope).
+
+### Approach sketch
+- Tighten the header block (Consumer / Contract / When to load) by merging redundant sentences.
+- Compress "loop-internal to `python/plan_review.py`" repetition across sections into a single short reference.
+- Cut explanatory filler from prose sections while keeping the normative content.
+- Preserve code fences, all `python/cli.py` / path literals, and byte-preserved templates verbatim.
+
+### Surfaces in scope
+- `skills/design/references/plan-review.md` (single file, in-place edit)
+
+### Open questions
+- None.
