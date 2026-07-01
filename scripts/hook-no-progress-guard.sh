@@ -254,11 +254,23 @@ json_block_prompt() {
 }
 
 if [ "$event_type" = "Stop" ]; then
-  # Count this turn for every live bg-wait marker. Arm the circuit breaker when threshold reached.
+  # Count this turn only for live bg-wait markers owned by this repo clone. The
+  # UserPromptSubmit block below is already clone-scoped (#5927); scoping the
+  # counter the same way makes "N consecutive turns" mean N turns in the owning
+  # clone, not N Stop events summed across every concurrent clone. Otherwise an
+  # unrelated clone's slow-but-live wait arms this marker's breaker from other
+  # sessions' turn activity, and the owning clone then blocks its own next prompt
+  # (#5927 follow-up). marker_foreign_clone skips only when the marker's clone
+  # identity is known and differs, so a marker with no/unparsable .larch-keepalive
+  # still counts and the owning session's breaker is never weakened.
+  cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
+  cwd_canon=""
+  [ -n "$cwd" ] && cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
   while IFS= read -r marker || [ -n "$marker" ]; do
     [ -n "$marker" ] || continue
     is_marker_live "$marker" || continue
     dir="$LIVE_MARKER_DIR"
+    marker_foreign_clone "$dir" "$cwd_canon" && continue
     cnt=$(counter_bump "$dir")
     if [ "$cnt" -ge "$THRESHOLD" ]; then
       touch "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true

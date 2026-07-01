@@ -8,9 +8,9 @@ prose "still waiting" turns that are invisible to `PreToolUse` hooks.
 
 Two event handlers in one script:
 
-- **Stop handler**: counts consecutive turn-ends while any bg-wait marker is live. When the count
-  reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5), arms a `no-progress-circuit-breaker-armed`
-  flag in the marker directory.
+- **Stop handler**: counts consecutive turn-ends while any bg-wait marker owned by the current repo
+  clone is live. When the count reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5), arms a
+  `no-progress-circuit-breaker-armed` flag in the marker directory.
 - **UserPromptSubmit handler**: before each new turn, checks every live marker for an armed flag
   that cannot be proven to belong to a different repo clone. If found, blocks the turn with an
   operator-visible message containing the count, threshold, and marker path.
@@ -33,7 +33,7 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`
   branch is unaffected.
 - Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
-- `UserPromptSubmit` blocking is scoped by repo-clone identity when it is knowable (#5927): it reads the candidate marker's sibling `.larch-keepalive` `CLONE_PATH=` value (the same identity file `session_env.py` writes at bootstrap) and skips that marker only when its canonicalized `CLONE_PATH` is not the same clone tree as the current session's canonicalized `cwd` (also read from the hook's own JSON input, mirroring `hook-bg-poll-guard.sh`). Same-clone means exact path match or either path is a subdirectory of the other, so a prompt from `/repo/docs` still matches a marker whose `CLONE_PATH` is `/repo`. A marker with no readable `CLONE_PATH`, or a current invocation with no readable `cwd`, is treated as same-clone and still blocks — unknown identity never introduces a new false negative, it only preserves the pre-fix global-blocking behavior. The `Stop` handler's turn counting remains global and unscoped; only the `UserPromptSubmit` block decision is clone-scoped.
+- Both handlers are scoped by repo-clone identity when it is knowable (#5927 and its follow-up): they read the candidate marker's sibling `.larch-keepalive` `CLONE_PATH=` value (the same identity file `session_env.py` writes at bootstrap) via `marker_foreign_clone` and skip that marker only when its canonicalized `CLONE_PATH` is not the same clone tree as the current session's canonicalized `cwd` (also read from the hook's own JSON input, mirroring `hook-bg-poll-guard.sh`). Same-clone means exact path match or either path is a subdirectory of the other, so a prompt from `/repo/docs` still matches a marker whose `CLONE_PATH` is `/repo`. `UserPromptSubmit` skips the block for a foreign-clone marker; `Stop` skips the turn count for a foreign-clone marker, so an unrelated clone's slow-but-live wait neither arms nor consumes this marker's breaker and cannot make the owning clone block its own next prompt. A marker with no readable `CLONE_PATH`, or an invocation with no readable `cwd`, is treated as same-clone and still counts/blocks — unknown identity never introduces a new false negative, it only preserves the pre-fix global behavior.
 - Checks `is_step_completed` (terminal sentinel present) before declaring a marker live, mirroring
   the release logic in `hook-bg-poll-guard.sh` (#4431, #4450 race-condition fix). It covers
   design Step 3, Step 4 tail, Step 5c, and final-summary markers, plus implement Step 3 checks,
@@ -66,4 +66,5 @@ Covered by `scripts/test-hook-no-progress-guard.sh`, wired through
 
 Update this file when: the event types handled change, the counter/breaker file names or locations
 change, the threshold default changes, `is_step_completed` sentinel coverage changes, or the
-clone-scoping identity source (`.larch-keepalive` `CLONE_PATH`) changes.
+clone-scoping identity source (`.larch-keepalive` `CLONE_PATH`) or the set of handlers that apply
+it changes.
