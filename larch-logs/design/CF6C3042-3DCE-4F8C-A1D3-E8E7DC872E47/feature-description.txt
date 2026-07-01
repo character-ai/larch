@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded approval-gates.md (~10k tok)
+
+Apply the proven `#5787` Strunk-and-White prose-density pass to the **single largest always-loaded reference**, which Phase IX left untouched.
+
+**Context.** `skills/design/references/approval-gates.md` is 254 lines / ~10,067 tokens. It is force-read every design run (Gate C fires on every run; the file is the normative source for Gates A/B/C). It has never been prose-compressed: Phase IX scoped compression to the two `SKILL.md` only. Sampling confirms density and redundancy, for example the "See full plan" branch behavior is restated 3-plus times across Gate A and Gate C.
+
+**Scope.** In-place prose-density pass: tighten restated paragraphs, collapse the repeated "See full plan" / re-fire-prompt explanations to one normative statement plus references. **Preserve** all contract literals, fenced commands, `python/cli.py` invocations, KV grammar, option labels, and question text verbatim.
+
+**Acceptance.** Measurable token reduction (target roughly -15%, in line with `#5787`) with zero behavior change. Closure ratchet (`#5783`) confirms the drop. `scripts/test-design-structure.sh` and approval-gates structural pins still pass.
+
+**Out of scope.** No control-flow or gate-semantics changes. Do not remove load-bearing compaction-resilience duplication (the repeated NEVER / anti-halt blocks). Density only.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue. Same-skill children stay soft-sequenced by the single-`/design` and single-`/implement` invariants.

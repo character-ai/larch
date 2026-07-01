@@ -1,0 +1,40 @@
+Reviewing the plan against `approval-gates.md` and structural-test pins for Gate A/B/C contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:174,205,221	Gate C See-full-plan uses two different emit mechanisms that must not be merged during collapse	Presentation large-plan prose requires `cat` of plan.txt (line 174) while Prompt structured See full plan and missing-plan recovery use `python/cli.py plan-review preview --variant full` (lines 205, 221); plan only says collapse duplicate re-fire prose and keep `python/cli.py` literals byte-stable, so a single normative See-full-plan paragraph could homogenize on preview and drop the summary-mode `cat` path or vice versa	Add an explicit carve-out: preserve both the line-174 `cat` contract and the line-205/221 preview contract as separate normative statements; do not unify them while deduplicating re-fire wording
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:235-252	State invariants dedup can remove cross-gate authority not restated in Gate A/B/C	Invariant #2 (accepted-findings-all vs accepted-plan-findings), #4 (Gate A/C never auto-revise plan.txt; discussion-round2.md is not patch input), and Step 5c composed-plan recovery (248-252) are not fully duplicated in individual gate sections; plan says remove State invariants text already stated in Gate A/B/C, which invites deleting unique orchestrator routing authority	Mark invariants #2, #4, and the Step 5c recovery block as non-dedupable even when they partially overlap gate prose; only trim wording that is verbatim redundant
+1	in_scope	important	risk-integration	scripts/test-design-structure.sh:579, skills/design/references/approval-gates.md:150-152	Structural harness pins require byte-exact adjacent lines, weaker than plan where practical wording	`assert_followed_count_at_least` matches whole lines including the three-space indent before `1.` and `2.` in Shared post-apply pipeline step 8; plan Gate B bullet says keep pinned lines unchanged where practical while edge cases say preserve pinned strings, so renumbering or tightening step 8 can fail CI even when semantics look preserved	Replace where practical with must-not-reword for the exact substrings asserted at test-design-structure.sh:579-602 and the settle step-8 items 1-2 pair; treat that block as frozen except pure whitespace deletion elsewhere
+1	in_scope	latent	correctness	skills/design/references/approval-gates.md:166	Gate C When paragraph shortening lacks a required-path checklist	One paragraph encodes many reachability preconditions (auto-apply vs explicit-approve paths, Gate B(c) only under --per-round-approval, Step 3 bypasses, panel-init-failed terminal, re-entry loop); plan says shorten without changing reachable paths but only failure-mode gate-option comparison, so a density pass can omit a branch and change when Gate C fires	Before editing line 166, enumerate each routing clause that must survive; after edit, diff that checklist against the shortened paragraph
+
+## Numbered findings
+
+### 1. [correctness] Gate C `cat` vs `preview` must stay split (`approval-gates.md:174,205,221`)
+
+Large-plan summary mode requires `cat` of `plan.txt` for structured and Other full-plan picks (line 174). The Prompt bullet and missing-plan recovery use `python/cli.py plan-review preview --variant full` (lines 205, 221). The plan targets collapsing See-full-plan re-fire prose without naming this split. A single normative paragraph could pick one mechanism and change control flow in summary mode vs normal prompt paths.
+
+**Suggested revision:** Add an explicit plan constraint: dedupe re-fire wording only; keep line-174 `cat` and line-205/221 `preview --variant full` as separate byte-stable contracts.
+
+### 2. [correctness] State invariants dedup risks unique cross-gate authority (`approval-gates.md:235-252`)
+
+Invariant #2, #4, and the Step 5c recovery block (248-252) carry orchestrator rules not fully restated in Gate A/B/C alone (e.g., `accepted-plan-findings-all.md` vs `accepted-plan-findings.md`, Gate A/C never auto-revise `plan.txt`, composed-plan precondition recovery). The plan instructs removing State invariants text already covered in gate sections.
+
+**Suggested revision:** Carve out invariants #2, #4, and 248-252 as non-dedupable; allow trimming only verbatim duplicates.
+
+### 3. [risk-integration] Harness pins need stronger than "where practical" (`scripts/test-design-structure.sh:579`)
+
+`assert_followed_count_at_least` requires byte-exact adjacent lines for settle step 8 items 1-2, including three-space indentation. The plan Gate B bullet says keep pinned lines "where practical," which conflicts with the edge case to preserve pinned strings.
+
+**Suggested revision:** State that lines matching `test-design-structure.sh:579-602` and `test-gate-b-apply-mode.sh:72` / `test-step3-review-cap.sh:46-49` are must-not-reword, not best-effort.
+
+### 4. [correctness] Gate C `When` paragraph needs a survival checklist (`approval-gates.md:166`)
+
+The paragraph is a dense reachability spec (bypass paths, `panel-init-failed` terminal, Gate B(c) under `--per-round-approval` only, re-entry loop). The plan says shorten without changing paths but only mandates comparing gate options before/after, not these preconditions.
+
+**Suggested revision:** Require a pre-edit checklist of every routing clause in line 166 and verify each survives compression.
+
+---
+
+**[OUT_OF_SCOPE]** `skills/design/references/approval-gates.md:43` — Stray `**` before `### Re-entry` is pre-existing markdown damage; fixing it is good hygiene but not required for the compression feature.
+
+**[OUT_OF_SCOPE]** Plan testing strategy lists only `test-design-structure.sh`; `test-gate-b-apply-mode.sh` and `test-step3-review-cap.sh` also grep `approval-gates.md`, but CI harness shards already run them (`Makefile:204,206`), so expanding the plan test list is optional hardening, not a merge blocker.
+
+**[OUT_OF_SCOPE]** `scripts/test-design-structure.sh:586` — `not_contains 'fallback row'` is an unstated negative pin; worth a quick grep before commit, but not a plan completeness gap given the explicit structure harness in testing strategy.

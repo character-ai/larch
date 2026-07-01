@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already requires running test-design-structure.sh, which enforces the not_contains pins; an explicit negative list is helpful but not necessary.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Existing preserve-contract-literals rule covers the line-3 anchor; missing readability-preamble lint belongs in OOS testing guidance, not an in-scope plan change.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Frozen block D already byte-pins the exact apply runs substring; a near-duplicate note is defensive, not necessary.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Real anti-halt risk exists, but the plan already forbids behavior change and requires preserving gate contracts without an extra carve-out.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Gate B hard-size and rc=12 bail-out prose must stay, but the plan already preserves gate contracts and the Shared post-apply pipeline; no extra carve-out is required.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real CI gap, but duplicate of prior-round testing omission and too small to clear the OOS materiality gate.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- Pre-existing one-character markup typo; fixing it inline during the edit beats filing a tracked issue.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Duplicate of OOS_2 with no new evidence.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Renaming invariant titles is a real cross-ref risk, but plan fidelity does not require a separate tracked issue for this density pass.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of round-1 rejected FINDING_5; See-full-plan collapse rules already require preserving that warning literal.

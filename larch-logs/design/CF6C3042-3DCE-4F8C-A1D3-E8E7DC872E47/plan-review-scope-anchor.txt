@@ -1,0 +1,37 @@
+Apply the proven `#5787` Strunk-and-White prose-density pass to the **single largest always-loaded reference**, which Phase IX left untouched.
+
+**Context.** `skills/design/references/approval-gates.md` is 254 lines / ~10,067 tokens. It is force-read every design run (Gate C fires on every run; the file is the normative source for Gates A/B/C). It has never been prose-compressed: Phase IX scoped compression to the two `SKILL.md` only. Sampling confirms density and redundancy, for example the "See full plan" branch behavior is restated 3-plus times across Gate A and Gate C.
+
+**Scope.** In-place prose-density pass: tighten restated paragraphs, collapse the repeated "See full plan" / re-fire-prompt explanations to one normative statement plus references. **Preserve** all contract literals, fenced commands, `python/cli.py` invocations, KV grammar, option labels, and question text verbatim.
+
+**Acceptance.** Measurable token reduction (target roughly -15%, in line with `#5787`) with zero behavior change. Closure ratchet (`#5783`) confirms the drop. `scripts/test-design-structure.sh` and approval-gates structural pins still pass.
+
+**Out of scope.** No control-flow or gate-semantics changes. Do not remove load-bearing compaction-resilience duplication (the repeated NEVER / anti-halt blocks). Density only.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue. Same-skill children stay soft-sequenced by the single-`/design` and single-`/implement` invariants.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Reduce `approval-gates.md` token count by ~15% via in-place prose-density pass.
+- Collapse repeated "See full plan" re-fire prose to a single normative statement with terse back-references.
+- Preserve all structural test pins, contract literals, KV grammar, option labels, and question text verbatim.
+
+### Non-goals
+- No control-flow, gate-semantics, or behavior changes.
+- No edits to SKILL.md, test harnesses, Python, or any other file.
+- No removal of load-bearing compaction-resilience duplication (NEVER / anti-halt blocks; this file has none, so N/A).
+
+### Approach sketch
+- Apply Strunk-and-White active-voice compression to all prose paragraphs (header, "When"/"Behavior" intros, loop-exit, state invariants).
+- Gate A: merge "When" + "Behavior" paragraphs; remove restated "first-time entry" footnotes in Loop exit; tighten "See full plan branch (re-entry only)" to a short reference.
+- Gate C: compress the very long "When" paragraph; collapse the three separate "See full plan → re-fire" prose repetitions into one canonical note; shorten Gate C "Other dispatch" sub-bullets.
+- State invariants: rewrite passive constructions as active; trim redundant rewording of facts already stated above.
+
+### Surfaces in scope
+- `skills/design/references/approval-gates.md` (single file, in-place rewrite).
+
+### Open questions
+- None.

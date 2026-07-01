@@ -1,0 +1,1 @@
+Rewrite only `skills/design/references/approval-gates.md` for prose density. Preserve every command, literal, option label, KV grammar, question text, and gate behavior. Validate with structure pins and closure-size reporting.
