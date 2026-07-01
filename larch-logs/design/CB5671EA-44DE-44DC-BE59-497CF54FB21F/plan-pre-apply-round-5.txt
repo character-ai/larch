@@ -1,0 +1,136 @@
+## Plan
+
+## Approach
+
+Do a prose-only density pass on the always-loaded discussion reference.
+
+Use `NO_SKETCHES` as binding. Draft from direct repo inspection, not planning-panel consensus.
+
+Keep scope to the approved outline:
+
+- No flow changes.
+- No cap changes.
+- No prompt or schema literals changed unless they are pure prose around the literal.
+- No edits outside the two approved surfaces.
+
+Compress for token reduction, not style churn. Target at least a real 15% reduction in `skills/design/references/discussion-rounds.md` prose tokens while preserving behavior.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/discussion-rounds.md
+
+Tighten the reference in place.
+
+Preserve byte-stable or behavior-bearing lines:
+
+- The opening mandatory readability line.
+- Exactly one orchestrator-inline `readability-style.md`.**` anchor on line 3 (counted by `scripts/lint-readability-preamble.tsv` and `python3 python/cli.py lint readability-preamble`; do not paraphrase away the `.**` substring).
+- All step-anchor HTML comments, including the legacy `<!-- step:3.5 ... -->` anchor.
+- `$DESIGN_TMPDIR/discussion-round1.md`.
+- `$DESIGN_TMPDIR/discussion-round2.md`.
+- Both fenced Q&A schema blocks.
+- The two adjacent settle dispatch lines:
+  1. `1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.`
+  2. `2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.`
+- Operator-visible breadcrumb strings (verbatim, including `<elapsed>` placeholders where shown):
+  - `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)`
+  - `⏩ Remaining scope questions deferred to implementation.`
+  - `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)`
+  - `⏩ Remaining design questions deferred to implementation.`
+- Step 1c sprawl `AskUserQuestion` option labels (verbatim, exactly two options):
+  - **"Let my panel of agents split this feature for you"** / **"Cancel"**
+- Existing prohibited substrings must stay absent:
+  - `Branch on the settle wrapper rc`
+  - `Branch on wrapper rc`
+  - `fallback row`
+
+Compression targets:
+
+- Front matter:
+  - Shorten Consumer, Contract, When to load, and Binding convention.
+  - Keep the same ownership claims and Round 2 re-entry meaning.
+- Step 1c:
+  - Collapse repeated "highest-value question point" prose.
+  - Keep the 1 to 4 question batch rule.
+  - Keep the semantic sprawl heuristic semantics: Split / Cancel only, no Continue, once per Step 1c, preserve tmpdir on cancel; preserve the sprawl cancel line verbatim: `**ℹ /design cancelled by operator (Step 1c sprawl heuristic).**`
+- Step 1d:
+  - Merge duplicate scope-boundary, hard-constraint, non-goal, and must-have wording.
+  - Keep the explicit prohibition against implementation approach questions.
+  - Keep the short-circuit destination and Step 1d.7 note.
+  - Keep the 7-call cap and terse-answer behavior.
+  - **Step 1d sequential walk (compression-preserve):** retain the distinction from Step 1c batching — Step 1c batches 1–4 questions per `AskUserQuestion`; Step 1d walks the decision tree **one question at a time** via sequential `AskUserQuestion` calls. Preserve the opening sequential-interrogation framing, the `## Behavior` walk line (`Walk each branch one question at a time via sequential AskUserQuestion calls`), recommended-answer provision, and codebase-explore-instead-of-ask rule. Do not merge Step 1d delivery prose with Step 1c batching or collapse sequential walks into batched calls.
+- Post-plan Round 2 body:
+  - Shorten input descriptions without changing source precedence.
+  - **Inputs (byte-stable gates):** retain the explicit `discussion-round1.md` fallback — if it does not exist or is empty (Round 1 short-circuited or skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally; retain the `accepted-plan-findings.md` non-empty gate — if it exists and is non-empty, use it to identify reviewer-challenged decisions.
+  - Keep "not covered in Round 1" and "challenged by reviewers" criteria.
+  - Keep Gate A return behavior, not Step 3b.
+  - Keep plan revision authority, optional trailer preservation, settle wrapper invocation, dedup ownership, stale dialectic clearing order, and wrapper-only compatibility meaning.
+  - **Round 2 `## Cap` and `## Terse answers` (compression-preserve, mirroring Step 1d):** keep both sections in the post-plan body. Gate A re-entry executes only this section, not Step 1d, so Round 2 copies are load-bearing even though they duplicate Step 1d semantics. Do not delete them as redundant prose.
+    - **`## Cap`:** retain at most **7 `AskUserQuestion` calls** in this step; retain the defer breadcrumb verbatim: `⏩ Remaining design questions deferred to implementation.`; retain proceed-on-cap behavior.
+    - **`## Terse answers`:** retain non-responsive/terse-answer short-circuit: accept the recommended answer and move on without re-asking.
+  - **Round 2 `## Behavior` walk (compression-preserve, mirroring Step 1d):** keep the full post-plan walk block in the Round 2 body — sequential `AskUserQuestion` calls (`Walk each uncovered branch one question at a time`), recommended-answer provision, and codebase-explore-instead-of-ask. Gate A re-entry runs only the post-plan section, not Step 1d, so these rules are load-bearing on post-plan paths. Do not fold them into a cross-reference to Step 1d or delete them as duplicate prose.
+  - Remove redundant restatements only when the remaining text still states the invariant.
+
+Do not add new examples, new headings, or new flow rules.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate after the Markdown compression with:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+This should update the `/design` closure metrics only by shrinking or holding steady. Do not hand-edit the numbers except as an emergency repair after comparing against the CLI output.
+
+## Edge cases
+
+- `scripts/test-design-structure.sh` pins the exact two-line settle dispatch directive. Keep those two lines adjacent.
+- Markdown compression can accidentally change behavior by deleting repeated guardrails. Keep load-bearing duplication where it prevents misrouting or stale state.
+- Step 1c batches 1–4 questions per call; Step 1d and Round 2 each use sequential one-at-a-time walks. Merging question-delivery prose across steps can silently convert Step 1d or Round 2 to batching even when structure tests still pass.
+- Step 1d and Round 2 each carry `## Cap` / `## Terse answers` blocks with similar semantics. Only Step 1d runs on first-time entry; Gate A "Discuss more" runs the post-plan Round 2 body alone. Deleting Round 2 copies while keeping Step 1d removes the 7-question ceiling and terse-answer short-circuit on post-plan discussion even when structure tests still pass.
+- Step 1d and Round 2 each carry sequential-walk, recommended-answer, and codebase-self-answer rules in `## Behavior`. Only Step 1d runs on first-time entry; Gate A re-entry runs Round 2 alone. Deleting Round 2 walk prose while keeping Step 1d removes post-plan sequential interrogation and self-answer behavior even when structure tests still pass.
+- Rewording operator-visible `⏩` breadcrumb strings or sprawl option labels saves tokens but changes live `/design` output; those six operator-visible strings stay verbatim even though `make test-design-structure` does not pin them.
+- Paraphrasing the line-3 `readability-style.md`.**` anchor can pass markdownlint and `make test-design-structure` but fail `python3 python/cli.py lint readability-preamble`.
+- Blank-line-only reductions do not count as useful ratchet headroom. The acceptance needs real content-token reduction.
+- The baseline writer regenerates both gated skills. Verify that `/implement` metrics do not change unexpectedly.
+
+## Failure modes
+
+- If `lint skill-closure-growth --write` increases any metric, revert the baseline update and compress the Markdown further.
+- If Markdown shrinks but baseline regen is skipped or not committed, `python3 python/cli.py lint skill-closure-growth --skill design` still passes (one-directional growth only); CI fails on `test_committed_baseline_matches_fresh_scan` in `python/tests/lint/test_lint_skill_closure_growth.py`.
+- If `make test-design-structure` fails, restore the exact pinned literals it names.
+- If `python3 python/cli.py lint readability-preamble` fails, restore the exact line-3 `readability-style.md`.**` anchor.
+- If markdownlint fails, fix formatting without expanding prose unless needed.
+- If Round 2 `## Cap` or `## Terse answers` is removed or collapsed into a cross-reference that omits the 7-call ceiling or terse-answer rule, restore both sections in the post-plan body before finalizing.
+- If Step 1d sequential-walk prose is merged with Step 1c batching or Round 2 `## Behavior` walk rules are folded into a Step 1d cross-reference, restore the per-step delivery semantics before finalizing.
+- If the 15% reduction is not reached, make a second pass on duplicated setup, behavior, and output wording before touching any behavior-bearing text.
+
+## Testing strategy
+
+Run the focused checks:
+
+pre-commit run markdownlint --files skills/design/references/discussion-rounds.md
+python3 python/cli.py lint readability-preamble
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth --skill design
+make test-lint-skill-closure-growth
+make test-design-structure
+
+(`make test-lint-skill-closure-growth` runs `python/tests/lint/test_lint_skill_closure_growth.py`, including `test_committed_baseline_matches_fresh_scan`; that pytest is the byte-exact baseline freshness gate required for ratchet-confirmed shrink. Equivalent: `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q`.)
+
+Before finalizing, inspect the regenerated baseline diff and confirm:
+
+- `skills/design/references/discussion-rounds.md` is smaller in real prose.
+- Line 3 still contains exactly one `readability-style.md`.**` anchor.
+- Step 1d still distinguishes sequential one-at-a-time walks from Step 1c 1–4 question batching.
+- Round 2 Inputs still states the missing-or-empty `discussion-round1.md` fallback and the non-empty `accepted-plan-findings.md` gate.
+- Round 2 still contains distinct `## Cap` (7-call ceiling + defer breadcrumb) and `## Terse answers` sections in the post-plan body.
+- Round 2 `## Behavior` still contains sequential walk, recommended-answer, and codebase-self-answer rules without a Step 1d cross-reference substitute.
+- `python/skill-closure-baseline.json` reflects the new smaller `/design` closure and matches a fresh scan.
+- No non-scope files changed.
+
+diff_added: 85
+diff_deleted: 100
+mechanical_churn: false
+diff_lines: 185
