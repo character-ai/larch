@@ -1,6 +1,7 @@
 """Voting, tally, parse-rate, and scoreboard helpers for larch."""
 # ruff: noqa: E402, F401
 # pylint: disable=unused-import
+# pyright: reportPrivateUsage=false, reportUnusedImport=false
 
 from __future__ import annotations
 
