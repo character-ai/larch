@@ -54,7 +54,12 @@ marker_candidates() {
     find "$HOME/.cache/larch/sessions" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
   fi
   if [ -d "${TMPDIR:-/tmp}" ]; then
-    find "${TMPDIR:-/tmp}" -maxdepth 3 -name .bg-wait-active -type f 2>/dev/null || true
+    # Scope to larch-/claude-design-prefixed session dirs only; avoids scanning all
+    # of the macOS per-user $TMPDIR (~77k+ dirs) which exceeds the 5-10s hook timeout.
+    for _lmc_d in "${TMPDIR:-/tmp}"/larch-* "${TMPDIR:-/tmp}"/claude-design-*; do
+      [ -d "$_lmc_d" ] || continue
+      find "$_lmc_d" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+    done
   fi
 }
 
