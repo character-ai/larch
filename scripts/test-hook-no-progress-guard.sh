@@ -383,6 +383,16 @@ case "$out" in
   *'"decision":"block"'*) pass "T17: armed marker in clone-b still blocks UserPromptSubmit from clone-b (owning clone)" ;;
   *) fail "T17: expected clone-b prompt blocked by own clone-b marker: out='$out'" ;;
 esac
+
+# --- T20: subdirectory cwd within owning clone still blocks (#5927) ---
+CLONE_A_SUB="$CLONE_A/docs"
+mkdir -p "$CLONE_A_SUB"
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A_SUB" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T20: subdirectory cwd still blocked for owning clone" ;;
+  *) fail "T20: subdirectory cwd bypassed armed breaker: out='$out'" ;;
+esac
+
 rm -f "$MARKER_A" "$MARKER_B" "$D_A/.larch-keepalive" "$D_B/.larch-keepalive" \
       "$D_A/no-progress-circuit-breaker-armed" "$D_B/no-progress-circuit-breaker-armed"
 

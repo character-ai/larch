@@ -58,6 +58,20 @@ marker_value() {
   awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
 }
 
+# Returns 0 when two canonical clone paths denote the same repo tree: exact
+# match or one path is a subdirectory of the other (#5927 subdirectory cwd).
+clone_paths_same() {
+  local marker_canon="$1" current_canon="$2"
+  [ "$marker_canon" = "$current_canon" ] && return 0
+  case "$current_canon" in
+    "$marker_canon"/*) return 0 ;;
+  esac
+  case "$marker_canon" in
+    "$current_canon"/*) return 0 ;;
+  esac
+  return 1
+}
+
 # Returns 0 only when the marker directory's recorded clone identity is known
 # and canonically differs from the current session's cwd (#5927). Unknown
 # identity on either side returns 1 (treated as same-clone / still blocks), so
@@ -71,7 +85,8 @@ marker_foreign_clone() {
   marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
   [ -n "$marker_clone" ] || return 1
   marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null) || return 1
-  [ "$marker_canon" != "$current_canon" ]
+  clone_paths_same "$marker_canon" "$current_canon" && return 1
+  return 0
 }
 
 # Same discovery logic as hook-bg-poll-guard.sh marker_candidates.
