@@ -11,8 +11,9 @@ Two event handlers in one script:
 - **Stop handler**: counts consecutive turn-ends while any bg-wait marker is live. When the count
   reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5), arms a `no-progress-circuit-breaker-armed`
   flag in the marker directory.
-- **UserPromptSubmit handler**: before each new turn, checks every live marker for an armed flag.
-  If found, blocks the turn with an operator-visible message containing the count and threshold.
+- **UserPromptSubmit handler**: before each new turn, checks every live marker for an armed flag
+  that cannot be proven to belong to a different repo clone. If found, blocks the turn with an
+  operator-visible message containing the count, threshold, and marker path.
 
 The circuit breaker auto-disarms when the bg task's terminal sentinel is written (or the marker is
 removed by the EXIT trap), so a genuine completion notification is never blocked by the guard.
@@ -31,7 +32,8 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   avoids the macOS per-user `$TMPDIR` timeout issue (#5868): the full tree can reach 77k+
   dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`
   branch is unaffected.
-- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it; as a result two concurrent larch sessions on one machine are no longer isolated from each other's live-marker counts.
+- Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production (the hook's `PPID`/input never matched the stored value), so the breaker never armed. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
+- `UserPromptSubmit` blocking is scoped by repo-clone identity when it is knowable (#5927): it reads the candidate marker's sibling `.larch-keepalive` `CLONE_PATH=` value (the same identity file `session_env.py` writes at bootstrap) and skips that marker only when its canonicalized `CLONE_PATH` differs from the current session's canonicalized `cwd` (also read from the hook's own JSON input, mirroring `hook-bg-poll-guard.sh`). A marker with no readable `CLONE_PATH`, or a current invocation with no readable `cwd`, is treated as same-clone and still blocks — unknown identity never introduces a new false negative, it only preserves the pre-fix global-blocking behavior. The `Stop` handler's turn counting remains global and unscoped; only the `UserPromptSubmit` block decision is clone-scoped.
 - Checks `is_step_completed` (terminal sentinel present) before declaring a marker live, mirroring
   the release logic in `hook-bg-poll-guard.sh` (#4431, #4450 race-condition fix). It covers
   design Step 3, Step 4 tail, Step 5c, and final-summary markers, plus implement Step 3 checks,
@@ -45,7 +47,10 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
 - Threshold configurable via `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (integer; default 5). Values that
   are empty or non-numeric fall back to 5.
 - Block JSON is emitted via static `printf` (not `jq -cn`) so a `jq` runtime failure at the emit
-  point cannot silently swallow the block signal (#5610 pattern).
+  point cannot silently swallow the block signal (#5610 pattern). The message includes the exact
+  marker path (`<dir>/.bg-wait-active`) and the two recovery sidecar paths
+  (`<dir>/no-progress-circuit-breaker-armed`, `<dir>/no-progress-turns.count`) so the operator does
+  not have to guess the offending tmpdir (#5927).
 
 ## Threshold rationale
 
@@ -60,4 +65,5 @@ Covered by `scripts/test-hook-no-progress-guard.sh`, wired through
 ## Update triggers
 
 Update this file when: the event types handled change, the counter/breaker file names or locations
-change, the threshold default changes, or `is_step_completed` sentinel coverage changes.
+change, the threshold default changes, `is_step_completed` sentinel coverage changes, or the
+clone-scoping identity source (`.larch-keepalive` `CLONE_PATH`) changes.

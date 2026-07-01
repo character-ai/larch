@@ -58,6 +58,22 @@ marker_value() {
   awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
 }
 
+# Returns 0 only when the marker directory's recorded clone identity is known
+# and canonically differs from the current session's cwd (#5927). Unknown
+# identity on either side returns 1 (treated as same-clone / still blocks), so
+# a missing or unparsable .larch-keepalive never introduces a new false
+# negative — it just falls back to the pre-fix global-blocking behavior.
+marker_foreign_clone() {
+  local dir="$1" current_canon="$2" keepalive marker_clone marker_canon
+  [ -n "$current_canon" ] || return 1
+  keepalive="$dir/.larch-keepalive"
+  [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
+  marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
+  [ -n "$marker_clone" ] || return 1
+  marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null) || return 1
+  [ "$marker_canon" != "$current_canon" ]
+}
+
 # Same discovery logic as hook-bg-poll-guard.sh marker_candidates.
 marker_candidates() {
   if [ -n "${LARCH_BG_POLL_GUARD_MARKER:-}" ]; then
@@ -217,9 +233,9 @@ counter_read() {
 # #5610 pattern: emit block JSON via printf (not jq -cn) so a jq failure cannot swallow the signal.
 # count and threshold are validated digit-only strings safe for printf %s interpolation.
 json_block_prompt() {
-  local count="$1" threshold="$2"
-  printf '{"decision":"block","reason":"No-progress circuit breaker: %s consecutive turns detected under an active background-wait marker without real progress (threshold: %s turns). The harness may be delivering spurious notifications (#5639). To continue: (1) check whether the background task completed, (2) clear the stale .bg-wait-active marker in the session tmpdir if the task is gone, or (3) set LARCH_NO_PROGRESS_GUARD_THRESHOLD to a higher value before retrying."}\n' \
-    "$count" "$threshold"
+  local count="$1" threshold="$2" dir="$3"
+  printf '{"decision":"block","reason":"No-progress circuit breaker: %s consecutive turns detected under an active background-wait marker without real progress (threshold: %s turns). Marker: %s/.bg-wait-active. The harness may be delivering spurious notifications (#5639). To continue: (1) check whether the background task completed, (2) clear the stale marker files %s/no-progress-circuit-breaker-armed and %s/no-progress-turns.count if the task is gone, or (3) set LARCH_NO_PROGRESS_GUARD_THRESHOLD to a higher value before retrying."}\n' \
+    "$count" "$threshold" "$dir" "$dir" "$dir"
 }
 
 if [ "$event_type" = "Stop" ]; then
@@ -239,14 +255,19 @@ EOF_MARKERS
 fi
 
 if [ "$event_type" = "UserPromptSubmit" ]; then
-  # Block the new turn if any live marker has an armed circuit breaker.
+  cwd=$(printf '%s' "$INPUT" | jq -r '.cwd // ""' 2>/dev/null) || cwd=""
+  cwd_canon=""
+  [ -n "$cwd" ] && cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
+  # Block the new turn if any live marker has an armed circuit breaker and the
+  # marker cannot be proven to belong to a different repo clone (#5927).
   while IFS= read -r marker || [ -n "$marker" ]; do
     [ -n "$marker" ] || continue
     is_marker_live "$marker" || continue
     dir="$LIVE_MARKER_DIR"
     if [ -f "$dir/no-progress-circuit-breaker-armed" ] && [ ! -L "$dir/no-progress-circuit-breaker-armed" ]; then
+      marker_foreign_clone "$dir" "$cwd_canon" && continue
       count=$(counter_read "$dir")
-      json_block_prompt "$count" "$THRESHOLD"
+      json_block_prompt "$count" "$THRESHOLD" "$dir"
       exit 0
     fi
   done <<EOF_MARKERS
