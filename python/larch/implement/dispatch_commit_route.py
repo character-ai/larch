@@ -114,13 +114,13 @@ def step5_review_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
-    dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "3"
-    if dynamic_cap not in {"0", "1", "2", "3"}:
+    dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "1"
+    if dynamic_cap not in {"0", "1"}:
         print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
         return 2
     os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
-    round_cap = "5"
-    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (mechanically pruned in rounds 3-4 when prior yield is zero; an all-pruned round converges the loop); dynamic-archetypes cap={dynamic_cap}**")
+    round_cap = "2"
+    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; round 1 full paired reviewer panel; round 2 pruned on round-1 productivity; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap={dynamic_cap}**")
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", "1"])
 
 

@@ -95,10 +95,10 @@ CODEX_CURSOR_BLENDED_FLEET_MIX = {
 }
 DEFAULT_CLAUDE_BLENDED_PER_M = 0.80
 
-# Codex now runs two models concurrently (issue #5311 routed reviews/votes/fixes
-# to the cheaper mini; #5321 added a generic gpt-5.5 reviewer in rounds 1-2). The
-# pricing/display split is keyed on these two model ids; every other Codex model
-# (and model-less legacy rows) falls back to the vendor default rate via rate_row.
+# Codex can run two models in one workflow: default-role gpt-5.5 reviewers and
+# cheaper gpt-5.4-mini coder/fixer rows. The pricing/display split is keyed on
+# these two model ids; every other Codex model (and model-less legacy rows)
+# falls back to the vendor default rate via rate_row.
 CODEX_MINI_MODEL = config.CODEX_REVIEW_MODEL_DEFAULT
 CLAUDE_SUB_MODEL_FLAG_PREFIXES = {
     config.CLAUDE_SONNET_4_6_MODEL: "claude-sub-sonnet",

@@ -40,12 +40,12 @@ fi
 if [ -z "$dynamic_archetypes_cap" ] && [ -n "${LARCH_DYNAMIC_ARCHETYPES_MAX:-}" ]; then
   dynamic_archetypes_cap="$LARCH_DYNAMIC_ARCHETYPES_MAX"
 fi
-[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=3
-case "$dynamic_archetypes_cap" in [0-3]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
+[ -n "$dynamic_archetypes_cap" ] || dynamic_archetypes_cap=1
+case "$dynamic_archetypes_cap" in [0-1]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
 ' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
 export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
-round_cap=5
-printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; 3-judge panel on every round (three Cursor archetype voters; single-Claude fallback when Cursor is unavailable); review panel: specialists per vendor (rounds 3-4 prune on net score <= 0 or acceptance rate below 1/3; an all-pruned round converges the loop, otherwise round 5 re-probes the full panel); dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
+round_cap=2
+printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; round 1 full paired reviewer panel; round 2 pruned on round-1 productivity; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
 
 # Write bg-wait marker so hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress
 # probes during the review wait. Fail-open: a write failure must not abort the review.

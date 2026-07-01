@@ -33,17 +33,17 @@ Static slugs and labels align with `python/larch/core/config.py` `design.plan_re
 
 Each slug fans out to Cursor and Codex rows when that vendor is present. Do not duplicate rendered prompt bodies here.
 
-Use **Dispatch** and **Panel pruning** for the round matrix: round 1 full static diagonal; rounds 2-5 Cursor specialists plus generic Codex when both vendors are present; rounds 3-4 `review reviewer-prune`.
+Use **Dispatch** and **Panel pruning** for the round matrix: round 1 full paired static panel; round 2 pruned backup using round-1 productivity only; no generic Codex replacement row; `--no-fallback` always for reviewer rows.
 
 ---
 
 ## Dynamic plan-review archetypes
 
-Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes":[]}` when static reviewers suffice. Each scout expands to a Cursor row and, only when Codex specialists are active, a Codex twin (`dyn-cursor-plan-<slug>` / `dyn-codex-plan-<slug>` in the NDJSON manifest). The twin follows #4062: round 1 when Codex is present, round 2+ only when Cursor is absent.
+Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes":[]}` when static reviewers suffice. Each scout expands to a Cursor row and, when Codex is present, a Codex twin (`dyn-cursor-plan-<slug>` / `dyn-codex-plan-<slug>` in the NDJSON manifest).
 
-1. **Drafter scout output (fail-open)**: the Step 2b drafter emits a compact scout block after the plan. The launcher validates it with `python/cli.py scout filter-manifest`, filters reserved static slugs, and caps at three archetypes. Missing or invalid output warns, writes an empty manifest when possible, and still runs the static Step 3 panel. Step 3 launches no separate plan-archetype scout.
+1. **Drafter scout output (fail-open)**: the Step 2b drafter emits a compact scout block after the plan. The launcher validates it with `python/cli.py scout filter-manifest`, filters reserved static slugs, and caps at one archetype. Missing or invalid output warns, writes an empty manifest when possible, and still runs the static Step 3 panel. Step 3 launches no separate plan-archetype scout.
 
-2. **Dispatch (Step 3 manifest consumption)**: `python/cli.py plan-review panel-dispatch` renders static prompts first, then the dynamic tail via `python/cli.py render plan-review`. It emits rows from binary-derived attempt flags, not Step 0 health, round-gates Codex per #4062, and invokes `agent dispatch-waterfall` with **`--no-fallback`** only while peer rows cover each other. From round 2 with both vendors, one generic Codex row replaces specialists and fallback returns. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. When **both** externals are absent, it launches one generic Claude reviewer (all static lenses + structured TSV contract) and writes that path to `PANEL_PATHS_FILE`. Voter parity uses `python/cli.py plan-review voter-dispatch` with the same matrix (issue #3207 skip-do-not-pad). `/review` code panels keep the legacy waterfall. Emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
+2. **Dispatch (Step 3 manifest consumption)**: `python/cli.py plan-review panel-dispatch` renders static prompts first, then the dynamic tail via `python/cli.py render plan-review`. It emits rows from binary-derived attempt flags, not Step 0 health. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role. It invokes `agent dispatch-waterfall` with **`--no-fallback`** for every reviewer panel, so failed or unavailable vendors drop rows instead of spawning cross-vendor or Claude reviewer backfill. It does not pass `--require-first-line-pattern`; collector terminal `NOT_SUBSTANTIVE` handles format and quality. Voter parity uses `python/cli.py plan-review voter-dispatch` with the same matrix (issue #3207 skip-do-not-pad). Emits `PANEL_PATHS_FILE=<path>` on stdout so SKILL can pass `--paths-file` without re-parsing `ALL_OUTPUT_FILES_PATH`.
 
 3. **Harness overrides**: `DISPATCH_PLAN_REVIEW_WATERFALL_SH` substitutes the waterfall dispatcher.
 
@@ -51,7 +51,7 @@ Step 2b produces `$DESIGN_TMPDIR/scout-plan-manifest.json`, using `{"archetypes"
 
 ## Single-pass review
 
-`python/cli.py plan-review run` runs one pass per invocation with loop internals: panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt`; omitted `--prune-round-num` defaults to `--round-num`. The outer Step 3 driver (`python/cli.py plan-review run --mode loop` via `design-step3-review.sh`) owns the cap of 5, passes `--prune-round-num`, and is sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
+`python/cli.py plan-review run` runs one pass per invocation with loop internals: panel → collect → aggregate → ballot → voter dispatch → tally. It never reads `review-round-count.txt`; omitted `--prune-round-num` defaults to `--round-num`. The outer Step 3 driver (`python/cli.py plan-review run --mode loop` via `design-step3-review.sh`) owns the cap of 2, passes `--prune-round-num`, and is sole writer of `review-round-count.txt`. Artifact `--round-num` remains the plan-review snapshot index.
 
 Step 2b supplies `$DESIGN_TMPDIR/scout-plan-manifest.json`. `python/cli.py scout filter-manifest` enforces cap, reserved-slug, duplicate, and prompt-safety rules. Plan rewrites before Step 3 remove stale manifests, so fallback and post-rewrite reviews run static-only until a fresh drafter materializes one.
 
@@ -61,7 +61,7 @@ Normal `/design` Step 3 calls `design-step3-review.sh` once with `run_in_backgro
 
 Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, `panel-init-failed`, and `main-agent-vote-required`; the loop maps cap to `STEP3_REVIEW_LOOP_STATUS=cap-hit` before Step 3b. `panel-init-failed` means no reviewer round launched and is terminal before Gate C.
 
-- **Panel pruning**: rounds 1-2 and 5 use the unpruned manifest; rounds 3-4 filter `plan-review-slots.ndjson` through `review reviewer-prune`, preserving `plan-review-slots.pre-prune.ndjson` when rows are removed. `PANEL_PRUNED_EMPTY=true` means no reviewers launched, the round is complete/non-degraded, and no ledger rows are recorded. Prune-to-empty is convergence (#5255): the loop completes immediately (reason `converged-pruned-empty`) instead of advancing toward round 5. Terminal `zero-findings-degraded-panel` still records round provenance so the reviewed plan publishes.
+- **Panel pruning**: round 1 uses the unpruned manifest; round 2 filters `plan-review-slots.ndjson` through `review reviewer-prune` using round-1 ledger data only, preserving `plan-review-slots.pre-prune.ndjson` when rows are removed. `PANEL_PRUNED_EMPTY=true` means no reviewers launched, the round is complete/non-degraded, and no ledger rows are recorded. Prune-to-empty is convergence (#5255): the loop completes immediately (reason `converged-pruned-empty`). Terminal `zero-findings-degraded-panel` still records round provenance so the reviewed plan publishes.
 - **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero findings with a degraded non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
 - **Tally failures**: `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before Gate B, preserves the current plan, restores cumulative accepted artifacts, and clears partial current accepted findings.
 - **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
@@ -74,7 +74,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 ## Claude Code Reviewer Subagent archetype (both-absent floor)
 
-Claude is NOT a primary plan reviewer. The external panel is default: round 1 present vendors per archetype; round 2+ Cursor specialists plus one generic Codex when both vendors are present; optional dynamic `dyn-*` pairs when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails; from round 2 with both vendors, #4062 fallback may backfill a failed Cursor slot via Codex or Claude. Otherwise Claude runs only when **both** Codex and Cursor are absent at Step 0: `python/cli.py plan-review panel-dispatch` launches one generic Claude reviewer (all static lenses, same first-line TSV contract as waterfall). Voter 1 remains `launch-claude-review.sh` subprocess scope.
+Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then a round-2 backup panel pruned on round-1 productivity; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains `launch-claude-review.sh` subprocess scope.
 
 **Voter 1** (Claude) in the 3-voter panel is **not** an Agent-tool subagent: `python/plan_review.py` drives `python/cli.py plan-review voter-dispatch`, which launches Voter 1 through `python/cli.py agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other `launch-claude-review.sh` lanes.
 

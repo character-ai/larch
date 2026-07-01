@@ -152,7 +152,7 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
         slot, tool, reason = parts[0], parts[1], parts[2]
         if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
             continue
-        if reason == "straggler-dropped":
+        if reason in {"straggler-dropped", "tool-absent"}:
             straggler_slugs.add(slot)
         else:
             genuine_failure_slugs.add(slot)
@@ -1039,7 +1039,7 @@ def _review_core_body(
     _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
     status = "ok"
     if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
-        status = "cap-reached" if round_num >= 5 else "fix-required"
+        status = "cap-reached" if round_num >= 2 else "fix-required"
     rows.extend(_core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
     if classification:
         rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
@@ -1048,7 +1048,7 @@ def _review_core_body(
 
 def review_core(argv: list[str], *, runner: object = None) -> int:
     logging_util.quiet_init(argv0="review-core")
-    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
+    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--output-dir",
@@ -1081,7 +1081,7 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
     panel = _get(parsed=parsed, key="--panel", default="hard")
     dynamic = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed=parsed, key="--round-num", default="1")
-    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1", "2", "3"} or not round_raw.isdigit() or int(round_raw) <= 0:
+    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1"} or not round_raw.isdigit() or int(round_raw) <= 0:
         logging_util.diagnostic(usage)
         return 2
     round_num = int(round_raw)

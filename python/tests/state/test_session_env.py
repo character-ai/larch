@@ -1298,7 +1298,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
 
     env3 = tmp_path / "env3.txt"
     env3.write_text(
-        "CODEX_PRESENT=true\nCURSOR_PRESENT=false\nLARCH_DYNAMIC_ARCHETYPES_MAX=3\n",
+        "CODEX_PRESENT=true\nCURSOR_PRESENT=false\nLARCH_DYNAMIC_ARCHETYPES_MAX=1\n",
         encoding="utf-8",
     )
     out3 = tmp_path / "session-env3.txt"
@@ -1316,7 +1316,7 @@ def test_setup_presence_defaults_with_check_reviewers(tmp_path: Path, monkeypatc
         env=reviewer_env,
     )
     assert result3.returncode == 0, result3.stderr
-    assert "LARCH_DYNAMIC_ARCHETYPES_MAX=3\n" in out3.read_text(encoding="utf-8")
+    assert "LARCH_DYNAMIC_ARCHETYPES_MAX=1\n" in out3.read_text(encoding="utf-8")
 
     env4 = tmp_path / "env4.txt"
     env4.write_text(

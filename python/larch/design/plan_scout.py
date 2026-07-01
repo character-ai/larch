@@ -1,4 +1,4 @@
-"""Dynamic reviewer archetype scouting helpers (up to 3 plan-review specialists)."""
+"""Dynamic reviewer archetype scouting helpers (up to 1 plan-review specialist)."""
 # pyright: reportUnusedCallResult=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
 
 from __future__ import annotations
@@ -630,11 +630,11 @@ def filter_manifest_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="scout filter-manifest", add_help=False)
     parser.add_argument("input")
     parser.add_argument("output")
-    parser.add_argument("--max-archetypes", default="3")
+    parser.add_argument("--max-archetypes", default="1")
     parser.add_argument("--mode", default="plan-review")
     try:
         args = parser.parse_args(argv)
-        cap = _parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout")
+        cap = _parse_cap(value=args.max_archetypes, max_value=1, label="--max-archetypes must be 0-1 for plan scout")
         if args.mode not in {"review", "plan-review"}:
             raise UsageError("--mode must be review or plan-review")
         status, count = filter_manifest(input_path=Path(args.input), output_path=Path(args.output), max_archetypes=cap, mode=args.mode)
@@ -710,7 +710,7 @@ def plan_archetypes_main(argv: list[str]) -> int:
     parser.add_argument("--plan-file", required=True)
     parser.add_argument("--description-file", required=True)
     parser.add_argument("--output", required=True)
-    parser.add_argument("--max-archetypes", default="3")
+    parser.add_argument("--max-archetypes", default="1")
     parser.add_argument("--session-env-path", required=True)
     parser.add_argument("--codex-present", default="false")
     parser.add_argument("--cursor-present", default="false")
@@ -721,7 +721,7 @@ def plan_archetypes_main(argv: list[str]) -> int:
             plan_file=Path(args.plan_file),
             description_file=Path(args.description_file),
             output=Path(args.output),
-            max_archetypes=_parse_cap(value=args.max_archetypes, max_value=3, label="--max-archetypes must be 0-3 for plan scout"),
+            max_archetypes=_parse_cap(value=args.max_archetypes, max_value=1, label="--max-archetypes must be 0-1 for plan scout"),
             session_env_path=args.session_env_path,
             codex_present=_presence_bool(args.codex_present, flag="--codex-present"),
             cursor_present=_presence_bool(args.cursor_present, flag="--cursor-present"),

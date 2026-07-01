@@ -101,7 +101,7 @@ grep -Fq 'STEP3_REVIEW_ROUND_NUM=1' "$D1/.step3-review-cap.env" || fail 'expecte
 echo "=== cap reached bypasses loop ==="
 D2="$TMPROOT/cap-reached"
 write_common_inputs "$D2"
-printf '5\n' >"$D2/review-round-count.txt"
+printf '2\n' >"$D2/review-round-count.txt"
 printf 'stale accepted\n' >"$D2/accepted-plan-findings.md"
 printf 'stale tally\n' >"$D2/voting-tally.md"
 stub="$(write_loop_stub "$D2" 'exit 97')"
@@ -110,7 +110,7 @@ printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expec
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached' || fail 'expected skipped-cap-reached tally status'
 printf '%s\n' "$driver_out" | grep -q 'cap reached; skipping' || fail 'expected cap-reached skip breadcrumb'
-[[ "$(cat "$D2/review-round-count.txt")" == "5" ]] || fail 'cap-reached path must leave counter unchanged'
+[[ "$(cat "$D2/review-round-count.txt")" == "2" ]] || fail 'cap-reached path must leave counter unchanged'
 [[ -f "$D2/.completed/step-3" ]] || fail 'cap-reached path must write .completed/step-3 sentinel'
 [[ ! -e "$D2/accepted-plan-findings.md" ]] || fail 'cap-reached path must clear stale accepted findings'
 [[ ! -e "$D2/voting-tally.md" ]] || fail 'cap-reached path must clear stale voting tally'
@@ -161,27 +161,27 @@ echo "=== hard path advances round 2 after successful round-1 snapshot ==="
 echo "=== tally-error does not consume the pending round ==="
 D4="$TMPROOT/tally-error"
 write_common_inputs "$D4"
-printf '2\n' >"$D4/review-round-count.txt"
-stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
+printf '1\n' >"$D4/review-round-count.txt"
+stub="$(write_loop_stub "$D4" "printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=tally-error\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 2")"
 driver_out=$(run_driver "$D4" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected tally-error NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'TALLY_PLAN_REVIEW_STATUS=tally-error' || fail 'expected tally-error tally status'
-[[ "$(cat "$D4/review-round-count.txt")" == "2" ]] || fail 'tally-error path must not consume pending round'
+[[ "$(cat "$D4/review-round-count.txt")" == "1" ]] || fail 'tally-error path must not consume pending round'
 
 echo "=== degraded-empty-collector does not consume the pending round ==="
 D4B="$TMPROOT/degraded-empty-collector"
 write_common_inputs "$D4B"
-printf '2\n' >"$D4B/review-round-count.txt"
-stub="$(write_loop_stub "$D4B" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=3\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
+printf '1\n' >"$D4B/review-round-count.txt"
+stub="$(write_loop_stub "$D4B" "printf 'LOOP_STATUS=degraded-empty-collector\nACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=2\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n'; exit 1")"
 driver_out=$(run_driver "$D4B" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'NEXT_ACTION=step3b-bypass' || fail 'expected degraded-empty-collector NEXT_ACTION'
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=degraded-empty-collector' || fail 'expected degraded-empty-collector loop status'
-[[ "$(cat "$D4B/review-round-count.txt")" == "2" ]] || fail 'degraded-empty-collector path must not consume pending round'
+[[ "$(cat "$D4B/review-round-count.txt")" == "1" ]] || fail 'degraded-empty-collector path must not consume pending round'
 
-echo "=== hard cap blocks the sixth review round ==="
+echo "=== hard cap blocks the third review round ==="
 D5="$TMPROOT/hard-cap"
 write_common_inputs "$D5"
-printf '5\n' >"$D5/review-round-count.txt"
+printf '2\n' >"$D5/review-round-count.txt"
 stub="$(write_loop_stub "$D5" 'exit 97')"
 run_driver "$D5" "$stub" >/dev/null
 driver_out=$(run_driver "$D5" "$stub")
@@ -195,7 +195,7 @@ run_continuation() {
 echo "=== continuation helper stops before cap cleanup ==="
 DCAP="$TMPROOT/continuation-cap"
 write_common_inputs "$DCAP"
-printf '5\n' >"$DCAP/review-round-count.txt"
+printf '2\n' >"$DCAP/review-round-count.txt"
 cat >"$DCAP/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Important
 - **Severity**: important
@@ -217,7 +217,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=explicit-appro
 echo "=== continuation helper converges pruned-empty below cap (#5255) ==="
 DPRUNE="$TMPROOT/continuation-pruned-empty"
 write_common_inputs "$DPRUNE"
-printf '3\n' >"$DPRUNE/review-round-count.txt"
+printf '1\n' >"$DPRUNE/review-round-count.txt"
 : >"$DPRUNE/accepted-plan-findings.md"
 printf 'PANEL_PRUNED_EMPTY=true\nDEGRADED_PANEL=0\nLOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty\n' >"$DPRUNE/.step3-review-result.env"
 cont_out=$(run_continuation "$DPRUNE" false)
@@ -227,7 +227,7 @@ printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=converged-prun
 echo "=== continuation helper stops pruned-empty at cap ==="
 DPRUNE_CAP="$TMPROOT/continuation-pruned-empty-cap"
 write_common_inputs "$DPRUNE_CAP"
-printf '5\n' >"$DPRUNE_CAP/review-round-count.txt"
+printf '2\n' >"$DPRUNE_CAP/review-round-count.txt"
 : >"$DPRUNE_CAP/accepted-plan-findings.md"
 printf 'PANEL_PRUNED_EMPTY=true\nDEGRADED_PANEL=0\nLOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=skipped-pruned-empty\n' >"$DPRUNE_CAP/.step3-review-result.env"
 cont_out=$(run_continuation "$DPRUNE_CAP" false)

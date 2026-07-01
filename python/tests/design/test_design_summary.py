@@ -55,9 +55,9 @@ def test_issue_counts_plain_warning_bullet(tmp_path: Path) -> None:
 
 def test_plan_review_line_multiple_rounds(tmp_path: Path) -> None:
     _ = (tmp_path / ".step3-review-result.env").write_text(
-        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=5\n", encoding="utf-8",
+        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n", encoding="utf-8",
     )
-    assert design_summary._plan_review_line(tmp_path) == "complete (5 rounds)"  # pyright: ignore[reportPrivateUsage]
+    assert design_summary._plan_review_line(tmp_path) == "complete (2 rounds)"  # pyright: ignore[reportPrivateUsage]
 
 
 def test_plan_review_line_single_round(tmp_path: Path) -> None:

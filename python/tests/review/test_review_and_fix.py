@@ -144,7 +144,7 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
     assert rc == 0
     assert out.count("STEP5_REVIEW_STATUS=") == 1
     assert "STEP5_REVIEW_STATUS=complete" in out
-    assert "EFFECTIVE_ROUND_CAP=5" in out
+    assert "EFFECTIVE_ROUND_CAP=2" in out
     assert not any(line.startswith("REVIEW_AND_FIX_STATUS=") for line in out.splitlines())
 
 
@@ -287,25 +287,34 @@ def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
 
 
 @MARK_DISPATCH
-def test_dynamic_archetypes_defaults_to_three_with_implement_tmpdir(monkeypatch, tmp_path):
+def test_dynamic_archetypes_defaults_to_one_with_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     impl = _tmp_impl(tmp_path)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
-    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "3"
+    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "1"
 
 
 
 @MARK_DISPATCH
 def test_dynamic_archetypes_uses_exported_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "1")
+    impl = _tmp_impl(tmp_path)
+    args = mock.Mock(dynamic_archetypes="", session_env_path="")
+    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "1"
+
+
+@MARK_DISPATCH
+def test_dynamic_archetypes_rejects_over_cap_env(monkeypatch, tmp_path):
     monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", "2")
     impl = _tmp_impl(tmp_path)
     args = mock.Mock(dynamic_archetypes="", session_env_path="")
-    assert review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl) == "2"
+    with pytest.raises(ValueError, match="integer from 0 to 1"):
+        review_and_fix._dynamic_archetypes(args=args, implement_tmpdir=impl)
 
 
 def test_step5_shell_exports_validated_dynamic_cap_before_python_call() -> None:
     text = (Path(__file__).resolve().parents[3] / "skills/implement/scripts/step-5-review.sh").read_text(encoding="utf-8")
-    validation = 'case "$dynamic_archetypes_cap" in [0-3])'
+    validation = 'case "$dynamic_archetypes_cap" in [0-1])'
     export = 'export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"'
     banner = "dynamic-archetypes cap=%s"
     python_call = "--starting-round 1"
@@ -365,7 +374,7 @@ def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch,
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     rc = review_and_fix.step5([
-        "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "3", "--round-cap", "5",
+        "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "3", "--round-cap", "2",
     ])
     out = capsys.readouterr().out
     assert rc == 2
@@ -377,11 +386,11 @@ def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch,
 def test_step5_resume_past_cap_with_prior_artifact(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
-    prior = impl / "round-5" / "review-and-fix.env"
+    prior = impl / "round-2" / "review-and-fix.env"
     prior.parent.mkdir(parents=True)
     prior.write_text("REVIEW_AND_FIX_STATUS=main-agent-vote-required\n", encoding="utf-8")
     rc = review_and_fix.step5([
-        "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "6", "--round-cap", "5",
+        "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "3", "--round-cap", "2",
     ])
     out = capsys.readouterr().out
     assert rc == 0
@@ -445,7 +454,7 @@ def test_step5_post_round_substantial_at_cap_emits_cap_hit(tmp_path, monkeypatch
         impl / "review-and-fix-summary.json", impl / "accumulated-oos.jsonl",
         review_and_fix.CoderResult(0, input_count=2, status="applied"),
     )
-    status, _reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=5, round_cap=5)
+    status, _reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=2, round_cap=2)
     assert status == "cap-hit"
     assert cont is False
 
@@ -2063,8 +2072,8 @@ def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch
 @MARK_CONVERGENCE
 def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, capsys):
     # #5255: a prune-to-empty round (every reviewer pruned, zero findings) must
-    # converge the loop immediately rather than advancing toward the round-5
-    # re-probe, even when the current round is below the round cap.
+    # converge the loop immediately rather than advancing toward the round-2
+    # backup pass.
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
 
@@ -2082,11 +2091,11 @@ def test_step5_loop_prune_skipped_converges_below_cap(tmp_path, monkeypatch, cap
 
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
     monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
-    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "5"])
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "2"])
     out = capsys.readouterr().out
     assert rc == 0
     assert "STEP5_REVIEW_STATUS=complete" in out
-    # Converged on the first prune-empty round; did not advance toward round 5.
+    # Converged on the first prune-empty round; did not advance past round 2.
     assert "ROUNDS_COMPLETED=1" in out
 
 
@@ -2914,7 +2923,7 @@ def test_step5_post_round_gates_bulk_skip_ratio_continues(tmp_path, monkeypatch)
         skipped_finding_count=3,
     )
     monkeypatch.setattr(review_and_fix, "_skip_ratio_threshold", lambda: 0.5)
-    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=5)
+    status, reason, cont = review_and_fix._step5_post_round_gates(result=result, round_num=1, round_cap=2)
     assert status is None
     assert reason is None
     assert cont is True

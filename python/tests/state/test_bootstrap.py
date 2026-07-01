@@ -48,7 +48,7 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     session_env = tmp_path / "session-env.sh"
     session_env.write_text(
         "LARCH_CLAUDE_SOURCE_FILE=/tmp/source.env\n"
-        "LARCH_DYNAMIC_ARCHETYPES_MAX=2\n"
+        "LARCH_DYNAMIC_ARCHETYPES_MAX=1\n"
         "LARCH_AUTO_MODE=true\n",
         encoding="utf-8",
     )
@@ -80,7 +80,7 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     assert "--claude-source-file" in write_env
     assert "/tmp/source.env" in write_env
     assert "--dynamic-archetypes" in write_env
-    assert "2" in write_env
+    assert "1" in write_env
     assert "--auto-mode" in write_env
 
 

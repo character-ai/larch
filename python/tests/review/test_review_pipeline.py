@@ -579,13 +579,13 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
     assert "### OOS_1: [OUT_OF_SCOPE] Unrelated cleanup" in audit.read_text(encoding="utf-8")
 
 
-def test_review_core_body_cap_reached_round_five(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_review_core_body_cap_reached_round_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(
         tmp_path,
         monkeypatch,
         findings=1,
         accepted=1,
-        round_num=5,
+        round_num=2,
         outdir_name="body-cap-reached",
     )
 
@@ -1451,8 +1451,8 @@ echo "COLLECTOR_OUTPUT_FILE=collector.env"
     assert "PRUNED_COUNT=" in prune_text
 
 
-def test_review_core_cap_reached_round_5_with_accepted_findings(tmp_path: Path) -> None:
-    result = _run_review_core(tmp_path, round_num=5, findings=1, accepted=1)
+def test_review_core_cap_reached_round_2_with_accepted_findings(tmp_path: Path) -> None:
+    result = _run_review_core(tmp_path, round_num=2, findings=1, accepted=1)
 
     assert result.returncode == 0, result.stderr
     assert "REVIEW_CORE_STATUS=cap-reached" in result.stdout
@@ -1733,7 +1733,7 @@ def test_ensure_reviewer_prune_ledger_preserves_good_rows_and_drops_malformed(tm
     ]
 
 
-def test_review_core_main_agent_vote_required_skips_prune_ledger_and_preserves_round_three(tmp_path: Path) -> None:
+def test_review_core_main_agent_vote_required_skips_prune_ledger_and_round_two_uses_round_one(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "mav-prune-stubs")
     ledger = tmp_path / "reviewer-prune-ledger.tsv"
     manifest: Path | None = None
@@ -1763,16 +1763,17 @@ def test_review_core_main_agent_vote_required_skips_prune_ledger_and_preserves_r
             env=env,
         )
         assert result.returncode == 0, result.stderr
-        manifest = outdir / "panel-manifest.ndjson"
+        if round_num == 1:
+            manifest = outdir / "panel-manifest.ndjson"
 
     assert manifest is not None
     ledger_lines = ledger.read_text(encoding="utf-8").splitlines()
     assert len(ledger_lines) == 2
     assert ledger_lines[1].startswith("1\t")
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
     assert result.returncode == 0, result.stderr
-    assert "PRUNED_COUNT=0" in result.stdout
-    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
 
 def test_review_core_aggregator_validation_exhausted(tmp_path: Path) -> None:
@@ -1801,7 +1802,7 @@ def test_review_core_fix_required_emits_accepted_path(tmp_path: Path) -> None:
     assert f"ACCEPTED_FINDINGS_FILE={outdir}/accepted-findings.md" in result.stdout
 
 
-def test_reviewer_prune_record_and_filter_round_three(tmp_path: Path) -> None:
+def test_reviewer_prune_record_and_filter_round_two(tmp_path: Path) -> None:
     manifest = tmp_path / "panel.ndjson"
     manifest.write_text(
         '{"slot":"correctness","tool":"cursor","output":"/tmp/cursor-specialist-correctness-output.txt"}\n',
@@ -1810,7 +1811,7 @@ def test_reviewer_prune_record_and_filter_round_three(tmp_path: Path) -> None:
     classification = tmp_path / "class.tsv"
     classification.write_text("finding_id\treviewer_slots\tvoting_result\n", encoding="utf-8")
     ledger = tmp_path / "ledger.tsv"
-    for round_num in (1, 2):
+    for round_num in (1,):
         result = run_review(
             "reviewer-prune",
             "record",
@@ -1834,7 +1835,7 @@ def test_reviewer_prune_record_and_filter_round_three(tmp_path: Path) -> None:
         "--ledger",
         str(ledger),
         "--round",
-        "3",
+        "2",
         "--manifest",
         str(manifest),
         "--out",
@@ -1982,18 +1983,18 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
     )
 
 
-def test_reviewer_prune_window_evaluated_covers_rounds_three_and_four() -> None:
+def test_reviewer_prune_window_evaluated_round_two_only() -> None:
     assert review_pipeline.prune_window_evaluated(1) == "false"
-    assert review_pipeline.prune_window_evaluated(2) == "false"
-    assert review_pipeline.prune_window_evaluated(3) == "true"
-    assert review_pipeline.prune_window_evaluated(4) == "true"
+    assert review_pipeline.prune_window_evaluated(2) == "true"
+    assert review_pipeline.prune_window_evaluated(3) == "false"
+    assert review_pipeline.prune_window_evaluated(4) == "false"
     assert review_pipeline.prune_window_evaluated(5) == "false"
 
 
-def test_reviewer_prune_filter_round_two_never_prunes(tmp_path: Path) -> None:
+def test_reviewer_prune_filter_round_one_never_prunes(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
 
-    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 1)
 
     assert result.returncode == 0, result.stderr
     assert "PRUNE_ACTIVE=true" in result.stdout
@@ -2001,20 +2002,33 @@ def test_reviewer_prune_filter_round_two_never_prunes(tmp_path: Path) -> None:
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
-def test_reviewer_prune_filter_round_three_requires_two_recent_rounds(tmp_path: Path) -> None:
+def test_reviewer_prune_filter_round_two_prunes_no_accepted_history(tmp_path: Path) -> None:
     manifest, ledger = _record_prune_rounds(tmp_path, [["rejected"]])
 
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
-    assert "PRUNED_COUNT=0" in result.stdout
-    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+
+
+def test_reviewer_prune_filter_round_two_prunes_no_history(tmp_path: Path) -> None:
+    manifest = tmp_path / "panel.ndjson"
+    _write_single_prune_manifest(manifest)
+    ledger = tmp_path / "ledger.tsv"
+    review_pipeline.ensure_reviewer_prune_ledger(ledger)
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=1" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
 
 def test_reviewer_prune_filter_prunes_noisy_one_accept_combo(tmp_path: Path) -> None:
-    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["rejected"]])
+    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted", "rejected"]])
 
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout
@@ -2022,9 +2036,9 @@ def test_reviewer_prune_filter_prunes_noisy_one_accept_combo(tmp_path: Path) -> 
 
 
 def test_reviewer_prune_filter_prunes_low_precision_positive_net(tmp_path: Path) -> None:
-    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["neutral", "neutral", "neutral"]])
+    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted", "neutral", "neutral"]])
 
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout
@@ -2036,13 +2050,10 @@ def test_reviewer_prune_filter_keeps_high_severity_code_review_on_weighted_net(t
     _write_single_prune_manifest(manifest)
     ledger = tmp_path / "ledger.tsv"
     round_one = tmp_path / "class-1.tsv"
-    round_two = tmp_path / "class-2.tsv"
     _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="major")])
-    _write_code_review_prune_classification(round_two, [_code_review_prune_row("FINDING_2", "rejected")])
 
     _record_prune_classification(ledger, manifest, round_one, 1)
-    _record_prune_classification(ledger, manifest, round_two, 2)
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
@@ -2050,23 +2061,20 @@ def test_reviewer_prune_filter_keeps_high_severity_code_review_on_weighted_net(t
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
-def test_reviewer_prune_filter_prunes_low_severity_code_review_weighted_net(tmp_path: Path) -> None:
+def test_reviewer_prune_filter_keeps_low_severity_code_review_positive_net(tmp_path: Path) -> None:
     manifest = tmp_path / "panel.ndjson"
     _write_single_prune_manifest(manifest)
     ledger = tmp_path / "ledger.tsv"
     round_one = tmp_path / "class-1.tsv"
-    round_two = tmp_path / "class-2.tsv"
     _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="minor")])
-    _write_code_review_prune_classification(round_two, [_code_review_prune_row("FINDING_2", "rejected")])
 
     _record_prune_classification(ledger, manifest, round_one, 1)
-    _record_prune_classification(ledger, manifest, round_two, 2)
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t1\t0\t1")
-    assert "PRUNED_COUNT=1" in result.stdout
-    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
 def test_reviewer_prune_normalize_code_label_reconciles_output_suffix_to_bare_token() -> None:
@@ -2177,19 +2185,17 @@ def test_reviewer_prune_filter_floor_uses_unweighted_accepted_with_high_severity
     _write_single_prune_manifest(manifest)
     ledger = tmp_path / "ledger.tsv"
     round_one = tmp_path / "class-1.tsv"
-    round_two = tmp_path / "class-2.tsv"
-    _write_code_review_prune_classification(round_one, [_code_review_prune_row("FINDING_1", "accepted", severity="major")])
     _write_code_review_prune_classification(
-        round_two,
-        [_code_review_prune_row(f"FINDING_{idx}", "neutral") for idx in range(2, 5)],
+        round_one,
+        [_code_review_prune_row("FINDING_1", "accepted", severity="major")]
+        + [_code_review_prune_row(f"FINDING_{idx}", "neutral") for idx in range(2, 5)],
     )
 
     _record_prune_classification(ledger, manifest, round_one, 1)
-    _record_prune_classification(ledger, manifest, round_two, 2)
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
-    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t1")
+    assert ledger.read_text(encoding="utf-8").splitlines()[1].endswith("\t1\t2\t0\t4")
     assert "PRUNED_COUNT=1" in result.stdout
     assert "PANEL_PRUNED_EMPTY=true" in result.stdout
 
@@ -2200,39 +2206,38 @@ def test_reviewer_prune_filter_accepts_legacy_ledger_rows(tmp_path: Path) -> Non
     ledger = tmp_path / "ledger.tsv"
     ledger.write_text(
         "round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count\n"
-        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n"
-        "2\tcursor\tcorrectness\tCursor-Correctness\t0\t1\t1\n",
+        "1\tcursor\tcorrectness\tCursor-Correctness\t1\t0\t1\n",
         encoding="utf-8",
     )
 
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
-
-    assert result.returncode == 0, result.stderr
-    assert "PRUNED_COUNT=1" in result.stdout
-    assert "PANEL_PRUNED_EMPTY=true" in result.stdout
-
-
-def test_reviewer_prune_filter_keeps_exact_acceptance_floor(tmp_path: Path) -> None:
-    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["neutral", "neutral"]])
-
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
 
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=0" in result.stdout
     assert "PANEL_PRUNED_EMPTY=false" in result.stdout
 
 
-def test_reviewer_prune_filter_preserves_round_five_and_off_override(tmp_path: Path) -> None:
-    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted"], ["rejected"]])
+def test_reviewer_prune_filter_keeps_exact_acceptance_floor(tmp_path: Path) -> None:
+    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted", "neutral"]])
+
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
+
+    assert result.returncode == 0, result.stderr
+    assert "PRUNED_COUNT=0" in result.stdout
+    assert "PANEL_PRUNED_EMPTY=false" in result.stdout
+
+
+def test_reviewer_prune_filter_round_two_active_and_off_override(tmp_path: Path) -> None:
+    manifest, ledger = _record_prune_rounds(tmp_path, [["accepted", "rejected"]])
 
     round_one = _filter_prune_round(tmp_path, manifest, ledger, 1)
-    round_five = _filter_prune_round(tmp_path, manifest, ledger, 5)
-    disabled = _filter_prune_round(tmp_path, manifest, ledger, 3, env={"LARCH_REVIEWER_PRUNE": "off"})
+    round_two = _filter_prune_round(tmp_path, manifest, ledger, 2)
+    disabled = _filter_prune_round(tmp_path, manifest, ledger, 2, env={"LARCH_REVIEWER_PRUNE": "off"})
 
     assert round_one.returncode == 0, round_one.stderr
     assert "PRUNED_COUNT=0" in round_one.stdout
-    assert round_five.returncode == 0, round_five.stderr
-    assert "PRUNED_COUNT=0" in round_five.stdout
+    assert round_two.returncode == 0, round_two.stderr
+    assert "PRUNED_COUNT=1" in round_two.stdout
     assert disabled.returncode == 0, disabled.stderr
     assert "PRUNE_ACTIVE=false" in disabled.stdout
     assert "PRUNED_COUNT=0" in disabled.stdout
@@ -2241,8 +2246,8 @@ def test_reviewer_prune_filter_preserves_round_five_and_off_override(tmp_path: P
 def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
     stubs = _write_review_core_stubs(tmp_path / "zero-prune-stubs")
     ledger = tmp_path / "reviewer-prune-ledger.tsv"
-    manifest = tmp_path / "zero-prune-2" / "panel-manifest.ndjson"
-    for round_num in (1, 2):
+    manifest = tmp_path / "zero-prune-1" / "panel-manifest.ndjson"
+    for round_num in (1,):
         outdir = tmp_path / f"zero-prune-{round_num}"
         outdir.mkdir()
         env = rts.build_review_core_env(
@@ -2273,7 +2278,7 @@ def test_review_core_zero_findings_records_prune_ledger(tmp_path: Path) -> None:
         assert result.returncode == 0, result.stderr
 
     assert ledger.read_text(encoding="utf-8").splitlines()[0] == "round\ttool\tslot\tlabel\taccepted_count\tweighted_accepted_count\trejected_count\ttotal_count"
-    result = _filter_prune_round(tmp_path, manifest, ledger, 3)
+    result = _filter_prune_round(tmp_path, manifest, ledger, 2)
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout
 
@@ -2384,7 +2389,7 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
         "--plan-file",
         str(case_dir / "plan.md"),
         "--dynamic-archetypes",
-        "2",
+        "1",
         "--pre-scouted-manifest",
         str(manifest),
         env=env,
@@ -2392,10 +2397,10 @@ printf '{"type":"result","subtype":"success","is_error":false,"result":"claude r
 
     assert result.returncode == 0, result.stderr
     assert "SCOUT_STATUS=pre-scouted" in result.stdout
-    assert "DYNAMIC_SLOTS=2" in result.stdout
-    assert "SLOT_COUNT=5" in result.stdout
+    assert "DYNAMIC_SLOTS=1" in result.stdout
+    assert "SLOT_COUNT=4" in result.stdout
     normalized = json.loads((case_dir / "scout-round1-manifest.json").read_text(encoding="utf-8"))
-    assert [a["name"] for a in normalized["archetypes"]] == ["arch", "api-contract"]
+    assert [a["name"] for a in normalized["archetypes"]] == ["arch"]
 
 
 def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) -> None:
@@ -2513,7 +2518,7 @@ def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -
 
 
 def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
-    for round_num, expected in ((1, True), (2, True), (3, False)):
+    for round_num in (1, 2, 3):
         case_dir = tmp_path / f"generic-round-{round_num}"
         case_dir.mkdir()
         _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
@@ -2545,11 +2550,8 @@ def test_dispatch_panel_core_generic_codex_static_row_round_matrix(tmp_path: Pat
         )
         assert result.returncode == 0, result.stderr
         rows = _panel_manifest_rows(case_dir / "panel-manifest.ndjson")
-        present = any(row.get("slot") == "generalist" for row in rows)
-        assert present is expected
-        if expected:
-            _assert_generalist_codex_row(rows)
-            assert "STATIC_SLOT_COUNT=7" in result.stdout
+        assert not any(row.get("slot") == "generalist" for row in rows)
+        assert "STATIC_SLOT_COUNT=6" in result.stdout
 
 
 def test_dispatch_panel_core_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
@@ -2626,24 +2628,20 @@ def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_avail
     return [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines() if line.strip()]
 
 
-def test_dispatch_panel_generic_codex_static_row_round_matrix(tmp_path: Path) -> None:
+def test_dispatch_panel_omits_generic_codex_static_row_all_rounds(tmp_path: Path) -> None:
     case_dir = tmp_path / "generic-codex-round-matrix"
     case_dir.mkdir()
     _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
     _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
 
-    for round_num, expect_generalist in ((1, True), (2, True), (3, False)):
+    for round_num in (1, 2, 3):
         round_dir = case_dir / f"round-{round_num}"
         round_dir.mkdir()
         _ = (round_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
         _ = (round_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
         rows = _dispatch_panel_manifest_rows(round_dir, round_num=round_num, codex_available="true")
         generalist_rows = [row for row in rows if row.get("slot") == "generalist"]
-        if expect_generalist:
-            assert len(generalist_rows) == 1, f"round {round_num} should include generic Codex row"
-            assert generalist_rows[0].get("tool") == "codex"
-        else:
-            assert generalist_rows == [], f"round {round_num} should omit generic Codex row"
+        assert generalist_rows == [], f"round {round_num} should omit generic Codex row"
 
 
 def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path: Path) -> None:
@@ -2680,7 +2678,7 @@ def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None
         "--cursor-available", "false",
         "--panel", "hard",
         "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "3",
+        "--dynamic-archetypes", "1",
         "--pre-scouted-manifest", str(manifest),
         "--site", "implement Step 5",
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
@@ -2715,7 +2713,7 @@ def test_dispatch_panel_pre_scouted_filtered_to_zero_is_producer_invalid(tmp_pat
         "--cursor-available", "false",
         "--panel", "hard",
         "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "3",
+        "--dynamic-archetypes", "1",
         "--pre-scouted-manifest", str(manifest),
         "--site", "implement Step 5",
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
@@ -2746,7 +2744,7 @@ def test_dispatch_panel_implement_missing_producer_does_not_launch_scout(tmp_pat
         "--cursor-available", "false",
         "--panel", "hard",
         "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "3",
+        "--dynamic-archetypes", "1",
         "--site", "implement Step 5",
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "SCOUT_DYNAMIC_ARCHETYPES_SH": str(scout), "DISPATCH_WATERFALL": str(waterfall)},
     )
@@ -2776,7 +2774,7 @@ def test_dispatch_panel_docs_only_skips_producer_scout_warning(tmp_path: Path) -
         "--cursor-available", "false",
         "--panel", "hard",
         "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "3",
+        "--dynamic-archetypes", "1",
         "--site", "implement Step 5",
         env={
             "CLAUDE_PLUGIN_ROOT": str(ROOT),
@@ -2825,7 +2823,7 @@ def test_dispatch_panel_producer_scout_warning_sentinel_prevents_duplicate(tmp_p
         "--cursor-available", "false",
         "--panel", "hard",
         "--plan-file", str(case_dir / "plan.md"),
-        "--dynamic-archetypes", "3",
+        "--dynamic-archetypes", "1",
         "--site", "implement Step 5",
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "IMPLEMENT_TMPDIR": str(impl), "DISPATCH_WATERFALL": str(waterfall)},
     )
@@ -3283,7 +3281,7 @@ def test_dispatch_panel_reuse_scout_parse_failed_missing_status(tmp_path: Path) 
         "--plan-file",
         str(case_dir / "plan.md"),
         "--dynamic-archetypes",
-        "3",
+        "1",
         "--round-num",
         "3",
         env={
@@ -3325,7 +3323,7 @@ def test_dispatch_panel_limits_invalid_dynamic_archetypes_count(tmp_path: Path) 
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1"},
     )
     assert result.returncode == 2
-    assert "must be an integer from 0 to 3" in result.stderr
+    assert "must be an integer from 0 to 1" in result.stderr
 
 
 def test_collect_findings_done_sentinel_wait_success(tmp_path: Path) -> None:

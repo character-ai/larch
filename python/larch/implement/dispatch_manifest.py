@@ -208,7 +208,7 @@ def normalize_coder_scout(
                     str(input_path),
                     str(filtered_tmp),
                     "--max-archetypes",
-                    "3",
+                    "1",
                     "--mode",
                     "review",
                 ]

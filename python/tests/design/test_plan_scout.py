@@ -76,12 +76,12 @@ def test_filter_manifest_main_review_mode_allows_plan_static_slug(tmp_path: Path
     out = tmp_path / "out.json"
     src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
 
-    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "3", "--mode", "review"])
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "1", "--mode", "review"])
 
     assert rc == 0
     stdout = capsys.readouterr().out
     assert "SCOUT_STATUS=ok" in stdout
-    assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["arch", "deep-risk"]
+    assert [a["name"] for a in json.loads(out.read_text(encoding="utf-8"))["archetypes"]] == ["arch"]
 
 
 def test_filter_manifest_main_plan_review_mode_filters_plan_static_slug(tmp_path: Path, capsys) -> None:
@@ -89,7 +89,7 @@ def test_filter_manifest_main_plan_review_mode_filters_plan_static_slug(tmp_path
     out = tmp_path / "out.json"
     src.write_text(json.dumps({"archetypes": [_row("arch"), _row("deep-risk")]}), encoding="utf-8")
 
-    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "3", "--mode", "plan-review"])
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", "1", "--mode", "plan-review"])
 
     assert rc == 0
     stdout = capsys.readouterr().out

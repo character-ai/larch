@@ -81,7 +81,8 @@ REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 # Format: "marker|casing" where casing is "sensitive" or "insensitive".
 # To add a marker, append a new entry — `check_file` iterates this array.
 readonly POS_MARKERS=(
-  "3-judge panel on every round|insensitive"
+  "hard ceiling|insensitive"
+  "round-1 productivity|insensitive"
   "specialists per vendor|sensitive"
 )
 
@@ -98,6 +99,8 @@ readonly STALE_PHRASES=(
   "4 specialists per available vendor"
   "4 specialists per vendor"
   "1 Claude Code Reviewer subagent, 1 round"
+  "up to 5 rounds"
+  "3-judge panel on every round"
   "no external reviewers"
   "no externals, no voting"
   "simple review panel"
@@ -319,8 +322,8 @@ run_self_test() {
   cat > "$good" <<'EOF'
 This is a fixture describing /implement Step 5.
 Step 5 delegates to review-and-fix CLI --panel hard.
-The review loop runs up to 5 rounds.
-The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
+The review loop has a fixed hard ceiling.
+Round 2 pruned on round-1 productivity.
 The review loop uses specialists per vendor in the Step 5 posture.
 EOF
 
@@ -333,8 +336,8 @@ EOF
   cat > "$bad" <<'EOF'
 Stale-phrase fixture: contains every positive marker so only the stale phrase can drive failure.
 Step 5 delegates to review-and-fix CLI --panel hard.
-The review loop runs up to 5 rounds.
-The loop runs a 3-judge panel on every round (Claude opus + Codex + Cursor).
+The review loop has a fixed hard ceiling.
+Round 2 pruned on round-1 productivity.
 The review loop uses specialists per vendor in the Step 5 posture.
 Stale phrase intentionally embedded: simplified code review (1 Claude Code Reviewer subagent, 1 round).
 EOF

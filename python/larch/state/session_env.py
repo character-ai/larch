@@ -651,8 +651,8 @@ def write_env_main(argv: list[str]) -> int:
         plugin_root = os.environ.get("CLAUDE_PLUGIN_ROOT", "")
         if plugin_root and not _validate_plugin_root_value(plugin_root):
             raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
-        if args.dynamic_archetypes and args.dynamic_archetypes not in set("012345678"):
-            raise ValueError("Invalid --dynamic-archetypes: must be an integer from 0 to 8")
+        if args.dynamic_archetypes and args.dynamic_archetypes not in {"0", "1"}:
+            raise ValueError("Invalid --dynamic-archetypes: must be an integer from 0 to 1")
         if args.run_id and not _SAFE_RUN_ID_RE.match(args.run_id):
             raise ValueError("Invalid --run-id: must match ^[A-Za-z0-9._-]{1,128}$")
         data: dict[str, str] = {
@@ -1639,10 +1639,10 @@ def setup_main(argv: list[str]) -> int:
             wargs.extend(["--claude-source-file", caller["LARCH_CLAUDE_SOURCE_FILE"]])
         dyn = caller.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "")
         if dyn:
-            if dyn in set("012345678"):
+            if dyn in {"0", "1"}:
                 wargs.extend(["--dynamic-archetypes", dyn])
             else:
-                _err("session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..8)")
+                _err("session-setup.sh: warning: ignoring invalid LARCH_DYNAMIC_ARCHETYPES_MAX from caller-env (must be 0..1)")
         ledger = caller.get("LARCH_TIMING_LEDGER", "")
         if ledger:
             caller_dir = str(Path(args.caller_env).parent.resolve()) if args.caller_env else ""
