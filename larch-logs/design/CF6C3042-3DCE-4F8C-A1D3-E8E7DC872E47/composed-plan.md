@@ -1,0 +1,157 @@
+## Plan
+
+### Approach
+
+Approach synthesis is `NO_SKETCHES`; draft from direct repo inspection.
+
+Use the approved outline as binding scope. Make one in-place prose-density pass over `skills/design/references/approval-gates.md`. Do not change control flow, prompt labels, question text, commands, KV names, file paths, or gate semantics.
+
+Target roughly 15% token reduction by removing redundancy, not authority. Feature scope forbids removing load-bearing anti-halt / compaction-resilience blocks; density-only edits must not collapse those into one-line summaries.
+
+### Structural-test frozen substrings (must-not-reword)
+
+Before editing, grep `scripts/test-design-structure.sh`, `skills/design/scripts/test-gate-b-apply-mode.sh`, and `skills/design/scripts/test-step3-review-cap.sh` for `approval-gates` pins. Treat every matched substring as **byte-identical frozen text**. Do not reword, re-indent, renumber, or paraphrase them during compression. Pure whitespace deletion is allowed only **outside** these blocks.
+
+**Frozen block A — Shared post-apply pipeline step 8, items 1–2** (`test-design-structure.sh:579`, `assert_followed_count_at_least` adjacency pair; live lines ~151–152 in `approval-gates.md`):
+
+```
+   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
+   2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
+
+Preserve the leading three spaces before `1.` and `2.` exactly.
+
+**Frozen block B — Gate B resume idempotency pins** (`test-design-structure.sh:599–602`, each `contains` literal must survive verbatim):
+
+- `Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric.`
+- `Route through the same settle wrapper with `--round-num "$_gate_b_round"` without reapplying.`
+- `Bind `STEP3_RESUME_ROUND="$_gate_b_round"` before any later Step 3 resume fence.`
+- `Do not jump directly to Step 3b from this post-apply resume branch`
+
+**Frozen block C — Gate B apply-mode breadcrumb** (`test-gate-b-apply-mode.sh:72`):
+
+- `Gate B — auto-applying N accepted finding(s)`
+
+**Frozen block D — Loop-mode Gate B branch pins** (`test-step3-review-cap.sh:46–49`):
+
+- `Prompt-side Gate B apply runs only on loop bail-outs`
+- `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation`
+
+**Frozen block E — Gate C Loop exit / anti-halt contract** (load-bearing compaction-resilience prose; not grep-pinned but explicitly out of scope for deletion or one-line replacement per feature scope and accepted review finding):
+
+- The entire Gate C `### Loop exit` subsection, including:
+  - the **Approve final design** / panel-failure acknowledgment routing paragraph
+  - the full **`Approve is NOT a halt.`** paragraph and all imperative sentences that follow (same-turn Step 5 entry, Step 5 banner, continuation through Step 5b / 5b.5 / 5c / 6, explicit bans on end-turn / confirmation-only / follow-up wait)
+
+Do not delete, merge into a single “proceed to Step 5” line, or paraphrase away the anti-halt imperatives. Non-authority tightening **around** those sentences is allowed only when every imperative and the `**Approve is NOT a halt.**` lead-in remain present and semantically identical.
+
+Compression work happens in surrounding prose only. If a pin or frozen block must change for a real contract update, that is out of scope for this density pass; stop and escalate instead of best-effort rewording.
+
+### Files to modify/create
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Compress prose only.
+
+- Keep these byte-stable unless a surrounding sentence must change:
+  - fenced commands
+  - `python/cli.py` invocations
+  - shell snippets and env vars
+  - `KEY=value` names
+  - option labels
+  - question text
+  - warning/breadcrumb literals
+  - file paths
+  - section headings that tests may pin
+  - all substrings listed under **Structural-test frozen substrings** above (blocks A–E)
+- Preserve all existing gate contracts:
+  - Gate A is post-plan re-entry only.
+  - Gate B auto-applies by default and prompts only with `--per-round-approval`.
+  - Gate C owns final approval and the `See full plan` / `Other` re-prompt behavior.
+  - Review-round cap remains 5.
+  - State invariants remain behaviorally identical.
+- Collapse repeated `See full plan` prose:
+  - Keep one normative statement for Gate A's re-entry branch.
+  - Keep one normative statement for Gate C structured `See full plan`.
+  - Keep the distinct `Other` behavior because its option-set preservation differs.
+  - Replace later restatements with short references only when no contract detail is lost.
+- Tighten Gate A:
+  - Merge redundant first-time-entry notes into one pointer to Step 1d.7.
+  - Shorten Gate A `### Loop exit` only; do not touch Gate C Loop exit (frozen block E).
+  - Keep `discussion-round2.md` authority and plan-revision boundaries intact.
+- Tighten Gate B:
+  - Compress mode-selection and resume-idempotency prose **around** frozen blocks B–D; do not edit those substrings.
+  - Keep the ordered Shared post-apply pipeline shape and all numbered behavior; leave step 8 items 1–2 (frozen block A) untouched.
+- Tighten Gate C:
+  - Shorten the long `When` paragraph without changing reachable paths.
+  - Keep `--skip-approve`, large-plan preview, architectural-guideline persistence, degraded panel warning, and `Other` dispatch semantics intact.
+  - Remove duplicate re-fire explanations only where the remaining text still distinguishes structured `See full plan` from `Other`.
+  - **Do not compress Gate C `### Loop exit` or frozen block E.** Exempt that subsection from the Gate C tightening bullets above; treat it like structural pins for halt-regression prevention even though harness grep does not cover it.
+- Tighten State invariants:
+  - Use active voice.
+  - Remove repeated explanations already stated in Gate A/B/C sections.
+  - Preserve the final compatibility grep note.
+
+### Edge cases
+
+- Some repetition is load-bearing because different branches have different option-set behavior. Do not collapse those into one vague rule.
+- Gate C `### Loop exit` / **Approve is NOT a halt** is load-bearing anti-halt prose added to prevent a known halt regression; shortening it to a routing-only summary passes gate-option comparison but drops the same-turn continuation contract.
+- Structural tests grep exact strings in `approval-gates.md`. Frozen blocks A–D are must-not-reword; frozen block E is scope-carved anti-halt prose with the same no-delete / no-one-line-replace rule. Surrounding prose may compress only when all frozen material remains intact.
+- The closure baseline file should not be edited under this approved scope. Use live reports to confirm reduction.
+- Do not edit `scripts/test-implement-fence-shape.sh`; no Bash fences in `skills/implement/SKILL.md` are in scope.
+
+### Failure modes
+
+- **Behavior drift**: a prose rewrite may accidentally change a gate route. Mitigate by comparing each gate option before and after the edit.
+- **Anti-halt regression**: compressing Gate C Loop exit into a brief “proceed to Step 5b” line drops the **Approve is NOT a halt** contract while other checks still pass. Mitigate by treating frozen block E as non-compressible and verifying the full paragraph survives in the diff.
+- **Literal drift**: changing question text, option labels, or any frozen-block substring can break user-facing contract or CI. Keep them byte-stable.
+- **Test-pin drift**: re-indenting or rewording frozen blocks A–D fails `scripts/test-design-structure.sh`, `test-gate-b-apply-mode.sh`, or `test-step3-review-cap.sh`. Grep those harness literals before finalizing; do not rely on semantic equivalence.
+- **Under-compression**: a tiny cleanup may not meet the target. Compare `skill-closure report` before and after and iterate on redundant prose only outside frozen blocks A–E.
+
+### Testing strategy
+
+Run only relevant read-only or validation commands after the edit:
+
+1. `wc -l skills/design/references/approval-gates.md`
+2. `python3 python/cli.py skill-closure report`
+3. `python3 python/cli.py lint skill-closure-growth`
+4. `bash scripts/test-design-structure.sh`
+5. `bash skills/design/scripts/test-gate-b-apply-mode.sh`
+6. `bash skills/design/scripts/test-step3-review-cap.sh`
+
+Also manually review the diff for preserved literals:
+- option labels
+- question text
+- `python/cli.py` commands
+- `SETTLE_NEXT_ACTION`
+- `approve_requested`
+- `skip_approve_requested`
+- frozen blocks A–E (settle step 8 items 1–2, Gate B resume pins, auto-apply breadcrumb, loop-only Gate B branch strings, Gate C **Approve is NOT a halt** anti-halt paragraph)
+- `diff_lines:` trailer language
+
+## Acceptance
+
+Run only relevant read-only or validation commands after the edit:
+
+1. `wc -l skills/design/references/approval-gates.md`
+2. `python3 python/cli.py skill-closure report`
+3. `python3 python/cli.py lint skill-closure-growth`
+4. `bash scripts/test-design-structure.sh`
+5. `bash skills/design/scripts/test-gate-b-apply-mode.sh`
+6. `bash skills/design/scripts/test-step3-review-cap.sh`
+
+Also manually review the diff for preserved literals:
+- option labels
+- question text
+- `python/cli.py` commands
+- `SETTLE_NEXT_ACTION`
+- `approve_requested`
+- `skip_approve_requested`
+- frozen blocks A–E (settle step 8 items 1–2, Gate B resume pins, auto-apply breadcrumb, loop-only Gate B branch strings, Gate C **Approve is NOT a halt** anti-halt paragraph)
+- `diff_lines:` trailer language
+
+review_status: ok
+rounds_completed: 3
+diff_added: 95
+diff_deleted: 125
+mechanical_churn: false
+diff_lines: 220

@@ -1,0 +1,35 @@
+### FINDING_1: Structural-test plan omits negative `not_contains` pins
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan’s Structural-test section documents frozen `contains` pins A–D but omits the matching negative `not_contains` substrings from `scripts/test-design-structure.sh:584-586`. Compressing Shared post-apply / settle-wrapper prose around step 8 can reintroduce banned phrases such as `Branch on the settle wrapper rc`, `Branch on wrapper rc`, or `fallback row` while frozen block A stays byte-identical; manual literal review can pass and `test-design-structure.sh` still fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add a Structural-test must-not-reintroduce list mirroring test-design-structure.sh:584-586 and include those substrings in the manual literal review checklist
+
+### FINDING_2: `readability-style.md` preamble anchor not byte-stable in plan
+- **Reviewer(s)**: Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The line-3 MANDATORY readability preamble anchor (`readability-style.md`.**`) is not listed as byte-stable in the plan. A prose-density rewrite can paraphrase or drop that substring while other checklist items pass; `python/larch/lint/lint_readability_preamble.py` and `scripts/lint-readability-preamble.tsv` (count 1) then fail in pre-commit/CI even though structural harnesses pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Name readability-style.md`.** as a frozen literal in UPDATED byte-stable list and add python3 python/cli.py lint readability-preamble to Testing strategy
+  - From Codex-Requirements: Add the `readability-style.md` anchor to the byte-stable list, add `python3 python/cli.py lint readability-preamble` to the validation list, and keep the anchor count at exactly one.
+
+### FINDING_3: Frozen block D near-duplicate (`apply runs` vs `applies`) trap
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Frozen block D pins `Prompt-side Gate B apply runs only on loop bail-outs` (mode-selection ~line 88), but State invariants ~line 246 restates it as `Prompt-side Gate B applies only on loop bail-outs`, which does not satisfy `test-step3-review-cap.sh`. An implementer can delete line 88, keep the line 246 variant, pass manual literal review, and fail `bash skills/design/scripts/test-step3-review-cap.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add an edge-case or frozen-block note: the exact `apply runs` substring at Gate B mode-selection must survive compression; the State invariants `applies` variant is not harness-equivalent and must not replace it.
+
+### FINDING_4: Gate C Loop exit anti-halt block not carved out of compression
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Issue scope forbids removing load-bearing anti-halt blocks. Gate C `### Loop exit` contains **Approve is NOT a halt** prose, but the plan’s Gate C tightening bullets do not exempt that block from compression. Shortening Loop exit to a one-line “proceed to Step 5” summary can drop the anti-halt contract while structural grep pins and gate-option comparison still pass, reintroducing a known halt regression.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Explicitly exempt Gate C Loop exit / **Approve is NOT a halt** from deletion or one-line replacement; allow only non-authority tightening around the imperative sentences.
+
+### FINDING_5: Frozen block A leaves plan fenced code block unclosed
+- **Reviewer(s)**: Codex-Generic
+- **Severity**: important
+- **Concern**: Frozen block A in `plan.txt` opens a fenced code block and never closes it. The rest of the plan (`### UPDATED`, edge cases, testing strategy, diff metadata) can render as code instead of normal plan structure, making the implementation plan malformed or unverifiable before any code change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Generic: Close the fence immediately after the two frozen lines, before “Preserve the leading three spaces...”.
