@@ -1,6 +1,6 @@
 """Voter calibration, agreement, and scoreboard helpers for larch."""
 # pylint: skip-file
-# pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false
+# pyright: reportUnusedCallResult=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportArgumentType=false, reportUnusedImport=false, reportUnusedFunction=false
 
 from __future__ import annotations
 
