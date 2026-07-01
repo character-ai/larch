@@ -19,8 +19,8 @@
     "skill_md_lines": 705
   },
   {
-    "closure_content_estimated_tokens": 33086,
-    "closure_estimated_tokens": 33177,
+    "closure_content_estimated_tokens": 33158,
+    "closure_estimated_tokens": 33249,
     "closure_lines": 941,
     "files": [
       "skills/implement/SKILL.md",
