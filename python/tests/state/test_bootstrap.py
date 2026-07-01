@@ -639,6 +639,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     monkeypatch.setenv("RUN_ID", "ENV")
     monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("self_implement", "true")
     monkeypatch.setenv("coder", "cursor")
 
     def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
@@ -668,6 +669,8 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
             "false",
             "--self-review-requested",
             "false",
+            "--self-implement-requested",
+            "false",
             "--coder",
             "codex",
         ],
@@ -682,6 +685,7 @@ def test_invoke_env_fallback_and_flag_precedence(tmp_path, monkeypatch) -> None:
     assert opts.run_id == "ARG"
     assert opts.force_requested == "false"
     assert opts.self_review_requested == "false"
+    assert opts.self_implement_requested == "false"
     assert opts.coder_opt == "codex"
 
 
@@ -695,6 +699,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     monkeypatch.setenv("RUN_ID", "ENV")
     monkeypatch.setenv("force_requested", "true")
     monkeypatch.setenv("self_review", "true")
+    monkeypatch.setenv("self_implement", "true")
     monkeypatch.setenv("coder", "cursor")
 
     def fake_run_bootstrap(opts: bootstrap.BootstrapOptions) -> int:
@@ -713,6 +718,7 @@ def test_invoke_env_fallback_used_when_flags_omitted(tmp_path, monkeypatch) -> N
     assert opts.run_id == "ENV"
     assert opts.force_requested == "true"
     assert opts.self_review_requested == "true"
+    assert opts.self_implement_requested == "true"
     assert opts.coder_opt == "cursor"
 
 
@@ -935,7 +941,7 @@ def test_phase_coder_selection_matrix(
     assert bool(fallback_reasons) is (expected_fallback == "true")
 
 
-def test_phase_coder_force_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
+def test_phase_coder_self_implement_forces_claude_without_fallback(tmp_path, monkeypatch) -> None:
     (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
     (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     explicit_warnings: list[tuple[str, str]] = []
@@ -947,7 +953,7 @@ def test_phase_coder_force_forces_claude_without_fallback(tmp_path, monkeypatch)
     )  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_record_coder_fallback", lambda reason, **_: fallback_reasons.append(reason))  # pyright: ignore[reportPrivateUsage]
     st = bootstrap.BootstrapState(
-        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", force_requested="true"),
+        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", self_implement_requested="true"),
         implement_tmpdir=str(tmp_path),
         repo_unavailable="false",
         plan_file=str(tmp_path / "plan.txt"),
@@ -959,6 +965,22 @@ def test_phase_coder_force_forces_claude_without_fallback(tmp_path, monkeypatch)
     assert st.coder_fallback == ""
     assert not explicit_warnings
     assert not fallback_reasons
+
+
+def test_phase_coder_force_alone_does_not_force_claude(tmp_path) -> None:
+    (tmp_path / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="coder", coder_opt="cursor", force_requested="true"),
+        implement_tmpdir=str(tmp_path),
+        repo_unavailable="false",
+        plan_file=str(tmp_path / "plan.txt"),
+        codex_available="true",
+        cursor_available="true",
+    )
+    bootstrap._phase_coder(st)  # pyright: ignore[reportPrivateUsage]
+    assert st.coder == "cursor"
+    assert st.coder_fallback == ""
 
 
 @pytest.mark.parametrize(

@@ -6273,7 +6273,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "invoke_main",
-    "metric": 87
+    "metric": 89
   },
   {
     "file": "larch/state/closeout.py",

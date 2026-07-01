@@ -46,6 +46,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "BRANCH_NAME",
     "BRANCH_ACTION",
     "SELF_REVIEW_REQUESTED",
+    "SELF_IMPLEMENT_REQUESTED",
     "DEGRADED",
     "BOTH_DOWN",
     "CODEX_STATE",
@@ -207,6 +208,7 @@ class BootstrapOptions:
     no_logs_commit: str = "false"
     force_requested: str = "false"
     self_review_requested: str = "false"
+    self_implement_requested: str = "false"
     upstream_repo: str = ""
     run_id: str = ""
     preflight_tmpdir: str = ""
@@ -354,6 +356,8 @@ def _persist_run_flags(st: BootstrapState) -> bool:
         st.opts.force_requested,
         "--self-review-requested",
         st.opts.self_review_requested,
+        "--self-implement-requested",
+        st.opts.self_implement_requested,
     )
     if result.returncode != 0:
         st.stall_tracking = "true"
@@ -963,7 +967,7 @@ def _phase_coder(st: BootstrapState) -> None:
         return
     if st.repo_unavailable == "true" or not st.plan_file or not Path(st.plan_file).is_file() or not (Path(st.implement_tmpdir) / "feature-description.txt").is_file():
         return
-    if st.opts.force_requested == "true" or st.opts.coder_opt == "claude":
+    if st.opts.self_implement_requested == "true" or st.opts.coder_opt == "claude":
         st.coder = "claude"
     else:
         order = list(external_defaults.tool_order("implement.step2_coder"))
@@ -1018,6 +1022,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("PLAN_FILE", st.plan_file),
         ("FORCE_REQUESTED", st.opts.force_requested),
         ("SELF_REVIEW_REQUESTED", st.opts.self_review_requested),
+        ("SELF_IMPLEMENT_REQUESTED", st.opts.self_implement_requested),
         ("coder", st.coder),
         ("coder_fallback", st.coder_fallback),
         ("IMPLEMENT_BAIL_REASON", st.implement_bail_reason),
@@ -1658,6 +1663,7 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--caller-env", default="")
     parser.add_argument("--force-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
+    parser.add_argument("--self-implement-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--non-interactive", default="", choices=["", "true", "false"])
     try:
         args = parser.parse_args(argv)
@@ -1703,6 +1709,7 @@ def invoke_main(argv: list[str]) -> int:
     )
     force = args.force_requested or _str_bool(env.get("force_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
+    self_implement = args.self_implement_requested or _str_bool(env.get("self_implement", "")) or "false"
     non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
     coder = "" if args.mode == "resume" else (args.coder or env.get("coder", ""))
     if args.mode == "resume" and not env.get("IMPLEMENT_TMPDIR", ""):
@@ -1719,6 +1726,7 @@ def invoke_main(argv: list[str]) -> int:
         no_logs_commit=_bool_text(value=no_logs_commit),
         force_requested=force if force in {"true", "false"} else "false",
         self_review_requested=self_review if self_review in {"true", "false"} else "false",
+        self_implement_requested=self_implement if self_implement in {"true", "false"} else "false",
         upstream_repo=upstream,
         run_id=run_id,
         preflight_tmpdir=preflight,
