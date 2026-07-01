@@ -9,3 +9,6 @@ ship.py: pr-prep: postbump/Flush+Push
 ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=rebase-failed
 === larch-quiet-ship.py-36020.log ===
 ship.py: pr-prep: postbump/Flush+Push
+ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=rebase-failed
+=== larch-quiet-ship.py-44770.log ===
+ship.py: pr-prep: postbump/Flush+Push
