@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicates Round 1 FINDING_5 (OOS, YES=1/3) with no materially new evidence; per oos-duplicate rule, vote NO
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- underlying concern (anchored header triplet) was covered by Round 1 OOS_1; plan's "tighten prose" directive does not invite removing bold-labeled section headers; CI enforces the triplet
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 FINDING_5 (OOS, YES=1/3); [SCOPE-REDUCTION] tag confirms same line-9 verbatim-vs-meaning-intact concern; no materially new evidence
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 FINDING_7 (OOS, YES=0/3) with identical scenario; per oos-duplicate rule, vote NO
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- direct duplicate of Round 1 OOS_1 (OOS, YES=1/3); per oos-duplicate rule, vote NO
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- technique preference for compression order, not a concrete defect; plan's zero-behavior-change constraint plus CI coverage manage the stated risk; fails OOS materiality gate

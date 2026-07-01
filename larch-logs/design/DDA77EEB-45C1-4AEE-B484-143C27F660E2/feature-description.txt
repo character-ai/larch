@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded flags.md (~2.9k tok)
+
+In-place prose-density pass on the Step 0 flag-validation reference.
+
+**Context.** `skills/design/references/flags.md` is 88 lines / ~2,893 tokens, force-read every design run before flag parsing ("the single normative source for flag validation rules"). Never prose-compressed. Note the high token-per-line ratio: dense content, good compression target.
+
+**Scope.** Tighten flag-validation prose. Preserve every flag name, default value, `run-params.json` key, and the non-normative index relationship to the `SKILL.md` table verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed; flag-parse behavior unchanged (`design parse-argv` contract untouched).
+
+**Out of scope.** No flag-grammar or default changes. Density only.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

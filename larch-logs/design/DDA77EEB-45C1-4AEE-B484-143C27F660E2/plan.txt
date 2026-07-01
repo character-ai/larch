@@ -1,0 +1,135 @@
+## Plan
+
+## Approach
+
+Use direct repo inspection. `approach-synthesis.txt` is `NO_SKETCHES`, so do not claim planning-panel consensus.
+
+Do the minimum change:
+
+1. Tighten prose in `skills/design/references/flags.md`.
+2. Preserve behavior and protocol text:
+   - every public flag and alias.
+   - every default value.
+   - every `run-params.json` key.
+   - every CLI command name.
+   - the `SKILL.md` table relationship as a non-normative index.
+   - section order and normative role.
+3. Do not edit parser code, tests, `SKILL.md`, or docs that only link to `flags.md`.
+4. Regenerate `python/skill-closure-baseline.json` after the prose change.
+5. Confirm ratchet freshness with the STRICT baseline pytest, not growth lint alone.
+
+Target roughly a 15% estimated-token reduction for `skills/design/references/flags.md`. The repo estimator is `(len(text) + 3) // 4`, as used by `python/larch/lint/lint_skill_closure_growth.py`.
+
+**Ratchet confirmation.** `make lint-skill-closure-growth` is one-directional: it only fails when live closure metrics exceed the committed baseline. After a shrink, it can pass even when `python/skill-closure-baseline.json` was not regenerated or committed. The shrink-path gate is `make test-lint-skill-closure-growth` (or `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py::test_committed_baseline_matches_fresh_scan`), which requires byte-exact equality between the committed baseline and a fresh scan.
+
+## Files to modify/create
+
+### UPDATED: skills/design/references/flags.md
+
+Compress prose in place.
+
+Recommended edits:
+
+- Shorten the opening contract and load timing without changing the meaning.
+- Keep `SKILL.md`'s compact flag table is a non-normative index` meaning intact.
+- For each flag bullet, cut repeated phrases such as "public boolean flag" where the heading already supplies public flag context.
+- Keep exact tokens:
+  - `--no-dedup`
+  - `--run-id <ID>`
+  - `--partition`
+  - `-p`
+  - `--brainstorm`
+  - `--per-round-approval`
+  - `--skip-approve`
+  - `-s`
+  - `--approve`
+  - `--manual`
+  - `-m`
+  - `partition_requested`
+  - `brainstorm_requested`
+  - `approve_requested`
+  - `skip_approve_requested`
+  - `run-params.json`
+  - `schema v3`
+- Keep exact default values, including `false`, empty `--run-id`, and `LARCH_DESIGN_DRIFT_MULTIPLE` default `2`.
+- Keep the parser contract for numeric issue positionals, verbal feature text, non-contiguous flags, and `--` behavior unchanged.
+- Keep the plan-size threshold values unchanged:
+  - plan body line count `> 800`.
+  - `diff_added > 2000`.
+  - legacy `diff_lines > 1500`.
+  - strict `>` semantics.
+  - `mechanical_churn: true` softens only the diff trigger.
+- Keep helper output names and exit-code contracts unchanged.
+- Keep internal and legacy flag notes present, but make them shorter.
+
+Avoid:
+
+- adding new validation rules.
+- reordering major sections.
+- changing cross-reference paths.
+- changing any code fence, command, KV name, or output grammar.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate after the markdown compression.
+
+Use:
+
+```bash
+make regen-skill-closure-baseline
+```
+
+This should lower only the `/design` closure metrics. The `/implement` row should remain unchanged unless unrelated working-tree edits exist.
+
+Commit the regenerated baseline in the same change set. A shrink lowers `closure_estimated_tokens` while growth lint stays green; CI fails on `test_committed_baseline_matches_fresh_scan` when the committed file does not byte-match a fresh scan.
+
+## Edge cases
+
+- A prose rewrite can accidentally weaken normative language. Keep directive words when they carry behavior, such as rejected, persisted, default, required, exit codes, and strict `>`.
+- The file mixes public flags, internal orchestration notes, and legacy flags. Compress each section, but do not merge them in a way that blurs public versus internal scope.
+- `--approve`, `--manual`, `-m`, and `--hard` are rejection behavior. Do not make them sound accepted or deprecated-but-usable.
+- The acceptance target applies to the flag reference text. The closure report will show a smaller overall design closure, but the percentage drop in the full closure will be much smaller.
+- Skipping baseline regen or failing to commit it after regen passes `make lint-skill-closure-growth` on a shrink but fails `test_committed_baseline_matches_fresh_scan` in CI.
+
+## Failure modes
+
+- **Behavior drift in prose**: mitigated by comparing every flag/default/key before and after the edit.
+- **Stale ratchet baseline**: mitigated by regenerating `python/skill-closure-baseline.json`, committing the refreshed file, and passing `make test-lint-skill-closure-growth` (or `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py::test_committed_baseline_matches_fresh_scan`). `make lint-skill-closure-growth` is the growth-only check and is not sufficient shrink-path confirmation on its own.
+- **Over-compression**: mitigated by preserving examples and contracts that prevent parser or plan-size ambiguity.
+- **Markdown lint churn**: keep headings, bullets, and code spans valid. Do not add Mermaid fences.
+
+## Testing strategy
+
+Run these checks after editing:
+
+python3 -c "from pathlib import Path; p=Path('skills/design/references/flags.md'); t=p.read_text(encoding='utf-8'); print((len(t)+3)//4)"
+python3 python/cli.py skill-closure report
+make test-lint-skill-closure-growth
+make lint-skill-closure-growth
+python3 -m pytest python/tests/design/test_design_argv.py
+
+Equivalent freshness gate:
+
+python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py::test_committed_baseline_matches_fresh_scan -q
+
+Also spot-check behavior manually with parser smoke tests:
+
+python3 python/cli.py design parse-argv --brainstorm 123
+python3 python/cli.py design parse-argv 123 --skip-approve
+python3 python/cli.py design parse-argv --hard
+python3 python/cli.py design parse-argv feature --no-dedup
+
+Expected outcomes:
+
+- `flags.md` estimated tokens drop roughly 15%.
+- `make test-lint-skill-closure-growth` passes (committed baseline byte-matches fresh scan).
+- `make lint-skill-closure-growth` passes (no closure growth past baseline).
+- `python/skill-closure-baseline.json` records the smaller `/design` closure.
+- `/implement` baseline values do not change.
+- `test_design_argv.py` still passes.
+- Parser smoke-test outputs match current behavior.
+
+diff_added: 85
+diff_deleted: 76
+mechanical_churn: false
+diff_lines: 161
