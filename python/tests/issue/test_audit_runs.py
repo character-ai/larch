@@ -34,7 +34,7 @@ def test_title_noncontiguous_compact(capsys):
 
 
 def test_title_noncontiguous_stays_under_256_chars(capsys):
-    pr_list = ",".join(str(n) for n in range(5000, 5000 + 1138))
+    pr_list = ",".join(str(n) for n in range(5000, 5000 + 2276, 2))
     assert audit_runs.title_main(["--skill", "implement", "--pr-list", pr_list, "--timestamp", "2026-06-28T10:00-07:00"]) == 0
     out = capsys.readouterr().out.strip()
     title_val = out.removeprefix("TITLE=")
