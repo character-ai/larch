@@ -419,6 +419,62 @@ case "$out" in
 esac
 rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count" "$MARKER"
 
+# --- T21: Stop-path counter is clone-scoped (#5927 follow-up) ---
+# A Stop fired from a FOREIGN clone must not increment an unrelated clone's
+# marker counter. Previously every clone's Stop bumped every live marker, so a
+# slow-but-live wait armed its own breaker from other clones' turn activity and
+# the owning clone then blocked its own next prompt. A Stop from the marker's
+# OWN clone must still increment (owning-session protection preserved).
+D_SCOPE="$TMP/claude-design-scopeclone-marker"
+mkdir -p "$D_SCOPE"
+CLONE_SCOPE="$TMP/scope-owner-repo"
+CLONE_FOREIGN="$TMP/scope-foreign-repo"
+mkdir -p "$CLONE_SCOPE" "$CLONE_FOREIGN"
+MARKER_SCOPE="$D_SCOPE/.bg-wait-active"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER_SCOPE"
+printf 'CLONE_PATH=%s\nSESSION_ID=test-scope-owner\n' "$CLONE_SCOPE" >"$D_SCOPE/.larch-keepalive"
+
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_FOREIGN" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_SCOPE" "$HOOK")
+cnt=$(cat "$D_SCOPE/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 0 ]; then
+  pass "T21: Stop from foreign clone does not increment unrelated marker counter"
+else
+  fail "T21: foreign-clone Stop must not count: out='$out' cnt=$cnt"
+fi
+
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_SCOPE" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_SCOPE" "$HOOK")
+cnt=$(cat "$D_SCOPE/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T21: Stop from owning clone still increments marker counter"
+else
+  fail "T21: owning-clone Stop must count: out='$out' cnt=$cnt"
+fi
+
+# Repeated foreign-clone Stops must never arm an unrelated marker's breaker,
+# even at a low threshold — this is the core cross-session-arming regression.
+rm -f "$D_SCOPE/no-progress-turns.count" "$D_SCOPE/no-progress-circuit-breaker-armed"
+for _ in 1 2 3; do
+  printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_FOREIGN" | \
+    LARCH_BG_POLL_GUARD_MARKER="$MARKER_SCOPE" LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 "$HOOK" >/dev/null
+done
+if [ ! -f "$D_SCOPE/no-progress-circuit-breaker-armed" ]; then
+  pass "T21: repeated foreign-clone Stops never arm an unrelated marker's breaker"
+else
+  fail "T21: foreign-clone Stops armed an unrelated marker's breaker"
+fi
+
+# Fail-safe default: a marker with no .larch-keepalive (unknown clone identity)
+# must still count from any cwd, so the owning session's breaker is never lost.
+rm -f "$D_SCOPE/.larch-keepalive" "$D_SCOPE/no-progress-turns.count" "$D_SCOPE/no-progress-circuit-breaker-armed"
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_FOREIGN" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_SCOPE" "$HOOK")
+cnt=$(cat "$D_SCOPE/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T21: marker without .larch-keepalive still counts from any cwd (fail-safe default)"
+else
+  fail "T21: unknown-identity marker must still count: out='$out' cnt=$cnt"
+fi
+rm -f "$MARKER_SCOPE"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1
