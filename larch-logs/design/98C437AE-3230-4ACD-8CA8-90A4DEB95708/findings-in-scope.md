@@ -1,0 +1,17 @@
+### FINDING_1: `/research` remains outside bg-wait lint scope, leaving four background launches unmarked
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The plan keeps `skills/research/**` out of `SCOPE_PATTERNS` and adds a regression test that codifies that exemption. The four existing `/research` background launches in `skills/research/references/research-phase.md` and `skills/research/references/validation-phase.md` therefore stay unlinted, and future `/research` fences with `run_in_background: true` can still bypass bg-wait marker enforcement. The PR would ship with the coverage gap the issue describes intact, so the stated criterion that every real backgrounded fence maps to a marker is not met for `/research`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Include `skills/research/**/*.md` in the lint scope, or add equivalent marker coverage for those research launches before preserving any exemption.
+  - From Codex-Innovation: Extend the lint scope to include `skills/research/**/*.md` and add markers for the four existing launches, or encode an explicit exemption only if `/research` is truly out of spec for this guarantee.
+  - From Codex-Pragmatic: Add `skills/research/**/*.md` to `SCOPE_PATTERNS` and arm markers for the four research fences, or explicitly convert those launches so they are no longer backgrounded.
+  - From Codex-Requirements: Add `skills/research/**/*.md` to `SCOPE_PATTERNS`, arm bg-wait markers for the four research launches, and remove the test that cements the exemption.
+
+### FINDING_2: Single brainstorm `CommandMapping` is too broad for substring matching
+- **Reviewer(s)**: Codex-Pragmatic, Codex-dyn-Lint Scope Auditor
+- **Severity**: important
+- **Concern**: A single brainstorm mapping keyed only on shared tokens such as `python/cli.py`, `agent`, `launch-review`, `--timing-task-kind`, and `-brainstorm` is too broad for the current all-token substring matcher. Unrelated future `launch-review` fences that happen to use a `*-brainstorm` timing kind could be falsely accepted without a bg-wait marker, weakening the guarantee that every new backgrounded fence must carry a marker. Under the current matcher, one mapping cannot stay narrow and still cover both launch shapes without either missing one fence or over-matching others.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add two explicit mappings, one for the framing fence and one for the scope fence, keyed on their unique prompt or output-path tokens so only those two commands match.
+  - From Codex-dyn-Lint Scope Auditor: Define two slot-specific mappings, one for framing and one for scope, keyed on unique prompt or output tokens for each fence, or extend the matcher to support explicit per-slot alternatives without broad shared tokens.

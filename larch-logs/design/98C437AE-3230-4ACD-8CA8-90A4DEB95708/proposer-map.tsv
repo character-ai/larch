@@ -1,0 +1,5 @@
+# attributed_ballot_sha256=dbdf6f5e5f3862a2a50e537c5f03697fe689b267466ae284be5e0fd720934bd5
+# neutral_ballot_sha256=cc79b33176681e18afee930e55650dbeabfadfadee31d9936ab3e93059640122
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements	- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+FINDING_2	Codex-Pragmatic, Codex-dyn-Lint Scope Auditor	- **Reviewer(s)**: Codex-Pragmatic, Codex-dyn-Lint Scope Auditor
