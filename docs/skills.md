@@ -67,7 +67,7 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 
 **Source**: [`skills/cleanup/SKILL.md`](../skills/cleanup/SKILL.md)
 
-Remove stale larch session temp directories from `~/.cache/larch/sessions/` and `/tmp` by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Directories are removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Matching loose `/tmp` files are removed by top-level age and pattern match. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active. The optional `--run-id <ID>` overrides the auto-generated run identifier.
+Remove stale larch session temp directories from `~/.cache/larch/sessions/`, `/tmp`, and the OS temp root `$TMPDIR` resolves to (a per-user path distinct from `/tmp` on macOS, and where bare `tempfile.mkdtemp()`/`mkstemp()` calls actually land) by age (`LARCH_CLEANUP_RETENTION_DAYS`, default 7). Directories are removed only when no file within the bounded `find -maxdepth 5` scan is newer than the cutoff; a directory with fresh deep activity (≤ 5 levels) is retained even when its top-level mtime is old. Matching loose top-level files under either temp root are removed by top-level age and pattern match. Reaps dangling `current-design-env-*.sh` symlinks. Always runnable — reports `SESSION_COUNT` for visibility but does not abort when multiple Claude sessions are active. The optional `--run-id <ID>` overrides the auto-generated run identifier.
 
 ### `/design`
 

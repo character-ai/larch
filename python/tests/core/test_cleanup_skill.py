@@ -191,3 +191,48 @@ def test_cleanup_uses_tmp_fallback_root(monkeypatch: Any, tmp_path: Path, capsys
     assert cleanup_skill.run_main([]) == 0
     out = capsys.readouterr().out
     assert "TMP_REMOVED=1" in out
+
+
+def test_tmp_roots_returns_both_legacy_and_real_tmpdir_when_distinct(monkeypatch: Any, tmp_path: Path) -> None:
+    legacy = tmp_path / "legacy-tmp"
+    legacy.mkdir()
+    real = tmp_path / "real-tmpdir"
+    real.mkdir()
+    monkeypatch.delenv("LARCH_TEST_TMP_ROOT", raising=False)
+    monkeypatch.setattr(cleanup_skill, "TMP_FALLBACK", str(legacy))
+    monkeypatch.setenv("TMPDIR", str(real))
+    assert cleanup_skill._tmp_roots() == [real.resolve(), legacy.resolve()]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_tmp_roots_dedupes_when_tmpdir_equals_fallback(monkeypatch: Any, tmp_path: Path) -> None:
+    monkeypatch.delenv("LARCH_TEST_TMP_ROOT", raising=False)
+    monkeypatch.setattr(cleanup_skill, "TMP_FALLBACK", str(tmp_path))
+    monkeypatch.setenv("TMPDIR", str(tmp_path))
+    assert cleanup_skill._tmp_roots() == [tmp_path.resolve()]  # pyright: ignore[reportPrivateUsage]
+
+
+def test_cleanup_sweeps_both_legacy_tmp_and_real_tmpdir_root(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
+    """Issue #5923: tempfile.mkdtemp()/mkstemp() resolve $TMPDIR first, which on
+    macOS is a per-user path distinct from /tmp, so both must be swept.
+    """
+    legacy_tmp = tmp_path / "legacy-tmp"
+    legacy_tmp.mkdir()
+    real_tmpdir = tmp_path / "real-tmpdir"
+    real_tmpdir.mkdir()
+    legacy_stale = legacy_tmp / "larch-stale-legacy"
+    legacy_stale.mkdir()
+    real_stale = real_tmpdir / "larch-stale-real"
+    real_stale.mkdir()
+    old_time = time.time() - 10 * 86400
+    os.utime(legacy_stale, (old_time, old_time))
+    os.utime(real_stale, (old_time, old_time))
+    monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path / "cache"))
+    monkeypatch.delenv("LARCH_TEST_TMP_ROOT", raising=False)
+    monkeypatch.setattr(cleanup_skill, "TMP_FALLBACK", str(legacy_tmp))
+    monkeypatch.setenv("TMPDIR", str(real_tmpdir))
+    monkeypatch.setattr(cleanup_skill.proc, "run", lambda argv, **_: _result(argv, stdout=""))
+    assert cleanup_skill.run_main([]) == 0
+    out = capsys.readouterr().out
+    assert "TMP_REMOVED=2" in out
+    assert not legacy_stale.exists()
+    assert not real_stale.exists()

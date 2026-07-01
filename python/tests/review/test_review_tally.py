@@ -160,6 +160,19 @@ def test_log_phase_rejects_unknown_batch(tmp_path: Path) -> None:
     assert "unregistered review batch" in result.stderr
 
 
+def test_block_files_nests_under_review_tmpdir(tmp_path: Path) -> None:
+    review_tmpdir = tmp_path / "review-tmp"
+    review_tmpdir.mkdir()
+    ballot = tmp_path / "ballot.md"
+    _mk_ballot(ballot)
+
+    blocks = review_tally._block_files(ballot_file=ballot, review_tmpdir=review_tmpdir)  # pyright: ignore[reportPrivateUsage]
+
+    assert blocks
+    for block in blocks:
+        assert block.resolve().is_relative_to(review_tmpdir.resolve())
+
+
 def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     case = tmp_path / "case1"
     case.mkdir()
