@@ -1,0 +1,13 @@
+# md-to-py-X: prose-compress always-loaded design-outline.md (~2.5k tok)
+
+In-place prose-density pass on the Step 1d.7 outline-approval reference.
+
+**Context.** `skills/design/references/design-outline.md` is 144 lines / ~2,554 tokens, force-read every design run at Step 1d.7 (the first-time outline-approval gate that replaced first-entry Gate A). Never prose-compressed.
+
+**Scope.** Tighten the Approve/Refine/Cancel prompt prose and Refine-loop description. Preserve the banner literal, question text, option labels, and fenced commands verbatim.
+
+**Acceptance.** Roughly -15% tokens, zero behavior change, ratchet-confirmed.
+
+**Out of scope.** No outline-gate semantics changes. Density only.
+
+Part of md-to-py-X; see the round-X umbrella tracking issue.

@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the breadcrumb strings on lines 23-25, 93, and 100 are already in backticks in the file and are therefore byte-stable under the plan's "backticked identifiers" preserve rule; the paraphrasing risk is a false positive
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- substantively duplicates round-1 FINDING_4 and round-2 FINDING_4 (both rejected YES=0/3); the token-count calculation is new framing but not materially new evidence; the approved design outline explicitly includes whole-file section-by-section compression
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round-1 OOS_1 (outcome=oos, accepted); per rubric, oos duplicates reaching the ballot receive NO
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same stale plan-review-loop.sh reference on line 134 as round-1 OOS_1; duplicate oos finding
