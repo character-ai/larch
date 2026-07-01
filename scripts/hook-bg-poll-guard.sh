@@ -601,7 +601,69 @@ bash_has_bracket_file_test() {
   printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])(\[\[|\[)[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
 }
 
+bash_clone_tag_from_basename() {
+  # Mirrors _make_session_tmpdir()'s clone_tag derivation in
+  # python/larch/state/session_env.py: replace any byte outside
+  # [A-Za-z0-9_-] with `_`, keep at most the first 32 characters, and fall
+  # back to `_` when the sanitized result is empty.
+  local name="$1" tag
+  tag=$(printf '%s' "$name" | sed -E 's/[^A-Za-z0-9_-]/_/g')
+  tag="${tag:0:32}"
+  printf '%s' "${tag:-_}"
+}
+
+bash_marker_clone_tag() {
+  # Extracts the clone-tag segment from a live marker directory's basename,
+  # e.g. claude-implement-larch2-forj_flt -> larch2. The tag itself may
+  # contain hyphens (the sanitizer allows them through), so this strips the
+  # known literal skill prefix from the front and the fixed 8-character
+  # mkdtemp random suffix from the back, rather than splitting on "-".
+  local base="$1" rest
+  case "$base" in
+    claude-implement-*) rest="${base#claude-implement-}" ;;
+    claude-design-*) rest="${base#claude-design-}" ;;
+    *) return 1 ;;
+  esac
+  case "$rest" in
+    ?*-????????) printf '%s' "${rest%-????????}"; return 0 ;;
+  esac
+  return 1
+}
+
+bash_probe_target_dir_plausible() {
+  # #5925: a bare, unexpanded $DESIGN_TMPDIR/$IMPLEMENT_TMPDIR/$SESSION_TMPDIR
+  # reference in a command's literal text is not, by itself, evidence the
+  # command targets this specific dir. At actual runtime that reference
+  # expands to whichever session's own env var happens to be set, which the
+  # hook cannot observe directly (#5684: hook input carries no session
+  # identifier). Treat the reference as plausibly targeting dir only when
+  # there is real correlation: the call's own cwd already is dir, or dir's
+  # embedded repo-clone tag (bash_marker_clone_tag) matches the tag derived
+  # from cwd's basename the same way _make_session_tmpdir names a session's
+  # own tmpdir. Heuristic, not a guarantee: two distinct repo clones sharing
+  # a basename still collide, the same known limitation #5684 already
+  # accepts for directory-based session isolation elsewhere in this file.
+  local dir="$1" cwd_canon="$2" marker_tag cwd_tag
+  [ -n "$dir" ] || return 1
+  if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
+    return 0
+  fi
+  [ -n "$cwd_canon" ] || return 1
+  marker_tag=$(bash_marker_clone_tag "$(basename "$dir")") || return 1
+  cwd_tag=$(bash_clone_tag_from_basename "$(basename "$cwd_canon")")
+  [ -n "$cwd_tag" ] && [ "$cwd_tag" = "$marker_tag" ]
+}
+
 bash_has_probe_target() {
+  # #5925: the six generic tmpdir-variable-name alternatives below used to
+  # match unconditionally, so ANY live marker anywhere on the machine (e.g.
+  # an unrelated /design session in a different repo clone) satisfied this
+  # check for every command merely mentioning "$IMPLEMENT_TMPDIR" or
+  # "$DESIGN_TMPDIR" literally, which is how virtually every /implement and
+  # /design Bash fence is written. They now require
+  # bash_probe_target_dir_plausible evidence that the reference actually
+  # correlates to this dir. *"$dir"* and the tasks/output-file pattern stay
+  # unconditional: they are already dir-specific.
   local cmd="$1" dir="$2" cwd_canon="$3"
   local design_tmpdir_ref="\$DESIGN_TMPDIR"
   local design_tmpdir_braced="\${DESIGN_TMPDIR}"
@@ -610,7 +672,12 @@ bash_has_probe_target() {
   local implement_tmpdir_ref="\$IMPLEMENT_TMPDIR"
   local implement_tmpdir_braced="\${IMPLEMENT_TMPDIR}"
   case "$cmd" in
-    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*|*"$dir"*|*tasks/*.output*) return 0 ;;
+    *"$dir"*|*tasks/*.output*) return 0 ;;
+  esac
+  case "$cmd" in
+    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*)
+      bash_probe_target_dir_plausible "$dir" "$cwd_canon" && return 0
+      ;;
   esac
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     case "$cmd" in

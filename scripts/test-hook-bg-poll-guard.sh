@@ -743,6 +743,55 @@ out=$(run_payload "$(payload_bash "$ordinary_step4_probe" "$D")")
 assert_deny "$out" 'Step 4 foreground probe with appended read denies'
 rm -f "$D/.completed/step-4" "$D"/bg-poll-guard-probe-denials.*.count "$MARKER"
 
+# #5925: cross-session false-positive regression. A live marker belonging to
+# an unrelated repo clone must not deny a bare $IMPLEMENT_TMPDIR/$DESIGN_TMPDIR
+# reference issued from a DIFFERENT clone's cwd — the realistic shape, since
+# real /implement and /design Bash fences run with cwd at the repo checkout,
+# never at the session tmpdir itself — while a marker whose embedded clone tag
+# matches this cwd's basename must still deny (own-session protection).
+CWD_OWN="$TMP/larch-owner-clone"
+mkdir -p "$CWD_OWN"
+D_OWN="$SESSIONS/claude-implement-larch-owner-clone-abcd1234"
+D_UNRELATED="$SESSIONS/claude-design-larch-other-clone-zzzz9999"
+mkdir -p "$D_OWN/.completed" "$D_UNRELATED/.completed"
+MARKER_OWN="$D_OWN/.bg-wait-active"
+MARKER_UNRELATED="$D_UNRELATED/.bg-wait-active"
+implement_probe_bare='ls "$IMPLEMENT_TMPDIR"'
+
+write_marker_at "$MARKER_UNRELATED" $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_OWN")")
+assert_allow "$out" '#5925: unrelated-clone live marker does not deny bare IMPLEMENT_TMPDIR reference from a different clone cwd'
+rm -f "$MARKER_UNRELATED"
+
+write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_OWN")")
+assert_deny "$out" '#5925: same-clone live marker still denies bare IMPLEMENT_TMPDIR reference from its own repo cwd'
+rm -f "$MARKER_OWN"
+
+# Hyphenated clone tags must still correlate correctly: the tag segment may
+# itself contain "-", so parsing must not split naively on every hyphen.
+CWD_HYPHEN="$TMP/my-repo-clone"
+mkdir -p "$CWD_HYPHEN"
+D_HYPHEN="$SESSIONS/claude-implement-my-repo-clone-wxyz7890"
+mkdir -p "$D_HYPHEN/.completed"
+MARKER_HYPHEN="$D_HYPHEN/.bg-wait-active"
+write_marker_at "$MARKER_HYPHEN" $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_HYPHEN")")
+assert_deny "$out" '#5925: hyphenated clone tag still correlates and denies from its own repo cwd'
+rm -f "$MARKER_HYPHEN"
+
+# The DESIGN_TMPDIR shape (not just IMPLEMENT_TMPDIR) must still deny from its
+# own repo clone's cwd.
+CWD_DESIGN_OWN="$TMP/larch-design-clone"
+mkdir -p "$CWD_DESIGN_OWN"
+D_DESIGN_OWN="$SESSIONS/claude-design-larch-design-clone-mnop4567"
+mkdir -p "$D_DESIGN_OWN/.completed"
+MARKER_DESIGN_OWN="$D_DESIGN_OWN/.bg-wait-active"
+write_marker_at "$MARKER_DESIGN_OWN" $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload_auto_markers "$(payload_bash "$design_tmpdir_ls" "$CWD_DESIGN_OWN")")
+assert_deny "$out" '#5925: same-clone live design marker denies bare DESIGN_TMPDIR reference from its own repo cwd'
+rm -f "$MARKER_DESIGN_OWN"
+
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"
 out=$(run_payload "$(payload_monitor)")
