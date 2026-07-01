@@ -53,6 +53,39 @@ if args[:2] == ["tracking-issue","rename"]:
     print("RENAMED=true")
     print("NEW_TITLE=[DESIGNED] Example")
     raise SystemExit(0)
+if args[:2] == ["token","claude-source"]:
+    if os.environ.get("FAKE_CLI_TOKEN_SOURCE_FAIL"):
+        raise SystemExit(1)
+    transcript = os.environ.get("FAKE_CLI_TRANSCRIPT_PATH", "/tmp/transcript.jsonl")
+    session_dir = os.environ.get("FAKE_CLI_SESSION_DIR", "/tmp")
+    print("TRANSCRIPT_PATH=" + transcript)
+    print("SESSION_DIR=" + session_dir)
+    print("SESSION_UUID=" + os.environ.get("LARCH_TOKEN_SESSION_ID", "RUN1"))
+    raise SystemExit(0)
+if args[:2] == ["session","write-design-env"]:
+    output = args[args.index("--output") + 1]
+    design_tmpdir = args[args.index("--design-tmpdir") + 1]
+    session_id = args[args.index("--session-id") + 1]
+    source_file = args[args.index("--claude-source-file") + 1] if "--claude-source-file" in args else ""
+    with open(output, "w", encoding="utf-8") as f:
+        f.write("DESIGN_TMPDIR=" + design_tmpdir + "\\nSESSION_TMPDIR=" + design_tmpdir + "\\nSESSION_ID=" + session_id + "\\n")
+        if source_file:
+            f.write("LARCH_CLAUDE_SOURCE_FILE=" + source_file + "\\n")
+    raise SystemExit(0)
+if args[:2] == ["run-log","capture-transcript"]:
+    if os.environ.get("FAKE_CLI_CAPTURE_SKIP"):
+        print("SESSION_TRANSCRIPT_STATUS=render-empty")
+        raise SystemExit(0)
+    log_root = args[args.index("--log-root") + 1]
+    skill = args[args.index("--skill") + 1]
+    run_id = args[args.index("--run-id") + 1]
+    dest = os.path.join(log_root, skill, run_id, "session-transcript.jsonl")
+    if os.environ.get("FAKE_CLI_CAPTURE_NO_FILE") != "1":
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write('{"v":3}\\n')
+    print("SESSION_TRANSCRIPT_STATUS=captured")
+    raise SystemExit(0)
 if args[:2] == ["mermaid","sanitize"]:
     if os.environ.get("FAKE_CLI_MERMAID_REJECT"):
         print("STATUS=rejected")
@@ -128,6 +161,39 @@ if args[:2] == ["named-block","write"]:
 if args[:2] == ["tracking-issue","rename"]:
     print("RENAMED=true")
     print("NEW_TITLE=[DESIGNED] Example")
+    raise SystemExit(0)
+if args[:2] == ["token","claude-source"]:
+    if os.environ.get("FAKE_CLI_TOKEN_SOURCE_FAIL"):
+        raise SystemExit(1)
+    transcript = os.environ.get("FAKE_CLI_TRANSCRIPT_PATH", "/tmp/transcript.jsonl")
+    session_dir = os.environ.get("FAKE_CLI_SESSION_DIR", "/tmp")
+    print("TRANSCRIPT_PATH=" + transcript)
+    print("SESSION_DIR=" + session_dir)
+    print("SESSION_UUID=" + os.environ.get("LARCH_TOKEN_SESSION_ID", "RUN1"))
+    raise SystemExit(0)
+if args[:2] == ["session","write-design-env"]:
+    output = args[args.index("--output") + 1]
+    design_tmpdir = args[args.index("--design-tmpdir") + 1]
+    session_id = args[args.index("--session-id") + 1]
+    source_file = args[args.index("--claude-source-file") + 1] if "--claude-source-file" in args else ""
+    with open(output, "w", encoding="utf-8") as f:
+        f.write("DESIGN_TMPDIR=" + design_tmpdir + "\\nSESSION_TMPDIR=" + design_tmpdir + "\\nSESSION_ID=" + session_id + "\\n")
+        if source_file:
+            f.write("LARCH_CLAUDE_SOURCE_FILE=" + source_file + "\\n")
+    raise SystemExit(0)
+if args[:2] == ["run-log","capture-transcript"]:
+    if os.environ.get("FAKE_CLI_CAPTURE_SKIP"):
+        print("SESSION_TRANSCRIPT_STATUS=render-empty")
+        raise SystemExit(0)
+    log_root = args[args.index("--log-root") + 1]
+    skill = args[args.index("--skill") + 1]
+    run_id = args[args.index("--run-id") + 1]
+    dest = os.path.join(log_root, skill, run_id, "session-transcript.jsonl")
+    if os.environ.get("FAKE_CLI_CAPTURE_NO_FILE") != "1":
+        os.makedirs(os.path.dirname(dest), exist_ok=True)
+        with open(dest, "w", encoding="utf-8") as f:
+            f.write('{"v":3}\\n')
+    print("SESSION_TRANSCRIPT_STATUS=captured")
     raise SystemExit(0)
 if args[:2] == ["mermaid","sanitize"]:
     print("STATUS=ok")
@@ -1268,3 +1334,143 @@ def test_publish_validator_defects_keep_rc4_when_result_env_write_fails(tmp_path
     out = capsys.readouterr().out
     assert rc == 4
     assert "VALIDATE_STATUS=defects-found" in out
+
+
+def _run_publish_capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
+    transcript = tmp_path / "transcript.jsonl"
+    transcript.write_text('{"type":"user"}\n', encoding="utf-8")
+    session_dir = tmp_path / "session"
+    session_dir.mkdir()
+    call_log = tmp_path / "calls.jsonl"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    env = os.environ.copy()
+    env.update(
+        {
+            "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "FAKE_CLI_CALL_LOG": str(call_log),
+            "FAKE_CLI_TRANSCRIPT_PATH": str(transcript),
+            "FAKE_CLI_SESSION_DIR": str(session_dir),
+        }
+    )
+    env.update(env_overrides)
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+    return result, design, call_log
+
+
+def _call_args(call_log: Path) -> list[list[str]]:
+    return [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+
+
+def test_publish_captures_design_transcript_before_log_publish_and_persists_source(tmp_path: Path) -> None:
+    result, design, call_log = _run_publish_capture_case(tmp_path, {})
+
+    assert result.returncode == 0, result.stderr
+    assert (design / "session-transcript.jsonl").is_file()
+    assert "LARCH_CLAUDE_SOURCE_FILE=" in (design / "source-env.sh").read_text(encoding="utf-8")
+    calls = _call_args(call_log)
+    capture_idx = next(i for i, args in enumerate(calls) if args[:2] == ["run-log", "capture-transcript"])
+    publish_idx = next(i for i, args in enumerate(calls) if args[:2] == ["design", "log-publish"])
+    assert capture_idx < publish_idx
+    capture_args = calls[capture_idx]
+    assert capture_args[capture_args.index("--source-file") + 1] == str(design / "claude-source.env")
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in result.stdout
+
+
+def test_publish_capture_does_not_read_session_env(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
+    (design / "session-env.sh").mkdir()
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    result = subprocess.run(
+        [sys.executable, str(cli_py), "design", "publish", "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root), "FAKE_CLI_TRANSCRIPT_PATH": str(tmp_path / "t.jsonl"), "FAKE_CLI_SESSION_DIR": str(tmp_path)},
+    )
+    assert result.returncode == 0, result.stderr
+
+
+def test_publish_removes_stale_root_transcript_before_capture(tmp_path: Path) -> None:
+    result, design, _ = _run_publish_capture_case(tmp_path, {})
+
+    assert result.returncode == 0, result.stderr
+    assert (design / "session-transcript.jsonl").read_text(encoding="utf-8") == '{"v":3}\n'
+
+
+def test_publish_aborts_when_stale_root_removal_fails(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
+    (design / "source-env.sh").write_text("SESSION_ID=RUN1\n", encoding="utf-8")
+    (design / "session-transcript.jsonl").mkdir()
+    call_log = tmp_path / "calls.jsonl"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+
+    result = subprocess.run(
+        [sys.executable, str(cli_py), "design", "publish", "--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"],
+        capture_output=True,
+        text=True,
+        check=False,
+        env={**os.environ, "CLAUDE_PLUGIN_ROOT": str(plugin_root), "FAKE_CLI_CALL_LOG": str(call_log)},
+    )
+
+    assert result.returncode == 5
+    assert all(args[:2] != ["design", "log-publish"] for args in _call_args(call_log))
+
+
+def test_publish_snapshot_failure_or_capture_skip_keeps_root_absent_and_publishes(tmp_path: Path) -> None:
+    fail_result, fail_design, fail_log = _run_publish_capture_case(tmp_path / "fail", {"FAKE_CLI_TOKEN_SOURCE_FAIL": "1"})
+    assert fail_result.returncode == 0, fail_result.stderr
+    assert not (fail_design / "session-transcript.jsonl").exists()
+    assert any(args[:2] == ["design", "log-publish"] for args in _call_args(fail_log))
+
+    skip_result, skip_design, skip_log = _run_publish_capture_case(tmp_path / "skip", {"FAKE_CLI_CAPTURE_SKIP": "1"})
+    assert skip_result.returncode == 0, skip_result.stderr
+    assert not (skip_design / "session-transcript.jsonl").exists()
+    assert any(args[:2] == ["design", "log-publish"] for args in _call_args(skip_log))
+
+
+def test_publish_aborts_when_capture_succeeds_but_hoist_fails(tmp_path: Path) -> None:
+    result, design, call_log = _run_publish_capture_case(tmp_path, {"FAKE_CLI_CAPTURE_NO_FILE": "1"})
+
+    assert result.returncode == 5
+    assert not (design / "session-transcript.jsonl").exists()
+    assert all(args[:2] != ["design", "log-publish"] for args in _call_args(call_log))

@@ -113,6 +113,8 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
     "plan-review-slots.ndjson.output-files.dropped-slots",
     "composed-plan.redacted.md",
     "findings-ledger.tsv",
+    "claude-source.env",
+    "source-env.sh",
 })
 
 # Whole subtrees of raw transcripts (plan-autofix drafts) or internal step
@@ -120,6 +122,7 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
 _PUBLISH_EXCLUDE_DIRS = frozenset({
     "plan-autofix",
     ".completed",
+    "larch-logs",
 })
 
 # GitHub-redundant snapshots: top-level duplicates of content already on GitHub.

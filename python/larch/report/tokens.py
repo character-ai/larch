@@ -20,6 +20,8 @@ from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config
+from larch.report import run_log_corpus
+from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
 TOKEN_LOCK_TIMEOUT_S = 5.0
@@ -940,22 +942,41 @@ def check_step_token_budget(*, cap: int, step: str = "unknown", env: Mapping[str
     return {"status": "cap_hit" if total >= cap else "under_cap", "total": total, "cap": cap, "step": step}
 
 
-def token_claude_source(
+def _cached_claude_source_replay(
     *,
-    claude_source_file: Path | None = None,
-    env: Mapping[str, str] | None = None,
-) -> dict[str, str]:
-    env_map = os.environ if env is None else env
+    claude_source_file: Path | None,
+    env_map: Mapping[str, str],
+) -> dict[str, str] | None:
     snap = claude_source_file or (Path(env_map["LARCH_CLAUDE_SOURCE_FILE"]) if env_map.get("LARCH_CLAUDE_SOURCE_FILE") else None)
-    if snap is not None and snap.is_file():
-        data = larch_io.parse_kv(
-            larch_io.read_text(snap, errors="replace"),
-            allowed_keys={"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"},
-        )
-        if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
-            replay = _validate_snapshot_replay(data, env=env_map)
-            if replay is not None:
-                return replay
+    if snap is None or not snap.is_file():
+        return None
+    data = larch_io.parse_kv(
+        larch_io.read_text(snap, errors="replace"),
+        allowed_keys={"TRANSCRIPT_PATH", "SESSION_DIR", "SESSION_UUID"},
+    )
+    if data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID"):
+        return _validate_snapshot_replay(data, env=env_map)
+    return None
+
+
+def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, str]) -> tuple[Path | None, str]:
+    latest: Path | None = None
+    requested_sid = ""
+    for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
+        sid = env_map.get(key, "")
+        if sid and _SAFE_SESSION_RE.fullmatch(sid):
+            requested_sid = sid
+            candidate = project_dir / f"{sid}.jsonl"
+            if candidate.is_file():
+                latest = candidate
+            break
+    if latest is None and not requested_sid:
+        files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
+        latest = files[0] if files else None
+    return latest, requested_sid
+
+
+def _resolve_claude_source_from_project(env_map: Mapping[str, str]) -> dict[str, str]:
     try:
         repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
@@ -967,21 +988,25 @@ def token_claude_source(
     project_dir = Path(home) / ".claude" / "projects" / repo_root.replace("/", "-")
     if not project_dir.is_dir():
         return {"STATUS": "unavailable", "REASON": "Claude project directory not found"}
-    latest: Path | None = None
-    for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
-        sid = env_map.get(key, "")
-        if sid and _SAFE_SESSION_RE.fullmatch(sid):
-            candidate = project_dir / f"{sid}.jsonl"
-            if candidate.is_file():
-                latest = candidate
-                break
-    if latest is None:
-        files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
-        latest = files[0] if files else None
+    latest, requested_sid = _find_latest_claude_transcript(project_dir=project_dir, env_map=env_map)
+    if requested_sid and latest is None:
+        return {"STATUS": "unavailable", "REASON": f"Claude transcript for session {requested_sid} not found"}
     if latest is None:
         return {"STATUS": "unavailable", "REASON": "no Claude transcript jsonl files found"}
     uuid = latest.stem
     return {"TRANSCRIPT_PATH": str(latest), "SESSION_DIR": str(project_dir / uuid), "SESSION_UUID": uuid}
+
+
+def token_claude_source(
+    *,
+    claude_source_file: Path | None = None,
+    env: Mapping[str, str] | None = None,
+) -> dict[str, str]:
+    env_map = os.environ if env is None else env
+    replay = _cached_claude_source_replay(claude_source_file=claude_source_file, env_map=env_map)
+    if replay is not None:
+        return replay
+    return _resolve_claude_source_from_project(env_map)
 
 
 def _assistant_model_from_line(raw: str) -> str:
@@ -1284,7 +1309,6 @@ def _repo_root() -> Path:
 
 
 _REPORT_FORMATS = frozenset({"json", "markdown"})
-_CACHE_READ_PATH_RE = re.compile(r"/larch/[^/]+/(.+)$")
 
 
 def _validate_report_format(fmt: str) -> None:
@@ -1335,43 +1359,135 @@ def _normalize_read_path(*, raw: object, repo: Path) -> str | None:
     if not isinstance(raw, str) or not raw.endswith(".md"):
         return None
     path = raw
+    redacted_prefix = f"{config.REDACTED_OPERATOR_REPO}/"
+    if path.startswith(redacted_prefix):
+        path = path[len(redacted_prefix) :]
+    elif path == config.REDACTED_OPERATOR_REPO:
+        return None
     if path.startswith("<"):
         return None
     repo_prefix = f"{repo}/"
     if path.startswith(repo_prefix):
         path = path[len(repo_prefix) :]
     else:
-        match = _CACHE_READ_PATH_RE.search(path)
-        if match:
-            path = match.group(1)
-    if path.startswith(("/", "../")) or "/../" in path:
+        stripped = strip_plugin_cache_read_suffix(path)
+        if stripped is not None:
+            path = stripped
+        elif path.startswith("/"):
+            return None
+    if path.startswith(("/", "../")) or "/../" in path or path == "..":
         return None
     return path
 
 
-def _normalize_realized_skill(raw: object) -> str:
-    if not raw:
-        return ""
-    skill = str(raw)
-    if skill.startswith("larch:"):
-        skill = skill.split(":", 1)[1]
-    if skill.startswith("inferred:"):
-        return ""
-    return skill
+def is_in_scope_reference_path(rel: str) -> bool:
+    path = Path(rel)
+    parts = path.parts
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        return False
+    if path.suffix != ".md":
+        return False
+    if len(parts) == 3 and parts[0] == "skills" and parts[1] == "shared":
+        return True
+    return len(parts) == 4 and parts[0] == "skills" and parts[2] == "references"
 
 
-def _manifest_issue(path: Path) -> str | None:
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-    except (OSError, json.JSONDecodeError):
+def _normalize_reference_read_path(*, raw: object, repo: Path) -> str | None:
+    rel = _normalize_read_path(raw=raw, repo=repo)
+    if rel is None or not is_in_scope_reference_path(rel):
         return None
-    data_d = cast("dict[str, Any]", data) if isinstance(data, dict) else None
-    issue = data_d.get("issue_number") if data_d is not None else None
-    if isinstance(issue, int):
-        return str(issue)
-    if isinstance(issue, str) and issue:
-        return issue
-    return None
+    return rel
+
+
+@dataclass(frozen=True)
+class ObservedReferenceRead:
+    skill: str
+    run_id: str
+    run_dir: Path
+    reference_path: str
+
+
+def _read_tool_paths_from_obj(obj: object) -> list[object]:
+    if not isinstance(obj, dict):
+        return []
+    record = cast("dict[str, Any]", obj)
+    paths: list[object] = []
+    paths.extend(_read_tool_paths_from_blocks(record.get("blocks"), allowed_types={"tool_call", "tool_use"}))
+    message_raw = record.get("message")
+    message = cast("dict[str, Any]", message_raw) if isinstance(message_raw, dict) else None
+    content = message.get("content") if message is not None else None
+    paths.extend(_read_tool_paths_from_blocks(content, allowed_types={"tool_use"}))
+    return paths
+
+
+def _read_tool_paths_from_blocks(blocks_raw: object, *, allowed_types: set[str]) -> list[object]:
+    if not isinstance(blocks_raw, list):
+        return []
+    paths: list[object] = []
+    for item in cast("list[Any]", blocks_raw):
+        if not isinstance(item, dict):
+            continue
+        block = cast("dict[str, Any]", item)
+        if block.get("type") not in allowed_types or block.get("name") != "Read":
+            continue
+        tool_input = block.get("input")
+        if isinstance(tool_input, dict):
+            paths.append(cast("dict[str, Any]", tool_input).get("file_path"))
+    return paths
+
+
+def _reference_reads_for_run(*, repo: Path, skill: str, run_dir: Path) -> list[ObservedReferenceRead]:
+    transcript = run_log_corpus.safe_transcript_path(run_dir)
+    if transcript is None:
+        return []
+    reads: list[ObservedReferenceRead] = []
+    try:
+        lines = transcript.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return []
+    for line in lines:
+        try:
+            obj = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        for raw_path in _read_tool_paths_from_obj(obj):
+            rel = _normalize_reference_read_path(raw=raw_path, repo=repo)
+            if rel is not None:
+                reads.append(ObservedReferenceRead(skill=skill, run_id=run_dir.name, run_dir=run_dir, reference_path=rel))
+    return reads
+
+
+def _skill_run_dirs(repo: Path) -> dict[str, list[Path]]:
+    root = repo / "larch-logs"
+    by_skill: dict[str, list[Path]] = {}
+    if not root.is_dir():
+        return by_skill
+    for skill_dir in sorted(root.iterdir()):
+        if skill_dir.is_symlink() or not skill_dir.is_dir():
+            continue
+        runs = run_log_corpus.run_dirs(skill_dir)
+        if runs:
+            by_skill[skill_dir.name] = runs
+    return by_skill
+
+
+def _token_counts_for_repo_paths(*, repo: Path, rels: list[str]) -> dict[str, tuple[int, int]]:
+    unique = sorted(set(rels))
+    texts: list[str] = []
+    present: list[str] = []
+    sizes: dict[str, int] = {}
+    for rel in unique:
+        path = repo / rel
+        if path.is_file() and not path.is_symlink():
+            data = path.read_bytes()
+            sizes[rel] = len(data)
+            texts.append(data.decode("utf-8", errors="replace"))
+            present.append(rel)
+        else:
+            sizes[rel] = 0
+    token_values = _tiktoken_count_texts(texts) if texts else []
+    tokens_by_rel = dict(zip(present, token_values, strict=False))
+    return {rel: (sizes[rel], tokens_by_rel.get(rel, 0)) for rel in unique}
 
 
 def _skill_md_path(*, repo: Path, skill: str) -> Path | None:
@@ -1483,96 +1599,91 @@ def measure_ngram_duplication() -> Path:
 def measure_references_heatmap() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-references-heatmap" / f"{_measure_stamp()}.tsv"
-    counts: collections.Counter[str] = collections.Counter()
-    for transcript in sorted((repo / "larch-logs").glob("*/*/session-transcript.jsonl")):
-        for line in transcript.read_text(encoding="utf-8", errors="replace").splitlines():
-            try:
-                obj = json.loads(line)
-            except json.JSONDecodeError:
-                continue
-            obj_d = cast("dict[str, Any]", obj) if isinstance(obj, dict) else None
-            message_raw = obj_d.get("message") if obj_d is not None else None
-            message = cast("dict[str, Any]", message_raw) if isinstance(message_raw, dict) else None
-            content = message.get("content") if message is not None else None
-            if not isinstance(content, list):
-                continue
-            for item_raw in cast("list[Any]", content):
-                item = cast("dict[str, Any]", item_raw) if isinstance(item_raw, dict) else None
-                if item is not None and item.get("type") == "tool_use" and item.get("name") == "Read":
-                    tool_input_raw = item.get("input")
-                    tool_input = cast("dict[str, Any]", tool_input_raw) if isinstance(tool_input_raw, dict) else None
-                    rel = _normalize_read_path(raw=tool_input.get("file_path") if tool_input is not None else None, repo=repo)
-                    if rel:
-                        counts[rel] += 1
-    rows = [(rel, count, (repo / rel).stat().st_size if (repo / rel).is_file() else 0) for rel, count in counts.items()]
-    rows.sort(key=lambda row: (-row[1], -row[2], row[0]))
-    _atomic_text(path=out_path, text="references_path\treads_observed\tbytes\n" + "".join(f"{rel}\t{count}\t{size}\n" for rel, count, size in rows))
+    run_dirs_by_skill = _skill_run_dirs(repo)
+    reads: list[ObservedReferenceRead] = []
+    for skill, dirs in run_dirs_by_skill.items():
+        for run_dir in dirs:
+            reads.extend(_reference_reads_for_run(repo=repo, skill=skill, run_dir=run_dir))
+    counts: collections.Counter[tuple[str, str]] = collections.Counter((read.skill, read.reference_path) for read in reads)
+    token_info = _token_counts_for_repo_paths(repo=repo, rels=[ref for _, ref in counts])
+    rows: list[tuple[str, str, int, int, float, int, int]] = []
+    for (skill, rel), read_count in counts.items():
+        runs_observed = len(run_dirs_by_skill.get(skill, []))
+        loads_per_run = read_count / runs_observed if runs_observed else 0.0
+        byte_count, token_count = token_info.get(rel, (0, 0))
+        rows.append((skill, rel, read_count, runs_observed, loads_per_run, byte_count, token_count))
+    rows.sort(key=lambda row: (row[0], -row[2], row[1]))
+    _atomic_text(
+        path=out_path,
+        text=(
+            "skill\treference_path\treads_observed\truns_observed\tloads_per_run\tbytes\ttokens\n"
+            + "".join(
+                f"{skill}\t{rel}\t{reads_count}\t{runs_count}\t{loads:.6f}\t{byte_count}\t{token_count}\n"
+                for skill, rel, reads_count, runs_count, loads, byte_count, token_count in rows
+            )
+        ),
+    )
     return out_path
 
 
 def measure_realized_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-realized-cost" / f"{_measure_stamp()}.tsv"
-    invocations: collections.Counter[str] = collections.Counter()
-    issues_by_skill: dict[str, set[str]] = collections.defaultdict(set)
-    for run_dir in sorted((repo / "larch-logs").glob("*/*")):
-        if not run_dir.is_dir():
-            continue
-        issue = _manifest_issue(run_dir / "manifest.json")
-        skills_in_run: set[str] = set()
-        timing_json = run_dir / "timing-report.json"
-        timing_md = run_dir / "timing-report.md"
-        if timing_json.is_file():
-            try:
-                data = json.loads(timing_json.read_text(encoding="utf-8"))
-            except json.JSONDecodeError:
-                data = {}
-            if isinstance(data, dict):
-                data_typed = cast("dict[str, Any]", data)
-                for row in cast("list[Any]", data_typed.get("per_step", [])):
-                    if isinstance(row, dict):
-                        row_d = cast("dict[str, Any]", row)
-                        skill = _normalize_realized_skill(str(row_d.get("skill") or ""))
-                        if skill:
-                            skills_in_run.add(skill)
-        if timing_md.is_file():
-            for line in timing_md.read_text(encoding="utf-8", errors="replace").splitlines():
-                match = re.match(r"^\|\s*([^|*][^|]*?)\s*\|\s*Step\b", line)
-                if match:
-                    skill = _normalize_realized_skill(match.group(1).strip())
-                    if skill and skill.lower() not in {"skill", "---"}:
-                        skills_in_run.add(skill)
-        if not skills_in_run:
-            manifest_path = run_dir / "manifest.json"
-            if manifest_path.is_file():
-                try:
-                    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-                except json.JSONDecodeError:
-                    manifest = {}
-                if isinstance(manifest, dict):
-                    manifest_d = cast("dict[str, Any]", manifest)
-                    skill = _normalize_realized_skill(str(manifest_d.get("skill") or ""))
-                    if skill:
-                        skills_in_run.add(skill)
-        for skill in skills_in_run:
-            invocations[skill] += 1
-            if issue:
-                issues_by_skill[skill].add(issue)
-    skill_texts: list[tuple[str, int, int, str]] = []
-    for skill, count in invocations.items():
+    run_dirs_by_skill = _skill_run_dirs(repo)
+    skill_paths: dict[str, str] = {}
+    skill_texts: list[str] = []
+    for skill in sorted(run_dirs_by_skill):
         path = _skill_md_path(repo=repo, skill=skill)
-        if path is not None:
-            skill_texts.append((skill, count, len(issues_by_skill[skill]), path.read_text(encoding="utf-8", errors="replace")))
-    token_counts = _tiktoken_count_texts([text for _, _, _, text in skill_texts])
-    rows = [
-        (skill, count, issue_count, tok, count * tok)
-        for (skill, count, issue_count, _), tok in zip(skill_texts, token_counts, strict=False)
-    ]
+        if path is None:
+            continue
+        rel = path.relative_to(repo).as_posix()
+        skill_paths[skill] = rel
+        skill_texts.append(path.read_text(encoding="utf-8", errors="replace"))
+    skill_token_values = _tiktoken_count_texts(skill_texts) if skill_texts else []
+    skill_tokens = dict(zip(sorted(skill_paths), skill_token_values, strict=False))
+    reads_by_skill: dict[str, list[ObservedReferenceRead]] = {}
+    all_refs: list[str] = []
+    for skill, dirs in run_dirs_by_skill.items():
+        skill_reads: list[ObservedReferenceRead] = []
+        for run_dir in dirs:
+            run_reads = _reference_reads_for_run(repo=repo, skill=skill, run_dir=run_dir)
+            skill_reads.extend(run_reads)
+            all_refs.extend(read.reference_path for read in run_reads)
+        reads_by_skill[skill] = skill_reads
+    ref_info = _token_counts_for_repo_paths(repo=repo, rels=all_refs)
+    rows: list[tuple[str, int, int, str, int, str, int, int]] = []
+    for skill, dirs in run_dirs_by_skill.items():
+        if skill not in skill_tokens:
+            continue
+        invocations = len(dirs)
+        issues = {str(manifest.get("issue_number")) for run_dir in dirs if (manifest := run_log_corpus.load_run_manifest(run_dir))}
+        skill_md_tokens = skill_tokens[skill]
+        reference_tokens_total = sum(ref_info.get(read.reference_path, (0, 0))[1] for read in reads_by_skill.get(skill, []))
+        reference_reads = len(reads_by_skill.get(skill, []))
+        realized_tokens = invocations * skill_md_tokens + reference_tokens_total
+        tokens_per_invocation = realized_tokens / invocations if invocations else 0.0
+        reference_tokens_per_invocation = reference_tokens_total / invocations if invocations else 0.0
+        rows.append((
+            skill,
+            invocations,
+            len(issues),
+            f"{tokens_per_invocation:.2f}",
+            realized_tokens,
+            f"{reference_tokens_per_invocation:.2f}",
+            skill_md_tokens,
+            reference_reads,
+        ))
     rows.sort(key=lambda row: (-row[4], row[0]))
     _atomic_text(
         path=out_path,
-        text="skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\n"
-        + "".join(f"{skill}\t{count}\t{issue_count}\t{tokens_count}\t{realized}\n" for skill, count, issue_count, tokens_count, realized in rows),
+        text=(
+            "skill\tinvocations\tissues_observed\ttokens_per_invocation\trealized_tokens\t"
+            "skill_md_tokens\treference_tokens_per_invocation\treference_reads_observed\n"
+            + "".join(
+                f"{skill}\t{count}\t{issue_count}\t{tokens_per_invocation}\t{realized}\t{skill_md_tokens}\t{ref_tokens_per_invocation}\t{ref_reads}\n"
+                for skill, count, issue_count, tokens_per_invocation, realized, ref_tokens_per_invocation, skill_md_tokens, ref_reads in rows
+            )
+        ),
     )
     return out_path
 

@@ -1,10 +1,10 @@
 # ruff: noqa: TC006,FURB167,PLW2901,PERF401
 """render-session-transcript.py — render a Claude Code session JSONL as a filtered chat-view JSONL.
 
-Output schema (v3, policy: prose-errors-only):
+Output schema (v3, policy: prose-errors-and-reference-reads):
 
   Line 1 is a header record:
-      {"v": 3, "source_basename": "<input-basename>", "turns": N, "policy": "prose-errors-only"}
+      {"v": 3, "source_basename": "<input-basename>", "turns": N, "policy": "prose-errors-and-reference-reads"}
 
   Subsequent lines are per-turn records (one JSON object per line):
       {"turn": <int>, "role": "user" | "assistant", "blocks": [<block>...]}
@@ -18,13 +18,14 @@ Output schema (v3, policy: prose-errors-only):
       {"type": "tool_result", "tool_use_id": "toolu_...", "name": "Bash",
        "text": "...", "warning": true}                       # warning result (full body)
 
-  Block types dropped (v3 policy):
-      tool_call blocks — all tool invocations are omitted.
+  Tool-call policy (v3):
+      Only Read invocations for runtime reference Markdown are kept, sanitized to
+      type/name/input.file_path. All other tool invocations are omitted.
       non-error/non-warning tool_result blocks — routine results are omitted entirely.
 
-  Accepted capability loss: tool-sequence reconstruction for clean runs is no longer
-  possible from the committed transcript. Incident forensics of that shape must use
-  live-session artifacts instead.
+  Accepted capability loss: general tool-sequence reconstruction for clean runs is no
+  longer possible from the committed transcript. Incident forensics of that shape
+  must use live-session artifacts instead.
 
 Filter rules:
   - Drop records with isMeta=true (harness-injected slash-command/@file expansions).
@@ -39,7 +40,7 @@ Filter rules:
     Otherwise dropped entirely (v3; was elided_bytes in v2).
   - thinking blocks kept only when at least one tool_use in the same
     assistant turn produced an errored tool_result.
-  - tool_call blocks dropped entirely (v3).
+  - Read tool_use blocks for skills/**/references/*.md and skills/shared/*.md are kept with only normalized file_path; all other tool calls are dropped (v3).
 
 Exit codes:
   0 success; output written.
@@ -57,7 +58,11 @@ from pathlib import Path
 from collections.abc import Iterator
 from typing import cast
 
+from larch.core import config
+
 SCHEMA_VERSION = 3
+_SHARED_REFERENCE_PARTS = 3
+SKILL_REFERENCE_PARTS = 4
 
 HOUSEKEEPING_TYPES = {
     "permission-mode",
@@ -78,6 +83,106 @@ WARN_RE = re.compile(r"warning:", re.I)
 
 Record = dict[str, object]
 Block = dict[str, object]
+
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _in_scope_reference(rel: str) -> bool:
+    path = Path(rel)
+    parts = path.parts
+    if not parts or any(part in {"", ".", ".."} for part in parts):
+        return False
+    if path.suffix != ".md":
+        return False
+    if len(parts) == _SHARED_REFERENCE_PARTS and parts[0] == "skills" and parts[1] == "shared":
+        return True
+    return len(parts) == SKILL_REFERENCE_PARTS and parts[0] == "skills" and parts[2] == "references"
+
+
+def strip_plugin_cache_read_suffix(path: str) -> str | None:
+    """Return the repo-relative suffix after a known Claude plugin-cache root."""
+    parts = path.split("/")
+    for index, part in enumerate(parts):
+        if (
+            part == "plugins"
+            and index + 4 < len(parts)
+            and parts[index + 1 : index + 4] == ["cache", "larch-local", "larch"]
+            and parts[index + 4]
+        ):
+            if index == 0 or parts[index - 1] == ".claude":
+                suffix_parts = parts[index + 5 :]
+                if suffix_parts:
+                    return "/".join(suffix_parts)
+            return None
+    return None
+
+
+def normalize_reference_read_path(raw: object, *, repo: Path | None = None) -> str | None:
+    if not isinstance(raw, str) or not raw.endswith(".md"):
+        return None
+    path = raw
+    redacted_prefix = f"{config.REDACTED_OPERATOR_REPO}/"
+    if path.startswith(redacted_prefix):
+        path = path[len(redacted_prefix) :]
+    elif path == config.REDACTED_OPERATOR_REPO:
+        return None
+    if path.startswith("<"):
+        return None
+    root = repo or _repo_root()
+    repo_prefix = f"{root}/"
+    if path.startswith(repo_prefix):
+        path = path[len(repo_prefix) :]
+    else:
+        stripped = strip_plugin_cache_read_suffix(path)
+        if stripped is not None:
+            path = stripped
+        elif path.startswith("/"):
+            return None
+    if path.startswith(("/", "../")) or "/../" in path or path == "..":
+        return None
+    return path if _in_scope_reference(path) else None
+
+
+def render_reference_read_tool_use(block: Block) -> Block | None:
+    if block.get("type") != "tool_use" or block.get("name") != "Read":
+        return None
+    tool_input = block.get("input")
+    if not isinstance(tool_input, dict):
+        return None
+    rel = normalize_reference_read_path(cast(Block, tool_input).get("file_path"))
+    if rel is None:
+        return None
+    return {"type": "tool_use", "name": "Read", "input": {"file_path": rel}}
+
+
+def _render_assistant_text_block(block: Block) -> Block | None:
+    text = block.get("text", "")
+    txt = SYSREM_RE.sub("", text if isinstance(text, str) else "").rstrip()
+    if not txt or txt.startswith("Base directory for this skill"):
+        return None
+    return {"type": "text", "value": txt}
+
+
+def _render_assistant_thinking_block(block: Block, *, turn_has_kept: bool) -> Block | None:
+    if not turn_has_kept:
+        return None
+    thinking = block.get("thinking", "")
+    think = (thinking if isinstance(thinking, str) else "").strip()
+    return {"type": "thinking", "value": think} if think else None
+
+
+def _render_assistant_block(block: Block, *, turn_has_kept: bool) -> Block | None:
+    bt = block.get("type")
+    if bt == "text":
+        return _render_assistant_text_block(block)
+    if bt == "thinking":
+        return _render_assistant_thinking_block(block, turn_has_kept=turn_has_kept)
+    if bt == "tool_use":
+        return render_reference_read_tool_use(block)
+    return None
 
 
 def tool_result_text(blk: Block) -> str:
@@ -241,21 +346,10 @@ def render_assistant_blocks(*, content: object, id_to_kept: dict[str, bool]) -> 
         if not isinstance(blk, dict):
             continue
         block = cast(Block, blk)
-        bt = block.get("type")
-        if bt == "text":
-            text = block.get("text", "")
-            txt = SYSREM_RE.sub("", text if isinstance(text, str) else "").rstrip()
-            if not txt or txt.startswith("Base directory for this skill"):
-                continue
-            blocks.append({"type": "text", "value": txt})
-        elif bt == "thinking":
-            if not turn_has_kept:
-                continue
-            thinking = block.get("thinking", "")
-            think = (thinking if isinstance(thinking, str) else "").strip()
-            if think:
-                blocks.append({"type": "thinking", "value": think})
-        # v3 policy: tool_use (tool_call) blocks are dropped entirely
+        rendered = _render_assistant_block(block, turn_has_kept=turn_has_kept)
+        if rendered is not None:
+            blocks.append(rendered)
+        # v3 policy: non-reference tool_use (tool_call) blocks are dropped entirely
     return blocks
 
 
@@ -293,7 +387,7 @@ def render(input_path: Path) -> str:
         "v": SCHEMA_VERSION,
         "source_basename": input_path.name,
         "turns": len(turns),
-        "policy": "prose-errors-only",
+        "policy": "prose-errors-and-reference-reads",
     }
     out_lines = [json.dumps(header, ensure_ascii=False, separators=(",", ":"))]
     for t in turns:

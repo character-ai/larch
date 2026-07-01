@@ -410,3 +410,32 @@ def test_scan_enriches_missing_claude_sub_by_model_from_ledger(tmp_path: Path) -
     assert result.records[0].raw_report["BUCKETS_claude_sub_by_model"] == {
         "claude-sonnet-4-6": {"input": 10, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 5, "total": 15}
     }
+
+
+def test_scan_does_not_enumerate_manifestless_child(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_base = tmp_path / "larch-logs" / "implement"
+    (log_base / "orphan").mkdir(parents=True)
+
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+
+    assert not result.records
+    err = capsys.readouterr().err
+    assert "manifest for" in err
+    assert "is missing" in err
+
+
+def test_scan_does_not_enumerate_empty_or_issue_less_manifest(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    log_base = tmp_path / "larch-logs" / "implement"
+    empty = log_base / "empty"
+    empty.mkdir(parents=True)
+    _ = (empty / "manifest.json").write_text("{}", encoding="utf-8")
+    issue_less = log_base / "issue-less"
+    issue_less.mkdir()
+    _ = (issue_less / "manifest.json").write_text(json.dumps({"title": "missing issue"}), encoding="utf-8")
+
+    result = scan(Runner(tmp_path), skill="implement", repo_override="o/r")
+
+    assert not result.records
+    err = capsys.readouterr().err
+    assert "empty and lacks numeric issue_number" in err
+    assert "lacks numeric issue_number" in err
