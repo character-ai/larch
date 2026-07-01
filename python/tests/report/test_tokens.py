@@ -587,8 +587,19 @@ def test_normalize_read_path_handles_absolute_and_cache(tmp_path: Path) -> None:
     repo = tmp_path
     rel = tokens._normalize_read_path(raw=f"{repo}/docs/foo.md", repo=repo)  # pyright: ignore[reportPrivateUsage]
     assert rel == "docs/foo.md"
-    cached = tokens._normalize_read_path(raw="/Users/me/.cache/larch/sessions/run-1/docs/foo.md", repo=repo)  # pyright: ignore[reportPrivateUsage]
-    assert cached == "run-1/docs/foo.md"
+    cached = tokens._normalize_read_path(  # pyright: ignore[reportPrivateUsage]
+        raw="/Users/me/.claude/plugins/cache/larch-local/larch/1.2.3/skills/shared/foo.md",
+        repo=repo,
+    )
+    assert cached == "skills/shared/foo.md"
+    assert tokens._normalize_read_path(  # pyright: ignore[reportPrivateUsage]
+        raw="/Users/me/.cache/larch/sessions/run-1/docs/foo.md",
+        repo=repo,
+    ) is None
+    assert tokens._normalize_read_path(  # pyright: ignore[reportPrivateUsage]
+        raw="/tmp/larch/foo/skills/design/references/approval-gates.md",
+        repo=repo,
+    ) is None
     assert tokens._normalize_read_path(raw="/etc/passwd", repo=repo) is None  # pyright: ignore[reportPrivateUsage]
 
 

@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_log_corpus
+from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
 TOKEN_LOCK_TIMEOUT_S = 5.0
@@ -1285,7 +1286,6 @@ def _repo_root() -> Path:
 
 
 _REPORT_FORMATS = frozenset({"json", "markdown"})
-_CACHE_READ_PATH_RE = re.compile(r"/larch/[^/]+/(.+)$")
 
 
 def _validate_report_format(fmt: str) -> None:
@@ -1347,9 +1347,11 @@ def _normalize_read_path(*, raw: object, repo: Path) -> str | None:
     if path.startswith(repo_prefix):
         path = path[len(repo_prefix) :]
     else:
-        match = _CACHE_READ_PATH_RE.search(path)
-        if match:
-            path = match.group(1)
+        stripped = strip_plugin_cache_read_suffix(path)
+        if stripped is not None:
+            path = stripped
+        elif path.startswith("/"):
+            return None
     if path.startswith(("/", "../")) or "/../" in path or path == "..":
         return None
     return path

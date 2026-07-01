@@ -113,6 +113,8 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
     "plan-review-slots.ndjson.output-files.dropped-slots",
     "composed-plan.redacted.md",
     "findings-ledger.tsv",
+    "claude-source.env",
+    "source-env.sh",
 })
 
 # Whole subtrees of raw transcripts (plan-autofix drafts) or internal step

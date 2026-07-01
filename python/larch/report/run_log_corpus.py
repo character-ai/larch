@@ -7,12 +7,7 @@ from pathlib import Path
 from typing import Any, cast
 from collections.abc import Callable
 
-
-def _safe_int(value: object) -> int:
-    try:
-        return int(value)  # type: ignore[arg-type]
-    except (TypeError, ValueError):
-        return 0
+from larch.report.report_tokens_models import safe_int
 
 
 def _warn(warn: Callable[[str], None] | None, message: str) -> None:
@@ -41,7 +36,7 @@ def load_run_manifest(run_dir: Path, warn: Callable[[str], None] | None = None) 
         _warn(warn, f"manifest for {run_dir} is not a JSON object; skipping")
         return None
     manifest = cast("dict[str, object]", parsed)
-    accepted = bool(manifest) and _safe_int(manifest.get("issue_number")) > 0
+    accepted = bool(manifest) and safe_int(value=manifest.get("issue_number")) > 0
     if accepted:
         return {str(key): value for key, value in manifest.items()}
     if not manifest:

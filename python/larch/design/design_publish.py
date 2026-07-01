@@ -333,11 +333,21 @@ def _remove_root_transcript(design_tmpdir: Path) -> bool:
     return True
 
 
+def _snapshot_session_uuid(snapshot: Path) -> str:
+    try:
+        return _parse_kv(snapshot.read_text(encoding="utf-8", errors="replace")).get("SESSION_UUID", "")
+    except OSError:
+        return ""
+
+
 def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, session_id: str) -> Path | None:
     snapshot = design_tmpdir / "claude-source.env"
     try:
         if snapshot.is_file() and snapshot.stat().st_size > 0:
-            return snapshot
+            if _snapshot_session_uuid(snapshot) == session_id:
+                return snapshot
+            with contextlib.suppress(OSError):
+                snapshot.unlink()
     except OSError:
         return None
     if not session_id:
@@ -398,7 +408,7 @@ def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Pa
     _append_transcript_warning(
         design_tmpdir=ctx.design_tmpdir,
         status="source-env-refresh-failed",
-        message="could not persist LARCH_CLAUDE_SOURCE_FILE; transcript capture skipped.",
+        message="could not persist LARCH_CLAUDE_SOURCE_FILE; continuing with transcript capture.",
     )
     return False
 
@@ -416,21 +426,31 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
         path=source_env,
         allow_keys={"SESSION_ID"},
     )
-    source_session_id = source_data.get("SESSION_ID", "") or ctx.session_id
+    source_session_id = source_data.get("SESSION_ID", "")
+    if source_session_id and source_session_id != ctx.session_id:
+        _append_transcript_warning(
+            design_tmpdir=ctx.design_tmpdir,
+            status="session-id-drift",
+            message=(
+                "source-env.sh SESSION_ID disagrees with publish --session-id; "
+                "transcript capture skipped."
+            ),
+        )
+        return False
+    canonical_session_id = ctx.session_id
     snapshot = _materialize_claude_source_snapshot(
         design_tmpdir=ctx.design_tmpdir,
         plugin_root=ctx.plugin_root,
-        session_id=source_session_id,
+        session_id=canonical_session_id,
     )
     if snapshot is None:
         return True
-    if not _refresh_design_source_env(
+    _ = _refresh_design_source_env(
         ctx=ctx,
         source_env=source_env,
         snapshot=snapshot,
-        session_id=source_session_id,
-    ):
-        return True
+        session_id=canonical_session_id,
+    )
     staging_root = ctx.design_tmpdir / "larch-logs"
     capture = proc.run(
         [
@@ -443,7 +463,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
             "--skill",
             "design",
             "--run-id",
-            ctx.session_id,
+            canonical_session_id,
             "--log-root",
             str(staging_root),
             "--defer-commit",
@@ -460,7 +480,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
             print(line)
             status = line.split("=", 1)[1]
     root_transcript = ctx.design_tmpdir / "session-transcript.jsonl"
-    staged = staging_root / "design" / ctx.session_id / "session-transcript.jsonl"
+    staged = staging_root / "design" / canonical_session_id / "session-transcript.jsonl"
     if capture.returncode != 0 or status != "captured":
         with contextlib.suppress(OSError):
             root_transcript.unlink(missing_ok=True)

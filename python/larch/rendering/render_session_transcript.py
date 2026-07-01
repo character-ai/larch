@@ -63,7 +63,7 @@ from larch.core import config
 SCHEMA_VERSION = 3
 _SHARED_REFERENCE_PARTS = 3
 SKILL_REFERENCE_PARTS = 4
-_CACHE_READ_PATH_RE = re.compile(r"/larch/[^/]+/(.+)$")
+_PLUGIN_CACHE_READ_SUFFIX_RE = re.compile(r"(?:^|/)plugins/cache/larch-local/larch/[^/]+/(.+)$")
 
 HOUSEKEEPING_TYPES = {
     "permission-mode",
@@ -103,6 +103,12 @@ def _in_scope_reference(rel: str) -> bool:
     return len(parts) == SKILL_REFERENCE_PARTS and parts[0] == "skills" and parts[2] == "references"
 
 
+def strip_plugin_cache_read_suffix(path: str) -> str | None:
+    """Return the repo-relative suffix after a known Claude plugin-cache root."""
+    match = _PLUGIN_CACHE_READ_SUFFIX_RE.search(path)
+    return match.group(1) if match else None
+
+
 def normalize_reference_read_path(raw: object, *, repo: Path | None = None) -> str | None:
     if not isinstance(raw, str) or not raw.endswith(".md"):
         return None
@@ -119,9 +125,11 @@ def normalize_reference_read_path(raw: object, *, repo: Path | None = None) -> s
     if path.startswith(repo_prefix):
         path = path[len(repo_prefix) :]
     else:
-        match = _CACHE_READ_PATH_RE.search(path)
-        if match:
-            path = match.group(1)
+        stripped = strip_plugin_cache_read_suffix(path)
+        if stripped is not None:
+            path = stripped
+        elif path.startswith("/"):
+            return None
     if path.startswith(("/", "../")) or "/../" in path or path == "..":
         return None
     return path if _in_scope_reference(path) else None
