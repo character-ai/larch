@@ -1,0 +1,17 @@
+**Merged two themes:** (1) Binding convention line 9 must stay verbatim, not “meaning intact”; (2) opening-block compression must preserve the anchored `**Consumer**:` / `**Contract**:` / `**When to load**:` header lines enforced by CI.
+
+### FINDING_1: Binding convention sentence must stay verbatim
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan allows rephrasing the `SKILL.md` non-normative-index binding sentence on `flags.md` line 9 while issue acceptance requires that relationship verbatim. The Approach only says to keep the table relationship as a non-normative index, and Recommended edits say to keep that relationship’s meaning intact. An implementer can shorten the opening block, paraphrase the Binding convention sentence, and still pass parser smoke tests, closure ratchet checks, and growth lint while missing the issue’s verbatim acceptance criterion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Align plan language with the issue acceptance contract: require preserving flags.md line 9 verbatim (or quote the exact sentence under Recommended edits / Approach) and drop the meaning-intact paraphrase allowance for that line
+  - From Cursor-Pragmatic: Require byte-preservation of the existing Binding convention sentence (or quote it as a do-not-edit line); delete the meaning-intact carve-out for that sentence.
+
+### FINDING_2: Opening-block compression lacks anchored header triplet guard
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Opening-contract compression has no explicit guard for the references header triplet enforced in CI. The plan directs shortening the opening contract, but `flags.md` lines 3–7 must keep anchored `**Consumer**:`, `**Contract**:`, and `**When to load**:` headers per `scripts/test-references-headers.sh` (test-harnesses-1). Merging or reheading that block fails CI even when flag/parser contracts stay intact and listed plan tests may still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add one edge-case or Recommended-edits bullet: keep those three anchored headers byte-stable; compress only their paragraph bodies.
+  - From Cursor-Pragmatic: Add an Edge cases bullet: preserve those three anchored header lines verbatim; only shorten their paragraph text.

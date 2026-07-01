@@ -1,0 +1,24 @@
+## Proposed Design Outline
+
+### Goals
+- Prose-compress `skills/design/references/flags.md` by roughly 15% estimated tokens (repo's char/4 estimator), zero behavior change.
+- Preserve every flag name, default, `run-params.json` key, and the file's non-normative-index relationship to `SKILL.md` verbatim.
+- Regenerate and commit `python/skill-closure-baseline.json` to ratchet the design-skill closure down to the new smaller size (precedent: issue #5874 / commit `ddba2392b`).
+
+### Non-goals
+- No flag-grammar, default, or `design parse-argv` contract changes.
+- No edits to `SKILL.md`, `docs/skills.md`, or other files that merely link to `flags.md`.
+- No reordering of sections or change to the file's role as the normative flag-validation source.
+
+### Approach sketch
+- Read `flags.md` section by section; tighten prose (cut redundant words, merge short sentences) while keeping backticked flag names, defaults, and file paths byte-identical.
+- Leave code fences, KV grammar, and cross-references (`SKILL.md`, `design_argv.py`, `plan_quality.py`, etc.) untouched.
+- After editing, measure the new estimated-token count with `python3 python/cli.py skill-closure report` and confirm the ~15% reduction and a passing `make lint-skill-closure-growth`.
+- Regenerate `python/skill-closure-baseline.json` via `make regen-skill-closure-baseline` and commit it alongside the compressed file.
+
+### Surfaces in scope
+- `skills/design/references/flags.md`
+- `python/skill-closure-baseline.json`
+
+### Open questions
+- None.

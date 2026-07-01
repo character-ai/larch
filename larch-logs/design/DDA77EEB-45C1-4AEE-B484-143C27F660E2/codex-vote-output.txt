@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the prior-round verbatim-binding concern; not materially new enough to clear the gate.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- useful safeguard, but the feature can still satisfy the scope without an extra header-triplet guard.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- same binding-sentence issue as FINDING_1, with no materially new evidence.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior-round `--hard` scope-creep concern; out of scope for density-only compression.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the prior-round header-triplet harness issue; not a new backlog item here.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- compression order is a preference, not a material defect worth filing.
