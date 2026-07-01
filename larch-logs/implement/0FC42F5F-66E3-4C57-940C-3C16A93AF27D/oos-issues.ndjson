@@ -1,0 +1,1 @@
+{"phase":"implement","step":"9a.1","category":"OOS","body":"## Accepted / Out-of-Scope Observations\n\n- **Disposition**: Filed\n- **Filed URL**: https://github.com/character-ai/larch/issues/5952\n- **Title**: Orphaned `implement step-0-bootstrap` CLI entry point duplicates the live bootstrap-invoke argv plumbing\n- **Stable ID**: oos-accepted-main-agent:OOS_1\n"}
