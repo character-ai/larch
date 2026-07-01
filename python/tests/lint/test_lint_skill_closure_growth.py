@@ -304,7 +304,7 @@ def test_conditional_runtime_only_markdown_operand_does_not_fail(tmp_path: Path)
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md",)
-    assert result.conditional_files == ()
+    assert not result.conditional_files
 
 
 def test_eager_runtime_only_markdown_operand_fails_closed(tmp_path: Path) -> None:
@@ -596,7 +596,7 @@ def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(t
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
-    assert result.conditional_files == ()
+    assert not result.conditional_files
 
 
 def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() -> None:
