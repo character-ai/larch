@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of round-4 FINDING_1 (rejected YES=0/3); plan explicitly says to strip REDACTED_OPERATOR_REPO before the angle-bracket guard, no materially new evidence
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- source-env.sh is a regular file in the normal design flow; symlink case degrades gracefully to warning-only skip per plan; not on the feature's production execution path
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round-3 OOS_1/OOS_5/OOS_9 (all YES=0/3); oos duplicates must not be re-raised
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round-3 OOS_5/OOS_9 rejected OOS entries; oos duplicates must not be re-raised

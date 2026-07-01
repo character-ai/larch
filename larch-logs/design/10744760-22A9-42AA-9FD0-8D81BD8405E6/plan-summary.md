@@ -1,0 +1,1 @@
+Implement reference-read measurement by preserving safe Read tool calls in future session transcripts, parsing raw and rendered transcript shapes, and folding observed reference token loads into heatmap and realized-cost TSVs. Historical v3 transcripts cannot be backfilled because they dropped tool calls.

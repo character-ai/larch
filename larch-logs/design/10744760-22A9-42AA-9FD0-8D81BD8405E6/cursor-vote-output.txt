@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false -- duplicate of round 4 FINDING_1 with no materially new evidence; panel already rejected the same normalization gap
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `$DESIGN_TMPDIR/source-env.sh` is written as a regular file; `publish_core` already receives `--claude-pid` for the planned loader call
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of prior-round clarify/pause OOS items; land-first child acceptance does not require those alternate publish paths
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1 and prior-round OOS entries with no new evidence
