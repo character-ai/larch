@@ -1,5 +1,6 @@
-## /implement run 015E3627-EDF8-4DD3-8737-1F7DD5A2EBF7 — pr-created
+## /implement run 015E3627-EDF8-4DD3-8737-1F7DD5A2EBF7 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:00:01
 - **Cost**: 💰 TOTAL ~$30.10 — Claude $20.53, Codex-5.5 $6.09, Codex-mini $0.92, Cursor $2.33, Claude (subprocess) $0.23  |  Tokens: 41383k
@@ -8,7 +9,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (2)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +89/-95, larch-logs +640/-0
+- **Lines (PR diff)**: code +89/-95, larch-logs +647/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -62,4 +63,4 @@ codex/pragmatism-vote             │                                 ███�
 
 ## Architectural guidelines
 
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
+The architectural guideline note was dropped because HEAD drifted after staging.
