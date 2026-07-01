@@ -325,6 +325,21 @@ do
   rm -f "$D/$sentinel" "$D/.completed/real-target" "$D/no-progress-turns.count" "$MARKER"
 done
 
+# --- T16: TMPDIR claude-implement-* fallback discovery without marker override ---
+D_IMPL="$TMP/claude-implement-fallback-xyz"
+mkdir -p "$D_IMPL"
+MARKER_IMPL="$D_IMPL/.bg-wait-active"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=implement-step3-checks" "TIMEOUT_S=21600" >"$MARKER_IMPL"
+rm -f "$D_IMPL/no-progress-turns.count"
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$D_IMPL" | "$HOOK")
+cnt=$(cat "$D_IMPL/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T16: TMPDIR claude-implement-* fallback discovery without marker override"
+else
+  fail "T16: expected count=1 via TMPDIR fallback discovery: out='$out' cnt=$cnt"
+fi
+rm -f "$MARKER_IMPL"
+
 # --- Summary ---
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

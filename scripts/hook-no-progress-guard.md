@@ -26,7 +26,7 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
 - Fails open on missing `jq`, malformed input, unreadable markers, or write errors.
 - Uses the same marker-discovery logic (`marker_candidates`) as `hook-bg-poll-guard.sh` and
   respects the `LARCH_BG_POLL_GUARD_MARKER` test-override.
-- The `$TMPDIR` branch of `marker_candidates` scans only `larch-*` and `claude-design-*`
+- The `$TMPDIR` branch of `marker_candidates` scans only `larch-*`, `claude-design-*`, and `claude-implement-*`
   prefixed dirs under `$TMPDIR` (maxdepth 2 within each), not the full TMPDIR tree. This
   avoids the macOS per-user `$TMPDIR` timeout issue (#5868): the full tree can reach 77k+
   dirs and exceed the hook's timeout under concurrent load. The `~/.cache/larch/sessions`

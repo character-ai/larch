@@ -38,7 +38,7 @@ is_allowed_marker_parent() {
   tmp_root="$(canonical_dir "${TMPDIR:-/tmp}" 2>/dev/null || canonical_dir /tmp 2>/dev/null || true)"
   if [ -n "$tmp_root" ]; then
     case "$dir" in
-      "$tmp_root"/claude-design-*|"$tmp_root"/larch-*|"$tmp_root"/*/claude-design-*|"$tmp_root"/*/larch-*) return 0 ;;
+      "$tmp_root"/claude-design-*|"$tmp_root"/claude-implement-*|"$tmp_root"/larch-*|"$tmp_root"/*/claude-design-*|"$tmp_root"/*/claude-implement-*|"$tmp_root"/*/larch-*) return 0 ;;
     esac
   fi
   case "$dir" in */.cache/larch/sessions/*) return 0 ;; esac
@@ -54,9 +54,9 @@ marker_candidates() {
     find "$HOME/.cache/larch/sessions" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
   fi
   if [ -d "${TMPDIR:-/tmp}" ]; then
-    # Scope to larch-/claude-design-prefixed session dirs only; avoids scanning all
-    # of the macOS per-user $TMPDIR (~77k+ dirs) which exceeds the 5-10s hook timeout.
-    for _lmc_d in "${TMPDIR:-/tmp}"/larch-* "${TMPDIR:-/tmp}"/claude-design-*; do
+    # Scope to larch-/claude-design-/claude-implement-prefixed session dirs only; avoids
+    # scanning all of the macOS per-user $TMPDIR (~77k+ dirs) which exceeds the 5-10s hook timeout.
+    for _lmc_d in "${TMPDIR:-/tmp}"/larch-* "${TMPDIR:-/tmp}"/claude-design-* "${TMPDIR:-/tmp}"/claude-implement-*; do
       [ -d "$_lmc_d" ] || continue
       find "$_lmc_d" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
     done
