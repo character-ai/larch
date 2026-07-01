@@ -1,0 +1,21 @@
+# md-to-py-X: instrument realized reference-read cost (heatmap + realized-cost)
+
+Make the always-loaded **reference tier** measurable. Today no metric reflects what actually loads per run, so reference compression is chosen blind.
+
+**Context.** Cost is roughly `turns times context-per-turn`. Phase IX (#5788) optimized only the surfaces tooling could see (the two `SKILL.md`, Tier-1 descriptions). The reference tier is invisible:
+
+- `python/cli.py token measure-references-heatmap` emits a header and **zero rows**: run-log transcripts do not record `Read` tool calls, so observed reference reads are empty.
+- `python/cli.py token measure-realized-cost` reports implement ~27,999 and design ~29,373 tokens per invocation, both of which simply track the `SKILL.md` size. It does not count conditional reference loads.
+- Consequence: the verified design eager-reference vein (~32,246 tokens, larger than the 30,131-token design `SKILL.md`) is unmeasured, and implement conditional-ref load frequency (for example `step2-dispatch.md`) is unknown.
+
+**Scope.**
+
+- Parse `Read`-tool invocations of `skills/**/references/*.md` and `skills/shared/*.md` from committed run-log transcripts (the same corpus `report-tokens analyze` walks), and populate `measure-references-heatmap` with real `reads_observed` and per-run frequency.
+- Extend `measure-realized-cost` so `tokens_per_invocation` includes the references actually read on each run, not just the `SKILL.md` floor.
+- Emit a per-reference realized-load frequency table (loads-per-run) so B-group and E-group children can target the hottest files.
+
+**Acceptance.** Heatmap TSV has non-zero `reads_observed` for the common-path design references (`approval-gates.md`, `plan-review.md`, `finalize-step5.md`). Realized-cost per-invocation for design exceeds the `SKILL.md`-only floor by roughly the eager-reference token total.
+
+**Out of scope.** No prose edits to any reference. Measurement only. This child is the **recommended land-first enabler** for prioritizing B-group and gating E-group.
+
+Part of md-to-py-X (always-loaded reference-tier program); see the round-X umbrella tracking issue. Lineage: md-to-py rounds V-IX (#5278, #5409, #5569, #5696, #5788).

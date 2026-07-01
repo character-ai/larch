@@ -1,0 +1,1 @@
+`_normalize_read_path` still stops at the first `/larch/<segment>/` tail. redacted plugin-cache reads like `<operator_repo_path>/plugins/cache/larch-local/larch/48.2.0/skills/implement/references/conflict-resolution.md` normalize to `48.2.0/skills/...` and are rejected instead of counted, so heatmap rows stay zero or undercount on the committed corpus.
