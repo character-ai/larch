@@ -1,0 +1,47 @@
+### FINDING_1: Baseline regen must be mandatory after a panel-tier reduction
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation
+- **Severity**: important
+- **Concern**: The plan makes the committed skill-closure baseline optional even when the panel-tier token count drops. That leaves acceptance unenforced and can let a stale baseline mask or erase the savings later.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Promote baseline update to firm when panel-tier closure_content_estimated_tokens decreases: regenerate via make regen-skill-closure-baseline and commit python/skill-closure-baseline.json; treat report-only as insufficient for done`
+  - From Codex-Innovation: `Promote `python/skill-closure-baseline.json` from `MAY_UPDATE` to `UPDATED`, regenerate it after the prose compression, and keep the full generated file in the PR`
+
+### FINDING_2: Acceptance must be tied to panel-tier metrics, not runtime render savings
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan conflates runtime `render_voter_main` compression with the actual ratcheted panel-tier acceptance metric. The panel-tier scan covers the markdown sources, not the runtime render path, so runtime savings alone do not prove acceptance.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Add an explicit completion gate: panel-tier closure_content_estimated_tokens must drop versus baseline (driven primarily by skills/shared/voting-protocol.md); treat rendering.py compression as runtime-only benefit called out separately in the PR`
+  - From Cursor-Pragmatic: `Add an explicit acceptance gate: before/after skill-closure report must show panel-tier closure_content_estimated_tokens (and closure_lines) strictly below the pre-edit snapshot; note render_voter_main output is outside the panel-tier scan and voting-protocol.md is the primary ratcheted source in this PR`
+  - From Cursor-Requirements: `State explicitly that acceptance requires a before/after python3 python/cli.py skill-closure report showing lower panel-tier closure_estimated_tokens driven by skills/shared/voting-protocol.md edits, and treat render_voter_main compression as complementary runtime savings verified via updated test_rendering.py assertions.`
+
+### FINDING_3: Voter guidance must stay synchronized between the template and runtime text
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The fenced voter template and the runtime voter prose can drift if compressed independently. The OOS wording in the template also still conflicts with the canonical paragraph, which risks contradictory voter guidance across the two surfaces.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Add implementation-note step: after edits, diff compressed in-scope voter guidance between the fence block and render_voter_main static prelude (not only the OOS paragraph quad)`
+  - From Cursor-Innovation: `In the ### UPDATED voting-protocol.md step, require reconciling line 96 with line 83: keep structural YES/NO meanings and the render-voter pointer, delete the redundant concrete/important-enough substitute, and fold any kept OOS template prose into the same compressed canonical wording used at rendering.py:1161-1163.`
+
+### FINDING_4: Rendering tests need explicit pins for the OOS remedy boundary and nit floor
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The current test strategy does not pin the OOS remedy-disagreement boundary or the in-scope nit severity floor. That leaves a path where prose compression changes voter behavior while the existing rendering assertions still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: `Add one minimal substring assertion in test_rendering.py for the OOS remedy rule on both finding-only and finding-oos renders, e.g. informational only plus disagree with the proposed fix, alongside the existing severity-rubric pins.`
+  - From Cursor-Pragmatic: `Extend planned test_rendering.py pins to cover at least the OOS remedy-disagreement guard and the in-scope nit severity-floor sentence (both id-grammar branches), matching the plan's own failure-mode list`
+
+### FINDING_5: Tally acceptance needs the actual tally harnesses, not just the voting and ledger slices
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The testing strategy does not include the repository tally harnesses that back the stated acceptance criteria. As written, it can pass the listed tests while missing regressions in the plan-review and code-review tally paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: `Add the focused tally harnesses to the command, for example python3 -m pytest python/tests/review/test_voting.py python/tests/review/test_review_tally.py python/tests/review/test_plan_review.py -k tally_plan_review; keep python/tests/review/test_findings_ledger.py only if ledger coverage is still desired.`
+  - From Codex-Requirements: `Add the focused tally harnesses to the testing strategy, preferably make test-tally-plan-review test-tally-code-votes, or their equivalent pytest slices, alongside the existing render and voting tests.`
+
+### FINDING_6: Review-structure grep pins must be preserved for the OOS security-tag prose
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan omits the `scripts/test-review-structure.sh` grep pins that enforce byte-stable OOS security-tag wording. Compressing that subsection can break CI even if the pytest suite still passes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: `Add make test-review-structure (or bash scripts/test-review-structure.sh) to Testing strategy and note that the OOS Security Tag bullets must keep those three pinned phrases byte-stable.`

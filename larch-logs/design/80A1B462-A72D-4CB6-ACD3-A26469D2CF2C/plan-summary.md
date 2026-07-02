@@ -1,0 +1,1 @@
+Compress voting prose in `skills/shared/voting-protocol.md` and `render_voter_main`, keep ballot grammar and rubric semantics stable, sync the OOS paragraph across parity sites, and update pinned renderer assertions.

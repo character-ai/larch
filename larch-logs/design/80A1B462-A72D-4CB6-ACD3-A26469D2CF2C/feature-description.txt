@@ -1,0 +1,12 @@
+# md-to-py-XI: prose-compress voting-protocol.md and voter prompt templates
+
+**Context.** `skills/shared/voting-protocol.md` (about 26.5KB) plus the `render voter` templates are carried by every voter slot on every round of /implement Step 5, /review, and /design plan voting. Never compressed in rounds V-X.
+
+**Scope.** Density pass preserving the voting rubric, OOS judging authority boundaries, and tally grammar verbatim. Land after #5887 flips the code-review panel to single-vendor Codex-first, so compression happens on the settled text rather than text about to be rewritten.
+
+**Acceptance.**
+
+- Token reduction on the ratcheted panel tier.
+- Voting and tally harnesses pass; no rubric semantics change.
+
+Part of md-to-py-XI (round X: #5885).
