@@ -1,0 +1,1 @@
+I received an error indicating a background wait is active. I'll end this turn and wait for the task notification before proceeding with the ballot review.

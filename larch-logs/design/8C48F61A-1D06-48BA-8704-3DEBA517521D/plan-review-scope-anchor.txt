@@ -1,0 +1,48 @@
+## Symptom
+Committed /implement final summaries still end with "The architectural guideline note was dropped because HEAD drifted after staging." At audit time: 84 of 93 post-#5675-fix summaries, and 35 of 36 committed since 2026-06-30 (v52.1.15 to v52.2.0).
+
+## Root cause
+`refresh_staged_assessment_for_current_head` (python/larch/core/architectural_guidelines.py:471-514, added by PR #5707 for #5675) returns False at ~line 500 whenever the live diff fingerprint differs from the staged `DIFF_FINGERPRINT`. That is exactly the drift condition the helper exists to recover. `_staged_fingerprint_valid` (~lines 447-468) already passes whenever fingerprints match, so the refresh-then-retry path in python/larch/implement/ship_guidelines.py:113-126 can only succeed in a state that cannot arise in production (staging writes snapshot and fingerprint together). The unit test `test_refresh_staged_assessment_for_current_head_returns_false_when_diff_changes` pins the wrong behavior and contradicts #5675's own acceptance edge case ("context-only diff fingerprint changes no longer drop the note").
+
+## Expected behavior
+On fingerprint drift at ship time, the helper re-computes or re-stages the assessment against current HEAD (or re-pins the durable note) so the note survives. The drop notice should remain only for genuinely unrecoverable states.
+
+## Suggested fix
+1. Make `refresh_staged_assessment_for_current_head` actually recover: when the live fingerprint differs from the staged one, recompute the assessment and fingerprint against current HEAD, rewrite the staged snapshot, and return True; return False only when recomputation itself fails (missing inputs, git errors).
+2. Flip `test_refresh_staged_assessment_for_current_head_returns_false_when_diff_changes` into a recovery assertion matching #5675's acceptance edge case, and add a ship_guidelines-level test that a fingerprint-drifted stage ships with the note present.
+3. Optional fallback: when recomputation fails, attempt durable-note re-pin (the #5754 helper) before emitting the drop notice.
+
+## Notes
+- #5754 (merged) recovers a different path only: durable note already pinned, post-merge checkout drift.
+- The #5337 drop-notice persistence machinery works; the failure here is that the recovery (not the notice) never fires.
+
+## Provenance
+Found by the 2026-07-01 closed-[BUG] fix audit (200 recently closed [BUG] issues vs current main). Original: #5675 (closed COMPLETED), fix commit 6f9345a65 (PR #5707). Verified at main 79b1c0270; the cited files are unchanged through 66e115601.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make `refresh_staged_assessment_for_current_head` actually recover on fingerprint drift instead of always returning `False`.
+- Flip the two tests that currently pin the wrong (drop) behavior into recovery assertions.
+- Restore the guideline note surviving ship-time HEAD drift, per #5675's original acceptance criterion.
+
+### Non-goals
+- No prompt-side or LLM re-assessment of guideline content. The staged assessment text is carried forward unchanged; only fingerprint/HEAD metadata is refreshed.
+- No change to `ship_guidelines.py`'s call-site retry logic (`_pin_and_load_guidelines_note`); it already retries correctly once refresh succeeds.
+- No #5754 `note_readable_any_head` fallback wiring into ship-time pinning (optional item from the issue; deferred per Step 1c resolution).
+
+### Approach sketch
+- `python/larch/core/architectural_guidelines.py`: remove the erroneous `fingerprint != stored_fp` bail in `refresh_staged_assessment_for_current_head` (~line 500) so drift triggers recovery (recompute live fingerprint/diff, rewrite the staged snapshot, return `True`) instead of bailing.
+- Keep all other fail-closed exits (missing artifacts, no repo root, unresolved base ref, live-diff materialization failure, I/O failure) unchanged.
+- `python/tests/core/test_architectural_guidelines.py`: flip `test_refresh_staged_assessment_for_current_head_returns_false_when_diff_changes` to assert successful recovery and updated staged metadata.
+- `python/tests/implement/test_ship.py`: flip `test_pin_and_load_guidelines_note_returns_drop_notice_when_diff_changes_with_repo` to assert the note survives (not dropped) when repo_root is available and the diff drifted.
+
+### Surfaces in scope
+- python/larch/core/architectural_guidelines.py
+- python/tests/core/test_architectural_guidelines.py
+- python/tests/implement/test_ship.py
+
+### Open questions
+- None.
