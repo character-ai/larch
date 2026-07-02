@@ -1,15 +1,14 @@
-## /implement run 7AF30C98-8B8F-4867-B1E1-9F5F325CC625 — stalled
+## /implement run 7AF30C98-8B8F-4867-B1E1-9F5F325CC625 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:33:29
-- **Cost**: 💰 TOTAL ~$24.92 — Claude $0.18, Codex-5.5 $18.42, Codex-mini $0.35, Cursor $4.88, Claude (subprocess) $1.09  |  Tokens: 37103k
+- **Cost**: 💰 TOTAL ~$36.07 — Claude $11.33, Codex-5.5 $18.42, Codex-mini $0.35, Cursor $4.88, Claude (subprocess) $1.09  |  Tokens: 53616k
 - **Issue**: #5985 — https://github.com/character-ai/larch/issues/5985
 - **PR**: #6015 — https://github.com/character-ai/larch/pull/6015
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +506/-72, larch-logs +547/-0
+- **Lines (PR diff)**: code +538/-80, larch-logs +568/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -64,4 +63,15 @@ codex/plan-fidelity-vote            │                               ███�
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md.
+
+One minor deviation identified:
+- **G-Py-9** (strongly type every local declaration): `design_step5c.py`'s `step2b5_main` adds `data = json.loads(run_params_path.read_text(encoding="utf-8"))` without an explicit annotation. `json.loads` returns `Any` — this is the guideline's own named anti-pattern example (`payload = json.loads(raw)`). Low severity: `data` is consumed once immediately after (`data.get("partition_requested") is True`) inside a narrow `try/except (OSError, json.JSONDecodeError)`. A one-line `data: dict[str, object] = ...` annotation would close the gap.
+
+All other new code conforms:
+- `SettleDispatchResult` / `Step2b5DispatchResult` are frozen dataclasses (G-Py-1).
+- The dispatch helper functions (`settle_next_action_for`, `step2b5_next_action_for`) are pure with no side effects (G-Py-5).
+- Failure modes return explicit unknown/error statuses (`unknown-dispatch`, `internal-error`) that the Bash wrapper validates (exactly-one-action-row, numeric-rc checks) and hard-exits 3 on rather than silently defaulting (G-Py-4).
+- The new CLI verb follows the existing `(domain, verb)` registration pattern in `cli.py` (G-CLI-1).
+- The rc-to-action decision tables moved out of `design-step35-settle.sh` into Python (`design_session.py`), leaving Bash as mechanical envelope parsing/validation only — the core intent of this issue (G-Skill-2).
+- New pytest matrix tests mechanically pin the priority-order and dispatch-parity contracts, including a dedicated paired-entrypoint parity fixture (G-Enf-1).
