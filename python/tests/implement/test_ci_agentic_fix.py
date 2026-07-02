@@ -234,6 +234,142 @@ def test_first_cycle_health_emits_ci_fix_exhausted(
     assert "DETAIL=binary-missing" in out
 
 
+def test_ci_fix_retry_reason_recognizes_empty_result_sentinel(tmp_path: Path) -> None:
+    output = tmp_path / "claude.out"
+    _ = output.write_text("CLAUDE_CI_EMPTY_RESULT\n", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
+
+    retry_reason = ci_agentic_fix._ci_fix_retry_reason(  # pyright: ignore[reportPrivateUsage]
+        launcher_exit=1,
+        output=output,
+        binary_present=True,
+    )
+
+    assert retry_reason == "empty-result"
+
+
+def test_ci_fix_retry_reason_skips_permanent_done_rc(tmp_path: Path) -> None:
+    output = tmp_path / "claude.out"
+    _ = output.write_text("", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".done").write_text("127\n", encoding="utf-8")
+
+    retry_reason = ci_agentic_fix._ci_fix_retry_reason(  # pyright: ignore[reportPrivateUsage]
+        launcher_exit=1,
+        output=output,
+        binary_present=True,
+    )
+
+    assert retry_reason is None
+
+
+def test_ci_fix_retry_reason_skips_auth_empty_output(tmp_path: Path) -> None:
+    output = tmp_path / "claude.out"
+    _ = output.write_text("", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".diag").write_text("apiKeyHelper failed\n", encoding="utf-8")
+
+    retry_reason = ci_agentic_fix._ci_fix_retry_reason(  # pyright: ignore[reportPrivateUsage]
+        launcher_exit=1,
+        output=output,
+        binary_present=True,
+    )
+
+    assert retry_reason is None
+
+
+def test_ci_fix_retry_reason_keeps_transient_empty_retry(tmp_path: Path) -> None:
+    output = tmp_path / "claude.out"
+    _ = output.write_text("", encoding="utf-8")
+    _ = output.with_suffix(output.suffix + ".done").write_text("1\n", encoding="utf-8")
+
+    retry_reason = ci_agentic_fix._ci_fix_retry_reason(  # pyright: ignore[reportPrivateUsage]
+        launcher_exit=1,
+        output=output,
+        binary_present=True,
+    )
+
+    assert retry_reason == "empty-output"
+
+
+def test_first_cycle_binary_missing_empty_output_skips_retry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    out_dir = tmp_path / "out"
+    out_dir.mkdir()
+    launch_calls = {"n": 0}
+
+    def fake_read_failed_jobs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+        _ = run_id, repo, cwd
+        return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+    def fake_collect_failed_logs(
+        _runner: object,
+        *,
+        run_id: str,
+        repo: str,
+        cwd: str | None,
+    ) -> ci_monitor.LogCollectResult:
+        _ = run_id, repo, cwd
+        return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+    def fake_capture_baseline(
+        _runner: object,
+        *,
+        cwd: str | None,
+    ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+        _ = cwd
+        return (), (), (), "abc123"
+
+    def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
+        launch_calls["n"] += 1
+        output = Path(str(kwargs["output"]))
+        _ = output.write_text("", encoding="utf-8")
+        _ = output.with_suffix(output.suffix + ".done").write_text("127\n", encoding="utf-8")
+        return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=127\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        return 127
+
+    def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+        return agents.LaunchFailure("health", "binary-missing")
+
+    def fake_rollback(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+    monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+    monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+    monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+    monkeypatch.setattr(ci_agentic_fix, "_rollback", fake_rollback)
+
+    rc = ci_agentic_fix.main([
+        "--pr", "1",
+        "--repo", "o/r",
+        "--repo-root", str(repo),
+        "--run-id", "42",
+        "--output-dir", str(out_dir),
+        "--implement-tmpdir", str(tmp_path),
+        "--max-cycles", "3",
+    ])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STATUS=ci-fix-exhausted" in out
+    assert "DETAIL=binary-missing" in out
+    assert launch_calls["n"] == 1
+
+
 def test_agentic_fix_result_reads_exhausted_detail_file(
     tmp_path: Path,
 ) -> None:
