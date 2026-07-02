@@ -5,6 +5,8 @@
 === larch-quiet-cli.py-49308.log ===
 === larch-quiet-cli.py-52719.log ===
 === larch-quiet-cli.py-53154.log ===
+=== larch-quiet-cli.py-61470.log ===
+=== larch-quiet-cli.py-63914.log ===
 === larch-quiet-cli.py-7271.log ===
 === larch-quiet-cli.py-74967.log ===
 === larch-quiet-cli.py-99209.log ===
@@ -18,3 +20,4 @@
 === larch-quiet-sessionstart-health.sh-75925.log ===
 === larch-quiet-ship.py-43676.log ===
 design-log-sweep: PR #6056 merged - merge succeeded
+=== larch-quiet-tracking-issue-upsert-summary-64242.log ===
