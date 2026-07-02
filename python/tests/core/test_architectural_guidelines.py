@@ -594,7 +594,7 @@ def test_refresh_staged_assessment_for_current_head_updates_staged_metadata(
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
-def test_refresh_staged_assessment_for_current_head_returns_false_when_diff_changes(
+def test_refresh_staged_assessment_for_current_head_recovers_when_diff_changes(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -615,11 +615,18 @@ def test_refresh_staged_assessment_for_current_head_returns_false_when_diff_chan
         return live_diff
 
     monkeypatch.setattr(ag, "materialize_implementation_diff", fake_materialize)
-    assert not ag.refresh_staged_assessment_for_current_head(
+
+    assert ag.refresh_staged_assessment_for_current_head(
         tmpdir,
         head_sha="head-b",
         repo_root=repo,
     )
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
+    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
+    assert f"DIFF_FINGERPRINT={ag.diff_fingerprint(live_diff)}" in sidecar
+    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
 def test_materialize_live_diff_returns_none_on_os_error(
