@@ -1,0 +1,1 @@
+Remove the orphaned `implement step-0-bootstrap` Python CLI path. Keep the live `bootstrap invoke` path and `step0_degraded_gate_main` intact. Regenerate the env-literal baseline after deleting the dead function.
