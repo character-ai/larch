@@ -1,11 +1,22 @@
 [
   {
-    "closure_content_estimated_tokens": 52558,
-    "closure_estimated_tokens": 52712,
-    "closure_lines": 1672,
+    "closure_content_estimated_tokens": 52629,
+    "closure_estimated_tokens": 52783,
+    "closure_lines": 1694,
+    "conditional_content_estimated_tokens": 11285,
+    "conditional_estimated_tokens": 11332,
+    "conditional_files": [
+      "skills/design/references/brainstorm.md",
+      "skills/design/references/settle-rc-dispatch.md",
+      "skills/design/references/step2b5-rc-handling.md",
+      "skills/design/references/decompose-panel.md",
+      "skills/design/references/validator-failure.md"
+    ],
+    "conditional_lines": 495,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
+      "skills/design/scripts/step-name-registry.tsv",
       "skills/shared/design-background-wait.md",
       "skills/design/references/discussion-rounds.md",
       "skills/design/references/design-outline.md",
@@ -19,11 +30,29 @@
     "skill_md_lines": 697
   },
   {
-    "closure_content_estimated_tokens": 33153,
-    "closure_estimated_tokens": 33246,
-    "closure_lines": 945,
+    "closure_content_estimated_tokens": 36456,
+    "closure_estimated_tokens": 36561,
+    "closure_lines": 1127,
+    "conditional_content_estimated_tokens": 19242,
+    "conditional_estimated_tokens": 19288,
+    "conditional_files": [
+      "skills/implement/references/bootstrap-recovery.md",
+      "skills/implement/references/rebase-checkpoint-routing.md",
+      "skills/implement/references/force-mode.md",
+      "skills/implement/references/execution-issues-tracking.md",
+      "skills/implement/references/step5-review-branches.md",
+      "skills/implement/references/architectural-guidelines-present.md",
+      "skills/implement/references/ship-pr-oos-checkpoint-router.md",
+      "skills/implement/references/ship-pr-ci-fix.md",
+      "skills/implement/references/conflict-resolution.md",
+      "skills/implement/references/stall-recovery.md"
+    ],
+    "conditional_lines": 529,
     "files": [
       "skills/implement/SKILL.md",
+      "skills/shared/final-summary-emit.md",
+      "skills/implement/scripts/step-name-registry.tsv",
+      "skills/implement/references/preflight-plan-audit.md",
       "skills/implement/references/self-review.md",
       "skills/implement/references/ship-pr-exit-matrix.md",
       "skills/implement/references/step18-cleanup.md"
@@ -32,5 +61,59 @@
     "skill_md_content_estimated_tokens": 28595,
     "skill_md_estimated_tokens": 28673,
     "skill_md_lines": 793
+  },
+  {
+    "closure_content_estimated_tokens": 65827,
+    "closure_estimated_tokens": 66043,
+    "closure_lines": 3008,
+    "conditional_content_estimated_tokens": 0,
+    "conditional_estimated_tokens": 0,
+    "conditional_files": [],
+    "conditional_lines": 0,
+    "files": [
+      "agents/_implementer-base.md",
+      "agents/code-reviewer.md",
+      "agents/codex-implementer.md",
+      "agents/cursor-implementer.md",
+      "agents/orchestrator-aggregator.md",
+      "agents/reviewer-code-robustness.md",
+      "agents/reviewer-correctness.md",
+      "agents/reviewer-edge-cases.md",
+      "agents/reviewer-plan-fidelity.md",
+      "agents/reviewer-security-structure-tests.md",
+      "agents/reviewer-security.md",
+      "agents/reviewer-structure.md",
+      "agents/reviewer-testing.md",
+      "skills/shared/reviewer-templates.md",
+      "skills/shared/reviewer-templates-code-reviewer.md",
+      "skills/shared/voting-protocol.md"
+    ],
+    "skill": "panel-tier",
+    "skill_md_content_estimated_tokens": 0,
+    "skill_md_estimated_tokens": 0,
+    "skill_md_lines": 0
+  },
+  {
+    "closure_content_estimated_tokens": 8362,
+    "closure_estimated_tokens": 8386,
+    "closure_lines": 304,
+    "conditional_content_estimated_tokens": 3254,
+    "conditional_estimated_tokens": 3265,
+    "conditional_files": [
+      "skills/review/references/heavy-worker.md",
+      "skills/review/references/self-review.md"
+    ],
+    "conditional_lines": 143,
+    "files": [
+      "skills/review/SKILL.md",
+      "skills/review/scripts/step-name-registry.tsv",
+      "skills/shared/session-setup-output.md",
+      "skills/shared/external-reviewers.md",
+      "skills/review/references/domain-rules.md"
+    ],
+    "skill": "review",
+    "skill_md_content_estimated_tokens": 4820,
+    "skill_md_estimated_tokens": 4829,
+    "skill_md_lines": 114
   }
 ]

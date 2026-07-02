@@ -113,7 +113,7 @@ regen-layering-baseline:
 	fi
 
 regen-skill-closure-baseline:
-	# Regenerate python/skill-closure-baseline.json from live /design and /implement markdown closure size.
+	# Regenerate python/skill-closure-baseline.json from live ratcheted prompt closure size.
 	$(PYTHON) python/cli.py lint skill-closure-growth --write
 
 skill-closure-size:
