@@ -390,6 +390,12 @@ def _env_without_test_hooks() -> dict[str, str]:
     return env
 
 
+def _retry_env_for_tool(tool: str) -> dict[str, str]:
+    if tool == "cursor":
+        agents.cursor_auth_export_env()
+    return _env_without_test_hooks()
+
+
 def _safe_meta_path_value(value: str) -> bool:
     return ".." not in value
 
@@ -462,7 +468,7 @@ def _launch_cmd_json_retry(
     args.extend(cmd)
     plan.process = subprocess.Popen(  # pylint: disable=consider-using-with
         args,
-        env=_env_without_test_hooks(),
+        env=_retry_env_for_tool(meta.tool),
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
     )
