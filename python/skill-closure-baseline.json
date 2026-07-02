@@ -63,9 +63,9 @@
     "skill_md_lines": 793
   },
   {
-    "closure_content_estimated_tokens": 65827,
-    "closure_estimated_tokens": 66043,
-    "closure_lines": 3008,
+    "closure_content_estimated_tokens": 62787,
+    "closure_estimated_tokens": 63003,
+    "closure_lines": 2942,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
     "conditional_files": [],
