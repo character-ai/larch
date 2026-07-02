@@ -792,3 +792,7 @@ Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACT
 Step 18 teardown tail relay is dual-source pinned: preserve both the final report tail
 and the teardown tail as distinct relay sources.
 -->
+when `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely
+Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` before using the OOS checkpoint fence.
+
+**OOS checkpoint fence.**
