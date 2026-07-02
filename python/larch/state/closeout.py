@@ -18,6 +18,7 @@ from larch.core import config
 
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
+_ARCHITECTURAL_GUIDELINES_PIN_DONE = ".architectural-guidelines-pin-done"
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
@@ -260,6 +261,18 @@ def _pin_architectural_guidelines_note_best_effort(*, tmpdir: Path, env: dict[st
         return "failed"
 
 
+def _pin_architectural_guidelines_note_once(*, tmpdir: Path, env: dict[str, str]) -> str:
+    """Pin the staged architectural-guidelines note once across closeout paths."""
+    sentinel = tmpdir / _ARCHITECTURAL_GUIDELINES_PIN_DONE
+    if sentinel.is_file():
+        return "skipped"
+    pin_status = _pin_architectural_guidelines_note_best_effort(tmpdir=tmpdir, env=env)
+    if pin_status == "ok":
+        with suppress(OSError):
+            sentinel.touch()
+    return pin_status
+
+
 def step_16_16a(argv: list[str] | None = None) -> int:
     """Rejected findings replay and Slack notify without final-report write."""
     parser = argparse.ArgumentParser(prog="cli.py implement step-16-16a")
@@ -275,6 +288,8 @@ def step_16_16a(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
+    pin_status = _pin_architectural_guidelines_note_once(tmpdir=tmpdir, env=env)
+    print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={pin_status}", file=sys.stderr)
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])
@@ -407,7 +422,7 @@ def step_16_17(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
-    pin_status = _pin_architectural_guidelines_note_best_effort(tmpdir=tmpdir, env=env)
+    pin_status = _pin_architectural_guidelines_note_once(tmpdir=tmpdir, env=env)
     print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={pin_status}", file=sys.stderr)
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:

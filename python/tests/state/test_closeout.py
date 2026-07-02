@@ -142,6 +142,75 @@ def test_step_16_17_attempts_architectural_guidelines_pin_before_step16(
     assert closeout.SUMMARY_BEGIN in captured.out
 
 
+def test_step_16_16a_attempts_architectural_guidelines_pin_before_step16(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    calls: list[str] = []
+
+    def fake_pin(**_kwargs: object) -> str:
+        calls.append("pin")
+        return "ok"
+
+    def fake_step16(_argv: list[str]) -> int:
+        calls.append("step16")
+        return 0
+
+    def fake_slack(**_kwargs: Any) -> None:
+        calls.append("slack")
+
+    monkeypatch.setattr(closeout, "_pin_architectural_guidelines_note_best_effort", fake_pin)
+    monkeypatch.setattr(closeout, "step_16", fake_step16)
+    monkeypatch.setattr(closeout, "_step_16a_slack", fake_slack)
+
+    assert closeout.step_16_16a_main([]) == 0
+
+    captured = capsys.readouterr()
+    assert "ARCHITECTURAL_GUIDELINES_PIN_STATUS=ok" in captured.err
+    assert calls == ["pin", "step16", "slack"]
+    assert (tmp_path / closeout._ARCHITECTURAL_GUIDELINES_PIN_DONE).is_file()
+
+
+def test_step_16_17_skips_second_pin_after_step_16_16a_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    pin_calls: list[str] = []
+
+    def fake_pin(**_kwargs: object) -> str:
+        pin_calls.append("pin")
+        return "ok"
+
+    def fake_step16(_argv: list[str]) -> int:
+        return 0
+
+    def fake_step17(_argv: list[str]) -> int:
+        (tmp_path / "summary-final.md").write_text("# Summary\n", encoding="utf-8")
+        return 0
+
+    def fake_slack(**_kwargs: Any) -> None:
+        return None
+
+    monkeypatch.setattr(closeout, "_pin_architectural_guidelines_note_best_effort", fake_pin)
+    monkeypatch.setattr(closeout, "step_16", fake_step16)
+    monkeypatch.setattr(closeout, "_step_16a_slack", fake_slack)
+    monkeypatch.setattr(closeout, "step_17", fake_step17)
+
+    assert closeout.step_16_16a_main([]) == 0
+    assert closeout.step_16_17_main([]) == 0
+
+    captured = capsys.readouterr()
+    assert "ARCHITECTURAL_GUIDELINES_PIN_STATUS=ok" in captured.err
+    assert "ARCHITECTURAL_GUIDELINES_PIN_STATUS=skipped" in captured.err
+    assert pin_calls == ["pin"]
+
+
 def test_step_16_17_pin_exception_does_not_block_markers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
