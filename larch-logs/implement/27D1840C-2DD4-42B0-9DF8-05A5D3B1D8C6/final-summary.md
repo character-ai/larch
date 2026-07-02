@@ -2,8 +2,8 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$8.39 — Claude $0.98, Codex-5.5 $6.99, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.42  |  Tokens: 11378k
+- **Duration**: 01:09:01
+- **Cost**: 💰 TOTAL ~$17.88 — Claude $10.45, Codex-5.5 $6.99, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.44  |  Tokens: 25413k
 - **Issue**: #6025 — https://github.com/character-ai/larch/issues/6025
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -22,8 +22,12 @@
 ## Exec Issues and Warnings
 Exec Issues (0):
 Warnings (1):
-  1. Step 5: self-review mode: main-agent inline review complete
+  1. Step 7a: architectural-guidelines deviation (G-Py-4) — `review_tally.py`'s new `_round_summary_counts()` uses a bare `except Exception` around the `progress_report._round_counts()` private reach-in...
 
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
