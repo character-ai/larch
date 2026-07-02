@@ -844,7 +844,7 @@ def publish_core(argv: Sequence[str]) -> int:
             ),
         )
     if run_upsert:
-        upsert = subprocess.run(
+        upsert = proc.run(
             [
                 sys.executable,
                 str(plugin_root / "python" / "cli.py"),
@@ -852,8 +852,6 @@ def publish_core(argv: Sequence[str]) -> int:
                 "upsert",
                 *upsert_args,
             ],
-            capture_output=True,
-            text=True,
             check=False,
         )
         upsert_stderr_file = design_tmpdir / "diagrams-architecture-upsert.stderr"
@@ -868,7 +866,7 @@ def publish_core(argv: Sequence[str]) -> int:
         if upsert_kv.get("ARCHITECTURE_SOURCE"):
             kvs.append(("ARCHITECTURE_SOURCE", upsert_kv["ARCHITECTURE_SOURCE"]))
         if upsert_status == "failed" or upsert.returncode != 0:
-            _ = subprocess.run(
+            _ = proc.run(
                 [
                     sys.executable,
                     str(plugin_root / "python" / "cli.py"),
@@ -888,8 +886,6 @@ def publish_core(argv: Sequence[str]) -> int:
                     str(upsert_stderr_file),
                     "--redact",
                 ],
-                capture_output=True,
-                text=True,
                 check=False,
             )
 

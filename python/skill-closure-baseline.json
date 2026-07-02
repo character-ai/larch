@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 55361,
-    "closure_estimated_tokens": 55528,
-    "closure_lines": 1851,
+    "closure_content_estimated_tokens": 55479,
+    "closure_estimated_tokens": 55646,
+    "closure_lines": 1852,
     "conditional_content_estimated_tokens": 10317,
     "conditional_estimated_tokens": 10363,
     "conditional_files": [
@@ -27,14 +27,14 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25070,
-    "skill_md_estimated_tokens": 25125,
-    "skill_md_lines": 697
+    "skill_md_content_estimated_tokens": 25188,
+    "skill_md_estimated_tokens": 25243,
+    "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 36660,
-    "closure_estimated_tokens": 36764,
-    "closure_lines": 1129,
+    "closure_content_estimated_tokens": 36880,
+    "closure_estimated_tokens": 36985,
+    "closure_lines": 1131,
     "conditional_content_estimated_tokens": 19305,
     "conditional_estimated_tokens": 19350,
     "conditional_files": [
@@ -60,14 +60,14 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 28689,
-    "skill_md_estimated_tokens": 28766,
-    "skill_md_lines": 794
+    "skill_md_content_estimated_tokens": 28909,
+    "skill_md_estimated_tokens": 28987,
+    "skill_md_lines": 796
   },
   {
-    "closure_content_estimated_tokens": 49874,
-    "closure_estimated_tokens": 50057,
-    "closure_lines": 2414,
+    "closure_content_estimated_tokens": 50528,
+    "closure_estimated_tokens": 50711,
+    "closure_lines": 2432,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
     "conditional_files": [],
@@ -95,16 +95,16 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 8408,
-    "closure_estimated_tokens": 8432,
+    "closure_content_estimated_tokens": 8483,
+    "closure_estimated_tokens": 8507,
     "closure_lines": 304,
-    "conditional_content_estimated_tokens": 3291,
-    "conditional_estimated_tokens": 3301,
+    "conditional_content_estimated_tokens": 3322,
+    "conditional_estimated_tokens": 3333,
     "conditional_files": [
       "skills/review/references/heavy-worker.md",
       "skills/review/references/self-review.md"
     ],
-    "conditional_lines": 143,
+    "conditional_lines": 144,
     "files": [
       "skills/review/SKILL.md",
       "skills/review/scripts/step-name-registry.tsv",
@@ -113,8 +113,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 4866,
-    "skill_md_estimated_tokens": 4875,
+    "skill_md_content_estimated_tokens": 4941,
+    "skill_md_estimated_tokens": 4950,
     "skill_md_lines": 114
   }
 ]
