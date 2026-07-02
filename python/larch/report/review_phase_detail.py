@@ -98,11 +98,6 @@ def _clean_oos_title(title: str, fallback: str) -> str:
     return cleaned or fallback
 
 
-def _security_heading_title(title: str) -> bool:
-    cleaned = _clean_oos_title(title, "").lower().strip(" `[]<>:.-")
-    return cleaned.startswith("security")
-
-
 def _round_label(path: Path) -> str:
     match = re.search(r"round-([0-9]+)", path.parent.name)
     return match.group(1) if match else "?"
@@ -118,7 +113,7 @@ def _dropped_oos_candidates_from_file(path: Path) -> list[str]:
         oos_id = match.group(1)
         title = _clean_oos_title(match.group(2), oos_id)
         block = match.group(0)
-        if voting.is_security_block_text(block) or _security_heading_title(match.group(2)):
+        if voting.is_security_block_text(block):
             continue
         severity = _field_value(block, "Severity") or "unknown"
         concern = _field_value(block, "Concern")

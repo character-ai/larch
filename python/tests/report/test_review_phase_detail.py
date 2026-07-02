@@ -182,7 +182,7 @@ def test_render_dropped_oos_candidate_section_skips_security_candidates(tmp_path
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()
     _ = (round_dir / "oos-dropped-before-vote.md").write_text(
-        "### OOS_1: [OUT_OF_SCOPE] security\n"
+        "### OOS_1: [OUT_OF_SCOPE] [security] token leak\n"
         "- **Reviewer(s)**: codex-specialist-security\n"
         "- **Severity**: important\n"
         "- **Concern**: private detail.\n\n"
@@ -198,6 +198,21 @@ def test_render_dropped_oos_candidate_section_skips_security_candidates(tmp_path
     assert "public follow-up" in section
     assert "private detail" not in section
     assert "Round 1 OOS_1" not in section
+
+
+def test_render_dropped_oos_candidate_section_keeps_security_md_titled_public_candidates(tmp_path: Path) -> None:
+    # A title that merely starts with "SECURITY.md" (documentation-drift, not a
+    # security-sensitive finding) must not be misclassified as security-routed.
+    _write_dropped_oos(
+        tmp_path / "round-1" / "oos-dropped-before-vote.md",
+        title="[OUT_OF_SCOPE] SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption",
+        severity="important",
+        concern="docs/linting.md moved to DIGEST_FILE-first consumption but SECURITY.md was not updated.",
+    )
+
+    section = review_phase_detail.render_dropped_oos_candidate_section(tmp_path)
+
+    assert "SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption" in section
 
 
 def test_render_dropped_oos_candidate_section_caps_candidates(tmp_path: Path) -> None:
