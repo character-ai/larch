@@ -1,0 +1,25 @@
+## Proposed Design Outline
+
+### Goals
+- Add `--approve`/`-a` to `/release` so it skips the Step 4 confirm gate and proceeds as if the operator explicitly chose Confirm.
+- Stop reading PR diffs (`gh pr diff`) when composing release notes; source the "what changed" text from each PR's companion issue title (via the repo-wide `Fixes #N:` PR-title prefix convention), falling back to the PR's own title when no companion issue resolves.
+
+### Non-goals
+- No change to `classify_bump`'s MAJOR/MINOR/PATCH structural file-diff classifier (`version_bump.py`) — it never read PR diffs and stays out of scope.
+- No change to the empty-window (`PR_COUNT=0`) default-to-Cancel safety net; `--approve` still stops rather than auto-cutting a no-op release.
+- No new Python CLI/argparse surface for `--approve`; parsed inline in SKILL.md Step 1 the same way `--dry-run` is today.
+
+### Approach sketch
+- `.claude/skills/release/SKILL.md`: add `--approve`/`-a` to the flags table, `argument-hint`, and Step 1's inline Bash flag parser; Step 4 skips `AskUserQuestion` and proceeds as Confirm when set and `PR_COUNT>0`.
+- `.claude/skills/release/SKILL.md` Step 3: replace the "Direction-verification rule" `gh pr diff` fallback with an instruction describing the resolved companion-issue title now carried in the existing `title` TSV column; update the `PR_LIST_FILE` column description accordingly.
+- `python/larch/release/release_prepare.py`: in `_write_pr_row` (shared by the main PR loop and the commit-to-pulls orphan-PR loop), resolve a companion issue number from the PR title's `^Fixes #(\d+):` prefix, fetch that issue's title via `gh issue view <N> --repo <repo> --json title`, and substitute it for the PR title when found; fall back to the PR title otherwise (no match, or fetch failure).
+- `python/tests/release/test_release.py`: add coverage for companion-issue title resolution and its fallback path.
+
+### Surfaces in scope
+- `.claude/skills/release/SKILL.md`
+- `python/larch/release/release_prepare.py`
+- `python/tests/release/test_release.py`
+- `docs/skills.md` (`/release` flag description)
+
+### Open questions
+- None.

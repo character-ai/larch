@@ -1,0 +1,1 @@
+Plan: update the dev-only `/release` skill, release prepare helper, release tests, and release docs. Add `--approve` while preserving the zero-PR safety gate. Stop release-note composition from reading PR diffs by feeding companion issue titles into `PR_LIST_FILE`, with PR titles as fallback.

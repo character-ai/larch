@@ -1,0 +1,4 @@
+# /release skill overhaul
+
+1. Add --approve/-a flag to /release, which make it skip the approval gate and act as though the operator approved explicitly at the gate, i.e., proceed
+2. /release should not read PR diffs.  Instead, it should gather the information for version bump decision and release notes from the titles of the companions issues to the PRs.  For those PRs that have no companion issue, the PR title should be used as the info source.
