@@ -1,0 +1,179 @@
+Reviewing the codebase to align the revised plan with actual structure and the accepted findings.
+## Plan
+
+Implement the minimum fix in three layers: effective finalize normalization, writer-side backstop, and a ship-driver pre-merge committing reconciliation for recovery paths that skip intermediate flushes.
+
+## Approach
+
+1. **Primary normalization fix (effective finalize everywhere).**
+   - In `python/larch/state/_normalize.py`, add a helper that detects stale finalize-stall overlays after recovery.
+   - Treat `finalize-state.sh` terminal stall fields as stale only when live `ship-pr-state.sh` shows later clean ship evidence:
+     - PR number or PR URL is present, or merge result is terminal.
+     - ship `PHASE` is not `stalled`.
+     - ship-side `BAIL_REASON`, `IMPLEMENT_BAIL_REASON`, and non-zero `EXIT_CODE` are absent.
+   - When that helper matches, build `fin_eff` by clearing only stale finalize terminal fields used for outcome choice: `STALL_TRACKING`, `STALL_STEP`, `PHASE=stalled`, `BAIL_REASON`, `IMPLEMENT_BAIL_REASON`, `EXIT_CODE`, and `BAIL_NEEDS_USER_INPUT`.
+   - Keep raw `fin` solely for diagnostic emit keys such as `IMPLEMENT_FINALIZE_STALL_TRACKING`.
+   - Wire stale detection before stall gating. Derive `effective_any_stall` from memory, ship, and session stall flags plus non-stale finalize contribution only. Do not let raw `fin_stall` force `any_stall=true` when the overlay is stale.
+   - Inside `normalized_outcome_values` only, pass `fin_eff` (not raw `fin`) into every outcome predicate: `_stall_signal_is_terminal`, `_has_failure_signals`, `_phase_counts_as_stalled`, and `_is_healthy_pre_terminal_pr_snapshot`. Keep `_has_failure_signals` unchanged for other callers.
+   - Keep `_finalize_phase_is_stale_stall_overlay` behavior for in-flight ship phases, but ensure it cooperates with the new recovery overlay helper rather than returning false whenever raw `any_stall` is true.
+
+2. **Ship-time re-flush behavior.**
+   - Keep `_publish_post_pr_terminal_snapshot` as the main pre-push correction path when a terminal snapshot is published.
+   - Ensure it passes a context whose current PR fields are available to `flush_logs_pre(..., strict_final_report=True)`.
+   - Do not add a second post-ensure PR log flush on the normal fresh PR path. `ship_merge.py` documents that this would move HEAD and re-trigger CI (#5217).
+   - Do not change genuine terminal stall publishing when active ship failure signals remain.
+
+3. **Pre-merge committing reconciliation (recovery gap).**
+   - Normalization and flush backstop only help when `flush_logs_pre` runs. After a stall snapshot commits `Outcome: stalled`, open-pr resume can reach `merge.merge_pr(..., post_flush=False)` with zero intervening committing flush when CI returns merge on the first poll. `flush_logs_post` rewrites tmpdir only and never git-commits.
+   - Add a narrow pre-merge touchpoint in `python/larch/implement/ship.py` immediately before `merge.merge_pr`:
+     - Detect committed `final-summary.md` whose first non-empty heading line ends in `stalled`.
+     - Detect live recovery via `normalized_outcome_values` (`pr-created`, `pr-created-draft`, or `merged`) with no active ship failure signal.
+     - Run one guarded `flush_logs_pre(..., strict_final_report=True)` plus push through existing push helpers, reusing the backstop and corrected normalization.
+   - Gate strictly so fresh non-stale PR creation keeps the push-only `_post_ensure_flush_and_push` invariant. Run only when the committed run-dir summary is stalled and current ship/finalize evidence normalizes away from stall.
+   - Extract the detection/guard into a small helper in `python/larch/implement/ship_pr.py` or a shared ship module if that keeps `ship.py` readable.
+
+4. **Run-log backstop.**
+   - Add a narrow writer-side reconciliation helper in `python/larch/report/run_log_flush.py`, with optional heading/outcome rewrite helper in `python/larch/report/final_report.py`.
+   - Run only during flush paths that already touch a run dir.
+   - When tmpdir ship/finalize state exists, prefer full re-render through existing `write_final_report` / `normalized_outcome_values`.
+   - When only committed manifest evidence is available, stay conservative:
+     - allow `status=done` plus `pr_number` to reconcile toward `merged`;
+     - avoid rewriting PR-only `status=partial` or `status=in_progress` stalled summaries unless ship state also has no active failure signal.
+   - For manifest-only backstop, do not do heading-only rewrite. Either skip when tmpdir state is unavailable, or atomically update both the first non-empty heading line and the first matching `- **Outcome**: stalled` line so the committed summary is internally consistent. Assert rewritten summaries no longer contain stalled outcome text.
+   - Fail closed in `strict_final_report=True` if reconciliation cannot write the required summary.
+
+5. **Do not repair historical logs.**
+   - Do not add a migration over existing `larch-logs/`.
+   - The change affects future flushes and touched run dirs only.
+
+## Files to modify/create
+
+### UPDATED: python/larch/state/_normalize.py
+
+Add stale-finalize overlay detection, build `fin_eff`, and drive all outcome predicates from effective finalize inside `normalized_outcome_values`.
+
+Key details:
+- Add `_finalize_stall_overlay_is_stale_after_recovery(ship, fin)` using the clean-ship evidence gates above.
+- Add `_effective_finalize_for_outcome(ship, fin)` returning `fin_eff`.
+- Compute `effective_any_stall` before the stalled branch; exclude stale `fin` stall contribution.
+- Replace every `fin=` argument in outcome helpers inside `normalized_outcome_values` with `fin_eff`.
+- Pass `fin_eff` into `_stall_signal_is_terminal`, `_has_failure_signals`, `_phase_counts_as_stalled`, and `_is_healthy_pre_terminal_pr_snapshot`.
+- Use raw `fin_stall` only for `IMPLEMENT_FINALIZE_STALL_TRACKING` and related diagnostic keys.
+- Add comments distinguishing stale finalize fields from active ship failure signals.
+- Keep `_has_failure_signals` signature unchanged for non-normalization callers.
+
+### UPDATED: python/larch/implement/ship.py
+
+Add the pre-merge committing reconciliation hook for stall-recovery runs whose committed summary is still `stalled`.
+
+Key details:
+- Before `merge.merge_pr(..., post_flush=False)`, call a guarded helper when:
+  - git-tracked run-dir `final-summary.md` heading ends in `stalled`, and
+  - `normalized_outcome_values` for current tmpdir state is `pr-created`, `pr-created-draft`, or `merged`.
+- Invoke `flush_logs_pre(..., strict_final_report=True)` and push only on that gate. Do not run on fresh PR creation or when live ship still has active failure signals.
+- On strict flush skip/failure, preserve existing stall/terminal behavior rather than claiming a corrected committed log.
+- Reuse the planned run-log backstop rather than duplicating rewrite logic.
+
+### UPDATED: python/larch/implement/ship_pr.py
+
+Add or host the shared reconciliation guard/helper used by `ship.py` and optionally `_publish_post_pr_terminal_snapshot`.
+
+Key details:
+- Centralize committed-summary stalled-heading detection and live normalized-outcome comparison.
+- Keep `_publish_post_pr_terminal_snapshot` behavior intact for genuine terminal snapshots.
+- Document why this is not a blanket post-ensure re-flush (#5217, #5186).
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Add or call the backstop after final report rendering and before manifest reload/commit.
+
+Key details:
+- Reuse `stall_recovery.normalized_outcome_values` when tmpdir state exists and prefer full `write_final_report`.
+- For manifest-only evidence, call the bounded atomic rewrite helper or skip when consistency cannot be guaranteed.
+- Fail closed in `strict_final_report=True` if reconciliation cannot write the required summary.
+- Preserve existing skip reasons.
+- Do not introduce a network or `gh` dependency.
+
+### UPDATED: python/larch/report/final_report.py
+
+Add a small helper for manifest-only stalled-summary reconciliation near `write_final_report`.
+
+Key details:
+- Prefer full re-render through existing `write_final_report` data flow whenever tmpdir ship/finalize state exists.
+- For manifest-only backstop, update or remove the first matching `- **Outcome**: stalled` line together with the stalled heading in one atomic rewrite; preserve the rest of the file.
+- Skip rewrite when only ambiguous manifest evidence exists.
+- Keep manifest reconciliation behavior intact.
+
+### UPDATED: python/larch/report/run_log_tolerance.py
+
+Update only if tests show the backstop needs a shared predicate for stale stalled headings.
+
+Key details:
+- Add something like `stale_stalled_heading_with_shipped_evidence(...)` if shared by flush backstop and ship pre-merge gate.
+- Do not make all `stalled + pr_number` stale.
+- Require stronger shipped evidence, such as manifest `status=done`, normalized `merged`, or an explicit clean ship-state path.
+
+### UPDATED: python/tests/state/test_stall_recovery.py
+
+Add normalization regressions that exercise effective finalize through every gating path:
+- `finalize-state.sh` has `STALL_TRACKING=true`, `PHASE=stalled`, and `EXIT_CODE=4`; later `ship-pr-state.sh` has clean PR evidence. Assert `IMPLEMENT_NORMALIZED_OUTCOME=pr-created`.
+- Same setup with `MERGE_RESULT=merged`. Assert `IMPLEMENT_NORMALIZED_OUTCOME=merged`.
+- Same stale finalize state but live ship `BAIL_REASON` or `PHASE=stalled`. Assert `IMPLEMENT_NORMALIZED_OUTCOME=stalled`.
+- Regression where raw `fin_stall` alone would previously keep `any_stall=true` despite clean ship PR evidence; assert effective finalize yields `pr-created`, not merely manifest reconcile.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add flush/backstop coverage:
+- First flush writes a genuine stalled summary.
+- Later state gains clean PR evidence.
+- A strict final-report flush rewrites committed `final-summary.md` away from `stalled` in both heading and `- **Outcome**: stalled`.
+- A committed manifest with `status=done` and `pr_number` plus a stalled heading/outcome pair is reconciled on a touched run dir.
+- A PR-number-only manifest with active failure evidence remains `stalled`.
+- Manifest-only rewrite asserts the summary no longer contains stalled outcome text anywhere, not just the heading.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Add or adjust ship-driver regression coverage:
+- Simulate a genuine stall snapshot that commits `Outcome: stalled` to git-tracked run logs.
+- Simulate open-pr resume recovery with PR creation or merge and zero intermediate committing flushes.
+- Assert the git-tracked run-dir `final-summary.md` heading and outcome are no longer `stalled` after recovery merge or guarded pre-merge reconciliation.
+- Add a straight recovery→merge test: stall flush commits, monitor returns merge on first poll, pre-merge reconciliation runs once, merge succeeds, committed summary is corrected.
+- Keep the existing `ci-fix-exhausted` test asserting that active post-PR failure does not become `pr-created`.
+- Keep `test_post_ensure_fresh_run_is_push_only_no_reflush` asserting fresh runs do not get a blanket second strict flush.
+
+## Edge cases
+
+- **Finalize has stale `EXIT_CODE=4`.** Ignore it in `fin_eff` only when clean ship evidence proves later recovery.
+- **PR exists but ship is actively failed.** Keep `stalled` or `bailed`; pre-merge reconciliation must not run.
+- **Merge result exists.** Prefer `merged` or existing force-merge labels over stall.
+- **No PR or merge evidence.** Keep genuine terminal stall behavior unchanged.
+- **Draft PR.** Preserve `pr-created-draft`.
+- **Forked dry run and design-only.** Do not change their ordering unless existing tests require it.
+- **Committed summary stalled but normalization already correct before merge.** Pre-merge hook should still reconcile the committed git copy once; tmpdir-only postmerge refresh is insufficient.
+- **Manifest-only rewrite.** If heading and outcome bullet cannot both be made consistent, skip rather than leave mixed stall/non-stall text.
+
+## Failure modes
+
+- If final-summary rewrite fails during strict ship-time or pre-merge flush, return the existing recovery-failed skip so ship does not claim a corrected committed log.
+- If manifest-only evidence is ambiguous, do not rewrite. A false `stalled` is bad, but a false `merged` is worse.
+- If state files are malformed or missing, keep current fallback behavior.
+- If pre-merge reconciliation would reintroduce the fresh-run double-flush pattern, the guard must refuse and preserve #5217 behavior.
+
+## Testing strategy
+
+Run changed Python tests only:
+
+- `python3 -m pytest python/tests/state/test_stall_recovery.py`
+- `python3 -m pytest python/tests/report/test_run_logs.py`
+- `python3 -m pytest python/tests/implement/test_ship.py`
+
+Then run targeted lint if available:
+
+- `make py-lint`
+
+If local lint dependencies are missing, report that and rely on CI for the full Python lint matrix.
+
+diff_added: 220
+diff_deleted: 30
+mechanical_churn: false
+diff_lines: 250

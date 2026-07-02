@@ -1,0 +1,1 @@
+Fix outcome normalization so stale `finalize-state.sh` stall fields do not override later clean ship evidence. Add a cautious run-log backstop for committed stalled summaries with manifest ship evidence. Cover normalization, flush, and ship recovery tests.

@@ -1,0 +1,3 @@
+### G-Cfg-1: Define every exit code, env-var name, tunable, and wire-literal once in config.py as a Final
+- Deviation: the plan introduces new step-label/status literals (a new terminal ship-state step label for the reconciliation guard, and potential new manifest status tokens for the backstop) without explicitly committing to defining them as `Final` constants in `config.py`.
+- Rationale it's acceptable to proceed: this is a minor implementation-detail gap, not a design-level concern. The plan already reuses existing constants (e.g. `config.POST_MERGE_MERGE_RESULTS`) elsewhere; Step 2 implementation should follow the same `config.py` pattern for any new literal it introduces rather than inlining ad-hoc strings.
