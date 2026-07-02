@@ -216,6 +216,27 @@ def test_write_final_report_reconciles_step8_and_in_progress_for_pr_created(
     assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
 
 
+def test_write_final_report_reconciles_step7a_true_from_artifacts(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (run_dir / "manifest.json").write_text(
+        json.dumps({"schema_version": 2, "skill": "implement", "run_id": "run1", "status": "partial", "steps_ran": {"step7a": False}}),
+        encoding="utf-8",
+    )
+    _ = (run_dir / "timing-report.json").write_text("{}", encoding="utf-8")
+
+    _stub_cost_and_assessment(monkeypatch)
+    rc, _url, err = final_report.write_final_report(tmp_path)
+
+    assert (rc, err) == (0, "")
+    manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["steps_ran"]["step7a"] is True
+
+
 def test_write_final_report_shipping_sets_in_progress(
     tmp_path: Path,
     monkeypatch,  # type: ignore[no-untyped-def]
@@ -331,6 +352,30 @@ def test_write_final_report_ndjson_fallbacks_render_detail(
     assert "Warnings (2):" in body
     assert "warn: one" in body
     assert "plain two" in body
+
+
+def test_write_final_report_counts_committed_ndjson_over_live_log(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _write_minimal_state(tmp_path)
+    _stub_cost_and_assessment(monkeypatch)
+    (tmp_path / "execution-issues.md").write_text("### Warnings\n- stale live warning\n", encoding="utf-8")
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Tool Failures", "body": "- committed failure\n"}) + "\n",
+        encoding="utf-8",
+    )
+
+    rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
+
+    assert (rc, err) == (0, "")
+    body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
+    assert "**Exec issues**: 1" in body
+    assert "**Warnings**: 0" in body
+    assert "committed failure" in body
+    assert "stale live warning" not in body
 
 
 def test_write_final_report_legacy_string_count_header_only(

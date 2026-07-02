@@ -232,6 +232,10 @@ def _events_from_structured_body(body: str, category: str) -> list[IssueEvent]:
     return [_fallback_event(body, category)]
 
 
+def structured_body_dedupe_keys(body: str, category: str) -> set[str]:
+    return {event.dedupe_key for event in _events_from_structured_body(body, category)}
+
+
 def _parse_ndjson_structured_rows(rows: list[dict[str, object]]) -> IssueDetailGroups:
     exec_events: list[IssueEvent] = []
     warn_events: list[IssueEvent] = []
@@ -283,7 +287,11 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
     return LoadResult(EMPTY_GROUPS, listing_degraded=True, degraded_totals=legacy_category_string_totals(body_text))
 
 
-def load_issue_detail_groups(tmpdir: Path, *, run_dir: Path | None) -> LoadResult:
+def load_issue_detail_groups(tmpdir: Path, *, run_dir: Path | None, prefer_run_dir: bool = False) -> LoadResult:
+    if prefer_run_dir and run_dir is not None:
+        ndjson = run_dir / "execution-issues.ndjson"
+        if ndjson.is_file():
+            return _parse_ndjson_legacy(ndjson)
     issue_log = tmpdir / "execution-issues.md"
     if issue_log.is_file() and issue_log.stat().st_size > 0:
         return LoadResult(

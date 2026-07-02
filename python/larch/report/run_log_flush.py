@@ -12,6 +12,7 @@ import sys
 import tempfile
 from contextlib import suppress
 from pathlib import Path
+from typing import cast
 
 from larch.core import config
 from larch.core import proc
@@ -20,6 +21,7 @@ from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import pr_body
+from larch.report import exec_issue_detail
 from larch.report import final_report
 from larch.report import timing
 from larch.report import tokens
@@ -122,15 +124,16 @@ def _execution_issue_record(
     step_label: str,
     source_label: str,
     file_sha: str,
-    existing_batch: str,
+    seen_keys: set[str],
 ) -> str | None:
     body = "\n".join(body_lines)
     redacted_body = _redact_batch_payload(body)
+    body_keys = _execution_issue_body_keys(category=category, body=redacted_body)
+    if body_keys <= seen_keys:
+        return None
     norm_sha = hashlib.sha256(
         _normalize_body_for_hash(redacted_body).encode("utf-8"),
     ).hexdigest()
-    if f'"source_sha256":"{norm_sha}"' in existing_batch:
-        return None
     payload = {
         "phase": "implement",
         "step": step_label,
@@ -139,7 +142,70 @@ def _execution_issue_record(
         "source_sha256": norm_sha or file_sha,
         "body": redacted_body,
     }
+    seen_keys.update(body_keys)
     return json.dumps(payload, sort_keys=True)
+
+
+def _execution_issue_body_keys(*, category: str, body: str) -> set[str]:
+    return {f"{category}\0{key}" for key in exec_issue_detail.structured_body_dedupe_keys(body, category)}
+
+
+def _existing_execution_issue_keys(existing_batch: str) -> set[str]:
+    keys: set[str] = set()
+    for raw in existing_batch.splitlines():
+        try:
+            row: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(row, dict):
+            continue
+        row_dict = cast("dict[str, object]", row)
+        category = row_dict.get("category")
+        body = row_dict.get("body")
+        if isinstance(category, str) and isinstance(body, str):
+            keys.update(_execution_issue_body_keys(category=category, body=body))
+    return keys
+
+
+def _execution_issue_chunks(body_lines: list[str]) -> list[list[str]]:
+    chunks: list[list[str]] = []
+    current: list[str] = []
+    in_fence = False
+    for line in body_lines:
+        if line.lstrip().startswith("```"):
+            in_fence = not in_fence
+            current.append(line)
+            continue
+        if not in_fence and line.startswith("- ") and current:
+            if any(item.strip() for item in current):
+                chunks.append(current)
+            current = [line]
+            continue
+        current.append(line)
+    if any(item.strip() for item in current):
+        chunks.append(current)
+    return chunks
+
+
+def _append_execution_issue_records(
+    *,
+    records: list[str],
+    body_lines: list[str],
+    record_context: tuple[str, str, str, str],
+    seen_keys: set[str],
+) -> None:
+    category, step_label, source_label, file_sha = record_context
+    for chunk in _execution_issue_chunks(body_lines):
+        record = _execution_issue_record(
+            body_lines=chunk,
+            category=category,
+            step_label=step_label,
+            source_label=source_label,
+            file_sha=file_sha,
+            seen_keys=seen_keys,
+        )
+        if record is not None:
+            records.append(record)
 
 
 def _render_execution_issues_batch(
@@ -154,37 +220,30 @@ def _render_execution_issues_batch(
         return
     file_sha = hashlib.sha256(issue_log.read_bytes()).hexdigest()
     existing = batch_path.read_text(encoding="utf-8") if batch_path.is_file() else ""
+    seen_keys = _existing_execution_issue_keys(existing)
     records: list[str] = []
     current_cat = "Tool Failures"
     body_lines: list[str] = []
     for line in issue_log.read_text(encoding="utf-8").splitlines():
         if line.startswith("### "):
             if body_lines:
-                record = _execution_issue_record(
+                _append_execution_issue_records(
+                    records=records,
                     body_lines=body_lines,
-                    category=current_cat,
-                    step_label=step_label,
-                    source_label=source_label,
-                    file_sha=file_sha,
-                    existing_batch=existing,
+                    record_context=(current_cat, step_label, source_label, file_sha),
+                    seen_keys=seen_keys,
                 )
-                if record is not None:
-                    records.append(record)
                 body_lines = []
             current_cat = line.removeprefix("### ")
             continue
         body_lines.append(line)
     if body_lines:
-        record = _execution_issue_record(
+        _append_execution_issue_records(
+            records=records,
             body_lines=body_lines,
-            category=current_cat,
-            step_label=step_label,
-            source_label=source_label,
-            file_sha=file_sha,
-            existing_batch=existing,
+            record_context=(current_cat, step_label, source_label, file_sha),
+            seen_keys=seen_keys,
         )
-        if record is not None:
-            records.append(record)
     if not records:
         return
     batch_path.parent.mkdir(parents=True, exist_ok=True)
@@ -454,6 +513,11 @@ def _stage_pre_commit(
             step_label="pre-push-post-transcript",
             source_label="execution-issues.md post-transcript refresh",
         )
+        if strict_final_report:
+            _write_final_report(runner=runner, ctx=ctx, skip_tracking_upsert=True)
+        else:
+            with suppress(ShipError):
+                _write_final_report(runner=runner, ctx=ctx, skip_tracking_upsert=True)
         if (run_dir / "final-summary.md").is_file():
             _reconcile_terminal_manifest_from_ctx(ctx)
 

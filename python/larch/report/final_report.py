@@ -432,7 +432,7 @@ def _final_report_duration(*, run_dir: Path, ship: Path) -> str:
 
 def _refresh_issue_counts(*, implement_tmpdir: Path, run_id: str) -> tuple[int, int]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
-    result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir)
+    result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir, prefer_run_dir=True)
     return exec_issue_detail.count_load_result(result)
 
 
@@ -441,7 +441,7 @@ def _issue_load_result_for_run(
     run_id: str,
 ) -> tuple[Path, exec_issue_detail.LoadResult, int, int]:
     run_dir = implement_tmpdir / "larch-logs" / "implement" / run_id
-    load_result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir)
+    load_result = exec_issue_detail.load_issue_detail_groups(implement_tmpdir, run_dir=run_dir, prefer_run_dir=True)
     exec_count, warn_count = exec_issue_detail.count_load_result(load_result)
     return run_dir, load_result, exec_count, warn_count
 
@@ -712,7 +712,7 @@ def _reconcile_manifest_for_terminal_report(
         fields.append("steps_ran.step8=true")
     else:
         fields.append("steps_ran.step8=false")
-    if not any(
+    step7a_artifact_present = any(
         (run_dir / name).is_file()
         for name in (
             "token-report.json",
@@ -720,7 +720,10 @@ def _reconcile_manifest_for_terminal_report(
             "execution-issues.ndjson",
             "session-transcript.jsonl",
         )
-    ):
+    )
+    if step7a_artifact_present:
+        fields.append("steps_ran.step7a=true")
+    else:
         fields.append("steps_ran.step7a=false")
     if outcome in {"pr-created", "pr-created-draft", "shipping"}:
         fields.append(f"status={config.MANIFEST_STATUS_IN_PROGRESS}")
