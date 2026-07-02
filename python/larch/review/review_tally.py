@@ -1172,6 +1172,7 @@ def log_phase(argv: list[str]) -> int:
             extra_log_args = ["--skill", "review", "--run-id", args.run_id, "--batch", "panel-prompt-sizes"]
             if args.log_root:
                 extra_log_args = ["--log-root", args.log_root, *extra_log_args]
+            # lint-subprocess-via-runner: ok sibling panel-prompt-sizes write mirrors the baselined run-log subprocess.run above in this function
             extra = subprocess.run([*base, "write", *extra_log_args, "--input-file", str(sibling)], text=True, capture_output=True, check=False)
             if extra.returncode != 0:
                 print("log-phase: warning: failed to write sibling panel-prompt-sizes batch", file=sys.stderr)
