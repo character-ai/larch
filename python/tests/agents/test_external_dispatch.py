@@ -137,7 +137,7 @@ def test_checks_lint_fix_uses_lint_fix_coder_role(tmp_path: Path, monkeypatch: p
 
 
 def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    seen = _tool_order_probe(monkeypatch, review_and_fix, "review.fix_coder", ("codex", "cursor"))
+    seen = _tool_order_probe(monkeypatch, review_and_fix, "review.fix_coder", ("codex", "cursor", "claude"))
     accepted = tmp_path / "accepted.md"
     accepted.write_text("### FINDING_1: fix\nBody\n", encoding="utf-8")
     round_dir = tmp_path / "round-1"
@@ -149,8 +149,21 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
         snap.mkdir(parents=True, exist_ok=True)
         (snap / "pre-coder-head.txt").write_text("HEAD\n", encoding="utf-8")
 
-    def fake_codex(**_kwargs: object) -> bool:
-        run_calls.append("codex")
+    def fake_coder(name: str) -> Any:
+        def _inner(**_kwargs: object) -> bool:
+            run_calls.append(name)
+            return True
+        return _inner
+
+    stage_calls = [[], ["changed.py"]]
+
+    def fake_collect_stage_paths(*_args: object, **_kwargs: object) -> list[str]:
+        return stage_calls.pop(0)
+
+    def fake_commit(*_args: object, **_kwargs: object) -> coder_runner.RoundCommitResult:
+        return coder_runner.RoundCommitResult(sha="abc123")
+
+    def fake_cleanup(_round_dir: Path) -> bool:
         return True
 
     def fake_scrub_findings(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
@@ -164,16 +177,66 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
     monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
     monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
     monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
-    monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_codex)
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_coder("codex"))
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_coder("cursor"))
+    monkeypatch.setattr(coder_runner, "_run_coder_claude", fake_coder("claude"))
+    monkeypatch.setattr(coder_runner, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", fake_collect_stage_paths)
+    monkeypatch.setattr(coder_runner, "_cleanup_failed_coder_attempt", fake_cleanup)
+    monkeypatch.setattr(coder_runner, "_stage_and_commit_round", fake_commit)
+
+    result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file, round_num=1)
+
+    assert seen == ["review.fix_coder"]
+    assert run_calls == ["codex", "cursor"]
+    assert result.tool == "cursor"
+    assert result.status == "applied"
+
+
+def test_review_fix_coder_attempts_claude_before_main_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    seen = _tool_order_probe(monkeypatch, review_and_fix, "review.fix_coder", ("codex", "cursor", "claude"))
+    accepted = tmp_path / "accepted.md"
+    accepted.write_text("### FINDING_1: fix\nBody\n", encoding="utf-8")
+    round_dir = tmp_path / "round-1"
+    result_file = tmp_path / "coder.env"
+    run_calls: list[str] = []
+
+    def fake_ensure(target: Path) -> None:
+        snap = review_and_fix.pre_coder_snapshot_dir(target)
+        snap.mkdir(parents=True, exist_ok=True)
+        (snap / "pre-coder-head.txt").write_text("HEAD\n", encoding="utf-8")
+
+    def fake_coder(name: str) -> Any:
+        def _inner(**_kwargs: object) -> bool:
+            run_calls.append(name)
+            return True
+        return _inner
+
+    def fake_scrub_findings(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
+        _ = log_file
+        output_file.write_text(input_file.read_text(encoding="utf-8"), encoding="utf-8")
+        return True, 0
+
+    monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
+    monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
+    monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
+    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
+    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", fake_coder("codex"))
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_coder("cursor"))
+    monkeypatch.setattr(coder_runner, "_run_coder_claude", fake_coder("claude"))
     monkeypatch.setattr(coder_runner, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
     monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda *_args, **_kwargs: [])
+    monkeypatch.setattr(coder_runner, "_cleanup_failed_coder_attempt", lambda _round_dir: True)
+    monkeypatch.setattr(coder_runner, "_record_main_agent_required_vendor_task", lambda _round_dir: tmp_path / "main-agent.log")
 
     result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file)
 
     assert seen == ["review.fix_coder"]
-    assert run_calls == ["codex"]
-    assert result.tool == "codex"
-    assert result.status == "no-changes"
+    assert run_calls == ["codex", "cursor", "claude"]
+    assert result.tool == "none"
+    assert result.status == "main-agent-required"
 
 
 def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -402,14 +465,17 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
 
 def test_review_aggregate_selects_code_and_plan_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen: list[str] = []
+    slot_rows: list[dict[str, object]] = []
 
     def fake_slot_defaults(role_id: str, *_args: object, **_kwargs: object) -> tuple[config.SlotDefault, ...]:
         seen.append(role_id)
-        return (config.SlotDefault(slot=f"slot-{role_id}", tool="cursor", output="aggregator-output.txt"),)
+        return (config.SlotDefault(slot=f"slot-{role_id}", tool="codex", output="aggregator-output.txt", model_role="review"),)
 
     def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if "--slots-file" not in cmd:
             return subprocess.CompletedProcess(cmd, 0, "", "")
+        slots_file = Path(cmd[cmd.index("--slots-file") + 1])
+        slot_rows.extend(json.loads(line) for line in slots_file.read_text(encoding="utf-8").splitlines())
         output = tmp_path / "aggregator-output.txt"
         output.write_text("### FINDING_1: merged\nBody\n\n### FINDING_2: merged\nBody\n", encoding="utf-8")
         return subprocess.CompletedProcess(cmd, 0, f"DISPATCH_OK=true\nALL_OUTPUT_FILES={output}\n", "")
@@ -430,6 +496,7 @@ def test_review_aggregate_selects_code_and_plan_roles(tmp_path: Path, monkeypatc
     ]) == 0
 
     assert seen == ["review.findings_aggregator", "design.plan_findings_aggregator"]
+    assert [row["model_role"] for row in slot_rows] == ["review", "review"]
 
 
 def test_decompose_panel_and_aggregator_use_decompose_roles(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

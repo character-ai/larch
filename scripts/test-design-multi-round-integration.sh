@@ -181,21 +181,15 @@ if [[ "$round_num" == 1 ]]; then
 - **Severity**: important
 - **Concern**: important issue after Gate B
 FINDINGS
+    printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
+else
+    : >"${DESIGN_TMPDIR}/accepted-plan-findings.md"
+    printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
 fi
-printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=1\nIMPORTANT_ACCEPTED_COUNT=1\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' "$round_num"
 EOS
 chmod +x "$chain_stub"
-for helper in revise-ok.sh dedup-ok.sh postplan-ok.sh continue-true.sh; do
+for helper in dedup-ok.sh postplan-ok.sh continue-true.sh; do
     case "$helper" in
-        revise-ok.sh) cat >"$D2/$helper" <<'STUB'
-#!/usr/bin/env bash
-set -euo pipefail
-plan=""
-while [[ $# -gt 0 ]]; do case "$1" in --plan-file) plan="${2:?}"; shift 2 ;; *) shift ;; esac; done
-printf '\n# revised\n' >>"$plan"
-printf 'REVISE_STATUS=ok\n'
-STUB
-        ;;
         dedup-ok.sh) cat >"$D2/$helper" <<'STUB'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -231,11 +225,24 @@ done
 run_step3_out=$(env -u LARCH_QUIET_PID \
     CLAUDE_PLUGIN_ROOT="$ROOT" \
     RUN_STEP3_PLAN_REVIEW_LOOP_SH="$chain_stub" \
-    RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH="$D2/revise-ok.sh" \
     RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
     RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
     RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
     python3 "$CLI" plan-review run --design-tmpdir "$D2" --mode loop)
+printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required$' \
+    || fail "round 1 should return to inline Gate B apply"
+cp "$D2/plan.txt" "$D2/plan-pre-apply-round-1.txt"
+printf '\n# inline Gate B applied\n' >>"$D2/plan.txt"
+: >"$D2/.gate-b-postapply-ready-1"
+printf 'awaiting-post-apply\n' >"$D2/.step3-round-1.phase"
+
+run_step3_out=$(env -u LARCH_QUIET_PID \
+    CLAUDE_PLUGIN_ROOT="$ROOT" \
+    RUN_STEP3_PLAN_REVIEW_LOOP_SH="$chain_stub" \
+    RUN_STEP3_DEDUP_PLAN_SH="$D2/dedup-ok.sh" \
+    RUN_STEP3_POSTPLAN_EMIT_SH="$D2/postplan-ok.sh" \
+    RUN_STEP3_CONTINUATION_SH="$D2/continue-true.sh" \
+    python3 "$CLI" plan-review run --design-tmpdir "$D2" --mode loop --starting-round 1)
 printf '%s\n' "$run_step3_out" | grep -q '^STEP3_REVIEW_LOOP_STATUS=complete$' || fail "loop mode should finish with complete envelope"
 printf '%s\n' "$run_step3_out" | grep -q '^FINAL_ROUND_NUM=2$' || fail "loop mode should complete two review rounds"
 printf 'preserve me\n' >"$D2/plan-review/round-1/preserve.txt"

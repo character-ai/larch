@@ -244,6 +244,8 @@ grep -Fq 'SETTLE_NEXT_ACTION=gate-b-continue' "$D_WRAP_CLEAN/settle.out" \
 
 D_DEDUP_REVISE="$TMP/dedup-revise"
 mk_design "$D_DEDUP_REVISE" 5 5
+cp "$D_DEDUP_REVISE/plan.txt" "$D_DEDUP_REVISE/plan-pre-apply-round-15.txt"
+printf '%s\n' '# Plan' 'mutated during inline apply' 'diff_lines: 6' >"$D_DEDUP_REVISE/plan.txt"
 set +e
 DESIGN_STEP35_DEDUP_PLAN_SH="$DEDUP_REVISE_STUB" \
   DESIGN_STEP35_POSTPLAN_SH="$POSTPLAN_STUB" \
@@ -253,6 +255,10 @@ set -e
 [[ "$rc" -eq 1 ]] || fail "stubbed dedup revise should exit wrapper rc 1, got $rc"
 grep -Fq 'SETTLE_NEXT_ACTION=dedup-revise' "$D_DEDUP_REVISE/settle.out" \
   || fail 'stubbed dedup revise missing dedup-revise next action'
+cmp "$D_DEDUP_REVISE/plan-pre-apply-round-15.txt" "$D_DEDUP_REVISE/plan.txt" >/dev/null \
+  || fail 'stubbed dedup revise should restore plan from pre-apply snapshot'
+[[ ! -e "$D_DEDUP_REVISE/.gate-b-postapply-ready-15" ]] \
+  || fail 'stubbed dedup revise should not write postapply ready marker'
 
 D_GATE_A="$TMP/gate-a-clean"
 mk_design "$D_GATE_A" 5 5

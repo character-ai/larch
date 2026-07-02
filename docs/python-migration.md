@@ -144,12 +144,12 @@ Release, audit-runs, combine-issues fetch/apply, and analyze-issues helper surfa
 
 ### Plan-quality domain migration
 
-- Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, revision, auto-fix, optional trailers, and plan-goals composition.
+- Added `python/plan_quality.py` under the existing `plan` CLI domain for command parsing, validation, plan-size checks, auto-fix, optional trailers, and plan-goals composition.
 - Surviving Bash callers invoke `python3 python/cli.py plan ...` directly. No shim layer is added.
 - Drift baseline write-once moved to `python/cli.py plan-review drift-baseline` (sourced by `python/cli.py design postplan-emit`); see **C3a1 design plan-review cutover** below.
 - `plan validate` preserves `VALIDATE_LOG_FILE`: it writes `$DESIGN_TMPDIR/validate-plan-commands.log` when possible, otherwise a stable temp log.
 - `python/cli.py design driver` bootstraps `PLUGIN_ROOT` when `CLAUDE_PLUGIN_ROOT` is unset.
-- Step 3 keeps `RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH` as an override while defaulting to `plan revise-waterfall`.
+- The old `plan revise-waterfall` migration target is retired. Gate B owns accepted-finding application inline in the invoking `/design` agent.
 - `scripts/python/cli.py plan step1-log` defaults to `plan compose-goals-test` without a retired executable guard.
 - Absorbed shell harness targets now select `python/test_plan_quality.py`; survivor harnesses remain for shell call sites.
 

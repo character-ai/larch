@@ -763,27 +763,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/plan_quality.py",
-    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/design/plan_quality.py",
-    "qualified_symbol": "revise_plan_with_waterfall_main.emit_plan_gate",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/design/_plan_quality_commands.py",
     "qualified_symbol": "validate_plan_command_rows",
     "callee": "run",

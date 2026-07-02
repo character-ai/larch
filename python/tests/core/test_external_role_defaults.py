@@ -13,10 +13,9 @@ def test_all_registry_roles_are_pinned_independently() -> None:
         "implement.lint_fix_coder": ("waterfall", ("claude", "codex", "cursor")),
         "implement.ci_recovery_fixer": ("waterfall", ("claude", "codex", "cursor")),
         "implement.rebase_conflict_fixer": ("waterfall", ("claude", "codex", "cursor")),
-        "review.fix_coder": ("waterfall", ("cursor", "codex")),
+        "review.fix_coder": ("waterfall", ("codex", "cursor", "claude")),
         "review.dynamic_archetype_scout": ("waterfall", ("cursor", "claude")),
         "design.plan_archetype_scout": ("waterfall", ("cursor", "claude")),
-        "design.plan_revision": ("waterfall", ("cursor", "codex", "claude")),
         "design.brainstorm_framing": ("waterfall", ("cursor", "codex", "claude")),
         "design.brainstorm_scope": ("waterfall", ("codex", "cursor", "claude")),
     }
@@ -96,8 +95,12 @@ def test_voter_and_decompose_roles() -> None:
 
 
 def test_single_slot_roles_and_docs_rows() -> None:
-    assert external_defaults.slot_defaults("review.findings_aggregator")[0].tool == "cursor"
-    assert external_defaults.slot_defaults("design.plan_findings_aggregator")[0].tool == "cursor"
+    review_aggregator = external_defaults.slot_defaults("review.findings_aggregator")[0]
+    plan_aggregator = external_defaults.slot_defaults("design.plan_findings_aggregator")[0]
+    assert review_aggregator.tool == "codex"
+    assert review_aggregator.model_role == "review"
+    assert plan_aggregator.tool == "codex"
+    assert plan_aggregator.model_role == "review"
     assert external_defaults.slot_defaults("design.decompose_aggregator")[0].tool == "codex"
     rows = external_defaults.doc_rows()
     assert {row.role_id for row in rows} == set(config.ROLE_DEFAULTS)

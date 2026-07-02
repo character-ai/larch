@@ -287,6 +287,31 @@ def _run_coder_codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bo
     return False
 
 
+def _run_coder_claude(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+    if shutil.which("claude") is None:
+        return False
+    cli = _plugin_root() / "python" / "cli.py"
+    prompt_file = round_dir / "coder-claude-prompt.md"
+    _write_text(path=prompt_file, text=prompt_body)
+    output = round_dir / "coder-claude.log"
+    result = _run([
+        "python3", str(cli), "agent", "launch-claude-review-fix",
+        "--output", str(output),
+        "--prompt-body-file", str(prompt_file),
+        "--timeout", "1800",
+        "--timing-task-kind", "claude-review-fix",
+    ], env=_coder_timing_env(round_dir=round_dir, ledger=_resolve_coder_timing_ledger(round_dir)))
+    wrapper = round_dir / "coder-claude.wrapper.log"
+    _write_text(path=wrapper, text=result.stderr + result.stdout)
+    launcher_exit = agents.resolve_launcher_exit(captured_text=result.stdout, output_file=output, process_rc=result.returncode)
+    if launcher_exit != 0:
+        return False
+    if result.returncode == 0 and output.exists():
+        shutil.copyfile(output, tool_log)
+        return True
+    return False
+
+
 def _stage_and_commit_round(*, round_num: int, round_dir: Path) -> RoundCommitResult:
     paths = _collect_round_stage_paths(round_dir)
     stage_file = round_dir / "coder-stage-paths.txt"
@@ -399,11 +424,11 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         _write_env(path=result_file, values=_coder_env(result))
         return result
     runner_by_tool: dict[str, Callable[..., bool]] = {
-        "cursor": _run_coder_cursor,
         "codex": _run_coder_codex,
+        "cursor": _run_coder_cursor,
+        "claude": _run_coder_claude,
     }
     attempts = [(tool, runner_by_tool[tool]) for tool in external_defaults.tool_order("review.fix_coder") if tool in runner_by_tool]
-    commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
         if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
@@ -424,11 +449,11 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
             return result
         stage_paths = _collect_round_stage_paths(round_dir)
         if not stage_paths:
-            if commit_failed:
-                continue
-            result = CoderResult(0, tool, "no-changes", str(tool_log), scrubbed_count, scrub_count, 0)
-            _write_env(path=result_file, values=_coder_env(result))
-            return result
+            if not _cleanup_failed_coder_attempt(round_dir):
+                result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
+                _write_env(path=result_file, values=_coder_env(result))
+                return result
+            continue
         round_commit = RoundCommitResult()
         if round_num is not None and round_num > 0:
             round_commit = _stage_and_commit_round(round_num=round_num, round_dir=round_dir)
@@ -441,7 +466,6 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
                     result = CoderResult(2, tool, "failed", str(tool_log), scrubbed_count, scrub_count, 0)
                     _write_env(path=result_file, values=_coder_env(result))
                     return result
-                commit_failed = True
                 continue
         result = CoderResult(0, tool, "applied", str(tool_log), scrubbed_count, scrub_count, 0, round_commit.sha)
         _write_env(path=result_file, values=_coder_env(result))

@@ -388,7 +388,7 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ### Plan review driver (`python/cli.py plan-review run`)
 
-Step 3 runs `design-step3-review.sh` in immediate-background mode and waits for `<task-notification>`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`; `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` handles rounds, accepted-finding application via `python/cli.py plan revise-waterfall --patch-format file-replacement`, Gate B post-apply, and returns only via `STEP3_REVIEW_LOOP_STATUS`. Harness: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Mid-loop resumes use `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` at recorded `.step3-round-N.phase`; never rerun completed passes.
+Step 3 runs `design-step3-review.sh` in immediate-background mode and waits for `<task-notification>`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`; `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` handles rounds and returns accepted findings to Gate B for inline application by the invoking `/design` agent. Gate B revises `plan.txt`, runs post-apply settle, and resumes only via `STEP3_REVIEW_LOOP_STATUS`. Harness: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Mid-loop resumes use `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` at recorded `.step3-round-N.phase`; never rerun completed passes.
 **Scout, panel dispatch, collection, aggregation, voting, and tally** stay inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` owns cap guard, round cursor, loop launch, result normalization, and count persist/rollback (contracts: `python/plan_review.py`, `python/design_lifecycle.py` / `lib-phase-driver.md`, `python/cli.py plan-review prelaunch-failure`; harnesses: `python/test_plan_review.py`, `test-python/design_lifecycle.py` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `skills/design/scripts/test-design-step3-review.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
 Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
 Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
@@ -452,13 +452,13 @@ Use the same Step 3 task-notification, immediate-background, Parameters, post-no
 
 Use the `NEXT_ACTION` routing table for every Step 3 resume. The fence above shows continuation; apply, post-apply, findings-file, and postplan-operator resumes use matching flags on the same wrapper.
 
-In loop mode, Step 3 does not return after every round. Happy path revises `plan.txt` inside `python/plan_review.py`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Any plan revision must run `python/cli.py design postplan-emit` so `diff-lines.txt` and validation use the shared result contract.
+In loop mode, Step 3 does not return after every round. When accepted findings need application, `python/plan_review.py` returns `main-agent-apply-required` or `per-round-approval-required` so prompt-side Gate B can revise `plan.txt` inline. Any plan revision must run `python/cli.py design postplan-emit` so `diff-lines.txt` and validation use the shared result contract.
 
 The driver runs `python/cli.py dirty-tree checkpoint` after reviewer collection and voter dispatch. Use launcher `${OUTPUT}.dirty-tree` sidecars for dirty/unknown recovery, deduped by `.dirty-tree-prompted-plan-review`.
 
 If **all reviewers** report no in-scope issues and no OOS observations, the driver skips voting (`AGGREGATOR_STATUS=skipped-empty-input`, `TALLY_PLAN_REVIEW_STATUS=skipped-empty-findings`) and normalized `NEXT_ACTION` routes onward.
 
-> **Step 3.5 (Gate B) runs only when `NEXT_ACTION=gate-b` or `NEXT_ACTION=postplan-operator`.** Terminal loop routes (`step3b`, `step3b-bypass`, `final-summary:*`) and `mav` skip Step 3.5. The script-internal loop already applied findings, ran postplan, snapshots, and continuation on the happy path — do not re-enter Gate B or the retired orchestrator continuation loop.
+> **Step 3.5 (Gate B) runs only when `NEXT_ACTION=gate-b` or `NEXT_ACTION=postplan-operator`.** Terminal loop routes (`step3b`, `step3b-bypass`, `final-summary:*`) and `mav` skip Step 3.5. After Gate B applies findings, the settle and resume path runs postplan, snapshots, and continuation; do not re-enter Gate B or the retired orchestrator continuation loop.
 
 <!-- step:3.5 — Post-Review Chooser (Gate B) -->
 
