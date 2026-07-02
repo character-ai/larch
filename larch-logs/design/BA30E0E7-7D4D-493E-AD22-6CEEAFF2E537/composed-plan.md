@@ -1,0 +1,127 @@
+## Plan
+
+## Context
+
+- `approach-synthesis.txt` is `NO_SKETCHES`; draft from direct repo inspection.
+- Follow `discussion-round1.md` constraints:
+  - Do not change `classify_bump` or `version_bump.py`.
+  - Prefer companion issue titles whenever resolvable.
+  - Keep `PR_COUNT=0` default-to-Cancel safety. `--approve` must not auto-cut an empty release.
+- The approved outline scopes work to `.claude/skills/release/SKILL.md`, `python/larch/release/release_prepare.py`, `python/tests/release/test_release.py`, and `docs/skills.md`.
+
+## Files to modify/create
+
+### UPDATED: .claude/skills/release/SKILL.md
+
+- Add `--approve|-a` to `argument-hint`.
+- Add a row to the Flags table:
+  - `--approve`, `-a`: skip Step 4 approval only when `PR_COUNT>0`, acting as Confirm.
+- Extend Step 1 flag parsing with `approve=false`.
+  - Recognize both `--approve` and `-a`.
+  - Keep existing `--dry-run` behavior unchanged.
+  - Do not add a Python CLI parser for this flag.
+- Update Step 3 release-note instructions:
+  - Describe `PR_LIST_FILE` as tab-separated `number, title, labels, author, url`, where `title` is the resolved companion issue title when available, otherwise the PR title.
+  - Remove the `gh pr diff` direction-verification rule.
+  - Add a no-diff rule: do not read PR diffs for release notes.
+  - If the title is still generic or unclear, write a neutral note rather than inferring before/after direction.
+- Update Step 4:
+  - On `--dry-run`, keep preview-and-exit.
+  - If `approve=true` and `PR_COUNT>0`, skip `AskUserQuestion` and proceed as Confirm.
+  - If `PR_COUNT=0`, do not let `--approve` auto-confirm. Preserve the existing safety behavior with default Cancel unless the operator explicitly chooses Confirm.
+  - Keep “Change bump” and “Cancel” paths unchanged when the prompt is shown.
+
+### UPDATED: python/larch/release/release_prepare.py
+
+- Add a module-private regex for companion issue prefixes, for example `^Fixes #([0-9]+):`.
+- Add a small helper that accepts `repo` and PR title:
+  - If the PR title starts with `Fixes #N:`, call `gh issue view N --repo <repo> --json title` through `_gh_json`.
+  - Return the issue title only when the response is a dict with a non-empty string `title`.
+  - Return `None` on no prefix, fetch failure, malformed JSON response, or empty title.
+- Add a helper that computes the release-note title:
+  - Use the companion issue title when available.
+  - Fall back to the original PR title otherwise.
+- Change `_write_pr_row` to accept `repo`.
+  - Keep label, author, URL, TSV escaping, and append behavior unchanged.
+  - Use the release-note title for the row’s `title` column.
+- Update both `_write_pr_row` call sites:
+  - The normal PR loop after `gh pr view`.
+  - The commit-to-pulls orphan-PR loop after `gh api repos/<repo>/commits/<sha>/pulls`.
+- Do not change release counting, ignored larch-log filtering, unmatched commit handling, or bump classification.
+- Do not make issue-title fetch failures fatal. They are fallback conditions.
+
+### UPDATED: python/tests/release/test_release.py
+
+- Extend release prepare tests for companion issue titles:
+  - A PR titled `Fixes #34: Implement issue #34` writes the companion issue title into `pr-list.tsv`.
+  - A failed or malformed `gh issue view` response falls back to the PR title.
+  - The commit-to-pulls path also resolves the companion issue title, proving `_write_pr_row` is shared.
+- Keep existing tests for TSV column order, larch-log PR exclusion, missing PR metadata, and unmatched commits.
+- Update helper monkeypatches only as needed:
+  - Existing tests should not need `gh issue view` responses unless their PR title has the `Fixes #N:` prefix.
+  - New tests can use a local `_gh_json` stub that handles `release list`, `pr list`, `pr view`, and `issue view`.
+
+### UPDATED: docs/skills.md
+
+- Update `/release` arguments to include `[--approve|-a]`.
+- Add a short sentence to the `/release` description:
+  - `--approve` skips the confirm gate for non-empty release windows.
+  - Release notes use companion issue titles when available, falling back to PR titles, and do not read PR diffs.
+
+## Approach
+
+1. Implement the data source change in `release_prepare.py` first.
+   - This keeps Step 3 simple: it already reads `PR_LIST_FILE`.
+   - It also avoids prompt-side `gh issue view` logic.
+2. Update `/release` orchestration text next.
+   - The skill should trust the prepared TSV title column.
+   - The skill must explicitly prohibit `gh pr diff` for release-note composition.
+3. Add targeted tests around the TSV output.
+   - Tests should assert output rows, not internal helper calls, except where useful to prove `issue view` is attempted.
+4. Update docs last.
+
+## Edge cases
+
+- **No companion issue prefix:** use the PR title.
+- **Companion issue fetch fails:** use the PR title, do not fail release prepare.
+- **Issue title is empty or not a string:** use the PR title.
+- **Generic PR title remains after fallback:** Step 3 must write neutral prose and must not inspect diffs.
+- **`--approve` with `PR_COUNT=0`:** do not auto-confirm. Preserve the empty-window safety behavior.
+- **`--approve` with `--dry-run`:** dry run still previews and exits without writes.
+- **Larch-log PRs:** continue filtering before writing rows, so no companion issue lookup is needed for ignored rows.
+
+## Failure modes
+
+- `gh issue view` may fail due to permissions, rate limits, or deleted issues. This must degrade to PR title fallback.
+- A malformed mocked or real GitHub response must not crash `_write_pr_row`.
+- If Step 4 skips the prompt too broadly, `/release --approve` could cut an empty release. Test and review this branch carefully.
+- If Step 3 wording still mentions `gh pr diff`, the feature is incomplete even if Python changes are correct.
+
+## Testing strategy
+
+- Run targeted release prepare tests:
+  - `python3 -m pytest python/tests/release/test_release.py -q -k release_prepare`
+  - or `make test-release-prepare`
+- Run changed-file Python lint when dependencies are available:
+  - `cd python && ruff check larch/release/release_prepare.py tests/release/test_release.py`
+- If local tooling is fully installed, run:
+  - `make py-lint`
+  - `make py-test`
+
+## Acceptance
+
+- Run targeted release prepare tests:
+  - `python3 -m pytest python/tests/release/test_release.py -q -k release_prepare`
+  - or `make test-release-prepare`
+- Run changed-file Python lint when dependencies are available:
+  - `cd python && ruff check larch/release/release_prepare.py tests/release/test_release.py`
+- If local tooling is fully installed, run:
+  - `make py-lint`
+  - `make py-test`
+
+review_status: ok
+rounds_completed: 1
+diff_added: 105
+diff_deleted: 25
+mechanical_churn: false
+diff_lines: 130

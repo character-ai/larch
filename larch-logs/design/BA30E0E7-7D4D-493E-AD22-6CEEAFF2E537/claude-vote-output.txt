@@ -1,0 +1,1 @@
+I need to wait for a background task to complete before I can read the ballot file. Ending this turn to wait for the task notification.

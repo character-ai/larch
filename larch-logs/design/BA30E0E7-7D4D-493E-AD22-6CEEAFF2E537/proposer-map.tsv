@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=445964783ded204712d744a26ba69f2beba243055c570b6f9cd52164b606c594
+# neutral_ballot_sha256=8fc5fec48c5a4f207609225fa33b8a13c602fcd27d79dcd6680d849c7b089200
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Innovation, Codex-Requirements	- **Reviewer(s)**: Codex-Innovation, Codex-Requirements
+FINDING_2	Cursor-dyn-Release Flow Guard	- **Reviewer(s)**: Cursor-dyn-Release Flow Guard
+FINDING_3	Codex-Generic	- **Reviewer(s)**: Codex-Generic
