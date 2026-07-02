@@ -1,0 +1,1 @@
+There is an active background wait blocking file reads. I need to wait for the `<task-notification>` before I can read the ballot file and cast votes.

@@ -1,0 +1,1 @@
+{"per_step": [{"duration_hms": "00:08:19", "duration_seconds": 499, "outlier": false, "skill": "design", "step": "design Step 2b \u2014 plan"}], "total_hms": "00:00:00", "total_seconds": 0, "vendor_task_averages": [{"average_hms": "00:03:35", "average_seconds": 215.0, "max_seconds": 215, "min_seconds": 215, "samples": 1, "task_kind": "codex-plan-draft", "vendor": "codex"}]}

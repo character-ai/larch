@@ -1,0 +1,1 @@
+Plan adds shared difficulty rating plumbing, committed `difficulty-rating.json`, design issue metadata and label, implement/review capture points, run-log retention support, and docs/tests. Panel routing stays unchanged.

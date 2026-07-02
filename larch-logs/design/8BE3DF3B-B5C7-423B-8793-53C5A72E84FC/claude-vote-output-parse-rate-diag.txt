@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=8
+total_findings=8
+total_ballot_items=8
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=c056f07f8bb2fb78ea90e55575e73593263fb51add255e832948389f88c6ef44
+--- first 200 bytes of voter output ---
+There is an active background wait blocking file reads. I need to wait for the `<task-notification>` before I can read the ballot file and cast votes.
