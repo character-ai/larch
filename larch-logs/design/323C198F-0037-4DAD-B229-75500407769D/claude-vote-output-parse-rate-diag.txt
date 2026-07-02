@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=3
+total_findings=3
+total_ballot_items=3
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=d2233216acdc5bfc5a3b57fa2099f275921e73dab87b29cce0c230dec4b38846
+--- first 200 bytes of voter output ---
+There is an active background task — the harness is blocking file reads until it completes. I need to wait for the `<task-notification>` before the ballot file becomes readable. Please let me know w

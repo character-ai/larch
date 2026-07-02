@@ -1,0 +1,44 @@
+### FINDING_1: Legacy v1 calibration must stay Cursor for compact rows
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation
+- **Severity**: important
+- **Concern**: The calibration/replay path for legacy compact code-review logs still uses bare `v1` as the historical Cursor slot, so remapping it to Codex would corrupt old committed scoreboards while new tool-aware rows can use explicit Codex labels.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep explicit codex-validity and _CODE_REVIEW_VOTER_FALLBACKS[1] as Codex for new tool-aware rows, but leave bare v1 normalized as Cursor for compact legacy rows, or split normalization by schema/run format so old compact rows retain Cursor attribution.
+  - From Codex-Innovation: Keep bare v1 mapped to cursor for legacy compact rows. Use explicit current labels, _CODE_REVIEW_VOTER_FALLBACKS[1]=codex-validity, and v1_tool=codex-validity for new logs; remove the planned test expectation that bare v1 normalizes to codex.
+
+### FINDING_2: Both-down dispatch must not spawn a Claude voter
+- **Reviewer(s)**: Cursor-Innovation, Codex-dyn-Voter Fallback Auditor
+- **Severity**: important
+- **Concern**: The plan still preserves a single Claude voter when both externals are down, but the scoped behavior requires zero-voter main-agent adjudication instead of any launched voter output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Reconcile before implement: either add an explicit plan step to skip all `launched_policies` when `external_voter23` is false and route tally to MAV (update `test_both_externals_down_shrink_not_backfill` and voting-protocol tier-0 prose), or document in Approach that issue zero-voter wording defers to the existing single-Claude floor and narrow acceptance accordingly.
+  - From Codex-dyn-Voter Fallback Auditor: Revise the plan so both-down dispatch launches zero voters or otherwise passes zero effective voters to tally. Update `test_both_externals_down_shrink_not_backfill` to expect no voter output and `main-agent-vote-required`; keep Claude waterfall only for runtime fallback when an external-backed slot was actually attempted.
+
+### FINDING_3: Primary-slot tests still encode Cursor-first behavior
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The targeted regression tests still stub or assert Cursor-primary slot-1 behavior even though the registry flip makes slot 1 Codex-primary, so they no longer exercise the intended runtime failure and parse-retry paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Expand `test_agent_voters.py` updates: rewrite the runtime-failure test to `CODEX_STUB_MODE=fail` with `cursor-available=true` expecting `cursor-validity`; retarget the prod-shape parse-rate test to `CODEX_STUB_MODE=parse_retry_fail` and `codex-validity` diag/issue strings; sweep label loops at ~843 and ~865 from `cursor-validity` to `codex-validity` where both externals are up.
+
+### FINDING_4: `/review` skill prose must be promoted, not left optional
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The `/review` skill text still describes Cursor-only voting and says Codex does not vote, while the change scope explicitly includes `/review`; leaving it as `MAY_UPDATE` lets an operator-facing contract ship stale.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Promote `skills/review/SKILL.md` to UPDATED with Codex-primary three-slot wording (Codex validity/plan-fidelity/pragmatism, Cursor then Claude waterfall, single-Claude floor only when both externals are down per the reconciled both-down decision).
+  - From Cursor-Requirements: Promote `skills/review/SKILL.md` to `### UPDATED:` and replace Step 3 voting text with Codex-primary three-slot wording plus both-externals-down single-Claude collapse (matching `skills/shared/voting-protocol.md`)
+
+### FINDING_5: Public Step 5 mirrors still say Codex does not vote
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The public `/implement` Step 5 documentation mirrors still carry the stale code-review voter contract, so operators can read a false description of the new Codex-primary panel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Promote `docs/review-agents.md`, `docs/skills.md`, and `docs/agents.md` to firm `### UPDATED:` entries with Codex-primary three-slot code-review voter prose and both-externals-down single-Claude fallback
+
+### FINDING_6: Voting-protocol prose still collapses on Cursor-unavailable
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The shared voting-protocol documentation still keys collapse and composition language off Cursor-unavailable instead of the both-externals-down case, so it misdocuments the new dispatch semantics and slot ordering.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Extend the existing `### UPDATED: skills/shared/voting-protocol.md` step to explicitly rewrite threshold-table and composition bullets: all three slots Codex→Cursor→Claude on the happy path; single-Claude slot-1 anchor only when both externals are down; Codex-down/Cursor-up may use Cursor labels on all launched slots
