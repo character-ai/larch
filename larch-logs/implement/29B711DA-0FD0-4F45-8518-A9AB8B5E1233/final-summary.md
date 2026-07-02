@@ -1,8 +1,8 @@
 ## /implement run 29B711DA-0FD0-4F45-8518-A9AB8B5E1233 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$32.61 — Claude $0.92, Codex-5.5 $24.37, Codex-mini $0.74, Cursor $6.15, Claude (subprocess) $0.43  |  Tokens: 49718k
+- **Duration**: 01:28:57
+- **Cost**: 💰 TOTAL ~$37.68 — Claude $5.99, Codex-5.5 $24.37, Codex-mini $0.74, Cursor $6.15, Claude (subprocess) $0.43  |  Tokens: 57075k
 - **Issue**: #5970 — https://github.com/character-ai/larch/issues/5970
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -21,7 +21,7 @@
 ## Exec Issues and Warnings
 Exec Issues (0):
 Warnings (1):
-  1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/report/run_log_tolerance.py
+  1. Step 7a (architectural guidelines): Consulted ARCHITECTURAL_GUIDELINES.md; 2 minor deviations identified: (1) G-Cfg-1 — `python/larch/state/_normalize.py` defines `_TERMINAL_MERGE_RESULTS = frozens...
 
 ## Review Phase Detail
 
@@ -82,3 +82,7 @@ cursor/apply                 │                                              �
 4. codex/edge-cases — 4
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
