@@ -348,11 +348,11 @@ def test_exception_during_print_after_preserve_decision_preserves_root(
 ) -> None:
     _isolate_cli_temp_root(monkeypatch, tmp_path)
     record = _record()
-    original_print_analysis = report_tokens_cli._print_analysis
+    original_print_analysis = report_tokens_cli._print_analysis  # type: ignore[reportPrivateUsage]
 
     def exploding_print_analysis(*, analysis: str, plot_paths: list[Path], no_plot: bool) -> None:
         original_print_analysis(analysis=analysis, plot_paths=plot_paths, no_plot=no_plot)
-        raise BrokenPipeError()
+        raise BrokenPipeError
 
     def fake_scan(_runner: object, skill: str, repo_override: str | None = None, resolve_repo: bool = True) -> ScanResult:
         _ = (_runner, skill, repo_override, resolve_repo)
