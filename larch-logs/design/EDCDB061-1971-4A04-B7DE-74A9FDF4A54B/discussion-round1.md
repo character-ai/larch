@@ -1,0 +1,9 @@
+## Decision 1: macOS auto-open plot vs. synchronous report-tokens temp cleanup
+- **Question**: `/report-tokens analyze` auto-opens generated plot images in Preview on macOS (`report_tokens_plot.py`, unless `--no-plot` or `LARCH_REPORT_TOKENS_NO_OPEN` is set). If the fix deletes the run's temp directory the instant the CLI process exits, it may delete the plot file before Preview finishes reading it. How should the fix handle this?
+- **Resolution**: Skip synchronous deletion only when a plot was auto-opened (macOS, plot generated, auto-open not disabled). Delete immediately in every other case (no plots, `--no-plot`, non-macOS, CI). Rely on the periodic `cleanup run` sweep for the auto-open case.
+- **Source**: codebase (recommended default; no user response within the 60s wait window, applied per best judgment per instructions).
+
+## Decision 2: no-session `plan validate` mkstemp fallback and the `VALIDATE_LOG_FILE` hand-off contract
+- **Question**: `_plan_quality_commands.py`'s mkstemp fallback only fires when no valid `$DESIGN_TMPDIR` exists. It writes `VALIDATE_LOG_FILE`, a path that `design-step-validator-autofix.sh` and other downstream scripts read after this process exits (confirmed via `test_validate_plan_log_without_design_tmpdir` and `test_validate_plan_uses_temp_log_for_disallowed_design_tmpdir`, which both assert the file still exists after the subprocess exits). Deleting it in a `finally` block would delete it before any caller reads it, contradicting the issue's literal suggested fix. Should the fix exclude this site from synchronous cleanup?
+- **Resolution**: Exclude this mkstemp fallback from the try/finally change. Rely solely on the periodic `cleanup run` sweep for it. Wrapping it synchronously would break the `VALIDATE_LOG_FILE` hand-off contract and two existing tests.
+- **Source**: codebase (recommended default; no user response within the 60s wait window, applied per best judgment per instructions).

@@ -1,0 +1,33 @@
+Reviewing the plan against the codebase: inspecting report-tokens CLI/render paths, SessionStart hooks, and cleanup contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/tests/report/test_report_tokens_cli.py	CLI temp-cleanup tests omit non-auto-open plot-success path	Plan tests only exercise `fake_plot` returning `[]` (`normal no-plot success`) plus a darwin preserve case. A regression that sets `preserve_temp_root = bool(plot_paths)` without the `sys.platform == "darwin"` guard would still leak a top-level `larch-report-tokens.*` root on every Linux/CI plot run; the planned suite would stay green.	Add a case where `fake_plot` returns at least one path, `sys.platform` is monkeypatched to `linux`, and `TMPDIR` is an isolated directory; after `main()` exits, assert no `larch-report-tokens.*` entry remains under that `TMPDIR`.
+
+## Findings
+
+### 1. code-quality — `python/tests/report/test_report_tokens_cli.py`
+
+The planned CLI cleanup tests cover empty scan, no-plot success, failure-before-post, and macOS preserve, but they do not cover the main non-auto-open plot path: **plots generated on a non-darwin platform**.
+
+Current leak site at ```66:66:python/larch/report/report_tokens_cli.py``` creates the root on every analyze run. The plan’s preserve gate at ```92:94:python/larch/report/report_tokens_plot.py``` is darwin-only. The complement (delete after plot success on Linux/CI) is the default fix path and is distinct from the no-plot cases the plan lists.
+
+Without an explicit non-darwin + `plot_paths` test, a missing platform guard in `preserve_temp_root` would reintroduce unbounded top-level growth on the most common CI path while all planned tests pass.
+
+**Suggested revision:** Add the non-darwin plot-success `TMPDIR` assertion described in the TSV row.
+
+### [OUT_OF_SCOPE] 2. risk-integration — `agent-lint.toml`
+
+`scripts/test-sweep-design-logs.sh` and its `.md` sibling are pinned in `agent-lint.toml` (lines 496–502) because Makefile-only harnesses are otherwise flagged as orphans. The plan adds `scripts/test-cleanup-sessionstart.sh` / `.md` on the same pattern but does not list an `agent-lint.toml` exemption. CI may need a follow-up pin; it is harness hygiene, not report-tokens behavior.
+
+### [OUT_OF_SCOPE] 3. architecture — `python/larch/report/report_tokens_cli.py` / `python/larch/core/cleanup_skill.py`
+
+The macOS auto-open exception intentionally leaves `larch-report-tokens.*` at `$TMPDIR` top level until the 7-day `cleanup run` age sweep (`larch-*` in ```17:28:python/larch/core/cleanup_skill.py```). That matches issue wording (“expire via periodic age-based sweep”) but means repeated macOS plot runs can still grow top-level entries for up to retention. Documented in plan edge cases; not a correctness defect for the stated tradeoff.
+
+## Review summary (non-ballot)
+
+**User-visible report-tokens behavior:** The plan preserves stdout (`Cache JSON:` trailer, analysis markdown, plot path lines), exit codes, and the darwin auto-open path by mirroring ```92:94:python/larch/report/report_tokens_plot.py```. It accepts ephemeral cache files after exit on non-preserve paths, which matches issue #5923 cleanup-when-done intent.
+
+**Render fallback lifetime:** `atexit` cleanup for ```218:221:python/larch/report/report_tokens_render.py``` is appropriate; the CLI path already passes `temp_root` at ```90:96:python/larch/report/report_tokens_cli.py```, so analyze repro is fixed primarily by CLI `try/finally`.
+
+**SessionStart registration:** The proposed hook mirrors ```1:25:scripts/sweep-design-logs.sh``` and ```67:87:hooks/hooks.json```; `cleanup run` is the right verb for age-based `larch-*` sweep.
+
+**Minimum-change:** Deferring `_plan_quality_commands.py`, `sweep-design-logs.sh` scratch, and quiet-log sites is proportional to the narrowed review scope. One in-scope test gap remains for non-auto-open plot cleanup proof.

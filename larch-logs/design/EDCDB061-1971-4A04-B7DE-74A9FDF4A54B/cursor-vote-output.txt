@@ -1,0 +1,4 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- SessionStart `cleanup run` plus existing `larch-*` sweep already closes sites 3–5 per approved non-goals; explicit mapping bullets aid traceability but are not required for delivery.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- Plan mirrors `sweep-design-logs.sh` but omits the `: >"$LOG" 2>/dev/null || LOG=/dev/null` guard, so a bad `${TMPDIR}` can abort SessionStart under `set -euo pipefail`.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Round 1 non-goal defers per-process validate-log cleanup to periodic `larch-*` sweep; headless-only hardening fails backlog materiality for a separate issue.
