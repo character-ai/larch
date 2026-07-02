@@ -451,6 +451,8 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
             "true",
             "--cursor-available",
             "true",
+            "--round-num",
+            "1",
         ]
     )
 
