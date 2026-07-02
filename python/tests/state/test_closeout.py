@@ -195,6 +195,43 @@ def test_architectural_guidelines_pin_helper_reports_skipped(
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "skipped"
 
 
+def test_architectural_guidelines_pin_helper_refreshes_staged_assessment_on_drift(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    closeout.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
+        assessed_head_sha="old-head",
+        diff_fingerprint_value=closeout.architectural_guidelines.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+
+    def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if argv[:3] == ["git", "rev-parse", "HEAD"]:
+            return subprocess.CompletedProcess(argv, 0, "current-head\n", "")
+        if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
+            return subprocess.CompletedProcess(argv, 0, f"{repo}\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_materialize(*_args: object, **_kwargs: object) -> str:
+        return live_diff
+
+    monkeypatch.setattr(closeout, "_run", fake_run)
+    monkeypatch.setattr(closeout.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
+
+    assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "ok"
+    assert closeout.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="current-head")
+    sidecar = (tmp_path / closeout.architectural_guidelines.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
+    assert f"DIFF_FINGERPRINT={closeout.architectural_guidelines.diff_fingerprint(live_diff)}" in sidecar
+    assert "ASSESSED_HEAD_SHA=current-head" in sidecar
+
+
 def test_architectural_guidelines_pin_helper_skips_post_merge_mismatched_durable_head(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
