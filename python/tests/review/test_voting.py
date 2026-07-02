@@ -1578,11 +1578,14 @@ def test_validate_proposer_map_for_neutralized_ballot_rejects_stale_hash(tmp_pat
         voting.validate_proposer_map_for_neutralized_ballot(ballot_file=neutral_ballot, map_file=map_file)
 
 
-def test_voter_launcher_tool_normalizes_cursor_archetypes() -> None:
+def test_voter_launcher_tool_normalizes_external_archetypes() -> None:
     # launch_voter_retry was removed with the parse-rate retry subsystem (main
-    # #4547); the surviving contract is that cursor-* archetype voter labels
-    # normalize to the "cursor" launcher tool, while non-archetype labels pass
-    # through unchanged.
+    # #4547); the surviving contract is that external archetype voter labels
+    # normalize to their launcher tool, while non-archetype labels pass through
+    # unchanged.
+    assert voting.voter_launcher_tool("codex-validity") == "codex"
+    assert voting.voter_launcher_tool("codex-plan-fidelity") == "codex"
+    assert voting.voter_launcher_tool("codex-pragmatism") == "codex"
     assert voting.voter_launcher_tool("cursor-validity") == "cursor"
     assert voting.voter_launcher_tool("cursor-plan-fidelity") == "cursor"
     assert voting.voter_launcher_tool("cursor-pragmatism") == "cursor"
@@ -1614,6 +1617,7 @@ def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Pa
 
 def test_voter_calibration_base_tool_normalization_and_snapshot_round_trip(tmp_path: Path) -> None:
     assert voting.normalize_voter_label_to_base_tool("Codex-plan-fidelity") == "codex"
+    assert voting.normalize_voter_label_to_base_tool("codex-validity") == "codex"
     assert voting.normalize_voter_label_to_base_tool("cursor-validity") == "cursor"
     assert voting.normalize_voter_label_to_base_tool("Claude") == "claude"
     assert voting.normalize_voter_label_to_base_tool("v1") == "cursor"

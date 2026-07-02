@@ -323,14 +323,14 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         role_id="review.voters",
         kind="voter_policies",
         voter_policies=(
-            VoterPolicyDefault("1", "voter-1", "cursor", "cursor-validity", "validity-correctness", "validity", "cursor-validity-vote-output.txt", (("cursor", "cursor-validity"), ("codex", "codex-validity"), ("claude", "claude"))),
+            VoterPolicyDefault("1", "voter-1", "codex", "codex-validity", "validity-correctness", "validity", "codex-validity-vote-output.txt", (("codex", "codex-validity"), ("cursor", "cursor-validity"), ("claude", "claude"))),
             VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
             VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
         ),
         doc_phase="Code-review voters",
         doc_role="Vote on code-review findings",
         doc_skills="/review",
-        doc_fallback="All voters dispatch through one shared waterfall manifest and re-dispatch on runtime failure: voter 1 waterfalls Cursor, then Codex, then Claude; voters 2 and 3 waterfall Codex, then Cursor, then Claude and join the manifest whenever either external is present, so a both-external-down panel shrinks to the single Claude voter-1 anchor.",
+        doc_fallback="All voters dispatch through one shared waterfall manifest and re-dispatch on runtime failure: all three voters waterfall Codex, then Cursor, then Claude and voters 2/3 join the manifest whenever either external is present, so a both-external-down panel shrinks to the single Claude voter-1 anchor.",
     ),
     "design.plan_voters": RoleDefault(
         role_id="design.plan_voters",

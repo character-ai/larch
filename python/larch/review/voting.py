@@ -1044,6 +1044,8 @@ def _ballot_ids(*, ballot_file: str | Path, grammar: str) -> list[str]:
 
 
 def voter_launcher_tool(voter_tool: str) -> str:
+    if voter_tool.startswith("codex-"):
+        return "codex"
     if voter_tool.startswith("cursor-"):
         return "cursor"
     return voter_tool
