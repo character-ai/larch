@@ -1,0 +1,12 @@
+# md-to-py-XI: settle-rc and step2b5-rc dispatch tables as Python stdout envelopes (stretch)
+
+**Context.** `skills/design/references/settle-rc-dispatch.md` and `skills/design/references/step2b5-rc-handling.md` are conditional design references that mostly encode rc-to-action dispatch tables the orchestrator re-derives from prose. The `NEXT_ACTION` stdout-envelope pattern (implement Step 8 driver) already proves the alternative.
+
+**Scope.** The relevant Python drivers emit the selected action row directly (refined `SETTLE_NEXT_ACTION` plus per-branch KVs); the two references shrink to branch bodies for actions that genuinely need prose. No routing semantics change.
+
+**Acceptance.**
+
+- Dispatch parity on the existing rc matrix (harness fixtures).
+- Conditional-tier tokens drop; design structure tests pass.
+
+Part of md-to-py-XI (round X: #5885). Stretch child; may be dropped without blocking the round if parity risk emerges.
