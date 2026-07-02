@@ -1,0 +1,90 @@
+## Approach
+
+Delete the unreachable `implement step-0-bootstrap` CLI entry point and its private support code.
+
+Keep the live `/implement` Step 0 wrapper unchanged. It already calls `python3 python/cli.py bootstrap invoke` through `skills/implement/scripts/step-0-bootstrap.sh`.
+
+Keep `step0_degraded_gate_main` intact.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/dispatch_bootstrap.py
+
+Remove only the dead bootstrap CLI surface:
+
+- `_build_step0_bootstrap_parser`
+- `_Step0BootstrapFields`
+- `_step0_bootstrap_resume_fields`
+- `_step0_bootstrap_fork_upstream`
+- `step0_bootstrap_main`
+
+Prune imports that become unused:
+
+- `os`
+- `sys`
+- `dataclass`
+- `Path`
+- helper imports used only by the deleted code, such as `_env_value`, `_rehydrate_larch_triplet`, `_session_get`, `_tracking_sentinel_values`, and `_write_text_atomic`
+
+Keep the module, `step0_degraded_gate_main`, and its imports intact.
+
+### UPDATED: python/larch/cli.py
+
+Remove the `_REGISTRY` entry:
+
+- `("implement", "step-0-bootstrap"): ("larch.implement.implement_dispatch", "step0_bootstrap_main")`
+
+Do not remove or change:
+
+- `("bootstrap", "invoke")`
+- `("implement", "step-0-degraded-gate")`
+
+### UPDATED: python/larch/implement/implement_dispatch.py
+
+Remove `step0_bootstrap_main` from the `dispatch_bootstrap` re-export import.
+
+Keep `step0_degraded_gate_main` exported.
+
+### UPDATED: python/env-via-config-constant-baseline.json
+
+Regenerate with:
+
+- `make regen-env-via-config-constant-baseline`
+
+This should remove the stale `dispatch_bootstrap.py` baseline rows for `step0_bootstrap_main`.
+
+## Edge cases
+
+- Historical fixtures and docs may still mention `step-0-bootstrap.sh`; do not change them unless they refer to the deleted Python CLI command, not the live shell wrapper.
+- Ignore `__pycache__` matches from grep. They are not source.
+- Do not touch `skills/implement/scripts/step-0-bootstrap.sh`.
+- Do not change `skills/implement/SKILL.md`.
+- Do not add tests for the deleted function. The approved outline says there is nothing left to cover once it is removed.
+
+## Failure modes
+
+- A stale `_REGISTRY` row will make `python/cli.py implement step-0-bootstrap` import a missing symbol.
+- A stale re-export will make `larch.implement.implement_dispatch` fail at import time.
+- A stale env-literal baseline row will fail the env-via-config-constant lint.
+- Over-pruning imports can break `step0_degraded_gate_main`; verify that command still imports.
+
+## Testing strategy
+
+Run targeted checks after editing:
+
+1. `make regen-env-via-config-constant-baseline`
+2. `python3 python/cli.py lint env-via-config-constant`
+3. `python3 python/cli.py implement step-0-degraded-gate --help`
+4. `python3 python/cli.py implement step-0-bootstrap --help`
+
+Expected result for step 4: dispatcher rejects the removed command.
+
+Then run Python validation for the touched runtime surface:
+
+- `make py-lint`
+- `make py-test`
+
+diff_added: 0
+diff_deleted: 195
+mechanical_churn: false
+diff_lines: 205

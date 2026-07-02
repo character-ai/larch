@@ -1,0 +1,17 @@
+# [OOS] Orphaned `implement step-0-bootstrap` CLI entry point duplicates the live bootstrap-invoke argv plumbing
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Main agent
+
+**Phase**: implement
+
+**Vote tally**: N/A — auto-filed per policy
+
+
+## Description
+
+`python/larch/implement/dispatch_bootstrap.py:step0_bootstrap_main` (CLI command `implement step-0-bootstrap`, registered in `python/larch/cli.py`'s dispatch table and re-exported via `python/larch/implement/implement_dispatch.py`) appears unreachable on the live `/implement` path. `skills/implement/scripts/step-0-bootstrap.sh` (the actual Step 0 wrapper invoked by `skills/implement/SKILL.md`) calls `python3 cli.py bootstrap invoke` directly; a repo-wide grep found no skill, script, or test invoking `implement step-0-bootstrap` or calling `step0_bootstrap_main` directly (only `python/larch/state/bootstrap.py`'s `invoke_main`/`bootstrap_main` are exercised). The module duplicates argv parsing and resume-field recovery for `--force-requested`, `--self-review-requested`, and (after this PR) `--self-implement-requested`, so future flag additions must remember to update a second, seemingly-dead copy or leave it silently out of sync. Suggested fix: confirm with the repo owner whether this entry point is intentionally-kept (e.g., for an external caller not visible in this repo) and either wire it into the live path / add direct test coverage, or delete `step0_bootstrap_main` and its CLI registration.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
