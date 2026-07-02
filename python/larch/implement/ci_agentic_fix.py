@@ -123,6 +123,9 @@ def _compose_local_unfixable_detail(*, job_list: str, failure_log_text: str) -> 
 
 _LEGACY_PREFIX_INCIDENT_PATH = "python/preflight.py"
 _SAFE_REPO_PATH_RE = re.compile(r"^[A-Za-z0-9._/-]+$")
+_CLAUDE_CI_EMPTY_RESULT_SENTINEL = "CLAUDE_CI_EMPTY_RESULT"
+_CI_FIX_PERMANENT_RETRY_EXITS = {127}
+_CI_FIX_PERMANENT_HEALTH_REASONS = {"auth", "binary-missing", "quota"}
 
 
 def _legacy_prefix_unexpected_paths(failure_log_text: str) -> tuple[str, ...]:
@@ -322,9 +325,38 @@ def _wait_for_ci(
     return {}, "ci-wait-malformed-output"
 
 
-def _ci_fix_retry_reason(*, launcher_exit: int, output: Path) -> str | None:
+def _read_ci_fix_done_exit(output: Path) -> int | None:
+    done = output.with_suffix(output.suffix + ".done")
+    if not done.is_file():
+        return None
+    try:
+        return int(done.read_text(encoding="utf-8", errors="replace").strip())
+    except (OSError, ValueError):
+        return None
+
+
+def _ci_fix_permanent_failure(*, launcher_exit: int, output: Path, binary_present: bool | None) -> bool:
+    done_exit = _read_ci_fix_done_exit(output)
+    effective_exit = done_exit if done_exit is not None else launcher_exit
+    if effective_exit in _CI_FIX_PERMANENT_RETRY_EXITS:
+        return True
+    diag = output.with_suffix(output.suffix + ".diag")
+    failure = agents.classify_launch_failure(
+        launcher_exit=effective_exit,
+        sidecar=diag,
+        auth_verdict=agents.external_auth_verdict("claude", diag, output),
+        binary_present=shutil.which("claude") is not None if binary_present is None else binary_present,
+        tool="claude",
+        output_file=output,
+    )
+    return failure.failure_class == "health" and failure.reason in _CI_FIX_PERMANENT_HEALTH_REASONS
+
+
+def _ci_fix_retry_reason(*, launcher_exit: int, output: Path, binary_present: bool | None = None) -> str | None:
     if launcher_exit == config.EXIT_TIMEOUT:
         return "exit-124"
+    if _ci_fix_permanent_failure(launcher_exit=launcher_exit, output=output, binary_present=binary_present):
+        return None
     if not output.is_file():
         return "missing-output"
     try:
@@ -332,7 +364,9 @@ def _ci_fix_retry_reason(*, launcher_exit: int, output: Path) -> str | None:
             return "empty-output"
     except OSError:
         return "missing-output"
-    return None
+    text = output.read_text(encoding="utf-8", errors="replace")
+    sentinel_values = {_CLAUDE_CI_EMPTY_RESULT_SENTINEL, f"{_CLAUDE_CI_EMPTY_RESULT_SENTINEL}\n"}
+    return "empty-result" if text in sentinel_values else None
 
 
 def _emit_ci_retry_warning(
