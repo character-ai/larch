@@ -805,7 +805,9 @@ def _checks_failure_digest_header(*, site: str, truncated: bool) -> str:
     )
 
 
-def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
+def _parse_checks_failure_records(
+    redacted_log_text: str,
+) -> dict[str, _ChecksFailureDigestRecord]:
     records: dict[str, _ChecksFailureDigestRecord] = {}
     current_check = "unknown"
     fallback_line = ""
@@ -831,7 +833,12 @@ def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
     if not records:
         record = _record_for_check(records, "unknown")
         record.first_error = _digest_line(fallback_line) if fallback_line else "unknown"
+    return records
 
+
+def _assemble_checks_failure_digest(
+    *, records: dict[str, _ChecksFailureDigestRecord], site: str
+) -> str:
     body_groups = [_digest_record_group(record) for record in records.values()]
     selected: list[str] = []
     truncated = False
@@ -847,6 +854,11 @@ def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
     if len(digest.encode("utf-8")) <= CHECKS_FAILURE_DIGEST_MAX_BYTES:
         return digest
     return _utf8_prefix(digest, CHECKS_FAILURE_DIGEST_MAX_BYTES)
+
+
+def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
+    records = _parse_checks_failure_records(redacted_log_text)
+    return _assemble_checks_failure_digest(records=records, site=site)
 
 
 def _write_failure_digest_from_redacted(
