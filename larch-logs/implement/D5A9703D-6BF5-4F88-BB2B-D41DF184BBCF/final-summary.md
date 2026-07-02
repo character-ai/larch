@@ -3,13 +3,13 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:27:50
-- **Cost**: 💰 TOTAL ~$50.62 — Claude $18.21, Codex-5.5 $21.23, Codex-mini $0.44, Cursor $10.24, Claude (subprocess) $0.50  |  Tokens: 86874k
+- **Cost**: 💰 TOTAL ~$58.76 — Claude $26.35, Codex-5.5 $21.23, Codex-mini $0.44, Cursor $10.24, Claude (subprocess) $0.50  |  Tokens: 102147k
 - **Issue**: #5888 — https://github.com/character-ai/larch/issues/5888
 - **PR**: #6010 — https://github.com/character-ai/larch/pull/6010
 - **Plan review**: N/A
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: N/A
-- **Lines (PR diff)**: code +475/-1374, larch-logs +1013/-0
+- **Lines (PR diff)**: code +479/-1378, larch-logs +1041/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -57,4 +57,8 @@ codex/plan-fidelity-vote │                                            ██�
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md. One deviation identified:
+
+**G-Skill-2** ("Logic lives in Python behind `cli.py`; SKILL.md and Bash stay thin"): this change removes the Python `plan revise-waterfall` CLI waterfall (external Codex/Cursor/Claude dispatch) and moves Gate-B plan-revision application inline into the invoking `/design` agent via `skills/design/references/approval-gates.md`, the opposite direction from this guideline's default. This is a deliberate, issue-justified tradeoff (issue #5888: "raises cost slightly but gives quality control via the operator's choice of which main agent runs /design"), not an oversight, and needs no change.
+
+New code sampled (`_run_coder_claude`, `launch_claude_review_fix_main`, the `plan_review.py` phase-handler refactor) otherwise follows existing file conventions: typed `main(argv) -> int` CLI entries registered in `cli.py` (G-CLI-1), injectable subprocess seams matching sibling runners (G-Py-5), and no new silent-swallow paths beyond the pre-existing baseline pattern shared with `_run_coder_codex`/`_run_coder_cursor` (G-Py-4).
