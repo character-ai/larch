@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=5
+total_findings=5
+total_ballot_items=5
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=63c7dd12ed906a4188ad77e203a9d69127975823762b9694f8f18428138b9638
+--- first 200 bytes of voter output ---
+The system has an immediate-background wait active and is blocking reads on progress artifacts. I need to end this turn and wait for the `<task-notification>` before I can read the ballot.

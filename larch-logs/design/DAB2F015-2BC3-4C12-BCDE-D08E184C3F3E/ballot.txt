@@ -1,0 +1,36 @@
+### FINDING_1: DEFECT lines must map to `check=contains-pins`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The contains-pins phase writes `DEFECT:` lines with no `===` section header. A header-only phase tracker will attribute those failures to the previous pre-commit or direct-make section, so `check=` can name the wrong hook or target even when `first_location` and `first_error` are correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add an explicit parser rule: lines matching ^DEFECT: belong to check=contains-pins regardless of the last header; add unit coverage with a log where direct make succeeded and contains-pins failed.
+
+### FINDING_2: Per-field bounds and sanitization for digest field values
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan caps total digest UTF-8 bytes and allows multiple `check=` record groups, but it does not bound or flatten individual `first_error` (and `first_location`) values. One verbose traceback, pytest dump, or multiline error can consume the entire `CHECKS_FAILURE_DIGEST_MAX_BYTES` budget and set `digest_truncated=true` after the first group, hiding additional failed hooks. Raw newlines or tabs inside field values can also break the line-oriented v1 format and make prompt-side parsing unreliable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Define a small CHECKS_FAILURE_DIGEST_FIRST_ERROR_MAX_BYTES (or similar), truncate each first_error before assembling groups, and add a test where one hook emits a huge error yet a second failed hook still appears before digest_truncated=true.
+  - From Cursor-Pragmatic: In the digest builder spec, add a small per-field UTF-8 byte cap (for example on first_error and first_location), flatten newlines/tabs to spaces before writing, then apply the existing total CHECKS_FAILURE_DIGEST_MAX_BYTES cap across complete record groups. Add unit tests for multiline traceback input and for two check groups still fitting when errors are large.
+
+### FINDING_3: Plan cites nonexistent no-validation-phases integration test
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan tells implementers to extend `test_run_relevant_checks_no_validation_phases_when_precommit_unavailable`, but the repo only has `test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed` for `failure_reason=no-validation-phases`. A literal search misses the target, and the mandated digest-on-rc2 path can ship without integration coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Rename the plan bullet to `test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed`, assert `result.redacted_log_path` when redaction succeeds, then assert `digest_file_path`, digest file mode `0600`, and the `no-validation-phases` envelope includes `DIGEST_FILE=` before `REDACTED_LOG_FILE=`.
+
+### FINDING_4: Plan omits required SECURITY.md update for digest artifact
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The PR adds a new mode-0600 digest derived from check output and changes orchestrator guidance from reading `REDACTED_LOG_FILE` first to reading `DIGEST_FILE` first, but `SECURITY.md` would still document only the old redacted-log artifact and consumer rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add SECURITY.md to the firm plan and update the relevant-checks captured logs paragraph to state that failed runs may also write a bounded DIGEST_FILE built only from the redacted log, consumed before REDACTED_LOG_FILE, with raw LOG_FILE still forbidden.
+
+### OOS_1: Consumer docs still describe REDACTED_LOG_FILE-only failure consumption while DIGEST_FILE becomes primary
+- **Description**: Consumer docs still describe REDACTED_LOG_FILE-only failure consumption while DIGEST_FILE becomes primary. Scenario: The relevant-checks paragraph still says orchestrators read only REDACTED_LOG_FILE on failure; the plan leaves docs/linting.md as MAY_UPDATE, so the shipped contract can drift from skill behavior and confuse manual CLI debugging.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: docs/linting.md:93
+- **Phase**: design

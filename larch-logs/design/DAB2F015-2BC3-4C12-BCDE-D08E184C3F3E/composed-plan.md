@@ -1,0 +1,213 @@
+## Plan
+
+### Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection and the approved outline only.
+
+Add a bounded failure digest on the `checks run-relevant` failure path. Build it from the already-redacted log, write it beside the `.redacted.log`, and emit `DIGEST_FILE=` in the same failure envelope as `REDACTED_LOG_FILE=`.
+
+Keep repair behavior unchanged:
+- `checks repair-loop` still receives `--checks-log "$REDACTED_LOG_FILE"`.
+- Python redaction and truncation rules stay unchanged.
+- No token-report instrumentation is added.
+
+The digest is the primary prompt-side diagnostic artifact:
+- `/implement` macro reads `DIGEST_FILE` first.
+- `/review` Step 3 reads `DIGEST_FILE` first.
+- Full redacted logs remain available when the digest is missing or insufficient.
+
+Factor one shared post-redaction digest helper and call it from every `_finish_logged_result` branch that successfully writes a redacted log on failure (including the `rc==2` `no-validation-phases` early return and the generic failing-check tail). Do not attach digest logic to only one branch.
+
+Emit one bounded record group per detected failing check until the byte cap. Pre-commit runs with multiple failed hooks must surface more than one check block when space allows.
+
+### Files to modify/create
+
+### UPDATED: python/larch/implement/checks_run_relevant.py
+
+- Extend `ChecksResult` with `digest_file_path: str | None = None` so existing tests and call sites can omit it.
+- Extend `_checks_failure` with optional `digest_file_path: str | None = None` and pass it through to `ChecksResult`.
+- Add a small digest builder near the redaction helpers.
+  - Input: redacted log text and check site.
+  - Output: bounded text digest.
+  - Source data only from the redacted log.
+- Use a module-private byte cap constant, for example `CHECKS_FAILURE_DIGEST_MAX_BYTES`.
+  - Keep it local unless another module needs it.
+  - Enforce the cap on encoded UTF-8 bytes.
+  - Preserve valid UTF-8 after truncation.
+- Digest format should be line-oriented and stable enough for prompt consumption:
+  - Header once:
+    - `CHECKS_FAILURE_DIGEST v1`
+    - `site=<site>`
+    - `digest_truncated=<true|false>`
+  - Then repeat one bounded record group per detected failing check until the byte cap:
+    - `check=<name>`
+    - `failure_count=<n>`
+    - `first_location=<file:line|unknown>`
+    - `first_error=<bounded redacted line|unknown>`
+  - When the cap is reached mid-run, stop after the last complete record group and set `digest_truncated=true`.
+- Parse best-effort failure details and aggregate by check:
+  - Track the current phase from existing log section headers.
+  - Prefer pre-commit hook names from `...Failed` lines when present.
+  - Otherwise use direct make target, `contains-pins`, `agent-lint`, or `unknown`.
+  - **Explicit `DEFECT:` rule:** lines matching `^DEFECT:` belong to `check=contains-pins` regardless of the last seen section header. The contains-pins phase emits `DEFECT:` lines without a `===` section header; header-only phase tracking would otherwise attribute those failures to the previous pre-commit or direct-make section.
+  - For each distinct check, capture the first file location with a conservative `path:line` regex.
+  - Capture the first useful error line from markers such as `ERROR:`, `Error:`, `FAILED`, `Failed`, `Traceback`, `AssertionError`, and `DEFECT`.
+  - Count matched failure markers per check.
+  - Emit one record group per failing check discovered in log order.
+- Add one shared helper, for example `_write_failure_digest_from_redacted(...)`, that:
+  - Takes redacted text/path, site, attempt, and log directory.
+  - Builds the multi-check digest.
+  - Writes `<site>-<attempt>.digest.txt` beside the redacted log with mode `0600`.
+  - Uses the same directory validation assumptions as the redacted log.
+  - Deletes partial digest files on write failure.
+  - Returns the digest path on success or `None` on failure.
+- In `_finish_logged_result`, after any successful `_redact_log` on a failing check:
+  - Call the shared digest helper once.
+  - Return `_checks_failure(..., redacted_log_path=..., digest_file_path=...)` when digest write succeeds.
+  - If digest creation fails, still return the existing checks failure with `REDACTED_LOG_FILE`; do not convert a check failure into a structural failure.
+  - Apply this to both redacted failure exits:
+    - `result_code == 2` and `_is_no_validation_phases_log(...)`
+    - the generic failing-check tail after successful redaction
+- In `checks_run_relevant_main`, when `result.redacted_log_path` is present:
+  - Include `DIGEST_FILE=<path>` before `REDACTED_LOG_FILE=<path>` when `result.digest_file_path` is set.
+  - Keep `EXIT_CODE`, `PHASE`, and `REDACTED_LOG_FILE` behavior unchanged.
+  - Keep success and explicit skip envelopes unchanged.
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+
+- Update `_checks_relay_line` failure formatting to preserve `DIGEST_FILE` from captured child output.
+  - Emit it before `REDACTED_LOG_FILE` so readers see the primary artifact first.
+- No change needed in `_parse_whitespace_kv_line`; it already captures uppercase KV tokens.
+- No change needed in `_checks_pass`.
+
+### UPDATED: skills/implement/SKILL.md
+
+- Update **Checks Failure Entry Macro** step 1:
+  - At folded sites, require a full composite stdout key-scan for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line.
+  - Read the digest file first when `DIGEST_FILE` is bound.
+  - Fall back to `REDACTED_LOG_FILE` when the digest is absent, unreadable, or insufficient.
+  - Keep the rule to never read raw `LOG_FILE`.
+- Clarify that `REDACTED_LOG_FILE` is still passed to `checks repair-loop`.
+- Update the Step 5 resume composite stdout parsing slice:
+  - Replace first-line-only binding for checks failure keys with a full composite stdout key-scan for `DIGEST_FILE` and `REDACTED_LOG_FILE`.
+  - Keep other resume keys on their existing parse contract unless they already require full-output scan.
+- Do not add, remove, or convert Bash fences.
+
+### UPDATED: skills/implement/references/checks-repair-loop.md
+
+- In section 1, before repair-loop invocation:
+  - State that prompt-side diagnosis should prefer `DIGEST_FILE` when available.
+  - At folded sites, require full composite stdout key-scan for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical line.
+  - Bind `DIGEST_FILE` for diagnosis and reserve `REDACTED_LOG_FILE` for repair-loop input.
+- Preserve the structural gate:
+  - No repair-loop when no `REDACTED_LOG_FILE` exists.
+  - Structural failure routing remains keyed by `FAILURE_REASON`.
+- In section 2, keep the repair-loop invocation using `--checks-log "$REDACTED_LOG_FILE"`.
+- In re-entry rules, say that a new `DIGEST_FILE` should replace the previous digest for prompt-side diagnosis, while the updated `REDACTED_LOG_FILE` remains the repair-loop input.
+
+### UPDATED: skills/review/SKILL.md
+
+- In Step 3 relevant-checks failure handling:
+  - Read `DIGEST_FILE` first for diagnosis.
+  - Fall back to `REDACTED_LOG_FILE` when needed.
+  - Keep the rerun loop unchanged.
+  - Keep raw `LOG_FILE` forbidden.
+
+### UPDATED: python/tests/implement/test_checks.py
+
+- Add digest builder unit coverage:
+  - Pre-commit hook failure produces one check record with name, first location, first error, and count.
+  - Two failed pre-commit hooks produce two check record groups when under the byte cap, or explicit cap truncation with `digest_truncated=true`.
+  - Direct make or generic error output produces a fallback check name.
+  - **`DEFECT:` attribution:** a redacted log where direct make succeeded and contains-pins failed via `DEFECT:` lines (no `===` section header) produces `check=contains-pins`, not the previous section's check name.
+  - Digest output is capped by bytes and remains valid UTF-8.
+  - Secret-like content is not present when redaction replaced it in the source redacted log.
+- Extend `test_run_relevant_checks_fail_produces_redacted_log` or add a sibling test:
+  - Failure returns both `redacted_log_path` and `digest_file_path`.
+  - Digest file exists with mode `0600`.
+  - Digest does not contain the original secret.
+- Extend `test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed`:
+  - When redaction succeeds, assert `result.redacted_log_path` is set.
+  - Assert `result.digest_file_path` is set.
+  - Assert digest file exists with mode `0600`.
+  - Extend `test_checks_run_relevant_main_fail_envelope` or add sibling envelope coverage for `failure_reason=no-validation-phases` so stdout contains `DIGEST_FILE=` before `REDACTED_LOG_FILE=` when redaction succeeds.
+- Extend `test_checks_run_relevant_main_fail_envelope`:
+  - Fake result includes `digest_file_path`.
+  - stdout contains `DIGEST_FILE=` before `REDACTED_LOG_FILE=`.
+  - Existing `REDACTED_LOG_FILE=` assertion remains.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Update `test_checks_relay_uses_whitespace_parser_without_parse_kv` to include `DIGEST_FILE=/tmp/digest.txt`.
+- Assert `_checks_relay_line` includes `DIGEST_FILE` before `REDACTED_LOG_FILE` on failure.
+- Add or update composite failure relay coverage so a folded checks failure keeps both:
+  - `DIGEST_FILE=...`
+  - `REDACTED_LOG_FILE=...`
+
+### MAY_UPDATE: docs/linting.md
+
+- If reviewers require docs parity for the consumer contract, update the relevant-checks CLI paragraph:
+  - Failure envelopes may include `DIGEST_FILE`.
+  - `/implement` and `/review` read `DIGEST_FILE` first.
+  - Folded composite stdout may place checks relay keys after leading FILE/GIT KVs; consumers must full-scan composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`.
+  - `REDACTED_LOG_FILE` remains the full-log fallback and repair-loop input.
+
+### Edge cases
+
+- **Digest write fails**: emit the existing failure envelope with `REDACTED_LOG_FILE` only. The repair path still works.
+- **No redacted log exists**: keep current structural failure behavior. Do not emit `DIGEST_FILE`.
+- **`DEFECT:` without section header**: attribute to `check=contains-pins` even when the prior log section was pre-commit or direct make.
+- **Unknown log shape**: emit a digest with one `check=unknown` record group, `first_location=unknown`, and the first useful error marker if found.
+- **Multiple failing checks**: emit one record group per check until the byte cap; set `digest_truncated=true` when later checks are omitted.
+- **Huge or multibyte lines**: cap by bytes and preserve valid UTF-8.
+- **Composite stdout has leading unrelated KVs**: full composite stdout key-scan for both `DIGEST_FILE` and `REDACTED_LOG_FILE` still binds them on folded sites.
+
+### Failure modes
+
+- A too-aggressive parser could hide the useful error line. Keep parsing broad and fallback-friendly.
+- Header-only phase tracking could misname contains-pins failures. The explicit `^DEFECT:` rule prevents attribution to the wrong check.
+- A digest could omit context needed for repair. Keep `REDACTED_LOG_FILE` available and documented as fallback.
+- A single-record digest could hide a second failed hook. Emit per-check record groups until the byte cap.
+- Digest logic duplicated across `_finish_logged_result` branches could drift. Use one shared post-redaction helper for every redacted failure return.
+- Relay formatting could drop the new key. Cover the child envelope and composite relay in tests.
+
+### Testing strategy
+
+Run focused tests only:
+
+```bash
+python3 -m pytest python/tests/implement/test_checks.py python/tests/implement/test_implement_dispatch.py
+```
+
+Run prompt-structure checks affected by skill edits:
+
+make test-implement-structure
+make test-review-structure
+
+If `docs/linting.md` changes, run the relevant Markdown checks required by the repo hooks.
+
+After merge, token deltas can be measured with existing committed token reports. No new measurement code is planned.
+
+## Acceptance
+
+Run focused tests only:
+
+```bash
+python3 -m pytest python/tests/implement/test_checks.py python/tests/implement/test_implement_dispatch.py
+```
+
+Run prompt-structure checks affected by skill edits:
+
+make test-implement-structure
+make test-review-structure
+
+If `docs/linting.md` changes, run the relevant Markdown checks required by the repo hooks.
+
+After merge, token deltas can be measured with existing committed token reports. No new measurement code is planned.
+
+review_status: complete
+rounds_completed: 2
+diff_added: 320
+diff_deleted: 40
+mechanical_churn: false
+diff_lines: 360

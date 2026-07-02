@@ -1,0 +1,6 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- SECURITY.md parity is repo convention but not a scoped plan deliverable and the digest feature ships without it
+OOS_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- duplicate docs-drift item; plan already defers docs/linting.md as MAY_UPDATE so filing overhead exceeds backlog value

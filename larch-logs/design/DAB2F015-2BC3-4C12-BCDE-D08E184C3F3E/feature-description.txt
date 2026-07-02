@@ -1,0 +1,12 @@
+# md-to-py-XI: Python failure-triage digest for relevant-checks repair loops
+
+**Context.** The checks phases carry about 9.5B lifetime tokens (Step 3 first pass: Claude 2.97B, Codex 1.98B, Cursor 1.53B; Step 6 second pass: Claude 2.98B; #5962). On each failure iteration the orchestrator reads `REDACTED_LOG_FILE`, and on first failure the 9.5KB `checks-repair-loop.md`. Log excerpts recur across repair iterations and inflate every subsequent turn's context.
+
+**Scope.** `python3 python/cli.py checks run-relevant` additionally emits a bounded structured digest per failing check (check name, first failing file:line, first error line, failure counts; hard byte cap) as the primary orchestrator-facing artifact (`DIGEST_FILE=` KV or inline bounded block). The Checks Failure Entry Macro in `skills/implement/SKILL.md` and the /review Step 3 helper consume the digest first; the full redacted log remains available for escalation when the digest is insufficient. Python-side truncation and redaction rules unchanged.
+
+**Acceptance.**
+
+- Digest emitted and consumed on the failure path; repair-loop behavior otherwise unchanged.
+- Before/after per-step token deltas measurable from committed token reports.
+
+Part of md-to-py-XI (round X: #5885).
