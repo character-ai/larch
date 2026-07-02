@@ -3077,6 +3077,121 @@ def test_done_merged_resume_is_idempotent_without_manifest_status(
     assert result.detail == "already done"
 
 
+def _force_recovered_reconciliation_post_merge_skip(monkeypatch: pytest.MonkeyPatch) -> list[bool]:
+    flush_calls: list[bool] = []
+
+    def fake_committed_summary_heading_is_stalled(**_kwargs: object) -> bool:
+        return True
+
+    def fake_live_recovered_outcome(_ctx: RunContext) -> str:
+        return "merged"
+
+    def fake_flush_logs_pre(**kwargs: object) -> run_logs.RefreshSkip:
+        flush_calls.append(bool(kwargs.get("strict_final_report")))
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_POST_MERGE)
+
+    monkeypatch.setattr(
+        ship_pr,
+        "_committed_summary_heading_is_stalled",
+        fake_committed_summary_heading_is_stalled,
+    )
+    monkeypatch.setattr(ship_pr, "_live_recovered_outcome", fake_live_recovered_outcome)
+    monkeypatch.setattr(ship_pr.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    return flush_calls
+
+
+def _merged_pr_view() -> object:
+    return type(
+        "PR",
+        (),
+        {
+            "number": 7,
+            "url": "https://example.test/pr/7",
+            "state": "MERGED",
+            "head_ref": "feat",
+        },
+    )()
+
+
+def test_done_resume_post_merge_reconciliation_skip_falls_through_to_done(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=done\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: _merged_pr_view(),
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postmerge",
+        lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("postmerge forbidden")),
+    )
+    flush_calls = _force_recovered_reconciliation_post_merge_skip(monkeypatch)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.OK
+    assert result.detail == "already done"
+    assert flush_calls == [True]
+    assert "PHASE=done\n" in state
+    assert "PHASE=stalled\n" not in state
+    assert "STALL_STEP=run-log-reconciliation\n" not in state
+
+
+def test_merged_resume_post_merge_reconciliation_skip_continues_postmerge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=postmerge\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        "REPO=o/r\nMERGE=true\nDRAFT=false\nMERGE_RESULT=merged\n",
+        encoding="utf-8",
+    )
+    postmerge_calls: list[bool] = []
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: _merged_pr_view(),
+    )
+    monkeypatch.setattr(
+        ship,
+        "run_postmerge_phase",
+        lambda *_a, **_k: postmerge_calls.append(True)
+        or ship.ShipResult(Outcome.OK, detail="postmerge"),
+    )
+    flush_calls = _force_recovered_reconciliation_post_merge_skip(monkeypatch)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    state = state_file.read_text(encoding="utf-8")
+    assert result.outcome is Outcome.OK
+    assert result.detail == "postmerge"
+    assert flush_calls == [True]
+    assert postmerge_calls == [True]
+    assert "PHASE=done\n" in state
+    assert "PHASE=stalled\n" not in state
+    assert "STALL_STEP=run-log-reconciliation\n" not in state
+
+
 def test_open_pr_resume_at_iteration_cap_still_observes_monitor(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

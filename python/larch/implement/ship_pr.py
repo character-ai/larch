@@ -142,6 +142,7 @@ def reconcile_committed_stalled_summary_if_recovered(
     ctx: RunContext,
     cwd: str,
     counters: ShipReconciliationCounters | None = None,
+    allow_post_merge_skip: bool = False,
 ) -> ShipResult | None:
     """Correct a prior stalled log only on recovered success paths.
 
@@ -150,9 +151,10 @@ def reconcile_committed_stalled_summary_if_recovered(
     stalls keep HEAD stable until later evidence is terminal (#5186).
     """
     resolved_counters = counters or ShipReconciliationCounters()
-    if not _committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd=cwd):
-        return None
-    if not _live_recovered_outcome(ctx):
+    if (
+        not _committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd=cwd)
+        or not _live_recovered_outcome(ctx)
+    ):
         return None
     refresh = run_logs.flush_logs_pre(
         runner=runner,
@@ -161,6 +163,8 @@ def reconcile_committed_stalled_summary_if_recovered(
         strict_final_report=True,
     )
     if refresh.skipped:
+        if allow_post_merge_skip and refresh.reason == config.REFRESH_SKIP_POST_MERGE:
+            return None
         _write_terminal_state(
             ctx=ctx,
             result=Outcome.STALLED,
