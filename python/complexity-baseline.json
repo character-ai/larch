@@ -1371,7 +1371,7 @@
     "file": "larch/design/design_postplan.py",
     "code": "PLR0915",
     "qualified_symbol": "postplan_emit_main",
-    "metric": 114
+    "metric": 118
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1453,8 +1453,20 @@
   },
   {
     "file": "larch/design/design_session.py",
+    "code": "C901",
+    "qualified_symbol": "settle_next_action_main",
+    "metric": 13
+  },
+  {
+    "file": "larch/design/design_session.py",
     "code": "PLR0912",
     "qualified_symbol": "_rehydrate_wrapper_env",
+    "metric": 13
+  },
+  {
+    "file": "larch/design/design_session.py",
+    "code": "PLR0912",
+    "qualified_symbol": "settle_next_action_main",
     "metric": 13
   },
   {
@@ -1551,13 +1563,19 @@
     "file": "larch/design/design_step2b.py",
     "code": "C901",
     "qualified_symbol": "_postplan_decide",
-    "metric": 11
+    "metric": 13
   },
   {
     "file": "larch/design/design_step2b.py",
     "code": "C901",
     "qualified_symbol": "step2b_postplan_main",
     "metric": 13
+  },
+  {
+    "file": "larch/design/design_step2b.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_postplan_decide",
+    "metric": 7
   },
   {
     "file": "larch/design/design_step2b.py",
@@ -1570,6 +1588,12 @@
     "code": "PLR0912",
     "qualified_symbol": "_folded_step2a_sentinel_prep",
     "metric": 14
+  },
+  {
+    "file": "larch/design/design_step2b.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_postplan_decide",
+    "metric": 13
   },
   {
     "file": "larch/design/design_step2b.py",

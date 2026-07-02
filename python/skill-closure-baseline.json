@@ -1,10 +1,10 @@
 [
   {
-    "closure_content_estimated_tokens": 52619,
-    "closure_estimated_tokens": 52772,
+    "closure_content_estimated_tokens": 52612,
+    "closure_estimated_tokens": 52765,
     "closure_lines": 1692,
-    "conditional_content_estimated_tokens": 11285,
-    "conditional_estimated_tokens": 11332,
+    "conditional_content_estimated_tokens": 10317,
+    "conditional_estimated_tokens": 10363,
     "conditional_files": [
       "skills/design/references/brainstorm.md",
       "skills/design/references/settle-rc-dispatch.md",
@@ -12,7 +12,7 @@
       "skills/design/references/decompose-panel.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 495,
+    "conditional_lines": 494,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
@@ -26,7 +26,7 @@
     ],
     "skill": "design",
     "skill_md_content_estimated_tokens": 25071,
-    "skill_md_estimated_tokens": 25126,
+    "skill_md_estimated_tokens": 25125,
     "skill_md_lines": 697
   },
   {
