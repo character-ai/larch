@@ -1,0 +1,1 @@
+Add a redacted, capped `DIGEST_FILE` for failing relevant checks. Relay it through implement composites. Update implement and review prompts to read the digest first and keep `REDACTED_LOG_FILE` as the repair-loop and escalation fallback.
