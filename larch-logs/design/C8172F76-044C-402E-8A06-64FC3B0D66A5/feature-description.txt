@@ -1,0 +1,18 @@
+# [BUG] #5676 residual: stalled-then-shipped runs stay committed as "Outcome: stalled" (31/93 post-fix); post-ship re-evaluation never implemented
+
+## Symptom
+Committed final summaries freeze at "Outcome: stalled" for runs that stalled, then recovered and shipped. At audit time: 31 of 93 post-#5676-fix implement summaries say stalled; 29 of those carry PR numbers and all 29 PRs merged into main (verified via gh). This exceeds the 10/50 rate reported in #5676 itself.
+
+## Root cause
+PR #5708 added `_stall_signal_is_terminal` (python/larch/state/_normalize.py:101, gating the stalled label at :158), which fixes only the stale-flag subset: snapshots whose stall evidence is non-terminal at flush time. A snapshot flushed while the run is genuinely stalled is correctly labeled stalled at that moment, but when the run later recovers and ships, the committed label is never reconciled. The "re-evaluated post-ship" half of #5676's suggested fix was not implemented.
+
+## Expected behavior
+A run that ships must not stay permanently recorded as stalled. Either reconcile the outcome at the run's own ship-time flush (pre-merge, where "shipping"/"pr-created" evidence is available, like #5646), or reconcile stale stalled labels at the next run-log flush that touches the run dir.
+
+## Suggested fix
+1. Primary: at the run's own pre-ship flush (`_publish_post_pr_terminal_snapshot` path), re-derive the outcome from live ship evidence so a recovered run overwrites its earlier stalled label with `shipping`/`pr-created` (same evidence gates as #5646/#4900: PHASE, PR URL, BAIL_REASON absent).
+2. Backstop: in the run-log flush/batch path, when a run dir's manifest carries PR/merge evidence but final-summary says `Outcome: stalled`, rewrite the label (mirror of the #4900 audit-tolerance reconciliation, but writer-side).
+3. Add a regression test: stall snapshot flushed, then recovery and ship, committed summary must not read stalled.
+
+## Provenance
+Found by the 2026-07-01 closed-[BUG] fix audit. Original: #5676 (closed COMPLETED), fix commit 09082b33b (PR #5708). Verified at main 79b1c0270; _normalize.py unchanged through 66e115601.

@@ -1,0 +1,14 @@
+### FINDING_1: Failed correction push must block merge
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Pre-merge reconciliation can commit a corrected `final-summary.md` locally via `flush_logs_pre`, but if `push.push_branch` returns `status="failed"` after retries instead of raising, the ship path may still call `merge.merge_pr`. GitHub can then merge a remote head that still contains `Outcome: stalled`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Treat push exceptions or any push result other than `pushed` as a terminal stalled recovery result before calling `merge.merge_pr`; reuse the existing `_post_ensure_flush_and_push` failure pattern.
+
+### FINDING_2: PR-created early success must reconcile stale stalled summary
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan places committing reconciliation immediately before `merge.merge_pr`, but recovered runs that create a non-merge or draft PR return OK from the PR-created/draft success branch without entering the merge loop. A run that previously committed `final-summary.md` as stalled can therefore ship as `pr-created` or `pr-created-draft` while the git-tracked summary still reads `Outcome: stalled`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Call the same stale-heading gated reconciliation helper on the early PR-created/draft success path before returning; keep the existing guard so fresh runs and active failures do not reflush, and fail closed on flush or push failure instead of claiming success.
+  - From Codex-Requirements: Invoke the same guarded reconciliation before this successful PR-created or draft return, or move the helper to a shared post-ensure point before branches that can return success, keeping the existing committed-stalled-summary and clean normalized-outcome gates
