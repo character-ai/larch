@@ -1455,8 +1455,8 @@ def test_dispatch_waterfall_model_role_parser_forwards_to_codex(tmp_path: Path, 
     launches: list[list[str]] = []
 
     class FakeProcess:
-        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False) -> None:
-            _ = (stdout, stderr, start_new_session)
+        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False, env: object = None) -> None:
+            _ = (stdout, stderr, start_new_session, env)
             launches.append([str(item) for item in argv])
             output = argv[argv.index("--output") + 1]
             Path(output).write_text("OK\n", encoding="utf-8")
@@ -1492,8 +1492,8 @@ def test_dispatch_waterfall_slot_model_role_overrides_global_for_codex(tmp_path:
     launches: list[list[str]] = []
 
     class FakeProcess:
-        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False) -> None:
-            _ = (stdout, stderr, start_new_session)
+        def __init__(self, argv: list[str], stdout: object = None, stderr: object = None, start_new_session: bool = False, env: object = None) -> None:
+            _ = (stdout, stderr, start_new_session, env)
             launches.append([str(item) for item in argv])
             output = argv[argv.index("--output") + 1]
             Path(output).write_text("OK\n", encoding="utf-8")
