@@ -14,7 +14,7 @@ Read `.ship-route-exit-handoff.env` with `larch_io.read_kvs` where applicable be
   3. Use sentinel `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count`. Attempts 1-3 may run; the next arrival falls through.
   4. Write the sentinel and increment the counter before repo edits. On write failure, append Tool Failures and fall through.
   5. Capture fresh CI logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`.
-  6. Make the minimal repo edit from the redacted CI log and optional detail file.
+  6. Make the minimal repo edit from the redacted CI log and optional detail file. For merge-ref-sensitive generated artifacts such as `python/skill-closure-baseline.json`, rebase onto current `main` before regenerating so the repair matches pull-request merge-ref CI.
   7. Run relevant checks with `python/cli.py checks run-relevant --site step8-main-agent-fix --tmpdir "$IMPLEMENT_TMPDIR"`.
   8. Stage edited files explicitly with `git add -- <paths>`.
   9. Commit via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git commit -m "Fix CI failure (main-agent)"`.

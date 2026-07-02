@@ -327,6 +327,34 @@ def test_merge_pr_emits_policy_denied(
     assert out.result == config.MERGE_RESULT_POLICY_DENIED
 
 
+def test_policy_denied_with_conflict_signal_routes_to_main_advanced(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    runner = RecordingRunner(
+        responses=[
+            *_open_pr_responses(),
+            CommandResult(("gh", "pr", "merge"), 1, "", "denied: merge conflicts", 0.01),
+        ],
+    )
+    monkeypatch.setattr(merge_module.gh, "pr_checks_all_pass", _mock_checks_pass)
+    monkeypatch.setattr(git_module, "try_rev_parse", _mock_rev_abc)
+    monkeypatch.setattr(merge_module, "_version_race_gate", _mock_version_gate_none)
+    monkeypatch.setattr(run_logs, "flush_logs_post", _mock_refresh_skip_ok)
+    ctx = _ctx(
+        tmpdir=str(tmp_path),
+        state_file=str(state),
+        no_admin_fallback=True,
+    )
+
+    out = merge_module.merge_pr(runner=runner, ctx=ctx)
+
+    assert out.result == config.MERGE_RESULT_MAIN_ADVANCED
+    assert "denied: merge conflicts" in out.error
+
+
 def test_merge_pr_emits_admin_failed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

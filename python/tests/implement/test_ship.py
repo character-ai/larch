@@ -1409,6 +1409,50 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
     assert push_calls == [True]
 
 
+def test_no_checks_dirty_pr_writes_phase14_reship_flag(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
+        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        encoding="utf-8",
+    )
+    flush_calls: list[bool] = []
+    push_calls: list[bool] = []
+    snapshot_calls: list[bool] = []
+    _no_checks_loop_stubs(
+        monkeypatch,
+        detail=config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED,
+        flush_calls=flush_calls,
+        push_calls=push_calls,
+        snapshot_calls=snapshot_calls,
+    )
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_merge_state_read",
+        lambda *_a, **_k: CommandResult(
+            ("gh", "pr", "view"),
+            0,
+            '{"mergeStateStatus":"DIRTY","headRefOid":"h0"}',
+            "",
+            0.01,
+        ),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, branch="feat", branch_name="feat", state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    phase14 = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    assert phase14.is_file()
+    assert "REASON=mergeStateStatus=DIRTY\n" in phase14.read_text(encoding="utf-8")
+
+
 def test_non_no_checks_bail_still_publishes_terminal_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -4440,6 +4484,58 @@ def test_postbump_stall_writes_terminal_finalize(monkeypatch: pytest.MonkeyPatch
     state = state_file.read_text(encoding="utf-8")
     assert "PHASE=rebase-failed\n" in state
     assert "STALL_TRACKING=true\n" in state
+
+
+def test_postbump_conflict_routes_to_pre_push_handoff(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    monkeypatch.setattr(
+        ship.finalize,
+        "postbump_preflight",
+        lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True),
+    )
+    monkeypatch.setattr(
+        ship.finalize,
+        "postbump",
+        lambda *_a, **_k: type(
+            "R",
+            (),
+            {
+                "outcome": Outcome.STALLED,
+                "status": "rebase-failed",
+                "detail": "rebase failed; conflicts in: docs/a.md",
+                "conflict_files": "docs/a.md",
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        ship.run_logs,
+        "flush_logs_pre",
+        lambda *_a, **_k: type("S", (), {"skipped": False, "reason": ""})(),
+    )
+    monkeypatch.setattr(
+        ship,
+        "_write_terminal_finalize_if_terminal",
+        lambda *_a, **_k: (_ for _ in ()).throw(
+            AssertionError("terminal finalize should be skipped")
+        ),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file)),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    state = state_file.read_text(encoding="utf-8")
+    assert "PHASE=rebase\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+    assert "CALLER_KIND=ship_pr_pre_push\n" in state
+    assert "CONFLICT_FILES=docs/a.md\n" in state
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file()
 
 
 def test_pre_rebase_flush_commit_failed_fails_closed(

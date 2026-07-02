@@ -248,6 +248,8 @@ def _resolve_conflicts(
 ) -> None:
     _ = repo, run_id
 
+    last_conflict_paths: tuple[str, ...] = ()
+
     def _handoff_or_stall(conflict_files: tuple[str, ...], detail: str) -> None:  # lint-keyword-only: ok internal nested closure
         if enable_pre_push_handoff and conflict_files:
             _write_handoff_flag(tmpdir)
@@ -261,6 +263,7 @@ def _resolve_conflicts(
     while True:
         unmerged = _unmerged_paths(runner, cwd=cwd)
         if unmerged:
+            last_conflict_paths = tuple(unmerged)
             conflict_csv = ",".join(unmerged)
             baseline_tracked: frozenset[str] = git.tracked_dirty_paths(runner, cwd=cwd)
             baseline_untracked: frozenset[str] = git.untracked_dirty_paths(runner, cwd=cwd)
@@ -285,7 +288,7 @@ def _resolve_conflicts(
                         cwd=cwd,
                     )
                     _reset_conflict_paths(runner=runner, conflict_paths=unmerged, cwd=cwd)
-                    raise Stalled(_redact_outbound("conflict fixer touched forbidden path"))
+                    _handoff_or_stall(tuple(unmerged), "conflict fixer touched forbidden path")
                 tier_succeeded = attempt.launcher_exit == 0 and attempt.wrapper_rc == 0
                 still_marked: list[str] = []
                 if tier_succeeded:
@@ -333,9 +336,16 @@ def _resolve_conflicts(
         if _is_empty_or_already_applied_rebase_error(combined):
             skip_result = git.rebase_skip(runner, cwd=cwd)
             if skip_result.returncode != 0:
+                if enable_pre_push_handoff and last_conflict_paths:
+                    _handoff_or_stall(last_conflict_paths, "git rebase --skip failed")
                 _abort_rebase(runner, cwd=cwd)
                 raise Stalled(_redact_outbound("git rebase --skip failed"))
             continue
+        if enable_pre_push_handoff and last_conflict_paths:
+            _handoff_or_stall(
+                last_conflict_paths,
+                "rebase --continue failed without unmerged paths",
+            )
         _abort_rebase(runner, cwd=cwd)
         raise Stalled(_redact_outbound("rebase --continue failed without unmerged paths"))
 

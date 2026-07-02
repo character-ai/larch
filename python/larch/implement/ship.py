@@ -171,6 +171,35 @@ def _blocked_resume_result(resume: ResumePlan) -> ShipResult | None:
     return None
 
 
+def _no_checks_phase14_reason(*, runner: Runner, working: RunContext, cwd: str) -> str:
+    if working.pr_number is None:
+        return ""
+    state = gh.pr_merge_state_read(
+        runner, working.pr_number, repo=working.repo, cwd=cwd
+    )
+    if state.returncode != 0:
+        return ""
+    try:
+        data: object = json.loads(state.stdout or "{}")
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    merge_state = str(data.get("mergeStateStatus") or "")
+    if merge_state in {"DIRTY", "BEHIND"}:
+        return f"mergeStateStatus={merge_state}"
+    return ""
+
+
+def _write_phase14_flag(tmpdir: str, *, reason: str) -> None:
+    phase14_flag = Path(tmpdir) / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    with suppress(OSError):
+        _ = phase14_flag.write_text(
+            f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON={reason}\n",
+            encoding="utf-8",
+        )
+
+
 def _ship_postmerge_phase(
     *,
     runner: Runner,
@@ -352,16 +381,35 @@ def run_ship(
                     stall_tracking=postbump.outcome is Outcome.STALLED,
                     stall_step=postbump.status if postbump.outcome is Outcome.STALLED else "",
                 )
-                _write_terminal_finalize_if_terminal(ctx=postbump_ctx, result=postbump.outcome, step=postbump.status)
-                _write_ship_state(
-                    postbump_ctx,
-                    phase=postbump.status,
-                    iteration=resume.iteration,
-                    rebase_count=resume.rebase_count,
-                    fix_attempts=resume.fix_attempts,
-                    transient_retries=resume.transient_retries,
-                    terminal_outcome=postbump.outcome,
-                )
+                conflict_files = getattr(postbump, "conflict_files", "")
+                if postbump.outcome is Outcome.STALLED and conflict_files:
+                    _write_phase14_flag(
+                        fresh_context.tmpdir, reason="postbump-rebase-conflict"
+                    )
+                    _write_ship_state(
+                        postbump_ctx,
+                        phase="rebase",
+                        iteration=resume.iteration,
+                        rebase_count=resume.rebase_count,
+                        fix_attempts=resume.fix_attempts,
+                        transient_retries=resume.transient_retries,
+                        resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+                        caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+                        extra_fields={"CONFLICT_FILES": str(conflict_files)},
+                    )
+                else:
+                    _write_terminal_finalize_if_terminal(
+                        ctx=postbump_ctx, result=postbump.outcome, step=postbump.status
+                    )
+                    _write_ship_state(
+                        postbump_ctx,
+                        phase=postbump.status,
+                        iteration=resume.iteration,
+                        rebase_count=resume.rebase_count,
+                        fix_attempts=resume.fix_attempts,
+                        transient_retries=resume.transient_retries,
+                        terminal_outcome=postbump.outcome,
+                    )
                 return ShipResult(postbump.outcome, detail=postbump.detail or postbump.status)
 
             tmp_path = Path(fresh_context.tmpdir)
@@ -601,6 +649,13 @@ def run_ship(
                 )
                 if no_checks_stall:
                     terminal_last_head = pre_monitor_head or ""
+                    phase14_reason = _no_checks_phase14_reason(
+                        runner=runner,
+                        working=working,
+                        cwd=repo_root,
+                    )
+                    if phase14_reason:
+                        _write_phase14_flag(working.tmpdir, reason=phase14_reason)
                 _write_terminal_state(
                     ctx=_bail_ctx,
                     result=monitor.result.outcome,
@@ -614,7 +669,8 @@ def run_ship(
                     last_monitored_head=terminal_last_head,
                 )
                 # A no-ci-checks-observed stall is recoverable: the main agent
-                # re-invokes ship-pr, which re-monitors the same head. Publishing a
+                # re-invokes ship-pr, which may rebase first when the PR merge state
+                # is dirty or behind. Publishing a
                 # terminal snapshot here would flush a fresh larch-logs commit and
                 # push it, moving HEAD and re-triggering CI before checks can attach
                 # -- the perpetual stall loop of issue #5186. Skip the snapshot so
