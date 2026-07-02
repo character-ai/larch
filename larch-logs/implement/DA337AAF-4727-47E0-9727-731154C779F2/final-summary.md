@@ -2,8 +2,8 @@
 
 - **Mode**: N/A
 - Force: true
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$12.54 — Claude $10.29, Codex-5.5 $2.02, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.23  |  Tokens: 15226k
+- **Duration**: 00:20:57
+- **Cost**: 💰 TOTAL ~$15.52 — Claude $13.25, Codex-5.5 $2.02, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.25  |  Tokens: 19948k
 - **Issue**: #6023 — https://github.com/character-ai/larch/issues/6023
 - **Plan review**: N/A
 - **Dynamic archetypes**: N/A
@@ -22,8 +22,12 @@
 ## Exec Issues and Warnings
 Exec Issues (0):
 Warnings (1):
-  1. Step 5: self-review mode: main-agent inline review complete
+  1. Step 7a (Architectural guidelines): G-Cfg-1 deviation — `_CLAUDE_CI_EMPTY_RESULT_SENTINEL` in `python/larch/implement/ci_agentic_fix.py` duplicates the wire-literal `_ci_launcher.py:886` writes inl...
 
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
