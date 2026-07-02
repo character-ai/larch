@@ -3,7 +3,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 00:19:04
-- **Cost**: 💰 TOTAL ~$11.04 — Claude $0.66, Codex-5.5 $8.16, Codex-mini $0.24, Cursor $1.71, Claude (subprocess) $0.27  |  Tokens: 12577k
+- **Cost**: 💰 TOTAL ~$13.73 — Claude $3.35, Codex-5.5 $8.16, Codex-mini $0.24, Cursor $1.71, Claude (subprocess) $0.27  |  Tokens: 16312k
 - **Issue**: #6059 — https://github.com/character-ai/larch/issues/6059
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Warning append failures are swallowed. Concern: Warning append failures are still hidden behind suppress(Exception), so diagnostic warnings can disappear independently of the flush timing issue.
 - **Round 1 OOS_6** (latent): materialize_implementation_diff can see inconsistent repo state. Concern: materialize_implementation_diff still runs git merge-base and git diff as separate subprocesses, so a moving HEAD or origin/main can expose inconsistent repo state between the two calls.
 - **Round 1 OOS_7** (nit): Core helper tests still lack direct unit coverage. Concern: There are still no direct unit tests for pin_note_from_staged_for_current_head or _pin_note_from_live_diff, so regressions there are only indirectly exercised through the ship harness.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
