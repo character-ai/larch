@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import atexit
 import json
+import shutil
 import statistics
 import tempfile
 from pathlib import Path
@@ -216,7 +218,11 @@ def _rates_text(rates: DisplayRates) -> str:
 
 
 def _cache_path(temp_root: Path | None) -> Path:
-    root = temp_root or Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
+    if temp_root is None:
+        root = Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
+        _ = atexit.register(shutil.rmtree, root, ignore_errors=True)
+    else:
+        root = temp_root
     root.mkdir(parents=True, exist_ok=True)
     return root / "report-cache.ndjson"
 

@@ -7,6 +7,7 @@
 scripts/audit-edit-write.sh
 scripts/block-submodule-edit.sh
 scripts/check-stale-plugin.sh
+scripts/cleanup-sessionstart.sh
 scripts/deny-edit-write.sh
 scripts/external-tool-registry.sh
 scripts/file-failure-report-cross-repo.sh

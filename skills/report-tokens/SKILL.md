@@ -34,6 +34,7 @@ where `[FLAGS]` are only `--no-issue` and/or `--no-plot`; `--run-id` is never in
 Plot subprocess contract: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.md`; helper: `${CLAUDE_PLUGIN_ROOT}/skills/report-tokens/scripts/plot-cost-over-time.py`.
 
 Verify the CLI exited successfully. On a normal run, stdout includes `## Report Tokens Analysis` plus `Cache JSON: <path>`. If it exits non-zero, stop and surface the error; do not invent partial cost results. The CLI uses Python quiet routing via `quiet_init`, so scan warnings and issue-creation failures are visible to callers.
+Advertised `Cache JSON:` and plot paths remain on disk after CLI exit and expire through automatic SessionStart `cleanup run` age sweeps for `larch-*` paths, rather than growing without bound.
 
 ## NEVER
 
