@@ -353,6 +353,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("token", "compute-pr-line-counts"): ("larch.report.tokens", "compute_pr_line_counts_main"),
     ("token", "compute-pr-lines"): ("larch.report.tokens", "compute_pr_lines_main"),
     ("token", "measure-md-cost"): ("larch.report.tokens", "measure_md_cost_main"),
+    ("token", "measure-cache-efficiency"): ("larch.report.tokens", "measure_cache_efficiency_main"),
     ("token", "measure-ngram-duplication"): ("larch.report.tokens", "measure_ngram_duplication_main"),
     ("token", "measure-references-heatmap"): ("larch.report.tokens", "measure_references_heatmap_main"),
     ("token", "measure-realized-cost"): ("larch.report.tokens", "measure_realized_cost_main"),

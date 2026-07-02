@@ -12,7 +12,9 @@ from types import SimpleNamespace
 import pytest
 
 from larch.core import config
+from larch.report import report_tokens_scan
 from larch.report import tokens
+from larch.report.report_tokens_models import RunRecord, VendorTotals
 
 
 def test_atomic_text_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -882,6 +884,145 @@ def _tsv_rows(path: Path) -> list[dict[str, str]]:
     lines = path.read_text(encoding="utf-8").splitlines()
     header = lines[0].split("\t")
     return [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:]]
+
+
+def _tsv_section_rows(path: Path, section: str) -> list[dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    start = lines.index(f"# {section}") + 1
+    header = lines[start].split("\t")
+    rows: list[dict[str, str]] = []
+    for line in lines[start + 1 :]:
+        if line.startswith("# "):
+            break
+        if not line:
+            continue
+        rows.append(dict(zip(header, line.split("\t"), strict=False)))
+    return rows
+
+
+def _cache_record(
+    *,
+    number: int,
+    title: str = "Fixture",
+    started_at: str = "2026-06-01T00:00:00Z",
+    claude: VendorTotals | None = None,
+    claude_sub: VendorTotals | None = None,
+    raw_report: Mapping[str, object] | None = None,
+) -> RunRecord:
+    return RunRecord(
+        number=number,
+        title=title,
+        url="",
+        started_at=started_at,
+        closed_at=started_at,
+        workflow="",
+        claude=VendorTotals() if claude is None else claude,
+        codex=VendorTotals(),
+        cursor=VendorTotals(),
+        claude_sub=VendorTotals() if claude_sub is None else claude_sub,
+        phase_rows=(),
+        raw_report={} if raw_report is None else raw_report,
+    )
+
+
+def test_measure_cache_efficiency_writes_ranked_sections(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "consumer"
+    repo.mkdir()
+    monkeypatch.setenv("LARCH_MEASURE_DATE", "fixture-day")
+    design_record = _cache_record(
+        number=1,
+        title="Finite",
+        claude=VendorTotals(cache_create_5m=4, cache_read=2),
+        raw_report={"claude": {"per_step": [{"step": "3", "totals": {"cache_create_5m": 4, "cache_read": 2}}]}},
+    )
+    legacy_record = _cache_record(
+        number=2,
+        title="Legacy zero read",
+        claude_sub=VendorTotals(cache_create=9, cache_read=0),
+        raw_report={"claude_sub": {"per_step": [{"step": "5", "totals": {"cache_create": 9, "cache_read": 0}}]}},
+    )
+    zero_record = _cache_record(number=3, title="All zero")
+
+    def fake_scan(_runner: object, *, skill: str, resolve_repo: bool, **_kwargs: object) -> report_tokens_scan.ScanResult:
+        assert resolve_repo is False
+        records = (design_record, zero_record) if skill == "design" else (legacy_record,)
+        return report_tokens_scan.ScanResult(repo_root=repo, repo_slug=None, records=records)
+
+    monkeypatch.setattr(report_tokens_scan, "scan", fake_scan)
+
+    out = tokens.measure_cache_efficiency()
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("# per_run\n")
+    assert "\n# per_step\n" in text
+    per_run = _tsv_section_rows(out, "per_run")
+    assert per_run[0]["lane"] == "claude_sub"
+    assert per_run[0]["ratio"] == "inf"
+    assert per_run[0]["title"] == "Legacy zero read"
+    assert all(row["title"] != "All zero" for row in per_run)
+
+
+def test_cache_create_effective_uses_legacy_when_split_zero() -> None:
+    assert tokens._cache_create_effective(cache_create=7, cache_create_5m=0, cache_create_1h=0) == 7  # pyright: ignore[reportPrivateUsage]
+    assert tokens._cache_create_effective(cache_create=7, cache_create_5m=2, cache_create_1h=3) == 5  # pyright: ignore[reportPrivateUsage]
+
+
+def test_measure_cache_efficiency_aggregates_steps_by_skill_step_and_lane(tmp_path: Path) -> None:
+    first = _cache_record(
+        number=1,
+        raw_report={"claude": {"per_step": [{"step": "3", "totals": {"cache_create_5m": 3, "cache_create_1h": 2, "cache_read": 5}}]}},
+    )
+    second = _cache_record(
+        number=2,
+        raw_report={"claude": {"per_step": [{"step": "3", "totals": {"cache_create": 7, "cache_read": 5}}]}},
+    )
+    per_run, per_step = tokens._measure_cache_efficiency_records(tagged_records=(("design", first), ("design", second)))  # pyright: ignore[reportPrivateUsage]
+    out = tmp_path / "cache.tsv"
+    _ = out.write_text(tokens._render_cache_efficiency_tsv(per_run=per_run, per_step=per_step), encoding="utf-8")  # pyright: ignore[reportPrivateUsage]
+
+    rows = _tsv_section_rows(out, "per_step")
+    row = next(item for item in rows if item["skill"] == "design" and item["step"] == "3" and item["lane"] == "claude")
+    assert row["runs"] == "2"
+    assert row["cache_create"] == "7"
+    assert row["cache_create_5m"] == "3"
+    assert row["cache_create_1h"] == "2"
+    assert row["cache_read"] == "10"
+    assert row["ratio"] == "1.200000"
+
+
+def test_measure_cache_efficiency_separates_homonymous_steps_across_skills(tmp_path: Path) -> None:
+    design = _cache_record(
+        number=1,
+        raw_report={"claude": {"per_step": [{"step": "3", "totals": {"cache_create_5m": 4, "cache_read": 2}}]}},
+    )
+    implement = _cache_record(
+        number=2,
+        raw_report={"claude": {"per_step": [{"step": "3", "totals": {"cache_create_5m": 10, "cache_read": 5}}]}},
+    )
+    per_run, per_step = tokens._measure_cache_efficiency_records(tagged_records=(("design", design), ("implement", implement)))  # pyright: ignore[reportPrivateUsage]
+    out = tmp_path / "cache.tsv"
+    _ = out.write_text(tokens._render_cache_efficiency_tsv(per_run=per_run, per_step=per_step), encoding="utf-8")  # pyright: ignore[reportPrivateUsage]
+
+    keys = {(row["skill"], row["step"], row["lane"]) for row in _tsv_section_rows(out, "per_step")}
+    assert ("design", "3", "claude") in keys
+    assert ("implement", "3", "claude") in keys
+
+
+def test_measure_cache_efficiency_main_prints_relative_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "consumer"
+    out = repo / "larch-logs" / "measure-cache-efficiency" / "fixture-day.tsv"
+    out.parent.mkdir(parents=True)
+    _ = out.write_text("# per_run\n", encoding="utf-8")
+    monkeypatch.setattr(tokens, "measure_cache_efficiency", lambda: out)
+    monkeypatch.setattr(tokens, "_repo_root", lambda: pytest.fail("_repo_root must not be used"))  # pyright: ignore[reportPrivateUsage]
+
+    rc = tokens.measure_cache_efficiency_main([])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "WROTE\tlarch-logs/measure-cache-efficiency/fixture-day.tsv\n"
 
 
 def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
