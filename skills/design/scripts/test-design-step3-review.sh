@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 MODULE="$ROOT/python/larch/review/plan_review.py"
 NORMALIZE_MODULE="$ROOT/python/larch/review/plan_review_normalize.py"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
+SKILL_MD="$ROOT/skills/design/SKILL.md"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
 
@@ -71,6 +72,16 @@ pass 'Step 3 loop persists round-start-s before round body with symlink guards'
 for status in panel-failed tally-error degraded-empty-collector; do
   grep -Fq "$status" "$MODULE" || fail "$status missing"
 done
+grep -Fq '**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**' "$SKILL_MD" \
+  || fail 'Step 3 degraded-empty-collector self-review warning missing from skill'
+grep -Fq 'Do not enter Gate B because there is no findings list to vote or apply.' "$SKILL_MD" \
+  || fail 'Step 3 degraded-empty-collector must bypass Gate B after self-review'
+# shellcheck disable=SC2016
+grep -Fq "\`NEXT_ACTION=step3b-bypass\` for all other bypass statuses" "$SKILL_MD" \
+  || fail 'Step 3 panel-failed/tally-error ordinary bypass branch missing'
+if grep -Fq 'degraded-empty-collector, and MAV re-tally tally-error' "$SKILL_MD"; then
+  fail 'Step 3 degraded-empty-collector must not be grouped with ordinary bypass statuses'
+fi
 # Step 3 stages panel-init-failed under the shared failed-judge-panel summary
 # outcome: the orchestrator maps panel-init-failed to SUMMARY_OUTCOME=failed-judge-panel
 # and the terminal-failure report requires the staged outcome to match it, so the

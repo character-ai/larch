@@ -1589,6 +1589,8 @@ def test_review_core_panel_failed_on_collector_error_static_files(tmp_path: Path
     assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
     threshold_env = (tmp_path / "panel-failed-collector" / "review-core-threshold.env").read_text(encoding="utf-8")
     assert "THRESHOLD_OK=false" in threshold_env
+    assert "THRESHOLD_REASON=no successful launched reviewer output" in threshold_env
+    assert "THRESHOLD_REASON=no successful launched reviewer output" in result.stdout
     assert "FAILED_SLOTS=3" in threshold_env
 
 
@@ -1627,6 +1629,7 @@ def test_review_core_panel_failed_on_missing_static_archetype(tmp_path: Path) ->
     assert "REVIEW_CORE_STATUS=panel-failed" in result.stdout
     threshold_env = (tmp_path / "coverage-failed" / "review-core-threshold.env").read_text(encoding="utf-8")
     assert "COVERAGE_GATE_REASON=no successful static reviewer for archetype(s): testing" in threshold_env
+    assert "THRESHOLD_REASON=no successful static reviewer for archetype(s): testing" in result.stdout
 
 
 def test_review_core_static_coverage_excuses_straggler_dropped_archetype(tmp_path: Path) -> None:

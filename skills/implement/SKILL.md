@@ -475,6 +475,8 @@ Wait for `<task-notification>` before parsing loop stdout or reading Step 5 resu
 
 Only when stdout contains `STEP5_REVIEW_STATUS`, parse child stdout with **token-aware** extraction: each line may contain multiple `KEY=value` tokens. Extract at least `STEP5_REVIEW_STATUS`, `STALL_TRACKING`, `STALL_REASON`, `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, `CODER_STATUS`, `FILES_CHANGED_HINT`, and `EFFECTIVE_ROUND_CAP`.
 
+**Branch order override**: when `STEP5_REVIEW_STATUS=self-review-required`, run the self-review procedure below to completion first. Only after self-review completes may you continue through the same post-self-review chain as `--self-review`. This branch overrides the generic non-stall continuation line.
+
 > **Continue after the loop returns.** On any non-stall `STEP5_REVIEW_STATUS`, execute the Cross-Skill Presence Propagation + Track Rejected Code Review Findings + Step 6 breadcrumb in order — do NOT end the turn, summarize, or write a handoff message before reaching Step 6. → shared/subskill-invocation.md#anti-halt
 
 For `stall`, `main-agent-vote-required`, `coder-main-agent-required`, and `mav-resume-past-cap`, **MANDATORY — READ ENTIRE FILE** before executing the branch: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`.
@@ -483,6 +485,7 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 
 - **`complete`**: proceed with Cross-Skill Presence Propagation, then Track Rejected Code Review Findings, then the Step 6 breadcrumb (the absorbed loop already ran `python/cli.py checks run-relevant`, `python/cli.py checks lint-fix` when needed, and the substantiality / bulk-skip gates inside Bash).
 - **`cap-hit`**: print `**⚠ 5: code review hit $EFFECTIVE_ROUND_CAP-round cap without converging. Proceeding.**`, log to `Warnings`, then run the same post-Step-5 chain as `complete`.
+- **`self-review-required`**: print `**⚠ /implement Step 5: all external reviewers failed at runtime; falling back to main-agent self-review.**`, log a `Warnings` entry in `$IMPLEMENT_TMPDIR/execution-issues.md`, then **MANDATORY — READ ENTIRE FILE**: read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` and execute it exactly as the `--self-review` branch does. Do not call `review-and-fix step5` again. Do not stall as `panel-failed`. Do not reach Step 6 before self-review finishes.
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 - **`stall`**: follow the `stall` branch body in the Step 5 review-branches reference. Skip to Step 18 (stall recovery runs before the final report).
 - **`main-agent-vote-required`**: follow the MAV branch body in the Step 5 review-branches reference, then run the composite checks/resume handoff against the MAV-applied fixes.
