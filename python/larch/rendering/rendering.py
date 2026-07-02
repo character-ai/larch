@@ -1147,7 +1147,7 @@ def render_voter_main(argv: list[str]) -> int:
         )
         out.extend([calibration_block] if calibration_block else [])
         out.extend([
-            'Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are OOS signals.',
+            "Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are OOS signals.",
             "When the CORRECTNESS axis is recorded on a NO vote, use false-positive only when the problem is not real; use true or partially-true when the problem is real but does not clear a necessity gate.",
             "Fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising, not because you dislike the proposed fix.",
             "",
