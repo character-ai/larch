@@ -1,0 +1,1 @@
+Move Gate A, Gate B default auto-apply copy, and Gate C chooser copy from `approval-gates.md` into a new `python/cli.py design render-gate` renderer. Keep behavior byte-identical, leave `approval-gates-explicit.md` untouched, update structure and gate tests, and lower the design closure ratchet if the shrink is confirmed.

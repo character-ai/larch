@@ -1,0 +1,215 @@
+## Plan
+
+## Approach
+
+- Add a Python renderer for Gate A, Gate B default mode, and Gate C prompt copy.
+- Keep `approval-gates-explicit.md` out of scope.
+- Keep gate routing, review cap semantics, finding classification, post-apply flow, and Step 3 loop behavior unchanged.
+- Replace inline prompt copy in `approval-gates.md` with short instructions to run `python3 python/cli.py design render-gate --gate A|B|C ...`, parse required KVs, and pass those fields directly to `AskUserQuestion`.
+- Preserve byte-identical visible copy by moving current strings into Python constants and testing them as golden output.
+- Register `design render-gate` in both `_REGISTRY` and `_DESIGN_LIFECYCLE_STDOUT_KEYS` so inherited `/design` quiet routing sets `LARCH_QUIET_DISABLE=1` and KV stdout reaches captured orchestrator stdout (mirror `render-final-summary`).
+- Source Gate C cap from `larch.review.plan_review_common.ROUND_CAP` (currently `2`), not the stale literal `5` in `approval-gates.md`.
+- Name and replay the non-numeric `review-round-count.txt` warning through a stable renderer KV so orchestrator fail-closed parsing and `execution-issues.md` logging survive the move into Python.
+
+## Files to modify/create
+
+### NEW: python/larch/design/design_gate_render.py
+
+Implement `render_gate_main(argv) -> int`.
+
+Use small frozen dataclasses, for example:
+
+- `GateOption`
+- `GateRender`
+
+Expose a KV-only stdout contract:
+
+- `GATE_RENDER_STATUS=ok`
+- `GATE=A|B|C`
+- `HEADER=...`
+- `QUESTION=...`
+- `OPTION_COUNT=N`
+- `OPTION_1_LABEL=...`
+- `OPTION_1_DESCRIPTION=...`
+- Repeat option rows in order.
+- Gate B default may emit `AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying N accepted finding(s)` and `PROMPT_REQUIRED=false`.
+- Gate C always emits `REVIEW_ROUND_CAP=<N>` from imported `ROUND_CAP`.
+- Gate C emits `REVIEW_ROUND_COUNT_WARN=non-numeric` when `--design-tmpdir/review-round-count.txt` exists, is non-empty, and is not parseable as an integer. Omit the key on missing, empty, or valid integer input.
+
+Suggested CLI shape:
+
+- `--gate A|B|C`
+- `--without-see-full-plan` for re-fired prompts after structured See full plan.
+- `--accepted-count N` for Gate B default breadcrumb.
+- `--approve-requested true|false` for Gate B mode selection. If `true`, emit a pointer/status that explicit copy is owned by `approval-gates-explicit.md`, not this renderer.
+- `--design-tmpdir PATH` for Gate C cap reading.
+- `--panel-failed true|false` for the Gate C approval relabel.
+
+Gate C cap behavior:
+
+- Import `ROUND_CAP` from `larch.review.plan_review_common`.
+- Read `review-round-count.txt` under `--design-tmpdir`.
+- Missing or empty means 0.
+- Non-numeric means 0 and emits `REVIEW_ROUND_COUNT_WARN=non-numeric`.
+- Below cap (`count < ROUND_CAP`) includes `Re-run review panel`.
+- At cap (`count >= ROUND_CAP`) omits it.
+- `--without-see-full-plan` omits `See full plan` while preserving the cap-aware remaining options.
+- `--panel-failed true` relabels the approval option to the existing panel-failure acknowledgment label.
+
+Validate that rendered KV values contain no CR/LF. Exit 2 for invalid arguments.
+
+### UPDATED: python/larch/cli.py
+
+Register:
+
+- `("design", "render-gate"): ("larch.design.design_gate_render", "render_gate_main")`
+
+Add `("design", "render-gate")` to `_DESIGN_LIFECYCLE_STDOUT_KEYS` beside `("design", "render-final-summary")` so `_MACHINE_STDOUT_KEYS` membership and `LARCH_QUIET_DISABLE=1` quiet-disable apply at gate time.
+
+Keep the command in the design domain, as requested.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Shrink only the eager gate copy.
+
+Keep:
+
+- Review-round cap semantics (delegated to renderer + Step 3 authority).
+- Gate A, B, and C loop semantics.
+- Gate B zero-findings short-circuit.
+- Gate B resume idempotency guard.
+- Gate B shared post-apply pipeline.
+- Gate C presentation, guideline persistence, Other dispatch, and loop exits.
+- Cross-gate invariants.
+
+Replace literal prompt/header/option copy with renderer instructions:
+
+- Gate A: run `design render-gate --gate A`, or add `--without-see-full-plan` after See full plan.
+- Gate B default: run `design render-gate --gate B --accepted-count "$N" --approve-requested false` and print `AUTO_APPLY_MESSAGE`; do not prompt.
+- Gate B explicit: keep the existing lazy load of `approval-gates-explicit.md`.
+- Gate C: run `design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"` plus `--without-see-full-plan` and `--panel-failed true` when applicable.
+
+Update the Review-round cap section prose:
+
+- Remove the stale literal `Cap: 5`.
+- Document that Gate C option shaping uses `REVIEW_ROUND_CAP` from renderer stdout, which mirrors Step 3 authority `larch.review.plan_review_common.ROUND_CAP`.
+- Keep missing/empty/non-numeric fallback semantics via renderer contract.
+
+Document fail-closed parsing:
+
+- If `GATE_RENDER_STATUS=ok` is absent, stop for repair.
+- If required `HEADER`, `QUESTION`, or option fields are missing before an `AskUserQuestion`, stop for repair.
+- After Gate C `render-gate`, when `REVIEW_ROUND_COUNT_WARN=non-numeric` is present, append the same bounded Warning to `$DESIGN_TMPDIR/execution-issues.md` before `AskUserQuestion` (preserve today's non-numeric logging behavior).
+- Do not reconstruct fallback prompt copy in prose.
+
+Do not edit:
+
+- `skills/design/references/approval-gates-explicit.md`
+- `settle-rc-dispatch.md`
+- `step2b5-rc-handling.md`
+- `plan-review.md`
+- `finalize-step5.md`
+
+### UPDATED: python/tests/design/test_design_gate_render.py
+
+Add focused unit tests for the new renderer.
+
+Cover:
+
+- CLI help/registry smoke through `run_cli`.
+- Gate A default prompt fields.
+- Gate A `--without-see-full-plan`.
+- Gate B default auto-apply message with accepted count.
+- Gate B explicit mode does not render the explicit chooser.
+- Gate C below cap using imported `ROUND_CAP`.
+- Gate C at cap using imported `ROUND_CAP`.
+- Gate C `--without-see-full-plan` below cap and at cap.
+- Gate C non-numeric `review-round-count.txt` falls back to 0 and emits `REVIEW_ROUND_COUNT_WARN=non-numeric`.
+- Gate C panel-failed approval relabel.
+- Gate C emits `REVIEW_ROUND_CAP` matching `ROUND_CAP`.
+- Invalid gate exits non-zero.
+
+Use exact expected strings copied from current `approval-gates.md`, with cap-aware option sets keyed off `ROUND_CAP=2` rather than the stale markdown literal `5`.
+
+### UPDATED: python/tests/design/test_design_cli_ports.py
+
+Extend `EXPECTED` with:
+
+- `("render-gate", "larch.design.design_gate_render", "render_gate_main")`
+
+Existing `test_design_port_registry_entries_are_machine_stdout` must assert both registry and `_MACHINE_STDOUT_KEYS` membership for `("design", "render-gate")`, mirroring `render-final-summary`.
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+Only update if existing Gate C preview tests need to assert interaction with the renderer.
+
+Likely minimal change:
+
+- Leave plan preview tests alone.
+- Do not move Gate B severity tests, since they already cover Python-owned Gate B classification and preview.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Update pins that currently require prompt copy to live in `approval-gates.md`.
+
+Add pins that require:
+
+- `approval-gates.md` references `python/cli.py design render-gate`.
+- Gate A, Gate B default, and Gate C sections delegate prompt copy to the renderer.
+- `approval-gates.md` still references `approval-gates-explicit.md` only through the existing explicit-mode load gate.
+- Removed inline strings no longer appear in `approval-gates.md`, for example the Gate A and Gate C full question text.
+- `cli.py` registers `("design", "render-gate")` in `_REGISTRY` and `_DESIGN_LIFECYCLE_STDOUT_KEYS`.
+- Existing settle-dispatch and Gate B idempotency pins still pass.
+
+### UPDATED: skills/design/scripts/test-gate-b-apply-mode.sh
+
+Adjust the grep that currently expects the Gate B auto-apply breadcrumb in `approval-gates.md`.
+
+New assertion:
+
+- The breadcrumb is emitted by `python3 "$CLI" design render-gate --gate B --accepted-count 3 --approve-requested false`.
+- `approval-gates.md` delegates Gate B default copy to `design render-gate`.
+- Existing settle, safety-brake, and phase-marker checks stay unchanged.
+
+### UPDATED: python/skill-closure-baseline.json
+
+After shrinking `approval-gates.md`, run the closure report and update the design baseline only if the live design closure drops.
+
+Do not increase any closure metric.
+
+## Edge cases
+
+- Gate C count file missing, empty, or non-numeric must preserve current fallback-to-0 behavior; non-numeric must emit `REVIEW_ROUND_COUNT_WARN=non-numeric` and orchestrator must log the Warning before prompting.
+- Gate C `See full plan` re-prompt must remove only `See full plan`.
+- Gate C at cap plus `See full plan` re-prompt must leave only approve and discuss options.
+- Gate C cap option shaping must match Step 3 `ROUND_CAP` authority (`2` today), not the stale `5` prose in current `approval-gates.md`.
+- Gate B `approve_requested=true` must not load or duplicate explicit-mode copy in Python.
+- Gate B zero accepted findings remains an orchestrator short-circuit before renderer use.
+- Panel-failed Gate C keeps the warning semantics and approval acknowledgment label.
+- `design render-gate` KV stdout must not be suppressed under inherited quiet routing.
+
+## Failure modes
+
+- Invalid CLI args exit through argparse.
+- Missing or malformed renderer KVs stop the gate for repair.
+- Missing `_DESIGN_LIFECYCLE_STDOUT_KEYS` registration would suppress gate KVs under quiet routing and break fail-closed parsing; registry + ports + structure pins prevent drift.
+- Unknown Gate B explicit rendering requests must not silently fall back to default auto-apply.
+- Unnamed or unhandled Gate C non-numeric warnings would drop operator-visible logging; stable `REVIEW_ROUND_COUNT_WARN` plus orchestrator replay prevents silent fallback.
+- Tests should fail if prompt text or cap behavior drifts during the move.
+
+## Testing strategy
+
+Run only changed-file relevant checks:
+
+- `python3 -m pytest python/tests/design/test_design_gate_render.py`
+- `python3 -m pytest python/tests/design/test_design_cli_ports.py`
+- `python3 -m pytest python/tests/review/test_plan_review.py` if touched.
+- `bash scripts/test-design-structure.sh`
+- `bash skills/design/scripts/test-gate-b-apply-mode.sh`
+- `python3 python/cli.py lint skill-closure-growth --skill design`
+- `make py-lint` if Python files changed and dependencies are available.
+
+diff_added: 690
+diff_deleted: 330
+mechanical_churn: false
+diff_lines: 1020

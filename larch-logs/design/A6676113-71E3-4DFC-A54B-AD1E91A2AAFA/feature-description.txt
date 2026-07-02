@@ -1,0 +1,14 @@
+# md-to-py-XI: render /design gate copy from Python at gate time; shrink approval-gates.md eager closure
+
+**Context.** `skills/design/references/approval-gates.md` (35.3KB, about 8.8k estimated tokens after #5874) is force-read on every design run as the normative source for Gates A, B, and C. The /review architecture (thin SKILL.md over `review core`) shows that step-scoped copy can be rendered exactly when needed. This continues the program goal of moving logic into Python instead of running further prose passes.
+
+**Prior art.** #5157 already renders the Gate B severity counts and findings table in Python on the `--per-round-approval` path, and #5692 split the Gate-B explicit-mode prompts off the default-mode load; this child generalizes that direction to the full Gate A, B, and C copy.
+
+**Scope.** Add `python3 python/cli.py design render-gate --gate A|B|C ...` emitting the exact gate prompt, severity rubric, and chooser text at gate time. `approval-gates.md` shrinks to loop semantics, invariants, and the cross-gate contract the orchestrator must hold across turns. Update `scripts/test-design-structure.sh` pins and gate harness fixtures.
+
+**Acceptance.**
+
+- Design eager closure drops by most of the gate copy (closure ratchet confirms).
+- Gate behavior and wording identical (fixture-diffed); structure tests pass.
+
+Part of md-to-py-XI (round X: #5885). Sequenced late in the round; serializes with other design-file children under the single-/design invariant.
