@@ -4905,6 +4905,45 @@ def test_pin_and_load_guidelines_note_recovers_when_diff_changes_with_repo(
     assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
 
 
+def test_pin_and_load_guidelines_note_reuses_one_live_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged_diff = "stale staged diff"
+    live_diffs = iter(["current live diff", "newer live diff", "third live diff"])
+    calls: list[str] = []
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def fake_materialize(repo_root: Path, *, base_remote: str, base_ref: str) -> str:
+        assert repo_root == repo
+        calls.append(f"{base_remote}/{base_ref}")
+        return next(live_diffs)
+
+    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
+
+    note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+
+    assert note == "staged note"
+    assert calls == ["origin/main"]
+    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "current live diff"
+
+
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
     assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
