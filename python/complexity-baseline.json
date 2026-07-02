@@ -5679,7 +5679,7 @@
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 62
+    "metric": 65
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5697,7 +5697,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0911",
     "qualified_symbol": "tally_code_votes",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5715,7 +5715,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 72
+    "metric": 75
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5733,7 +5733,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 215
+    "metric": 223
   },
   {
     "file": "larch/review/review_threshold.py",
@@ -5781,7 +5781,7 @@
     "file": "larch/review/round_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_round",
-    "metric": 157
+    "metric": 159
   },
   {
     "file": "larch/review/snapshot.py",
