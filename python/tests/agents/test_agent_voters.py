@@ -1177,7 +1177,7 @@ def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypa
     review.mkdir(parents=True)
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
-    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+    _harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
 
     assert agent_voters.dispatch_voters(_opts(ballot, review, round_num=4)) == 0
 

@@ -6,6 +6,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from larch.report import tokens
 from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
 
@@ -1505,8 +1506,6 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
 
 
 def _append_panel_rows_from_waterfall_env(*, artifact_dir: str, slots_file: str, env: dict[str, str]) -> list[str]:
-    from larch.report import tokens
-
     saved = dict(os.environ)
     try:
         os.environ.update(env)
@@ -1541,8 +1540,6 @@ def _append_panel_rows_from_waterfall_env(*, artifact_dir: str, slots_file: str,
 
 
 def test_plan_review_panel_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from larch.report import tokens
-
     design = tmp_path / "design-panel-tsv"
     design.mkdir()
     _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
@@ -1590,8 +1587,6 @@ def test_plan_review_panel_dispatch_materializes_panel_prompt_sizes(tmp_path: Pa
 
 
 def test_plan_review_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    from larch.report import tokens
-
     design = tmp_path / "design-voter-tsv"
     design.mkdir()
     ballot = design / "ballot.txt"
