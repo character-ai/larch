@@ -1,0 +1,15 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stale report header is misleading but lint and required docs/linting.md updates already carry the conditional ratchet contract
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- narrow patterns fix the named gaps; generic matchers are scope creep, not a delivery blocker
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- review conditional ratchet satisfies acceptance; limiting design/implement is proportionate but not necessary
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires docs/linting.md rewrite covering conditional ratchet semantics
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_3; uniform conditional schema is an explicit plan choice
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate scope-reduction item; named-gap delivery does not require rejecting generic matchers
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of prior implementer-base oos concern; exclusion is hygiene not necessity
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same design/implement conditional policy concern as FINDING_3; optional narrowing
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan intentionally generalizes conditional METRIC_FIELDS with baseline regen; not a blocking defect
+FINDING_10: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate conditional-ratchet scope item; keeping design/implement report-only is optional
+FINDING_11: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates round-1 oos generic-matcher finding; conditional gates do not make narrowing necessary
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- generic follow would eager-count unconditional verbosity-control lines and inflate baselines beyond named gaps
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate round-1 OOS_2; stale gated-skill error text is low materiality
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- Makefile table staleness is optional MAY_UPDATE prose with poor issue overhead payoff
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_2; nit-level operator wording not worth separate filing

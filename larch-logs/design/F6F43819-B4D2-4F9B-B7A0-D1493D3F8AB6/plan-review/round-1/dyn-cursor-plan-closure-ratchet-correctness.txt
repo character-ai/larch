@@ -1,0 +1,55 @@
+Reviewing the plan against the current ratchet implementation and related tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	plan: Failure modes vs ### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py	Panel-tier growth ratchet test is named in Failure modes but omitted from Required tests	Failure modes bullet "Add a test that grows one panel file and expects lint failure" is not in the Required tests list; pytest can pass while panel-tier growth is unguarded, breaking acceptance "lint skill-closure-growth fails on growth in either"	Add a Required test mirroring test_baseline_check_fails_when_closure_lines_grow: grow one agents/*.md or shared panel file after baseline write and assert main exits 1 with panel-tier closure metric violation
+1	in_scope	important	correctness	plan: Failure modes vs Classifier tests required list	follow SECURITY.md sentence-bounded regression is not a Required classifier test	Failure modes require follow-clause regression for the oos-pipeline SECURITY.md cite; Required tests only cover MANDATORY-read harvesting (test_oos_pipeline_line_671 today). A follow matcher that bleeds past the sentence could re-enter SECURITY.md without failing CI	Add Required classifier test using follow SECURITY.md wording on an implement-style oos-pipeline line asserting SECURITY.md stays out of eager and conditional file lists
+1	in_scope	important	architecture	skills/implement/SKILL.md:378 / plan Classifier tests implement real scan list	[SCOPE-REDUCTION] follow agents/_implementer-base.md can double-count panel-tier sources in implement closure	Line 378 "For non-empty manifests, follow agents/_implementer-base.md" matches the new follow pattern but is not default-path eager; agents/_implementer-base.md is already in panel-tier via agents/*.md. Positive-only implement real-scan includes would still pass if this file is wrongly added, inflating implement ratchet for panel-owned content	Exclude agents/*.md (and other panel-tier fixed paths) from skill-level eager harvesting, or treat For-prefix lines as conditional; add Required negative assert agents/_implementer-base.md not in implement scan files
+1	in_scope	important	correctness	plan ### UPDATED: python/larch/lint/lint_skill_closure_growth.py / skills/design/SKILL.md:138	New use/follow/procedure matchers are not required to reuse _line_is_conditional before eager classification	Edge cases say "Keep conditional detection active before adding eager paths" but the implementation bullets only list new regexes. design line 138 "when ROUTE=clarify: follow skills/implement/SKILL.md" and cancel-route follow final-summary-emit lines must stay conditional; eager follow matching without the existing gate would balloon design closure	In the lint_skill_closure_growth.py bullet, require new matchers to call the same _line_is_conditional / conditional_section path used by MANDATORY READ before adding paths; add a fixture test that a when-prefixed follow skills/implement/SKILL.md line stays conditional only
+
+## Findings
+
+### 1. Panel-tier growth test gap (correctness)
+
+The plan’s **Failure modes** section says to add a test that grows a panel file and expects lint failure. The **Required tests** list under `python/tests/lint/test_lint_skill_closure_growth.py` never includes that case. It only covers panel scan composition, metric sums, and fail-closed missing/empty fixtures.
+
+Acceptance requires `lint skill-closure-growth` to fail on panel-tier growth. Without a required growth test, the main ratchet contract for the new target is not verifiable. `test_baseline_check_fails_when_closure_lines_grow` today only exercises `design` (```401:408:python/tests/lint/test_lint_skill_closure_growth.py```).
+
+### 2. follow SECURITY.md regression not mandated (correctness)
+
+Failure modes call for sentence-bounded `follow` extraction and regression around the existing OOS/security example. Required classifier tests do not list a `follow SECURITY.md` case. The existing guard is MANDATORY-read shaped:
+
+```341:362:python/tests/lint/test_lint_skill_closure_growth.py
+def test_oos_pipeline_line_671_does_not_harvest_security_md(tmp_path: Path) -> None:
+    """Regression for implement SKILL.md line 671 oos-pipeline bullet."""
+    ...
+```
+
+Implement still uses `follow SECURITY.md` on the oos-pipeline path (```672:672:skills/implement/SKILL.md```). A new `follow` matcher could pass old tests while re-introducing SECURITY.md into closure.
+
+### 3. Panel-tier double-count via follow (architecture / minimum-change)
+
+```378:378:skills/implement/SKILL.md
+**Main-agent scout manifest contract**: ... For non-empty manifests, follow `agents/_implementer-base.md` scout selection rules: ...
+```
+
+The plan’s new `follow <path>.md` pattern can match this line. `agents/_implementer-base.md` is already part of panel-tier (`agents/*.md`). The implement real-scan tests only assert positive `includes` for the three named hidden-eager files, not that `agents/_implementer-base.md` stays out. Baseline regen would silently absorb a double-count.
+
+This works against minimum-change: panel edits would trip both panel-tier and implement ratchets.
+
+### 4. Conditional gate not wired into implementation bullets (correctness)
+
+The plan’s edge cases warn about overcount from `use`/`follow` and say conditional detection must run first. The `lint_skill_closure_growth.py` implementation section lists new patterns but does not require they go through `_line_is_conditional` (```294:311:python/larch/lint/lint_skill_closure_growth.py```).
+
+High-risk lines include design clarify `follow skills/implement/SKILL.md` (```138:138:skills/design/SKILL.md```) and cancel-route `follow final-summary-emit.md` (```135:135:skills/design/SKILL.md```). Without an explicit wiring requirement, a follow-only code path could bypass the ratchet’s conditional model.
+
+## What the plan gets right
+
+- Splitting `GATED_SKILLS` and `PANEL_TIER_TARGET` into `RATCHETED_TARGETS` matches the need to extend baseline validation beyond `GATED_SKILLS` (```478:527:python/larch/lint/lint_skill_closure_growth.py```).
+- `force_requested=false` as a narrow eager override before generic conditional matching is the right fix for ```210:210:skills/implement/SKILL.md```; required classifier tests cover that case.
+- Required hidden-eager positive tests for implement (`step-name-registry.tsv`, `final-summary-emit.md`, `preflight-plan-audit.md`) and review (`domain-rules.md`, `session-setup-output.md`, `external-reviewers.md`) align with issue scope.
+- Panel-tier fixed file list, `skill_md_* = 0`, fail-closed missing shared files / empty `agents/`, and four-row baseline regen preserve the existing ratchet shape.
+- `test_committed_baseline_matches_fresh_scan` (```632:651:python/tests/lint/test_lint_skill_closure_growth.py```) still enforces byte-exact baseline freshness after regen.
+
+## Out of scope (not accepted in-plan)
+
+- Makefile / `.pre-commit-config.yaml` stale "design and implement only" prose: already `MAY_UPDATE` in the plan.
+- A `--skill panel-tier` filter-isolation test mirroring `test_skill_filter_ignores_other_skill_growth`: useful, not required for acceptance.

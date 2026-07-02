@@ -1,0 +1,42 @@
+**Context.** `skill-closure report` and `lint skill-closure-growth` cover design and implement only. /review's eager closure (about 8.1k estimated tokens: `SKILL.md` plus `references/domain-rules.md`, `shared/external-reviewers.md`, `shared/session-setup-output.md`) is unratcheted, and the panel-tier prompt sources (`agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/shared/reviewer-templates-code-reviewer.md`, `skills/shared/voting-protocol.md`, about 200KB combined) have no growth guard. The eager classifier also has verified gaps: it misses hot-path shared reads (`shared/final-summary-emit.md` followed at implement Steps 17 and 18 on the green path, `skills/implement/scripts/step-name-registry.tsv` mandatory at session start, `shared/external-reviewers.md` at review Step 0, `shared/session-setup-output.md` at Step 0), and it counts `skills/implement/references/preflight-plan-audit.md` as conditional although its predicate (`force_requested=false`) is the default path.
+
+**Scope.**
+
+- Add a `review` closure row (eager plus conditional) to the report and baseline JSON.
+- Add a panel-tier section to the baseline and growth lint covering `agents/*.md`, `reviewer-templates*.md`, and `voting-protocol.md`.
+- Classifier fixes for the named hidden-eager files and the default-path misclassification.
+
+**Acceptance.**
+
+- `skill-closure report` lists review and panel-tier totals; `lint skill-closure-growth` fails on growth in either.
+- The named files land in the correct tier; baseline regenerated in the same PR.
+
+Part of md-to-py-XI (round X: #5885). Hard enabler for the round's compression children, mirroring #5873's role for #5881.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Extend `skill-closure report` / `lint skill-closure-growth` to cover `/review` as a third gated skill (eager plus conditional rows), reusing the existing per-skill scan/baseline machinery.
+- Add one panel-tier row (`agents/*.md`, `reviewer-templates*.md`, `voting-protocol.md`) to the same baseline and growth lint.
+- Fix the four named eager-classifier gaps (missed hot-path shared reads) and the one default-path misclassification (`preflight-plan-audit.md`).
+
+### Non-goals
+- No prose compression of any panel-tier or SKILL.md file. That is the B-group children (#5978-#5981).
+- No new CLI verb. Reuse `skill-closure report` and `lint skill-closure-growth`.
+- No rewrite of the directive-matching engine. Targeted regex/pattern additions only for the named gaps.
+
+### Approach sketch
+- Add `"review"` to `GATED_SKILLS` in `python/larch/lint/lint_skill_closure_growth.py`. `scan_skill()` already walks any skill's `SKILL.md` directives, so review's row falls out of the existing machinery.
+- Add a panel-tier scan path that sums a fixed file set (agents glob plus the three named shared files) into a baseline row, reusing the metric, report, and growth-check code paths.
+- Extend directive-matching to catch "follow `X`" and "use `X` for Y" phrasing, and correct the `force_requested=false`-is-default misclassification. Regenerate `python/skill-closure-baseline.json` for every row.
+
+### Surfaces in scope
+- `python/larch/lint/lint_skill_closure_growth.py`
+- `python/skill-closure-baseline.json`
+- `python/tests/lint/test_lint_skill_closure_growth.py`
+- `docs/linting.md`
+
+### Open questions
+- None.

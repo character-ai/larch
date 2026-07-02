@@ -1,0 +1,16 @@
+# md-to-py-XI: extend closure report and token ratchet to /review and panel-tier sources; fix eager-classifier gaps
+
+**Context.** `skill-closure report` and `lint skill-closure-growth` cover design and implement only. /review's eager closure (about 8.1k estimated tokens: `SKILL.md` plus `references/domain-rules.md`, `shared/external-reviewers.md`, `shared/session-setup-output.md`) is unratcheted, and the panel-tier prompt sources (`agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/shared/reviewer-templates-code-reviewer.md`, `skills/shared/voting-protocol.md`, about 200KB combined) have no growth guard. The eager classifier also has verified gaps: it misses hot-path shared reads (`shared/final-summary-emit.md` followed at implement Steps 17 and 18 on the green path, `skills/implement/scripts/step-name-registry.tsv` mandatory at session start, `shared/external-reviewers.md` at review Step 0, `shared/session-setup-output.md` at Step 0), and it counts `skills/implement/references/preflight-plan-audit.md` as conditional although its predicate (`force_requested=false`) is the default path.
+
+**Scope.**
+
+- Add a `review` closure row (eager plus conditional) to the report and baseline JSON.
+- Add a panel-tier section to the baseline and growth lint covering `agents/*.md`, `reviewer-templates*.md`, and `voting-protocol.md`.
+- Classifier fixes for the named hidden-eager files and the default-path misclassification.
+
+**Acceptance.**
+
+- `skill-closure report` lists review and panel-tier totals; `lint skill-closure-growth` fails on growth in either.
+- The named files land in the correct tier; baseline regenerated in the same PR.
+
+Part of md-to-py-XI (round X: #5885). Hard enabler for the round's compression children, mirroring #5873's role for #5881.

@@ -1,0 +1,2 @@
+- G-Cfg-1: panel-tier/ratchet constants stay local to lint_skill_closure_growth.py, matching existing GATED_SKILLS placement (module-private, single call site; within the guideline's own carve-out).
+- G-IO-1: baseline JSON I/O keeps direct json.loads/write_text, matching existing code; out of scope for this ratchet extension.

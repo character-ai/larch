@@ -1,0 +1,15 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the label is stale, but the feature still works without this wording change.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- broad matcher scope is a real concern, but it is a duplicate of the prior broad-matcher concern and not necessary to ship the requested scope.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- extending conditional growth checks to design and implement is broader than the stated review-focused change.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the doc paragraph is stale, but omitting it does not block the feature.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- design and implement conditional ratcheting is outside the requested scope.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- this repeats the broad matcher scope-reduction concern and is not necessary for the feature.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the false positive is real under a generic follow matcher, but it is the same overbroad-scope concern already covered before.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- generalized conditional ratcheting beyond review is not required by the issue.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- conditional freshness gating for every gated skill exceeds the requested change.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the issue does not ask to change design and implement conditional policy.
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- this is the same generic matcher scope concern and is out of scope for acceptance.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real but too small and too duplicate-prone to justify a new out-of-scope filing.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale error text is real, but it is not material enough for this ballot.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the docs table drift is real, but it is a follow-on cleanup, not a material filing.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is wording polish only.
