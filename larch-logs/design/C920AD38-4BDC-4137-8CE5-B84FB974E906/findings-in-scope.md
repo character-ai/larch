@@ -1,0 +1,110 @@
+### FINDING_1: STEP2B5_NEXT_ACTION token vocabulary not frozen
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Routing Parity
+- **Severity**: important
+- **Concern**: The plan introduces `STEP2B5_NEXT_ACTION` but never pins a canonical, stable action-token vocabulary or rc-to-action matrix. Implementers can invent divergent strings across `step2b5_main`, `postplan-emit`, `step2b5-rc-handling.md`, orchestrator branches, and tests while still passing loose checks; structure pins and fail-closed routing cannot enforce parity, and merged vs retained paths can drift silently.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit action table (e.g. hard-size, partition, drift-advisory, no-trigger, check-size-degraded, internal-error) to step2b5-rc-handling.md and matrix-test every token plus STEP2B5_EXIT_RC parity
+  - From Cursor-Innovation: Add an explicit STEP2B5_NEXT_ACTION table (mirroring settle-rc-dispatch.md) naming each token, trigger inputs (check_size rc, SIZE_TRIGGER_FIRED, PARTITION_REQUESTED, DRIFT_TRIGGER_FIRED), and expected process rc; require step2b5-rc-handling.md branch bodies to key only on those tokens and matrix tests to cover every row.
+  - From Cursor-Pragmatic: Add an explicit action table to the plan (mirror settle): e.g. `hard-trigger`, `partition-split`, `drift-advisory`, `under-threshold`, `rc2-warning`, `internal-error`; pin exact strings in matrix tests and `scripts/test-design-structure.sh`.
+  - From Cursor-Requirements: Add a canonical action table (like design-step35-settle.md for SETTLE_NEXT_ACTION) naming every STEP2B5_NEXT_ACTION value, map inputs to it, and table-drive tests in test_design_lifecycle.py and test_design_postplan.py over all combinations
+  - From Cursor-dyn-Routing Parity: Add an explicit action table (token → branch) in the plan and pin the same strings in test_design_lifecycle.py and test-design-structure.sh
+
+### FINDING_2: Soft-advisory breadcrumbs omitted after action-keyed shrink
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The planned shrink to `STEP2B5_NEXT_ACTION`-keyed branch bodies omits ownership of existing `SOFT_ADVISORY` informational breadcrumbs (e.g. mechanical-churn advisories) that today print before hard/partition/drift/no-trigger routing on rc=0 paths. Operators can lose downgrade signals even when routing still reaches the correct action.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Keep a dedicated soft-advisory subsection keyed off KVs before STEP2B5_NEXT_ACTION branching; add a lifecycle test with SOFT_ADVISORY=true and SIZE_TRIGGER_FIRED true/false
+  - From Cursor-Pragmatic: When refactoring to `STEP2B5_NEXT_ACTION`, keep the soft-advisory prose as pre-branch UI steps keyed off `SOFT_ADVISORY` + `SIZE_TRIGGER_FIRED` KVs (not a separate action), and pin those lines in `scripts/test-design-structure.sh`.
+  - From Cursor-Requirements: Have the shared Step 2b.5 helper print the existing soft-advisory breadcrumbs on stdout when SOFT_ADVISORY=true (before STEP2B5_NEXT_ACTION), or explicitly keep one pre-branch soft-advisory step in step2b5-rc-handling.md keyed off SOFT_ADVISORY KVs
+
+### FINDING_3: New settle-next-action CLI verb missing from port smoke test
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The new `design settle-next-action` CLI verb is absent from the plan file list and the `python/tests/design/test_design_cli_ports.py` port smoke test. CI port registry tests fail on any new machine-stdout design verb not listed in `EXPECTED`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: python/tests/design/test_design_cli_ports.py with ("settle-next-action", module, func) and assert it is in _MACHINE_STDOUT_KEYS
+
+### FINDING_4: Orchestrator still routes Step 2b.5 on wrapper exit code instead of STEP2B5_NEXT_ACTION
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Retained Step 2b.5 callers still bind `_plan_size_rc` from the fence exit code (`$?`) and branch per rc. The plan says to require `STEP2B5_NEXT_ACTION` but lacks a fail-closed stdout contract, so after Python emits the action row the orchestrator can keep routing on exit code or KV triggers, recreating dual authority and defeating the rc-dispatch removal goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Update Step 2b.5 item 3 and step2b5-rc-handling.md to require one whole-line STEP2B5_NEXT_ACTION= row from design-step2b5.sh stdout (or from .design-postplan-emit-result.env on direct-entry), stop for repair when absent/duplicate, and stop when action and wrapper rc disagree; drop _plan_size_rc as routing authority (rc remains diagnostic only).
+  - From Cursor-Pragmatic: Replace item 3 with: parse exactly one whole-line `STEP2B5_NEXT_ACTION=` from `design step2b5` stdout; stop for repair if missing/duplicate; branch only on that action; do not use `$?` or KV triggers as a fallback router (rc remains diagnostic only, same as settle).
+
+### FINDING_5: Settle pause and dedup-revise must stay wrapper-only
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan scopes `design settle-next-action` to `POSTPLAN_RC` dispatch, but pause (rc 11) and dedup-revise are emitted and exited in Bash before any Python `POSTPLAN_RC` call. Moving them into the Python helper would change marker ordering and exit semantics; matrix tests expecting Python to emit `SETTLE_NEXT_ACTION=pause` would encode the wrong contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: State explicitly that pause and dedup-revise stay wrapper-only (never call design settle-next-action); limit Python matrix tests to site x POSTPLAN_RC rows {0,10,12,13} only; document that POSTPLAN_RC=11 and dedup exit 1 bypass the helper.
+
+### FINDING_6: Step 2b.5 trigger priority ordering not pinned across entrypoints
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The shared Step 2b.5 helper must encode the same trigger priority as `postplan_emit_main` (`SIZE_TRIGGER_FIRED` before `partition_requested` before drift before under-threshold), but the plan does not state that ordering. A standalone `design step2b5` run could emit a different action than `postplan-emit --with-plan-size` for the same KVs, violating the stated "no routing semantics change" goal.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Document in the helper contract: evaluate hard → partition (only when `SIZE_TRIGGER_FIRED=false`) → drift → under-threshold; add one paired fixture asserting both entrypoints emit matching `STEP2B5_NEXT_ACTION` / `POSTPLAN_RC` for the same KV inputs.
+
+### FINDING_7: postplan-emit does not flush STEP2B5_NEXT_ACTION to stdout envelope
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements, Codex-dyn-Routing Parity
+- **Severity**: important
+- **Concern**: `postplan-emit --with-plan-size` is planned to write `STEP2B5_NEXT_ACTION` only to `.design-postplan-emit-result.env`, not emit it on stdout. The migration is explicitly a stdout-envelope pattern; with the current `flush()` allowlist, merged callers and direct-entry paths (e.g. `gate-a-hard-size`) can lack the action row in captured stdout even when the env file is populated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Update the design_postplan step to add `STEP2B5_NEXT_ACTION` and any paired exit/status keys the helper emits to the `flush()` stdout key list as well as the result env, and make the postplan fixtures assert the row appears in stdout and the env.
+  - From Codex-Requirements: Update the design_postplan.py step to emit STEP2B5_NEXT_ACTION through the existing flush stdout path as well as the env file, and update postplan tests to assert exactly one STEP2B5_NEXT_ACTION in stdout and in .design-postplan-emit-result.env.
+  - From Codex-dyn-Routing Parity: Add STEP2B5_NEXT_ACTION (and STEP2B5_EXIT_RC if used) to kvs, the flush() key loop, and a test_design_postplan.py assertion on the env file contents
+
+### FINDING_8: Acceptance criterion for conditional-tier token drop not testable
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The testing strategy does not validate the conditional-tier token-drop acceptance criterion. The plan can pass listed pytest and structure checks while conditional closure tokens stay flat or grow, leaving one explicit acceptance criterion unverifiable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Add a focused validation step using python3 python/cli.py skill-closure report and confirm the design conditional token or content-token count drops versus the pre-change value.
+
+### FINDING_9: Merged vs retained check-size rc 2 handling diverges
+- **Reviewer(s)**: Cursor-dyn-Routing Parity
+- **Severity**: blocking
+- **Concern**: Merged `--with-plan-size` coerces every plan check-size non-zero to exit 1 while retained `step2b5` preserves rc 2 and continues with a warning. A check-size rc 2 on the merged initial Step 2b path aborts `/design` via fatal `_postplan_decide` handling, but the retained `step2b5` path prints the rc 2 warning and returns. Shared-helper work will not achieve stated rc-matrix parity unless this split is resolved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Routing Parity: State whether merged paths intentionally stay fatal on check-size failure or extend postplan_emit_main to preserve check-size rc (especially 2), emit STEP2B5_NEXT_ACTION, and add a matching test_design_postplan.py fixture
+
+### FINDING_10: Settle wrapper lacks fail-closed SETTLE_EXIT_RC validation
+- **Reviewer(s)**: Cursor-dyn-Routing Parity, Codex-dyn-Routing Parity
+- **Severity**: important
+- **Concern**: The settle migration requires printing `SETTLE_NEXT_ACTION` and exiting with `SETTLE_EXIT_RC`, but the plan only names a single-row action guard. Missing, duplicate, or corrupt `SETTLE_EXIT_RC` rows can change legacy exits 0/10/11/12/13 or the contract-error exit 3 even when the action row is present; orchestrator action/rc disagreement checks need both keys.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Routing Parity: Require design-step35-settle.sh to parse exactly one SETTLE_EXIT_RC, abort on absence/duplicates, and update settle-rc-dispatch.md plus design-step35-settle.md with action↔SETTLE_EXIT_RC pairs for disagreement checks
+  - From Codex-dyn-Routing Parity: Revise the settle wrapper step to require exactly one numeric SETTLE_EXIT_RC, reject duplicates or missing rows as the existing wrapper contract error, and preserve the current exit matrix.
+
+### FINDING_11: Step 3 Python loop still routes by postplan rc after Bash migration
+- **Reviewer(s)**: Codex-dyn-Routing Parity
+- **Severity**: important
+- **Concern**: The plan updates step2b5 and postplan emitters, but the Step 3 Python loop in `plan_review.py` still branches on `proc.returncode` for 0/11/12/10/13, and `POSTPLAN_EMIT_KEYS` would drop `STEP2B5_NEXT_ACTION` from the persisted envelope. That leaves a Python rc dispatch table after Bash and markdown move to action keys.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Routing Parity: Add plan updates for plan_review.py and plan_review_common.py: read STEP2B5_NEXT_ACTION from .design-postplan-emit-result.env, route the existing hard/partition/drift/no-trigger behavior from that action while preserving process rc compatibility, and allow the action key in POSTPLAN_EMIT_KEYS.
+
+### FINDING_12:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/tests/design/test_design_lifecycle.py:1993-2053
+- **Concern**: [SCOPE-REDUCTION] Settle tests should not add pause rc=11 to the Python helper matrix. Scenario: Wrapper already owns pause and dedup-revise before dispatch; Python pause support duplicates side effects and expands scope beyond moving rc tables
+- **Proposed resolution**: Limit settle-next-action matrix to postplan rc 0/10/12/13 per site; document rc 11/pause and dedup-revise as wrapper-only in edge cases and design-step35-settle.md ### 1. code-quality / correctness — `skills/design/references/step2b5-rc-handling.md` The plan adds `STEP2B5_NEXT_ACTION` but never defines the token set. `SETTLE_NEXT_ACTION` already has pinned strings (`gate-b-continue`, `gate-a-hard-size`, etc.) in `design-step35-settle.md` and structure tests. Without the same contract for Step 2b.5, the shared helper and shrunk reference cannot stay fail-closed. **Suggested revision:** Add a normative action table to `step2b5-rc-handling.md` and table-driven tests that pin every action and its diagnostic `STEP2B5_EXIT_RC`. ### 2. correctness / risk-integration — `skills/design/references/step2b5-rc-handling.md` The shrink list covers hard, partition, drift, no-trigger, rc2, and internal-error only. Current item 3 still requires soft-advisory breadcrumbs when `SOFT_ADVISORY=true` before hard/partition branches. An action-only rewrite risks dropping that behavior. **Suggested revision:** Keep soft-advisory as KV-driven prose before `STEP2B5_NEXT_ACTION` dispatch; add matrix coverage for both `SIZE_TRIGGER_FIRED` combinations. ### 3. risk-integration — `python/tests/design/test_design_cli_ports.py` The plan registers `design settle-next-action` in `cli.py` and `_DESIGN_LIFECYCLE_STDOUT_KEYS` but omits `test_design_cli_ports.py`. That test asserts every design port is in `_REGISTRY` and `_MACHINE_STDOUT_KEYS`; a new verb breaks CI without an update. **Suggested revision:** Add the file to **Files to modify/create** and extend `EXPECTED` with the settle-next-action entry. ### 4. architecture — settle pause boundary Plan edge cases keep pause in the wrapper, but the testing strategy says matrix-test pause rc `11` “if supported by the helper.” `design-step35-settle.sh` already emits `SETTLE_NEXT_ACTION=pause` and exits `11` before any rc-to-action table runs (lines 147-166, 254-257, 296-298). Adding pause to the Python helper would duplicate wrapper-owned side effects and violate minimum-change. **Suggested revision:** Scope the Python settle helper to postplan rc `0/10/12/13` only; keep pause and `dedup-revise` wrapper-only in docs and tests.
+
+### FINDING_13:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/design/design_session.py:24-67
+- **Concern**: [SCOPE-REDUCTION] `STEP2B5_EXIT_RC` expands the Step 2b.5 wire contract beyond the action-envelope change. Scenario: The plan preserves `step2b5_main`'s existing process rc and only needs `STEP2B5_NEXT_ACTION` to stop prompt-side rc recomputation; adding an allowlisted exit-rc/status key creates a second rc authority that callers can route from, contrary to the no-routing-semantics-change scope
+- **Proposed resolution**: Remove `STEP2B5_EXIT_RC` and any new Step 2b.5 status key from the plan unless a caller consumes it; emit `STEP2B5_NEXT_ACTION` with the existing check-size KVs and keep the process rc as the sole Step 2b.5 rc contract
+
+### FINDING_14:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/larch/design/design_session.py:24-75
+- **Concern**: [SCOPE-REDUCTION] STEP2B5_NEXT_ACTION/STEP2B5_EXIT_RC allowlist additions lack a writer. Scenario: PHASE_RESULT_ENV_ALLOW_KEYS gates phase_driver_write_result_env; step2b5 and postplan surfaces use stdout and .design-postplan-emit-result.env, not that writer; adding keys expands allowlist without acceptance-criteria benefit
+- **Proposed resolution**: Omit STEP2B5_NEXT_ACTION and STEP2B5_EXIT_RC from PHASE_RESULT_ENV_ALLOW_KEYS; write STEP2B5_NEXT_ACTION only to step2b5 stdout and the postplan result env flush key list in design_postplan.py

@@ -1,0 +1,29 @@
+Reviewing the plan against the codebase for dispatch parity, envelope contracts, and fallback routing.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/references/step2b5-rc-handling.md:13-17	skills/design/SKILL.md:348-351	Plan never freezes the STEP2B5_NEXT_ACTION token set	Implementers must invent action names for hard/partition/drift/no-trigger/rc2/internal-error; markdown branches and matrix tests can diverge from orchestrator expectations	Add an explicit action table (token → branch) in the plan and pin the same strings in test_design_lifecycle.py and test-design-structure.sh
+1	in_scope	blocking	correctness	python/larch/design/design_postplan.py:281-291	python/larch/design/design_step2b.py:218-233	python/larch/design/design_step5c.py:51-83	Merged --with-plan-size coerces every plan check-size non-zero to exit 1 while retained step2b5 preserves rc 2 and continues with a warning	A check-size rc 2 on the merged initial Step 2b path aborts /design via _postplan_decide fatal handling, but the retained step2b5 path prints the rc 2 warning and returns; shared-helper work will not achieve the stated rc-matrix parity unless this split is resolved	State whether merged paths intentionally stay fatal on check-size failure or extend postplan_emit_main to preserve check-size rc (especially 2), emit STEP2B5_NEXT_ACTION, and add a matching test_design_postplan.py fixture
+1	in_scope	important	correctness	skills/design/scripts/design-step35-settle.sh:286-302	skills/design/references/settle-rc-dispatch.md:17-27	Wrapper contract omits mandatory SETTLE_EXIT_RC validation	Plan requires printing SETTLE_NEXT_ACTION and exiting SETTLE_EXIT_RC, but only names a single-row action guard; orchestrator action/rc disagreement checks need both keys and the wrapper should fail closed when SETTLE_EXIT_RC is missing or duplicates	Require design-step35-settle.sh to parse exactly one SETTLE_EXIT_RC, abort on absence/duplicates, and update settle-rc-dispatch.md plus design-step35-settle.md with action↔SETTLE_EXIT_RC pairs for disagreement checks
+1	in_scope	important	risk-integration	python/larch/design/design_postplan.py:151-180	python/larch/design/design_session.py:24-77	Postplan emit path not wired to flush STEP2B5_NEXT_ACTION	Plan adds STEP2B5_NEXT_ACTION to PHASE_RESULT_ENV_ALLOW_KEYS and says write it into .design-postplan-emit-result.env, but flush() only prints an enumerated key list that omits STEP2B5_NEXT_ACTION/STEP2B5_EXIT_RC; direct-entry gate-a-hard-size reads would miss the action row	Add STEP2B5_NEXT_ACTION (and STEP2B5_EXIT_RC if used) to kvs, the flush() key loop, and a test_design_postplan.py assertion on the env file contents
+1	out_of_scope	nit	architecture	python/larch/design/design_session.py:24-77	[SCOPE-REDUCTION] Dispatch tables live in design_session.py	Plan places frozen settle/step2b5 dispatch dataclasses in the wrapper-env module, mixing unrelated responsibilities	Move helpers to a small dedicated module (for example design_dispatch.py) and re-export from design_lifecycle.py only
+
+## Findings
+
+### 1. correctness — Missing `STEP2B5_NEXT_ACTION` vocabulary (`step2b5-rc-handling.md:13-17`, `SKILL.md:348-351`)
+
+Settle actions are already frozen in `design-step35-settle.sh:119-131` (`gate-b-continue`, `gate-a-hard-size`, etc.). The plan moves Step 2b.5 routing to `STEP2B5_NEXT_ACTION` but never lists the canonical tokens for hard, partition, drift, no-trigger, rc2 warning, or internal-error. Without a frozen table, Python, markdown branch bodies, and tests can drift while still claiming parity.
+
+### 2. correctness — Merged vs retained check-size rc `2` split (`design_postplan.py:281-291`, `design_step2b.py:218-221`, `design_step5c.py:51-83`)
+
+Retained `step2b5_main` echoes check-size output and returns the child rc (tests at `test_design_lifecycle.py:2006-2017` cover rc `2` as warn-and-continue). Merged `postplan_emit_main` always `return 1` after any check-size failure (`design_postplan.py:281-291`), and `_postplan_decide` treats rc `1` as fatal (`design_step2b.py:220-221`). The issue acceptance calls for rc-matrix parity; the plan's shared helper does not say which side wins.
+
+### 3. correctness — Incomplete settle envelope contract (`design-step35-settle.sh:286-302`, `settle-rc-dispatch.md:17-27`)
+
+The bash table at `design-step35-settle.sh:119-131` pairs each `(POSTPLAN_RC, site)` with a fixed process exit (`0`, `10`, `12`, `13`). After Python owns dispatch, `SETTLE_EXIT_RC` must be required alongside `SETTLE_NEXT_ACTION`, and `settle-rc-dispatch.md` should document action↔exit pairs for the existing disagreement guard instead of only the POSTPLAN_RC diagnostics block.
+
+### 4. risk-integration — Postplan emit may drop `STEP2B5_NEXT_ACTION` (`design_postplan.py:151-180`)
+
+Direct-entry Gate A hard-size paths bind from `.design-postplan-emit-result.env` (`step2b5-rc-handling.md:5-6`). `flush()` only prints keys in its explicit loop (`design_postplan.py:153-178`); adding the action to `PHASE_RESULT_ENV_ALLOW_KEYS` alone does not put it on stdout or into the env file consumers read.
+
+### 5. [OUT_OF_SCOPE] architecture — Helper placement in `design_session.py`
+
+Dispatch tables fit better in a dedicated module than in `design_session.py`, which already owns wrapper-env and phase allowlists. Not required for correctness; optional scope reduction.
