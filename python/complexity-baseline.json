@@ -4743,7 +4743,7 @@
     "file": "larch/report/tokens.py",
     "code": "PLR0911",
     "qualified_symbol": "_panel_slot_kind_from_env",
-    "metric": 8
+    "metric": 9
   },
   {
     "file": "larch/report/tokens.py",
@@ -5571,7 +5571,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 52
+    "metric": 54
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5595,7 +5595,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 60
+    "metric": 64
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
