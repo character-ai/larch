@@ -32,6 +32,12 @@ _CHECKS_FAILURE_DIGEST_ERROR_MAX_BYTES: Final = 512
 _CHECKS_FAILURE_DIGEST_MARKER_RE: Final = re.compile(
     r"ERROR:|Error:|FAILED|Failed|Traceback|AssertionError|DEFECT:"
 )
+_CHECKS_FAILURE_DIGEST_LINT_ROW_RE: Final = re.compile(
+    r"^[^\s:][^:]*:\d+(?::\d+)?(?::)?\s+[A-Z][A-Z0-9]*\d+[A-Z0-9]*(?:\s|$)"
+)
+_CHECKS_FAILURE_DIGEST_MAKE_ERROR_RE: Final = re.compile(
+    r"^make(?:\[\d+\])?: \*\*\* .*\bError \d+\b"
+)
 _CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
     r"(?<![\w./-])((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+):(\d+)(?::\d+)?\b"
 )
@@ -711,6 +717,15 @@ class _ChecksFailureDigestRecord:
     first_error: str = "unknown"
 
 
+@dataclass
+class _ChecksFailureDigestParseState:
+    records: dict[str, _ChecksFailureDigestRecord]
+    current_check: str = "unknown"
+    fallback_line: str = ""
+    pending_location: str | None = None
+    pending_error_line: str = ""
+
+
 def _utf8_prefix(text: str, max_bytes: int) -> str:
     encoded = text.encode("utf-8")
     if len(encoded) <= max_bytes:
@@ -790,6 +805,7 @@ class _DigestLineContext:
     marker_match: re.Match[str] | None
     pending_location: str | None = None
     is_precommit_banner: bool = False
+    is_error_evidence: bool = False
 
 
 def _update_digest_record(
@@ -805,7 +821,7 @@ def _update_digest_record(
         return
     if context.marker_match is None:
         location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(context.line)
-        if location_match is not None and record.first_error == "unknown":
+        if (context.is_error_evidence or location_match is not None) and record.first_error == "unknown":
             record.first_error = _digest_line(context.line)
         return
     record.failure_count += 1
@@ -830,54 +846,146 @@ def _checks_failure_digest_header(*, site: str, truncated: bool) -> str:
     )
 
 
+def _is_checks_failure_error_evidence(line: str) -> bool:
+    return (
+        _CHECKS_FAILURE_DIGEST_LINT_ROW_RE.search(line) is not None
+        or _CHECKS_FAILURE_DIGEST_MAKE_ERROR_RE.search(line) is not None
+    )
+
+
+def _flush_pending_digest_record(
+    records: dict[str, _ChecksFailureDigestRecord],
+    *,
+    check: str,
+    pending_location: str | None,
+    pending_error_line: str,
+) -> None:
+    if check in records or not pending_error_line:
+        return
+    record = _record_for_check(records, check)
+    if pending_location is not None:
+        record.first_location = pending_location
+    record.first_error = _digest_line(pending_error_line)
+
+
+def _flush_and_reset_pending_digest_state(state: _ChecksFailureDigestParseState) -> None:
+    _flush_pending_digest_record(
+        state.records,
+        check=state.current_check,
+        pending_location=state.pending_location,
+        pending_error_line=state.pending_error_line,
+    )
+    state.pending_location = None
+    state.pending_error_line = ""
+
+
+def _handle_digest_header_line(state: _ChecksFailureDigestParseState, line: str) -> bool:
+    next_check, is_header = _digest_header_context(line, state.current_check)
+    if not is_header:
+        state.current_check = next_check
+        return False
+    _flush_and_reset_pending_digest_state(state)
+    state.current_check = next_check
+    return True
+
+
+def _handle_precommit_digest_line(state: _ChecksFailureDigestParseState, line: str) -> bool:
+    precommit_check = _precommit_digest_check(line)
+    if precommit_check is None:
+        return False
+    if precommit_check != state.current_check:
+        _flush_and_reset_pending_digest_state(state)
+    state.current_check = precommit_check
+    _update_digest_record(
+        state.records,
+        check=precommit_check,
+        context=_DigestLineContext(line=line, marker_match=None, is_precommit_banner=True),
+    )
+    return True
+
+
+def _handle_defect_digest_context(state: _ChecksFailureDigestParseState, line: str) -> None:
+    if not line.startswith("DEFECT:"):
+        return
+    if state.current_check != "contains-pins":
+        _flush_and_reset_pending_digest_state(state)
+    state.current_check = "contains-pins"
+
+
+def _capture_pending_digest_location(state: _ChecksFailureDigestParseState, line: str) -> None:
+    location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+    if location_match is None:
+        return
+    state.pending_location = f"{location_match.group(1)}:{location_match.group(2)}"
+    if not state.pending_error_line:
+        state.pending_error_line = line
+
+
+def _record_digest_marker_or_evidence(
+    state: _ChecksFailureDigestParseState,
+    *,
+    line: str,
+    check: str,
+    marker_match: re.Match[str] | None,
+) -> None:
+    if marker_match is not None:
+        if not state.fallback_line:
+            state.fallback_line = line
+        _update_digest_record(
+            state.records,
+            check=check,
+            context=_DigestLineContext(line=line, marker_match=marker_match, pending_location=state.pending_location),
+        )
+        state.pending_location = None
+        state.pending_error_line = ""
+        return
+    if _is_checks_failure_error_evidence(line):
+        if not state.fallback_line:
+            state.fallback_line = line
+        creates_record = check not in state.records
+        _update_digest_record(
+            state.records,
+            check=check,
+            context=_DigestLineContext(
+                line=line,
+                marker_match=None,
+                pending_location=state.pending_location,
+                is_error_evidence=True,
+            ),
+        )
+        if creates_record:
+            state.records[check].failure_count += 1
+        return
+    if check in state.records:
+        _update_digest_record(
+            state.records,
+            check=check,
+            context=_DigestLineContext(line=line, marker_match=None, pending_location=state.pending_location),
+        )
+
+
 def _parse_checks_failure_records(
     redacted_log_text: str,
 ) -> dict[str, _ChecksFailureDigestRecord]:
-    records: dict[str, _ChecksFailureDigestRecord] = {}
-    current_check = "unknown"
-    fallback_line = ""
-    pending_location: str | None = None
+    state = _ChecksFailureDigestParseState(records={})
     for line in redacted_log_text.splitlines():
-        current_check, is_header = _digest_header_context(line, current_check)
-        if is_header:
+        if _handle_digest_header_line(state, line):
             continue
 
-        precommit_check = _precommit_digest_check(line)
-        if precommit_check is not None:
-            current_check = precommit_check
-            _update_digest_record(
-                records,
-                check=precommit_check,
-                context=_DigestLineContext(line=line, marker_match=None, is_precommit_banner=True),
-            )
+        if _handle_precommit_digest_line(state, line):
             continue
-        if line.startswith("DEFECT:"):
-            current_check = "contains-pins"
-        location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
-        if location_match is not None:
-            pending_location = f"{location_match.group(1)}:{location_match.group(2)}"
+
+        _handle_defect_digest_context(state, line)
+        _capture_pending_digest_location(state, line)
         marker_match = _CHECKS_FAILURE_DIGEST_MARKER_RE.search(line)
-        check = _digest_check_for_line(line, current_check)
-        if marker_match is not None:
-            if not fallback_line:
-                fallback_line = line
-            _update_digest_record(
-                records,
-                check=check,
-                context=_DigestLineContext(line=line, marker_match=marker_match, pending_location=pending_location),
-            )
-            pending_location = None
-        elif records:
-            _update_digest_record(
-                records,
-                check=check,
-                context=_DigestLineContext(line=line, marker_match=None, pending_location=pending_location),
-            )
+        check = _digest_check_for_line(line, state.current_check)
+        _record_digest_marker_or_evidence(state, line=line, check=check, marker_match=marker_match)
 
-    if not records:
-        record = _record_for_check(records, "unknown")
-        record.first_error = _digest_line(fallback_line) if fallback_line else "unknown"
-    return records
+    _flush_and_reset_pending_digest_state(state)
+    if not state.records:
+        record = _record_for_check(state.records, "unknown")
+        record.first_error = _digest_line(state.fallback_line) if state.fallback_line else "unknown"
+    return state.records
 
 
 def _assemble_checks_failure_digest(

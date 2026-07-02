@@ -210,6 +210,36 @@ def test_checks_failure_digest_direct_make_fallback() -> None:
     assert "first_error=ERROR: test-example failed" in digest
 
 
+def test_checks_failure_digest_direct_py_lint_markerless_failure() -> None:
+    text = (
+        "=== Running direct relevant make target(s): py-lint ===\n"
+        "python/larch/foo.py:10:5: F401 'os' imported but unused\n"
+        "make: *** [Makefile:42: py-lint] Error 1"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert "check=py-lint" in digest
+    assert "failure_count=1" in digest
+    assert "first_location=python/larch/foo.py:10" in digest
+    assert "first_error=python/larch/foo.py:10:5: F401 'os' imported but unused" in digest
+    assert "first_location=unknown" not in digest
+    assert "first_error=unknown" not in digest
+
+
+def test_checks_failure_digest_direct_make_error_tail() -> None:
+    text = (
+        "=== Running direct relevant make target(s): py-lint ===\n"
+        "make: *** [Makefile:42: py-lint] Error 1"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert "check=py-lint" in digest
+    assert "failure_count=1" in digest
+    assert "first_error=make: *** [Makefile:42: py-lint] Error 1" in digest
+
+
 def test_checks_failure_digest_defect_lines_use_contains_pins() -> None:
     text = (
         "=== Running direct relevant make target(s): test-docs ===\n"
