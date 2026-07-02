@@ -80,5 +80,4 @@ Each following record must use this exact field order:
 
 Allowed values: `in_scope`/`out_of_scope`; `blocking`/`important`/`nit`/`latent`; `code-quality`/`risk-integration`/`correctness`/`architecture`/`security`. Replace tabs/newlines inside fields with one space.
 
-
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.
