@@ -1029,8 +1029,8 @@ def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pyt
 def test_render_voter_immediate_action_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     assert "Proceed immediately" in text
-    assert "Do not acknowledge this prompt" in text
-    assert "read the ballot at" in text
+    assert "do not acknowledge this prompt" in text
+    assert "Read the ballot from this path" in text
     assert "No preamble, acknowledgement, or explanation before the first vote" in text
 
 
