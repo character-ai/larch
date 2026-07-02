@@ -1,0 +1,12 @@
+# md-to-py-XI: prose-compress code-reviewer.md and orchestrator-aggregator.md
+
+**Context.** `agents/code-reviewer.md` (about 21.6KB, the unified reviewer) and `agents/orchestrator-aggregator.md` (about 5.3KB) load per use in review flows. Never compressed in rounds V-X.
+
+**Scope.** Density pass preserving finding-format contracts and aggregation rules verbatim. Land after #5888 (in flight) flips aggregator role priorities, so the aggregator surface is settled before compression.
+
+**Acceptance.**
+
+- Token reduction on the ratcheted panel tier.
+- Aggregation harnesses pass; no contract change.
+
+Part of md-to-py-XI (round X: #5885).

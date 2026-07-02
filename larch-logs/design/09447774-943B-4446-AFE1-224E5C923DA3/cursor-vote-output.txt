@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- explicitly outside issue scope; no necessity gate cleared
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- edge cases and aggregation harnesses already guard contract literals; explicit line-range freeze is defensive not necessary
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- nit severity floor; redundant test step is optional scope trim not required for acceptance
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- concrete but low-impact ordering nit; fails issue-overhead test for a tracked issue

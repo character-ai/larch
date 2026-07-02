@@ -1,0 +1,11 @@
+slot=1
+voter_tool=claude
+judge_error_count=8
+total_findings=8
+total_ballot_items=8
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=d6867f81d10173450293a8e82277c6e6fd9024d5e704f88a74cb7fd0e977a59e
+--- first 200 bytes of voter output ---
+<WAITING_FOR_TASK_NOTIFICATION>
+
+The ballot file read was blocked — an immediate-background wait is active. Ending this turn to wait for the `<task-notification>` before proceeding with the vote.

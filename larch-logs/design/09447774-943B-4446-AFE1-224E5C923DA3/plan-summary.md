@@ -1,0 +1,1 @@
+Compress only the Code Reviewer template section and the hand-maintained aggregator prompt. Regenerate the two derived Code Reviewer artifacts, refresh the prompt-closure baseline, and verify generator sync, panel-tier token reduction, and aggregation harnesses.

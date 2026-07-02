@@ -1,0 +1,27 @@
+## Proposed Design Outline
+
+### Goals
+- Prose-compress the "Code Reviewer" archetype body in `skills/shared/reviewer-templates.md` (the canonical source for `agents/code-reviewer.md`), then regenerate all files derived from it.
+- Prose-compress `agents/orchestrator-aggregator.md` directly (hand-maintained, no generator).
+- Reduce tokens on the ratcheted `panel-tier` closure while keeping finding-format contracts and aggregation rules byte-identical in meaning and machine-parseable form.
+
+### Non-goals
+- Do not touch the other three generated archetypes (Plan Fidelity, Code Robustness, Security+Structure+Tests) in `reviewer-templates.md`, even though they share near-identical boilerplate.
+- Do not change any behavioral rule, scoring incentive, severity definition, or output schema; this is a wording/density pass, not a policy change.
+- Do not touch `skills/shared/voting-protocol.md` or other panel-tier files not named in the issue.
+
+### Approach sketch
+- Edit the `## Reviewer: Code Reviewer` `GENERATED_BODY` section in `skills/shared/reviewer-templates.md`: tighten wording, cut redundant asides, keep every checklist item, gate, and calibration example intact in substance.
+- Regenerate `agents/code-reviewer.md` via `python3 python/cli.py generate code-reviewer-agent` and `skills/shared/reviewer-templates-code-reviewer.md` via `python3 python/cli.py generate conflict-resolution-code-reviewer` (same source section, required to avoid `agent-sync` drift).
+- Edit `agents/orchestrator-aggregator.md` directly: tighten prose, keep the `### FINDING_N:`/`### OOS_N:` grammar, `**Severity**` line, `[OUT_OF_SCOPE]` rules, and the exact `LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED` attestation line untouched.
+- Verify with `python3 python/cli.py skill-closure report`, run the generator-check and aggregation test harnesses, then update `python/skill-closure-baseline.json` via `python3 python/cli.py lint skill-closure-growth --write`.
+
+### Surfaces in scope
+- `skills/shared/reviewer-templates.md` (Code Reviewer section only)
+- `agents/code-reviewer.md` (regenerated)
+- `skills/shared/reviewer-templates-code-reviewer.md` (regenerated)
+- `agents/orchestrator-aggregator.md`
+- `python/skill-closure-baseline.json` (ratchet update)
+
+### Open questions
+- None.
