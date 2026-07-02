@@ -1,0 +1,29 @@
+Reviewing the plan against the codebase: scanning measurement helpers, scan behavior, and RunRecord cache fields.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/larch/report/tokens.py:1307-1308,1994-1997	Scan-backed output must not use tokens._repo_root()	report_tokens_scan.scan() resolves the consumer repo via git rev-parse (report_tokens_scan.py:290-302), but sibling measure_* mains print paths relative to tokens._repo_root() anchored on __file__ (tokens.py:1307-1308). In a normal plugin install those roots diverge: scan reads consumer larch-logs while the TSV lands under the plugin checkout.	Bind output path and WROTE rel-path to ScanResult.repo_root from the first scan(); keep tokens._repo_root() only for __file__-local measures.
+1	in_scope	blocking	correctness	python/larch/report/tokens.py:436-448,529-531	_cache_create_effective must not treat zero-valued split keys as authoritative	Per-step totals from _totals() always emit cache_create_5m/cache_create_1h keys, often 0, while vendor claude_sub rows keep cache_create on the combined field (_TOKEN_FIELDS at tokens.py:26-26,529-531). Plan wording use split when split buckets exist reads as key-presence and yields effective=0, dropping or mis-ranking claude_sub rows including inf zero-read outliers.	Define effective as (cache_create_5m + cache_create_1h) when that sum > 0, else cache_create; apply at per-run and per-step. Add an edge-case note for claude_sub vendor rows.
+1	in_scope	important	correctness	python/tests/report/test_tokens.py:881-884	Per-step ratio must be computed after cross-run bucket summation	Plan tests assert summed buckets and runs (test_measure_cache_efficiency_aggregates_steps_by_skill_step_and_lane) but not ratio math. Summing per-run ratios or ranking before aggregation can reorder outliers vs sum(create_eff)/sum(read).	In _measure_cache_efficiency_records sum cache fields per (skill, step, lane), then compute ratio once on aggregated totals; extend the aggregation test to lock ratio behavior.
+
+## Findings
+
+**1. [correctness / risk-integration]** `python/larch/report/tokens.py:1307-1308`, `python/larch/report/report_tokens_scan.py:290-302`, proposed `measure_cache_efficiency()`
+
+The plan reuses `report_tokens_scan.scan()` for inputs (git-resolved consumer repo) but follows existing `measure_*_main` wrappers that resolve output relative to `tokens._repo_root()` (`Path(__file__).resolve().parents[3]`). `/report-tokens` already uses `ScanResult.repo_root` for scan-backed work (`report_tokens_cli.py:69-69`). A scan-backed measure command that writes via `_repo_root()` will read consumer `larch-logs` and emit `larch-logs/measure-cache-efficiency/<date>.tsv` under the plugin tree in normal installs.
+
+**Suggested revision:** Resolve the output directory from the first `scan()` result’s `repo_root`; print `WROTE\t<relpath>` against that same root. Update `test_measure_cache_efficiency_main_prints_relative_path` to assert that contract instead of monkeypatching `_repo_root()`.
+
+**2. [correctness]** `python/larch/report/tokens.py:436-448`, `529-531`; plan `_cache_create_effective`
+
+Split-bucket fallback is under-specified. `_totals()` always adds `cache_create_5m` / `cache_create_1h` keys to per-step totals, often as zero, while vendor `claude_sub` ledger rows only populate `cache_create` (`_TOKEN_FIELDS` at `tokens.py:26`). `RunRecord.claude_sub` from scan can show `cache_create_5m=0` with `cache_create>0` because `_totals()` in `report_tokens_scan.py:95-99` prefers an explicit zero in `totals` over `BUCKETS_*` (`report_tokens_scan.py:101-106`). If `_cache_create_effective` sums splits whenever keys exist, `claude_sub` create volume becomes zero, all-zero rows vanish, and zero-read / nonzero-create `inf` outliers on that lane are lost.
+
+**Suggested revision:** `effective = (cache_create_5m + cache_create_1h) if (cache_create_5m + cache_create_1h) > 0 else cache_create`. Document this for vendor `claude_sub` per-step rows, not only legacy reports missing split keys.
+
+**3. [correctness]** Proposed `_measure_cache_efficiency_records`; `python/tests/report/test_tokens.py` (planned tests)
+
+Per-step ranking should reflect corpus-level create/read imbalance per `(skill, step, lane)`. The plan sums buckets across runs but does not require ratio-after-aggregation. Averaging per-run ratios or ranking intermediate rows would change order versus `sum(create_eff)/sum(read)`, which is what the issue asks for when flagging recurring bad steps.
+
+**Suggested revision:** Sum cache fields in the aggregator, compute ratio once on aggregated totals, then rank. Add one assertion that two runs with different per-run ratios produce the aggregated ratio from summed numerators/denominators.
+
+---
+
+**What looks sound (no finding):** Local `report_tokens_scan` import avoids the `tokens.py` import cycle (`report_tokens_scan.py:16`). `resolve_repo=False` keeps measurement free of `gh` (`report_tokens_scan.py:288-291`). Reading `raw_report[<lane>]["per_step"]` instead of `phase_rows` is required because `PhaseRow` omits split buckets (`report_tokens_scan.py:152-159`). Ranking rules (all-zero exclusion, zero-read `inf` first, stable tie-break) match the stated goal. Scope stays measurement-only; no capture-path or CI creep.

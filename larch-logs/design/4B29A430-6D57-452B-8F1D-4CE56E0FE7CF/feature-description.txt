@@ -1,0 +1,12 @@
+# md-to-py-XI: cache-efficiency outlier report (cache_create versus cache_read per step)
+
+**Context.** Cache reads dominate observed volume (about 36.8B cache-read tokens across tracked implement runs, #5962). Prompt-prefix instability silently converts cheap cache reads into cache writes at roughly 12.5x the per-token price, and nothing currently flags it. `token-report.json` already carries per-step `cache_create_5m` and `cache_read` buckets, so this is pure aggregation over existing data.
+
+**Scope.** New report subcommand (under `report-tokens` or `token`) computing per-step and per-run cache_create/cache_read ratios from committed token reports, ranking outlier steps and runs. Document in the run-log CLI docs.
+
+**Acceptance.**
+
+- Command runs over committed logs and emits a ranked outlier table.
+- Unit coverage; no changes to captured data or capture paths.
+
+Part of md-to-py-XI (round X: #5885). Measurement only; any fixes it motivates are follow-up issues.

@@ -1,0 +1,1 @@
+Add `token measure-cache-efficiency` as a read-only measurement command. It scans existing committed design and implement token reports, ranks cache-create versus cache-read outliers by run and by step, writes a dated TSV under `larch-logs/measure-cache-efficiency/`, and documents the command.
