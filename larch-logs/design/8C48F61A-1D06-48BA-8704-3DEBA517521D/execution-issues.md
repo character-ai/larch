@@ -1,0 +1,16 @@
+### Warnings
+
+- **Step plan-review voter-dispatch claude — agent launch-claude-review (voter parse-rate check) warning (exit 0)**:
+  ```
+slot=1
+voter_tool=claude
+judge_error_count=1
+total_findings=1
+total_ballot_items=1
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=c68e4f50bcfbe02ac7f74c6d2e9a1fab209328c4230c88718edabd554b9e4f4f
+--- first 200 bytes of voter output ---
+I received an error indicating a background wait is active. I'll end this turn and wait for the task notification before proceeding with the ballot review.
+  ```
+
+design Step 5c session-transcript snapshot-skipped: Claude source snapshot materialization failed; transcript capture skipped.
