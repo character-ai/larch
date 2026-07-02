@@ -230,7 +230,7 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num)
 
 
-def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
+def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:  # pyright: ignore[reportUnusedFunction]
     accepted = _count_accepted(tmpdir)
     values["ACCEPTED_COUNT"] = str(accepted)
     if accepted == 0:
@@ -860,3 +860,4 @@ def drift_baseline_main(argv: list[str] | None = None) -> int:
 
 
 # pyright: reportPrivateUsage=false, reportUnusedImport=false
+# pyright: reportUnusedFunction=false
