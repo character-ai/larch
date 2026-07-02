@@ -405,7 +405,8 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
     _write_text(path=round_dir / "submodule-paths.txt", text="\n".join(submodules) + ("\n" if submodules else ""))
     prompt_path = round_dir / "coder-prompt.md"
     prompt_body = _compose_coder_prompt(prompt_file=prompt_path, findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
-    first_tool = next((tool for tool in external_defaults.tool_order("review.fix_coder") if tool in {"cursor", "codex"}), "review.fix_coder")
+    fix_coder_order = external_defaults.tool_order("review.fix_coder")
+    first_tool = next((tool for tool in fix_coder_order if tool in {"cursor", "codex"}), "review.fix_coder")
     panel_env = build_panel_dispatch_env(
         artifact_dir=round_dir,
         site="review.fix_coder",
@@ -461,7 +462,8 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         "cursor": _run_coder_cursor,
         "claude": _run_coder_claude,
     }
-    attempts = [(tool, runner_by_tool[tool]) for tool in external_defaults.tool_order("review.fix_coder") if tool in runner_by_tool]
+    attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
+    commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
         if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):

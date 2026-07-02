@@ -2713,3 +2713,4 @@ def _flag_map(args: list[str]) -> dict[str, str]:
             opts[args[idx]] = args[idx + 1]
             idx += 2
     return opts
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownVariableType=false

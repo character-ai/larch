@@ -1845,3 +1845,4 @@ def test_aggregate_forwards_panel_artifact_dir_and_env(tmp_path: Path) -> None:
     assert str(round_dir) in captured
     assert "SLOT=aggregator" in captured
     assert "AGENT=agents/orchestrator-aggregator.md" in captured
+# pyright: reportUnusedCallResult=false

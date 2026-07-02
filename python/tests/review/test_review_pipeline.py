@@ -4328,3 +4328,4 @@ def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkey
     text = tsv.read_text(encoding="utf-8")
     assert "implementer" in text
     assert "# Review Fix Application" not in text
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false

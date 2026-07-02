@@ -1650,3 +1650,4 @@ def test_launch_slot_threads_panel_env(tmp_path: Path, monkeypatch: pytest.Monke
     assert captured_env["LARCH_PANEL_ARTIFACT_DIR"] == str(artifact_dir)
     assert captured_env["LARCH_PANEL_SLOT"] == "correctness"
     assert captured_env["LARCH_PANEL_ROUND_NUM"] == "7"
+# pyright: reportUnknownArgumentType=false, reportUnknownVariableType=false

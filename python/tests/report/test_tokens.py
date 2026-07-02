@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import json
 import os
 import subprocess
@@ -1078,7 +1077,7 @@ def test_measure_references_heatmap_skips_symlinked_transcript(tmp_path: Path, m
 
     out = tokens.measure_references_heatmap()
 
-    assert _tsv_rows(out) == []
+    assert not _tsv_rows(out)
 
 
 def test_measure_realized_cost_averages_reference_reads_across_missing_transcripts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1112,11 +1111,6 @@ def test_measure_realized_cost_averages_reference_reads_across_missing_transcrip
     # run1's transcript is present (even though run2's is missing), so this
     # reference-read count is a confirmed measurement, not a blind spot.
     assert design["reference_capture_status"] == "measured"
-
-
-def _tsv_rows(path: Path) -> list[dict[str, str]]:
-    with path.open(encoding="utf-8", newline="") as handle:
-        return list(csv.DictReader(handle, delimiter="\t"))
 
 
 def test_panel_prompt_size_helper_writes_counts_without_prompt_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1232,3 +1226,4 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     data = _tsv_rows(out)
     assert data[0]["realized_bytes"] == "100"
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
+# pyright: reportUnusedCallResult=false

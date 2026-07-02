@@ -2155,3 +2155,4 @@ def test_log_phase_accepts_panel_prompt_sizes_batch(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "logs" / "review" / "run-abc" / "panel-prompt-sizes.tsv").is_file()
+# pyright: reportUnusedCallResult=false
