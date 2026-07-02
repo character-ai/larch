@@ -265,6 +265,7 @@ def _resume_done_result(
         ctx=done_ctx,
         cwd=repo_root,
         counters=_resume_reconciliation_counters(resume),
+        allow_post_merge_skip=True,
     ) or ShipResult(
         Outcome.OK,
         pr_number=resume.pr_number,
@@ -301,6 +302,7 @@ def run_ship(
                 ctx=working,
                 cwd=repo_root,
                 counters=_resume_reconciliation_counters(resume),
+                allow_post_merge_skip=True,
             )
             if merged_reconciliation is not None:
                 return merged_reconciliation
