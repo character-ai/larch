@@ -322,14 +322,36 @@ def _wait_for_ci(
     return {}, "ci-wait-malformed-output"
 
 
-def _emit_ci_retry_warning(*, args: argparse.Namespace, cycle: int) -> None:
+def _ci_fix_retry_reason(*, launcher_exit: int, output: Path) -> str | None:
+    if launcher_exit == config.EXIT_TIMEOUT:
+        return "exit-124"
+    if not output.is_file():
+        return "missing-output"
+    try:
+        if output.stat().st_size == 0:
+            return "empty-output"
+    except OSError:
+        return "missing-output"
+    return None
+
+
+def _emit_ci_retry_warning(
+    *,
+    args: argparse.Namespace,
+    cycle: int,
+    launcher_exit: int,
+    retry_reason: str,
+) -> None:
     implement_tmpdir = getattr(args, "implement_tmpdir", "") or ""
     if not implement_tmpdir:
         return
     run_logs.append_execution_issue(
         log_file=Path(implement_tmpdir) / "execution-issues.md",
         category="Warnings",
-        entry=f"- **claude-ci lint-fixer**: subprocess transient (exit 124); retried once on cycle {cycle}",
+        entry=(
+            "- **claude-ci lint-fixer**: subprocess transient "
+            f"(rc={launcher_exit}; {retry_reason}); retried once on cycle {cycle}"
+        ),
     )
 
 
@@ -518,11 +540,17 @@ def _run_cycle(
             output_file=output,
             process_rc=result.returncode,
         )
-        if launcher_exit == config.EXIT_TIMEOUT:
-            # Retry once on timeout (empty-output/exit-124), matching the
+        retry_reason = _ci_fix_retry_reason(launcher_exit=launcher_exit, output=output)
+        if retry_reason is not None:
+            # Retry once on exit 124 or missing/empty output, matching the
             # one-retry-on-empty/124 pattern from #5677 (design voter) and
             # the code-flow lane fix in #5714.
-            _emit_ci_retry_warning(args=args, cycle=cycle)
+            _emit_ci_retry_warning(
+                args=args,
+                cycle=cycle,
+                launcher_exit=launcher_exit,
+                retry_reason=retry_reason,
+            )
             result = agents.launch_tier(
                 runner=runner,
                 tier="claude",

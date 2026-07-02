@@ -1,0 +1,109 @@
+## Goal
+Implement issue #5971: [IMPLEMENTING] [BUG] #5714 residual: claude-ci lint-fix retry fires only on exit 124; empty-output "No messages returned from query" failures never retry.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement the approved narrow fix. `approach-synthesis.txt` is `NO_SKETCHES`, so this plan relies on direct repo inspection and the approved outline. `discussion-round1.md` fixes the retry bound at one retry with no delay.
+
+Add a small private retry predicate in `python/larch/implement/ci_agentic_fix.py`:
+
+- Return true when `launcher_exit == config.EXIT_TIMEOUT`.
+- Return true when the output file is missing.
+- Return true when the output file exists but has size `0`.
+- Return false for present, non-empty output with non-timeout exits.
+
+Use that predicate at the existing single retry site in `_run_cycle`. Do not add a loop. Do not add delay constants. Do not change cycle handling, `_wait_for_ci`, or other launch sites.
+
+Update `_emit_ci_retry_warning` so the execution issue records the actual resolved exit code and trigger reason. Keep the direct `execution-issues.md` write. Do not add a `.retried` sidecar.
+
+Update the stale nearby comment so it says the retry covers exit 124 or missing/empty output.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ci_agentic_fix.py
+
+Add a private helper near `_emit_ci_retry_warning`, for example `_ci_fix_retry_reason(*, launcher_exit: int, output: Path) -> str | None`.
+
+Suggested behavior:
+
+- `exit-124` when `launcher_exit == config.EXIT_TIMEOUT`.
+- `missing-output` when `not output.is_file()`.
+- `empty-output` when `output.stat().st_size == 0`.
+- `None` otherwise.
+
+Change `_emit_ci_retry_warning` to accept the resolved exit code and retry reason. Suggested log shape:
+
+`- **claude-ci lint-fixer**: subprocess transient (rc=<exit>; <reason>); retried once on cycle <cycle>`
+
+In `_run_cycle`:
+
+- Compute `retry_reason = _ci_fix_retry_reason(launcher_exit=launcher_exit, output=output)` after the first `resolve_launcher_exit`.
+- Replace `if launcher_exit == config.EXIT_TIMEOUT:` with `if retry_reason is not None:`.
+- Call `_emit_ci_retry_warning(args=args, cycle=cycle, launcher_exit=launcher_exit, retry_reason=retry_reason)`.
+- Relaunch once with the existing `agents.launch_tier(...)` call.
+- Recompute `launcher_exit` with the existing `resolve_launcher_exit(...)` call.
+- Do not retry again after the second attempt.
+
+### UPDATED: python/tests/implement/test_ci_agentic_fix.py
+
+Keep the existing exit-124 retry test. Adjust only if needed for the new warning text.
+
+Add regression coverage for the empty-output path:
+
+- First launch returns a non-timeout nonzero launcher exit, for example `1`.
+- First launch leaves the output file missing or creates it as zero-byte.
+- `_run_cycle` retries once.
+- Second launch succeeds.
+- Assert `agents.launch_tier` and `agents.resolve_launcher_exit` were called twice.
+- Assert status reaches `passed`.
+- Assert `execution-issues.md` exists and contains `retried once`, the real first rc, and the missing/empty reason.
+
+Prefer one test helper or a compact loop that covers both missing and zero-byte output without large duplicate stubs. If that creates awkward test shape, cover the missing-output case first because it matches the reported "No messages returned from query" lane.
+
+## Edge cases
+
+- If exit is 124 and output is non-empty, still retry once. This preserves current timeout behavior.
+- If output is missing or empty and exit is not 124, retry once. This fixes the reported gap.
+- If output is present and non-empty with a non-timeout failure, do not retry. Existing failure classification should handle it.
+- If the retry also fails or emits empty output, do not retry a second time. Existing downstream launch failure handling remains responsible.
+- If `implement_tmpdir` is absent, `_emit_ci_retry_warning` should keep returning without logging, as it does today.
+
+## Failure modes
+
+- A stale non-empty output file could suppress the missing/empty retry. The output path is cycle-scoped under the run output dir, so this is unlikely. Do not add cleanup unless an existing test shows stale output is possible.
+- `Path.stat()` can race if the file disappears after `is_file()`. This is unlikely in this single-process path. If guarded, fail open to retry rather than raising.
+
+## Testing strategy
+
+Run focused tests:
+
+- `python3 -m pytest python/tests/implement/test_ci_agentic_fix.py -q`
+
+Run changed-file lint if available:
+
+- `python3 -m ruff check python/larch/implement/ci_agentic_fix.py python/tests/implement/test_ci_agentic_fix.py`
+
+No docs or `SECURITY.md` update is needed. This changes retry handling and logging for an existing local subprocess lane, not security policy or user-facing setup.
+
+## Acceptance
+
+Run focused tests:
+
+- `python3 -m pytest python/tests/implement/test_ci_agentic_fix.py -q`
+
+Run changed-file lint if available:
+
+- `python3 -m ruff check python/larch/implement/ci_agentic_fix.py python/tests/implement/test_ci_agentic_fix.py`
+
+No docs or `SECURITY.md` update is needed. This changes retry handling and logging for an existing local subprocess lane, not security policy or user-facing setup.
+
+diff_added: 80
+diff_deleted: 8
+mechanical_churn: false
+diff_lines: 88
+
+## Test plan
+(no test plan section in plan-file)

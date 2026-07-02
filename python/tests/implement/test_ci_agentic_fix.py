@@ -418,8 +418,9 @@ def test_mixed_fixable_and_unfixable_launches_claude(
         _ = cwd
         return (), (), (), "abc123"
 
-    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+    def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
         launch_calls["n"] += 1
+        _ = Path(str(kwargs["output"])).write_text("failure details\n", encoding="utf-8")
         return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
 
     def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
@@ -809,7 +810,8 @@ def test_run_cycle_empty_delta_returns_no_progress_without_push(
         _ = cwd
         return (), (), (), "abc123"
 
-    def fake_launch_tier(*_args: object, **_kwargs: object) -> proc.CommandResult:
+    def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
+        _ = Path(str(kwargs["output"])).write_text("fixed\n", encoding="utf-8")
         return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
 
     def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
@@ -1073,8 +1075,9 @@ def test_run_cycle_mixed_mechanical_failure_rolls_back_then_delegates(
         calls["verify"] += 1
         return calls["verify"] > 1
 
-    def fake_launch(*_args: object, **_kwargs: object) -> proc.CommandResult:
+    def fake_launch(*_args: object, **kwargs: object) -> proc.CommandResult:
         calls["launch"] += 1
+        _ = Path(str(kwargs["output"])).write_text("fixed\n", encoding="utf-8")
         return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
 
     monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify)
@@ -1369,4 +1372,79 @@ def test_run_cycle_retries_once_on_exit_124(
     assert status == "passed"
     issue_log = tmp_path / "execution-issues.md"
     assert issue_log.is_file()
-    assert "retried once" in issue_log.read_text(encoding="utf-8")
+    issue_text = issue_log.read_text(encoding="utf-8")
+    assert "retried once" in issue_text
+    assert "rc=124" in issue_text
+    assert "exit-124" in issue_text
+
+
+def _run_cycle_retry_output_case(
+    case_dir: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    first_output_state: str,
+) -> tuple[str, int, int, str]:
+    repo = case_dir / "repo"
+    repo.mkdir(parents=True)
+    out_dir = case_dir / "out"
+    out_dir.mkdir()
+    implement_dir = case_dir / "implement"
+    implement_dir.mkdir()
+    launch_calls: list[int] = []
+    resolve_calls: list[int] = []
+    _ = _stub_successful_fix_until_wait(
+        monkeypatch,
+        wait_result=({"ACTION": "merge", "CI_STATUS": "pass"}, None),
+    )
+
+    def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
+        launch_calls.append(1)
+        output = Path(str(kwargs["output"]))
+        if len(launch_calls) == 1:
+            if first_output_state == "empty":
+                _ = output.write_text("", encoding="utf-8")
+            return proc.CommandResult(("cli",), 1, "LAUNCHER_EXIT=1\n", "", 0.01)
+        _ = output.write_text("fixed\n", encoding="utf-8")
+        return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+    def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+        resolve_calls.append(1)
+        return 1 if len(resolve_calls) == 1 else 0
+
+    monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+    monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+
+    args = _cycle_args(out_dir)
+    args.implement_tmpdir = str(implement_dir)
+    status, _detail, _attempted, _delta, _pending, _next_run, _log = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+        proc,
+        args=args,
+        repo_root=repo,
+        ctx=_make_ctx(),
+        cycle=1,
+        run_id="42",
+    )
+    issue_text = (implement_dir / "execution-issues.md").read_text(encoding="utf-8")
+    return status, len(launch_calls), len(resolve_calls), issue_text
+
+
+def test_run_cycle_retries_once_on_missing_or_empty_output(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    for output_state, expected_reason in (
+        ("missing", "missing-output"),
+        ("empty", "empty-output"),
+    ):
+        with monkeypatch.context() as case_monkeypatch:
+            status, launch_count, resolve_count, issue_text = _run_cycle_retry_output_case(
+                tmp_path / output_state,
+                case_monkeypatch,
+                first_output_state=output_state,
+            )
+        assert status == "passed"
+        assert launch_count == 2
+        assert resolve_count == 2
+        assert "retried once" in issue_text
+        assert "rc=1" in issue_text
+        assert expected_reason in issue_text
