@@ -1,1 +1,13 @@
+=== larch-quiet-append-execution-issue.sh-52310.log ===
+usage: append-execution-issue.sh --log LOG --category CATEGORY
+                                 (--entry ENTRY | --entry-file ENTRY_FILE)
+append-execution-issue.sh: error: the following arguments are required: --log, --category
+=== larch-quiet-append-execution-issue.sh-54247.log ===
+=== larch-quiet-cli.py-13870.log ===
+=== larch-quiet-cli.py-45905.log ===
 === larch-quiet-cli.py-89456.log ===
+=== larch-quiet-read-session-env-key.sh-58225.log ===
+=== larch-quiet-read-session-env-key.sh-58244.log ===
+=== larch-quiet-read-session-env-key.sh-58259.log ===
+=== larch-quiet-sessionstart-health.sh-62498.log ===
+=== larch-quiet-sessionstart-health.sh-71442.log ===
