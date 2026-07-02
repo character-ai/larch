@@ -406,7 +406,12 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
     prompt_path = round_dir / "coder-prompt.md"
     prompt_body = _compose_coder_prompt(prompt_file=prompt_path, findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
     fix_coder_order = external_defaults.tool_order("review.fix_coder")
-    first_tool = next((tool for tool in fix_coder_order if tool in {"cursor", "codex"}), "review.fix_coder")
+    runner_by_tool: dict[str, Callable[..., bool]] = {
+        "codex": _run_coder_codex,
+        "cursor": _run_coder_cursor,
+        "claude": _run_coder_claude,
+    }
+    first_tool = next((tool for tool in fix_coder_order if tool in runner_by_tool), "review.fix_coder")
     panel_env = build_panel_dispatch_env(
         artifact_dir=round_dir,
         site="review.fix_coder",
@@ -457,11 +462,6 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         result = CoderResult(2, "none", "failed", str(tool_log), scrubbed_count, scrub_count, 0)
         _write_env(path=result_file, values=_coder_env(result))
         return result
-    runner_by_tool: dict[str, Callable[..., bool]] = {
-        "codex": _run_coder_codex,
-        "cursor": _run_coder_cursor,
-        "claude": _run_coder_claude,
-    }
     attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)

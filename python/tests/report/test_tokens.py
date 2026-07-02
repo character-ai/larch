@@ -1160,6 +1160,22 @@ def test_panel_prompt_size_missing_agent_file_is_best_effort(tmp_path: Path, mon
     assert row["agent_bytes"] == "0"
 
 
+def test_repo_relative_agent_path_rejects_symlink_source(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    agent = tmp_path / "agents" / "reviewer.md"
+    agent.parent.mkdir()
+    agent.write_text("agent body\n", encoding="utf-8")
+    symlink = tmp_path / "agent-link.md"
+    try:
+        symlink.symlink_to(agent)
+    except OSError as exc:
+        pytest.skip(f"symlink unavailable: {exc}")
+
+    rel, byte_count, token_count = tokens._repo_relative_agent_path(symlink)  # pyright: ignore[reportPrivateUsage]
+
+    assert (rel, byte_count, token_count) == ("", 0, 0)
+
+
 def test_panel_prompt_artifact_prefers_env_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     artifact_dir = tmp_path / "artifact"
     monkeypatch.setenv("LARCH_PANEL_ARTIFACT_DIR", str(artifact_dir))

@@ -250,10 +250,12 @@ def _repo_relative_agent_path(raw: str | Path | None) -> tuple[str, int, int]:
     if not path.is_absolute():
         path = repo / path
     try:
+        if path.is_symlink():
+            return "", 0, 0
         resolved = path.resolve(strict=True)
     except OSError:
         return "", 0, 0
-    if not _path_under(resolved, repo) or not resolved.is_file() or resolved.is_symlink():
+    if not _path_under(resolved, repo) or not resolved.is_file():
         return "", 0, 0
     try:
         data = resolved.read_bytes()

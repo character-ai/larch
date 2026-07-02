@@ -193,6 +193,50 @@ def test_review_fix_coder_uses_review_fix_role(tmp_path: Path, monkeypatch: pyte
     assert result.status == "applied"
 
 
+def test_review_fix_coder_prompt_size_telemetry_allows_claude_first(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _tool_order_probe(monkeypatch, review_and_fix, "review.fix_coder", ("claude", "codex", "cursor"))
+    accepted = tmp_path / "accepted.md"
+    accepted.write_text("### FINDING_1: fix\nBody\n", encoding="utf-8")
+    round_dir = tmp_path / "round-1"
+    result_file = tmp_path / "coder.env"
+    telemetry_tools: list[str] = []
+
+    def fake_ensure(target: Path) -> None:
+        snap = review_and_fix.pre_coder_snapshot_dir(target)
+        snap.mkdir(parents=True, exist_ok=True)
+        (snap / "pre-coder-head.txt").write_text("HEAD\n", encoding="utf-8")
+
+    def fake_append_panel_prompt_size(**kwargs: object) -> None:
+        telemetry_tools.append(str(kwargs["tool"]))
+
+    def fake_scrub_findings(*, input_file: Path, output_file: Path, log_file: Path) -> tuple[bool, int]:
+        _ = log_file
+        output_file.write_text(input_file.read_text(encoding="utf-8"), encoding="utf-8")
+        return True, 0
+
+    monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub_findings)
+    monkeypatch.setattr(coder_runner, "_submodule_paths", lambda: ())
+    monkeypatch.setattr(coder_runner, "_compose_coder_prompt", lambda **_kwargs: "prompt")
+    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", fake_ensure)
+    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "full")
+    monkeypatch.setattr(coder_runner, "_git_head", lambda: "HEAD")
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda **_kwargs: False)
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda **_kwargs: False)
+    monkeypatch.setattr(coder_runner, "_run_coder_claude", lambda **_kwargs: True)
+    monkeypatch.setattr(coder_runner, "_post_dispatch_submodule_revert", lambda **_kwargs: 0)
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda *_args, **_kwargs: ["changed.py"])
+    monkeypatch.setattr(coder_runner, "append_panel_prompt_size", fake_append_panel_prompt_size)
+
+    result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file)
+
+    assert seen == ["review.fix_coder"]
+    assert telemetry_tools == ["claude"]
+    assert result.tool == "claude"
+    assert result.status == "applied"
+
+
 def test_review_fix_coder_attempts_claude_before_main_agent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     seen = _tool_order_probe(monkeypatch, review_and_fix, "review.fix_coder", ("codex", "cursor", "claude"))
     accepted = tmp_path / "accepted.md"
