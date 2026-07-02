@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 52612,
-    "closure_estimated_tokens": 52765,
-    "closure_lines": 1692,
+    "closure_content_estimated_tokens": 55362,
+    "closure_estimated_tokens": 55528,
+    "closure_lines": 1851,
     "conditional_content_estimated_tokens": 10317,
     "conditional_estimated_tokens": 10363,
     "conditional_files": [
@@ -17,6 +17,8 @@
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
       "skills/design/scripts/step-name-registry.tsv",
+      "skills/shared/session-setup-output.md",
+      "skills/shared/external-reviewers.md",
       "skills/shared/design-background-wait.md",
       "skills/design/references/discussion-rounds.md",
       "skills/design/references/design-outline.md",
