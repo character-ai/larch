@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:06:40
-- **Cost**: 💰 TOTAL ~$17.14 — Claude $0.45, Codex-5.5 $12.17, Codex-mini $0.80, Cursor $3.52, Claude (subprocess) $0.20  |  Tokens: 25006k
+- **Cost**: 💰 TOTAL ~$25.22 — Claude $8.53, Codex-5.5 $12.17, Codex-mini $0.80, Cursor $3.52, Claude (subprocess) $0.20  |  Tokens: 37546k
 - **Issue**: #5978 — https://github.com/character-ai/larch/issues/5978
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -65,3 +65,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (nit): Missing blank line before Secondary scan heading. Concern: The compressed necessity-gate paragraph runs directly into the `## Secondary scan` heading. That makes the Markdown section boundary slightly ambiguous and inconsistent with the other agents.
 - **Round 1 OOS_2** (nit): Panel-tier compression is still slightly short of target. Concern: The panel-tier compression lands at about 13% instead of the stated ~15% target, so the reduction is meaningful but still a little short of goal.
 - **Round 1 OOS_3** (nit): Run-log flush remains outside reviewer-contract scope. Concern: The run-log flush change is outside reviewer-contract scope, and the reviewer prompts already tell reviewers not to flag these commits.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
