@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- plan already says the aggregator work lands after #5888, so this dependency is already captured.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=no-fix UNCERTAIN=false -- legitimate token-savings idea, but it is outside the scoped feature and not material enough to file.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the overlap may be real, but it is optional cleanup and not necessary for the feature.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- the anchor already orders harnesses before the baseline write, so the described pre-harness refresh bug is not present.

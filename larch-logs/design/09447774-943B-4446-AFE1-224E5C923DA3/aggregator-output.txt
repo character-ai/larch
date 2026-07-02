@@ -1,0 +1,37 @@
+### FINDING_1: Panel-tier token gate before baseline refresh
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Prompt Contract Reviewer
+- **Severity**: important
+- **Concern**: The testing flow can still refresh the panel-tier baseline even when the edit only changes blank lines or fails to lower the content-token metric. The acceptance gate needs a strict decrease in panel-tier `closure_content_estimated_tokens`, and ideally `closure_lines` as well, before `--write` runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit branch after step 5: compare `closure_content_estimated_tokens` (and `closure_lines`) from `skill-closure report --skill panel-tier` against the step-4 pre-change values; do not run `--write` or commit the baseline until both metrics strictly decrease; otherwise continue compressing or stop the run as not accepted.
+  - From Cursor-Pragmatic: Reword step 5 to compare the step-4 panel-tier row against committed python/skill-closure-baseline.json (or add an explicit pre-edit report capture as step 0)
+  - From Cursor-Pragmatic: Add an explicit gate: require panel-tier closure_content_estimated_tokens strictly below the committed baseline before lint skill-closure-growth --write; otherwise iterate compression or stop
+  - From Cursor-Requirements: In step 5 require panel-tier closure_content_estimated_tokens to decrease versus the committed baseline or pre-change skill-closure report; do not run lint skill-closure-growth --write until that metric drops; add an explicit iterate-or-stop branch if it does not
+  - From Cursor-dyn-Prompt Contract Reviewer: Require a pre/post snapshot of panel-tier closure_content_estimated_tokens in Step 5 and block baseline --write unless that metric strictly decreases; if unchanged after substantive edits, treat the run as incomplete rather than optional
+
+### FINDING_2: Wait for #5888 before aggregator compression
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan does not require #5888 to land first, so aggregator compression can race the role-priority change and force rework or conflicting edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a pre-edit gate: confirm #5888 is on the integration branch (rebase/merge first), or note the dependency in Edge cases with an explicit stop-if-not-merged check.
+  - From Cursor-Innovation: Add an Approach or Edge cases gate: do not implement until #5888 is on main (or rebase onto it and re-compress orchestrator-aggregator.md if that PR touched the file).
+
+### FINDING_3: [OUT_OF_SCOPE] Variables preamble duplication in panel-tier
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Concern**: The source note flags a separate token-savings opportunity in duplicated Variables preamble prose, but it is outside this issue's scope.
+
+### FINDING_4: Keep the render-reviewer sentinel sentence exact
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The preserve list does not explicitly protect the render-reviewer sentinel sentence, so a wording change could break the hard-coded lookup used during prompt rendering.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add `If no in-scope issues found, say "No in-scope issues found."` to the byte-stable preserve list and keep it exact during the compression pass.
+
+### FINDING_5: Keep the empty-merge contract verbatim
+- **Reviewer(s)**: Cursor-dyn-Prompt Contract Reviewer
+- **Severity**: important
+- **Concern**: The empty-merge checklist and template text are load-bearing for validation. Compressing them can trigger retries or stalls even when the attestation token remains verbatim.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Prompt Contract Reviewer: In agents/orchestrator-aggregator.md instructions, mark lines 55-67 and the output template block 28-36 as non-compressible; allow prose tightening only in intro, merge rules, and reviewer-slot fidelity sections

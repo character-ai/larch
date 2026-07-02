@@ -1,0 +1,3 @@
+<WAITING_FOR_TASK_NOTIFICATION>
+
+The ballot file read was blocked — an immediate-background wait is active. Ending this turn to wait for the `<task-notification>` before proceeding with the vote.
