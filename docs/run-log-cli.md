@@ -76,7 +76,7 @@ The consumer repo root comes from `report_tokens_scan.scan()`
 prints:
 
 ```text
-WROTE	larch-logs/measure-cache-efficiency/<date>.tsv
+WROTE<TAB>larch-logs/measure-cache-efficiency/<date>.tsv
 ```
 
 The TSV has a `# per_run` section and a `# per_step` section. The command scans
