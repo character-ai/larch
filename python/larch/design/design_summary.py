@@ -152,7 +152,7 @@ def _issue_counts(design_tmpdir: Path) -> tuple[int, int]:
 
 
 def _plan_review_line(design_tmpdir: Path) -> str:
-    """Render plan-review provenance like 'complete (5 rounds)', or 'N/A' when absent."""
+    """Render plan-review provenance like 'complete (2 rounds)', or 'N/A' when absent."""
     status, rounds, _ = review_provenance(design_tmpdir)
     if not status:
         return "N/A"

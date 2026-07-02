@@ -289,8 +289,8 @@ def test_full_json_splits_codex_buckets_by_model(tmp_path: Path) -> None:
             json.dumps(row)
             for row in (
                 {"type": "mark", "step": "Step 5 - review", "ts": "2026-06-25T00:00:00Z"},
-                # A single review round mixing the generic gpt-5.5 reviewer and the
-                # mirrored gpt-5.4-mini reviewers (issue #5321).
+                # A single review round mixing a default-role gpt-5.5 reviewer and
+                # gpt-5.4-mini Codex rows.
                 {"type": "vendor", "vendor": "codex", "input": 100, "cache_read": 200, "output": 30, "total": 330, "model": "gpt-5.5", "ts": "2026-06-25T00:00:01Z"},
                 {"type": "vendor", "vendor": "codex", "input": 1000, "cache_read": 2000, "output": 300, "total": 3300, "model": "gpt-5.4-mini", "ts": "2026-06-25T00:00:02Z"},
                 # Model-less legacy row defaults to gpt-5.5.

@@ -1084,7 +1084,7 @@ def test_run_round_body_in_process_tail_materializes_missing_stable_table(
 
 def test_cap_reached_short_circuit(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
-    _ = (tmp_path / "review-round-count.txt").write_text("5\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     stub = _write_loop_stub(
         tmp_path,
         "printf 'LOOP_STATUS=complete\\n'; exit 0",
@@ -1104,13 +1104,13 @@ def test_cap_reached_short_circuit(tmp_path: Path) -> None:
     assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=cap-reached" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached" in proc.stdout
-    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "5\n"
+    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
     assert (tmp_path / ".completed" / "step-3").is_file()
 
 
 def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
-    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     stub = _write_loop_stub(
         tmp_path,
         (
@@ -1137,7 +1137,7 @@ def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
     assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=tally-error" in proc.stdout
     assert "TALLY_PLAN_REVIEW_STATUS=tally-error" in proc.stdout
-    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
+    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "1\n"
     result_env = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert "STEP3_REVIEW_LOOP_STATUS=tally-error" in result_env
     assert "LOOP_STATUS=tally-error" in result_env
@@ -1145,7 +1145,7 @@ def test_tally_error_rollback_review_round_count(tmp_path: Path) -> None:
 
 def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
-    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     stub = _write_loop_stub(
         tmp_path,
         (
@@ -1171,7 +1171,7 @@ def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) ->
     assert "STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector" in proc.stdout
     assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=degraded-empty-collector" in proc.stdout
-    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "2\n"
+    assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "1\n"
 
 
 def _write_gate_b_plan(tmp_path: Path, body: str) -> None:
@@ -2488,7 +2488,7 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
     # Totals stay reported for backward compatibility.
@@ -2517,8 +2517,8 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
         "plan-review", "continuation", "--design-tmpdir", str(tmp_path),
         "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
     )
-    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
 
@@ -2563,7 +2563,7 @@ def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
 
@@ -2977,9 +2977,9 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     """Multi-round converged zero-findings must not re-enter Gate B apply via stale tally artifacts (#5032)."""
     design = tmp_path
     _write_run_params(design)
-    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     _ = (design / "accepted-plan-findings.md").write_text(
-        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        "### FINDING_1: Stale from round 1\n- **Concern**: already applied\n",
         encoding="utf-8",
     )
     _ = (design / "voting-tally.md").write_text(
@@ -2996,10 +2996,10 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
-    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "2"])
 
     assert rc == 0
-    assert (design / ".step3-round-5.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
+    assert (design / ".step3-round-2.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
     result_env = dict(
         line.split("=", 1)
         for line in (design / ".step3-review-result.env").read_text(encoding="utf-8").splitlines()
@@ -3010,8 +3010,8 @@ def test_step3_loop_zero_findings_clears_stale_accepted_and_awaits_continuation(
     assert result_env["ACCEPTED_COUNT"] == "0"
     # #5194: the degraded-panel terminal env must carry numeric round provenance so
     # design_publish.review_provenance() does not read rounds=0 and refuse to publish.
-    assert result_env["ROUNDS_COMPLETED"] == "5", result_env
-    assert result_env["REVIEW_ROUND_COUNT"] == "5", result_env
+    assert result_env["ROUNDS_COMPLETED"] == "2", result_env
+    assert result_env["REVIEW_ROUND_COUNT"] == "2", result_env
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
     assert "## Voter Agreement Scoreboard" in tally
@@ -3028,9 +3028,9 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
     """
     design = tmp_path
     _write_run_params(design)
-    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     _ = (design / "accepted-plan-findings.md").write_text(
-        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        "### FINDING_1: Stale from round 1\n- **Concern**: already applied\n",
         encoding="utf-8",
     )
     _ = (design / "voting-tally.md").write_text(
@@ -3047,14 +3047,14 @@ def test_step3_loop_zero_findings_degraded_emits_round_provenance_to_stdout(
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
 
-    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "2"])
 
     assert rc == 0
     out = capsys.readouterr().out
     assert "LOOP_STATUS=zero-findings-degraded-panel" in out, out
     assert "NEXT_ACTION=step3b" in out, out
-    assert "ROUNDS_COMPLETED=5" in out, out
-    assert "REVIEW_ROUND_COUNT=5" in out, out
+    assert "ROUNDS_COMPLETED=2" in out, out
+    assert "REVIEW_ROUND_COUNT=2" in out, out
 
 
 def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
@@ -3063,9 +3063,9 @@ def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
     """The final zero-findings-degraded-panel stop path must write step-3 sentinels."""
     design = tmp_path
     _write_run_params(design)
-    _ = (design / "review-round-count.txt").write_text("4\n", encoding="utf-8")
+    _ = (design / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     _ = (design / "accepted-plan-findings.md").write_text(
-        "### FINDING_1: Stale from round 4\n- **Concern**: already applied\n",
+        "### FINDING_1: Stale from round 1\n- **Concern**: already applied\n",
         encoding="utf-8",
     )
     _ = (design / "voting-tally.md").write_text(
@@ -3090,7 +3090,7 @@ def test_step3_loop_zero_findings_degraded_stop_writes_sentinels(
     monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
     monkeypatch.setenv("RUN_STEP3_CONTINUATION_SH", str(continuation_stub))
 
-    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "5"])
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(design), "--starting-round", "2"])
 
     assert rc == 0
     assert (design / ".completed" / "step-3").is_file()

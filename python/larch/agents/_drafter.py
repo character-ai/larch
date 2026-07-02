@@ -649,7 +649,7 @@ def _write_drafter_dirty_tree_sidecar(output: Path, *, repo_root: Path, baseline
 def _filter_drafter_scout(*, design_tmpdir: Path, candidate: Path, filtered: Path) -> tuple[bool, str]:
     if not candidate.is_file() or candidate.stat().st_size == 0:
         return False, "absent"
-    status, _count = plan_scout.filter_plan_manifest(input_path=candidate, output_path=filtered, max_archetypes=3)
+    status, _count = plan_scout.filter_plan_manifest(input_path=candidate, output_path=filtered, max_archetypes=1)
     if filtered.is_file() and filtered.stat().st_size > 0 and status != "parse-failed":
         try:
             data = json.loads(filtered.read_text(encoding="utf-8"))

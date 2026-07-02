@@ -52,17 +52,19 @@ def test_panel_role_metadata_is_separate() -> None:
     assert generic.agent == "agents/code-reviewer.md"
     assert generic.focus_area == "code-quality"
     assert generic.weight == 1
+    assert all(slot.model_role == "default" for slot in review_specialists if slot.tool == "codex")
     review_policy = external_defaults.panel_dispatch_policy("review.panel")
     assert review_policy is not None
-    assert review_policy.no_fallback_when_both_present_round_lt == 2
-    assert review_policy.generic_codex_rounds == frozenset({1, 2})
+    assert review_policy.no_fallback_when_both_present_round_lt is None
+    assert review_policy.generic_codex_rounds == frozenset()
 
     plan_slots = external_defaults.slot_defaults("design.plan_review_panel")
     assert {slot.archetype for slot in plan_slots if slot.archetype != "generic"} == {"arch", "innovation", "pragmatic", "requirements"}
+    assert all(slot.model_role == "default" for slot in plan_slots if slot.tool == "codex" and slot.archetype != "generic")
     plan_policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
     assert plan_policy is not None
     assert plan_policy.no_fallback_when_both_present_round_lt is None
-    assert plan_policy.generic_codex_rounds == frozenset({1, 2})
+    assert plan_policy.generic_codex_rounds == frozenset()
 
 
 def test_voter_and_decompose_roles() -> None:

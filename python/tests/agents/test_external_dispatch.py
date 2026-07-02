@@ -241,7 +241,7 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     def fake_panel_policy(role_id: str) -> config.PanelDispatchPolicy:
         seen_policy.append(role_id)
         assert role_id == "review.panel"
-        return config.PanelDispatchPolicy(no_fallback_when_both_present_round_lt=9, generic_codex_rounds=frozenset({4}))
+        return config.PanelDispatchPolicy()
 
     monkeypatch.setattr(review_pipeline.external_defaults, "slot_defaults", fake_slot_defaults)
     monkeypatch.setattr(review_pipeline.external_defaults, "panel_dispatch_policy", fake_panel_policy)
@@ -251,9 +251,8 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     review_pipeline._append_round_generic_codex_row(manifest=manifest, review_tmpdir=tmp_path, round_num=4, codex_slots_available=True)
 
     rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
-    assert rows[0]["slot"] == "sentinel"
-    assert rows[1]["slot"] == "generalist"
-    assert seen_slots == ["review.panel", "review.panel"]
+    assert [row["slot"] for row in rows] == ["sentinel"]
+    assert seen_slots == ["review.panel"]
     assert seen_policy == ["review.panel"]
 
 
@@ -300,7 +299,7 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
     def fake_panel_policy(role_id: str) -> config.PanelDispatchPolicy:
         seen_policy.append(role_id)
         assert role_id == "design.plan_review_panel"
-        return config.PanelDispatchPolicy(generic_codex_rounds=frozenset({3}))
+        return config.PanelDispatchPolicy()
 
     monkeypatch.setattr(plan_review_panel.external_defaults, "slot_defaults", fake_slot_defaults)
     monkeypatch.setattr(plan_review_panel.external_defaults, "panel_dispatch_policy", fake_panel_policy)
@@ -316,8 +315,8 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
         feature_file=str(tmp_path / "feature.txt"),
     )
 
-    assert [row["slot"] for row in rows] == ["cursor-plan-sentinel", "codex-plan-generic"]
-    assert seen_slots == ["design.plan_review_panel", "design.plan_review_panel"]
+    assert [row["slot"] for row in rows] == ["cursor-plan-sentinel"]
+    assert seen_slots == ["design.plan_review_panel"]
     assert seen_policy == ["design.plan_review_panel"]
 
 

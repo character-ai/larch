@@ -275,7 +275,7 @@ def _build_step5_parser() -> argparse.ArgumentParser:
     parser.add_argument("--plan-file", default="")
     parser.add_argument("--feature-file", default="")
     parser.add_argument("--run-id", default="")
-    parser.add_argument("--round-cap", default="5")
+    parser.add_argument("--round-cap", default="2")
     parser.add_argument("--diff-file", default="")
     parser.add_argument("--commit-count", default="0")
     parser.add_argument("--dynamic-archetypes", default="")
@@ -472,7 +472,7 @@ def step5(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code)
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
-    default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 5
+    default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 2
     progress_done: Path | None = None
     if loop_mode and args.implement_tmpdir:
         progress_done = Path(args.implement_tmpdir).resolve() / "progress" / "done"

@@ -245,13 +245,15 @@ The strong/default Codex model for untagged Codex launches. Examples include the
 Role-specific Codex model keys for cheaper review, voting, and fix application.
 
 **Defaults:**
-- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for plan-review and code-review Codex reviewer slots.
+- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for launch sites that still pass the Codex review role (not the main specialist reviewer panel).
 - `LARCH_CODEX_VOTE_MODEL`: `gpt-5.4-mini` for Codex voting slots.
 - `LARCH_CODEX_FIX_MODEL`: `gpt-5.4-mini` for Codex plan revision, plan autofix, and review-fix application.
 
+Codex specialist reviewer panel rows use `model_role=default` (`gpt-5.5` unless overridden by `LARCH_CODEX_MODEL` / `codex_model`). `LARCH_CODEX_REVIEW_MODEL` does not affect those panel slots.
+
 These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
 
-`python/cli.py agent check-reviewers` probes Codex with the review role, so an invalid review-model override fails closed in Step 0.
+`python/cli.py agent check-reviewers` probes Codex with the default role used by specialist reviewer panels, so an invalid default-model override fails closed in Step 0.
 
 ### External reviewer probe tuning (`agent check-reviewers`)
 
@@ -285,7 +287,7 @@ the keychain read.
 
 ### `LARCH_REVIEWER_PRUNE`
 
-Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: rounds 1-2 and 5 use the unpruned manifest, while rounds 3-4 skip combos whose trailing two launched rounds have net score ≤ 0 or an acceptance rate below 1/3. Net score is accepted findings minus rejected findings. Neutral findings count toward the rate denominator only. Non-empty values other than `off` emit a warning because `off` is the only supported override. In `/design` and `/implement` Step 5, a round that prunes the whole panel to empty (zero reviewers, zero findings) converges the review loop immediately rather than forcing the round-5 re-probe.
+Controls per-run conditional reviewer spawning in `/design`, `/implement` Step 5, and `/review --diff`. Exact value `off` disables pruning and keeps the round's unpruned reviewer manifest. Any other value, including unset or empty, leaves pruning enabled: round 1 uses the unpruned manifest, while round 2 skips combos with no round-1 history, zero output, value-weighted net score ≤ 0, or an acceptance rate below 1/2. Net score is accepted findings minus rejected findings. Neutral findings count toward the rate denominator only. Non-empty values other than `off` emit a warning because `off` is the only supported override. In `/design` and `/implement` Step 5, a round that prunes the whole panel to empty (zero reviewers, zero findings) converges the review loop immediately.
 
 ### Reviewer straggler cutoff
 
@@ -365,7 +367,7 @@ Default `2` (positive integer). `/design` Step 2b.5 compares the current plan an
 
 - **Claude bucket env vars**: `LARCH_CLAUDE_INPUT_RATE_PER_M`, `LARCH_CLAUDE_CACHE_READ_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_5M_RATE_PER_M`, `LARCH_CLAUDE_CACHE_WRITE_1H_RATE_PER_M`, and `LARCH_CLAUDE_OUTPUT_RATE_PER_M`.
 - **Codex bucket env vars** (gpt-5.5 tokens): `LARCH_CODEX_INPUT_RATE_PER_M`, `LARCH_CODEX_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_OUTPUT_RATE_PER_M`. These continue to price the gpt-5.5 Codex lane only.
-- **Codex mini bucket env vars** (gpt-5.4-mini tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The Codex lane runs both models concurrently (mirrored mini reviewers plus a generic gpt-5.5 reviewer in early rounds), so each model prices at its own rate and the cost line shows `Codex-5.5` and `Codex-mini` separately.
+- **Codex mini bucket env vars** (gpt-5.4-mini tokens): `LARCH_CODEX_MINI_INPUT_RATE_PER_M`, `LARCH_CODEX_MINI_CACHED_INPUT_RATE_PER_M`, and `LARCH_CODEX_MINI_OUTPUT_RATE_PER_M`. The Codex lane can run default-role gpt-5.5 reviewers alongside gpt-5.4-mini coder or fixer rows, so each model prices at its own rate and the cost line shows `Codex-5.5` and `Codex-mini` separately.
 - **Cursor bucket env vars**: `LARCH_CURSOR_INPUT_RATE_PER_M`, `LARCH_CURSOR_CACHE_READ_RATE_PER_M`, and `LARCH_CURSOR_OUTPUT_RATE_PER_M`.
 - **Blended compatibility env vars**: `LARCH_CLAUDE_RATE_PER_M`, `LARCH_CODEX_RATE_PER_M`, and `LARCH_CURSOR_RATE_PER_M`.
 

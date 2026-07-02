@@ -745,8 +745,8 @@ def test_execute_round_pruned_empty_syncs_latest_reviewer_status(
 
     rc, values = plan_review_round.execute_round(
         design=tmp_path,
-        round_num=3,
-        prune_round_num=3,
+        round_num=2,
+        prune_round_num=2,
         codex_present="false",
         cursor_present="true",
         plan_file=plan_file,
@@ -755,7 +755,7 @@ def test_execute_round_pruned_empty_syncs_latest_reviewer_status(
 
     assert rc == 0
     assert values["PANEL_PRUNED_EMPTY"] == "true"
-    round_status = tmp_path / "plan-review" / "round-3" / "reviewer-status.tsv"
+    round_status = tmp_path / "plan-review" / "round-2" / "reviewer-status.tsv"
     assert round_status.is_file()
     assert round_status.read_text(encoding="utf-8") == "slot\tstatus\telapsed\n"
     assert stale_latest.read_text(encoding="utf-8") == "slot\tstatus\telapsed\n"
@@ -771,8 +771,8 @@ def test_execute_round_pruned_empty_does_not_record_prune_ledger(tmp_path: Path,
 
     rc, values = plan_review_round.execute_round(
         design=tmp_path,
-        round_num=3,
-        prune_round_num=3,
+        round_num=2,
+        prune_round_num=2,
         codex_present="false",
         cursor_present="true",
         plan_file=plan_file,

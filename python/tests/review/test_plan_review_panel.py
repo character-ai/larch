@@ -35,16 +35,6 @@ def _argval(argv: list[str], flag: str) -> str:
     return ""
 
 
-def _assert_generic_plan_codex_row(rows: list[dict[str, object]]) -> dict[str, object]:
-    row = next(row for row in rows if str(row.get("output", "")).endswith("codex-plan-generic-output.txt"))
-    assert row["slot"] == "codex-plan-generic"
-    assert row["tool"] == "codex"
-    assert str(row["prompt_file"]).endswith("render-plan-codex-generic.prompt")
-    assert "agent" not in row
-    assert row["model_role"] == "default"
-    return row
-
-
 def _write_waterfall_stub(tmp_path: Path) -> Path:
     stub = tmp_path / "waterfall-stub.sh"
     _ = stub.write_text(
@@ -231,14 +221,13 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "DYNAMIC_SLOT_COUNT=0" in proc.stdout
     assert "PANEL_PATHS_FILE=" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 9
+    assert len([line for line in manifest_lines if line.strip()]) == 8
     static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
     assert "verify the current plan does not already include the proposed fix" in static_prompt
 
 
-def test_panel_dispatch_generic_codex_round_gate(tmp_path: Path) -> None:
-    # generic_codex_rounds={1,2} per config: generalist present in rounds 1-2, absent in round 3.
-    for round_num, expected in ((1, True), (2, True), (3, False)):
+def test_panel_dispatch_omits_generic_codex_all_rounds(tmp_path: Path) -> None:
+    for round_num in (1, 2, 3):
         design = tmp_path / f"design-round-{round_num}"
         design.mkdir()
         _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
@@ -274,14 +263,10 @@ def test_panel_dispatch_generic_codex_round_gate(tmp_path: Path) -> None:
         assert proc.returncode == 0, proc.stderr + proc.stdout
         rows = _manifest_rows(design / "plan-review-slots.ndjson")
         present = any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
-        assert present is expected
-        if expected:
-            _ = _assert_generic_plan_codex_row(rows)
+        assert present is False
 
 
-def test_panel_dispatch_generic_codex_unconditional_when_codex_absent(tmp_path: Path) -> None:
-    # Upstream: generic codex is added unconditionally for rounds in generic_codex_rounds={1,2},
-    # even when codex is absent; only specialist codex slots are gated on codex availability.
+def test_panel_dispatch_omits_generic_codex_when_codex_absent(tmp_path: Path) -> None:
     def _run(round_num: int) -> list[dict[str, object]]:
         design = tmp_path / f"design-codex-absent-round-{round_num}"
         design.mkdir()
@@ -320,9 +305,8 @@ def test_panel_dispatch_generic_codex_unconditional_when_codex_absent(tmp_path: 
 
     for round_num in (1, 2):
         rows = _run(round_num)
-        # Generic is present (unconditionally for rounds in {1,2}); specialist codex absent.
-        assert any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
-        assert not any(str(row.get("slot", "")).startswith("codex-plan-") and row.get("slot") != "codex-plan-generic" for row in rows)
+        assert not any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows)
+        assert not any(row.get("tool") == "codex" for row in rows)
 
     rows3 = _run(3)
     assert not any(str(row.get("output", "")).endswith("codex-plan-generic-output.txt") for row in rows3)
@@ -361,8 +345,10 @@ def test_panel_dispatch_threads_design_step3_site(tmp_path: Path) -> None:
         },
     )
     assert proc.returncode == 0, proc.stderr + proc.stdout
-    assert "--site design Step 3" in log.read_text(encoding="utf-8")
-    assert "--model-role review" in log.read_text(encoding="utf-8")
+    log_text = log.read_text(encoding="utf-8")
+    assert "--site design Step 3" in log_text
+    assert "--model-role review" in log_text
+    assert "--no-fallback" in log_text
 
 
 def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -705,10 +691,12 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert proc.returncode == 0, proc.stderr + proc.stdout
     assert "DYNAMIC_SLOT_COUNT=4" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
-    assert len([line for line in manifest_lines if line.strip()]) == 13
+    assert len([line for line in manifest_lines if line.strip()]) == 12
     manifest_text = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8")
     assert "dyn-cursor-plan-alpha" in manifest_text
     assert "dyn-codex-plan-beta" in manifest_text
+    rows = _manifest_rows(design / "plan-review-slots.ndjson")
+    assert all(row.get("model_role") == "default" for row in rows if row.get("tool") == "codex")
 
 
 def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> None:
@@ -860,28 +848,31 @@ def test_panel_dispatch_dynamic_render_failures_warn_and_keep_fallback_rows(
     )
 
 
-def test_filter_pruned_round_two_never_prunes(tmp_path: Path) -> None:
-    design = tmp_path / "design-r2-no-prune"
+def test_filter_pruned_round_two_prunes_unproductive_rows(tmp_path: Path) -> None:
+    design = tmp_path / "design-r2-prune"
     design.mkdir()
     manifest = design / "plan-review-slots.ndjson"
     rows = [
         {"tool": "cursor", "slot": "cursor-plan-arch"},
-        {"tool": "codex", "slot": "codex-plan-generic"},
+        {"tool": "codex", "slot": "codex-plan-arch"},
     ]
     _ = manifest.write_text(
         "\n".join(json.dumps(row, separators=(",", ":")) for row in rows) + "\n",
         encoding="utf-8",
     )
+    ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
+    ledger_lines.extend(f"1\t{row['tool']}\t{row['slot']}\t{row['slot']}\t0\t0\t0" for row in rows)
+    _ = (design / "reviewer-prune-ledger.tsv").write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
     out, kv = plan_review_panel._filter_pruned(  # pyright: ignore[reportPrivateUsage]
         design=design, manifest=manifest, prune_round_num=2
     )
     assert out == manifest
-    assert kv["PANEL_PRUNED_EMPTY"] == "false"
-    assert kv["PRUNED_COUNT"] == "0"
-    assert not (design / "plan-review-slots.pre-prune.ndjson").exists()
+    assert kv["PANEL_PRUNED_EMPTY"] == "true"
+    assert kv["PRUNED_COUNT"] == "2"
+    assert (design / "plan-review-slots.pre-prune.ndjson").exists()
 
 
-def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
+def test_panel_dispatch_prunes_round_two_empty_panel(tmp_path: Path) -> None:
     design = tmp_path / "design-pruned"
     design.mkdir()
     _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
@@ -895,11 +886,9 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         ("codex", "codex-plan-innovation"),
         ("codex", "codex-plan-pragmatic"),
         ("codex", "codex-plan-requirements"),
-        ("codex", "codex-plan-generic"),
     ]
     ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
-    for round_num in (1, 2):
-        ledger_lines.extend(f"{round_num}\t{tool}\t{slot}\t{slot}\t0\t0\t0" for tool, slot in rows)
+    ledger_lines.extend(f"1\t{tool}\t{slot}\t{slot}\t0\t0\t0" for tool, slot in rows)
     _ = (design / "reviewer-prune-ledger.tsv").write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
     proc = run_cli(
         "plan-review",
@@ -907,7 +896,7 @@ def test_panel_dispatch_prunes_round_three_empty_panel(tmp_path: Path) -> None:
         "--design-tmpdir",
         str(design),
         "--round-num",
-        "3",
+        "2",
         "--codex-present",
         "true",
         "--cursor-present",
@@ -1499,3 +1488,4 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # The real consumer parser must accept the producer's manifest without raising.
     slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
     assert len(slots) == len(rows)
+# pyright: reportUnusedFunction=false

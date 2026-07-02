@@ -260,7 +260,13 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             continue
         _append_manifest_row(
             manifest=manifest,
-            row={"slot": slot.slot, "tool": slot.tool, "output": str(review_tmpdir / slot.output), "agent": str(_PLUGIN_ROOT / slot.agent)}
+            row={
+                "slot": slot.slot,
+                "tool": slot.tool,
+                "output": str(review_tmpdir / slot.output),
+                "agent": str(_PLUGIN_ROOT / slot.agent),
+                **({"model_role": slot.model_role} if slot.model_role else {}),
+            }
         )
 
 
@@ -336,6 +342,7 @@ def _synthesize_dynamic_slots(*,
                     "prompt_file": str(rendered_prompt),
                     "weight": weight,
                     "focus_area": focus_area,
+                    "model_role": "default",
                 }
             )
             count += 1
@@ -427,7 +434,7 @@ def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tup
 
 def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="review-dispatch-panel")
-    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
+    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--diff-file",
@@ -477,8 +484,8 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     if panel not in {"simple", "hard"}:
         _diag("review dispatch-panel: --panel must be simple or hard")
         return 2
-    if dynamic_raw not in {"0", "1", "2", "3"}:
-        _diag("review dispatch-panel: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 3")
+    if dynamic_raw not in {"0", "1"}:
+        _diag("review dispatch-panel: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 1")
         return 2
     if not round_raw.isdigit() or int(round_raw) <= 0:
         _diag("review dispatch-panel: --round-num must be a positive integer")
@@ -726,6 +733,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         site,
         "--model-role",
         "review",
+        "--no-fallback",
     ]
     if mode == "diff" and diff_file:
         waterfall_args.extend(["--diff-file", diff_file, "--commit-count", _get(parsed=parsed, key="--commit-count", default="0")])
@@ -740,10 +748,6 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         waterfall_args.extend(["--competition-notice", "--competition-notice-file", competition])
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
-    policy = external_defaults.panel_dispatch_policy("review.panel")
-    no_fallback_round_lt = policy.no_fallback_when_both_present_round_lt if policy else None
-    if cursor_available == "true" and codex_available == "true" and no_fallback_round_lt is not None and round_num < no_fallback_round_lt:
-        waterfall_args.append("--no-fallback")
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
     result = _run_command_string(command=dispatch_override, args=waterfall_args) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args])
     kv = _kv_parse(result.stdout)

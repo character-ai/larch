@@ -4,7 +4,7 @@ Cross-validation harness with three check families: (1) positive anchors — the
 
 ## Purpose
 
-Without this harness, drift between the canonical Step 5 code-review contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a multi-round external-review loop with no voting panel — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
+Without this harness, drift between the canonical Step 5 code-review contract and its public mirrors (see Target files below) is silent. The bug that triggered #370 — "simplified code review (1 Claude Code Reviewer subagent, 1 round)" persisting in the public docs long after SKILL.md evolved to a capped two-round external-review loop — is exactly the class this harness prevents: a SKILL.md edit that does not propagate to the public mirrors, or a public-doc edit that re-introduces a contradiction with SKILL.md.
 
 ## Invariants enforced
 
@@ -24,16 +24,19 @@ Each target file MUST contain all markers in `POS_MARKERS` inside `test-quick-mo
 
 | Marker | Casing | Rationale |
 |--------|--------|-----------|
-| `3-judge panel on every round` | **case-insensitive** `grep -iF` | Pins the Codex-inclusive judge panel on every code-review round. |
+| `hard ceiling` | **case-insensitive** `grep -iF` | Pins that Step 5 has a fixed review-round ceiling without assuming Markdown or HTML emphasis markup. |
+| `round-1 productivity` | **case-insensitive** `grep -iF` | Pins the backup-round pruning source. |
 | `specialists per vendor` | case-sensitive `grep -F` | Pins the static panel emitted once per available vendor without hardcoding the current archetype count. |
 
-Together these markers pin the public Step 5 topology phrases that the harness currently enforces. They do not mechanically pin every related Step 5 phrase, such as the round cap or internal script argv posture; add those strings to `POS_MARKERS` first if they need the same cross-doc enforcement.
+Together these markers pin the public Step 5 round cap and topology phrases that the harness currently enforces. They do not mechanically pin every related Step 5 phrase, such as internal script argv posture; add those strings to `POS_MARKERS` first if they need the same cross-doc enforcement.
 
 ### Negative checks (forbidden in public docs only)
 
 Public docs (`README.md`, `docs/review-agents.md`, `docs/workflow-lifecycle.md`, `docs/skills.md`) MUST NOT contain any of these legacy stale phrases:
 
 - `1 Claude Code Reviewer subagent, 1 round` — full stale README phrase.
+- `up to 5 rounds` — retired Step 5 cap.
+- `3-judge panel on every round` — retired public Step 5 topology marker.
 - `no external reviewers` — legacy claim contradicting the actual external reviewer panel.
 - `no externals, no voting` — legacy short-form variant.
 - `simple review panel` — legacy `/implement` quick-mode wording (superseded by `--panel hard` on the delegated review loop).

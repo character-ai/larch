@@ -319,7 +319,7 @@ def _write_base_session_env(st: BootstrapState) -> None:
         args.extend(["--claude-source-file", claude_source])
     if prior_auto_mode:
         args.extend(["--auto-mode", prior_auto_mode])
-    if prior_dynamic_archetypes:
+    if prior_dynamic_archetypes in {"0", "1"}:
         args.extend(["--dynamic-archetypes", prior_dynamic_archetypes])
     if _valid_run_id(st.run_id):
         args.extend(["--run-id", st.run_id])

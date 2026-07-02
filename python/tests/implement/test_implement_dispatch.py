@@ -5,6 +5,7 @@ import errno
 import fcntl
 import inspect
 import json
+import os
 import shlex
 import signal
 import subprocess
@@ -4359,6 +4360,78 @@ def test_normalize_coder_scout_uses_review_mode_so_arch_survives(tmp_path: Path)
     assert status == "ok"
     manifest = json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8"))
     assert [item["name"] for item in manifest["archetypes"]] == ["arch"]
+
+
+def test_normalize_coder_scout_caps_to_one_archetype(tmp_path: Path) -> None:
+    raw = tmp_path / "raw.json"
+    raw.write_text(
+        json.dumps({"archetypes": [_dynamic_archetype("arch"), _dynamic_archetype("api-contract")]}) + "\n",
+        encoding="utf-8",
+    )
+    status = implement_dispatch.normalize_coder_scout(tmpdir=tmp_path, input_path=raw, producer="external")
+    assert status == "ok"
+    manifest = json.loads((tmp_path / "scout-coder-manifest.json").read_text(encoding="utf-8"))
+    assert [item["name"] for item in manifest["archetypes"]] == ["arch"]
+
+
+def test_step5_review_main_defaults_dynamic_cap_to_one(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
+    calls: list[list[str]] = []
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
+
+    def fake_forward(argv: Sequence[str]) -> int:
+        calls.append(list(argv))
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_forward)
+    rc = implement_dispatch.step5_review_main([])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] == "1"
+    assert "up to 2 rounds" in out
+    assert "dynamic-archetypes cap=1" in out
+    assert calls == [["review-and-fix", "step5", "--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"]]
+
+
+@pytest.mark.parametrize("value", ["0", "1"])
+def test_step5_review_main_accepts_dynamic_boundary_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    value: str,
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda _argv: 0)
+    assert implement_dispatch.step5_review_main([]) == 0
+    assert os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] == value
+
+
+@pytest.mark.parametrize("value", ["2", "3", "9"])
+def test_step5_review_main_rejects_over_cap_dynamic_values(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    value: str,
+) -> None:
+    impl = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(impl))
+    monkeypatch.setenv("LARCH_DYNAMIC_ARCHETYPES_MAX", value)
+    monkeypatch.setattr(dispatch_commit_route, "_invoke_cli", lambda argv, **_kwargs: subprocess.CompletedProcess(list(argv), 0, "", ""))
+    forward_calls: list[Sequence[str]] = []
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", lambda argv: forward_calls.append(argv) or 0)
+    rc = implement_dispatch.step5_review_main([])
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "dynamic_archetypes_cap is non-integer or out of range" in captured.err
+    assert not forward_calls
 
 
 def test_step2_dispatch_complete_allows_plugin_json_edit(repo: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:

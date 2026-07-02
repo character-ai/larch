@@ -172,8 +172,8 @@ fi
 echo "=== design-step3-review.sh wrapper forwards starting round ==="
 D_WRAPPER_START="$TMP/wrapper-starting-round"
 mkdir -p "$D_WRAPPER_START"
-_wrapper_start_out=$(invoke_step3_review_wrapper "$D_WRAPPER_START" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\n' '' 0 3)
-if [[ "$(cat "$D_WRAPPER_START/review-round-count.txt" 2>/dev/null || true)" == "3" ]] \
+_wrapper_start_out=$(invoke_step3_review_wrapper "$D_WRAPPER_START" $'LOOP_STATUS=complete\nTALLY_PLAN_REVIEW_STATUS=ok\n' '' 0 2)
+if [[ "$(cat "$D_WRAPPER_START/review-round-count.txt" 2>/dev/null || true)" == "2" ]] \
   && printf '%s\n' "$_wrapper_start_out" | grep -Fq 'LOOP_STATUS=complete'; then
     pass 'wrapper forwards --starting-round'
 else

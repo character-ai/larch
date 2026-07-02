@@ -5545,6 +5545,12 @@
   },
   {
     "file": "larch/review/review_core_body.py",
+    "code": "C901",
+    "qualified_symbol": "_static_coverage_reason",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_core_body.py",
     "code": "PLR0911",
     "qualified_symbol": "_review_core_body",
     "metric": 13
@@ -5595,7 +5601,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 53
+    "metric": 52
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5619,7 +5625,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 61
+    "metric": 60
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -6447,13 +6453,13 @@
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "write_design_env_main",
-    "metric": 28
+    "metric": 25
   },
   {
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "write_env_main",
-    "metric": 32
+    "metric": 31
   },
   {
     "file": "larch/state/session_env.py",
@@ -6519,13 +6525,13 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
     "qualified_symbol": "write_design_env_main",
-    "metric": 27
+    "metric": 24
   },
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0912",
     "qualified_symbol": "write_env_main",
-    "metric": 31
+    "metric": 30
   },
   {
     "file": "larch/state/session_env.py",
@@ -6543,13 +6549,13 @@
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
     "qualified_symbol": "write_design_env_main",
-    "metric": 75
+    "metric": 70
   },
   {
     "file": "larch/state/session_env.py",
     "code": "PLR0915",
     "qualified_symbol": "write_env_main",
-    "metric": 87
+    "metric": 86
   },
   {
     "file": "larch/state/stall_recovery.py",

@@ -159,6 +159,24 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
     return straggler_slugs - genuine_failure_slugs
 
 
+def _tool_absent_excused_static_slugs(*, dropped_file: Path, collector_success: set[str]) -> set[str]:
+    """Excuse a slug only when tool-absent is the sole drop reason and a surviving vendor has collector OK/cap_hit."""
+    if not dropped_file.is_file():
+        return set()
+    tool_absent_slugs: set[str] = set()
+    other_failure_slugs: set[str] = set()
+    for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = [*line.split("\t"), "", "", ""]
+        slot, tool, reason = parts[0], parts[1], parts[2]
+        if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
+            continue
+        if reason == "tool-absent":
+            tool_absent_slugs.add(slot)
+        elif reason != "straggler-dropped":
+            other_failure_slugs.add(slot)
+    return {slug for slug in tool_absent_slugs if slug in collector_success and slug not in other_failure_slugs}
+
+
 def _static_coverage_reason(*,
     collector: Path,
     manifest: Path,
@@ -168,6 +186,7 @@ def _static_coverage_reason(*,
     from larch.review.review_pipeline_shared import STATIC_REVIEWERS  # noqa: PLC0415
     from larch.review.review_threshold import _normalize_output_base as _norm_base  # noqa: PLC0415
     success: set[str] = set()
+    collector_success: set[str] = set()
     rejected: set[str] = set()
     for record in _collector_records(collector):
         base = Path(record.get("REVIEWER_FILE", "")).name
@@ -175,6 +194,7 @@ def _static_coverage_reason(*,
         if not slug:
             continue
         if record.get("STATUS") in {"OK", "cap_hit"}:
+            collector_success.add(slug)
             success.add(slug)
         else:
             rejected.add(_norm_base(base))
@@ -194,7 +214,10 @@ def _static_coverage_reason(*,
                 expected.add(slug)
     else:
         expected.update(STATIC_REVIEWERS)
-    excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
+    dropped_path = Path(dropped_slots_file) if dropped_slots_file else None
+    excused = _straggler_excused_static_slugs(dropped_path) if dropped_path else set()
+    if dropped_path:
+        excused |= _tool_absent_excused_static_slugs(dropped_file=dropped_path, collector_success=collector_success)
     missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
@@ -1039,7 +1062,7 @@ def _review_core_body(
     _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
     status = "ok"
     if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
-        status = "cap-reached" if round_num >= 5 else "fix-required"
+        status = "cap-reached" if round_num >= 2 else "fix-required"
     rows.extend(_core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
     if classification:
         rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
@@ -1048,7 +1071,7 @@ def _review_core_body(
 
 def review_core(argv: list[str], *, runner: object = None) -> int:
     logging_util.quiet_init(argv0="review-core")
-    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-3] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
+    usage = "Usage: review core --mode diff|description --output-dir DIR --codex-available true|false --cursor-available true|false [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--output-dir",
@@ -1081,7 +1104,7 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
     panel = _get(parsed=parsed, key="--panel", default="hard")
     dynamic = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed=parsed, key="--round-num", default="1")
-    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1", "2", "3"} or not round_raw.isdigit() or int(round_raw) <= 0:
+    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1"} or not round_raw.isdigit() or int(round_raw) <= 0:
         logging_util.diagnostic(usage)
         return 2
     round_num = int(round_raw)

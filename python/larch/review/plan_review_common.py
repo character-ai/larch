@@ -13,7 +13,7 @@ from larch import io as larch_io
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
-ROUND_CAP = 5
+ROUND_CAP = 2
 STRUCTURAL_DIFF_LINE_THRESHOLD = 500
 STRUCTURAL_PLAN_LINE_THRESHOLD = 120
 NON_NIT_CONTINUE_THRESHOLD = 5

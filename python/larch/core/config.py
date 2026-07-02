@@ -263,34 +263,48 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         kind="slot_panel",
         slots=(
             *(
-                SlotDefault(slot=archetype, tool=tool, agent=f"agents/reviewer-{archetype}.md", output=f"{tool}-specialist-{archetype}-output.txt", archetype=archetype)
+                SlotDefault(
+                    slot=archetype,
+                    tool=tool,
+                    agent=f"agents/reviewer-{archetype}.md",
+                    output=f"{tool}-specialist-{archetype}-output.txt",
+                    model_role="default" if tool == "codex" else "",
+                    archetype=archetype,
+                )
                 for archetype in _CODE_REVIEW_ARCHETYPES
                 for tool in ("cursor", "codex")
             ),
             SlotDefault(slot="generalist", tool="codex", agent="agents/code-reviewer.md", output="codex-generalist-output.txt", focus_area="code-quality", weight=1, model_role="default", archetype="generic"),
         ),
-        dispatch_policy=PanelDispatchPolicy(no_fallback_when_both_present_round_lt=2, generic_codex_rounds=frozenset({1, 2})),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
         doc_phase="Code review panel",
         doc_role="Review code changes",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="Cursor static rows always emit; Codex static rows emit only when Codex is available; generic Codex emits in rounds 1 and 2; panel --no-fallback is round-1-only when both vendors are present.",
+        doc_fallback="Cursor static rows emit when Cursor is available; Codex static rows emit when Codex is available and use the default model role; no generic Codex reviewer is emitted; reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
     ),
     "design.plan_review_panel": RoleDefault(
         role_id="design.plan_review_panel",
         kind="slot_panel",
         slots=(
             *(
-                SlotDefault(slot=f"{tool}-plan-{archetype}", tool=tool, output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"), focus_area=archetype, archetype=archetype)
+                SlotDefault(
+                    slot=f"{tool}-plan-{archetype}",
+                    tool=tool,
+                    output=(f"codex-primary-plan-{archetype}-output.txt" if tool == "codex" else f"cursor-plan-{archetype}-output.txt"),
+                    focus_area=archetype,
+                    model_role="default" if tool == "codex" else "",
+                    archetype=archetype,
+                )
                 for archetype in _PLAN_REVIEW_ARCHETYPES
                 for tool in ("cursor", "codex")
             ),
             SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic-output.txt", focus_area="code-quality", model_role="default", archetype="generic"),
         ),
-        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset({1, 2})),
+        dispatch_policy=PanelDispatchPolicy(generic_codex_rounds=frozenset()),
         doc_phase="Plan review panel",
         doc_role="Review implementation plans",
         doc_skills="/design",
-        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor rows always emit; Codex rows emit only when Codex is available; generic Codex emits in rounds 1 and 2; no panel-level --no-fallback.",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role; no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
     ),
     "design.decompose_panel": RoleDefault(
         role_id="design.decompose_panel",

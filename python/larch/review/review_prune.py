@@ -247,7 +247,7 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
         prune_active = "false"
     elif env_override:
         warn = "reviewer-prune: ignoring LARCH_REVIEWER_PRUNE value; set it exactly to off to disable"
-    if prune_active == "false" or round_num <= 2 or round_num >= 5:
+    if prune_active == "false" or round_num != 2:
         out.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(manifest, out)
         return PruneFilterResult(prune_active, len(rows), 0, "", "false", warn=warn)
@@ -262,21 +262,23 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
     pruned: list[str] = []
     for row in rows:
         key = _manifest_combo(row)
-        recent = sorted(hist.get(key, {}).items())[-2:]
-        if len(recent) >= 2:
-            accepted_sum = sum(count.accepted for _, count in recent)
-            weighted_accepted_sum = sum(count.weighted_accepted for _, count in recent)
-            rejected_sum = sum(count.rejected for _, count in recent)
-            total_sum = sum(count.total for _, count in recent)
-            net_prunable = weighted_accepted_sum - rejected_sum <= 0
-            floor_prunable = (
-                total_sum > 0
-                and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
-                < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
-            )
-            if net_prunable or floor_prunable:
-                pruned.append(key)
-                continue
+        counts = hist.get(key, {}).get(1)
+        if counts is None:
+            pruned.append(key)
+            continue
+        accepted_sum = counts.accepted
+        weighted_accepted_sum = counts.weighted_accepted
+        rejected_sum = counts.rejected
+        total_sum = counts.total
+        net_prunable = total_sum <= 0 or weighted_accepted_sum - rejected_sum <= 0
+        floor_prunable = (
+            total_sum > 0
+            and accepted_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_DENOMINATOR
+            < total_sum * REVIEWER_PRUNE_ACCEPTANCE_FLOOR_NUMERATOR
+        )
+        if net_prunable or floor_prunable:
+            pruned.append(key)
+            continue
         eligible.append(row)
     out.parent.mkdir(parents=True, exist_ok=True)
     with out.open("w", encoding="utf-8") as handle:
@@ -285,7 +287,7 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     if pruned:
         logging_util.diagnostic(f"→ review prune: round {round_num} drops {','.join(pruned)}")
-    return PruneFilterResult("true", len(eligible), len(pruned), ",".join(pruned), "true" if not eligible and rows else "false", warn=warn)
+    return PruneFilterResult("true", len(eligible), len(pruned), ",".join(pruned), "true" if not eligible else "false", warn=warn)
 
 
 def _prune_nonneg_int(value: object) -> int:
@@ -325,7 +327,7 @@ def normalize_prune_eligible(*, prune_active: str, eligible_count: int | str) ->
 
 
 def prune_window_evaluated(round_num: int | str) -> str:
-    return "true" if str(round_num) in {"3", "4"} else "false"
+    return "true" if str(round_num) == "2" else "false"
 
 
 def ensure_reviewer_prune_ledger(ledger: Path) -> None:

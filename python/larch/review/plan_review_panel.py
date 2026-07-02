@@ -114,11 +114,12 @@ def _static_slot_rows(
             check=False,
         )
         prompt = proc.stdout if proc.returncode == 0 else ""
-        rows.append(
-            _slot_row(
-                tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt,
-            )
+        row = _slot_row(
+            tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt,
         )
+        if slot.model_role:
+            row["model_role"] = slot.model_role
+        rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
         round_dir=round_dir,
@@ -298,7 +299,10 @@ def _dynamic_slot_rows(
             failures.append((slot, tool, proc.returncode))
             with contextlib.suppress(OSError):
                 _append_dynamic_render_warning(design=design, slot=slot, tool=tool, return_code=proc.returncode, diagnostics=proc.stderr or proc.stdout or "")
-        rows.append(_slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered))
+        row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered)
+        if tool == "codex":
+            row["model_role"] = "default"
+        rows.append(row)
     return rows, failures
 
 
@@ -494,6 +498,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "design Step 3",
             "--model-role",
             "review",
+            "--no-fallback",
         ],
         cwd=str(_REPO_ROOT),
         text=True,

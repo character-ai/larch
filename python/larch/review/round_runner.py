@@ -263,9 +263,9 @@ def _dynamic_archetypes(*, args: argparse.Namespace, implement_tmpdir: Path) -> 
     if not value and args.session_env_path:
         value = _session_get(session_env_path=Path(args.session_env_path), key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="")
     if not value:
-        value = "3" if implement_tmpdir.is_dir() else "0"
-    if value not in {"0", "1", "2", "3"}:
-        raise ValueError("--dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 3")
+        value = "1" if implement_tmpdir.is_dir() else "0"
+    if value not in {"0", "1"}:
+        raise ValueError("--dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 1")
     return value
 
 
@@ -622,7 +622,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         degraded_this_round,
         skipped_finding_count,
     )
-    _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 5) or 5))
+    _write_summary(path=summary_file, result=result, round_cap=int(getattr(args, "round_cap", 2) or 2))
     flush_scout_manifest(implement_tmpdir=implement_tmpdir, run_id=getattr(args, "run_id", "") or "", round_num=round_num, round_dir=round_dir, core=core)
     with contextlib.suppress(Exception):
         progress_report.write_implement_round_meta(round_dir)
