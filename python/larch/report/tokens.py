@@ -15,12 +15,13 @@ import time
 from dataclasses import dataclass
 from datetime import datetime, UTC
 from pathlib import Path
-from typing import Any, cast
+from typing import Any, Literal, cast
 from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config
 from larch.report import run_log_corpus
+from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
 from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
 
 _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
@@ -1695,6 +1696,306 @@ def measure_realized_cost() -> Path:
     return out_path
 
 
+CacheEfficiencyLane = Literal["claude", "claude_sub"]
+
+
+@dataclass(frozen=True)
+class CacheEfficiencyTotals:
+    cache_create: int
+    cache_create_5m: int
+    cache_create_1h: int
+    cache_read: int
+    effective_cache_create: int
+
+
+@dataclass(frozen=True)
+class CacheEfficiencyRunRow:
+    skill: Skill
+    issue: int
+    started_at: str
+    lane: CacheEfficiencyLane
+    title: str
+    totals: CacheEfficiencyTotals
+
+
+@dataclass(frozen=True)
+class CacheEfficiencyStepRow:
+    skill: Skill
+    step: str
+    lane: CacheEfficiencyLane
+    runs: int
+    totals: CacheEfficiencyTotals
+
+
+def _cache_create_effective(*, cache_create: int, cache_create_5m: int, cache_create_1h: int) -> int:
+    split_sum = cache_create_5m + cache_create_1h
+    return split_sum if split_sum > 0 else cache_create
+
+
+def _cache_totals_from_vendor(totals: VendorTotals) -> CacheEfficiencyTotals:
+    effective = _cache_create_effective(
+        cache_create=totals.cache_create,
+        cache_create_5m=totals.cache_create_5m,
+        cache_create_1h=totals.cache_create_1h,
+    )
+    return CacheEfficiencyTotals(
+        cache_create=totals.cache_create,
+        cache_create_5m=totals.cache_create_5m,
+        cache_create_1h=totals.cache_create_1h,
+        cache_read=totals.cache_read,
+        effective_cache_create=effective,
+    )
+
+
+def _cache_lane_totals_from_mapping(totals: Mapping[str, object]) -> CacheEfficiencyTotals:
+    cache_create = safe_int(value=totals.get("cache_create"))
+    cache_create_5m = safe_int(value=totals.get("cache_create_5m"))
+    cache_create_1h = safe_int(value=totals.get("cache_create_1h"))
+    effective = _cache_create_effective(
+        cache_create=cache_create,
+        cache_create_5m=cache_create_5m,
+        cache_create_1h=cache_create_1h,
+    )
+    return CacheEfficiencyTotals(
+        cache_create=cache_create,
+        cache_create_5m=cache_create_5m,
+        cache_create_1h=cache_create_1h,
+        cache_read=safe_int(value=totals.get("cache_read")),
+        effective_cache_create=effective,
+    )
+
+
+def _cache_ratio_value(*, effective_cache_create: int, cache_read: int) -> float:
+    if effective_cache_create > 0 and cache_read == 0:
+        return float("inf")
+    if cache_read > 0:
+        return effective_cache_create / cache_read
+    return 0.0
+
+
+def _cache_ratio_sort_key(
+    *,
+    effective_cache_create: int,
+    cache_read: int,
+    labels: tuple[str, ...],
+) -> tuple[int, float, int, int, tuple[str, ...]]:
+    zero_read_outlier = effective_cache_create > 0 and cache_read == 0
+    ratio = _cache_ratio_value(effective_cache_create=effective_cache_create, cache_read=cache_read)
+    return (
+        0 if zero_read_outlier else 1,
+        -ratio,
+        -effective_cache_create,
+        -cache_read,
+        labels,
+    )
+
+
+def _cache_ratio_text(*, effective_cache_create: int, cache_read: int) -> str:
+    ratio = _cache_ratio_value(effective_cache_create=effective_cache_create, cache_read=cache_read)
+    if ratio == float("inf"):
+        return "inf"
+    return f"{ratio:.6f}"
+
+
+def _cache_efficiency_step_rows_for_record(
+    *,
+    skill: Skill,
+    record: RunRecord,
+    lane: CacheEfficiencyLane,
+) -> tuple[CacheEfficiencyStepRow, ...]:
+    lane_obj = _as_map(record.raw_report.get(lane))
+    per_step = lane_obj.get("per_step")
+    if not isinstance(per_step, list):
+        return ()
+    rows: list[CacheEfficiencyStepRow] = []
+    for item in cast("list[object]", per_step):
+        item_map = _as_map(item)
+        totals_obj = item_map.get("totals")
+        if not isinstance(totals_obj, dict):
+            continue
+        totals = _cache_lane_totals_from_mapping(cast("Mapping[str, object]", totals_obj))
+        rows.append(
+            CacheEfficiencyStepRow(
+                skill=skill,
+                step=str(item_map.get("step") or "unknown"),
+                lane=lane,
+                runs=1,
+                totals=totals,
+            )
+        )
+    return tuple(rows)
+
+
+def _measure_cache_efficiency_records(
+    *,
+    tagged_records: Sequence[tuple[Skill, RunRecord]],
+) -> tuple[tuple[CacheEfficiencyRunRow, ...], tuple[CacheEfficiencyStepRow, ...]]:
+    per_run: list[CacheEfficiencyRunRow] = []
+    step_groups: dict[tuple[Skill, str, CacheEfficiencyLane], dict[str, int]] = {}
+    for skill, record in tagged_records:
+        for lane in ("claude", "claude_sub"):
+            lane_totals = _cache_totals_from_vendor(getattr(record, lane))
+            per_run.append(
+                CacheEfficiencyRunRow(
+                    skill=skill,
+                    issue=record.number,
+                    started_at=record.started_at,
+                    lane=lane,
+                    title=record.title,
+                    totals=lane_totals,
+                )
+            )
+            for step_row in _cache_efficiency_step_rows_for_record(skill=skill, record=record, lane=lane):
+                key = (step_row.skill, step_row.step, step_row.lane)
+                group = step_groups.setdefault(
+                    key,
+                    {
+                        "runs": 0,
+                        "cache_create": 0,
+                        "cache_create_5m": 0,
+                        "cache_create_1h": 0,
+                        "cache_read": 0,
+                        "effective_cache_create": 0,
+                    },
+                )
+                group["runs"] += 1
+                group["cache_create"] += step_row.totals.cache_create
+                group["cache_create_5m"] += step_row.totals.cache_create_5m
+                group["cache_create_1h"] += step_row.totals.cache_create_1h
+                group["cache_read"] += step_row.totals.cache_read
+                group["effective_cache_create"] += step_row.totals.effective_cache_create
+    per_step: list[CacheEfficiencyStepRow] = []
+    for (skill, step, lane), group in step_groups.items():
+        per_step.append(
+            CacheEfficiencyStepRow(
+                skill=skill,
+                step=step,
+                lane=lane,
+                runs=group["runs"],
+                totals=CacheEfficiencyTotals(
+                    cache_create=group["cache_create"],
+                    cache_create_5m=group["cache_create_5m"],
+                    cache_create_1h=group["cache_create_1h"],
+                    cache_read=group["cache_read"],
+                    effective_cache_create=group["effective_cache_create"],
+                ),
+            )
+        )
+    return tuple(per_run), tuple(per_step)
+
+
+def _cache_tsv_cell(value: object) -> str:
+    return str(value).replace("\t", " ").replace("\r", " ").replace("\n", " ")
+
+
+def _ranked_cache_run_rows(rows: Sequence[CacheEfficiencyRunRow]) -> list[CacheEfficiencyRunRow]:
+    included = [row for row in rows if not (row.totals.effective_cache_create == 0 and row.totals.cache_read == 0)]
+    return sorted(
+        included,
+        key=lambda row: _cache_ratio_sort_key(
+            effective_cache_create=row.totals.effective_cache_create,
+            cache_read=row.totals.cache_read,
+            labels=(row.skill, str(row.issue), row.started_at, row.lane, row.title),
+        ),
+    )
+
+
+def _ranked_cache_step_rows(rows: Sequence[CacheEfficiencyStepRow]) -> list[CacheEfficiencyStepRow]:
+    included = [row for row in rows if not (row.totals.effective_cache_create == 0 and row.totals.cache_read == 0)]
+    return sorted(
+        included,
+        key=lambda row: _cache_ratio_sort_key(
+            effective_cache_create=row.totals.effective_cache_create,
+            cache_read=row.totals.cache_read,
+            labels=(row.skill, row.step, row.lane),
+        ),
+    )
+
+
+def _render_cache_efficiency_tsv(
+    *,
+    per_run: Sequence[CacheEfficiencyRunRow],
+    per_step: Sequence[CacheEfficiencyStepRow],
+) -> str:
+    lines = [
+        "# per_run\n",
+        "rank\tskill\tissue\tstarted_at\tlane\tcache_create\tcache_create_5m\tcache_create_1h\tcache_read\tratio\ttitle\n",
+    ]
+    for rank, row in enumerate(_ranked_cache_run_rows(per_run), start=1):
+        totals = row.totals
+        lines.append(
+            "\t".join(
+                (
+                    str(rank),
+                    row.skill,
+                    str(row.issue),
+                    _cache_tsv_cell(row.started_at),
+                    row.lane,
+                    str(totals.cache_create),
+                    str(totals.cache_create_5m),
+                    str(totals.cache_create_1h),
+                    str(totals.cache_read),
+                    _cache_ratio_text(effective_cache_create=totals.effective_cache_create, cache_read=totals.cache_read),
+                    _cache_tsv_cell(row.title),
+                )
+            )
+            + "\n"
+        )
+    lines.extend(
+        [
+            "\n",
+            "# per_step\n",
+            "rank\tskill\tstep\tlane\truns\tcache_create\tcache_create_5m\tcache_create_1h\tcache_read\tratio\n",
+        ]
+    )
+    for rank, row in enumerate(_ranked_cache_step_rows(per_step), start=1):
+        totals = row.totals
+        lines.append(
+            "\t".join(
+                (
+                    str(rank),
+                    row.skill,
+                    _cache_tsv_cell(row.step),
+                    row.lane,
+                    str(row.runs),
+                    str(totals.cache_create),
+                    str(totals.cache_create_5m),
+                    str(totals.cache_create_1h),
+                    str(totals.cache_read),
+                    _cache_ratio_text(effective_cache_create=totals.effective_cache_create, cache_read=totals.cache_read),
+                )
+            )
+            + "\n"
+        )
+    return "".join(lines)
+
+
+def measure_cache_efficiency() -> Path:
+    from larch.core.proc import ProcRunner
+    from larch.report import report_tokens_scan
+
+    runner = ProcRunner()
+    tagged_records: list[tuple[Skill, RunRecord]] = []
+    repo_root: Path | None = None
+    for skill in ("design", "implement"):
+        scan_result = report_tokens_scan.scan(runner, skill=skill, resolve_repo=False)
+        if repo_root is None:
+            repo_root = scan_result.repo_root
+        tagged_records.extend((skill, record) for record in scan_result.records)
+    out_path = repo_root / "larch-logs" / "measure-cache-efficiency" / f"{_measure_stamp()}.tsv"
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    per_run, per_step = _measure_cache_efficiency_records(tagged_records=tagged_records)
+    _atomic_text(path=out_path, text=_render_cache_efficiency_tsv(per_run=per_run, per_step=per_step))
+    return out_path
+
+
+def _measure_repo_root_from_larch_logs_path(path: Path) -> Path:
+    for parent in path.parents:
+        if parent.name == "larch-logs":
+            return parent.parent
+    return path.parent
+
+
 def _atomic_text(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f".{path.name}.", nofollow=True, newline="\n")
 
@@ -1995,6 +2296,14 @@ def measure_realized_cost_main(argv: list[str] | None = None) -> int:
     _ = argv
     path = measure_realized_cost()
     print(f"WROTE\t{path.relative_to(_repo_root())}")
+    return 0
+
+
+def measure_cache_efficiency_main(argv: list[str] | None = None) -> int:
+    _ = argv
+    path = measure_cache_efficiency()
+    repo_root = _measure_repo_root_from_larch_logs_path(path)
+    print(f"WROTE\t{path.relative_to(repo_root)}")
     return 0
 
 

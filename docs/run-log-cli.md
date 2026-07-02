@@ -53,6 +53,38 @@ Default-branch and post-merge commit refusals remain stderr-only hard stops.
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
 
+## `token measure-cache-efficiency`
+
+Run:
+
+```bash
+python3 python/cli.py token measure-cache-efficiency
+```
+
+The command ranks committed cache-create versus cache-read outliers per run and
+per step. It reads existing committed `token-report.json` and
+`token-report-final.json` files under consumer `larch-logs/<skill>/*/`
+directories. It also uses the existing ledger fallback from
+`report_tokens_scan.py` when available.
+
+Output is measurement only. It does not change token capture, report JSON
+shapes, or CI gates.
+
+The consumer repo root comes from `report_tokens_scan.scan()`
+`ScanResult.repo_root`, not from the plugin checkout. The command writes
+`larch-logs/measure-cache-efficiency/<date>.tsv` under that consumer repo and
+prints:
+
+```text
+WROTE	larch-logs/measure-cache-efficiency/<date>.tsv
+```
+
+The TSV has a `# per_run` section and a `# per_step` section. The command scans
+`design` and `implement` separately. Every per-run and per-step row preserves
+the scan-origin skill, so matching step labels across skills stay separate.
+Per-step ratios sum each run's effective cache-create contribution before
+dividing by summed cache-read.
+
 ## Post-merge commit history
 
 Past regressions: #2120, #2128, #2140, #2182, and #2552 (PR #2530 reintroduced the pattern via a `LARCH_LOG_COMMIT_POSTMERGE_SHIP_PR=1` bypass in `run-log`).
