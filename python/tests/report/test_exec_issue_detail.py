@@ -95,6 +95,21 @@ def test_load_structured_ndjson_rows_and_plain_fallback(tmp_path: Path) -> None:
     assert result.groups.warnings[0].display_text == "plain warning row"
 
 
+def test_load_prefers_run_dir_ndjson_when_requested(tmp_path: Path) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    _ = (tmp_path / "execution-issues.md").write_text("### Warnings\n- stale live warning\n", encoding="utf-8")
+    _ = (run_dir / "execution-issues.ndjson").write_text(
+        json.dumps({"category": "Tool Failures", "body": "- committed failure\n"}) + "\n",
+        encoding="utf-8",
+    )
+
+    result = exec_issue_detail.load_issue_detail_groups(tmp_path, run_dir=run_dir, prefer_run_dir=True)
+
+    assert exec_issue_detail.count_load_result(result) == (1, 0)
+    assert result.groups.exec_issues[0].display_text == "committed failure"
+
+
 def test_legacy_body_text_fallback_lists_rows(tmp_path: Path) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)

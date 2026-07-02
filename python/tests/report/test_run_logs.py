@@ -338,6 +338,44 @@ def test_execution_issues_batch_redacts_pem(tmp_path: Path) -> None:
     assert secret not in batch.read_text(encoding="utf-8")
 
 
+def test_execution_issues_batch_dedupes_repeated_warning_events(tmp_path: Path) -> None:
+    state = tmp_path / "state.env"
+    _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
+    issue_log = tmp_path / "execution-issues.md"
+    _ = issue_log.write_text("### Warnings\n- **Step 7a**: transient warning\n", encoding="utf-8")
+    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    ctx = _ctx(tmp_path, str(state))
+    batch_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    batch_dir.mkdir(parents=True)
+
+    for _index in range(2):
+        run_logs._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
+            ctx=ctx,
+            batch_dir=batch_dir,
+            step_label="pre-push",
+            source_label="test",
+        )
+    _ = issue_log.write_text(
+        "### Warnings\n- **Step 7a**: transient warning\n- **Step 8**: new warning\n",
+        encoding="utf-8",
+    )
+    run_logs._render_execution_issues_batch(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        batch_dir=batch_dir,
+        step_label="pre-push",
+        source_label="test",
+    )
+
+    rows = [
+        json.loads(line)
+        for line in (batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    assert [row["body"].strip() for row in rows] == [
+        "- **Step 7a**: transient warning",
+        "- **Step 8**: new warning",
+    ]
+
+
 def test_load_or_recover_manifest_invalid_json(tmp_path: Path) -> None:
     state = tmp_path / "state.env"
     _ = state.write_text("RUN_ID=run-abc\n", encoding="utf-8")
@@ -999,7 +1037,7 @@ def test_flush_logs_pre_strict_final_report_skips_tracking_upsert(
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
 
     assert not skip.skipped
-    assert seen == [True]
+    assert seen == [True, True]
 
 
 def test_render_token_timing_batches_skips_missing_refresh_json(tmp_path: Path) -> None:

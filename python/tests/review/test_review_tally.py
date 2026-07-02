@@ -1727,6 +1727,44 @@ def test_emit_tally_fallback_counts_legacy_rows(tmp_path: Path) -> None:
     assert "1 accepted, 1 rejected" in (case / "review-round-summary.md").read_text(encoding="utf-8")
 
 
+def test_emit_tally_round_summary_uses_voting_tally_counts(tmp_path: Path) -> None:
+    case = tmp_path / "summary-counts"
+    case.mkdir()
+    tally = case / "review-tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=1\nNEUTRAL_COUNT=0\n", encoding="utf-8")
+    _ = (case / "voting-tally.md").write_text(
+        "## Findings\n\n"
+        "| Item | Result |\n"
+        "|---|---|\n"
+        "| FINDING_1 | rejected |\n"
+        "| FINDING_2 | rejected |\n",
+        encoding="utf-8",
+    )
+    accepted = case / "accepted-findings.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "0 accepted, 2 rejected" in (case / "review-round-summary.md").read_text(encoding="utf-8")
+
+
 def test_tally_not_substantive_warning_in_voting_tally(tmp_path: Path) -> None:
     case = tmp_path / "not-substantive"
     case.mkdir()

@@ -14,7 +14,7 @@ import tempfile
 from contextlib import suppress
 from collections import defaultdict
 from pathlib import Path
-from typing import NoReturn
+from typing import NoReturn, cast
 
 from larch import io as larch_io
 from larch.review import findings_ledger
@@ -998,6 +998,70 @@ def _fallback_counts_from_tally_text(text: str) -> tuple[int, int, int]:
     return accepted, rejected, neutral
 
 
+def _round_summary_counts_from_meta(review_tmpdir: Path) -> tuple[int, int, int] | None:
+    meta_path = review_tmpdir / "round-meta.json"
+    if not meta_path.is_file():
+        return None
+    try:
+        parsed: object = json.loads(meta_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(parsed, dict):
+        return None
+    parsed_dict = cast("dict[str, object]", parsed)
+    tally = parsed_dict.get("tally")
+    if not isinstance(tally, dict):
+        return None
+    raw_tally = cast("dict[object, object]", tally)
+    tally_dict = {str(key): str(value) for key, value in raw_tally.items()}
+    return (
+        _count_from_tally(tally=tally_dict, key="ACCEPTED_COUNT"),
+        _count_from_tally(tally=tally_dict, key="REJECTED_COUNT"),
+        _count_from_tally(tally=tally_dict, key="NEUTRAL_COUNT"),
+    )
+
+
+def _round_summary_counts(
+    *,
+    review_tmpdir: Path,
+    accepted: int,
+    rejected: int,
+    neutral: int,
+) -> tuple[int, int, int]:
+    meta_counts = _round_summary_counts_from_meta(review_tmpdir)
+    if meta_counts is not None:
+        return meta_counts
+    try:
+        from larch.report import progress_report  # noqa: PLC0415
+
+        counts, source = progress_report._round_counts(review_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    except Exception:  # pylint: disable=broad-except
+        return accepted, rejected, neutral
+    if not source:
+        return accepted, rejected, neutral
+    return counts[0], counts[1], counts[2]
+
+
+def _review_round_summary_body(
+    *,
+    review_tmpdir: Path,
+    round_value: str,
+    mode: str,
+    counts: tuple[int, int, int],
+    accepted_file: Path,
+) -> str:
+    summary_accepted, summary_rejected, summary_neutral = _round_summary_counts(
+        review_tmpdir=review_tmpdir,
+        accepted=counts[0],
+        rejected=counts[1],
+        neutral=counts[2],
+    )
+    body = f"# Review Round {round_value}\n\n- Mode: `{mode}`\n- {summary_accepted} accepted, {summary_rejected} rejected ({summary_neutral} neutral)\n\n"
+    if accepted_file.stat().st_size > 0:
+        body += "## Accepted Findings\n\n" + _read(accepted_file)
+    return body
+
+
 def _non_security_oos_count(path: Path) -> int:
     if not path.is_file() or path.stat().st_size == 0:
         return 0
@@ -1053,9 +1117,13 @@ def emit_tally(argv: list[str]) -> int:
     rejected_file = review_tmpdir / "rejected-findings.md"
     rejected_full = review_tmpdir / "rejected-findings-full.md"
     oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
-    body = f"# Review Round {args.round}\n\n- Mode: `{args.mode}`\n- {accepted} accepted, {rejected} rejected ({neutral} neutral)\n\n"
-    if accepted_file.stat().st_size > 0:
-        body += "## Accepted Findings\n\n" + _read(accepted_file)
+    body = _review_round_summary_body(
+        review_tmpdir=review_tmpdir,
+        round_value=str(args.round),
+        mode=str(args.mode),
+        counts=(accepted, rejected, neutral),
+        accepted_file=accepted_file,
+    )
     _write(path=round_summary, text=body)
     if rejected_file.is_file():
         shutil.copyfile(rejected_file, rejected_full)
