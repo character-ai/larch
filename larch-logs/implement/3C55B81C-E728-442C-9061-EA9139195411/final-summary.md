@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:20:03
-- **Cost**: 💰 TOTAL ~$11.55 — Claude $0.86, Codex-5.5 $7.48, Codex-mini $0.39, Cursor $2.44, Claude (subprocess) $0.38  |  Tokens: 15344k
+- **Cost**: 💰 TOTAL ~$16.00 — Claude $5.31, Codex-5.5 $7.48, Codex-mini $0.39, Cursor $2.44, Claude (subprocess) $0.38  |  Tokens: 20689k
 - **Issue**: #5979 — https://github.com/character-ai/larch/issues/5979
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -61,3 +61,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Fenced voter template still uses the wrong OOS heuristic. Concern: The fenced OOS guidance in `skills/shared/voting-protocol.md` still uses a concrete-or-important heuristic instead of the canonical materiality gate, so copied instructions can diverge from the runtime rubric.
 - **Round 1 OOS_2** (nit): Severity rubric assertions are too shallow. Concern: The severity rubric tests only check prefix substrings, so wording can drift while the tests still pass.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
