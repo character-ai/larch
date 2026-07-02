@@ -77,7 +77,7 @@ build_bin() {
     rm -rf "$dir"
     mkdir -p "$dir"
     local tool resolved
-    for tool in cat dirname mkdir basename; do
+    for tool in cat dirname mkdir basename env; do
         resolved=$(command -v "$tool" || true)
         if [[ -n "$resolved" && -x "$resolved" ]]; then
             ln -sf "$resolved" "$dir/$tool"
