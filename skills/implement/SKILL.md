@@ -129,7 +129,7 @@ Standardizes post-step rebase checkpoints 1.r, 4.r, 7.r, and 7a.r. Step 4.r is f
 ## Checks Failure Entry Macro
 
 Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEXT_ACTION=checks-failed`; the failure path remains in-step. Call sites should invoke **Checks Failure Entry Macro** by name with their pinned `--site` / `--checks-site` arguments instead of restating these read steps.
-1. Read `REDACTED_LOG_FILE` when present, and never raw `LOG_FILE`; at folded sites, key-scan the full composite stdout for `REDACTED_LOG_FILE`, not only the first physical composite line.
+1. At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Read `DIGEST_FILE` first when it is present and readable. Fall back to `REDACTED_LOG_FILE` when the digest is absent, unreadable, or insufficient. Never read raw `LOG_FILE`. `REDACTED_LOG_FILE` remains the input passed to `checks repair-loop`.
 2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.
 3. Follow that reference's pinned site split for the call site, including re-entry and folded-site recapture rules.
 
@@ -507,7 +507,7 @@ Before leaving the main-agent handoff terminal-stall path, record timing exactly
 bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
 ```
 
-After `checks-step5-resume` returns, capture full composite Bash stdout. Whitespace-token-scan only the first physical line for checks keys: `REDACTED_LOG_FILE`, `FAILURE_REASON`, `RELEVANT_CHECKS_OK`, `RELEVANT_CHECKS_SKIPPED`, `STATUS`, `EXIT_CODE`, and `PHASE`. Parse exactly one line-anchored composite `NEXT_ACTION=` anywhere in the capture for `checks-failed` only. Ignore leading-line `NEXT_ACTION` tokens for resume authorization.
+After `checks-step5-resume` returns, capture full composite Bash stdout. Whitespace-token-scan only the first physical line for checks keys: `FAILURE_REASON`, `RELEVANT_CHECKS_OK`, `RELEVANT_CHECKS_SKIPPED`, `STATUS`, `EXIT_CODE`, and `PHASE`. Key-scan the full composite stdout for `DIGEST_FILE` and `REDACTED_LOG_FILE` so folded failure keys are not lost behind leading output. Parse exactly one line-anchored composite `NEXT_ACTION=` anywhere in the capture for `checks-failed` only. Ignore leading-line `NEXT_ACTION` tokens for resume authorization.
 
 On resume, the loop evaluates substantiality and bulk-skip against the round-`FINAL_ROUND_NUM` artifacts before scheduling additional rounds. If `FINAL_ROUND_NUM == EFFECTIVE_ROUND_CAP`, the wrapper returns `STEP5_REVIEW_STATUS=mav-resume-past-cap`.
 

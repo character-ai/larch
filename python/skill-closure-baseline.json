@@ -30,8 +30,8 @@
     "skill_md_lines": 697
   },
   {
-    "closure_content_estimated_tokens": 36456,
-    "closure_estimated_tokens": 36561,
+    "closure_content_estimated_tokens": 36536,
+    "closure_estimated_tokens": 36640,
     "closure_lines": 1127,
     "conditional_content_estimated_tokens": 19242,
     "conditional_estimated_tokens": 19288,
@@ -58,8 +58,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 28595,
-    "skill_md_estimated_tokens": 28673,
+    "skill_md_content_estimated_tokens": 28675,
+    "skill_md_estimated_tokens": 28752,
     "skill_md_lines": 793
   },
   {
@@ -94,8 +94,8 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 8362,
-    "closure_estimated_tokens": 8386,
+    "closure_content_estimated_tokens": 8392,
+    "closure_estimated_tokens": 8416,
     "closure_lines": 304,
     "conditional_content_estimated_tokens": 3254,
     "conditional_estimated_tokens": 3265,
@@ -112,8 +112,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 4820,
-    "skill_md_estimated_tokens": 4829,
+    "skill_md_content_estimated_tokens": 4850,
+    "skill_md_estimated_tokens": 4859,
     "skill_md_lines": 114
   }
 ]

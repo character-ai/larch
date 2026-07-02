@@ -141,6 +141,109 @@ def test_normalize_max_iter_default() -> None:
     assert checks.normalize_max_iter(None) == config.RCC_MAX_ITER_DEFAULT
 
 
+def test_checks_failure_digest_precommit_hook_record() -> None:
+    text = (
+        "=== Running pre-commit on 1 changed file(s) ===\n"
+        "ruff.....................................................................Failed\n"
+        "python/app.py:12:5: F401 imported but unused\n"
+        "ERROR: command failed"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert "CHECKS_FAILURE_DIGEST v1" in digest
+    assert "site=unit" in digest
+    assert "digest_truncated=false" in digest
+    assert "check=ruff" in digest
+    assert "failure_count=2" in digest
+    assert "first_location=python/app.py:12" in digest
+    assert "first_error=python/app.py:12:5: F401 imported but unused" in digest
+
+
+def test_checks_failure_digest_multiple_precommit_hooks_under_cap() -> None:
+    text = (
+        "=== Running pre-commit on 2 changed file(s) ===\n"
+        "ruff.....................................................................Failed\n"
+        "python/app.py:12: F401\n"
+        "markdownlint.............................................................Failed\n"
+        "docs/readme.md:7 MD013"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert digest.count("check=") == 2
+    assert "check=ruff" in digest
+    assert "check=markdownlint" in digest
+    assert "digest_truncated=false" in digest
+
+
+def test_checks_failure_digest_truncates_on_record_boundary(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_crr, "CHECKS_FAILURE_DIGEST_MAX_BYTES", 220)
+    text = (
+        "=== Running pre-commit on 2 changed file(s) ===\n"
+        "ruff.....................................................................Failed\n"
+        "python/app.py:12: F401\n"
+        "markdownlint.............................................................Failed\n"
+        "docs/readme.md:7 MD013"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(digest.encode("utf-8")) <= 220
+    assert digest.encode("utf-8").decode("utf-8") == digest
+    assert "digest_truncated=true" in digest
+    assert "check=ruff" in digest
+    assert "check=markdownlint" not in digest
+
+
+def test_checks_failure_digest_direct_make_fallback() -> None:
+    text = (
+        "=== Running direct relevant make target(s): test-example ===\n"
+        "ERROR: test-example failed\n"
+        "tests/example.py:44: assertion failed"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert "check=test-example" in digest
+    assert "first_location=tests/example.py:44" in digest
+    assert "first_error=ERROR: test-example failed" in digest
+
+
+def test_checks_failure_digest_defect_lines_use_contains_pins() -> None:
+    text = (
+        "=== Running direct relevant make target(s): test-docs ===\n"
+        "target succeeded\n"
+        "DEFECT: skills/implement/SKILL.md:132 literal drift"
+    )
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert "check=contains-pins" in digest
+    assert "first_location=skills/implement/SKILL.md:132" in digest
+    assert "check=test-docs" not in digest
+
+
+def test_checks_failure_digest_cap_preserves_utf8(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(_crr, "CHECKS_FAILURE_DIGEST_MAX_BYTES", 150)
+    text = "ERROR: " + ("é" * 400)
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert len(digest.encode("utf-8")) <= 150
+    assert digest.encode("utf-8").decode("utf-8") == digest
+
+
+def test_checks_failure_digest_uses_only_redacted_source() -> None:
+    secret = "ghp_" + "a" * 36
+    text = f"ERROR: token {config.REDACTED_TOKEN}\n"
+
+    digest = _crr._build_checks_failure_digest(redacted_log_text=text, site="unit")  # pyright: ignore[reportPrivateUsage]
+
+    assert config.REDACTED_TOKEN in digest
+    assert secret not in digest
+
+
 def test_escalate_mapping() -> None:
     assert checks.escalate("ok").outcome == Outcome.OK
     assert checks.escalate("exhausted").outcome == Outcome.STALLED
@@ -881,7 +984,7 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     _checks_path(
         monkeypatch,
         tmp_path,
-        precommit=f"#!/usr/bin/env bash\necho '=== Running pre-commit'\necho '{secret}'\nexit 1\n",
+        precommit=f"#!/usr/bin/env bash\necho '=== Running pre-commit'\necho 'ERROR: {secret}'\nexit 1\n",
     )
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is False
@@ -890,6 +993,12 @@ def test_run_relevant_checks_fail_produces_redacted_log(
     assert secret not in redacted
     assert config.REDACTED_TOKEN in redacted
     assert Path(result.redacted_log_path).stat().st_mode & 0o777 == 0o600
+    assert result.digest_file_path is not None
+    digest_path = Path(result.digest_file_path)
+    assert digest_path.stat().st_mode & 0o777 == 0o600
+    digest = digest_path.read_text(encoding="utf-8")
+    assert secret not in digest
+    assert config.REDACTED_TOKEN in digest
     assert result.phase == "pre-commit"
 
 
@@ -3594,6 +3703,11 @@ def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
     assert result.ok is False
     assert result.exit_code == 2
     assert result.failure_reason == "no-validation-phases"
+    assert result.redacted_log_path is not None
+    assert Path(result.redacted_log_path).stat().st_mode & 0o777 == 0o600
+    assert result.digest_file_path is not None
+    assert Path(result.digest_file_path).is_file()
+    assert Path(result.digest_file_path).stat().st_mode & 0o777 == 0o600
 
 
 def test_run_relevant_checks_no_changes_skips_precommit_requirement(
@@ -3653,6 +3767,8 @@ def test_checks_run_relevant_main_fail_envelope(
     session = _checks_session(tmp_path, monkeypatch)
     log = session / "fail.redacted.log"
     log.write_text("err\n", encoding="utf-8")
+    digest = session / "fail.digest.txt"
+    digest.write_text("CHECKS_FAILURE_DIGEST v1\n", encoding="utf-8")
 
     def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
         return checks.ChecksResult(
@@ -3665,6 +3781,7 @@ def test_checks_run_relevant_main_fail_envelope(
             skipped=False,
             warn=None,
             failure_reason="checks-failed",
+            digest_file_path=str(digest),
         )
 
     monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
@@ -3672,7 +3789,42 @@ def test_checks_run_relevant_main_fail_envelope(
     out = capsys.readouterr().out
     assert rc == 1
     assert "STATUS=fail" in out
+    assert "DIGEST_FILE=" in out
     assert "REDACTED_LOG_FILE=" in out
+    assert out.index("DIGEST_FILE=") < out.index("REDACTED_LOG_FILE=")
+
+
+def test_checks_run_relevant_main_no_validation_envelope_includes_digest(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    log = session / "fail.redacted.log"
+    log.write_text("err\n", encoding="utf-8")
+    digest = session / "fail.digest.txt"
+    digest.write_text("CHECKS_FAILURE_DIGEST v1\n", encoding="utf-8")
+
+    def fake_checks(*_args: object, **_kwargs: object) -> checks.ChecksResult:
+        return checks.ChecksResult(
+            ok=False,
+            exit_code=2,
+            site="step3",
+            redacted_log_path=str(log),
+            phase="none",
+            coverage="none",
+            skipped=False,
+            warn=None,
+            failure_reason="no-validation-phases",
+            digest_file_path=str(digest),
+        )
+
+    monkeypatch.setattr(_crr, "run_relevant_checks", fake_checks)
+    rc = checks.checks_run_relevant_main(["--site", "step3", "--tmpdir", str(session)])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "FAILURE_REASON=no-validation-phases" in out
+    assert out.index("DIGEST_FILE=") < out.index("REDACTED_LOG_FILE=")
 
 
 def test_checks_run_relevant_main_allow_skip_envelope(
