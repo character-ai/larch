@@ -72,10 +72,12 @@ Rules:
 
 - Exactly one `larch:plan:start` / `larch:plan:end` pair per issue body.
 - Free-form markdown is permitted between the markers.
-- New `/design` plan writes include plan-review provenance lines:
-  `review_status: <status>` and `rounds_completed: <N>`. They are inserted
-  before the final size-trailer block so `diff_lines: <N>` remains the final
-  non-empty line.
+- New `/design` plan writes include plan-review provenance and difficulty lines:
+  `review_status: <status>`, `rounds_completed: <N>`, and `difficulty: <TIER>`.
+  They are inserted before the final size-trailer block so `diff_lines: <N>`
+  remains the final non-empty line. `/design` also syncs one `difficulty:<tier>`
+  issue label. `/implement` Step 0 reads `difficulty:` as a logging prior, not
+  as panel-routing input.
 - The `## Plan` and `## Acceptance` sub-sections are **conventional** — parsers
   do not enforce their presence or heading level.
 - Malformed shapes are **rejected**: missing matching marker, multiple pairs,

@@ -573,6 +573,9 @@ def render_run_summary(**kwargs: object) -> str:
             "recovery shipped a PR without merging. Manual review and merge required."
         )
     lines.append(f"- **Plan review**: {kwargs.get('plan_review_line') or 'N/A'}")
+    difficulty_line = str(kwargs.get("difficulty_line") or "")
+    if difficulty_line:
+        lines.append(f"- **Difficulty**: {difficulty_line}")
     dynamic_line = str(kwargs.get("dynamic_archetypes_line") or "")
     if dynamic_line:
         lines.append(f"- **Dynamic archetypes**: {dynamic_line}")
@@ -627,7 +630,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--skill", required=True, choices=("implement", "design"))
     parser.add_argument("--outcome", required=True)
     parser.add_argument("--run-id", required=True)
-    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
+    for name in ("mode", "workflow-path", "duration", "issue-number", "issue-url", "pr-number", "pr-url", "plan-review-line", "difficulty-line", "dynamic-archetypes-line", "code-review-line", "code-added", "code-deleted", "logs-added", "logs-deleted", "oos-count", "oos-urls", "exec-issues", "warnings", "run-logs-path", "merge-downgraded", "manifest-path", "larch-version", "main-model", "effort"):
         parser.add_argument(f"--{name}")
     parser.add_argument("--force-requested", choices=("true", "false"))
     parser.add_argument("--output-file")
@@ -678,6 +681,7 @@ def render_run_summary_main(argv: list[str] | None = None) -> int:
         pr_number=args.pr_number,
         pr_url=args.pr_url,
         plan_review_line=args.plan_review_line,
+        difficulty_line=args.difficulty_line,
         dynamic_archetypes_line=args.dynamic_archetypes_line,
         code_review_line=args.code_review_line,
         code_added=args.code_added,

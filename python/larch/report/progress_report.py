@@ -19,6 +19,7 @@ from pathlib import Path
 from typing import cast
 
 from larch.agents import collect_results
+from larch.calibration import difficulty
 from larch.core import env_file
 from larch.rendering.gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
@@ -1643,7 +1644,11 @@ def _materialize_design_panel_manifest(round_dir: Path) -> int:
                 output = str(row.get("output") or "")
                 if not (slot or tool or output):
                     continue
-                dst.write(json.dumps({"slot": slot, "tool": tool, "output": output}, separators=(",", ":")) + "\n")
+                out_row = {"slot": slot, "tool": tool, "output": output}
+                for key in ("vendor", "resolved_model", "model_role", "focus_area"):
+                    if row.get(key):
+                        out_row[key] = str(row.get(key))
+                dst.write(json.dumps(out_row, separators=(",", ":")) + "\n")
                 count += 1
         panel_tmp.replace(round_dir / "panel-manifest.ndjson")
     except OSError:
@@ -1669,6 +1674,29 @@ def _read_simple_env(path: Path) -> dict[str, str]:
     return larch_io.parse_kv(text)
 
 
+
+def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
+    raw = round_dir / difficulty.SCOUT_RAW_RATING_BASENAME
+    rating = difficulty.read_rating_file(raw)
+    if rating is None:
+        return {
+            "tier_in_effect": None,
+            "ceiling_in_effect": None,
+            "escalations": [],
+            "scout": {"status": "absent"},
+        }
+    return {
+        "tier_in_effect": rating.adjusted_tier,
+        "ceiling_in_effect": rating.adjusted_tier,
+        "escalations": [],
+        "scout": {
+            "status": "ok",
+            "predicted_tier": rating.predicted_tier,
+            "confidence": rating.confidence,
+            "source": str(raw),
+        },
+    }
+
 def _round_meta_object(
     *, counts: tuple[int, int, int, int, int, int],
     panel_count: int,
@@ -1676,6 +1704,7 @@ def _round_meta_object(
     revise: dict[str, str | None] | None = None,
     canonical: tuple[int, int, int, int, int, int] | None = None,
     nit_pruned: int = 0,
+    difficulty_obj: dict[str, object] | None = None,
 ) -> dict[str, object]:
     accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
     obj: dict[str, object] = {
@@ -1689,6 +1718,12 @@ def _round_meta_object(
         },
         "summary": {"panel": {"total_slot_count": panel_count}},
         "collector": collector,
+        "difficulty": difficulty_obj or {
+            "tier_in_effect": None,
+            "ceiling_in_effect": None,
+            "escalations": [],
+            "scout": {"status": "absent"},
+        },
     }
     # Issue #4882: the raw `tally` above counts findings by id-prefix (FINDING_/OOS_), so a
     # nit-pruned [OUT_OF_SCOPE] FINDING_N is miscounted as in-scope rejected. Record the canonical,
@@ -1784,6 +1819,7 @@ def write_design_round_meta(round_dir: Path) -> int:
                 "status": revise_env.get("REVISE_STATUS") or None,
                 "tier": revise_env.get("REVISE_TIER") or None,
             },
+            difficulty_obj=_round_difficulty_object(round_dir),
         )
         tmp = round_dir / "round-meta.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
@@ -1800,7 +1836,13 @@ def write_implement_round_meta(round_dir: Path) -> int:
         counts, _source = _round_counts(round_dir)
         panel_count = _count_panel_manifest(round_dir / "panel-manifest.ndjson")
         canonical, nit_pruned = _canonical_decomposition(round_dir)
-        meta = _round_meta_object(counts=counts, panel_count=panel_count, canonical=canonical, nit_pruned=nit_pruned)
+        meta = _round_meta_object(
+            counts=counts,
+            panel_count=panel_count,
+            canonical=canonical,
+            nit_pruned=nit_pruned,
+            difficulty_obj=_round_difficulty_object(round_dir),
+        )
         tmp = round_dir / "round-meta.json.tmp"
         tmp.write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
         tmp.replace(round_dir / "round-meta.json")

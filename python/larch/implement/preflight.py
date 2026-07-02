@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import NoReturn, cast
 
 from larch import io as larch_io
+from larch.calibration import difficulty
 
 LIFECYCLE_PREFIXES = (
     "[DESIGNING] ",
@@ -32,6 +33,7 @@ SUCCESS_ENVELOPE_KEYS = (
     "PLAN_PATH",
     "ISSUE_JSON_PATH",
     "BYPASS_COUNT",
+    "DESIGN_DIFFICULTY",
 )
 
 
@@ -335,7 +337,7 @@ def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
     if diff_idx < 0:
         return ""
     start = diff_idx
-    allowed = ("review_status: ", "rounds_completed: ", "diff_added: ", "diff_deleted: ", "mechanical_churn: ")
+    allowed = ("review_status: ", "rounds_completed: ", "difficulty: ", "diff_added: ", "diff_deleted: ", "mechanical_churn: ")
     for index in range(diff_idx - 1, -1, -1):
         line = lines[index]
         if line.startswith(allowed):
@@ -350,6 +352,20 @@ def _plan_review_meta_value(*, plan_path: Path, key: str) -> str:
         if line.startswith(prefix):
             value = line[len(prefix) :]
     return value
+
+
+def _validate_design_difficulty(*, plan_path: Path, issue: str, force: bool) -> str:
+    tier = _plan_review_meta_value(plan_path=plan_path, key="difficulty")
+    if not tier:
+        return ""
+    if difficulty.tier_valid(tier):
+        return tier
+    message = f"malformed difficulty metadata — `difficulty={tier}`"
+    if force:
+        print(f"**⚠ /implement --force: {message}; ignoring the design prior for issue #{issue}.**")
+        return ""
+    print(f"**❌ /implement preflight: {message}. Re-run /design {issue} before retrying /implement.**")
+    raise SystemExit(2)
 
 
 def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
@@ -499,11 +515,14 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if plan_from_extracted_block and block_present == "true" and plan_path.is_file() and plan_path.stat().st_size > 0:
         try:
             _refuse_unreviewed_plan(plan_path=plan_path, issue=issue)
+            design_difficulty = _validate_design_difficulty(plan_path=plan_path, issue=issue, force=args.force)
         except SystemExit as exc:
             return int(exc.code or 2)
 
     if not block_present:
         block_present = "false"
+    if not (plan_from_extracted_block and block_present == "true" and plan_path.is_file() and plan_path.stat().st_size > 0):
+        design_difficulty = ""
     resume = "true" if admission_kv.get("RESUME") == "true" else "false"
     rows = _success_envelope_rows({
         "ADMISSION_RESULT": admission_result,
@@ -513,6 +532,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         "PLAN_PATH": str(plan_path),
         "ISSUE_JSON_PATH": str(issue_json_path),
         "BYPASS_COUNT": str(_bypass_count(preflight_tmpdir)),
+        "DESIGN_DIFFICULTY": design_difficulty,
     })
     return _emit_success_envelope(
         rows,

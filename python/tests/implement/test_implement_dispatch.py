@@ -1397,6 +1397,7 @@ def test_step2_dispatch_complete_commits_manifest_message(repo: Path, tmp_path: 
             "commit_message": "Implement via fake launcher",
             "todos_left": [],
             "oos_observations": [],
+            "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
         }), encoding="utf-8")
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
@@ -1672,6 +1673,7 @@ def test_step2_dispatch_oos_materialize_failure_bails(repo: Path, tmp_path: Path
             "tests_added_or_modified": [],
             "todos_left": [],
             "oos_observations": [{"title": "OOS", "description": "manifest OOS", "phase": "implement"}],
+            "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
         }), encoding="utf-8")
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
@@ -3959,6 +3961,7 @@ def test_step2_dispatch_git_add_failure_bails(repo: Path, tmp_path: Path, monkey
             "commit_message": "Implement via fake launcher",
             "todos_left": [],
             "oos_observations": [],
+            "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
         }), encoding="utf-8")
         return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
 
@@ -4024,6 +4027,7 @@ def test_step2_dispatch_needs_qa_repair_from_pending(repo: Path, tmp_path: Path,
             "tests_added_or_modified": [],
             "todos_left": [],
             "oos_observations": [],
+            "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
         }), encoding="utf-8")
         st.qa_pending_path.write_text(json.dumps({
             "items": [{"area": "auth", "risk": "high", "suggested_check": "verify login"}],
@@ -4073,6 +4077,7 @@ def _complete_manifest_payload(*, path: str = "implemented.txt", commit_message:
         "commit_message": commit_message,
         "todos_left": [],
         "oos_observations": [],
+        "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
     }
 
 

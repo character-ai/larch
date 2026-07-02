@@ -58,6 +58,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "panel-prompt-sizes": BatchInfo(".tsv", "replace", "none"),
     "review-round-summary": BatchInfo(".md", "replace", "none"),
     "review-scout-manifest": BatchInfo(".json", "replace", "json-object"),
+    "difficulty-rating": BatchInfo(".json", "replace", "json-object"),
     "review-tally": BatchInfo(".md", "replace", "none"),
     "review-findings-classification-round-1": BatchInfo(".tsv", "replace", "none"),
     "review-findings-classification-round-2": BatchInfo(".tsv", "replace", "none"),

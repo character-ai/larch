@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 from larch import io as larch_io
 from larch.report import design_diagram_log
+from larch.calibration import difficulty
 from larch.core import proc
 from larch.report import run_logs
 from larch.design import design_step0_env
@@ -73,7 +74,7 @@ def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
 
-_PROVENANCE_META_KEYS = ("review_status", "rounds_completed")
+_PROVENANCE_META_KEYS = ("review_status", "rounds_completed", "difficulty")
 _OPTIONAL_TRAILER_RE = re.compile(
     r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
 )
@@ -274,10 +275,17 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
             diff_idx = idx
             break
+    existing_difficulty = ""
+    for line in lines:
+        stripped = line.rstrip("\n")
+        if stripped.startswith("difficulty: ") and difficulty.tier_valid(stripped[len("difficulty: ") :]):
+            existing_difficulty = stripped[len("difficulty: ") :]
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
     ]
+    if existing_difficulty:
+        provenance.append(f"difficulty: {existing_difficulty}\n")
     if diff_idx < 0:
         trailer_start = len(lines)
         idx = len(lines) - 1
@@ -766,6 +774,48 @@ def publish_core(argv: Sequence[str]) -> int:
         _emit_rows(kvs)
         return 1 if _write_result_env(path=result_env, rows=kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
+    design_tier = difficulty.plan_difficulty(redacted_plan.read_text(encoding="utf-8", errors="replace"))
+    if design_tier:
+        sync_args = [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "difficulty",
+            "sync-labels",
+            "--issue",
+            parsed["--issue"],
+            "--tier",
+            design_tier,
+        ]
+        if parsed["--repo"]:
+            sync_args.extend(["--repo", parsed["--repo"]])
+        _ = subprocess.run(sync_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        raw_rating = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+        record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+        record_args = [
+            sys.executable, str(plugin_root / "python" / "cli.py"), "difficulty", "write-record",
+            "--output", str(record_path), "--rater", "design", "--rater-tool", "claude",
+            "--rater-model", "unknown", "--design-tier", design_tier, "--fallback-tier", design_tier,
+            "--fallback-rationale", "design plan metadata",
+        ]
+        if raw_rating.is_file() and not raw_rating.is_symlink():
+            record_args.extend(["--raw-rating-file", str(raw_rating), "--design-raw-rating-file", str(raw_rating)])
+        record = subprocess.run(record_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if record.returncode == 0 and record_path.is_file():
+            run_id = os.environ.get("RUN_ID", "")
+            run_id_path = design_tmpdir / "run-id.txt"
+            if not run_id and run_id_path.is_file():
+                run_id = run_id_path.read_text(encoding="utf-8", errors="replace").strip()
+            if run_id:
+                _ = subprocess.run(
+                    [
+                        sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "write",
+                        "--skill", "design", "--run-id", run_id, "--batch", "difficulty-rating",
+                        "--input-file", str(record_path),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
     # Step 5c consumes post-approval artifacts written by Step 5b.5. It clears

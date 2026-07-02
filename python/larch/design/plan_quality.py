@@ -24,6 +24,7 @@ from collections.abc import Callable
 
 from larch.agents import agents
 from larch.core import config
+from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.design import design_pause
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init, reset_quiet_state
@@ -213,11 +214,14 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
         if line.startswith("mechanical_churn:"):
             block.append(line)
             continue
+        if line.startswith("difficulty:"):
+            block.append(line)
+            continue
         break
     diff_added: str | None = None
     diff_deleted: str | None = None
     mechanical = "false"
-    has_added = has_deleted = has_mech = False
+    has_added = has_deleted = has_mech = has_difficulty = False
     for line in reversed(block):
         if re.match(r"^diff_added: [0-9]+$", line):
             value = line[len("diff_added: ") :]
@@ -238,7 +242,9 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
             else:
                 mechanical = "invalid:" + value
             has_mech = True
-    keys = tuple(k for k, present in (("diff_added", has_added), ("diff_deleted", has_deleted), ("mechanical_churn", has_mech)) if present)
+        elif line.startswith("difficulty:"):
+            has_difficulty = difficulty.tier_valid(line[len("difficulty: ") :].strip())
+    keys = tuple(k for k, present in (("difficulty", has_difficulty), ("diff_added", has_added), ("diff_deleted", has_deleted), ("mechanical_churn", has_mech)) if present)
     vals: list[str] = []
     if has_added and diff_added is not None:
         vals.append(f"diff_added={diff_added}")
@@ -248,6 +254,27 @@ def parse_optional_metadata(plan_text: str) -> OptionalMetadata:
         vals.append(f"mechanical_churn={mechanical}")
     return OptionalMetadata(len(block), diff_added, diff_deleted, mechanical, keys, tuple(vals))
 
+
+
+def parse_difficulty_metadata(plan_text: str) -> str:
+    return difficulty.plan_difficulty(plan_text)
+
+def validate_difficulty_metadata(plan_text: str, *, require: bool = False) -> tuple[bool, str]:
+    lines = plan_text.splitlines()
+    found = ""
+    malformed = ""
+    for raw in lines:
+        if raw.startswith("difficulty:"):
+            value = raw[len("difficulty:") :].strip()
+            if difficulty.tier_valid(value):
+                found = value
+            else:
+                malformed = value or "missing"
+    if malformed:
+        return False, f"invalid difficulty metadata: {malformed}"
+    if require and not found:
+        return False, "missing difficulty metadata"
+    return True, found
 
 def _read_plan(path: str | Path) -> str:
     return Path(path).read_text(encoding="utf-8", errors="replace")

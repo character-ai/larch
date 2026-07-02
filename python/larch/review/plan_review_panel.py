@@ -20,6 +20,7 @@ from typing import cast
 
 from larch.review import findings_ledger
 from larch.core import external_defaults
+from larch.agents._launch_failure import resolve_model_args
 from larch.review import review_pipeline
 from larch.review import voting
 from larch import io as larch_io
@@ -120,6 +121,7 @@ def _static_slot_rows(
         )
         if slot.model_role:
             row["model_role"] = slot.model_role
+            row["resolved_model"] = _resolved_model_for_row(slot.tool, slot.model_role)
         rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
@@ -183,7 +185,30 @@ def _generic_plan_codex_row(
         prompt=proc.stdout if proc.returncode == 0 else "",
     )
     row["model_role"] = slot.model_role
+    row["resolved_model"] = _resolved_model_for_row(slot.tool, slot.model_role)
     return row
+
+def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
+    try:
+        role = model_role if model_role in {"default", "review", "vote", "fix"} else "default"
+        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
+    except (ValueError, KeyError):
+        return "unknown"
+    if tool == "cursor" and "--model" in argv:
+        idx = argv.index("--model")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    if tool == "codex" and "-m" in argv:
+        idx = argv.index("-m")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    return "unknown"
+
+def _with_attribution(row: dict[str, object]) -> dict[str, object]:
+    tool = str(row.get("tool") or "unknown")
+    role = str(row.get("model_role") or "default")
+    row.setdefault("vendor", tool)
+    row.setdefault("resolved_model", _resolved_model_for_row(tool, role))
+    return row
+
 def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT") or _REPO_ROOT)
 
@@ -213,14 +238,14 @@ def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Pa
     # first row and the panel launched zero reviewers (#4765).
     prompt_text = prompt or f"Review the design plan with a {focus} lens."
     _ = prompt_file.write_text(prompt_text, encoding="utf-8")
-    return {
+    return _with_attribution({
         "tool": tool,
         "slot": slot,
         "name": slot,
         "focus_area": focus,
         "prompt_file": str(prompt_file),
         "output": str(output),
-    }
+    })
 
 
 def _load_dynamic_rows(design: Path) -> list[tuple[str, str, str, str]]:
@@ -303,6 +328,7 @@ def _dynamic_slot_rows(
         row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered)
         if tool == "codex":
             row["model_role"] = "default"
+            row["resolved_model"] = _resolved_model_for_row(tool, "default")
         rows.append(row)
     return rows, failures
 

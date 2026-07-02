@@ -304,7 +304,7 @@ def _step5c_invoke_publish_core(publish_args: list[str]) -> int:
 
 
 _AUTO_COMPOSE_OPTIONAL_TRAILER_RE = re.compile(
-    r"^(diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+)$"
+    r"^(difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: \d+|diff_deleted: \d+|mechanical_churn: .+)$"
 )
 
 

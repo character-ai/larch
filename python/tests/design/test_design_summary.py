@@ -510,3 +510,14 @@ def test_render_final_summary_write_failure_skips_upsert(
 
     assert rc == 1
     assert not upsert_calls
+
+
+def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:
+    (tmp_path / "difficulty-rating.json").write_text(
+        '{"predicted_tier":"MODERATE","applied_tier":"HARD","floors_applied":[{"path":"hooks/x"}],"confidence":"medium"}\n',
+        encoding="utf-8",
+    )
+
+    line = design_summary._difficulty_summary_line(tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert line == "predicted MODERATE; applied HARD; floor raised"

@@ -13,6 +13,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch.calibration import difficulty
 from larch.core import external_defaults
 from larch.core import logging_util
 
@@ -243,9 +244,29 @@ def _write_manifest(*, path: Path, manifest: dict[str, object]) -> None:
     tmp.replace(path)
 
 
+
+def _write_scout_difficulty_sidecar(*, data: object, output_path: Path) -> str:
+    if not isinstance(data, dict) or "difficulty" not in data:
+        return ""
+    try:
+        rating = difficulty.validate_rating_object(data.get("difficulty"))
+    except ValueError:
+        return "invalid"
+    path = output_path.with_name(difficulty.SCOUT_RAW_RATING_BASENAME)
+    _write_manifest(
+        path=path,
+        manifest={
+            "predicted_tier": rating.predicted_tier,
+            "confidence": rating.confidence,
+            "rationale": rating.rationale,
+        },
+    )
+    return str(path)
+
 def filter_manifest(*, input_path: Path, output_path: Path, max_archetypes: int, mode: str = "plan-review") -> tuple[str, int]:
     try:
         data: object = json.loads(input_path.read_text(encoding="utf-8"))
+        _write_scout_difficulty_sidecar(data=data, output_path=output_path)
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode=mode)
     except (OSError, TypeError, ValueError, json.JSONDecodeError):
         _write_empty_manifest(output_path)
@@ -430,12 +451,13 @@ def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
         else:
             _ = handle.write(
                 "You are selecting optional specialist code-review archetypes for /review.\n"
-                'Return ONLY compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}]}.\n'
+                'Return ONLY compact JSON with this shape: {"archetypes":[{"name":"slug","focus_area":"code-quality|risk-integration|correctness|architecture|security","weight":1,"rationale":"...","prompt_body":"..."}],"difficulty":{"predicted_tier":"TRIVIAL|MODERATE|HARD","confidence":"low|medium|high","rationale":"..."}}.\n'
                 f'Return at most {max_archetypes} archetypes. Return {{"archetypes":[]}} when the static panel is sufficient.\n'
                 "Output ONLY the raw JSON object — no markdown code fences, no backticks, no prose.\n"
                 'The "rationale" field must be a single line with no embedded newlines.\n'
                 "Use short lowercase slug names. Do not duplicate active static reviewers: correctness, edge-cases, testing, generic. Security is folded into edge-cases and must not be emitted separately. The historical folded slugs structure and plan-fidelity are reserved and MUST NOT be emitted as dynamic archetypes.\n"
                 'The "prompt_body" field must be 2-6 sentences describing what aspect of the diff (or description) to investigate.\n'
+                + difficulty.render_rubric() + "\n"
                 "CONSTRAINTS on prompt_body content:\n"
                 "  - Do NOT include any output-format demands, section-header requirements, or response-shape directives. The reviewer wrapper owns the output format; prompt_body owns the focus area only.\n"
                 "  - Do NOT include YAML frontmatter, markdown code fences, or `<scout_notes>`/`</scout_notes>` tag markers.\n"
@@ -526,6 +548,9 @@ def scout_dynamic_archetypes(  # noqa: PLR0913,PLR0915,RUF100
         _write_empty_manifest(output)
         _emit_scout_result(status="parse-failed", output=output, count=0, latency_ms=latency_ms, fail_reason="json_parse")
         return
+    difficulty_status = _write_scout_difficulty_sidecar(data=data, output_path=output)
+    if difficulty_status == "invalid":
+        _emit_kv(key="WARN", value="invalid scout difficulty rating ignored")
     try:
         result = validate_dynamic_manifest(data, max_archetypes=max_archetypes, mode="review")
     except (TypeError, ValueError) as exc:

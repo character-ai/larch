@@ -18,6 +18,7 @@ from larch import io as larch_io
 from collections.abc import Iterable
 
 from larch.core import config
+from larch.calibration import difficulty
 from larch.core.ctx import Ctx
 from larch.core.logging_util import diagnostic, emit, emit_kv, quiet_init
 from larch.git.repo_roots import consumer_repo_root
@@ -864,10 +865,19 @@ def validate_plan_main(argv: list[str]) -> int:
     repo = _repo_root_for_plan(plan=plan, explicit_repo_root=args.repo_root)
     plugin = _plugin_root(repo)
     source_kind = args.source_kind or ("composed" if plan.name == "composed-plan.md" else "plan")
-    rows = parse_plan_commands(plan_text=plan.read_text(encoding="utf-8", errors="replace"), repo_root=repo, plugin_root=plugin)
+    plan_text = plan.read_text(encoding="utf-8", errors="replace")
+    rows = parse_plan_commands(plan_text=plan_text, repo_root=repo, plugin_root=plugin)
     summary = validate_plan_command_rows(rows=rows, repo_root=repo, registry=None, source_kind=source_kind, plugin_root=plugin)
-    emit_kv(key="VALIDATE_STATUS", value=summary.status)
-    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(summary.defect_count))
+    difficulty_defects = 0
+    for raw in plan_text.splitlines():
+        if raw.startswith("difficulty:") and not difficulty.tier_valid(raw[len("difficulty:") :].strip()):
+            difficulty_defects = 1
+            break
+    if difficulty_defects == 0 and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "").strip() == "1" and not difficulty.plan_difficulty(plan_text):
+        difficulty_defects = 1
+    status = "defects-found" if summary.defect_count or difficulty_defects else summary.status
+    emit_kv(key="VALIDATE_STATUS", value=status)
+    emit_kv(key="VALIDATE_DEFECT_COUNT", value=str(summary.defect_count + difficulty_defects))
     emit_kv(key="VALIDATE_SKIPPED_COUNT", value=str(summary.skipped_count))
     emit_kv(key="VALIDATE_UNSAFE_TOKEN_COUNT", value=str(summary.unsafe_token_count))
     design_tmpdir_raw = args.design_tmpdir or os.environ.get(config.ENV_DESIGN_TMPDIR, "")
@@ -880,13 +890,16 @@ def validate_plan_main(argv: list[str]) -> int:
     if ok and design_tmpdir is not None:
         argv_overrides[config.ENV_DESIGN_TMPDIR] = str(design_tmpdir)
     ctx = Ctx.from_mapping({**os.environ, **argv_overrides})
+    log_text = summary.log_text
+    if difficulty_defects:
+        log_text += "DEFECT plan kind=difficulty-metadata\n"
     if ok and design_tmpdir and design_tmpdir.is_dir():
         log_path = design_tmpdir / "validate-plan-commands.log"
-        _atomic_write(path=log_path, text=summary.log_text)
+        _atomic_write(path=log_path, text=log_text)
     else:
         fd, name = tempfile.mkstemp(prefix="larch-validate-plan-commands.log.", dir=ctx.tmpdir or "/tmp")
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
-            handle.write(summary.log_text)
+            handle.write(log_text)
         log_path = Path(name)
     emit_kv(key="VALIDATE_LOG_FILE", value=str(log_path))
     return 0

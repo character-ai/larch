@@ -14,8 +14,10 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from larch.core import external_defaults
+from larch.agents._launch_failure import resolve_model_args
 from larch.core import logging_util
 from larch.design.plan_scout import REVIEW_RESERVED as RESERVED_DYNAMIC_NAMES
+from larch.calibration import difficulty
 from larch.design.plan_scout import filter_manifest as filter_scout_manifest
 from larch.review import findings_ledger
 from larch.review.review_pipeline_shared import (
@@ -221,9 +223,31 @@ prompt_body: |
 """
 
 
+
+def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
+    try:
+        role = model_role if model_role in {"default", "review", "vote", "fix"} else "default"
+        argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
+    except (ValueError, KeyError):
+        return "unknown"
+    if tool == "cursor" and "--model" in argv:
+        idx = argv.index("--model")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    if tool == "codex" and "-m" in argv:
+        idx = argv.index("-m")
+        return argv[idx + 1] if idx + 1 < len(argv) else "unknown"
+    return "unknown"
+
+def _with_attribution(row: dict[str, object]) -> dict[str, object]:
+    tool = str(row.get("tool") or "unknown")
+    role = str(row.get("model_role") or "default")
+    row.setdefault("vendor", tool)
+    row.setdefault("resolved_model", _resolved_model_for_row(tool, role))
+    return row
+
 def _append_manifest_row(*, manifest: Path, row: Mapping[str, object]) -> None:
     with manifest.open("a", encoding="utf-8") as handle:
-        handle.write(json.dumps(dict(row), separators=(",", ":")) + "\n")
+        handle.write(json.dumps(_with_attribution(dict(row)), separators=(",", ":")) + "\n")
 
 
 def _generic_codex_enabled(round_num: int) -> bool:
@@ -507,6 +531,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     scout_status = "na"
     scout_fail_reason = ""
     scout_manifest: Path | None = None
+    scout_difficulty = review_tmpdir / difficulty.SCOUT_RAW_RATING_BASENAME
     diff_file = _get(parsed=parsed, key="--diff-file")
     diff_mode = ""
     if dynamic_max and mode == "diff" and diff_file and Path(diff_file).is_file() and Path(diff_file).stat().st_size:
@@ -702,6 +727,9 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         _emit_kv(key="SLOT_COUNT", value=0)
         if scout_manifest:
             _emit_kv(key="SCOUT_MANIFEST", value=scout_manifest)
+        if scout_difficulty and scout_difficulty.is_file():
+            _emit_kv(key="SCOUT_DIFFICULTY_RATING", value=scout_difficulty)
+            _emit_kv(key="SCOUT_DIFFICULTY_STATUS", value="ok")
         _emit_kv(key="PANEL_MANIFEST", value=manifest)
         _emit_kv(key="DISPATCH_OK", value="true")
         _emit_kv(key="STATIC_DISPATCH_OK", value="true")
@@ -797,6 +825,9 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     _emit_kv(key="SLOT_COUNT", value=static_slot_count + dynamic_slots)
     if scout_manifest:
         _emit_kv(key="SCOUT_MANIFEST", value=scout_manifest)
+    if scout_difficulty and scout_difficulty.is_file():
+        _emit_kv(key="SCOUT_DIFFICULTY_RATING", value=scout_difficulty)
+        _emit_kv(key="SCOUT_DIFFICULTY_STATUS", value="ok")
     _emit_kv(key="PANEL_MANIFEST", value=manifest)
     _emit_kv(key="PRUNE_ACTIVE", value=prune_active)
     _emit_kv(key="PRUNE_STATUS", value=prune_status)

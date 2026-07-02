@@ -7,6 +7,7 @@ relative_path	condition	batch_slug	extension
 # informational rather than fail when the gc-slimmed marker is present.
 manifest.json	always	manifest	json
 plan-review-tally.json	always	plan-review-tally	json
+difficulty-rating.json	always	difficulty-rating	json
 code-review-tally.json	step5	code-review-tally	json
 review-findings-full.jsonl	step5	review-findings-full	jsonl
 final-summary.md	step8	direct-file	md

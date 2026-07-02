@@ -37,6 +37,7 @@ def _valid_success_rows(tmp_path: Path) -> list[tuple[str, str]]:
         ("PLAN_PATH", str(plan)),
         ("ISSUE_JSON_PATH", str(issue_json)),
         ("BYPASS_COUNT", "0"),
+        ("DESIGN_DIFFICULTY", ""),
     ]
 
 
@@ -130,7 +131,7 @@ def test_preflight_success_emits_kv_and_forwards_repo(
             return _fake_completed(argv)
         if "plan-block" in argv:
             out_path = Path(argv[argv.index("--output") + 1])
-            out_path.write_text("review_status: complete\nrounds_completed: 2\ndiff_lines: 12\n", encoding="utf-8")
+            out_path.write_text("review_status: complete\nrounds_completed: 2\ndifficulty: MODERATE\ndiff_lines: 12\n", encoding="utf-8")
             _write(handle=stdout, text="BLOCK_PRESENT=true\n")
             return _fake_completed(argv)
         return _fake_completed(argv)
@@ -148,6 +149,7 @@ def test_preflight_success_emits_kv_and_forwards_repo(
         "PLAN_PATH",
         "ISSUE_JSON_PATH",
         "BYPASS_COUNT",
+        "DESIGN_DIFFICULTY",
     ]
     assert "ADMISSION_RESULT=pass" in out
     assert "RESUME=true" in out

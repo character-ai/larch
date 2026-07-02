@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, cast
 
 from larch.core import redact
+from larch.calibration import difficulty
 from larch.issue import file_oos
 from larch.implement.dispatch_helpers import (
     _emit_kv,
@@ -364,6 +365,14 @@ def _validate_manifest_paths(*, st: DispatchState, obj: dict[str, Any]) -> str:
     return ""
 
 
+def _difficulty_schema_valid(obj: dict[str, Any]) -> bool:
+    try:
+        _ = difficulty.validate_rating_object(obj.get("difficulty"))
+    except ValueError:
+        return False
+    return True
+
+
 def _complete_schema_valid(obj: dict[str, Any]) -> bool:
     return (
         isinstance(obj.get("files_touched"), list)
@@ -376,10 +385,11 @@ def _complete_schema_valid(obj: dict[str, Any]) -> bool:
         and isinstance(obj.get("tests_added_or_modified"), list)
         and isinstance(obj.get("todos_left"), list)
         and isinstance(obj.get("oos_observations"), list)
+        and _difficulty_schema_valid(obj)
     )
 
 
-def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:
+def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
     sanitized = dict(obj)
     for key in ("commit_message",):
         if isinstance(sanitized.get(key), str):
@@ -387,6 +397,16 @@ def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:
     for key in ("summary_bullets", "todos_left"):
         if isinstance(sanitized.get(key), list):
             sanitized[key] = [redact.redact_secrets_only(v) if isinstance(v, str) else v for v in sanitized[key]]
+    if isinstance(sanitized.get("difficulty"), dict):
+        try:
+            rating = difficulty.validate_rating_object(sanitized["difficulty"])
+            sanitized["difficulty"] = {
+                "predicted_tier": rating.predicted_tier,
+                "confidence": rating.confidence,
+                "rationale": rating.rationale,
+            }
+        except ValueError:
+            pass
     if isinstance(sanitized.get("oos_observations"), list):
         out: list[Any] = []
         for item in sanitized["oos_observations"]:
