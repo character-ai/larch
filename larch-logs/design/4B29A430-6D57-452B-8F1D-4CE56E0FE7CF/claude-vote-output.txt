@@ -1,0 +1,1 @@
+A larch background-wait hook is blocking all tool calls. I must end this turn without polling and wait for the `<task-notification>`.

@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=6
+total_findings=6
+total_ballot_items=6
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=943a467b6cdad07034b05c04177d13b00e1d142bc835ab795f8efc955d5f42d2
+--- first 200 bytes of voter output ---
+A larch background-wait hook is blocking all tool calls. I must end this turn without polling and wait for the `<task-notification>`.
