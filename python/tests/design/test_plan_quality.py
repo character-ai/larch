@@ -1480,6 +1480,58 @@ fi
     assert calls1 == ["codex"]
 
 
+def test_auto_fix_cursor_dispatch_sets_no_open_browser(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    prompt = design_tmpdir / "prompt.txt"
+    prompt.write_text("fix the plan\n", encoding="utf-8")
+    plugin = tmp_path / "plugin"
+    (plugin / "python").mkdir(parents=True)
+    captured_spawn_env: dict[str, str] = {}
+    captured_spawn_cmd: list[str] = []
+
+    def fake_resolve_model_args(_tool: str, *, with_effort: bool = False) -> plan_quality.agents.ModelArgResult:
+        assert with_effort is True
+        return plan_quality.agents.ModelArgResult(())
+
+    def fake_check_output(_cmd: list[str], **_kwargs: object) -> str:
+        return "100\n"
+
+    def fake_run(cmd: list[str] | str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        cmd_list = list(cmd) if isinstance(cmd, list) else [cmd]
+        if "cursor-wrap-prompt" in cmd_list:
+            return subprocess.CompletedProcess(cmd_list, 0, "wrapped prompt", "")
+        if "run-external-agent" in cmd_list:
+            env = kwargs.get("env")
+            captured_spawn_env.update(dict(env) if isinstance(env, dict) else os.environ.copy())
+            captured_spawn_cmd.extend(cmd_list)
+            return subprocess.CompletedProcess(cmd_list, 0, "", "")
+        if "record-vendor-task" in cmd_list:
+            return subprocess.CompletedProcess(cmd_list, 0, "", "")
+        raise AssertionError(f"unexpected subprocess: {cmd_list}")
+
+    monkeypatch.delenv("NO_OPEN_BROWSER", raising=False)
+    monkeypatch.setattr(plan_quality.agents, "resolve_model_args", fake_resolve_model_args)
+    monkeypatch.setattr(plan_quality.subprocess, "check_output", fake_check_output)
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+
+    rc = plan_quality._dispatch_vendor_fix(
+        vendor="cursor",
+        run_dir=run_dir,
+        prompt=prompt,
+        design_tmpdir=design_tmpdir,
+        plugin=plugin,
+        timeout=30,
+    )
+
+    assert rc == 0
+    assert captured_spawn_env["NO_OPEN_BROWSER"] == "1"
+    cursor_argv = captured_spawn_cmd[captured_spawn_cmd.index("--") + 1 :]
+    assert cursor_argv[:3] == ["cursor", "agent", "-p"]
+
+
 def test_auto_fix_revalidation_uses_consumer_repo_root(tmp_path: Path) -> None:
     consumer = tmp_path / "consumer"
     consumer.mkdir()
