@@ -159,8 +159,8 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
     return straggler_slugs - genuine_failure_slugs
 
 
-def _tool_absent_excused_static_slugs(*, dropped_file: Path, success: set[str]) -> set[str]:
-    """Excuse a slug only when tool-absent is the sole drop reason and a surviving vendor succeeded."""
+def _tool_absent_excused_static_slugs(*, dropped_file: Path, collector_success: set[str]) -> set[str]:
+    """Excuse a slug only when tool-absent is the sole drop reason and a surviving vendor has collector OK/cap_hit."""
     if not dropped_file.is_file():
         return set()
     tool_absent_slugs: set[str] = set()
@@ -174,7 +174,7 @@ def _tool_absent_excused_static_slugs(*, dropped_file: Path, success: set[str]) 
             tool_absent_slugs.add(slot)
         elif reason != "straggler-dropped":
             other_failure_slugs.add(slot)
-    return {slug for slug in tool_absent_slugs if slug in success and slug not in other_failure_slugs}
+    return {slug for slug in tool_absent_slugs if slug in collector_success and slug not in other_failure_slugs}
 
 
 def _static_coverage_reason(*,
@@ -186,6 +186,7 @@ def _static_coverage_reason(*,
     from larch.review.review_pipeline_shared import STATIC_REVIEWERS  # noqa: PLC0415
     from larch.review.review_threshold import _normalize_output_base as _norm_base  # noqa: PLC0415
     success: set[str] = set()
+    collector_success: set[str] = set()
     rejected: set[str] = set()
     for record in _collector_records(collector):
         base = Path(record.get("REVIEWER_FILE", "")).name
@@ -193,6 +194,7 @@ def _static_coverage_reason(*,
         if not slug:
             continue
         if record.get("STATUS") in {"OK", "cap_hit"}:
+            collector_success.add(slug)
             success.add(slug)
         else:
             rejected.add(_norm_base(base))
@@ -215,7 +217,7 @@ def _static_coverage_reason(*,
     dropped_path = Path(dropped_slots_file) if dropped_slots_file else None
     excused = _straggler_excused_static_slugs(dropped_path) if dropped_path else set()
     if dropped_path:
-        excused |= _tool_absent_excused_static_slugs(dropped_file=dropped_path, success=success)
+        excused |= _tool_absent_excused_static_slugs(dropped_file=dropped_path, collector_success=collector_success)
     missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 
