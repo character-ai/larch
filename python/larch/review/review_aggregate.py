@@ -16,7 +16,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import external_defaults
 from larch.core import logging_util
-from larch.report.tokens import build_panel_dispatch_env
+from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 from larch.review.review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -120,12 +120,11 @@ def _append_warning(*, review_tmpdir: Path, session_env_path: str, entry: str) -
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
 
 
-def _artifact_dir_for_aggregation(*, review_tmpdir: Path, round_dir: Path | None) -> Path:
+def _artifact_dir_for_aggregation(*, review_tmpdir: Path, round_dir: Path | None, round_num: int | None = None) -> Path:
     if round_dir is not None:
         return round_dir
-    if re.fullmatch(r"round-[0-9]+", review_tmpdir.name):
-        return review_tmpdir
-    return review_tmpdir
+    artifact_dir, _ = resolve_panel_artifact_dir(review_tmpdir=review_tmpdir, round_num=round_num)
+    return artifact_dir
 
 
 # Issue #5004: _failure_see_phrase emits a committed "See ..." pointer for any failure log that
@@ -801,6 +800,7 @@ def _parse_aggregate_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--scope-anchor-file", default="")
     parser.add_argument("--allow-findings-outside-tmpdir", choices=("true", "false"), default="false")
     parser.add_argument("--round-dir", default="")
+    parser.add_argument("--round-num", type=int, default=0)
     parser.add_argument("--site", default="review.aggregate")
     return parser.parse_args(argv)
 
@@ -883,7 +883,8 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     if slot.model_role:
         slot_row["model_role"] = slot.model_role
     _write_text(path=slots_file, text=json.dumps(slot_row, separators=(",", ":")) + "\n")
-    artifact_dir = _artifact_dir_for_aggregation(review_tmpdir=review_tmpdir, round_dir=round_dir)
+    round_num = args.round_num if args.round_num > 0 else None
+    artifact_dir = _artifact_dir_for_aggregation(review_tmpdir=review_tmpdir, round_dir=round_dir, round_num=round_num)
     panel_round_dir = artifact_dir if re.fullmatch(r"round-[0-9]+", artifact_dir.name) else round_dir
     panel_env = build_panel_dispatch_env(
         artifact_dir=artifact_dir,

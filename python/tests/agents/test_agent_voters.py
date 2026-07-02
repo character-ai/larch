@@ -1186,3 +1186,18 @@ def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypa
     lines = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
     assert len(lines) >= 1
     assert all(line.split("\t")[4] == "voter" for line in lines)
+
+
+def test_voter_dispatch_resolves_round_subdir_for_panel_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    run_root = tmp_path / "impl"
+    round_dir = run_root / "round-5"
+    round_dir.mkdir(parents=True)
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, run_root)
+
+    assert agent_voters.dispatch_voters(_opts(ballot, run_root, round_num=5)) == 0
+
+    waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    assert _value_after(waterfall, "--panel-artifact-dir") == str(round_dir)
+    assert not (run_root / "panel-prompt-sizes.tsv").exists()

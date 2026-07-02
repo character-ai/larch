@@ -1182,6 +1182,13 @@ def test_panel_slot_kind_classifies_dyn_slots_before_plan_substring(monkeypatch:
     monkeypatch.setenv("LARCH_PANEL_SLOT", "dyn-migration-plan")
     assert tokens._panel_slot_kind_from_env() == "specialist"  # pyright: ignore[reportPrivateUsage]
 
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "dyn-cursor-plan-arch")
+    monkeypatch.setenv("LARCH_PANEL_PHASE", "plan-review")
+    monkeypatch.setenv("LARCH_PANEL_SITE", "design Step 3")
+    assert tokens._panel_slot_kind_from_env() == "plan-review"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.delenv("LARCH_PANEL_PHASE", raising=False)
+    monkeypatch.delenv("LARCH_PANEL_SITE", raising=False)
     monkeypatch.setenv("LARCH_PANEL_SLOT", "cursor-plan-arch")
     assert tokens._panel_slot_kind_from_env() == "plan-review"  # pyright: ignore[reportPrivateUsage]
 
@@ -1234,4 +1241,22 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     data = _tsv_rows(out)
     assert data[0]["realized_bytes"] == "100"
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
+
+
+def test_measure_panel_cost_skips_symlinked_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-01")  # pyright: ignore[reportPrivateUsage]
+    header = "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+    real = tmp_path / "larch-logs" / "review" / "r1" / "panel-prompt-sizes.tsv"
+    real.parent.mkdir(parents=True)
+    real.write_text(header + "review\t\t\taggregator\taggregator\tcodex\tagg.txt\t70\t18\tagents/orchestrator-aggregator.md\t30\t8\n", encoding="utf-8")
+    symlink = tmp_path / "larch-logs" / "design" / "d1" / "panel-prompt-sizes.tsv"
+    symlink.parent.mkdir(parents=True)
+    symlink.symlink_to("/dev/zero")
+
+    out = tokens.measure_panel_cost()
+    text = out.read_text(encoding="utf-8")
+
+    assert "agents/orchestrator-aggregator.md" in text
+    assert "design" not in text
 # pyright: reportUnusedCallResult=false

@@ -4,7 +4,7 @@ import json
 import os
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
@@ -1502,4 +1502,155 @@ def test_panel_dispatch_rows_launchable_by_waterfall(tmp_path: Path) -> None:
     # The real consumer parser must accept the producer's manifest without raising.
     slots = agent_waterfall._load_slots(str(manifest))  # pyright: ignore[reportPrivateUsage]
     assert len(slots) == len(rows)
+
+
+def _append_panel_rows_from_waterfall_env(*, artifact_dir: str, slots_file: str, env: dict[str, str]) -> list[str]:
+    from larch.report import tokens
+
+    saved = dict(os.environ)
+    try:
+        os.environ.update(env)
+        outputs: list[str] = []
+        phase = (env.get("LARCH_PANEL_PHASE") or "").lower()
+        site = (env.get("LARCH_PANEL_SITE") or "").lower()
+        if "voter" in phase:
+            default_kind = "voter"
+        elif "plan-review" in phase or "design" in site:
+            default_kind = "plan-review"
+        else:
+            default_kind = "specialist"
+        for line in Path(slots_file).read_text(encoding="utf-8").splitlines():
+            if not line.strip():
+                continue
+            row = json.loads(line)
+            out = Path(str(row["output"]))
+            _ = out.write_text("finding\n", encoding="utf-8")
+            outputs.append(str(out))
+            tokens.append_panel_prompt_size(
+                artifact_path=Path(artifact_dir) / tokens.PANEL_PROMPT_SIZE_BASENAME,
+                output=out,
+                tool=str(row.get("tool", "cursor")),
+                prompt="plan-review prompt body",
+                slot=str(row.get("slot", "")),
+                slot_kind=default_kind,
+            )
+        return outputs
+    finally:
+        os.environ.clear()
+        os.environ.update(saved)
+
+
+def test_plan_review_panel_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from larch.report import tokens
+
+    design = tmp_path / "design-panel-tsv"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    round_dir = design / "plan-review" / "round-2"
+    round_dir.mkdir(parents=True)
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        env = cast("dict[str, str]", kwargs.get("env") or {})
+        if verb == ("render", "plan-review"):
+            return cp(a, 0, stdout="prompt body\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            artifact_dir = ""
+            slots_file = ""
+            for i, tok in enumerate(a):
+                if tok == "--panel-artifact-dir" and i + 1 < len(a):
+                    artifact_dir = a[i + 1]
+                if tok == "--slots-file" and i + 1 < len(a):
+                    slots_file = a[i + 1]
+            outs = _append_panel_rows_from_waterfall_env(artifact_dir=artifact_dir, slots_file=slots_file, env=env)
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=cursor\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    rc = plan_review_panel.dispatch_panel([
+        "--design-tmpdir", str(design),
+        "--round-num", "2",
+        "--codex-present", "false",
+        "--cursor-present", "true",
+        "--plan-file", str(design / "plan.txt"),
+        "--feature-file", str(design / "feature-description.txt"),
+    ])
+    assert rc == 0
+    tsv = round_dir / tokens.PANEL_PROMPT_SIZE_BASENAME
+    assert tsv.is_file()
+    assert not (design / tokens.PANEL_PROMPT_SIZE_BASENAME).exists()
+    lines = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
+    assert lines
+    assert all(line.split("\t")[4] == "plan-review" for line in lines)
+
+
+def test_plan_review_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    from larch.report import tokens
+
+    design = tmp_path / "design-voter-tsv"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        env = cast("dict[str, str]", kwargs.get("env") or {})
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            artifact_dir = ""
+            slots_file = ""
+            for i, tok in enumerate(a):
+                if tok == "--panel-artifact-dir" and i + 1 < len(a):
+                    artifact_dir = a[i + 1]
+                if tok == "--slots-file" and i + 1 < len(a):
+                    slots_file = a[i + 1]
+            outs = _append_panel_rows_from_waterfall_env(artifact_dir=artifact_dir, slots_file=slots_file, env=env)
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=cursor\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="3\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    class _FakePopen:
+        def __init__(self, argv: object, **_kwargs: object) -> None:
+            a = [str(x) for x in argv]  # type: ignore[union-attr]
+            out = ""
+            for i, tok in enumerate(a):
+                if tok == "--output" and i + 1 < len(a):
+                    out = a[i + 1]
+            if out:
+                _ = Path(out).write_text("vote\n", encoding="utf-8")
+                _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
+            self.returncode = 0
+
+        def wait(self) -> int:
+            return 0
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", lambda **_k: "OK")  # type: ignore[arg-type]
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--round-num", "1",
+    ])
+    assert rc == 0
+    tsv = round_dir / tokens.PANEL_PROMPT_SIZE_BASENAME
+    assert tsv.is_file()
+    assert not (design / tokens.PANEL_PROMPT_SIZE_BASENAME).exists()
+    lines = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
+    assert lines
+    assert all(line.split("\t")[4] == "voter" for line in lines)
 # pyright: reportUnusedFunction=false

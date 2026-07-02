@@ -280,9 +280,11 @@ def _panel_slot_kind_from_env(env: Mapping[str, str] | None = None, *, slot_kind
         return "aggregator"
     if "voter" in lowered or "vote" in lowered or "voter" in phase or "voter" in task:
         return "voter"
+    if "plan-review" in phase or "design" in site:
+        return "plan-review"
     if "specialist" in lowered or lowered.startswith("dyn-") or lowered in _PANEL_SPECIALIST_SLOT_NAMES:
         return "specialist"
-    if "-plan-" in lowered or "plan-review" in phase or "design" in site:
+    if "-plan-" in lowered:
         return "plan-review"
     return ""
 
@@ -332,6 +334,16 @@ def panel_prompt_size_artifact_for_output(*, output: Path, site: str = "", round
         return output_round / PANEL_PROMPT_SIZE_BASENAME
     _ = site
     return output.parent / PANEL_PROMPT_SIZE_BASENAME
+
+
+def resolve_panel_artifact_dir(*, review_tmpdir: Path, round_num: int | None = None) -> tuple[Path, Path | None]:
+    if _PANEL_ROUND_RE.fullmatch(review_tmpdir.name):
+        return review_tmpdir, review_tmpdir
+    if round_num is not None:
+        round_subdir = review_tmpdir / f"round-{round_num}"
+        if round_subdir.is_dir():
+            return round_subdir, round_subdir
+    return review_tmpdir, None
 
 
 def build_panel_dispatch_env(
@@ -2314,7 +2326,11 @@ def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
     root = repo / "larch-logs"
     if not root.is_dir():
         return []
-    return sorted(path for path in root.glob(f"**/{PANEL_PROMPT_SIZE_BASENAME}") if _panel_context_from_tsv(path, repo) is not None)
+    return sorted(
+        path
+        for path in root.glob(f"**/{PANEL_PROMPT_SIZE_BASENAME}")
+        if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None
+    )
 
 
 def _uint_cell(row: Mapping[str, str], key: str) -> int:

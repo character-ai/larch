@@ -21,7 +21,7 @@ from larch.review import voting
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.report.tokens import build_panel_dispatch_env
+from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 DISPATCH_LABEL = "agent dispatch-voters"
@@ -151,8 +151,7 @@ def _parse_rate_ctx_args(*, bounded_diff: str, bounded_plan: str) -> list[str]:
 
 
 def _panel_artifact_context(*, review_tmpdir: Path, round_num: int, site: str) -> tuple[Path, Path | None, dict[str, str]]:
-    round_dir = review_tmpdir if re.fullmatch(r"round-[0-9]+", review_tmpdir.name) else None
-    artifact_dir = round_dir or review_tmpdir
+    artifact_dir, round_dir = resolve_panel_artifact_dir(review_tmpdir=review_tmpdir, round_num=round_num)
     env = build_panel_dispatch_env(artifact_dir=artifact_dir, site=site, round_num=round_num, round_dir=round_dir)
     return artifact_dir, round_dir, env
 
