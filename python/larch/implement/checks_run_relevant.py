@@ -785,28 +785,33 @@ def _apply_digest_location(
         record.first_location = pending_location
 
 
+@dataclass(frozen=True)
+class _DigestLineContext:
+    line: str
+    marker_match: re.Match[str] | None
+    pending_location: str | None = None
+    is_precommit_banner: bool = False
+
+
 def _update_digest_record(
     records: dict[str, _ChecksFailureDigestRecord],
     *,
     check: str,
-    line: str,
-    marker_match: re.Match[str] | None,
-    pending_location: str | None = None,
-    is_precommit_banner: bool = False,
+    context: _DigestLineContext,
 ) -> None:
     record = _record_for_check(records, check)
-    _apply_digest_location(record, line=line, pending_location=pending_location)
-    if is_precommit_banner:
+    _apply_digest_location(record, line=context.line, pending_location=context.pending_location)
+    if context.is_precommit_banner:
         record.failure_count += 1
         return
-    if marker_match is None:
-        location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+    if context.marker_match is None:
+        location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(context.line)
         if location_match is not None and record.first_error == "unknown":
-            record.first_error = _digest_line(line)
+            record.first_error = _digest_line(context.line)
         return
     record.failure_count += 1
     if record.first_error == "unknown":
-        record.first_error = _digest_line(line)
+        record.first_error = _digest_line(context.line)
 
 
 def _digest_record_group(record: _ChecksFailureDigestRecord) -> str:
@@ -844,9 +849,7 @@ def _parse_checks_failure_records(
             _update_digest_record(
                 records,
                 check=precommit_check,
-                line=line,
-                marker_match=None,
-                is_precommit_banner=True,
+                context=_DigestLineContext(line=line, marker_match=None, is_precommit_banner=True),
             )
             continue
         if line.startswith("DEFECT:"):
@@ -862,18 +865,14 @@ def _parse_checks_failure_records(
             _update_digest_record(
                 records,
                 check=check,
-                line=line,
-                marker_match=marker_match,
-                pending_location=pending_location,
+                context=_DigestLineContext(line=line, marker_match=marker_match, pending_location=pending_location),
             )
             pending_location = None
         elif records:
             _update_digest_record(
                 records,
                 check=check,
-                line=line,
-                marker_match=None,
-                pending_location=pending_location,
+                context=_DigestLineContext(line=line, marker_match=None, pending_location=pending_location),
             )
 
     if not records:
