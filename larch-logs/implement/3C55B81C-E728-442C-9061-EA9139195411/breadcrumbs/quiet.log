@@ -43,6 +43,12 @@ ci_monitor: CI status query #2 in progress after 14s
 ci_monitor: poll 2/180 pending after 18s; sleeping 10s
 ci_monitor: CI status query #3 in progress after 28s
 ci_monitor: CI fail after 31s -> evaluate_failure
+=== larch-quiet-ship.py-54841.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: CI pass after 4s -> merge
+ship.py: merge
 === larch-quiet-ship.py-94920.log ===
 ship.py: pr-prep: postbump/Flush+Push
 ship.py: pr-create: PR
