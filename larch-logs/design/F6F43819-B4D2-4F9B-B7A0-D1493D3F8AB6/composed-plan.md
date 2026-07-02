@@ -1,0 +1,305 @@
+## Plan
+
+## Approach
+
+Reuse the existing `skill-closure report` and `lint skill-closure-growth` paths.
+
+Keep the change narrow:
+
+- Add `review` as a normal gated skill with eager plus conditional closure ratcheted in the baseline; conditional growth-gating applies to `review` only, not design/implement.
+- Add `panel-tier` as one fixed ratcheted target in the same baseline.
+- Extend directive matching only for the four verified hidden-eager patterns; no generic phrase-matcher grammar.
+- Treat `force_requested=false` as the default path, not a conditional branch.
+- Generalize path extraction so session-start registry `.tsv` reads are harvestable.
+- Extend isolated test fixtures so four-target `scan_all()` paths do not fail closed in `tmp_path` trees.
+- Regenerate `python/skill-closure-baseline.json` in the same PR.
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so this plan is based on direct repo inspection.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/lint_skill_closure_growth.py
+
+Add `/review` and panel-tier support, a review-scoped conditional ratchet, and narrow classifier fixes.
+
+Target constants:
+
+- `GATED_SKILLS = ("design", "implement", "review")`
+- `PANEL_TIER_TARGET = "panel-tier"`
+- `RATCHETED_TARGETS = (*GATED_SKILLS, PANEL_TIER_TARGET)`
+
+Baseline schema:
+
+- Keep `skill` as row identity; panel row uses `"skill": "panel-tier"`.
+- Add conditional fields to the row schema so every row has a uniform shape:
+  - `conditional_lines`
+  - `conditional_estimated_tokens`
+  - `conditional_content_estimated_tokens`
+  - `conditional_files: list[str]`
+- Update `SkillClosureResult.to_baseline_row()`, `BaselineRow`, and `_validate_baseline_row()` to carry these fields on every row (schema uniformity only).
+- Limit `_growth_violations()` conditional-metric comparison to the `review` row only. Design and implement keep today's report-only conditional behavior; do not fail lint on their conditional growth. This matches the issue's acceptance criteria (growth failure for review and panel-tier only) and avoids freezing existing design/implement conditional corpora (for example `skills/design/references/decompose-panel.md`) with no stated requirement.
+- For `panel-tier`, write `skill_md_*` and conditional metrics as `0`, `conditional_files` as `[]`; ratchet only `closure_*` and `files`.
+- Change `load_baseline()` validation from `GATED_SKILLS` to `RATCHETED_TARGETS`.
+
+Panel-tier scanning:
+
+- Add `scan_panel_tier(root)`:
+  - Include sorted `agents/*.md`.
+  - Include `skills/shared/reviewer-templates.md`.
+  - Include `skills/shared/reviewer-templates-code-reviewer.md`.
+  - Include `skills/shared/voting-protocol.md`.
+  - Deduplicate while preserving sorted, stable order.
+  - Fail closed if a fixed shared file is missing.
+  - Fail closed if `agents/*.md` yields no files.
+- Update `scan_all(root)` to return `design`, `implement`, `review`, `panel-tier`.
+- Update `--skill` choices to `design`, `implement`, `review`, `panel-tier`.
+- Filtered check mode: `--skill panel-tier` scans only the panel row.
+- Keep `--write --skill ...` rejected.
+
+Path extraction:
+
+- Replace markdown-only harvesting with a shared `_extract_repo_paths(...)` (or equivalent) that supports:
+  - `.md` paths via the existing ticked/bare path regex behavior.
+  - Named registry `.tsv` paths only, matching `step-name-registry.tsv` under `skills/*/scripts/`.
+- Keep `NON_MD_PATH_RE` ignore behavior for other suffixes such as `.py`, `.json`, `.env`.
+- Keep runtime tmpdir markdown operands skipped as today.
+- Wire the shared extractor into directive harvesting for `MANDATORY READ` (existing) and the four narrow named eager patterns below. Do not add a general-purpose `use`/`follow`/`procedure` matcher.
+
+Classifier extensions:
+
+- Count direct markdown and approved prompt-source reads, not only `READ ENTIRE FILE`.
+- Add eager matchers scoped narrowly to the four verified hidden-eager shapes named in the issue, not a generic phrase grammar:
+  - `use ... session-setup-output.md for ...` (review Step 0)
+  - `procedure in ... external-reviewers.md` (review Step 0, Degraded-tools gate)
+  - session-start `Read ... step-name-registry.tsv` (design/implement)
+  - green-path `follow ... final-summary-emit.md` (implement Steps 17 and 18)
+- Do not add a general-purpose `use <path>.md for` / `follow <path>.md` / `procedure in <path>.md` grammar. A generic matcher would also catch always-on citations unrelated to the named gaps (for example `subskill-invocation.md`, `progress-reporting.md`, `finalize-step5.md`, `verbosity-control.md`), inflating design/implement baselines beyond this issue's scope.
+- Before adding any path from the four narrow matchers, require the same conditional gate used today:
+  - `_line_is_conditional(...)`
+  - conditional section depth from heading state
+  - existing branch-table / branch-bullet / retained-prefix exclusions
+- Keep clause extraction sentence-bounded so later citations on the same line do not enter closure.
+- Fix default-path misclassification:
+  - Treat `force_requested=false` as eager because it is the default preflight path.
+  - Keep `force_requested=true`, route-table rows, branch bullets, and other branch predicates conditional.
+  - Add this as a narrow override before generic conditional-prefix matching.
+
+Report labels:
+
+- Rename the first column label from `skill` to `target`, or otherwise make the table clear that `panel-tier` is not a skill.
+- Ensure `skill-closure report` prints `review` and `panel-tier` totals.
+- Label the conditional closure section to reflect actual enforcement: reported for every target, but only ratcheted (growth-gated) for `review`; design and implement stay report-only; panel-tier shows zero conditional metrics.
+
+### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py
+
+Extend shared fixtures first, then add focused regression coverage.
+
+Fixture helpers:
+
+- Extend `write_roots(...)` with optional `review: str = ""`.
+- Add `write_panel_tier(root)` that writes:
+  - minimal `agents/reviewer-a.md`
+  - `skills/shared/reviewer-templates.md`
+  - `skills/shared/reviewer-templates-code-reviewer.md`
+  - `skills/shared/voting-protocol.md`
+- Extend `fixture_project(root)` to call `write_roots(..., review=...)` plus `write_panel_tier(root)` with a minimal `skills/review/SKILL.md` and one eager/conditional reference as needed for baseline paths.
+- Update `write_baseline_from_live(...)` consumers to expect four ratcheted rows.
+
+Update existing tests that assume two-target `scan_all()` / baseline shape:
+
+- `test_design_and_implement_roots_are_scanned_separately`
+- `test_baseline_check_passes_when_live_metrics_match`
+- `test_baseline_check_fails_when_skill_md_lines_grow`
+- `test_baseline_check_fails_when_closure_lines_grow`
+- `test_baseline_check_fails_when_estimated_tokens_grow`
+- `test_skill_filter_ignores_other_skill_growth`
+- `test_write_regenerates_canonical_json`
+- `test_report_mode_prints_design_and_implement`
+- any other `fixture_project` / `write_baseline_from_live` path that asserts only `design` and `implement`
+
+Required scan / CLI tests:
+
+- `scan_all()` includes `review`.
+- `scan_all()` includes `panel-tier`.
+- `--skill review` checks only `review`.
+- `--skill panel-tier` checks only `panel-tier`.
+- Baseline validation requires rows for `design`, `implement`, `review`, and `panel-tier`.
+- `--write` emits canonical JSON with all four rows and the expanded baseline keys, including conditional fields.
+- `skill-closure report` output includes `review` and `panel-tier`.
+
+Classifier tests:
+
+- `skills/review/SKILL.md` real scan includes:
+  - `skills/review/SKILL.md`
+  - `skills/shared/session-setup-output.md`
+  - `skills/shared/external-reviewers.md`
+  - `skills/review/references/domain-rules.md`
+- `skills/implement/SKILL.md` real scan includes:
+  - `skills/implement/scripts/step-name-registry.tsv`
+  - `skills/shared/final-summary-emit.md`
+  - `skills/implement/references/preflight-plan-audit.md`
+- `preflight-plan-audit.md` is eager, not conditional, when referenced under `force_requested=false`.
+- A `force_requested=true` branch stays excluded.
+- Session-start `Read ... step-name-registry.tsv` is eager for design/implement fixtures.
+- Arbitrary non-registry suffixes such as `.py` remain ignored.
+- Runtime-only markdown operands still do not enter the closure.
+- Replace `test_non_markdown_references_are_ignored` with split coverage:
+  - registry `.tsv` session-start reads are eager
+  - arbitrary non-registry non-markdown paths stay ignored
+- Add a fixture test that an unrelated `follow shared/subskill-invocation.md` style citation (outside the four named shapes) stays out of the closure entirely, confirming no generic matcher was added.
+
+Panel-tier tests:
+
+- Fixed panel scan includes all `agents/*.md`.
+- Fixed panel scan includes the three shared panel files.
+- Panel-tier metrics equal the sum of its file metrics.
+- Panel-tier baseline row has zero `skill_md_*` and zero conditional metrics.
+- Missing fixed shared panel file fails closed in a temp fixture.
+- Empty `agents/` panel glob fails closed in a temp fixture.
+
+Required growth-ratchet tests:
+
+- Mirror `test_baseline_check_fails_when_closure_lines_grow` for `review`:
+  - baseline from `scan_all`, grow one review eager file, assert `main()` exits `1` with `review: closure_*` violation
+- Mirror the same pattern for `panel-tier`:
+  - baseline from `scan_all`, grow one `agents/*.md` or shared panel file, assert `main()` exits `1` with `panel-tier: closure_*` violation
+- Add conditional growth coverage for `review`:
+  - baseline from `scan_all`, grow one review conditional file, assert `main()` exits `1` with `review: conditional_*` violation
+- Add a negative test: growing a design or implement conditional-only file does NOT fail `main()`, locking in the review-only conditional ratchet scope.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate with:
+
+- `python3 python/cli.py lint skill-closure-growth --write`
+
+Expected committed shape:
+
+- Four rows:
+  - `design`
+  - `implement`
+  - `panel-tier`
+  - `review`
+- Each row includes eager metrics, `files`, conditional metrics, and `conditional_files` (schema uniform across rows; only `review`'s conditional metrics are growth-gated).
+- Updated design and implement metrics if the new eager classifier catches additional existing eager files (eager metrics only; their conditional metrics stay report-only).
+- Review metrics include eager plus conditional rows and files.
+- Panel-tier row includes the fixed panel file list, closure totals, and zero `skill_md_*` / conditional metrics.
+- JSON remains sorted and canonical per `write_baseline()`.
+
+Do not hand-edit numeric values.
+
+### UPDATED: docs/linting.md
+
+Update the SKILL.md closure growth docs.
+
+Required doc changes:
+
+- Replace “design and implement only” wording with `design`, `implement`, `review`, and `panel-tier`.
+- Explain that panel-tier covers `agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/shared/reviewer-templates-code-reviewer.md`, and `skills/shared/voting-protocol.md`.
+- Explain that `/review` is now ratcheted like `/design` and `/implement`, including conditional closure metrics in the baseline; design and implement conditional metrics stay report-only.
+- Update `--skill` examples to include `review` and `panel-tier`.
+- Update regeneration text so it says the baseline covers all ratcheted targets.
+- Rewrite the "Scope is narrow by design" bullets to cover:
+  - `design`, `implement`, and `review` SKILL closures
+  - panel-tier fixed-source closure
+  - eager ratchet for all four targets; conditional ratchet for `review` only
+  - narrow `.tsv` support limited to session-start `step-name-registry.tsv`
+  - four narrow eager phrase patterns (not a generic grammar), each tied to a named file
+  - unchanged non-recursion, conditional-section, macro-exclusion, and directive-clause harvesting rules
+- Keep the note that content-token metrics ignore blank lines.
+
+### MAY_UPDATE: Makefile
+
+Only update if the implementer wants stale local comments to match behavior.
+
+Potential changes:
+
+- Update the `regen-skill-closure-baseline` comment from `/design and /implement` to all ratcheted targets.
+- Update any target description prose that says the report covers only design and implement.
+
+No behavior change is needed here unless a test or reviewer flags stale text.
+
+### MAY_UPDATE: .pre-commit-config.yaml
+
+Only update if the hook name is considered user-facing stale prose.
+
+Potential change:
+
+- Rename the hook display name from “lint /design and /implement markdown closure growth” to include `/review` and panel-tier.
+
+Do not change hook behavior.
+
+## Edge cases
+
+- Panel-tier is not a skill. Keep it out of skill-root scanning and scan it through a fixed file-list function.
+- `--skill panel-tier` must not try to read `skills/panel-tier/SKILL.md`.
+- The `.tsv` support should be narrow. Do not start counting arbitrary script, Python, JSON, or env files.
+- The four named eager matchers must call the same conditional gate as `MANDATORY READ` before adding eager paths.
+- An unrelated `follow`/`use`/`procedure in` citation outside the four named shapes must never enter the closure; there is no generic grammar to gate in the first place.
+- `force_requested=false` is default-eager only for this preflight case. Do not make all `foo=false` predicates eager.
+- Existing branch tables and branch bullets must stay conditional.
+- Isolated `tmp_path` trees must seed review and panel-tier fixtures before any `scan_all()` or `write_baseline_from_live()` call.
+- Design/implement conditional metrics must be present in the baseline (schema uniformity) but never gate `main()`'s exit code.
+
+## Failure modes
+
+- If the baseline loader still validates against `GATED_SKILLS`, it will reject `panel-tier`. Update validation to use `RATCHETED_TARGETS`.
+- If panel-tier uses the skill metric fields incorrectly, growth in panel files may not fail. Required panel-tier growth tests must assert `_growth_violations` fires.
+- If review conditional metrics are omitted from the baseline or from `_growth_violations`, growth in conditional `/review` prompt sources can pass lint. Baseline and `_growth_violations` must include and enforce conditional fields for `review` specifically.
+- If `_growth_violations()` is written to loop over conditional fields for every row uniformly instead of gating on `skill == "review"`, design/implement conditional corpora will start failing CI on future growth with no issue mandate. Keep the review-only conditional check explicit and covered by the negative test above.
+- If `.tsv` support is bolted onto `MARKDOWN_PATH_RE` only, session-start registry reads will still be missed. Use the shared repo-path extractor.
+- If a generic `use`/`follow`/`procedure in` grammar is added instead of the four named patterns, unrelated always-on citations across design/implement (for example `subskill-invocation.md`, `progress-reporting.md`) would inflate their baselines well beyond this issue's scope, forcing unrelated baseline churn.
+- If fixture helpers are not extended, most `tmp_path` baseline tests will fail closed before exercising new logic.
+- If `test_non_markdown_references_are_ignored` is left unchanged, correct `.tsv` eager behavior will fail CI.
+- If `--write` sorts rows differently from tests, the freshness test will fail. Let `_canonical_json()` define order.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q`
+
+Run the CLI surfaces:
+
+- `python3 python/cli.py skill-closure report`
+- `python3 python/cli.py lint skill-closure-growth`
+- `python3 python/cli.py lint skill-closure-growth --skill review`
+- `python3 python/cli.py lint skill-closure-growth --skill panel-tier`
+
+Regenerate and verify the baseline:
+
+
+Run the Makefile wrapper if available:
+
+- `make test-lint-skill-closure-growth`
+
+If docs, Makefile, or pre-commit text changes are made, run relevant lint checks for those changed files per repo practice.
+
+## Acceptance
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py -q`
+
+Run the CLI surfaces:
+
+- `python3 python/cli.py skill-closure report`
+- `python3 python/cli.py lint skill-closure-growth`
+- `python3 python/cli.py lint skill-closure-growth --skill review`
+- `python3 python/cli.py lint skill-closure-growth --skill panel-tier`
+
+Regenerate and verify the baseline:
+
+
+Run the Makefile wrapper if available:
+
+- `make test-lint-skill-closure-growth`
+
+If docs, Makefile, or pre-commit text changes are made, run relevant lint checks for those changed files per repo practice.
+
+review_status: cap-hit
+rounds_completed: 2
+diff_added: 390
+diff_deleted: 90
+mechanical_churn: false
+diff_lines: 480

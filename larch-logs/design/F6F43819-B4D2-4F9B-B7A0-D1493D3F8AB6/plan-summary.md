@@ -1,0 +1,1 @@
+Extend the existing closure ratchet rather than adding a new CLI. Add `/review`, add one `panel-tier` ratcheted row, teach the scanner the named eager read patterns, regenerate the baseline, and update lint docs/tests.
