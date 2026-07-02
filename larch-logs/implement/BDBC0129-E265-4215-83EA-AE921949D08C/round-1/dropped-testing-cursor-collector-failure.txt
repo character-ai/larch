@@ -1,0 +1,26 @@
+===== diag =====
+NonRetriableError: Provider Error We're having trouble finding the resource you requested. If the problem persists, please contact support.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+NonRetriableError: Provider Error We're having trouble finding the resource you requested. If the problem persists, please contact support.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+NonRetriableError: Provider Error We're having trouble finding the resource you requested. If the problem persists, please contact support.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
+
+===== additional failure diagnostics =====
+===== diag =====
+NonRetriableError: Provider Error We're having trouble finding the resource you requested. If the problem persists, please contact support.
+Failed with exit code 1. Output size: 0 bytes.
+===== launch-stderr =====
+❌ cursor agent: FAILED (exit code 1, output 0 bytes)
