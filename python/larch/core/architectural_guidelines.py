@@ -509,7 +509,7 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
             base_ref=resolved_base,
             diff_text=diff_text,
         )
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return False
     return True
 
