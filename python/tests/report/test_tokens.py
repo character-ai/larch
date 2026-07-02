@@ -339,6 +339,7 @@ def test_claude_sub_default_raw_keys_match_agents_outputs() -> None:
         "claude_draft",
         "claude_ci_fix",
         "claude_lint_fix",
+        "claude_review_fix",
     }
     assert all(key.startswith("claude_") for key in config.CLAUDE_SUB_DEFAULT_MODEL_BY_RAW)
 
