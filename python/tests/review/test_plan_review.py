@@ -870,6 +870,38 @@ def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(t
     assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8").strip() == "awaiting-apply"
 
 
+@pytest.mark.parametrize("phase", ["awaiting-apply", "awaiting-revise"])
+def test_loop_resume_awaiting_apply_rebails_to_inline_gate_b(tmp_path: Path, phase: str) -> None:
+    _write_run_params(tmp_path)
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text(f"{phase}\n", encoding="utf-8")
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n",
+        encoding="utf-8",
+    )
+    forbidden_round_stub = _write_loop_stub(tmp_path, "exit 99")
+
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(forbidden_round_stub),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
+    assert "NEXT_ACTION=gate-b" in proc.stdout
+    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == f"{phase}\n"
+
+
 def test_run_round_body_subprocess_materializes_reviewer_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -2057,6 +2089,60 @@ printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
     assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
 
 
+def test_inline_gate_b_postapply_writes_round_meta(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
+    (tmp_path / ".gate-b-postapply-ready-1").touch()
+    meta_stub = tmp_path / "write-meta-stub.sh"
+    _ = meta_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+round_dir=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --round-dir) round_dir="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+mkdir -p "$round_dir"
+printf '{"tally":{"ACCEPTED_COUNT":1}}\\n' >"$round_dir/round-meta.json"
+""",
+        encoding="utf-8",
+    )
+    meta_stub.chmod(0o755)
+    postplan_stub = tmp_path / "postplan-stub.sh"
+    _ = postplan_stub.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
+    postplan_stub.chmod(0o755)
+    continuation_stub = tmp_path / "continuation-stub.sh"
+    _ = continuation_stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'
+""",
+        encoding="utf-8",
+    )
+    continuation_stub.chmod(0o755)
+
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_POSTPLAN_EMIT_SH": str(postplan_stub),
+            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
+            "WRITE_DESIGN_ROUND_META_SH": str(meta_stub),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    assert (tmp_path / "plan-review" / "round-1" / "round-meta.json").is_file(), proc.stdout
+
+
 def test_step3_continuation_preserves_warning_keys_across_rounds(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
     round_stub = tmp_path / "round-stub.sh"
@@ -2149,7 +2235,7 @@ def test_write_design_round_meta_production_invokes_progress_cli(
     ]
 
 
-def test_run_apply_zero_accepted_ignores_round_meta_failure(
+def test_zero_accepted_round_ignores_round_meta_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2158,14 +2244,23 @@ def test_run_apply_zero_accepted_ignores_round_meta_failure(
     def failed_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 1, "", "boom")
 
+    def fake_run_plan_review_round(_argv: list[str]) -> int:
+        print("LOOP_STATUS=complete")
+        print("ACCEPTED_COUNT=0")
+        print("DEGRADED_PANEL=0")
+        print("ROUNDS_COMPLETED=1")
+        print("TALLY_PLAN_REVIEW_STATUS=ok")
+        print("AGGREGATOR_STATUS=ok")
+        return 0
+
     monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
     monkeypatch.setattr(plan_review, "_run_command", failed_run_command)
-    values: dict[str, str] = {}
+    monkeypatch.setattr(plan_review, "run_plan_review_round", fake_run_plan_review_round)
 
-    rc = plan_review._run_apply(tmpdir=tmp_path, round_num=1, values=values)  # pyright: ignore[reportPrivateUsage]
+    rc = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path)])
 
     assert rc == 0
-    assert values["ACCEPTED_COUNT"] == "0"
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8")
     assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == "awaiting-continuation\n"
 
 

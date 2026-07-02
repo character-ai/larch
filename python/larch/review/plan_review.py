@@ -61,10 +61,8 @@ from larch.review.plan_review_findings import REJECTED_FINDINGS_REPORT_ANNOTATIO
 from larch.review.plan_review_findings import REJECTED_FINDINGS_REPORT_HEADING  # noqa: F401  # pylint: disable=unused-import
 from larch.review.plan_review_findings import emit_rejected_findings
 from larch.review.plan_review_loop import (
-    _consume_approval_env,
     _read_bool_param,
     _read_phase,
-    _resolve_findings_file,
     emit_design_plan_preview,
     emit_plan,
     finalize_plan,
@@ -230,42 +228,27 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num)
 
 
-def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:  # pyright: ignore[reportUnusedFunction]
-    accepted = _count_accepted(tmpdir)
-    values["ACCEPTED_COUNT"] = str(accepted)
-    if accepted == 0:
-        _consume_approval_env(tmpdir=tmpdir, round_num=round_num)
-        _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
-        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
-        return 0
-    findings_file = _resolve_findings_file(tmpdir=tmpdir, round_num=round_num)
-    if findings_file != tmpdir / "accepted-plan-findings.md" and findings_file.is_file() and findings_file.stat().st_size > 0:
-        _ = shutil.copyfile(findings_file, tmpdir / "accepted-plan-findings.md")
-    if not findings_file.is_file() or findings_file.is_symlink() or findings_file.stat().st_size == 0:
-        _write_atomic(path=tmpdir / "accepted-plan-findings.md", content="")
-        _consume_approval_env(tmpdir=tmpdir, round_num=round_num)
-        _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
-        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
-        return 0
-    snapshot = tmpdir / f"plan-pre-apply-round-{round_num}.txt"
-    current_phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
-    postapply_ready = (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file()
-    if snapshot.is_file() and (tmpdir / "plan.txt").is_file():
-        try:
-            plan_changed = snapshot.read_bytes() != (tmpdir / "plan.txt").read_bytes()
-        except OSError:
-            plan_changed = False
-        if plan_changed and (current_phase == "awaiting-post-apply" or postapply_ready):
-            return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
-    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
-    return 21
-
-
 def _gate_b_apply_required_status(*, tmpdir: Path, round_num: int, approve_requested: bool) -> str:
     approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
     if approve_requested and not approval_env.is_file():
         return "per-round-approval-required"
     return "main-agent-apply-required"
+
+
+def _resume_gate_b_apply(
+    *,
+    tmpdir: Path,
+    round_num: int,
+    approve_requested: bool,
+    values: dict[str, str],
+) -> bool:
+    postapply_ready = tmpdir / f".gate-b-postapply-ready-{round_num}"
+    if postapply_ready.is_file():
+        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-post-apply")
+        return True
+    status = _gate_b_apply_required_status(tmpdir=tmpdir, round_num=round_num, approve_requested=approve_requested)
+    step3_loop_emit_envelope(tmpdir=tmpdir, status=status, round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
+    return False
 
 
 def _run_round_subprocess(*, tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:
@@ -453,13 +436,14 @@ def run_step3_review(argv: Sequence[str]) -> int:
             return 0
 
         if phase in {"awaiting-apply", "awaiting-revise"}:
-            postapply_ready = tmpdir / f".gate-b-postapply-ready-{round_num}"
-            if postapply_ready.is_file():
-                _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-post-apply")
-                continue
             values = dict(degraded_values)
-            status = _gate_b_apply_required_status(tmpdir=tmpdir, round_num=round_num, approve_requested=approve_requested)
-            step3_loop_emit_envelope(tmpdir=tmpdir, status=status, round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
+            if _resume_gate_b_apply(
+                tmpdir=tmpdir,
+                round_num=round_num,
+                approve_requested=approve_requested,
+                values=values,
+            ):
+                continue
             return 0
 
         if phase in {"awaiting-post-apply", "awaiting-postplan-operator"}:
