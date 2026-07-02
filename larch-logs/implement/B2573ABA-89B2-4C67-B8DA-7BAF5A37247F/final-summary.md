@@ -1,8 +1,8 @@
 ## /implement run B2573ABA-89B2-4C67-B8DA-7BAF5A37247F — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$19.13 — Claude $0.36, Codex-5.5 $14.83, Codex-mini $0.29, Cursor $3.50, Claude (subprocess) $0.15  |  Tokens: 25420k
+- **Duration**: 01:41:19
+- **Cost**: 💰 TOTAL ~$24.12 — Claude $5.35, Codex-5.5 $14.83, Codex-mini $0.29, Cursor $3.50, Claude (subprocess) $0.15  |  Tokens: 32559k
 - **Issue**: #5973 — https://github.com/character-ai/larch/issues/5973
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -10,13 +10,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/B2573ABA-89B2-4C67-B8DA-7BAF5A37247F/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.2.1
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a (architectural-guidelines): G-Py-1 (frozen dataclasses for composite data) — `report_tokens_cli.py`'s `main()` / `_main_with_temp_root()` split communicates the temp-root preserve decision...
 
 ## Review Phase Detail
 
@@ -79,3 +84,7 @@ cursor/apply             │                                                    
 5. cursor/edge-cases — 1
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
