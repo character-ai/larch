@@ -303,11 +303,11 @@ Rebalance CI test harness shards, Python unit-test shards, or both from recent C
 
 ### `/release`
 
-**Arguments**: `[--dry-run] [--bump major|minor|patch] [--repo OWNER/REPO]`
+**Arguments**: `[--dry-run] [--approve|-a] [--bump major|minor|patch] [--repo OWNER/REPO]`
 
 **Source**: [`.claude/skills/release/SKILL.md`](../.claude/skills/release/SKILL.md)
 
-Operator-run release cut for `character-ai/larch` (`disable-model-invocation: true` — the operator must type `/release`; the model cannot auto-invoke it). Gather merged PRs since the last Latest release, generate categorized notes, decide the aggregate semver bump, open and merge the `plugin.json` bump PR, tag and create the GitHub Release, promote it to Latest, then run `/upgrade-larch`. `--dry-run` computes and previews only (no branch, PR, merge, tag, Release, promote, or upgrade). `--bump` overrides the computed aggregate bump type. `--repo` sets the hub repo for `gh` (default resolves via `python/cli.py gh resolve-repo`, falling back to `character-ai/larch`). Must run from a clean `main`.
+Operator-run release cut for `character-ai/larch` (`disable-model-invocation: true` — the operator must type `/release`; the model cannot auto-invoke it). Gather merged PRs since the last Latest release, generate categorized notes, decide the aggregate semver bump, open and merge the `plugin.json` bump PR, tag and create the GitHub Release, promote it to Latest, then run `/upgrade-larch`. `--dry-run` computes and previews only (no branch, PR, merge, tag, Release, promote, or upgrade). `--approve` skips the confirm gate for non-empty release windows. Release notes use companion issue titles when available, fall back to PR titles, and do not read PR diffs. `--bump` overrides the computed aggregate bump type. `--repo` sets the hub repo for `gh` (default resolves via `python/cli.py gh resolve-repo`, falling back to `character-ai/larch`). Must run from a clean `main`.
 
 ## Non-skill entrypoints
 
