@@ -1185,7 +1185,7 @@ def render_voter_main(argv: list[str]) -> int:
                 _err("render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace, cache session, or tmpdir; skipping anchor block")
         out.append(f"**Proceed immediately** — do not acknowledge this prompt or output 'ready to review'. Read the ballot from this path: {args.ballot_file}")
         if args.verification_context == "plan":
-            out.extend(["", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and silently inspect the plan or referenced repo files, but do not invoke planning/status tools."])
+            out.extend(["", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools."])
         else:
             out.extend(["", "Use the ballot path and any provided diff/plan context files to verify claims before voting.", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and provided diff/plan context files, but do not invoke planning/status tools or tools beyond those file reads."])
         correctness = "true|partially-true|false-positive|uncertain"
