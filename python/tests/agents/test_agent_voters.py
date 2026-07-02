@@ -342,18 +342,18 @@ def test_failed_middle_cursor_slot_degrades_without_backfill(tmp_path: Path, mon
 
 
 @pytest.mark.voter_happy
-def test_voter1_waterfalls_to_codex_when_cursor_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    # issue #5837: Cursor down but Codex up -> voter 1 routes through the shared
-    # waterfall manifest to its Codex middle tier instead of dropping to Claude.
+def test_voter1_waterfalls_to_cursor_when_codex_unavailable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    # Codex down but Cursor up -> voter 1 routes through the shared waterfall
+    # manifest to its Cursor middle tier instead of dropping to Claude.
     review = tmp_path / "review"
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
     _harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
 
-    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="true", cursor="false")) == 0
+    assert agent_voters.dispatch_voters(_opts(ballot, review, codex="false", cursor="true")) == 0
 
     out = capsys.readouterr().out
-    assert "VOTER_1_TOOL=codex-validity" in out
+    assert "VOTER_1_TOOL=cursor-validity" in out
     assert "VOTER_1_STATUS=launched" in out
     assert Path(_kv(out, "VOTER_1_PATH")).is_file()
     manifest = (review / "code-voter-slots.ndjson").read_text(encoding="utf-8")
@@ -482,6 +482,9 @@ def _make_voter_stub_bin(tmp_path: Path) -> Path:
         for arg in "$@"; do [[ "$last" == "--output-last-message" ]] && out="$arg"; last="$arg"; done
         [[ -n "$out" ]] || exit 9
         case "${CODEX_STUB_MODE:-ok}" in
+          fail)
+            printf 'codex runtime failure: quota exhausted\\n' >&2
+            exit 1 ;;
           parse_retry_success)
             count_file="${CODEX_STUB_COUNT_FILE:?CODEX_STUB_COUNT_FILE required}"
             count=0
@@ -633,8 +636,8 @@ def test_round2_three_judge_parity(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     assert '"slot":"voter-1"' in text
     assert '"slot":"voter-2"' in text
     assert '"slot":"voter-3"' in text
-    assert text.count('"tool":"codex"') == 2
-    assert text.count('"tool":"cursor"') == 1
+    assert text.count('"tool":"codex"') == 3
+    assert text.count('"tool":"cursor"') == 0
 
 
 @pytest.mark.voter_happy
@@ -704,12 +707,12 @@ def test_bounded_copy_does_not_read_entire_file(tmp_path: Path, monkeypatch: pyt
 
 
 @pytest.mark.voter_happy
-def test_voter1_runtime_cursor_failure_redispatches_to_codex(tmp_path: Path) -> None:
-    # issue #5837 Mode A: Cursor passes the static availability probe but fails at
-    # runtime (exit 1, billing/ActionRequiredError). Routing voter 1 through the
-    # shared waterfall re-dispatches it to Codex instead of dropping the slot.
+def test_voter1_runtime_codex_failure_redispatches_to_cursor(tmp_path: Path) -> None:
+    # issue #5837 Mode A: Codex passes the static availability probe but fails at
+    # runtime. Routing voter 1 through the shared waterfall re-dispatches it to
+    # Cursor instead of dropping the slot.
     stub_bin = _make_voter_stub_bin(tmp_path)
-    review = _harness_review_tmpdir(tmp_path, "voter1-runtime-cursor-fail")
+    review = _harness_review_tmpdir(tmp_path, "voter1-runtime-codex-fail")
     ballot = _standard_ballot(tmp_path)
     result = _dispatch_via_cli(
         review,
@@ -717,10 +720,10 @@ def test_voter1_runtime_cursor_failure_redispatches_to_codex(tmp_path: Path) -> 
         stub_bin=stub_bin,
         codex_available="true",
         cursor_available="true",
-        env={"CURSOR_STUB_MODE": "fail"},
+        env={"CODEX_STUB_MODE": "fail"},
     )
     assert result.returncode == 0, result.stderr
-    assert "VOTER_1_TOOL=codex-validity" in result.stdout
+    assert "VOTER_1_TOOL=cursor-validity" in result.stdout
     assert "VOTER_1_STATUS=launched" in result.stdout
     manifest = (review / "code-voter-slots.ndjson").read_text(encoding="utf-8")
     assert '"slot":"voter-1"' in manifest
@@ -840,7 +843,7 @@ def test_retry_success_codex_preserves_first_pass_sidecar(tmp_path: Path) -> Non
     # slot races to the narrative output is non-deterministic, so assert panel
     # degradation rather than a specific voter index.
     assert "DEGRADED_PANEL_WARNING=" in result.stdout
-    for label in ("cursor-validity", "codex-plan-fidelity", "codex-pragmatism"):
+    for label in ("codex-validity", "codex-plan-fidelity", "codex-pragmatism"):
         assert not (review / f"{label}-vote-output-first-pass.txt").exists()
         assert not (review / f"{label}-vote-output-parse-retry.txt").exists()
 
@@ -971,17 +974,17 @@ def test_prod_shape_codex_parse_retry_appends_issues_log(tmp_path: Path) -> None
         ballot,
         stub_bin=stub_bin,
         env={
-            "CURSOR_STUB_MODE": "parse_retry_fail",
-            "CURSOR_STUB_COUNT_FILE": str(count),
+            "CODEX_STUB_MODE": "parse_retry_fail",
+            "CODEX_STUB_COUNT_FILE": str(count),
             "LARCH_EXECUTION_ISSUES_LOG": str(issues),
         },
     )
     assert result.returncode == 0, result.stderr
     assert "VOTER_1_PARSE_RATE_STATUS=NOT_SUBSTANTIVE" in result.stdout
-    assert (review / "cursor-validity-vote-output-parse-rate-diag.txt").is_file()
+    assert (review / "codex-validity-vote-output-parse-rate-diag.txt").is_file()
     issues_text = issues.read_text(encoding="utf-8")
-    assert "agent dispatch-voters cursor-validity" in issues_text
-    assert "agent launch-review --tool cursor (voter parse-rate check; label cursor-validity)" in issues_text
+    assert "agent dispatch-voters codex-validity" in issues_text
+    assert "agent launch-review --tool codex (voter parse-rate check; label codex-validity)" in issues_text
 
 
 def test_dispatch_voters_accepts_neutralized_reviewer_ballot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

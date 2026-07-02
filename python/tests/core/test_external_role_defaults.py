@@ -87,9 +87,12 @@ def test_voter_and_decompose_roles() -> None:
     assert dict(plan_voters[2].semantic_labels) == {"cursor": "cursor", "codex": "codex", "claude": "claude"}
 
     review_voters = external_defaults.voter_policies("review.voters")
-    # Voter 1 waterfalls Cursor -> Codex -> Claude (issue #5817).
+    assert review_voters[0].primary_tool == "codex"
+    assert review_voters[0].default_label == "codex-validity"
+    assert review_voters[0].output_name == "codex-validity-vote-output.txt"
+    # Voter 1 waterfalls Codex -> Cursor -> Claude.
     assert review_voters[0].allow_codex_fallback is True
-    assert dict(review_voters[0].semantic_labels) == {"cursor": "cursor-validity", "codex": "codex-validity", "claude": "claude"}
+    assert dict(review_voters[0].semantic_labels) == {"codex": "codex-validity", "cursor": "cursor-validity", "claude": "claude"}
     assert review_voters[0].archetype == "validity-correctness"
     assert review_voters[1].default_label == "codex-plan-fidelity"
 

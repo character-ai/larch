@@ -65,7 +65,7 @@ _CODE_REVIEW_TOOL_REQUIRED = frozenset({
 
 _DESIGN_VOTER_FALLBACKS = {1: "Claude", 2: "Codex", 3: "Cursor"}
 _CODE_REVIEW_VOTER_FALLBACKS = {
-    1: "cursor-validity",
+    1: "codex-validity",
     2: "codex-plan-fidelity",
     3: "codex-pragmatism",
 }

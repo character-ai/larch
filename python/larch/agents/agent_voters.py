@@ -74,7 +74,7 @@ class DispatchState:
     voter_1_path: str
     voter_2_path: str = ""
     voter_3_path: str = ""
-    voter_1_tool: str = "cursor-validity"
+    voter_1_tool: str = "codex-validity"
     voter_2_tool: str = "codex-plan-fidelity"
     voter_3_tool: str = "codex-pragmatism"
     voter_1_status: str = "launched"

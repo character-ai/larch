@@ -1065,7 +1065,7 @@ def _review_core_body(
     _write_text(path=review_tmpdir / "review-core-voters.env", text=voters_result.stdout)
     voter_files: list[str] = []
     voter_tools: list[str] = []
-    for idx, default_tool in enumerate(("cursor-validity", "codex-plan-fidelity", "codex-pragmatism"), start=1):
+    for idx, default_tool in enumerate(("codex-validity", "codex-plan-fidelity", "codex-pragmatism"), start=1):
         path = voters.get(f"VOTER_{idx}_PATH", "")
         status = voters.get(f"VOTER_{idx}_STATUS", "")
         tool = voters.get(f"VOTER_{idx}_TOOL", default_tool) or default_tool
