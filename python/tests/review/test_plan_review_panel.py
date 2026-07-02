@@ -222,6 +222,9 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert "PANEL_PATHS_FILE=" in proc.stdout
     manifest_lines = (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").splitlines()
     assert len([line for line in manifest_lines if line.strip()]) == 8
+    wf_args = log.read_text(encoding="utf-8")
+    assert "--panel-artifact-dir" in wf_args
+    assert str(design / "plan-review" / "round-1") in wf_args
     static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
     assert "verify the current plan does not already include the proposed fix" in static_prompt
 
@@ -408,6 +411,7 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
         "--design-tmpdir", str(design),
         "--codex-available", "true",
         "--cursor-available", "true",
+        "--round-num", "1",
     ])
     assert rc == 0
     waterfall = next(a for a in records if tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
@@ -489,6 +493,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
         "--design-tmpdir", str(design),
         "--codex-available", "true",
         "--cursor-available", "true",
+        "--round-num", "1",
     ])
     assert rc == 0
     snapshot_calls = [a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("voter-calibration", "snapshot")]
@@ -579,6 +584,7 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
         "--design-tmpdir", str(design),
         "--codex-available", "false",
         "--cursor-available", "true",
+        "--round-num", "1",
     ])
     assert rc == 0
     rows = _manifest_rows(design / "plan-voter-slots.ndjson")
@@ -630,6 +636,7 @@ def test_dispatch_voters_skips_stale_snapshot_after_snapshot_failure(tmp_path: P
         "--design-tmpdir", str(design),
         "--codex-available", "false",
         "--cursor-available", "false",
+        "--round-num", "1",
     ])
     assert rc == 0
     assert not any(render_with_stats)
@@ -929,6 +936,8 @@ def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) ->
         "false",
         "--cursor-available",
         "false",
+        "--round-num",
+        "1",
         env={
             "LARCH_QUIET_DISABLE": "1",
             "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
@@ -960,6 +969,8 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "false",
         "--cursor-available",
         "false",
+        "--round-num",
+        "1",
         env={
             "LARCH_QUIET_DISABLE": "1",
             "PATH": f"{_write_python3_agent_stub(tmp_path)}:{os.environ.get('PATH', '')}",
@@ -1047,6 +1058,7 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
         "--design-tmpdir", str(design),
         "--codex-available", "true",
         "--cursor-available", "true",
+        "--round-num", "1",
     ])
     assert rc == 0
     stdout = capsys.readouterr().out
@@ -1127,6 +1139,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
         "--design-tmpdir", str(design),
         "--codex-available", "true",
         "--cursor-available", "true",
+        "--round-num", "1",
     ])
     assert rc == 0
     stdout = capsys.readouterr().out
@@ -1168,6 +1181,7 @@ def test_voter_dispatch_both_down_retry_recovers(
         "--design-tmpdir", str(design),
         "--codex-available", "false",
         "--cursor-available", "false",
+        "--round-num", "1",
     ])
     assert rc == 0
     stdout = capsys.readouterr().out

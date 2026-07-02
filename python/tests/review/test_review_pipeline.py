@@ -11,6 +11,7 @@ from pathlib import Path
 
 from larch.core import proc
 import pytest
+from larch.review import coder_runner
 from larch.review import review_pipeline
 from larch.review import review_core_body
 import review_test_support as rts
@@ -2696,6 +2697,52 @@ printf 'DISPATCH_OK=true\\nSTATIC_DISPATCH_OK=true\\nDYNAMIC_DISPATCH_OK=true\\n
     )
 
 
+def test_dispatch_panel_override_receives_panel_env(tmp_path: Path) -> None:
+    case_dir = tmp_path / "round-2"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    capture = tmp_path / "panel-env.txt"
+    waterfall = tmp_path / "waterfall-capture.sh"
+    _write_executable(
+        waterfall,
+        """#!/usr/bin/env bash
+{
+  printf 'ARTIFACT=%s\n' "${LARCH_PANEL_ARTIFACT_DIR:-}"
+  printf 'SITE=%s\n' "${LARCH_PANEL_SITE:-}"
+  printf 'ROUND=%s\n' "${LARCH_PANEL_ROUND_NUM:-}"
+} >"$PANEL_ENV_CAPTURE"
+printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
+""",
+    )
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        "--round-num",
+        "2",
+        "--site",
+        "implement Step 5",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall), "PANEL_ENV_CAPTURE": str(capture)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert capture.read_text(encoding="utf-8") == f"ARTIFACT={case_dir}\nSITE=implement Step 5\nROUND=2\n"
+
+
 def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_available: str) -> list[dict[str, object]]:
     waterfall = case_dir.parent / "waterfall-noop.sh"
     _write_waterfall_noop(waterfall)
@@ -4250,3 +4297,34 @@ printf 'FINDINGS_COUNT=0\\nOOS_COUNT=0\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\
     assert "DYNAMIC_DROPPED_SLOTS=1" in threshold_env
     assert "STRAGGLER_DROPPED_COUNT=1" in threshold_env
 # pyright: reportUnusedFunction=false, reportArgumentType=false
+
+
+def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    findings = tmp_path / "accepted-findings.md"
+    findings.write_text(
+        """### FINDING_1: Fix bug
+- **Concern**: bug
+- **Suggested revision**: fix it
+""",
+        encoding="utf-8",
+    )
+    round_dir = tmp_path / "round-5"
+    result_file = round_dir / "coder.env"
+    monkeypatch.setattr(coder_runner, "_submodule_paths", list)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner, "_ensure_pre_coder_snapshot", lambda _round_dir: None)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner, "_snapshot_mode", lambda _round_dir: "none")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner, "_git_head", lambda: "")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner, "_record_main_agent_required_vendor_task", lambda _round_dir: round_dir / "main.log")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(coder_runner.external_defaults, "tool_order", lambda _role: [])
+    wrong_artifact_dir = tmp_path / "wrong-panel-dir"
+    monkeypatch.setenv("LARCH_PANEL_ARTIFACT_DIR", str(wrong_artifact_dir))
+
+    result = coder_runner.apply_findings_with_coder(input_file=findings, round_dir=round_dir, result_file=result_file, round_num=5)
+
+    assert result.status == "main-agent-required"
+    tsv = round_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    assert not (wrong_artifact_dir / "panel-prompt-sizes.tsv").exists()
+    text = tsv.read_text(encoding="utf-8")
+    assert "implementer" in text
+    assert "# Review Fix Application" not in text

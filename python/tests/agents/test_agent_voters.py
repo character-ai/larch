@@ -1136,3 +1136,17 @@ def test_dispatch_voters_keepalive_consumer_log_root(tmp_path: Path, monkeypatch
     result = agent_voters._fresh_calibration_stats_file(review_tmpdir=review)  # pyright: ignore[reportPrivateUsage]
     assert result == str(review / "voter-calibration-stats.tsv")
     assert captured == [str((consumer / "larch-logs").resolve())]
+
+
+def test_voter_dispatch_forwards_panel_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    review = impl / "round-4"
+    review.mkdir(parents=True)
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+
+    assert agent_voters.dispatch_voters(_opts(ballot, review, round_num=4)) == 0
+
+    waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    assert _value_after(waterfall, "--panel-artifact-dir") == str(review)

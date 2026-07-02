@@ -1619,3 +1619,34 @@ def test_waterfall_per_tool_prompt_files_phase2_uses_cursor_prompt(tmp_path: Pat
     assert "CURSOR_MARKER" in cursor_log.read_text(encoding="utf-8")
     assert "CODEX_MARKER" not in cursor_log.read_text(encoding="utf-8")
     assert _kv(stdout)["ALL_OUTPUT_TOOLS"] == "cursor"
+
+
+def test_launch_slot_threads_panel_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_env: dict[str, str] = {}
+
+    class _FakePopen:
+        def __init__(self, _argv: Sequence[str], **kwargs: object) -> None:
+            env = kwargs.get("env")
+            if isinstance(env, dict):
+                captured_env.update({str(k): str(v) for k, v in env.items()})
+            self.pid = 1234
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
+    monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
+    artifact_dir = tmp_path / "round-7"
+    opts = agent_waterfall.Options(
+        slots_file=str(tmp_path / "slots.ndjson"),
+        codex_present=True,
+        cursor_present=True,
+        mode="description",
+        site="review Step 2",
+        panel_artifact_dir=str(artifact_dir),
+    )
+    slot = agent_waterfall.Slot("correctness", "cursor", str(tmp_path / "out.txt"), "", str(tmp_path / "prompt.txt"))
+
+    agent_waterfall._launch_slot(idx=0, phase="phase1", tool="cursor", output=str(tmp_path / "out.txt"), slots=[slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
+
+    assert captured_env["LARCH_PANEL_ARTIFACT_DIR"] == str(artifact_dir)
+    assert captured_env["LARCH_PANEL_SLOT"] == "correctness"
+    assert captured_env["LARCH_PANEL_ROUND_NUM"] == "7"

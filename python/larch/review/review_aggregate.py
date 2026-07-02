@@ -16,6 +16,7 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.report.tokens import build_panel_dispatch_env
 from larch.review.review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
@@ -117,6 +118,14 @@ def _append_warning(*, review_tmpdir: Path, session_env_path: str, entry: str) -
     cmd = [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "run-log", "append-entry", "--log", str(log), "--category", "External Reviewer Issues", "--entry", entry]
     with suppress(OSError):
         subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+
+
+def _artifact_dir_for_aggregation(*, review_tmpdir: Path, round_dir: Path | None) -> Path:
+    if round_dir is not None:
+        return round_dir
+    if re.fullmatch(r"round-[0-9]+", review_tmpdir.name):
+        return review_tmpdir
+    return review_tmpdir
 
 
 # Issue #5004: _failure_see_phrase emits a committed "See ..." pointer for any failure log that
@@ -792,6 +801,7 @@ def _parse_aggregate_args(argv: list[str]) -> argparse.Namespace:
     parser.add_argument("--scope-anchor-file", default="")
     parser.add_argument("--allow-findings-outside-tmpdir", choices=("true", "false"), default="false")
     parser.add_argument("--round-dir", default="")
+    parser.add_argument("--site", default="review.aggregate")
     return parser.parse_args(argv)
 
 
@@ -873,7 +883,18 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     if slot.model_role:
         slot_row["model_role"] = slot.model_role
     _write_text(path=slots_file, text=json.dumps(slot_row, separators=(",", ":")) + "\n")
-    dispatch_args = ["--slots-file", str(slots_file), "--codex-present", args.codex_present, "--cursor-present", args.cursor_present, "--mode", args.mode]
+    artifact_dir = _artifact_dir_for_aggregation(review_tmpdir=review_tmpdir, round_dir=round_dir)
+    panel_round_dir = artifact_dir if re.fullmatch(r"round-[0-9]+", artifact_dir.name) else round_dir
+    panel_env = build_panel_dispatch_env(
+        artifact_dir=artifact_dir,
+        site=args.site,
+        round_dir=panel_round_dir,
+        slot="aggregator",
+        phase="aggregate-findings",
+        primary_tool=slot.tool,
+        source_agent_file="agents/orchestrator-aggregator.md",
+    )
+    dispatch_args = ["--slots-file", str(slots_file), "--panel-artifact-dir", str(artifact_dir), "--codex-present", args.codex_present, "--cursor-present", args.cursor_present, "--mode", args.mode]
     if args.diff_file:
         dispatch_args.extend(["--diff-file", args.diff_file])
     if args.plan_file:
@@ -895,7 +916,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     for attempt in range(1, max_attempts + 1):
         _write_text(path=prompt_file, text=base_prompt if not feedback else _validation_retry_prompt(base_prompt=base_prompt, validator_error=feedback, attempt=attempt, max_attempts=max_attempts))
         try:
-            proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False)
+            proc = subprocess.run(dispatch_argv, text=True, capture_output=True, check=False, env=panel_env)
         except OSError as exc:
             _write_text(path=dispatch_err, text=str(exc))
             _emit_aggregate_result(aggregated=False, input_count=input_count, merged_count=merged_count, reason="dispatch-failed", failure_log=str(dispatch_err))

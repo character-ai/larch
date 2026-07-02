@@ -21,6 +21,7 @@ from typing import cast
 from larch.agents import agents
 from larch.core import logging_util
 from larch.core import proc
+from larch.report.tokens import build_panel_dispatch_env
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PY_CLI = REPO_ROOT / "python" / "cli.py"
@@ -97,6 +98,7 @@ class Options:
     session_env_path: str = ""
     model_role: str = ""
     claude_read_tools_add_dir: str = ""
+    panel_artifact_dir: str = ""
 
 
 @dataclass(frozen=True)
@@ -187,6 +189,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         "session_env_path": "",
         "model_role": "",
         "claude_read_tools_add_dir": "",
+        "panel_artifact_dir": "",
     }
     idx = 0
     while idx < len(argv):
@@ -210,6 +213,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
             "--session-env-path": "session_env_path",
             "--model-role": "model_role",
             "--claude-read-tools-add-dir": "claude_read_tools_add_dir",
+            "--panel-artifact-dir": "panel_artifact_dir",
         }
         if arg in {"--codex-present", "--codex-available"}:
             if idx + 1 >= len(argv):
@@ -289,6 +293,7 @@ def _parse_args(argv: Sequence[str]) -> Options | int:
         session_env_path=str(values["session_env_path"]),
         model_role=model_role,
         claude_read_tools_add_dir=str(values["claude_read_tools_add_dir"]),
+        panel_artifact_dir=str(values["panel_artifact_dir"]),
     )
 
 
@@ -508,10 +513,27 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             effective_role = slot.model_role or opts.model_role
             if effective_role:
                 argv.extend(["--model-role", effective_role])
+    child_env: dict[str, str] | None = None
+    inherited_artifact_dir = os.environ.get("LARCH_PANEL_ARTIFACT_DIR", "")
+    artifact_dir_raw = opts.panel_artifact_dir or inherited_artifact_dir
+    if artifact_dir_raw:
+        artifact_dir = Path(artifact_dir_raw)
+        round_dir = artifact_dir if re.fullmatch(r"round-[0-9]+", artifact_dir.name) else None
+        round_num = int(artifact_dir.name.removeprefix("round-")) if round_dir is not None else None
+        child_env = build_panel_dispatch_env(
+            artifact_dir=artifact_dir,
+            site=opts.site,
+            round_num=round_num,
+            round_dir=round_dir,
+            slot=slot.name,
+            phase=phase,
+            primary_tool=tool,
+            source_agent_file=slot.agent or os.environ.get("LARCH_PANEL_SOURCE_AGENT_FILE", ""),
+        )
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:
         process = subprocess.Popen(  # pylint: disable=consider-using-with
-            argv, stdout=subprocess.DEVNULL, stderr=stderr_handle, start_new_session=True
+            argv, stdout=subprocess.DEVNULL, stderr=stderr_handle, start_new_session=True, env=child_env
         )
     except Exception:
         stderr_handle.close()

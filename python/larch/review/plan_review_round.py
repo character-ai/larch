@@ -1008,6 +1008,8 @@ def execute_round(
             codex_present,
             "--cursor-available",
             cursor_present,
+            "--round-num",
+            str(round_num),
         ],
         env={"LARCH_QUIET_DISABLE": "1"},
     )

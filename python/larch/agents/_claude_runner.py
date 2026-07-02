@@ -23,6 +23,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, _panel_logging_enabled
 
 from larch.agents._types import (
     _CLAUDE_AUTH_FAST_FAIL_WINDOW,
@@ -523,6 +524,14 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         prompt_file = temp_prompt
     else:
         prompt_file = args.prompt_file
+    if _panel_logging_enabled():
+        append_panel_prompt_size(
+            artifact_path=panel_prompt_size_artifact_for_output(output=Path(args.output)),
+            output=Path(args.output),
+            tool="claude",
+            prompt_file=prompt_file,
+            agent_file=args.agent_file or "",
+        )
     try:
         forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value and Path(value).is_file()]
         sub_args = [

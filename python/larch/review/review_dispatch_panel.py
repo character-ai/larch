@@ -28,10 +28,12 @@ from larch.review.review_pipeline_shared import (
     _manifest_rows,
     _normalize_output_base,
     _parse_args,
+    _run_capture,
     _run_command_string,
     _run_python_cli,
     _write_text,
 )
+from larch.report.tokens import build_panel_dispatch_env
 from larch.review.review_prune import (
     derive_prune_status,
     normalize_prune_eligible,
@@ -717,9 +719,19 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     total = static_cursor + static_codex + dynamic_slots
     if total:
         _diag(f"→ review: launching {total} reviewers ({static_cursor} Cursor static, {static_codex} Codex static, {dynamic_slots} dynamic)")
+    panel_artifact_dir = review_tmpdir
+    panel_round_dir = review_tmpdir if re.fullmatch(r"round-[0-9]+", review_tmpdir.name) else None
+    panel_env = build_panel_dispatch_env(
+        artifact_dir=panel_artifact_dir,
+        site=site,
+        round_num=round_num,
+        round_dir=panel_round_dir,
+    )
     waterfall_args = [
         "--slots-file",
         str(launch_manifest),
+        "--panel-artifact-dir",
+        str(panel_artifact_dir),
         "--codex-present",
         codex_available,
         "--cursor-present",
@@ -749,7 +761,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     if session_env_path:
         waterfall_args.extend(["--session-env-path", session_env_path])
     dispatch_override = os.environ.get("DISPATCH_WATERFALL", "")
-    result = _run_command_string(command=dispatch_override, args=waterfall_args) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args])
+    result = _run_capture([dispatch_override, *waterfall_args], env=panel_env) if dispatch_override else _run_python_cli(["agent", "dispatch-waterfall", *waterfall_args], env=panel_env)
     kv = _kv_parse(result.stdout)
     if result.returncode != 0:
         _emit_kv(key="WARN", value=f"agent dispatch-waterfall exited rc={result.returncode}")

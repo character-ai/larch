@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -1110,3 +1112,123 @@ def test_measure_realized_cost_averages_reference_reads_across_missing_transcrip
     # run1's transcript is present (even though run2's is missing), so this
     # reference-read count is a confirmed measurement, not a blind spot.
     assert design["reference_capture_status"] == "measured"
+
+
+def _tsv_rows(path: Path) -> list[dict[str, str]]:
+    with path.open(encoding="utf-8", newline="") as handle:
+        return list(csv.DictReader(handle, delimiter="\t"))
+
+
+def test_panel_prompt_size_helper_writes_counts_without_prompt_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "correctness")
+    monkeypatch.setenv("LARCH_PANEL_SITE", "review Step 2")
+
+    tokens.append_panel_prompt_size(
+        artifact_path=out,
+        output=tmp_path / "cursor-specialist-correctness-output.txt",
+        tool="cursor",
+        prompt="secret rendered prompt text",
+    )
+
+    text = out.read_text(encoding="utf-8")
+    assert "secret rendered prompt text" not in text
+    rows = _tsv_rows(out)
+    assert rows[0]["slot_kind"] == "specialist"
+    assert rows[0]["prompt_bytes"] == str(len(b"secret rendered prompt text"))
+    assert rows[0]["prompt_tokens"] == str((len(b"secret rendered prompt text") + 3) // 4)
+
+
+def test_panel_prompt_size_skips_without_panel_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
+    out = tmp_path / "panel-prompt-sizes.tsv"
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="body", output=tmp_path / "out.txt")
+
+    assert not out.exists()
+
+
+def test_panel_prompt_size_missing_agent_file_is_best_effort(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+    out = tmp_path / "panel-prompt-sizes.tsv"
+
+    tokens.append_panel_prompt_size(
+        artifact_path=out,
+        output=tmp_path / "vote.txt",
+        tool="claude",
+        prompt="vote prompt",
+        agent_file=tmp_path / "missing-agent.md",
+    )
+
+    row = _tsv_rows(out)[0]
+    assert row["slot_kind"] == "voter"
+    assert row["agent_file"] == ""
+    assert row["agent_bytes"] == "0"
+
+
+def test_panel_prompt_artifact_prefers_env_artifact_dir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    artifact_dir = tmp_path / "artifact"
+    monkeypatch.setenv("LARCH_PANEL_ARTIFACT_DIR", str(artifact_dir))
+
+    path = tokens.panel_prompt_size_artifact_for_output(output=tmp_path / "other" / "out.txt")
+
+    assert path == artifact_dir / "panel-prompt-sizes.tsv"
+
+
+def test_panel_prompt_artifact_routes_design_round_output(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_PANEL_ARTIFACT_DIR", raising=False)
+    output = tmp_path / "design" / "plan-review" / "round-2" / "cursor-plan-arch-output.txt"
+
+    path = tokens.panel_prompt_size_artifact_for_output(output=output, site="design Step 3")
+
+    assert path == output.parent / "panel-prompt-sizes.tsv"
+
+
+def test_build_panel_dispatch_env_sets_panel_keys_without_mutating_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
+    artifact_dir = tmp_path / "round-3"
+
+    env = tokens.build_panel_dispatch_env(
+        artifact_dir=artifact_dir,
+        site="review Step 2",
+        round_dir=artifact_dir,
+        slot="correctness",
+        phase="phase1",
+        primary_tool="cursor",
+        source_agent_file="agents/reviewer-testing.md",
+    )
+
+    assert os.environ.get("LARCH_PANEL_SLOT") is None
+    assert env["LARCH_PANEL_ARTIFACT_DIR"] == str(artifact_dir)
+    assert env["LARCH_PANEL_ROUND_NUM"] == "3"
+    assert env["LARCH_PANEL_SLOT"] == "correctness"
+    assert env["LARCH_PANEL_PRIMARY_TOOL"] == "cursor"
+
+
+def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-01")  # pyright: ignore[reportPrivateUsage]
+    header = "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+    rows = [
+        tmp_path / "larch-logs" / "design" / "d1" / "plan-review" / "round-1" / "panel-prompt-sizes.tsv",
+        tmp_path / "larch-logs" / "implement" / "i1" / "round-2" / "panel-prompt-sizes.tsv",
+        tmp_path / "larch-logs" / "review" / "r1" / "panel-prompt-sizes.tsv",
+    ]
+    rows[0].parent.mkdir(parents=True)
+    rows[0].write_text(header + "design\t\t1\tvoter-1\tvoter\tclaude\tvote.txt\t100\t25\t\t0\t0\n", encoding="utf-8")
+    rows[1].parent.mkdir(parents=True)
+    rows[1].write_text(header + "implement\t\t2\tcorrectness\tspecialist\tcursor\tout.txt\t50\t13\tagents/reviewer-testing.md\t20\t5\n", encoding="utf-8")
+    rows[2].parent.mkdir(parents=True)
+    rows[2].write_text(header + "review\t\t\taggregator\taggregator\tcodex\tagg.txt\t70\t18\tagents/orchestrator-aggregator.md\t30\t8\n", encoding="utf-8")
+    legacy = tmp_path / "larch-logs" / "design" / "d1" / "panel-prompt-sizes.tsv"
+    legacy.write_text(header + "design\t\t\tvoter-1\tvoter\tclaude\tlegacy.txt\t999\t250\t\t0\t0\n", encoding="utf-8")
+
+    out = tokens.measure_panel_cost()
+    text = out.read_text(encoding="utf-8")
+
+    assert "generated/no-agent:voter" in text
+    assert "agents/reviewer-testing.md" in text
+    assert "999" not in text
+    data = _tsv_rows(out)
+    assert data[0]["realized_bytes"] == "100"
+    assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
