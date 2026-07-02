@@ -152,11 +152,29 @@ def _straggler_excused_static_slugs(dropped_file: Path) -> set[str]:
         slot, tool, reason = parts[0], parts[1], parts[2]
         if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
             continue
-        if reason in {"straggler-dropped", "tool-absent"}:
+        if reason == "straggler-dropped":
             straggler_slugs.add(slot)
         else:
             genuine_failure_slugs.add(slot)
     return straggler_slugs - genuine_failure_slugs
+
+
+def _tool_absent_excused_static_slugs(*, dropped_file: Path, success: set[str]) -> set[str]:
+    """Excuse a slug only when tool-absent is the sole drop reason and a surviving vendor succeeded."""
+    if not dropped_file.is_file():
+        return set()
+    tool_absent_slugs: set[str] = set()
+    other_failure_slugs: set[str] = set()
+    for line in dropped_file.read_text(encoding="utf-8", errors="replace").splitlines():
+        parts = [*line.split("\t"), "", "", ""]
+        slot, tool, reason = parts[0], parts[1], parts[2]
+        if not slot or slot.startswith("dyn-") or tool not in {"codex", "cursor"}:
+            continue
+        if reason == "tool-absent":
+            tool_absent_slugs.add(slot)
+        elif reason != "straggler-dropped":
+            other_failure_slugs.add(slot)
+    return {slug for slug in tool_absent_slugs if slug in success and slug not in other_failure_slugs}
 
 
 def _static_coverage_reason(*,
@@ -194,7 +212,10 @@ def _static_coverage_reason(*,
                 expected.add(slug)
     else:
         expected.update(STATIC_REVIEWERS)
-    excused = _straggler_excused_static_slugs(Path(dropped_slots_file)) if dropped_slots_file else set()
+    dropped_path = Path(dropped_slots_file) if dropped_slots_file else None
+    excused = _straggler_excused_static_slugs(dropped_path) if dropped_path else set()
+    if dropped_path:
+        excused |= _tool_absent_excused_static_slugs(dropped_file=dropped_path, success=success)
     missing = sorted((expected - success) - excused)
     return f"no successful static reviewer for archetype(s): {','.join(missing)}" if missing else ""
 

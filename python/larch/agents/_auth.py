@@ -395,7 +395,7 @@ def _run_one_codex_probe(timeout: int) -> int:
                 _err("agent check-reviewers: Codex OPENAI_API_KEY auth setup failed")
             return _PROBE_NO_RETRY_RC
         try:
-            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="review").argv)
+            model_args = list(resolve_model_args("codex", with_effort=True, codex_role="default").argv)
         except ValueError as exc:
             _append(path=probe_side, text=f"model args failed: {exc}\n")
             return _PROBE_NO_RETRY_RC

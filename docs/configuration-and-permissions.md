@@ -245,13 +245,15 @@ The strong/default Codex model for untagged Codex launches. Examples include the
 Role-specific Codex model keys for cheaper review, voting, and fix application.
 
 **Defaults:**
-- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for plan-review and code-review Codex reviewer slots.
+- `LARCH_CODEX_REVIEW_MODEL`: `gpt-5.4-mini` for launch sites that still pass the Codex review role (not the main specialist reviewer panel).
 - `LARCH_CODEX_VOTE_MODEL`: `gpt-5.4-mini` for Codex voting slots.
 - `LARCH_CODEX_FIX_MODEL`: `gpt-5.4-mini` for Codex plan revision, plan autofix, and review-fix application.
 
+Codex specialist reviewer panel rows use `model_role=default` (`gpt-5.5` unless overridden by `LARCH_CODEX_MODEL` / `codex_model`). `LARCH_CODEX_REVIEW_MODEL` does not affect those panel slots.
+
 These roles ignore `LARCH_CODEX_MODEL`, `codex_model`, and `--default-model`. Blank, whitespace-only, or control-character values fail in the Codex probe or launcher preflight before panel launch.
 
-`python/cli.py agent check-reviewers` probes Codex with the review role, so an invalid review-model override fails closed in Step 0.
+`python/cli.py agent check-reviewers` probes Codex with the default role used by specialist reviewer panels, so an invalid default-model override fails closed in Step 0.
 
 ### External reviewer probe tuning (`agent check-reviewers`)
 

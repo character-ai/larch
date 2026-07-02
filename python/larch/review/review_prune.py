@@ -287,7 +287,7 @@ def reviewer_prune_filter(*, ledger: Path, round_num: int, manifest: Path, out: 
             handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     if pruned:
         logging_util.diagnostic(f"→ review prune: round {round_num} drops {','.join(pruned)}")
-    return PruneFilterResult("true", len(eligible), len(pruned), ",".join(pruned), "true" if not eligible and rows else "false", warn=warn)
+    return PruneFilterResult("true", len(eligible), len(pruned), ",".join(pruned), "true" if not eligible else "false", warn=warn)
 
 
 def _prune_nonneg_int(value: object) -> int:

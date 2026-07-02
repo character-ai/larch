@@ -107,6 +107,18 @@ def test_filter_manifest_main_rejects_unknown_mode(tmp_path: Path) -> None:
     assert rc == 2
 
 
+@pytest.mark.parametrize("cap", ["2", "3"])
+def test_filter_manifest_main_rejects_max_archetypes_above_one(tmp_path: Path, cap: str, capsys) -> None:
+    src = tmp_path / "src.json"
+    out = tmp_path / "out.json"
+    src.write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+
+    rc = plan_scout.filter_manifest_main([str(src), str(out), "--max-archetypes", cap])
+
+    assert rc == 2
+    assert "--max-archetypes must be 0-1 for plan scout" in capsys.readouterr().err
+
+
 def test_dynamic_diff_mode_stages_large_diff_and_emits_warning(tmp_path: Path, monkeypatch, capsys) -> None:
     diff = tmp_path / "review.diff"
     plan = tmp_path / "plan.md"

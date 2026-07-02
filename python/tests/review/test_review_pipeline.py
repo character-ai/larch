@@ -1258,6 +1258,108 @@ def test_static_coverage_reason_excuses_straggler_dropped_static_slot(tmp_path: 
     )
 
 
+def test_static_coverage_reason_excuses_tool_absent_static_slot(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    arch = tmp_path / "codex-specialist-arch-output.txt"
+    testing = tmp_path / "cursor-specialist-testing-output.txt"
+    _ = arch.write_text("review\n", encoding="utf-8")
+    _ = testing.write_text("review\n", encoding="utf-8")
+    _ = collector.write_text(
+        f"REVIEWER_FILE={arch}\nSTATUS=OK\n\n"
+        f"REVIEWER_FILE={testing}\nSTATUS=OK\n\n",
+        encoding="utf-8",
+    )
+    manifest = tmp_path / "manifest.ndjson"
+    _ = manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "arch", "tool": "codex", "output": str(arch), "agent": "agents/reviewer-arch.md"}),
+                json.dumps(
+                    {
+                        "slot": "testing",
+                        "tool": "cursor",
+                        "output": str(testing),
+                        "agent": "agents/reviewer-testing.md",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "slot": "testing",
+                        "tool": "codex",
+                        "output": str(tmp_path / "codex-specialist-testing-output.txt"),
+                        "agent": "agents/reviewer-testing.md",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text("testing\tcodex\ttool-absent\tprimary tool codex not present\n", encoding="utf-8")
+
+    from larch.review import review_pipeline  # noqa: PLC0415
+
+    assert (
+        review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+            collector=collector,
+            manifest=manifest,
+            outputs=[str(arch), str(testing)],
+            dropped_slots_file=str(dropped)
+        )
+        == ""
+    )
+
+
+def test_static_coverage_reason_does_not_excuse_tool_absent_when_surviving_vendor_failed(tmp_path: Path) -> None:
+    collector = tmp_path / "collector-results.env"
+    arch = tmp_path / "codex-specialist-arch-output.txt"
+    _ = arch.write_text("review\n", encoding="utf-8")
+    _ = collector.write_text(f"REVIEWER_FILE={arch}\nSTATUS=OK\n\n", encoding="utf-8")
+    manifest = tmp_path / "manifest.ndjson"
+    _ = manifest.write_text(
+        "\n".join(
+            [
+                json.dumps({"slot": "arch", "tool": "codex", "output": str(arch), "agent": "agents/reviewer-arch.md"}),
+                json.dumps(
+                    {
+                        "slot": "testing",
+                        "tool": "codex",
+                        "output": str(tmp_path / "codex-specialist-testing-output.txt"),
+                        "agent": "agents/reviewer-testing.md",
+                    }
+                ),
+                json.dumps(
+                    {
+                        "slot": "testing",
+                        "tool": "cursor",
+                        "output": str(tmp_path / "cursor-specialist-testing-output.txt"),
+                        "agent": "agents/reviewer-testing.md",
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    dropped = tmp_path / "dropped.tsv"
+    _ = dropped.write_text(
+        "testing\tcodex\ttool-absent\tprimary tool codex not present\n"
+        "testing\tcursor\tcollector-failure\tSTATUS=ERROR\n",
+        encoding="utf-8",
+    )
+
+    from larch.review import review_pipeline  # noqa: PLC0415
+
+    reason = review_pipeline._static_coverage_reason(  # pyright: ignore[reportPrivateUsage]
+        collector=collector,
+        manifest=manifest,
+        outputs=[str(arch)],
+        dropped_slots_file=str(dropped)
+    )
+    assert reason == "no successful static reviewer for archetype(s): testing"
+
+
 def test_static_coverage_reason_does_not_excuse_mixed_straggler_and_genuine_failure(tmp_path: Path) -> None:
     collector = tmp_path / "collector-results.env"
     arch = tmp_path / "codex-specialist-arch-output.txt"
