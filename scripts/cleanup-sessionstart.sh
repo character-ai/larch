@@ -18,7 +18,7 @@ CLEANUP_LOG="${TMPDIR:-/tmp}/larch-cleanup-sessionstart-$$.log"
 
 # Launch cleanup as a detached subprocess so the hook exits immediately.
 # Output is captured to the temp log for post-hoc debugging.
-python3 "$CLI" cleanup run >"$CLEANUP_LOG" 2>&1 &
+env -u LARCH_TEST_TMP_ROOT python3 "$CLI" cleanup run >"$CLEANUP_LOG" 2>&1 &
 disown "$!" 2>/dev/null || true
 
 exit 0
