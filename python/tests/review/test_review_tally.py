@@ -878,6 +878,35 @@ def test_tally_all_narrative_voters_emits_parse_failed_count_on_zero_effective(t
     assert "narrative-only output" in tally
 
 
+def test_tally_empty_ballot_skips_vote_without_degraded_warning(tmp_path: Path) -> None:
+    case = tmp_path / "empty-ballot"
+    case.mkdir()
+    _ = (case / "ballot.md").write_text("", encoding="utf-8")
+    voter = case / "zero-findings-voter.txt"
+    _ = voter.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--voter-files",
+        str(voter),
+        "--review-tmpdir",
+        str(case),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="TALLY_STATUS") == "skipped-empty-findings"
+    assert rts.kv_get(stdout=result.stdout, key="VOTER_COUNT") == "0"
+    assert rts.kv_get(stdout=result.stdout, key="PARSE_FAILED_COUNT") == "0"
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    assert class_file.read_text(encoding="utf-8") == _CLASSIFICATION_HEADER + "\n"
+    tally = (case / "voting-tally.md").read_text(encoding="utf-8")
+    assert "Round skipped: no findings to adjudicate." in tally
+    assert "⚠ Degraded code-review panel" not in tally
+    assert "narrative-only output" not in tally
+
+
 def test_tally_security_classifier_failure_fails_closed(tmp_path: Path) -> None:
     case = tmp_path / "security-classifier-fail"
     case.mkdir()

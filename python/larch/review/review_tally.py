@@ -637,6 +637,43 @@ def tally_code_votes(argv: list[str]) -> int:
     except RuntimeError:
         return _error("tally-code-votes: duplicate or malformed FINDING/OOS headings in ballot")
     _write(path=class_tsv, text=voting.code_review_classification_header() + "\n" if three_slot else _CLASSIFICATION_HEADER + "\n")
+    not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
+    if not blocks:
+        tally_lines = ["# Code Review Voting Tally\n\n", "Round skipped: no findings to adjudicate.\n\n"]
+        if not_substantive_count > 0:
+            tally_lines.append(f"{_not_substantive_warning(not_substantive_count)}\n\n")
+        tally_lines.append(voting.render_voter_agreement_and_severity_scoreboards([]))
+        _write(path=voting_tally_file, text="".join(tally_lines))
+        _write_final_tally_outputs(
+            tally_env=tally_env,
+            counts_text="ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\nOOS_ACCEPTED_COUNT=0\nOOS_REJECTED_COUNT=0\n",
+            review_tmpdir=review_tmpdir,
+            args=args,
+            ledger_entries=[],
+        )
+        for key, value in {
+            "TALLY_STATUS": "skipped-empty-findings",
+            "ACCEPTED_COUNT": "0",
+            "REJECTED_COUNT": "0",
+            "EXONERATED_COUNT": "0",
+            "NEUTRAL_COUNT": "0",
+            "OOS_ACCEPTED_COUNT": "0",
+            "OOS_REJECTED_COUNT": "0",
+            "OUT_OF_SCOPE_DRIFT_COUNT": "0",
+            "VOTING_TALLY_FILE": str(voting_tally_file),
+            "TALLY_FILE": str(tally_env),
+            "ACCEPTED_FINDINGS_FILE": str(accepted_file),
+            "REJECTED_FINDINGS_FILE": str(rejected_file),
+            "OOS_ACCEPTED_FILE": str(oos_accepted_out),
+            "OOS_FILE": str(oos_file),
+            "TALLY_OK": "true",
+            "ELIGIBLE_VOTER_COUNT": "0",
+            "VOTER_COUNT": "0",
+            "PARSE_FAILED_COUNT": "0",
+            "FINDINGS_CLASSIFICATION_TSV_FILE": str(class_tsv),
+        }.items():
+            logging_util.emit_kv(key=key, value=value)
+        return 0
     eligible = 0
     effective_files: list[str] = []
     effective_slot = [False, False, False]
@@ -659,7 +696,6 @@ def tally_code_votes(argv: list[str]) -> int:
             else:
                 parse_failed += 1
     effective = max(0, eligible - parse_failed)
-    not_substantive_count = int(args.not_substantive_count) if str(args.not_substantive_count).isdigit() else 0
     accepted = rejected = exonerated = neutral = oos_accepted = oos_rejected = drift = 0
     if effective == 0:
         for block in blocks:

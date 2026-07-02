@@ -3409,6 +3409,58 @@ def test_degraded_retry_preserves_attempt_1_when_retry_succeeds(tmp_path: Path, 
     assert not (round_dir / "voting-tally-degraded-attempt-2.md").exists()
 
 
+def test_degraded_retry_skips_zero_findings_round(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    call_count = 0
+
+    def fake_core(argv: list[str]) -> int:
+        nonlocal call_count
+        call_count += 1
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "voting-tally.md").write_text(
+            "**⚠ Degraded code-review panel: 0 judges available.**\n\nlegacy empty-ballot marker\n",
+            encoding="utf-8",
+        )
+        logging_util.emit("REVIEW_CORE_STATUS=zero-findings")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        logging_util.emit("PARSE_FAILED_COUNT=1")
+        logging_util.emit("VOTER_COUNT=0")
+        return 0
+
+    warned: list[str] = []
+
+    def capture_warning(*, session_env_path: str, entry: str) -> None:
+        warned.append(entry)
+
+    monkeypatch.setattr(review_tally, "surface_warning", capture_warning)
+
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        round_num="1",
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="false",
+        cursor_available="false",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        run_id="",
+        pre_scouted_manifest="",
+        dynamic_archetypes="0",
+    )
+    review_and_fix._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert call_count == 1
+    assert not (impl / "round-1" / "voting-tally-degraded-attempt-1.md").exists()
+    assert not any("narrative-only output" in item for item in warned)
+
+
 def test_degraded_retry_preserves_attempt_1_and_2_when_retry_stays_degraded(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
