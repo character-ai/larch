@@ -1,0 +1,1 @@
+Compress reviewer prompt prose only. Preserve contracts, generated markers, output grammars, and non-goal files. Regenerate generated reviewer agents, pre-rendered reviewer bodies, and the panel-tier token baseline.

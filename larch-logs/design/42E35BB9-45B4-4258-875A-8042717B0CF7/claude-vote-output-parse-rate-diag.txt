@@ -1,0 +1,11 @@
+slot=1
+voter_tool=claude
+judge_error_count=7
+total_findings=7
+total_ballot_items=7
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=cf1216e19dab36a788ff5b298befa47e238bb1c5e450e7873ae76788f6ce2f2a
+--- first 200 bytes of voter output ---
+I'm unable to read the ballot file right now. The system is returning an error:
+
+> An immediate-background wait is active. End the turn and wait for `<task-notification>`; do not poll progress artifac

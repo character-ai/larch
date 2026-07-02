@@ -1,0 +1,14 @@
+# md-to-py-XI: prose-compress reviewer-templates.md and realign agents/reviewer-*.md derivatives
+
+**Context.** `skills/shared/reviewer-templates.md` (about 53.5KB) and the eight hand-maintained specialist derivatives under `agents/` (about 70KB combined) are the primary reviewer prompt sources, loaded per slot per round on every /implement Step 5, /review, and /design plan review. They have never had a density pass in rounds V-X; the program was orchestrator-only. Round-X evidence says contract-preserving passes yield 12-17% on prose-heavy files (#5874 through #5880).
+
+**Scope.** Strunk and White density pass removing redundancy only: preserve the dual-list output contracts, S030 pins, generated-section markers, severity rubrics, and all KV grammars verbatim. Realign the `agents/reviewer-*.md` derivatives with the compressed sections. Target roughly 15% token reduction across the set, measured by the extended panel-tier ratchet.
+
+**Acceptance.**
+
+- Measurable token reduction on the ratcheted panel tier with zero behavior change.
+- Rendering and template harnesses pass (`python/tests/rendering`, template suites under `make py-test`).
+
+**Deliberate distinction.** #5889 (in flight) changes review-stage availability behavior on adjacent surfaces; this issue is text density only and lands after it to avoid churn on the same files.
+
+Part of md-to-py-XI (round X: #5885).
