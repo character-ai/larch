@@ -60,10 +60,15 @@ PHASE_RESULT_ENV_ALLOW_KEYS = {
     "SIZE_TRIGGER_FIRED",
     "SNAPSHOT_STATUS",
     "SETTLE_NEXT_ACTION",
+    "SETTLE_EXIT_RC",
+    "SETTLE_STATUS",
     "SOFT_ADVISORY",
     "STEP3_REVIEW_LOOP_STATUS",
     "STEP3_REVIEW_CAP_REACHED",
     "STEP3_REVIEW_ROUND_NUM",
+    "STEP2B5_EXIT_RC",
+    "STEP2B5_NEXT_ACTION",
+    "STEP2B5_STATUS",
     "TALLY_PLAN_REVIEW_STATUS",
     "TRIGGER_REASONS",
     "VALIDATE_DEFECT_COUNT",
@@ -75,6 +80,8 @@ PHASE_RESULT_ENV_ALLOW_KEYS = {
     "VOTING_TALLY_FILE",
     "WARN",
 }
+
+CHECK_SIZE_WARNING_RC = 2
 
 
 _WRAPPER_ENV_DEFAULTS: dict[str, str] = {
@@ -149,6 +156,20 @@ class PostplanResult:
 
 
 @dataclass(frozen=True)
+class SettleDispatchResult:
+    action: str
+    exit_rc: int
+    status: str
+
+
+@dataclass(frozen=True)
+class Step2b5DispatchResult:
+    action: str
+    exit_rc: int
+    status: str
+
+
+@dataclass(frozen=True)
 class PostplanPaths:
     design_tmpdir: Path
     completed_dir: Path
@@ -197,6 +218,98 @@ def _valid_var_name(value: str) -> bool:
     if not value or value[0].isdigit():
         return False
     return all(ch.isalnum() or ch == "_" for ch in value)
+
+
+def settle_next_action_for(*, site: str, postplan_rc: int) -> SettleDispatchResult:
+    action_by_site_rc = {
+        ("gate-b", 0): ("gate-b-continue", "ok"),
+        ("gate-a", 0): ("gate-a-return", "ok"),
+        ("discussion-round2", 0): ("gate-a-return", "ok"),
+        ("gate-b", 10): ("gate-b-validator-fail", "validate-failed"),
+        ("gate-a", 10): ("gate-a-validator-fail", "validate-failed"),
+        ("discussion-round2", 10): ("gate-a-validator-fail", "validate-failed"),
+        ("gate-b", 11): ("pause", "pause-save"),
+        ("gate-a", 11): ("pause", "pause-save"),
+        ("discussion-round2", 11): ("pause", "pause-save"),
+        ("gate-b", 12): ("gate-b-hard-size", "plan-size-trigger"),
+        ("gate-a", 12): ("gate-a-hard-size", "plan-size-trigger"),
+        ("discussion-round2", 12): ("gate-a-hard-size", "plan-size-trigger"),
+        ("gate-b", 13): ("gate-b-split", "partition-requested"),
+        ("gate-a", 13): ("gate-a-split", "partition-requested"),
+        ("discussion-round2", 13): ("gate-a-split", "partition-requested"),
+    }
+    if (site, postplan_rc) not in action_by_site_rc:
+        return SettleDispatchResult(action="", exit_rc=2, status="unknown-dispatch")
+    action, status = action_by_site_rc[(site, postplan_rc)]
+    return SettleDispatchResult(action=action, exit_rc=postplan_rc, status=status)
+
+
+def settle_next_action_main(argv: Sequence[str]) -> int:
+    site = ""
+    postplan_rc_raw = ""
+    status = ""
+    usage_requested = False
+    args = list(argv)
+    i = 0
+    while i < len(args):
+        token = args[i]
+        if token == "--site":
+            if i + 1 >= len(args):
+                status = "missing-site"
+                break
+            site = args[i + 1]
+            i += 2
+            continue
+        if token == "--postplan-rc":
+            if i + 1 >= len(args):
+                status = "missing-postplan-rc"
+                break
+            postplan_rc_raw = args[i + 1]
+            i += 2
+            continue
+        if token in {"-h", "--help"}:
+            usage_requested = True
+            break
+        status = f"unknown-option:{token}"
+        break
+    if usage_requested:
+        print("Usage: cli.py design settle-next-action --site SITE --postplan-rc RC", file=sys.stderr)
+        return 0
+    result = SettleDispatchResult(action="", exit_rc=2, status=status)
+    if not status:
+        if site not in {"gate-b", "gate-a", "discussion-round2"}:
+            result = SettleDispatchResult(action="", exit_rc=2, status="invalid-site")
+        else:
+            try:
+                postplan_rc = int(postplan_rc_raw)
+            except ValueError:
+                result = SettleDispatchResult(action="", exit_rc=2, status="invalid-postplan-rc")
+            else:
+                result = settle_next_action_for(site=site, postplan_rc=postplan_rc)
+    print(f"SETTLE_STATUS={result.status}")
+    if result.action:
+        print(f"SETTLE_NEXT_ACTION={result.action}")
+        print(f"SETTLE_EXIT_RC={result.exit_rc}")
+    return 0 if result.action else 2
+
+
+def step2b5_next_action_for(*, check_size_rc: int, check_size_kvs: dict[str, str], partition_requested: bool) -> Step2b5DispatchResult:
+    """Choose the Step 2b.5 action.
+
+    Priority is non-zero check-size rc, hard size trigger, explicit partition,
+    drift advisory, then under-threshold.
+    """
+    if check_size_rc != 0:
+        if check_size_rc == CHECK_SIZE_WARNING_RC:
+            return Step2b5DispatchResult(action="rc2-warning", exit_rc=CHECK_SIZE_WARNING_RC, status="rc2-warning")
+        return Step2b5DispatchResult(action="internal-error", exit_rc=check_size_rc, status="internal-error")
+    if check_size_kvs.get("SIZE_TRIGGER_FIRED", "false") == "true":
+        return Step2b5DispatchResult(action="hard-trigger", exit_rc=0, status="plan-size-trigger")
+    if partition_requested:
+        return Step2b5DispatchResult(action="partition-split", exit_rc=0, status="partition-requested")
+    if check_size_kvs.get("DRIFT_TRIGGER_FIRED", "false") == "true":
+        return Step2b5DispatchResult(action="drift-advisory", exit_rc=0, status="drift-advisory")
+    return Step2b5DispatchResult(action="under-threshold", exit_rc=0, status="under-threshold")
 
 
 def _quote_single(value: str) -> str:

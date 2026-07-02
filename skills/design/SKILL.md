@@ -337,7 +337,7 @@ On `_postplan_rc=12`, the driver already printed the size-trigger section. Ask e
 
 ### Step 2b.5 — Plan-size threshold check (named procedure)
 
-**Merged callers** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) use `python/cli.py design postplan-emit --with-plan-size` and skip the retained procedure on clean paths. **Retained callers** (Override-after-defects and recovery) still invoke this procedure or `python/cli.py plan check-size`. If no baseline exists, the first successful check seeds `drift-baseline.env` from `PLAN_LINES` / `DIFF_LINES`, emits drift false, and later calls compare to it.
+**Merged callers** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) use `python/cli.py design postplan-emit --with-plan-size` and skip the retained procedure on clean paths. It writes `STEP2B5_NEXT_ACTION` to `.design-postplan-emit-result.env` and keeps check-size rc `2` warning-only like retained `design step2b5`. **Retained callers** (Override-after-defects and recovery) still invoke this procedure or `python/cli.py plan check-size`. If no baseline exists, the first successful check seeds `drift-baseline.env` from `PLAN_LINES` / `DIFF_LINES`, emits drift false, and later calls compare to it.
 **Callable from**: retained paths and Gate B after validator-defect Override. Gate B and post-plan discussion merged re-emits use `--with-plan-size` instead of standalone Step 2b.5 on success.
 
 1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
@@ -345,10 +345,10 @@ On `_postplan_rc=12`, the driver already printed the size-trigger section. Ask e
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b5.sh
 ```
-3. **Retained callers that ran items 1–2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before binding `_plan_size_rc` and executing return-code handling. Then bind `_plan_size_rc` from the Bash fence exit code (`$?` after the fence returns), not from an inner subshell, and branch per `step2b5-rc-handling.md`.
+3. **Retained callers that ran items 1–2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch. Then bind `STEP2B5_NEXT_ACTION` from the fence stdout and branch per `step2b5-rc-handling.md`; do not recompute routing from `_plan_size_rc`.
 
-**Retained branch direct-entry when items 1–2 were skipped**: before executing hard / partition / drift / no-trigger branches 4–7 for `SETTLE_NEXT_ACTION=gate-a-hard-size`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Do not route from a wrapper rc when action row is missing. Do not load it for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`. Override-after-defects always runs items 1–2 and loads the reference before item 3.
-On direct-entry paths, after the mandatory READ and before branch 4, bind plan-size KVs from `.design-postplan-emit-result.env` per `step2b5-rc-handling.md`; treat them as rc=0 parse input with no `_plan_size_out`. The reference owns soft advisories, rc=2, other rc handling, and hard / partition / drift / no-trigger details.
+**Retained branch direct-entry when items 1–2 were skipped**: for `SETTLE_NEXT_ACTION=gate-a-hard-size`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Bind `STEP2B5_NEXT_ACTION` from `.design-postplan-emit-result.env` and branch on that action key. Do not route from a wrapper rc when the action row is missing. Do not load it for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`. Override-after-defects always runs items 1–2 and loads the reference before item 3.
+On direct-entry paths, bind plan-size KVs from `.design-postplan-emit-result.env` per `step2b5-rc-handling.md`; treat `STEP2B5_NEXT_ACTION` as authoritative. The reference owns soft advisories and branch bodies.
 
 #### Split-path (decomposition panel)
 

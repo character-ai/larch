@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import sys
@@ -13,6 +14,7 @@ import tempfile
 from pathlib import Path
 from collections.abc import Sequence
 
+from larch import io as larch_io
 from larch.core import config, logging_util
 from larch.core.ctx import Ctx
 
@@ -37,6 +39,7 @@ from larch.design.design_session import (
     _print_text,
     _rehydrate_wrapper_env,
     _touch,
+    step2b5_next_action_for,
 )
 from larch.design.design_step0 import _step2b5_self_log
 from larch.design.design_step0_env import load_bash_quoted_env
@@ -75,12 +78,28 @@ def step2b5_main(argv: Sequence[str]) -> int:
         else:
             os.environ["LARCH_QUIET_DISABLE"] = old_quiet
     _print_text(out)
+    stderr_text = ""
+    if stderr_tmp.is_file():
+        stderr_text = stderr_tmp.read_text(encoding="utf-8", errors="replace")
+    check_size_kvs = larch_io.parse_kv((out or "") + "\n" + stderr_text)
+    partition_requested = False
+    run_params_path = design_tmpdir / "run-params.json"
+    if run_params_path.is_file():
+        try:
+            data = json.loads(run_params_path.read_text(encoding="utf-8"))
+            partition_requested = data.get("partition_requested") is True
+        except (OSError, json.JSONDecodeError):
+            partition_requested = False
+    step2b5 = step2b5_next_action_for(check_size_rc=rc, check_size_kvs=check_size_kvs, partition_requested=partition_requested)
+    print(f"STEP2B5_STATUS={step2b5.status}")
+    print(f"STEP2B5_NEXT_ACTION={step2b5.action}")
+    print(f"STEP2B5_EXIT_RC={step2b5.exit_rc}")
     try:
         _step2b5_self_log(plugin_root=plugin_root, design_tmpdir=design_tmpdir, rc=rc, stdout=out, stderr_tmp=stderr_tmp)
     finally:
         with contextlib.suppress(FileNotFoundError):
             stderr_tmp.unlink()
-    return rc
+    return step2b5.exit_rc
 
 
 def _step5b_mark_complete(design_tmpdir: Path) -> None:

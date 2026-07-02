@@ -331,6 +331,9 @@ contains "$DESIGN_LIFECYCLE" 'step-2a.5' 'Step 1e reentry must clear step-2a.5 s
 contains "$DESIGN_LIFECYCLE" 'step-0c' 'Step 0c sentinel contract must remain pinned'
 contains "$DESIGN_LIFECYCLE" '"OOS_SKIP_BREADCRUMB",' 'phase result allowlist must include OOS skip breadcrumb'
 contains "$DESIGN_LIFECYCLE" '"SETTLE_NEXT_ACTION",' 'phase result allowlist must include settle next action'
+contains "$DESIGN_LIFECYCLE" '"SETTLE_EXIT_RC",' 'phase result allowlist must include settle exit rc'
+contains "$DESIGN_LIFECYCLE" '"STEP2B5_NEXT_ACTION",' 'phase result allowlist must include Step 2b.5 next action'
+contains "$DESIGN_LIFECYCLE" '"STEP2B5_EXIT_RC",' 'phase result allowlist must include Step 2b.5 exit rc'
 
 contains "$BRAINSTORM_MD" 'timeout: 1260000' 'Brainstorm collect docs must pin foreground Bash timeout'
 contains "$BRAINSTORM_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect --' 'Brainstorm collect must use launcher-owned collect verb'
@@ -361,7 +364,7 @@ debug_step5c_once='debug-step5c-once.sh'
 [ ! -e "$ROOT/scripts/$debug_step5c_once" ] || fail "retired G6.2 script still exists: scripts/$debug_step5c_once"
 contains "$MIGRATED" "scripts/$debug_step5c_once" "migrated-scripts.tsv missing scripts/$debug_step5c_once"
 
-step2_verbs='step2b-drafter step2b-postplan step2b5'
+step2_verbs='step2b-drafter step2b-postplan settle-next-action step2b5'
 step2_retired_paths='design-step2a.sh design-step2a.md design-step2b-drafter.sh design-step2b-drafter.md design-step2b-postplan.sh design-step2b-postplan.md design-step2b5.sh design-step2b5.md design-step-validator-autofix.sh design-step-validator-autofix.md design-step2b-prelude.sh design-step2b-prelude.md test-design-step2b-drafter.sh test-design-step2b-drafter.md test-design-step-validator-autofix.sh test-design-step-validator-autofix.md'
 SETTLE_SH="$ROOT/skills/design/scripts/design-step35-settle.sh"
 SETTLE_MD="$ROOT/skills/design/scripts/design-step35-settle.md"
@@ -418,6 +421,7 @@ contains "$SKILL_MD" 'Do not describe or perform a `fallback_used` disk re-read 
 contains "$SKILL_MD" 'When `ROUTE=resume@2a` or `RESUME_STEP=2a`, jump directly to the Step 2b drafter breadcrumb (`> **🔶 /design 2b: full plan**`) and `design-step2b-drafter.sh`; folded sentinel prep runs inside that wrapper, so do not expect or invoke a standalone Step 2a fence.' 'SKILL.md resume@2a must route directly to Step 2b drafter'
 contains "$DESIGN_POSTPLAN" 'DRIFT_TRIGGER_FIRED' 'design_postplan must parse drift trigger'
 contains "$DESIGN_POSTPLAN" 'BASELINE_PLAN_LINES' 'design_postplan must parse drift baseline'
+contains "$DESIGN_LIFECYCLE" 'Priority is non-zero check-size rc, hard size trigger, explicit partition,' 'Step 2b.5 trigger priority must be documented in Python helper'
 
 assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: docs/issue-anchored-plan.md' 'MAY_UPDATE docs path must not require diagram'
 assert_step3b_classifier false $'## Files to modify/create\n### MAY_UPDATE: `docs/issue-anchored-plan.md`' 'MAY_UPDATE backtick docs path must not require diagram'
@@ -458,7 +462,7 @@ not_contains "$SKILL_MD" '**Gate B resume idempotency**' 'SKILL must not retain 
 not_contains "$SKILL_MD" 'do not probe the apply-ready marker' 'SKILL must not retain old Gate B idempotency probe wording'
 contains "$SKILL_MD" 'Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B.' 'SKILL must point Gate B idempotency to approval-gates'
 contains "$SKILL_MD" 'runs FINALIZE, runs probe-only dialectic eligibility, emits and persists `STEP4_MODE`, then writes `.completed/step-3b`' 'Step 3b prose must document finalize ordering'
-contains "$SKILL_MD" 'before executing hard / partition / drift / no-trigger branches 4–7 for `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'Step 2b.5 direct-entry must be action-row only'
+contains "$SKILL_MD" 'Bind `STEP2B5_NEXT_ACTION` from `.design-postplan-emit-result.env` and branch on that action key.' 'Step 2b.5 direct-entry must be action-row only'
 not_contains "$SKILL_MD" 'Gate A / discussion-round2 fallback rc `12`' 'Step 2b.5 direct-entry must not mention Gate A fallback rc 12'
 not_contains "$SKILL_MD" 'Gate B fallback rc `12`' 'Step 2b.5 direct-entry must not mention Gate B fallback rc 12'
 contains "$SKILL_MD" 'When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface.' 'Gate-B-bypass row must retain cap-reached stale-findings rationale'
@@ -554,8 +558,11 @@ not_contains "$SKILL_MD" 're-emit that exact body verbatim in chat' 'SKILL must 
 contains "$SETTLE_SH" 'python/cli.py" design step2b-postplan' 'settle must default to python/cli.py design step2b-postplan'
 contains "$SETTLE_SH" '--site "$POSTPLAN_SITE"' 'settle must pass mapped postplan site'
 contains "$SETTLE_SH" '"${PUBLIC_ARGV_WORDS[@]}"' 'settle must forward caller tail after --'
+contains "$SETTLE_SH" 'design settle-next-action --site "$SITE" --postplan-rc "$rc"' 'settle must delegate rc dispatch to Python action helper'
+not_contains "$SETTLE_SH" 'design_settle_next_action_for_rc' 'settle must not retain Bash rc dispatch table'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site gate-b' 'settle doc must name gate-b postplan authority'
 contains "$SETTLE_MD" 'python/cli.py design step2b-postplan --site discussion-round2' 'settle doc must name discussion postplan authority'
+contains "$SETTLE_MD" 'python/cli.py design settle-next-action --site <site> --postplan-rc <rc>' 'settle doc must name Python action helper'
 contains "$SETTLE_MD" 'python/tests/design/test_design_lifecycle.py' 'settle doc must name pytest structure coverage'
 contains "$SETTLE_MD" 'The process rc remains a wrapper diagnostic and legacy process contract.' 'settle doc must describe process rc as diagnostic only'
 not_contains "$SETTLE_MD" 'compatibility fallback' 'settle doc must not call process rc a prompt fallback'
@@ -566,6 +573,7 @@ contains "$SETTLE_DISPATCH_MD" 'Primary key: branch on the whole-line `SETTLE_NE
 contains "$SETTLE_DISPATCH_MD" 'If the `SETTLE_NEXT_ACTION` action row is absent, stop for operator repair. Do not route from the wrapper rc when the action row is missing.' 'settle dispatch must fail closed when action row is absent'
 contains "$SETTLE_DISPATCH_MD" 'If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently choosing one.' 'settle dispatch must stop on action rc disagreement'
 contains "$SETTLE_DISPATCH_MD" 'Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority.' 'settle dispatch must keep wrapper rc diagnostic-only'
+contains "$SETTLE_DISPATCH_MD" 'Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.' 'settle dispatch must delegate action derivation to Python'
 contains "$SETTLE_DISPATCH_MD" 'There is no `POSTPLAN_RC=1` on the postplan path.' 'settle rc dispatch must reject POSTPLAN_RC=1 wording'
 not_contains "$SETTLE_DISPATCH_MD" 'Fallback key: when the action row is missing' 'settle dispatch must remove fallback key paragraph'
 not_contains "$SETTLE_DISPATCH_MD" '## Fallback: branch on wrapper rc' 'settle dispatch must remove wrapper rc fallback section'
@@ -600,9 +608,10 @@ not_contains "$SKILL_MD" 'Branch on the settle wrapper rc' 'SKILL must not retai
 not_contains "$SKILL_MD" 'Branch on wrapper rc' 'SKILL must not retain inline wrapper rc branch table'
 not_contains "$SKILL_MD" 'fallback row' 'SKILL must not retain settle fallback-row prose'
 
-contains "$STEP2B5_RC_MD" 'settle dispatch `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'step2b5 rc handling must keep gate-a-hard-size direct-entry trigger'
-contains "$STEP2B5_RC_MD" 'Do not route to this reference from a wrapper rc when `SETTLE_NEXT_ACTION` is missing.' 'step2b5 rc handling must reject wrapper-rc fallback routing'
-contains "$STEP2B5_RC_MD" '`SETTLE_NEXT_ACTION=gate-b-hard-size`; that action uses the existing Gate B hard plan-size prompt in `approval-gates.md`, not this reference.' 'step2b5 rc handling must delegate gate-b-hard-size to approval-gates'
+contains "$STEP2B5_RC_MD" 'settle action `SETTLE_NEXT_ACTION=gate-a-hard-size`' 'step2b5 rc handling must keep gate-a-hard-size direct-entry trigger'
+contains "$STEP2B5_RC_MD" 'Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose.' 'step2b5 rc handling must reject prompt-side action derivation'
+contains "$STEP2B5_RC_MD" 'If `STEP2B5_NEXT_ACTION` is absent, stop for repair. Do not route from process rc or raw trigger KVs when the action row is missing.' 'step2b5 rc handling must reject process-rc fallback routing'
+contains "$STEP2B5_RC_MD" 'Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`.' 'step2b5 rc handling must delegate gate-b-hard-size to approval-gates'
 not_contains "$STEP2B5_RC_MD" 'Gate A / discussion-round2 fallback rc `12`' 'step2b5 rc handling must remove Gate A fallback rc trigger'
 not_contains "$STEP2B5_RC_MD" 'Gate B fallback rc `12`' 'step2b5 rc handling must remove Gate B fallback rc trigger'
 contains "$APPROVAL_GATES_MD" 'Before executing the Gate B body, bind `_gate_b_round` from `FINAL_ROUND_NUM`, then `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`; fail closed if it is empty or non-numeric.' 'approval-gates must own Gate B pre-apply round binding'

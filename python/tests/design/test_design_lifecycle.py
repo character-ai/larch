@@ -1842,6 +1842,89 @@ def test_postplan_decide_fatal_rc_sets_print_captured_metadata(tmp_path: Path) -
     assert not decision.rows
 
 
+def test_postplan_decide_rc2_warning_is_nonfatal(tmp_path: Path) -> None:
+    paths = design_lifecycle.PostplanPaths.from_design_tmpdir(tmp_path)
+    decision = design_lifecycle._postplan_decide(  # pyright: ignore[reportPrivateUsage]
+        paths=paths,
+        site="step2b",
+        rc=2,
+        captured_stdout="STEP2B5_NEXT_ACTION=rc2-warning\nSTEP2B5_EXIT_RC=2\n",
+        validate={},
+        plan_source="",
+        fallback_used="false",
+        dirty_recovery=False,
+        plan_summary_exists=False,
+    )
+
+    assert decision.postplan_rc == 0
+    assert decision.status == "rc2-warning"
+    assert decision.touches == (paths.step2b5_done, paths.step2b_done)
+    assert decision.rows == ("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=rc2-warning\n")
+    assert decision.print_captured_before_return is False
+
+
+@pytest.mark.parametrize(
+    ("site", "postplan_rc", "expected_action", "expected_exit_rc", "expected_status"),
+    [
+        ("gate-b", 0, "gate-b-continue", 0, "ok"),
+        ("gate-a", 0, "gate-a-return", 0, "ok"),
+        ("discussion-round2", 0, "gate-a-return", 0, "ok"),
+        ("gate-b", 10, "gate-b-validator-fail", 10, "validate-failed"),
+        ("gate-a", 10, "gate-a-validator-fail", 10, "validate-failed"),
+        ("discussion-round2", 10, "gate-a-validator-fail", 10, "validate-failed"),
+        ("gate-b", 11, "pause", 11, "pause-save"),
+        ("gate-a", 11, "pause", 11, "pause-save"),
+        ("discussion-round2", 11, "pause", 11, "pause-save"),
+        ("gate-b", 12, "gate-b-hard-size", 12, "plan-size-trigger"),
+        ("gate-a", 12, "gate-a-hard-size", 12, "plan-size-trigger"),
+        ("discussion-round2", 12, "gate-a-hard-size", 12, "plan-size-trigger"),
+        ("gate-b", 13, "gate-b-split", 13, "partition-requested"),
+        ("gate-a", 13, "gate-a-split", 13, "partition-requested"),
+        ("discussion-round2", 13, "gate-a-split", 13, "partition-requested"),
+    ],
+)
+def test_settle_next_action_for_matrix(
+    site: str,
+    postplan_rc: int,
+    expected_action: str,
+    expected_exit_rc: int,
+    expected_status: str,
+) -> None:
+    result = design_lifecycle.settle_next_action_for(site=site, postplan_rc=postplan_rc)
+    assert result.action == expected_action
+    assert result.exit_rc == expected_exit_rc
+    assert result.status == expected_status
+
+
+@pytest.mark.parametrize(
+    ("check_size_rc", "kvs", "partition_requested", "expected_action", "expected_exit_rc", "expected_status"),
+    [
+        (2, {"SIZE_TRIGGER_FIRED": "true", "DRIFT_TRIGGER_FIRED": "true"}, True, "rc2-warning", 2, "rc2-warning"),
+        (7, {"SIZE_TRIGGER_FIRED": "true"}, True, "internal-error", 7, "internal-error"),
+        (0, {"SIZE_TRIGGER_FIRED": "true", "DRIFT_TRIGGER_FIRED": "true"}, True, "hard-trigger", 0, "plan-size-trigger"),
+        (0, {"SIZE_TRIGGER_FIRED": "false", "DRIFT_TRIGGER_FIRED": "true"}, True, "partition-split", 0, "partition-requested"),
+        (0, {"SIZE_TRIGGER_FIRED": "false", "DRIFT_TRIGGER_FIRED": "true"}, False, "drift-advisory", 0, "drift-advisory"),
+        (0, {"SIZE_TRIGGER_FIRED": "false", "DRIFT_TRIGGER_FIRED": "false"}, False, "under-threshold", 0, "under-threshold"),
+    ],
+)
+def test_step2b5_next_action_for_priority(
+    check_size_rc: int,
+    kvs: dict[str, str],
+    partition_requested: bool,
+    expected_action: str,
+    expected_exit_rc: int,
+    expected_status: str,
+) -> None:
+    result = design_lifecycle.step2b5_next_action_for(
+        check_size_rc=check_size_rc,
+        check_size_kvs=kvs,
+        partition_requested=partition_requested,
+    )
+    assert result.action == expected_action
+    assert result.exit_rc == expected_exit_rc
+    assert result.status == expected_status
+
+
 def test_postplan_executor_pre_emit_pause_skips_emit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     (tmp_path / ".pause-requested").write_text("", encoding="utf-8")
     called = False
@@ -2000,7 +2083,10 @@ def test_step2b5_echoes_check_size_stdout_and_rc(tmp_path: Path, monkeypatch: py
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path.cwd()))
     rc = design_lifecycle.step2b5_main([])
     assert rc == 7
-    assert "PLAN_SIZE_STATUS=failed" in capsys.readouterr().out
+    out = capsys.readouterr().out
+    assert "PLAN_SIZE_STATUS=failed" in out
+    assert "STEP2B5_NEXT_ACTION=internal-error" in out
+    assert "STEP2B5_EXIT_RC=7" in out
 
 
 def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
@@ -2015,6 +2101,8 @@ def test_step2b5_self_logs_on_rc2(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     out = capsys.readouterr().out
     assert rc == 2
     assert "PLAN_SIZE_STATUS=missing-diff-lines" in out
+    assert "STEP2B5_NEXT_ACTION=rc2-warning" in out
+    assert "STEP2B5_EXIT_RC=2" in out
     validation_log = tmp_path / "check-plan-size.validation.log"
     assert validation_log.read_text(encoding="utf-8") == "PLAN_SIZE_STATUS=missing-diff-lines\n"
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
@@ -2039,7 +2127,7 @@ def test_step2b5_self_logs_on_rc3(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert "python/cli.py plan check-size" in issues
 
 
-def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     def fake_check(_argv: list[str]) -> int:
         print("PLAN_SIZE_STATUS=ok")
         return 0
@@ -2049,6 +2137,9 @@ def test_step2b5_no_log_on_success(tmp_path: Path, monkeypatch: pytest.MonkeyPat
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(CLI.parent.parent))
     rc = design_lifecycle.step2b5_main([])
     assert rc == 0
+    out = capsys.readouterr().out
+    assert "STEP2B5_NEXT_ACTION=under-threshold" in out
+    assert "STEP2B5_EXIT_RC=0" in out
     assert not (tmp_path / "check-plan-size.validation.log").exists()
     assert not (tmp_path / "execution-issues.md").exists()
 

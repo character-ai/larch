@@ -47,6 +47,8 @@ from larch.design.design_session import (
     PostplanDecision,
     PostplanPaths,
     PostplanResult,
+    SettleDispatchResult,
+    Step2b5DispatchResult,
     WrapperArgs,
     _SESSION_ENV_ALLOWLIST,
     _WRAPPER_ENV_DEFAULTS,
@@ -70,6 +72,9 @@ from larch.design.design_session import (
     _touch,
     _valid_var_name,
     _write_text,
+    settle_next_action_for,
+    settle_next_action_main,
+    step2b5_next_action_for,
 )
 from larch.design.design_step0_env import (
     COMMON_ENV_DEFAULTS,

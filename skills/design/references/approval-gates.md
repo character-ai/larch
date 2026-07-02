@@ -141,7 +141,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 4. Rewrite `plan.txt` via the Write tool with duplicates removed.
 5. Run the settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b --round-num "$_gate_b_round"`.
 6. Do not pass `STEP3_RESUME_ROUND` before it is bound. If surrounding prose already has a validated round variable, pass it with `--round-num`; otherwise let the wrapper derive the Gate B round from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`.
-7. `design-step35-settle.sh` calls `python/cli.py design step2b-postplan --site gate-b` internally after dedup succeeds. The wrapper owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, `SETTLE_NEXT_ACTION=` emission, and no-`plan-after-round-N.txt` contract. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
+7. `design-step35-settle.sh` calls `python/cli.py design step2b-postplan --site gate-b` internally after dedup succeeds. The wrapper owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, and no-`plan-after-round-N.txt` contract. It forwards the Python action row. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
 8. Settle-wrapper dispatch:
    1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
    2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
