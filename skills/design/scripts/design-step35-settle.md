@@ -53,7 +53,7 @@ The wrapper also emits a whole-line `SETTLE_NEXT_ACTION=<value>` row on stdout b
 | --- | --- |
 | `gate-b-continue` | Gate B clean postplan result. Continue to loop-mode or legacy continuation handling. |
 | `gate-a-return` | Gate A or discussion Round 2 clean postplan result. Return to Gate A. |
-| `dedup-revise` | Dedup found a revise-again result. Revise `plan.txt` and retry settle. |
+| `dedup-revise` | Dedup found a revise-again result. Gate B restores `plan-pre-apply-round-N.txt` when present before returning for another prompt-side apply. |
 | `gate-b-validator-fail` | Gate B validator operator brake. |
 | `gate-a-validator-fail` | Gate A or discussion Round 2 validator operator brake. |
 | `pause` | Delegated pause-save terminal result. |
@@ -77,8 +77,9 @@ Unexpected child output that lacks an anchored whole-line `POSTPLAN_RC=` row is 
 
 ## Marker ownership
 
-- Owns `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` for Gate B.
+- Owns `$DESIGN_TMPDIR/.gate-b-postapply-ready-N` for Gate B. The marker is written only after dedup succeeds.
 - Owns `$DESIGN_TMPDIR/.step3-round-N.phase` for Gate B.
+- On Gate B dedup rc `1`, restores `$DESIGN_TMPDIR/plan.txt` from `$DESIGN_TMPDIR/plan-pre-apply-round-N.txt` when that snapshot exists, then emits `dedup-revise`.
 - `python/cli.py design step2b-postplan` owns `$DESIGN_TMPDIR/.completed/step-2b.5`.
 - After successful post-rewrite dedup, the wrapper calls `python/cli.py design dialectic-clear-stale --design-tmpdir "$DESIGN_TMPDIR" --reason plan-rewrite`.
 - After successful postplan with `POSTPLAN_RC=0`, the wrapper calls the same stale-clear verb again. Ordering is dedup → clear-stale → postplan → clear-stale.
@@ -89,6 +90,8 @@ Unexpected child output that lacks an anchored whole-line `POSTPLAN_RC=` row is 
 ## Gate B resume idempotency
 
 An existing `.gate-b-postapply-ready-N` marker means dedup already succeeded for that rewrite. The wrapper skips dedup and re-enters postplan. It does not reapply reviewer findings during marker resume.
+
+Prompt-side Gate B apply must create `plan-pre-apply-round-N.txt` before rewriting `plan.txt`. The settle restore path mirrors `python/cli.py plan-review run` dedup restore semantics for inline Gate B apply.
 
 ## Pause contract
 

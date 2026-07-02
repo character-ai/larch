@@ -287,6 +287,31 @@ def test_run_coder_codex_overrides_stale_implement_tmpdir_in_env(
 
 
 @MARK_DISPATCH
+def test_run_coder_claude_uses_write_capable_review_fix_launcher(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    seen_argv: list[str] = []
+    seen_env: dict[str, str] = {}
+    monkeypatch.setattr(coder_runner.shutil, "which", lambda name: "/usr/bin/claude" if name == "claude" else None)
+
+    def fake_run(argv: list[str], **kwargs: object) -> review_and_fix.proc.CommandResult:
+        seen_argv[:] = argv
+        seen_env.update(kwargs.get("env") or {})  # type: ignore[arg-type]
+        output = Path(argv[argv.index("--output") + 1])
+        output.write_text("APPLIED: FINDING_1\n", encoding="utf-8")
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "LAUNCHER_EXIT=0\n", "", 0.0)
+
+    monkeypatch.setattr(coder_runner, "_run", fake_run)
+
+    assert coder_runner._run_coder_claude(round_dir=round_dir, prompt_body="prompt", tool_log=round_dir / "tool.log") is True
+    assert seen_argv[:4] == ["python3", str(review_and_fix._plugin_root() / "python" / "cli.py"), "agent", "launch-claude-review-fix"]
+    assert "launch-claude-review" not in seen_argv
+    assert seen_argv[seen_argv.index("--timing-task-kind") + 1] == "claude-review-fix"
+    assert seen_env["LARCH_TIMING_LEDGER"] == str(tmp_path / "timing-ledger.tsv")
+    assert (round_dir / "tool.log").read_text(encoding="utf-8") == "APPLIED: FINDING_1\n"
+
+
+@MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_one_with_implement_tmpdir(monkeypatch, tmp_path):
     monkeypatch.delenv("LARCH_DYNAMIC_ARCHETYPES_MAX", raising=False)
     impl = _tmp_impl(tmp_path)
@@ -1827,8 +1852,10 @@ def test_apply_findings_uses_flat_review_tmpdir_timing_ledger_without_session_le
 
     monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub)
     monkeypatch.setattr(coder_runner, "_submodule_paths", list)
-    monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_cursor)
     monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", fake_cursor)
+    monkeypatch.setattr(coder_runner, "_run_coder_claude", lambda *_a, **_k: False)
+    monkeypatch.setattr(coder_runner, "_collect_round_stage_paths", lambda *_args, **_kwargs: ["changed.py"])
     monkeypatch.setattr(review_and_fix, "_git_status_porcelain", lambda: "")
 
     rc = review_and_fix.apply_findings([
@@ -2408,6 +2435,9 @@ def _patch_coder_basics(monkeypatch: pytest.MonkeyPatch) -> None:
 
     monkeypatch.setattr(coder_runner, "_scrub_findings", fake_scrub)
     monkeypatch.setattr(coder_runner, "_submodule_paths", list)
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", lambda *_a, **_k: False)
+    monkeypatch.setattr(coder_runner, "_run_coder_cursor", lambda *_a, **_k: False)
+    monkeypatch.setattr(coder_runner, "_run_coder_claude", lambda *_a, **_k: False)
 
 
 def _git_porcelain(repo: Path) -> str:
@@ -2419,7 +2449,7 @@ def _git_cached_names(repo: Path) -> str:
 
 
 @MARK_DISPATCH
-def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_codex(
+def test_apply_findings_with_coder_failed_codex_cleans_and_falls_through_to_cursor(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2428,14 +2458,14 @@ def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_cod
     _patch_coder_basics(monkeypatch)
     round_dir = tmp_path / "impl" / "round-1"
 
-    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         return False
 
-    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-        (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
-        tool_log.write_text("codex\n", encoding="utf-8")
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+        tool_log.write_text("cursor\n", encoding="utf-8")
         return True
 
     monkeypatch.setattr(coder_runner, "_run_coder_cursor", cursor)
@@ -2443,9 +2473,9 @@ def test_apply_findings_with_coder_failed_cursor_cleans_and_falls_through_to_cod
     result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
     assert result.rc == 0
-    assert result.tool == "codex"
+    assert result.tool == "cursor"
     assert result.status == "applied"
-    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "codex\n"
+    assert (repo / "tracked.txt").read_text(encoding="utf-8") == "cursor\n"
 
 
 @MARK_DISPATCH
@@ -2676,7 +2706,7 @@ def test_apply_findings_with_coder_head_only_no_edit_preserves_preexisting_untra
 
 
 @MARK_DISPATCH
-def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_returns_no_changes(
+def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_falls_through(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2695,8 +2725,8 @@ def test_apply_findings_with_coder_successful_noop_with_baseline_dirt_returns_no
 
     result = review_and_fix.apply_findings_with_coder(input_file=_coder_findings(tmp_path), round_dir=round_dir, result_file=round_dir / "coder.env")
 
-    assert result.rc == 0
-    assert result.status == "no-changes"
+    assert result.rc == 4
+    assert result.status == "main-agent-required"
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
 
 
@@ -2726,7 +2756,7 @@ def test_apply_findings_with_coder_failed_coder_new_untracked_directory_removed(
 
 
 @MARK_DISPATCH
-def test_apply_findings_with_coder_head_only_successful_noedit_does_not_stage_preexisting_untracked(
+def test_apply_findings_with_coder_head_only_successful_noedit_falls_through_without_staging_preexisting_untracked(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -2753,8 +2783,8 @@ def test_apply_findings_with_coder_head_only_successful_noedit_does_not_stage_pr
         round_num=1
     )
 
-    assert result.rc == 0
-    assert result.status == "no-changes"
+    assert result.rc == 4
+    assert result.status == "main-agent-required"
     assert (repo / "stray.txt").is_file()
     assert _git_cached_names(repo) == ""
 
@@ -2798,16 +2828,16 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
     round_dir = tmp_path / "impl" / "round-1"
     review_and_fix._write_pre_coder_snapshot(round_dir)
     assert snapshot._snapshot_mode(round_dir) == "full"
-    codex_calls: list[bool] = []
+    cursor_calls: list[bool] = []
     original_matches = snapshot._path_matches_pre_coder_snapshot
 
-    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-        (repo / "tracked.txt").write_text("cursor\n", encoding="utf-8")
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
         review_and_fix._run(["git", "add", "tracked.txt"])
         return False
 
-    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
-        codex_calls.append(True)
+    def cursor(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        cursor_calls.append(True)
         return True
 
     def path_matches(*, round_dir: Path, pre_head: str, path: str) -> bool:
@@ -2823,7 +2853,7 @@ def test_apply_findings_with_coder_full_snapshot_partial_cleanup_verification_mi
 
     assert result.rc == 2
     assert result.status == "failed"
-    assert not codex_calls
+    assert not cursor_calls
     assert _git_cached_names(repo) == ""
     assert (repo / "tracked.txt").read_text(encoding="utf-8") == "user edit\n"
     cleanup_log = (round_dir / "coder-cleanup.log").read_text(encoding="utf-8")

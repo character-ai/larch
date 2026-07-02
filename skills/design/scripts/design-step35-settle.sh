@@ -135,6 +135,16 @@ design_settle_emit_next_action() {
   printf 'SETTLE_NEXT_ACTION=%s\n' "$1"
 }
 
+design_settle_restore_gate_b_snapshot() {
+  local snapshot
+  [ "$SITE" = gate-b ] || return 0
+  [ -n "${GATE_B_ROUND:-}" ] || return 0
+  snapshot="$DESIGN_TMPDIR/plan-pre-apply-round-$GATE_B_ROUND.txt"
+  if [ -f "$snapshot" ]; then
+    cp "$snapshot" "$DESIGN_TMPDIR/plan.txt"
+  fi
+}
+
 design_source_env_optional
 design_require_plugin_root
 if [ -z "${DESIGN_TMPDIR:-}" ]; then
@@ -210,6 +220,7 @@ if [ "$SITE" != gate-b ] || [ "$gate_b_skip_dedup" != true ]; then
   case "$dedup_rc" in
     0) ;;
     1)
+      design_settle_restore_gate_b_snapshot
       design_settle_emit_next_action dedup-revise
       printf '%s\n' "design-step35-settle.sh: post-rewrite dedup requires plan revision; retry settle after cleanup" >&2
       exit 1

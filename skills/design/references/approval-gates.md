@@ -50,7 +50,7 @@ When the user picks **Ready for review** on re-entry, route to the single Step 3
 
 ## Gate B — Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, `python/plan_review.py` applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
+**When**: after Step 3 review completes with accepted findings or the script-internal Step 3 loop needs prompt-side recovery. `python/plan_review.py` returns accepted findings to Gate B for inline application by the invoking `/design` agent. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
 
 ### Severity classification contract
 
@@ -78,7 +78,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
-Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The script-internal controller (`python/plan_review.py`) applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
+Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The script-internal controller (`python/plan_review.py`) does not apply accepted findings. It returns `main-agent-apply-required` or `per-round-approval-required`, then prompt-side Gate B applies findings inline. Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`); the script-internal controller never applies findings itself. `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
 - **`approve_requested=false` (default): auto-apply.** Skip the `AskUserQuestion` entirely. Print `ℹ 3.5: Gate B — auto-applying N accepted finding(s)` (substitute the accepted in-scope finding count for `N`), then Execute `### Apply-all body` verbatim. No operator prompt fires before the plan is revised.
 - **`approve_requested=true` (`--per-round-approval`): explicit.** Use the deferred explicit-mode reference load after Presentation below. Gate B prompts before any finding changes `plan.txt`, and `approval-gates-explicit.md` loads only after the zero-findings short-circuit and resume idempotency guard prove this entry will prompt.
@@ -98,7 +98,7 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer halts: the driver records a wa
 
 **Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/.step3-review-result.env`; raw status fields remain diagnostic):
 
-- When `NEXT_ACTION=step3b`, the in-loop controller already applied accepted findings, ran postplan, and ran continuation; Gate B is skipped.
+- When `NEXT_ACTION=step3b`, the in-loop controller already settled a zero-accepted or post-apply continuation path; Gate B is skipped.
 - When `NEXT_ACTION=gate-b`, prompt-side Gate B owns apply/postplan recovery before resuming the loop at the recorded phase.
 - When `NEXT_ACTION=mav`, delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through the normal `design-run-$PPID.sh` launcher (same transport as `SKILL.md` Step 3 MAV block). Parse only trusted scalars from the `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame; do not bind prompt-side retally anchors or invoke `tally-plan-review.sh`, `persist-retally-step3-env.sh`, or timing helpers inline. After successful post, resume once: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
 - When `NEXT_ACTION=step3b-bypass`, Gate B is **bypassed**; Step 3 already routed to Step 3b. When `NEXT_ACTION=final-summary:*`, Gate B is not reached.
@@ -121,7 +121,7 @@ Explicit-mode prompt details live in `skills/design/references/approval-gates-ex
 
 ### Apply-all body
 
-Apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:`), then Execute `### Shared post-apply pipeline` verbatim.
+Before any Write, copy `$DESIGN_TMPDIR/plan.txt` to `$DESIGN_TMPDIR/plan-pre-apply-round-N.txt` for the bound Gate B round if the snapshot is absent. Then apply every accepted in-scope finding to `$DESIGN_TMPDIR/plan.txt`, write the revised plan via the Write tool (full file replacement, preserving `diff_lines: <N>` and any optional `diff_added:`, `diff_deleted:`, or `mechanical_churn:` trailers in the final contiguous metadata block immediately above `diff_lines:`), then Execute `### Shared post-apply pipeline` verbatim.
 
 ### One-by-one iteration prompt
 
@@ -129,7 +129,7 @@ Explicit-mode one-by-one details live in `skills/design/references/approval-gate
 
 ### Shared post-apply pipeline
 
-In-loop apply snapshots `plan-pre-apply-round-N.txt` before `python/cli.py plan revise-waterfall`, then runs `"${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review gate-b-dedup" --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` and `"${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review gate-b-dedup" --design-tmpdir "$DESIGN_TMPDIR" --dedup` under `set +e`. Dedup failure restores the snapshot and returns `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` with `DEDUP_RC`; `.gate-b-postapply-ready-N` is written only after dedup succeeds. Operator-brake resumes (`POSTPLAN_RC=10/12/13`) persist phase `awaiting-postplan-operator`. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N`; the loop consumes it and promotes to `awaiting-continuation`. Plan-changing Fix-and-retry/autofix overwrites phase to `awaiting-post-apply`.
+Prompt-side Gate B owns the pre-apply snapshot and inline rewrite. The settle wrapper runs post-rewrite dedup under `set +e`; on a dedup-revise result it restores `plan-pre-apply-round-N.txt` to `plan.txt` when present, returns `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` with `DEDUP_RC`, and does not write `.gate-b-postapply-ready-N`. `.gate-b-postapply-ready-N` is written only after dedup succeeds. Operator-brake resumes (`POSTPLAN_RC=10/12/13`) persist phase `awaiting-postplan-operator`. Non-plan-changing Override/Continue writes `$DESIGN_TMPDIR/.postplan-operator-continue-N`; the loop consumes it and promotes to `awaiting-continuation`. Plan-changing Fix-and-retry/autofix overwrites phase to `awaiting-post-apply`.
 
 After the chosen findings have been applied to `plan.txt` (full accepted set or one-by-one subset), run the same launcher-owned post-apply sequence for both Gate B branches:
 
@@ -137,7 +137,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 2. Re-read the revised `plan.txt` and remove semantically duplicate lines or short blocks (the same constraint, requirement, or instruction stated more than once, not just byte-identical text).
 3. Preserve intentional repetition in distinct context sections (for example, a constraint in both Approach and Edge cases); remove only true redundancy within or across the same section.
 4. Rewrite `plan.txt` via the Write tool with duplicates removed.
-5. Run the settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b`.
+5. Run the settle wrapper through the launcher: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-b --round-num "$_gate_b_round"`.
 6. Do not pass `STEP3_RESUME_ROUND` before it is bound. If surrounding prose already has a validated round variable, pass it with `--round-num`; otherwise let the wrapper derive the Gate B round from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`.
 7. `design-step35-settle.sh` calls `python/cli.py design step2b-postplan --site gate-b` internally after dedup succeeds. The wrapper owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, `SETTLE_NEXT_ACTION=` emission, and no-`plan-after-round-N.txt` contract. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
 8. Settle-wrapper dispatch:
@@ -233,10 +233,10 @@ When the user picks **Approve final design** or the panel-failure acknowledgment
 
 3. **Discussion outputs accumulate**: Step 1d writes `discussion-round1.md`. Step 1d.7 writes the approved outline to `design-outline.md`. `discussion-round2.md` accumulates all Gate A re-entries from Gate B(c) / Gate C(b). All three remain readable inputs to later plan revisions.
 
-4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes per `discussion-rounds.md`. Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifacts only. The script-internal Step 3 loop applies accepted findings on the happy path via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies only on loop bail-outs. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
+4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes per `discussion-rounds.md`. Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifacts only. All accepted-finding application happens in prompt-side Gate B. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
 
 <!-- loop-mode review contract -->
-In loop mode, accepted findings are applied inside `python/plan_review.py` before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
+In loop mode, accepted findings return to Gate B as `main-agent-apply-required` or `per-round-approval-required`. Prompt-side Gate B applies them inline; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
 Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh`. Skip auto-repair and do not offer Override.
 

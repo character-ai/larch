@@ -534,10 +534,6 @@ exclude = [
   "python/test_plan_review.py",
   "scripts/test-design-multi-round-integration.sh",
   "scripts/test-design-multi-round-integration.md",
-  # revise-waterfall is retained as a Python CLI plan helper
-  # with a Makefile-only regression harness; Step 3 single-pass no longer
-  # references it from skills/design/SKILL.md.
-  "python/cli.py plan revise-waterfall",
   # Recovery/helper harnesses introduced for manifest-schema recovery are
   # Makefile-only regression tests. They are documented in docs/linting.md and
   # their sibling contracts, but not invoked by skill runtime prose.

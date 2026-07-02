@@ -230,7 +230,7 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
     _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num)
 
 
-def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
+def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:  # pyright: ignore[reportUnusedFunction]
     accepted = _count_accepted(tmpdir)
     values["ACCEPTED_COUNT"] = str(accepted)
     if accepted == 0:
@@ -247,7 +247,7 @@ def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
         _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
         _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
         return 0
-    snapshot = _snapshot_plan(tmpdir=tmpdir, round_num=round_num)
+    snapshot = tmpdir / f"plan-pre-apply-round-{round_num}.txt"
     current_phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
     postapply_ready = (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file()
     if snapshot.is_file() and (tmpdir / "plan.txt").is_file():
@@ -255,54 +255,17 @@ def _run_apply(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
             plan_changed = snapshot.read_bytes() != (tmpdir / "plan.txt").read_bytes()
         except OSError:
             plan_changed = False
-        if plan_changed:
-            if current_phase == "awaiting-post-apply" or postapply_ready:
-                return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
-            if current_phase == "awaiting-revise":
-                _ = shutil.copyfile(snapshot, tmpdir / "plan.txt")
-    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-revise")
-    with contextlib.suppress(FileNotFoundError):
-        for pattern in ("scout-plan-manifest.json",):
-            path = tmpdir / pattern
-            if path.exists():
-                path.unlink()
-        for path in tmpdir.glob("scout-plan-manifest.json.candidate.*"):
-            path.unlink(missing_ok=True)
-        for path in tmpdir.glob("scout-plan-manifest.json.filtered.*"):
-            path.unlink(missing_ok=True)
-    override = os.environ.get("RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH", "")
-    if override:
-        cmd = [override]
-    else:
-        cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "plan", "revise-waterfall"]
-    proc = _run_command(
-        argv=[
-            *cmd,
-            "--design-tmpdir",
-            str(tmpdir),
-            "--plan-file",
-            str(tmpdir / "plan.txt"),
-            "--findings-file",
-            str(tmpdir / "accepted-plan-findings.md"),
-            "--feature-file",
-            str(tmpdir / "feature-description.txt"),
-            "--round-num",
-            str(round_num),
-            "--codex-binary-found",
-            os.environ.get("CODEX_BINARY_FOUND", ""),
-            "--cursor-binary-found",
-            os.environ.get("CURSOR_BINARY_FOUND", ""),
-            "--patch-format",
-            "file-replacement",
-        ]
-    )
-    revise_status = _parse_kv_text(proc.stdout).get("REVISE_STATUS", "")
-    if proc.returncode != 0 or revise_status not in {"ok", "ok-fallback"}:
-        _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
-        return 21
-    _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
-    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-post-apply")
-    return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
+        if plan_changed and (current_phase == "awaiting-post-apply" or postapply_ready):
+            return _run_dedup(tmpdir=tmpdir, round_num=round_num, values=values)
+    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
+    return 21
+
+
+def _gate_b_apply_required_status(*, tmpdir: Path, round_num: int, approve_requested: bool) -> str:
+    approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
+    if approve_requested and not approval_env.is_file():
+        return "per-round-approval-required"
+    return "main-agent-apply-required"
 
 
 def _run_round_subprocess(*, tmpdir: Path, argv: Sequence[str]) -> tuple[int, str]:
@@ -476,37 +439,28 @@ def run_step3_review(argv: Sequence[str]) -> int:
                 if accepted == 0:
                     _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
                     _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-continuation")
-                elif approve_requested:
+                    continue
+                if approve_requested:
                     _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
                     step3_loop_emit_envelope(tmpdir=tmpdir, status="per-round-approval-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
                     return 0
-                else:
-                    _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
-                continue
+                _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-apply")
+                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
+                return 0
             _emit_kv(key="WARN", value=f"missing or invalid LOOP_STATUS={loop_status!r}; treating as panel-failed")
             step3_wrapper_write_completed_step3_only(tmpdir)
             step3_loop_emit_envelope(tmpdir=tmpdir, status="panel-failed", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
             return 0
 
-        if phase == "awaiting-revise":
+        if phase in {"awaiting-apply", "awaiting-revise"}:
+            postapply_ready = tmpdir / f".gate-b-postapply-ready-{round_num}"
+            if postapply_ready.is_file():
+                _write_phase(tmpdir=tmpdir, round_num=round_num, phase="awaiting-post-apply")
+                continue
             values = dict(degraded_values)
-            apply_rc = _run_apply(tmpdir=tmpdir, round_num=round_num, values=values)
-            if apply_rc != 0:
-                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
-                return 0
-            continue
-
-        if phase == "awaiting-apply":
-            approval_env = tmpdir / f".gate-b-per-round-approval-round-{round_num}.env"
-            if approve_requested and not approval_env.is_file():
-                step3_loop_emit_envelope(tmpdir=tmpdir, status="per-round-approval-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=degraded_values)
-                return 0
-            values = dict(degraded_values)
-            apply_rc = _run_apply(tmpdir=tmpdir, round_num=round_num, values=values)
-            if apply_rc != 0:
-                step3_loop_emit_envelope(tmpdir=tmpdir, status="main-agent-apply-required", round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
-                return 0
-            continue
+            status = _gate_b_apply_required_status(tmpdir=tmpdir, round_num=round_num, approve_requested=approve_requested)
+            step3_loop_emit_envelope(tmpdir=tmpdir, status=status, round_num=round_num, rounds_completed=round_num, final_round=round_num, values=values)
+            return 0
 
         if phase in {"awaiting-post-apply", "awaiting-postplan-operator"}:
             if phase == "awaiting-postplan-operator":
@@ -537,6 +491,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
             return 0
 
         if phase == "awaiting-continuation":
+            if (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file():
+                _write_design_round_meta(tmpdir=tmpdir, round_num=round_num)
             _write_count(tmpdir=tmpdir, count=round_num)
             cont = _run_continuation(tmpdir=tmpdir, approve_requested=approve_requested)
             if cont.get("PLAN_REVIEW_CONTINUE") == "true":
@@ -904,3 +860,4 @@ def drift_baseline_main(argv: list[str] | None = None) -> int:
 
 
 # pyright: reportPrivateUsage=false, reportUnusedImport=false
+# pyright: reportUnusedFunction=false

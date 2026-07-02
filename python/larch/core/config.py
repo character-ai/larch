@@ -242,10 +242,9 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
     "implement.lint_fix_coder": _waterfall_role("implement.lint_fix_coder", order=("claude", "codex", "cursor"), doc_phase="Lint/checks", doc_role="Repair local lint/check failures", doc_skills="/implement, /review", doc_fallback="Claude, then Codex, then Cursor; main agent required after external tiers fail."),
     "implement.ci_recovery_fixer": _waterfall_role("implement.ci_recovery_fixer", order=("claude", "codex", "cursor"), doc_phase="CI recovery", doc_role="Fix failing CI/checks", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
     "implement.rebase_conflict_fixer": _waterfall_role("implement.rebase_conflict_fixer", order=("claude", "codex", "cursor"), doc_phase="Rebase conflicts", doc_role="Resolve rebase conflicts", doc_skills="/implement", doc_fallback="Distinct registry role using Claude, then Codex, then Cursor."),
-    "review.fix_coder": _waterfall_role("review.fix_coder", order=("cursor", "codex"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Cursor, then Codex; main agent required after external tiers fail."),
+    "review.fix_coder": _waterfall_role("review.fix_coder", order=("codex", "cursor", "claude"), doc_phase="Review fixes", doc_role="Apply accepted review findings", doc_skills="/implement, /review", doc_fallback="Codex, then Cursor, then Claude; main agent required after automated tiers fail."),
     "review.dynamic_archetype_scout": _waterfall_role("review.dynamic_archetype_scout", order=("cursor", "claude"), doc_phase="Code-review scout", doc_role="Propose dynamic reviewer archetypes", doc_skills="/review", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
     "design.plan_archetype_scout": _waterfall_role("design.plan_archetype_scout", order=("cursor", "claude"), doc_phase="Plan-review scout", doc_role="Propose dynamic plan-review archetypes", doc_skills="/design", doc_fallback="Cursor, then Claude. Codex is deliberately excluded."),
-    "design.plan_revision": _waterfall_role("design.plan_revision", order=("cursor", "codex", "claude"), doc_phase="Plan revision", doc_role="Apply accepted plan findings", doc_skills="/design", doc_fallback="Cursor, then Codex, then Claude."),
     "design.brainstorm_framing": _waterfall_role("design.brainstorm_framing", order=("cursor", "codex", "claude"), doc_phase="Brainstorm framing", doc_role="Generate framing ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
     "design.brainstorm_scope": _waterfall_role("design.brainstorm_scope", order=("codex", "cursor", "claude"), doc_phase="Brainstorm scope", doc_role="Generate scope ideas", doc_skills="/design", doc_fallback="Step 1d.5 reads this role before launch and picks the first eligible external, then Claude text fallback."),
     "design.plan_drafter": RoleDefault(
@@ -349,20 +348,20 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
     "review.findings_aggregator": RoleDefault(
         role_id="review.findings_aggregator",
         kind="single_slot",
-        slots=(SlotDefault(slot="aggregator", tool="cursor", output="aggregator-output.txt"),),
+        slots=(SlotDefault(slot="aggregator", tool="codex", output="aggregator-output.txt", model_role="review"),),
         doc_phase="Code findings aggregation",
         doc_role="Merge code-review findings",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="Cursor-primary single slot through dispatch-waterfall.",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall, using the review model role before Cursor or Claude fallback.",
     ),
     "design.plan_findings_aggregator": RoleDefault(
         role_id="design.plan_findings_aggregator",
         kind="single_slot",
-        slots=(SlotDefault(slot="aggregator", tool="cursor", output="aggregator-output.txt"),),
+        slots=(SlotDefault(slot="aggregator", tool="codex", output="aggregator-output.txt", model_role="review"),),
         doc_phase="Plan findings aggregation",
         doc_role="Merge plan-review findings",
         doc_skills="/design",
-        doc_fallback="Cursor-primary single slot through dispatch-waterfall.",
+        doc_fallback="Codex-primary single slot through dispatch-waterfall, using the review model role before Cursor or Claude fallback.",
     ),
     "design.decompose_aggregator": RoleDefault(
         role_id="design.decompose_aggregator",
@@ -390,6 +389,7 @@ CLAUDE_SUB_DEFAULT_MODEL_BY_RAW: Final[dict[str, str]] = {
     "claude_draft": CLAUDE_SONNET_4_6_MODEL,
     "claude_ci_fix": CLAUDE_OPUS_4_8_MODEL,
     "claude_lint_fix": CLAUDE_OPUS_4_8_MODEL,
+    "claude_review_fix": CLAUDE_SONNET_4_6_MODEL,
 }
 
 

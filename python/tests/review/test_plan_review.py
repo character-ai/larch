@@ -836,6 +836,40 @@ def _write_run_params(tmp_path: Path) -> None:
     _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
 
+def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    original = (tmp_path / "plan.txt").read_text(encoding="utf-8")
+    round_stub = _write_loop_stub(
+        tmp_path,
+        (
+            f"cat >\"{tmp_path}/accepted-plan-findings.md\" <<'FINDINGS'\n"
+            "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n"
+            "FINDINGS\n"
+            "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=1\\nIMPORTANT_ACCEPTED_COUNT=1\\n"
+            "DEGRADED_PANEL=0\\nROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
+            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
+        ),
+    )
+
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
+    assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == original
+    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8").strip() == "awaiting-apply"
+
+
 def test_run_round_body_subprocess_materializes_reviewer_status(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -1927,7 +1961,14 @@ def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:
 def test_loop_dedup_failure_restores_plan_snapshot(tmp_path: Path) -> None:
     _write_run_params(tmp_path)
     original = "# Plan\n\ndiff_lines: 1\n"
-    _ = (tmp_path / "plan.txt").write_text(original, encoding="utf-8")
+    _ = (tmp_path / "plan.txt").write_text("# Plan\n\nmutated\ndiff_lines: 2\n", encoding="utf-8")
+    snapshot = tmp_path / "plan-pre-apply-round-1.txt"
+    _ = snapshot.write_text(original, encoding="utf-8")
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
     dedup_stub = tmp_path / "dedup-stub.sh"
     _ = dedup_stub.write_text(
         """#!/usr/bin/env bash
@@ -1941,31 +1982,6 @@ esac
         encoding="utf-8",
     )
     dedup_stub.chmod(0o755)
-    revise_stub = tmp_path / "revise-stub.sh"
-    _ = revise_stub.write_text(
-        """#!/usr/bin/env bash
-set -euo pipefail
-plan=""
-while [[ $# -gt 0 ]]; do
-  case "$1" in --plan-file) plan="${2:?}"; shift 2 ;; *) shift ;; esac
-done
-printf '\\n# revised\\n' >>"$plan"
-printf 'REVISE_STATUS=ok\\n'
-""",
-        encoding="utf-8",
-    )
-    revise_stub.chmod(0o755)
-    round_stub = _write_loop_stub(
-        tmp_path,
-        (
-            f"cat >\"{tmp_path}/accepted-plan-findings.md\" <<'FINDINGS'\n"
-            "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n"
-            "FINDINGS\n"
-            "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=1\\nIMPORTANT_ACCEPTED_COUNT=1\\n"
-            "DEGRADED_PANEL=0\\nROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
-            "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
-        ),
-    )
     proc = run_cli(
         "plan-review",
         "run",
@@ -1975,14 +1991,11 @@ printf 'REVISE_STATUS=ok\\n'
         "loop",
         env={
             "LARCH_QUIET_DISABLE": "1",
-            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
-            "RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH": str(revise_stub),
             "RUN_STEP3_DEDUP_PLAN_SH": str(dedup_stub),
         },
     )
     assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
     assert "DEDUP_RC=2" in proc.stdout
-    snapshot = tmp_path / "plan-pre-apply-round-1.txt"
     assert snapshot.is_file()
     assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == snapshot.read_text(encoding="utf-8")
 

@@ -1068,3 +1068,148 @@ def launch_claude_lint_fix_main(argv: list[str] | None = None) -> int:
     _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="lint fixer")
     _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
     return 0
+
+
+def _validate_claude_review_fix_args(args: argparse.Namespace) -> tuple[bool, int]:
+    if not _is_positive_int(args.timeout) or not _valid_model_token(args.model):
+        _err(
+            "agent launch-claude-review-fix: --timeout must be a positive integer"
+            if not _is_positive_int(args.timeout)
+            else "agent launch-claude-review-fix: --model must be a single non-empty token"
+        )
+        return False, 2
+    output = Path(args.output)
+    session_root, output_msg = _validate_claude_output(output)
+    if session_root is None:
+        _err(f"agent launch-claude-review-fix: {output_msg}")
+        return False, 2
+    prompt_file = Path(args.prompt_body_file)
+    roots = [session_root, Path.cwd().resolve()]
+    prompt_ok, prompt_msg = _validate_prompt_file(path=prompt_file, roots=roots)
+    if not prompt_ok:
+        _err(f"agent launch-claude-review-fix: {prompt_msg}")
+        return False, 2
+    try:
+        if prompt_file.stat().st_size > 1024 * 1024:
+            _err("agent launch-claude-review-fix: prompt body file exceeds 1 MB")
+            return False, 2
+    except OSError:
+        _err("agent launch-claude-review-fix: prompt body file validation failed")
+        return False, 2
+    return True, 0
+
+
+def launch_claude_review_fix_main(argv: list[str] | None = None) -> int:
+    logging_util.quiet_init(argv0="cli.py")
+    parser = argparse.ArgumentParser(prog="cli.py agent launch-claude-review-fix")
+    parser.add_argument("--prompt-body-file", required=True)
+    parser.add_argument("--output", required=True)
+    parser.add_argument("--timeout", default="1800")
+    parser.add_argument("--model", default=config.CLAUDE_SONNET_4_6_MODEL)
+    parser.add_argument("--timing-task-kind", default="claude-review-fix")
+    args = parser.parse_args(argv)
+    ok, rc = _validate_claude_review_fix_args(args)
+    if not ok:
+        return rc
+    output = Path(args.output)
+    prompt_file = Path(args.prompt_body_file)
+    if not prompt_file.is_file():
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=1, failure_reason="prompt body file missing", tool="claude")
+        _emit_ci_launcher_result(output=output, launcher_exit=1, tool="claude")
+        return 0
+    prompt_body = _read_text(prompt_file)
+    prompt = (
+        "You are Claude applying accepted review findings to the working tree.\n"
+        "Do not commit. Do not push. Do not wait for CI.\n"
+        "Make focused working-tree edits only, then stop.\n"
+        "Never spawn persistent interactive subprocess sessions.\n\n"
+        f"{prompt_body}"
+    )
+    _write(path=output.with_suffix(output.suffix + ".prompt"), text=prompt)
+    if shutil.which("claude") is None:
+        _write_preflight_bundle(output=output, timeout=args.timeout, launcher_exit=127, failure_reason="claude binary missing", tool="claude", binary_present=False)
+        _append_ci_failure(output, tool="claude", launcher_exit=127, site="review fixer", binary_present=False)
+        return 0
+    cwd = str(Path.cwd())
+    child = [
+        "claude",
+        "-p",
+        "--output-format",
+        "json",
+        "--model",
+        args.model,
+        "--add-dir",
+        cwd,
+        "--allowedTools",
+        "Read,Edit,Write",
+    ]
+    start = time.time()
+    result = _run_claude_with_stdin(cmd=child, prompt=prompt, timeout=float(args.timeout), cwd=cwd)
+    end = time.time()
+    exit_code = result.returncode
+    diag_parts: list[str] = []
+    parsed_obj: dict[str, object] | None = None
+    if result.stdout and exit_code == 0:
+        try:
+            obj = json.loads(result.stdout)
+        except json.JSONDecodeError as exc:
+            exit_code = 1
+            _write(path=output, text="CLAUDE_REVIEW_FIX_MALFORMED_JSON\n")
+            diag_parts.append(f"Malformed Claude review-fix JSON: {exc}\n{result.stdout}")
+        else:
+            value = obj.get("result") if isinstance(obj, dict) and not obj.get("is_error") else None
+            if isinstance(value, str) and value:
+                parsed_obj = obj
+                _write(path=output, text=value)
+            elif isinstance(obj, dict) and obj.get("is_error"):
+                exit_code = 1
+                _write(path=output, text="CLAUDE_REVIEW_FIX_ERROR_RESPONSE\n")
+                diag_parts.append(result.stdout)
+            else:
+                exit_code = 1
+                _write(path=output, text="CLAUDE_REVIEW_FIX_EMPTY_RESULT\n")
+                diag_parts.append(result.stdout)
+    elif result.stdout:
+        exit_code = 1
+        _write(path=output, text="CLAUDE_REVIEW_FIX_NON_JSON_OUTPUT\n")
+        diag_parts.append(result.stdout)
+    else:
+        _write(path=output, text="")
+    if result.stderr:
+        diag_parts.append(result.stderr)
+    if diag_parts:
+        _write(
+            path=output.with_suffix(output.suffix + ".diag"),
+            text=redact.redact_tmpdir_paths(redact.redact_secrets_only("\n".join(diag_parts))),
+        )
+    if exit_code != 0:
+        _compose_failure_diag(output)
+    proc.run(
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "timing",
+            "record-vendor-task",
+            "--vendor",
+            "claude",
+            "--task-kind",
+            args.timing_task_kind,
+            "--start-s",
+            str(int(start)),
+            "--end-s",
+            str(int(end)),
+            "--output",
+            str(output),
+            "--exit-code",
+            str(exit_code),
+            "--status",
+            "complete" if exit_code == 0 else "signal",
+        ],
+        check=False,
+    )
+    if parsed_obj is not None:
+        _record_claude_ci_usage(obj=parsed_obj, output=output, raw="claude_review_fix", model=args.model)
+    _write(path=output.with_suffix(output.suffix + ".done"), text=f"{exit_code}\n")
+    _append_ci_failure(output, tool="claude", launcher_exit=exit_code, site="review fixer")
+    _emit_ci_launcher_result(output=output, launcher_exit=exit_code, tool="claude")
+    return 0
