@@ -122,3 +122,62 @@ def test_accepts_step4_tail_command(
     )
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
+
+
+def test_rejects_unknown_launch_with_placeholders(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(
+        tmp_path / "skills/design/SKILL.md",
+        """
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/future-output.txt" --timeout 1200 --timing-task-kind <resolved>-future --prompt "<LANE_PROMPT>"
+```
+""",
+    )
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "future-output.txt" in err
+    assert "no bg-wait marker mapping" in err
+
+
+def test_accepts_brainstorm_external_launches(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(
+        tmp_path / "skills/design/references/brainstorm.md",
+        """
+**Framing** (when the registry-selected tool is external and available):
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>"
+```
+
+**Scope** (when the registry-selected tool is external and available):
+
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
+```
+""",
+    )
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
+def test_ignores_research_background_launches_outside_scope(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write(
+        tmp_path / "skills/research/references/research-phase.md",
+        """
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$RESEARCH_TMPDIR/future-output.txt" --timeout 1200 --timing-task-kind <resolved>-future --prompt "<LANE_PROMPT>"
+```
+""",
+    )
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err

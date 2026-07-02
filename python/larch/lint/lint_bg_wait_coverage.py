@@ -15,9 +15,11 @@ SCOPE_PATTERNS = [
     "skills/review/**/*.md",
     "skills/review-and-fix/**/*.md",
 ]
+# `skills/research/**` is intentionally omitted: /research launches parallel
+# lanes and waits through foreground collection, with no marker-reading
+# stall-recovery path.
 FENCE_OPEN_RE = re.compile(r"^( {0,3})(`{3,})(.*)$")
 BACKGROUND_RE = re.compile(r"run_in_background:\s*true")
-PLACEHOLDER_RE = re.compile(r"<[^>\n]+>")
 SEARCH_LINE_LIMIT = 12
 
 
@@ -48,6 +50,19 @@ KNOWN_BACKGROUND_COMMANDS: tuple[CommandMapping, ...] = (
     ),
     CommandMapping(
         "design Step 4 tail", "design-step4-tail", ("design-step3b-tail.sh",)
+    ),
+    CommandMapping(
+        "design brainstorm external launch",
+        "design-step1d5-brainstorm",
+        (
+            "python/cli.py",
+            "agent",
+            "launch-review",
+            "--output",
+            "brainstorm-output.txt",
+            "--timing-task-kind",
+            "-brainstorm",
+        ),
     ),
     CommandMapping(
         "implement Step 3 checks",
@@ -134,10 +149,6 @@ def _mapping_for(command: str) -> CommandMapping | None:
     return None
 
 
-def _is_illustrative_placeholder(command: str) -> bool:
-    return bool(PLACEHOLDER_RE.search(command))
-
-
 def _git_files(*, root: Path, patterns: list[str]) -> list[Path]:
     paths: set[Path] = set()
     for pattern in patterns:
@@ -193,8 +204,6 @@ def lint_file(*, path: Path, root: Path) -> list[str]:
             continue
         fence = _nearest_launch_fence(directive_line=index, fences=fences)
         if fence is None:
-            continue
-        if _is_illustrative_placeholder(fence.body):
             continue
         mapping = _mapping_for(fence.body)
         if mapping is None:
