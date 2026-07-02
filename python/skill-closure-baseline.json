@@ -35,8 +35,8 @@
     "closure_content_estimated_tokens": 36536,
     "closure_estimated_tokens": 36640,
     "closure_lines": 1127,
-    "conditional_content_estimated_tokens": 19242,
-    "conditional_estimated_tokens": 19288,
+    "conditional_content_estimated_tokens": 19247,
+    "conditional_estimated_tokens": 19292,
     "conditional_files": [
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
@@ -95,8 +95,8 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 8416,
-    "closure_estimated_tokens": 8440,
+    "closure_content_estimated_tokens": 8408,
+    "closure_estimated_tokens": 8432,
     "closure_lines": 304,
     "conditional_content_estimated_tokens": 3291,
     "conditional_estimated_tokens": 3301,
@@ -113,8 +113,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 4874,
-    "skill_md_estimated_tokens": 4883,
+    "skill_md_content_estimated_tokens": 4866,
+    "skill_md_estimated_tokens": 4875,
     "skill_md_lines": 114
   }
 ]
