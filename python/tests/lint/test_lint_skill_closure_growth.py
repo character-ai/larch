@@ -15,9 +15,17 @@ def write(root: Path, rel: str, text: str) -> None:
     _ = path.write_text(text, encoding="utf-8")
 
 
-def write_roots(root: Path, *, design: str = "", implement: str = "") -> None:
+def write_roots(root: Path, *, design: str = "", implement: str = "", review: str = "") -> None:
     write(root, "skills/design/SKILL.md", design or "Design root\n")
     write(root, "skills/implement/SKILL.md", implement or "Implement root\n")
+    write(root, "skills/review/SKILL.md", review or "Review root\n")
+
+
+def write_panel_tier(root: Path) -> None:
+    write(root, "agents/reviewer-a.md", "reviewer a\n")
+    write(root, "skills/shared/reviewer-templates.md", "templates\n")
+    write(root, "skills/shared/reviewer-templates-code-reviewer.md", "code reviewer\n")
+    write(root, "skills/shared/voting-protocol.md", "voting\n")
 
 
 def fixture_project(root: Path) -> None:
@@ -31,9 +39,17 @@ def fixture_project(root: Path) -> None:
             "Implement root\n"
             "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
+        review=(
+            "Review root\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+        ),
     )
     write(root, "skills/design/references/flags.md", "flag one\nflag two\n")
     write(root, "skills/implement/references/self-review.md", "review one\n")
+    write(root, "skills/review/references/domain-rules.md", "domain\n")
+    write(root, "skills/review/references/heavy-worker.md", "heavy\n")
+    write_panel_tier(root)
 
 
 def write_baseline_from_live(root: Path) -> list[scg.SkillClosureResult]:
@@ -42,7 +58,7 @@ def write_baseline_from_live(root: Path) -> list[scg.SkillClosureResult]:
     return results
 
 
-def test_design_and_implement_roots_are_scanned_separately(tmp_path: Path) -> None:
+def test_ratcheted_targets_are_scanned_separately(tmp_path: Path) -> None:
     fixture_project(tmp_path)
 
     results = {result.skill: result for result in scg.scan_all(tmp_path)}
@@ -54,6 +70,16 @@ def test_design_and_implement_roots_are_scanned_separately(tmp_path: Path) -> No
     assert results["implement"].files == (
         "skills/implement/SKILL.md",
         "skills/implement/references/self-review.md",
+    )
+    assert results["review"].files == (
+        "skills/review/SKILL.md",
+        "skills/review/references/domain-rules.md",
+    )
+    assert results["panel-tier"].files == (
+        "agents/reviewer-a.md",
+        "skills/shared/reviewer-templates.md",
+        "skills/shared/reviewer-templates-code-reviewer.md",
+        "skills/shared/voting-protocol.md",
     )
 
 
@@ -215,7 +241,7 @@ def test_retained_prefix_marks_step2b5_rc_handling_conditional(tmp_path: Path) -
     assert result.conditional_files == ("skills/design/references/step2b5-rc-handling.md",)
 
 
-def test_non_markdown_references_are_ignored(tmp_path: Path) -> None:
+def test_session_start_registry_tsv_references_are_counted(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
         design=(
@@ -225,6 +251,27 @@ def test_non_markdown_references_are_ignored(tmp_path: Path) -> None:
         ),
     )
     write(tmp_path, "skills/design/scripts/step-name-registry.tsv", "1\tone\n")
+    write(tmp_path, "skills/design/references/flags.md", "flags\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == (
+        "skills/design/SKILL.md",
+        "skills/design/scripts/step-name-registry.tsv",
+        "skills/design/references/flags.md",
+    )
+
+
+def test_arbitrary_non_markdown_references_are_ignored(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/helper.py` to get names.\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/scripts/helper.py", "print('helper')\n")
     write(tmp_path, "skills/design/references/flags.md", "flags\n")
 
     result = scg.scan_skill(tmp_path, "design")
@@ -435,7 +482,8 @@ def test_content_growth_fails_even_when_line_count_drops(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    write_roots(tmp_path, design="a\n" + ("\n" * 100))
+    fixture_project(tmp_path)
+    write(tmp_path, "skills/design/SKILL.md", "a\n" + ("\n" * 100))
     _ = write_baseline_from_live(tmp_path)
     write(tmp_path, "skills/design/SKILL.md", "a" + ("b" * 80) + "\n")
 
@@ -488,8 +536,13 @@ def test_write_regenerates_canonical_json(tmp_path: Path) -> None:
 
     baseline_path = tmp_path / "python/skill-closure-baseline.json"
     payload = json.loads(baseline_path.read_text(encoding="utf-8"))
-    assert [row["skill"] for row in payload] == ["design", "implement"]
+    assert [row["skill"] for row in payload] == ["design", "implement", "panel-tier", "review"]
     assert all(set(row.keys()) == set(scg.BASELINE_KEYS) for row in payload)
+    assert all("conditional_files" in row for row in payload)
+    panel_row = next(row for row in payload if row["skill"] == "panel-tier")
+    assert panel_row["skill_md_lines"] == 0
+    assert panel_row["conditional_lines"] == 0
+    assert panel_row["conditional_files"] == []
     assert baseline_path.read_text(encoding="utf-8").endswith("\n")
 
 
@@ -520,7 +573,7 @@ def test_baseline_rejects_missing_or_malformed_content_metrics(
     assert field in capsys.readouterr().err
 
 
-def test_report_mode_prints_design_and_implement(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_report_mode_prints_all_ratcheted_targets(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_roots(
         tmp_path,
         design=(
@@ -532,23 +585,33 @@ def test_report_mode_prints_design_and_implement(tmp_path: Path, capsys: pytest.
             "Implement root\n"
             "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
+        review=(
+            "Review root\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+        ),
     )
     write(tmp_path, "skills/design/references/flags.md", "flag one\nflag two\n")
     write(tmp_path, "skills/design/references/conditional.md", "conditional\n")
     write(tmp_path, "skills/implement/references/self-review.md", "review one\n")
+    write(tmp_path, "skills/review/references/domain-rules.md", "domain\n")
+    write_panel_tier(tmp_path)
 
     assert scg.report_main(["--root", str(tmp_path)]) == 0
 
     out = capsys.readouterr().out
     assert "Eager closure (ratcheted)" in out
-    assert "Conditional closure (reported only)" in out
+    assert "Conditional closure (review ratcheted; design and implement reported only)" in out
     assert "skill_content_tokens" in out
     assert "closure_content_tokens" in out
     assert "conditional_content_tokens" in out
     assert "design" in out
     assert "implement" in out
+    assert "review" in out
+    assert "panel-tier" in out
     assert "skills/design/SKILL.md" in out
     assert "skills/implement/SKILL.md" in out
+    assert "skills/review/SKILL.md" in out
+    assert "agents/reviewer-a.md" in out
     assert out.index("skills/design/references/flags.md") < out.index("Conditional closure")
     assert out.index("Conditional closure") < out.index("skills/design/references/conditional.md")
 
@@ -599,11 +662,208 @@ def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(t
     assert not result.conditional_files
 
 
+def test_review_step0_narrow_eager_patterns_are_counted(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        review=(
+            "root\n"
+            "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
+            "Run the procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke gate.\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
+    write(tmp_path, "skills/shared/external-reviewers.md", "external\n")
+    write(tmp_path, "skills/review/references/domain-rules.md", "domain\n")
+
+    result = scg.scan_skill(tmp_path, "review")
+
+    assert result.files == (
+        "skills/review/SKILL.md",
+        "skills/shared/session-setup-output.md",
+        "skills/shared/external-reviewers.md",
+        "skills/review/references/domain-rules.md",
+    )
+
+
+def test_implement_final_summary_narrow_follow_pattern_is_counted(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile. Later `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/extra.md`.\n"
+        ),
+    )
+    write(tmp_path, "skills/shared/final-summary-emit.md", "summary\n")
+    write(tmp_path, "skills/implement/references/extra.md", "extra\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md", "skills/shared/final-summary-emit.md")
+
+
+def test_unrelated_follow_citation_is_not_counted(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md` for anti-halt handling.\n"
+        ),
+    )
+    write(tmp_path, "skills/shared/subskill-invocation.md", "subskill\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+
+
+def test_force_requested_false_preflight_audit_is_eager(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "**When `force_requested=false` (only)** — **MANDATORY — READ ENTIRE FILE** at Preflight item 4: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md`.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/preflight-plan-audit.md", "audit\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/preflight-plan-audit.md")
+    assert not result.conditional_files
+
+
+def test_force_requested_true_branch_stays_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "**When `force_requested=true` (only)** — **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/force-mode.md`.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/force-mode.md", "force\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md",)
+    assert result.conditional_files == ("skills/implement/references/force-mode.md",)
+
+
+def test_panel_tier_scan_includes_agents_and_shared_files(tmp_path: Path) -> None:
+    write_panel_tier(tmp_path)
+    write(tmp_path, "agents/reviewer-b.md", "reviewer b\n")
+
+    result = scg.scan_panel_tier(tmp_path)
+
+    assert result.files == (
+        "agents/reviewer-a.md",
+        "agents/reviewer-b.md",
+        "skills/shared/reviewer-templates.md",
+        "skills/shared/reviewer-templates-code-reviewer.md",
+        "skills/shared/voting-protocol.md",
+    )
+    assert result.skill_md_lines == 0
+    assert result.conditional_lines == 0
+    assert not result.conditional_files
+    assert result.closure_lines == 5
+
+
+def test_panel_tier_scan_fails_when_fixed_file_is_missing(tmp_path: Path) -> None:
+    write(tmp_path, "agents/reviewer-a.md", "reviewer a\n")
+    write(tmp_path, "skills/shared/reviewer-templates.md", "templates\n")
+    write(tmp_path, "skills/shared/voting-protocol.md", "voting\n")
+
+    with pytest.raises(ScanError):
+        _ = scg.scan_panel_tier(tmp_path)
+
+
+def test_panel_tier_scan_fails_when_agent_glob_is_empty(tmp_path: Path) -> None:
+    write(tmp_path, "skills/shared/reviewer-templates.md", "templates\n")
+    write(tmp_path, "skills/shared/reviewer-templates-code-reviewer.md", "code reviewer\n")
+    write(tmp_path, "skills/shared/voting-protocol.md", "voting\n")
+
+    with pytest.raises(ScanError):
+        _ = scg.scan_panel_tier(tmp_path)
+
+
+def test_review_filter_checks_only_review_growth(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/design/SKILL.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra design growth\n")
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "review"]) == 0, capsys.readouterr().err
+
+
+def test_panel_tier_filter_checks_only_panel_growth(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/design/SKILL.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra design growth\n")
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "panel-tier"]) == 0, capsys.readouterr().err
+
+
+def test_baseline_requires_all_ratcheted_targets(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    baseline_path = tmp_path / "python/skill-closure-baseline.json"
+    payload = [
+        row for row in json.loads(baseline_path.read_text(encoding="utf-8")) if row["skill"] != "panel-tier"
+    ]
+    _ = baseline_path.write_text(json.dumps(payload), encoding="utf-8")
+
+    assert scg.main(["--root", str(tmp_path)]) == 2
+    assert "one row per ratcheted target" in capsys.readouterr().err
+
+
+def test_review_closure_growth_is_ratcheted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/review/references/domain-rules.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra review growth\n")
+
+    assert scg.main(["--root", str(tmp_path)]) == 1
+    assert "review: closure_lines" in capsys.readouterr().err
+
+
+def test_panel_tier_closure_growth_is_ratcheted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "agents/reviewer-a.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra panel growth\n")
+
+    assert scg.main(["--root", str(tmp_path)]) == 1
+    assert "panel-tier: closure_lines" in capsys.readouterr().err
+
+
+def test_review_conditional_growth_is_ratcheted(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/review/references/heavy-worker.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra conditional growth\n")
+
+    assert scg.main(["--root", str(tmp_path)]) == 1
+    assert "review: conditional_lines" in capsys.readouterr().err
+
+
+def test_design_conditional_growth_is_report_only(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    fixture_project(tmp_path)
+    write(tmp_path, "skills/design/SKILL.md", "If extra, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n")
+    write(tmp_path, "skills/design/references/conditional.md", "conditional\n")
+    _ = write_baseline_from_live(tmp_path)
+    with (tmp_path / "skills/design/references/conditional.md").open("a", encoding="utf-8") as handle:
+        _ = handle.write("extra conditional growth\n")
+
+    assert scg.main(["--root", str(tmp_path)]) == 0, capsys.readouterr().err
+
+
 def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() -> None:
     repo_root = Path(__file__).resolve().parents[3]
 
     result = scg.scan_skill(repo_root, "design")
 
+    assert "skills/design/scripts/step-name-registry.tsv" in result.files
     assert "skills/design/references/plan-review.md" in result.files
     assert "skills/design/references/plan-review.md" not in result.conditional_files
     assert "skills/design/references/decompose-panel.md" not in result.files
@@ -616,11 +876,15 @@ def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() 
     assert "skills/design/references/step2b5-rc-handling.md" in result.conditional_files
 
 
-def test_real_implement_scan_keeps_eager_baseline_unchanged() -> None:
+def test_real_implement_scan_includes_named_eager_gaps() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     result = scg.scan_skill(repo_root, "implement")
     baseline = next(row for row in scg.load_baseline(repo_root / scg.BASELINE_RELPATH) if row.skill == "implement")
 
+    assert "skills/implement/scripts/step-name-registry.tsv" in result.files
+    assert "skills/shared/final-summary-emit.md" in result.files
+    assert "skills/implement/references/preflight-plan-audit.md" in result.files
+    assert "skills/implement/references/force-mode.md" not in result.files
     assert result.files == baseline.files
     assert result.closure_lines == baseline.closure_lines
     assert result.closure_estimated_tokens == baseline.closure_estimated_tokens
@@ -628,6 +892,16 @@ def test_real_implement_scan_keeps_eager_baseline_unchanged() -> None:
     assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.conditional_files
     assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.files
     assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.conditional_files
+
+
+def test_real_review_scan_includes_named_eager_sources() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    result = scg.scan_skill(repo_root, "review")
+
+    assert "skills/review/SKILL.md" in result.files
+    assert "skills/shared/session-setup-output.md" in result.files
+    assert "skills/shared/external-reviewers.md" in result.files
+    assert "skills/review/references/domain-rules.md" in result.files
 
 
 def test_committed_baseline_matches_fresh_scan(tmp_path: Path) -> None:

@@ -1,4 +1,4 @@
-"""Report and ratchet always-loaded skill markdown closure size."""
+"""Report and ratchet always-loaded prompt-source closure size."""
 
 from __future__ import annotations
 
@@ -13,7 +13,9 @@ from typing import TypedDict, cast
 
 TOOL_FAILURE_EXIT = 2
 BASELINE_RELPATH = Path("python/skill-closure-baseline.json")
-GATED_SKILLS = ("design", "implement")
+GATED_SKILLS = ("design", "implement", "review")
+PANEL_TIER_TARGET = "panel-tier"
+RATCHETED_TARGETS = (*GATED_SKILLS, PANEL_TIER_TARGET)
 METRIC_FIELDS = (
     "skill_md_lines",
     "skill_md_estimated_tokens",
@@ -22,7 +24,12 @@ METRIC_FIELDS = (
     "closure_estimated_tokens",
     "closure_content_estimated_tokens",
 )
-BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files"})
+CONDITIONAL_METRIC_FIELDS = (
+    "conditional_lines",
+    "conditional_estimated_tokens",
+    "conditional_content_estimated_tokens",
+)
+BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files", *CONDITIONAL_METRIC_FIELDS, "conditional_files"})
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
 SUPPRESSED_IMPLEMENT_SECTIONS = frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"})
 CONDITIONAL_DESIGN_SECTIONS = frozenset(
@@ -56,6 +63,14 @@ BRANCH_BULLET_RE = re.compile(r"^(?:\*\*)?`[^`]+`(?:\*\*)?\s*(?:\([^)]*\))?\s*:"
 RUNTIME_MARKDOWN_OPERAND_RE = re.compile(
     r"^\$(?:[A-Z_][A-Z0-9_]*|\{(?!CLAUDE_PLUGIN_ROOT\})[A-Z_][A-Z0-9_]*\})/"
 )
+REGISTRY_PATH_RE = re.compile(
+    r"`(?P<ticked>[^`\n]+?skills/[A-Za-z0-9_-]+/scripts/step-name-registry\.tsv)`|"
+    r"(?P<bare>(?:\$\{CLAUDE_PLUGIN_ROOT\}/|\./|/)?[A-Za-z0-9_./{}$+-]*skills/[A-Za-z0-9_-]+/scripts/step-name-registry\.tsv)"
+)
+SESSION_START_REGISTRY_RE = re.compile(r"\bRead\b.*?step-name-registry\.tsv", re.IGNORECASE)
+REVIEW_SESSION_SETUP_RE = re.compile(r"\buse\b.*?session-setup-output\.md.*?\bfor\b", re.IGNORECASE)
+REVIEW_EXTERNAL_REVIEWERS_RE = re.compile(r"\bprocedure\s+in\b.*?external-reviewers\.md", re.IGNORECASE)
+IMPLEMENT_FINAL_SUMMARY_RE = re.compile(r"\bfollow\b.*?final-summary-emit\.md", re.IGNORECASE)
 
 
 class BaselineRowDict(TypedDict):
@@ -67,6 +82,10 @@ class BaselineRowDict(TypedDict):
     closure_estimated_tokens: int
     closure_content_estimated_tokens: int
     files: list[str]
+    conditional_lines: int
+    conditional_estimated_tokens: int
+    conditional_content_estimated_tokens: int
+    conditional_files: list[str]
 
 
 class ScanError(ValueError):
@@ -109,6 +128,10 @@ class SkillClosureResult:
             "closure_estimated_tokens": self.closure_estimated_tokens,
             "closure_content_estimated_tokens": self.closure_content_estimated_tokens,
             "files": list(self.files),
+            "conditional_lines": self.conditional_lines,
+            "conditional_estimated_tokens": self.conditional_estimated_tokens,
+            "conditional_content_estimated_tokens": self.conditional_content_estimated_tokens,
+            "conditional_files": list(self.conditional_files),
         }
 
 
@@ -122,6 +145,10 @@ class BaselineRow:
     closure_estimated_tokens: int
     closure_content_estimated_tokens: int
     files: tuple[str, ...]
+    conditional_lines: int
+    conditional_estimated_tokens: int
+    conditional_content_estimated_tokens: int
+    conditional_files: tuple[str, ...]
 
 
 @dataclass(frozen=True)
@@ -184,7 +211,7 @@ def _is_runtime_markdown_operand(raw: str) -> bool:
     return RUNTIME_MARKDOWN_OPERAND_RE.match(cleaned) is not None
 
 
-def _resolve_markdown_path(root: Path, source_path: Path, raw_path: str) -> str:
+def _resolve_repo_path(root: Path, source_path: Path, raw_path: str) -> str:
     cleaned = _clean_raw_path(raw_path)
     if cleaned.startswith(PLUGIN_ROOT_PREFIX):
         candidate = root / cleaned.removeprefix(PLUGIN_ROOT_PREFIX)
@@ -198,21 +225,25 @@ def _resolve_markdown_path(root: Path, source_path: Path, raw_path: str) -> str:
             candidate = repo_candidate if repo_candidate.exists() else source_candidate
     rel = _repo_relative(root, candidate)
     if not candidate.is_file():
-        raise ScanError(f"referenced markdown file not found: {rel}")
+        raise ScanError(f"referenced prompt source not found: {rel}")
     return rel
 
 
-def _extract_markdown_paths(root: Path, source_path: Path, clause: str, *, strict: bool) -> list[str]:
+def _extract_repo_paths(root: Path, source_path: Path, clause: str, *, strict: bool) -> list[str]:
     paths: list[str] = []
     seen: set[str] = set()
-    for match in MARKDOWN_PATH_RE.finditer(clause):
+    matches = sorted(
+        [*MARKDOWN_PATH_RE.finditer(clause), *REGISTRY_PATH_RE.finditer(clause)],
+        key=lambda item: item.start(),
+    )
+    for match in matches:
         raw_path = match.group("ticked") or match.group("bare")
         if raw_path is None:
             continue
         if _is_runtime_markdown_operand(raw_path):
             continue
         try:
-            rel = _resolve_markdown_path(root, source_path, raw_path)
+            rel = _resolve_repo_path(root, source_path, raw_path)
         except ScanError:
             if strict:
                 raise
@@ -223,8 +254,8 @@ def _extract_markdown_paths(root: Path, source_path: Path, clause: str, *, stric
     return paths
 
 
-def _has_markdown_operand(clause: str) -> bool:
-    return MARKDOWN_PATH_RE.search(clause) is not None
+def _has_supported_prompt_operand(clause: str) -> bool:
+    return MARKDOWN_PATH_RE.search(clause) is not None or REGISTRY_PATH_RE.search(clause) is not None
 
 
 def _read_completely_crosses_mandatory(line: str, read_match: re.Match[str]) -> bool:
@@ -238,7 +269,7 @@ def _mandatory_clause(remainder: str) -> str:
     read_match = READ_COMPLETELY_RE.search(remainder)
     if read_match is not None:
         return remainder[read_match.start() : read_match.end()]
-    path_match = MARKDOWN_PATH_RE.search(remainder)
+    path_match = _first_supported_path_match(remainder)
     if path_match is None:
         return remainder
     sentence_end_match = re.search(r"\.(?:\s|$)", remainder[path_match.end() :])
@@ -248,7 +279,41 @@ def _mandatory_clause(remainder: str) -> str:
     return remainder[: sentence_end + 1]
 
 
-def _directive_matches(line: str) -> list[DirectiveMatch]:
+def _first_supported_path_match(text: str) -> re.Match[str] | None:
+    return min(
+        [*MARKDOWN_PATH_RE.finditer(text), *REGISTRY_PATH_RE.finditer(text)],
+        key=lambda item: item.start(),
+        default=None,
+    )
+
+
+def _sentence_clause(line: str, match: re.Match[str]) -> str:
+    sentence_start = max(line.rfind(". ", 0, match.start()) + 2, 0)
+    sentence_end_match = re.search(r"\.(?:\s|$)", line[match.end() :])
+    if sentence_end_match is None:
+        return line[sentence_start:]
+    sentence_end = match.end() + sentence_end_match.start()
+    return line[sentence_start : sentence_end + 1]
+
+
+def _narrow_directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
+    patterns: list[re.Pattern[str]]
+    if skill == "review":
+        patterns = [REVIEW_SESSION_SETUP_RE, REVIEW_EXTERNAL_REVIEWERS_RE]
+    elif skill in {"design", "implement"}:
+        patterns = [SESSION_START_REGISTRY_RE]
+        if skill == "implement":
+            patterns.append(IMPLEMENT_FINAL_SUMMARY_RE)
+    else:
+        patterns = []
+    return [
+        DirectiveMatch(index=0, clause=_sentence_clause(line, match), supported=True)
+        for pattern in patterns
+        for match in pattern.finditer(line)
+    ]
+
+
+def _directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
     matches = [
         DirectiveMatch(
             index=match.start(),
@@ -257,6 +322,7 @@ def _directive_matches(line: str) -> list[DirectiveMatch]:
         )
         for match in MANDATORY_DIRECTIVE_RE.finditer(line)
     ]
+    matches.extend(_narrow_directive_matches(line, skill))
     for match in READ_COMPLETELY_RE.finditer(line):
         if any(existing.index <= match.start() for existing in matches):
             continue
@@ -292,6 +358,8 @@ def _body_after_bullet(stripped_line: str) -> str:
 
 
 def _line_is_conditional(line: str, directive_index: int) -> bool:
+    if "force_requested=false" in line and "preflight-plan-audit.md" in line:
+        return False
     stripped = line.strip()
     first_cell = _first_table_cell(stripped)
     if first_cell is not None and _table_cell_is_route_predicate(first_cell):
@@ -353,21 +421,21 @@ def _paths_for_directive_match(
     context: DirectiveContext,
 ) -> tuple[bool, list[str]]:
     is_conditional = context.conditional_section or _line_is_conditional(context.line, context.match.index)
-    paths = _extract_markdown_paths(root, skill_path, context.match.clause, strict=not is_conditional)
+    paths = _extract_repo_paths(root, skill_path, context.match.clause, strict=not is_conditional)
     if is_conditional:
         return True, paths
     if paths:
         return False, paths
-    if _has_markdown_operand(context.match.clause):
+    if _has_supported_prompt_operand(context.match.clause):
         raise ScanError(
             f"{_repo_relative(root, skill_path)}:{context.line_number}: "
-            "supported read directive has no resolvable markdown path"
+            "supported read directive has no resolvable prompt source"
         )
     if NON_MD_PATH_RE.search(context.match.clause):
         return False, paths
     raise ScanError(
         f"{_repo_relative(root, skill_path)}:{context.line_number}: "
-        "supported read directive has no resolvable markdown path"
+        "supported read directive has no resolvable prompt source"
     )
 
 
@@ -393,7 +461,7 @@ def parse_direct_markdown_references(root: Path, skill: str, skill_path: Path) -
         state = _update_scan_state(skill, line, state)
         if state.suppressed_section is not None:
             continue
-        for match in _directive_matches(line):
+        for match in _directive_matches(line, skill):
             context = DirectiveContext(
                 line,
                 line_number,
@@ -441,8 +509,51 @@ def scan_skill(root: Path, skill: str) -> SkillClosureResult:
     )
 
 
+def scan_panel_tier(root: Path) -> SkillClosureResult:
+    agents_dir = root / "agents"
+    agent_paths = sorted(agents_dir.glob("*.md"))
+    if not agent_paths:
+        raise ScanError("panel-tier source scan found no agents/*.md files")
+    fixed_files = (
+        root / "skills/shared/reviewer-templates.md",
+        root / "skills/shared/reviewer-templates-code-reviewer.md",
+        root / "skills/shared/voting-protocol.md",
+    )
+    for path in fixed_files:
+        if not path.is_file():
+            raise ScanError(f"panel-tier source missing: {_repo_relative(root, path)}")
+    files: list[str] = []
+    seen: set[str] = set()
+    for path in (*agent_paths, *fixed_files):
+        rel = _repo_relative(root, path)
+        if rel not in seen:
+            seen.add(rel)
+            files.append(rel)
+    metrics = {rel: _read_file_metrics(root / rel) for rel in files}
+    return SkillClosureResult(
+        skill=PANEL_TIER_TARGET,
+        skill_md_lines=0,
+        skill_md_estimated_tokens=0,
+        skill_md_content_estimated_tokens=0,
+        closure_lines=sum(item.lines for item in metrics.values()),
+        closure_estimated_tokens=sum(item.estimated_tokens for item in metrics.values()),
+        closure_content_estimated_tokens=sum(item.content_estimated_tokens for item in metrics.values()),
+        files=tuple(files),
+        conditional_lines=0,
+        conditional_estimated_tokens=0,
+        conditional_content_estimated_tokens=0,
+        conditional_files=(),
+    )
+
+
+def scan_target(root: Path, target: str) -> SkillClosureResult:
+    if target == PANEL_TIER_TARGET:
+        return scan_panel_tier(root)
+    return scan_skill(root, target)
+
+
 def scan_all(root: Path) -> list[SkillClosureResult]:
-    return [scan_skill(root, skill) for skill in GATED_SKILLS]
+    return [scan_target(root, target) for target in RATCHETED_TARGETS]
 
 
 def _validate_int(value: object, *, source: Path, index: int, key: str) -> int:
@@ -451,20 +562,20 @@ def _validate_int(value: object, *, source: Path, index: int, key: str) -> int:
     return value
 
 
-def _validate_files(value: object, *, source: Path, index: int) -> tuple[str, ...]:
-    if not isinstance(value, list) or not value:
-        raise BaselineError(f"{source}: record {index} has invalid files")
+def _validate_files(value: object, *, source: Path, index: int, key: str, allow_empty: bool = False) -> tuple[str, ...]:
+    if not isinstance(value, list) or (not value and not allow_empty):
+        raise BaselineError(f"{source}: record {index} has invalid {key}")
     entries = cast("list[object]", value)
     result: list[str] = []
     for item in entries:
         if not isinstance(item, str) or not item or item.startswith("/"):
-            raise BaselineError(f"{source}: record {index} has invalid files")
+            raise BaselineError(f"{source}: record {index} has invalid {key}")
         path = Path(item)
         if any(part in {"", ".", ".."} for part in path.parts):
-            raise BaselineError(f"{source}: record {index} has invalid files")
+            raise BaselineError(f"{source}: record {index} has invalid {key}")
         result.append(path.as_posix())
     if len(set(result)) != len(result):
-        raise BaselineError(f"{source}: record {index} has duplicate files")
+        raise BaselineError(f"{source}: record {index} has duplicate {key}")
     return tuple(result)
 
 
@@ -475,7 +586,7 @@ def _validate_baseline_row(item: object, *, source: Path, index: int) -> Baselin
     if set(row.keys()) != set(BASELINE_KEYS):
         raise BaselineError(f"{source}: record {index} must have exactly {sorted(BASELINE_KEYS)}")
     skill = row["skill"]
-    if not isinstance(skill, str) or skill not in GATED_SKILLS:
+    if not isinstance(skill, str) or skill not in RATCHETED_TARGETS:
         raise BaselineError(f"{source}: record {index} has invalid skill")
     return BaselineRow(
         skill=skill,
@@ -505,7 +616,32 @@ def _validate_baseline_row(item: object, *, source: Path, index: int) -> Baselin
             index=index,
             key="closure_content_estimated_tokens",
         ),
-        files=_validate_files(row["files"], source=source, index=index),
+        files=_validate_files(row["files"], source=source, index=index, key="files"),
+        conditional_lines=_validate_int(
+            row["conditional_lines"],
+            source=source,
+            index=index,
+            key="conditional_lines",
+        ),
+        conditional_estimated_tokens=_validate_int(
+            row["conditional_estimated_tokens"],
+            source=source,
+            index=index,
+            key="conditional_estimated_tokens",
+        ),
+        conditional_content_estimated_tokens=_validate_int(
+            row["conditional_content_estimated_tokens"],
+            source=source,
+            index=index,
+            key="conditional_content_estimated_tokens",
+        ),
+        conditional_files=_validate_files(
+            row["conditional_files"],
+            source=source,
+            index=index,
+            key="conditional_files",
+            allow_empty=True,
+        ),
     )
 
 
@@ -523,8 +659,8 @@ def load_baseline(path: Path) -> list[BaselineRow]:
     entries = cast("list[object]", raw)
     rows = [_validate_baseline_row(item, source=path, index=index) for index, item in enumerate(entries, start=1)]
     skills = [row.skill for row in rows]
-    if sorted(skills) != sorted(GATED_SKILLS) or len(set(skills)) != len(skills):
-        raise BaselineError(f"{path}: baseline must contain one row per gated skill")
+    if sorted(skills) != sorted(RATCHETED_TARGETS) or len(set(skills)) != len(skills):
+        raise BaselineError(f"{path}: baseline must contain one row per ratcheted target")
     return rows
 
 
@@ -548,6 +684,12 @@ def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRo
             baseline_value = getattr(row, metric)
             if live_value > baseline_value:
                 violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
+        if result.skill == "review":
+            for metric in CONDITIONAL_METRIC_FIELDS:
+                live_value = getattr(result, metric)
+                baseline_value = getattr(row, metric)
+                if live_value > baseline_value:
+                    violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
     return violations
 
 
@@ -556,7 +698,7 @@ def _parse_args(argv: list[str], *, prog: str, allow_write: bool) -> argparse.Na
     _ = parser.add_argument("--root", default=str(Path(__file__).resolve().parents[3]))
     if allow_write:
         _ = parser.add_argument("--write", action="store_true", help="regenerate the committed baseline")
-        _ = parser.add_argument("--skill", choices=GATED_SKILLS, help="check one gated skill")
+        _ = parser.add_argument("--skill", choices=RATCHETED_TARGETS, help="check one ratcheted target")
     try:
         return parser.parse_args(argv)
     except SystemExit as exc:
@@ -575,7 +717,7 @@ def _coerce_root(root_text: str, *, prog: str) -> Path | None:
 
 def _print_report(results: list[SkillClosureResult]) -> None:
     print("Eager closure (ratcheted)")
-    print("skill      skill_lines  skill_tokens  skill_content_tokens  closure_lines  closure_tokens  closure_content_tokens")
+    print("target      skill_lines  skill_tokens  skill_content_tokens  closure_lines  closure_tokens  closure_content_tokens")
     for result in results:
         print(
             f"{result.skill:<10}"
@@ -589,8 +731,8 @@ def _print_report(results: list[SkillClosureResult]) -> None:
         for rel in result.files:
             print(f"  - {rel}")
     print()
-    print("Conditional closure (reported only)")
-    print("skill      conditional_lines  conditional_tokens  conditional_content_tokens")
+    print("Conditional closure (review ratcheted; design and implement reported only)")
+    print("target      conditional_lines  conditional_tokens  conditional_content_tokens")
     for result in results:
         print(
             f"{result.skill:<10}"
@@ -635,12 +777,12 @@ def main(argv: list[str] | None = None) -> int:
         return TOOL_FAILURE_EXIT
     try:
         if parsed.write and parsed.skill:
-            raise BaselineError("--skill is check-only; --write regenerates all gated skills")
+            raise BaselineError("--skill is check-only; --write regenerates all ratcheted targets")
         if parsed.write:
             results = scan_all(root)
             write_baseline(root / BASELINE_RELPATH, results)
             return 0
-        results = [scan_skill(root, parsed.skill)] if parsed.skill else scan_all(root)
+        results = [scan_target(root, parsed.skill)] if parsed.skill else scan_all(root)
         baseline = load_baseline(root / BASELINE_RELPATH)
     except (BaselineError, ScanError) as exc:
         print(f"lint skill-closure-growth: {exc}", file=sys.stderr)
