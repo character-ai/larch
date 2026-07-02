@@ -16,6 +16,7 @@ BASELINE_RELPATH = Path("python/skill-closure-baseline.json")
 GATED_SKILLS = ("design", "implement", "review")
 PANEL_TIER_TARGET = "panel-tier"
 RATCHETED_TARGETS = (*GATED_SKILLS, PANEL_TIER_TARGET)
+FILE_RATCHET_TARGETS = frozenset({PANEL_TIER_TARGET})
 METRIC_FIELDS = (
     "skill_md_lines",
     "skill_md_estimated_tokens",
@@ -299,7 +300,7 @@ def _sentence_clause(line: str, match: re.Match[str]) -> str:
 def _narrow_directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
     patterns: list[re.Pattern[str]]
     if skill == "review":
-        patterns = [REVIEW_SESSION_SETUP_RE, REVIEW_EXTERNAL_REVIEWERS_RE]
+        patterns = [SESSION_START_REGISTRY_RE, REVIEW_SESSION_SETUP_RE, REVIEW_EXTERNAL_REVIEWERS_RE]
     elif skill in {"design", "implement"}:
         patterns = [SESSION_START_REGISTRY_RE]
         if skill == "implement":
@@ -415,6 +416,13 @@ def _update_scan_state(skill: str, line: str, state: ScanState) -> ScanState:
     return state
 
 
+def _session_start_registry_path(root: Path, skill: str) -> str | None:
+    registry_rel = f"skills/{skill}/scripts/step-name-registry.tsv"
+    if (root / registry_rel).is_file():
+        return registry_rel
+    return None
+
+
 def _paths_for_directive_match(
     root: Path,
     skill_path: Path,
@@ -422,6 +430,10 @@ def _paths_for_directive_match(
 ) -> tuple[bool, list[str]]:
     is_conditional = context.conditional_section or _line_is_conditional(context.line, context.match.index)
     paths = _extract_repo_paths(root, skill_path, context.match.clause, strict=not is_conditional)
+    if not paths and SESSION_START_REGISTRY_RE.search(context.match.clause):
+        registry_rel = _session_start_registry_path(root, skill_path.parent.name)
+        if registry_rel is not None:
+            paths = [registry_rel]
     if is_conditional:
         return True, paths
     if paths:
@@ -690,6 +702,11 @@ def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRo
                 baseline_value = getattr(row, metric)
                 if live_value > baseline_value:
                     violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
+        if result.skill in FILE_RATCHET_TARGETS:
+            baseline_files = set(row.files)
+            for rel in result.files:
+                if rel not in baseline_files:
+                    violations.append(f"{result.skill}: files added {rel}")
     return violations
 
 

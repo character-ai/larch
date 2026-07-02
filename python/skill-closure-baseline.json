@@ -94,9 +94,9 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 8338,
-    "closure_estimated_tokens": 8362,
-    "closure_lines": 297,
+    "closure_content_estimated_tokens": 8362,
+    "closure_estimated_tokens": 8386,
+    "closure_lines": 304,
     "conditional_content_estimated_tokens": 3254,
     "conditional_estimated_tokens": 3265,
     "conditional_files": [
@@ -106,6 +106,7 @@
     "conditional_lines": 143,
     "files": [
       "skills/review/SKILL.md",
+      "skills/review/scripts/step-name-registry.tsv",
       "skills/shared/session-setup-output.md",
       "skills/shared/external-reviewers.md",
       "skills/review/references/domain-rules.md"
