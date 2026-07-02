@@ -1,0 +1,4 @@
+### Deviation: G-Cfg-1 (wire-literals not centralized in config.py)
+- **Where**: `python/larch/review/round_runner.py`, `review_and_fix.py`, `review_core_body.py` plan sections.
+- **What**: the plan introduces new wire-literal strings (`self-review-required` status; `no successful launched reviewer output` discriminator) used across three modules, but does not call for defining them once as `Final` constants in `python/larch/core/config.py`.
+- **Rationale for accepting as-is**: this is an implementation-detail omission, not a scope or behavior gap. The existing analogous pattern (`CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW: Final = "implement-step5-self-review"`) shows the codebase's convention; an implementer following G-Cfg-1 during Step 2b coding should add the equivalent constants without needing a plan revision cycle. Not blocking approval.

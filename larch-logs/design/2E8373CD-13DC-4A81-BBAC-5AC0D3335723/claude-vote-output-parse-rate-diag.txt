@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=13
+total_findings=13
+total_ballot_items=13
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=04ae74cd99f05a37b23cfee81fbb9d93fbc5af5c05a81bbd8abfc594b24938f6
+--- first 200 bytes of voter output ---
+A background task is currently blocking reads. Ending the turn to wait for the task notification before casting votes.

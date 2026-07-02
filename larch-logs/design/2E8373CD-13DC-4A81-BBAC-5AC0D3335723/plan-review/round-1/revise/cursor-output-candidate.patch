@@ -1,0 +1,277 @@
+## Plan
+
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so implement from direct repo inspection and the approved outline. Keep Step 0 degraded-tools hard-fail unchanged.
+
+Use the existing zero-survivor signal instead of threading Step 0 health:
+- `/design`: `LOOP_STATUS=degraded-empty-collector`.
+- `/review`: `REVIEW_CORE_STATUS=panel-failed` plus `THRESHOLD_REASON=no successful launched reviewer output`.
+- `/implement` Step 5: the same review-core threshold reason, surfaced through `review-and-fix step5` as `STEP5_REVIEW_STATUS=self-review-required`.
+
+**Producer fix (FINDING_10):** today `review_core_body.py` normalizes `THRESHOLD_REASON` to `no successful launched reviewer output` only when `THRESHOLD_OK` is still `true` before the zero-success check. When `check-reviewer-failure-threshold` already set `THRESHOLD_OK=false` with a count-based reason (e.g. `N of N panel slots failed`), all-failed runtime panels (auth expiry, timeout) miss the discriminator and stall. Add a post-threshold normalization pass: when `success_count == 0`, no parseable findings/OOS, and the failure is not a dispatch/setup/static-coverage/aggregator/voter class, overwrite `THRESHOLD_REASON` to `no successful launched reviewer output` even if `THRESHOLD_OK` is already `false`. Emit `THRESHOLD_REASON` on every `panel-failed` exit. Keep parseable-output and static-coverage reasons distinct.
+
+Preserve current non-zero-reviewer failures:
+- Dispatch setup errors still fail or stall.
+- Static coverage gaps such as `no successful static reviewer for archetype(s): ...` still fail.
+- Aggregator and voter failures still use existing paths.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+In the Step 3 post-loop routing table, split the `NEXT_ACTION=step3b-bypass` branch by status.
+
+For `LOOP_STATUS=degraded-empty-collector`:
+1. Print a loud warning such as `**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**`
+2. Append a bounded `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`.
+3. Read `$DESIGN_TMPDIR/plan.txt`, the feature description or scope anchor, and the relevant code/docs directly.
+4. Revise `$DESIGN_TMPDIR/plan.txt` in place only when the self-review finds a concrete plan defect.
+5. Run the same post-plan validation/settle path used after direct plan revision, so `diff-lines.txt`, trailers, and validators stay coherent.
+6. Then run `design-step3-gate-b-bypass.sh` and proceed to Step 3b as today.
+
+Keep `panel-failed`, `tally-error`, and cap-hit on the existing bypass behavior. Do not enter Gate B for self-review, because there is no findings list to vote or apply.
+
+### UPDATED: skills/design/scripts/test-design-step3-review.sh
+
+Add or adjust coverage for the new Step 3 prompt contract:
+- `degraded-empty-collector` is no longer described as an unreviewed bypass.
+- The skill text includes the loud warning and self-review-before-bypass instruction.
+- `panel-failed` and `tally-error` remain ordinary bypass or failure paths.
+
+Keep existing sentinel and normalization tests intact.
+
+### UPDATED: python/larch/review/review_core_body.py
+
+After `check-reviewer-failure-threshold` returns and `_finalize_dropped_reviewer_round` runs, add a zero-survivor normalization helper (e.g. `_normalize_zero_survivor_threshold`) that:
+1. Computes `success_count` from collector results.
+2. Detects parseable reviewer output (`findings.md` / `oos.md` non-empty).
+3. When `success_count == 0`, not parseable, and `threshold_reason` is not a dispatch/setup/static-coverage/aggregator/voter reason, sets `threshold_ok = "false"` and `threshold_reason = "no successful launched reviewer output"` **even when** the threshold gate already failed.
+4. Rewrites `review-core-threshold.env` with the normalized reason before panel-failed emit.
+
+Keep the existing normalization inside the `threshold_ok != "false"` branch as a fast path; the new helper covers the all-failed-panel gap.
+
+Ensure `_core_common_rows` always includes `THRESHOLD_REASON` on `panel-failed` exits.
+
+### UPDATED: python/larch/review/round_runner.py
+
+Detect the review-core zero-survivor runtime collapse for Step 5.
+
+After parsing `core` and `core_status`, add `_core_zero_survivor_panel_failed(core: Mapping[str, str]) -> bool`:
+- true only when `core_status == panel-failed` and `THRESHOLD_REASON == "no successful launched reviewer output"`.
+- false for static coverage failures, dispatch failures, aggregator failures, and voter failures.
+
+When true, return a `RoundResult` with `status="self-review-required"` and exit code `0`. Preserve round artifacts and warnings already written by review core. Place this branch before the existing `panel-failed` → exit code `2` mapping at lines 538-540.
+
+### UPDATED: python/larch/review/review_and_fix.py
+
+In the Step 5 loop (`review-and-fix step5`), add an early-return branch **immediately after** the existing `main-agent-vote-required` / `coder-main-agent-required` block (lines 567-571) and **before** the `panel-failed` → `stall` mapping (581-582) and the generic `else` stall path (615-618):
+
+```python
+elif result.status == "self-review-required":
+    _emit_step5_envelope(
+        status="self-review-required",
+        stall_tracking=False,
+        stall_reason="",
+        rounds_completed=rounds_completed,
+        final_round=round_num,
+        final_irf=result.status,
+        coder_status=result.coder.status,
+        files_hint=result.coder.commit_sha,
+        effective_cap=round_cap,
+    )
+    return 0
+```
+
+Do not mark it as a stall. Do not set `STALL_TRACKING`. Preserve `ROUNDS_COMPLETED`, `FINAL_ROUND_NUM`, `FINAL_REVIEW_AND_FIX_STATUS`, and the hard round cap in the envelope.
+
+Keep the existing `--self-review` path unchanged. The prompt-side Step 5 branch will reuse `self-review.md`.
+
+### UPDATED: skills/implement/SKILL.md
+
+**Branch order override (FINDING_9):** in the scripted review loop section, pin explicit ordering before the generic anti-halt line ("On any non-stall `STEP5_REVIEW_STATUS`, execute Cross-Skill Presence Propagation..."). When `STEP5_REVIEW_STATUS=self-review-required`, run the self-review procedure to completion first; only then continue through the same post-self-review chain as `--self-review`. This branch overrides the generic non-stall continuation line.
+
+Add `self-review-required` to the Step 5 status table:
+
+For that status:
+1. Print a loud warning such as `**⚠ /implement Step 5: all external reviewers failed at runtime; falling back to main-agent self-review.**`
+2. Log a `Warnings` entry in `$IMPLEMENT_TMPDIR/execution-issues.md`.
+3. **MANDATORY — READ ENTIRE FILE**: Read `skills/implement/references/self-review.md` and execute it exactly as the `--self-review` branch does.
+4. After self-review completes, continue to Step 6 through the existing self-review reference continuation (Cross-Skill Presence Propagation, rejected-findings tracking, Step 6 breadcrumb).
+
+Do not call `review-and-fix step5` again. Do not stall as `panel-failed`. Do not reach Step 6 before self-review finishes.
+
+### UPDATED: skills/implement/references/self-review.md
+
+Add a short entry-condition note at the top (after Contract):
+- This reference is used for explicit `--self-review` **and** runtime zero-survivor fallback when `STEP5_REVIEW_STATUS=self-review-required`.
+- The same artifacts remain authoritative: `self-review-accepted.md`, `rejected-findings.md`, `oos-accepted-main-agent.md`, self-review tally, and the checks-commit route.
+
+Do not change the core procedure unless needed for wording.
+
+### NEW: skills/review/references/self-review.md
+
+Create a standalone `/review` main-agent self-review reference. Open with the `/review` reference-shape contract required by `scripts/test-review-structure.sh`:
+
+```
+**Consumer**: `/review` Step 3 zero-survivor fallback and `/review --diff --subagent` heavy-worker zero-survivor fallback.
+**Contract**: Authoritative main-agent self-review procedure when all launched external reviewers fail at runtime with `THRESHOLD_REASON=no successful launched reviewer output`.
+**When to load**: at zero-survivor `panel-failed` handoff before self-review execution.
+**Binding convention**: single normative source for main-agent review fallback; orchestrator applies accepted findings to the fix pipeline contract below.
+```
+
+Procedure (scoped to `/review`):
+
+1. Print a loud warning that all external reviewers failed at runtime.
+2. Read gathered context directly:
+   - diff mode: branch diff and description artifacts under `$REVIEW_TMPDIR`.
+   - description mode: `DESCRIPTION_TEXT` plus gathered scope files.
+3. Main-agent adjudication: write raw findings to `$REVIEW_TMPDIR/findings.md` using `### FINDING_N:` format.
+4. Write OOS observations to `$REVIEW_TMPDIR/oos.md` or `oos-accepted-review.md` only when they fit existing `/review` OOS rules.
+5. **Accepted-findings handoff (FINDING_3):** copy in-scope self-review findings into `$REVIEW_TMPDIR/accepted-findings.md` under the normal `### FINDING_N:` contract (auto-accept in-scope items; write rejected items to `rejected-findings.md` when needed). Bind `ACCEPTED_FINDINGS_FILE` to that path.
+6. If no in-scope issues remain after adjudication, write empty `accepted-findings.md` and proceed to Step 4.
+7. If in-scope accepted findings exist:
+   - diff mode: set `REVIEW_CORE_STATUS=fix-required` (orchestrator binding) and continue through the existing `/review-and-fix` and relevant-checks flow unchanged, passing `--findings-file "$ACCEPTED_FINDINGS_FILE"`.
+   - description mode: proceed to final summary artifacts without `/review-and-fix`.
+
+Do not add audit-run analytics in this issue.
+
+### UPDATED: skills/review/SKILL.md
+
+In Step 3 wrapper parse list, add `THRESHOLD_REASON` alongside `REVIEW_CORE_STATUS`, `ACCEPTED_FINDINGS_FILE`, counts, etc. Parse `THRESHOLD_REASON` from `review core` stdout **even when exit code is 2**.
+
+After `review core` returns, add a branch **before** treating non-zero rc as terminal:
+
+If `REVIEW_CORE_STATUS=panel-failed` and `THRESHOLD_REASON=no successful launched reviewer output`:
+1. Treat this as an expected handoff to self-review, not a hard stop (rc 2 is non-fatal on this branch only).
+2. **MANDATORY — READ ENTIRE FILE**: Read `skills/review/references/self-review.md` on the same SKILL.md line.
+3. Execute the main-agent self-review pass per that reference (including accepted-findings population).
+4. When fixes are needed in diff mode, bind `REVIEW_CORE_STATUS=fix-required` and `ACCEPTED_FINDINGS_FILE` from self-review output, then invoke `/review-and-fix` with that path.
+5. Continue with existing fix, checks, classification, and Step 4 logic.
+
+For all other `panel-failed` reasons, preserve existing behavior (including hard-stop on rc 2 when appropriate).
+
+Update Step 0 degraded-tools text only to clarify that Step 0 both-down remains a hard fail, while runtime zero-survivor collapse is handled later.
+
+### UPDATED: skills/review/references/heavy-worker.md
+
+In **Work** Step 3 and **Required Reads**, document zero-survivor fallback:
+
+When `review core` returns `REVIEW_CORE_STATUS=panel-failed` with `THRESHOLD_REASON=no successful launched reviewer output`:
+1. **MANDATORY — READ ENTIRE FILE**: Read `skills/review/references/self-review.md`.
+2. Execute the main-agent self-review pass (including accepted-findings handoff).
+3. Continue Step 3 fix/checks/substantiality logic using self-review artifacts.
+4. Write `review-round-summary.md` and other artifact-contract files before returning to the parent.
+
+Without this, `/review --diff --subagent` can return from Step 3 with empty accepted findings and no self-review artifacts.
+
+### UPDATED: skills/implement/references/conflict-resolution.md
+
+Rewrite the **Contract** block, intro prose, caller-family bullets, Phase 2 routing text, and Phase 3 body for `caller_kind=ship_pr_pre_push`. Remove contradictory panel/voting/external-launch requirements from the header and intro; Phase 3 for `ship_pr_pre_push` is main-agent self-review only.
+
+**Contract** replacement gist: preserve upstream (main) / feature branch commit labels, `early_rebase` Phase 3 skip, per-file context block format in 3c, no-push Phase 4, and Phase 4 re-invoke semantics. Phase 3 for `ship_pr_pre_push` is main-agent self-review only (no external reviewer panel, voting, or fallbacks).
+
+Intro replacement gist: resolve conflicts with user escalation when needed; non-trivial `ship_pr_pre_push` resolutions get main-agent self-review in Phase 3, not an external panel.
+
+Caller-family bullet for `ship_pr_pre_push`: Phase 3 runs main-agent self-review when non-trivial resolutions exist; trivial-all still skips Phase 3.
+
+Phase 2 routing: when no uncertain conflicts remain for `ship_pr_pre_push`, continue to Phase 3 for trivial-all gating / self-review, not "so the trivial-all gate can skip or run the panel."
+
+**Phase 3 body** (replace 3a-3f panel launch):
+
+Keep:
+- `early_rebase` skips Phase 3.
+- trivial-all skips Phase 3.
+- per-file context block format from 3c.
+- up to 2 total resolution-review rounds.
+- unresolved after 2 rounds aborts rebase, sets `STALL_TRACKING=true`, and goes to Step 18.
+- cleanup of `$IMPLEMENT_TMPDIR/conflict-review/`.
+
+Remove:
+- Codex/Cursor reviewer launch.
+- Claude reviewer subagent panel.
+- voting panel.
+- external reviewer fallbacks.
+
+New Phase 3 shape:
+1. For non-trivial `ship_pr_pre_push` resolutions, prepare the same per-file context blocks (3c).
+2. Main agent reviews staged resolutions directly against those blocks and staged files.
+3. If it finds a defect, re-resolve, stage, and repeat Phase 3.
+4. If no defect remains, proceed to Phase 4.
+5. Abort after 2 unresolved rounds.
+
+### UPDATED: skills/shared/external-reviewers.md
+
+Update the documented contract:
+- Runtime zero-survivor at review stage now falls back to main-agent self-review for `/design`, `/review`, and `/implement` Step 5.
+- Conflict-resolution Phase 3 no longer uses external reviewers.
+- Keep the Step 0 both-down hard fail text unchanged.
+
+Avoid broad changes to waterfall fallback docs except noting the conflict-resolution exception.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Add tests for Step 5 zero-survivor routing:
+- Build a round where review core emits `REVIEW_CORE_STATUS=panel-failed` and `THRESHOLD_REASON=no successful launched reviewer output`; `round_runner` returns `self-review-required`.
+- Assert `review-and-fix step5` emits `STEP5_REVIEW_STATUS=self-review-required` via the new early-return branch (not `round-failed-self-review-required`).
+- Assert `STALL_TRACKING=false` or absent false-equivalent.
+- Assert ordinary `panel-failed` reasons (e.g. static coverage) still emit `STEP5_REVIEW_STATUS=stall`.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+Add or extend coverage:
+- `THRESHOLD_REASON=no successful launched reviewer output` for zero successful launched reviewer output, including the all-failed-panel case where `check-reviewer-failure-threshold` already set `THRESHOLD_OK=false` with a count-based reason before normalization.
+- Different static coverage reasons for missing static archetypes remain unchanged.
+- Use all-failed collector rows (not only empty collector output) in at least one fixture.
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+Add a test or assertion for the design self-review discriminator if a normalized envelope fixture is appropriate:
+- `degraded-empty-collector` remains `NEXT_ACTION=step3b-bypass`.
+- It is distinguishable from `panel-failed` and `tally-error` in the emitted env so the prompt-side branch can self-review only that case.
+
+### MAY_UPDATE: docs/review-agents.md
+
+Update only if the current docs claim that runtime zero-survivor always fails or that conflict resolution always launches an external panel. Keep docs narrow.
+
+### MAY_UPDATE: docs/collaborative-sketches.md
+
+Update only if it describes `/design` degraded-empty-collector as an unreviewed bypass. Say it now uses main-agent self-review before the existing bypass destination.
+
+## Edge cases
+
+- If Step 0 reports both tools down, the degraded-tools gate still hard-fails before any review-stage fallback can run.
+- If one vendor was down at Step 0 and the sole runtime survivor later fails, the zero-survivor fallback still triggers because the trigger is mechanical after normalization.
+- If review core has parseable OOS-only output, preserve the existing parseable-output bypass. Do not force self-review.
+- If a reviewer succeeds but produces no findings, preserve zero-findings behavior. Do not self-review.
+- If `/design` self-review edits `plan.txt`, rerun validation/settle before Step 3b so trailers and command validation do not drift.
+- If conflict-resolution self-review keeps finding defects after 2 rounds, abort the rebase. Do not continue with known-bad staged resolutions.
+- `/review` zero-survivor with in-scope findings must populate `accepted-findings.md` before `/review-and-fix`; empty or stale accepted file must not skip fixes.
+- `/review --subagent` heavy worker must run the same zero-survivor self-review path as inline Step 3.
+
+## Failure modes
+
+- A new Step 5 status not handled by `skills/implement/SKILL.md` would violate NEVER #4. Add both Python envelope coverage and prompt routing with explicit branch-order override before generic Step 6 continuation.
+- Missing the `review_and_fix.py` early-return would map `self-review-required` to `round-failed-self-review-required` stall via the generic `else` path.
+- Reusing `panel-failed` for zero-survivor in Step 5 would keep the current stall. Emit a distinct prompt-facing status.
+- Treating all `panel-failed` as self-review would hide real infrastructure or static coverage failures. Gate strictly on the exact threshold reason after producer normalization.
+- Skipping `THRESHOLD_REASON` normalization when threshold already failed would leave real all-failed panels stalling (auth expiry, timeout).
+- Conflict-resolution Contract/intro bullets left unchanged would contradict Phase 3 rewrite and mislead implementers.
+- `skills/review/references/self-review.md` without Consumer/Contract/Binding headers or without a same-line `MANDATORY — READ ENTIRE FILE` binding fails `scripts/test-review-structure.sh`.
+- Conflict-resolution Phase 3 must not leave stale `$IMPLEMENT_TMPDIR/conflict-review/` artifacts on success or bail.
+
+## Testing strategy
+
+Run focused tests only:
+- `python3 -m pytest python/tests/review/test_review_and_fix.py`
+- `python3 -m pytest python/tests/review/test_review_pipeline.py`
+- `python3 -m pytest python/tests/review/test_plan_review.py`
+- `bash skills/design/scripts/test-design-step3-review.sh`
+- `bash scripts/test-review-structure.sh` (confirms new `references/self-review.md` headers and SKILL.md binding)
+
+If Markdown-only contract tests exist for affected skill files, run the relevant harnesses. If unavailable, inspect the changed prompt branches manually for exact status strings and branch order.
+
+diff_added: 340
+diff_deleted: 115
+mechanical_churn: false
+diff_lines: 455

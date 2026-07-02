@@ -1,0 +1,1 @@
+Plan targets three runtime fallbacks: /design Step 3 zero-reviewer self-review, /review zero-reviewer self-review, /implement Step 5 zero-reviewer self-review, plus removal of the conflict-resolution external panel. It preserves Step 0 both-down hard fail.

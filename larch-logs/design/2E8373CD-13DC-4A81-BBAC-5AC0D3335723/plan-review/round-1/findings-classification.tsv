@@ -1,0 +1,22 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-dyn-Workflow Contract Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_2	Cursor-Arch, Cursor-dyn-Workflow Contract Reviewer	neutral							YES	true	major	good	false	Codex	NO	partially-true	major	good	false	Cursor	important	oos
+FINDING_3	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-Workflow Contract Reviewer	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Arch	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_5	Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_6	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Cursor-Innovation, Codex-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_8	Cursor-Innovation, Cursor-Requirements	neutral							NO	partially-true	major	adequate	false	Codex	YES	true	major	good	false	Cursor	important	oos
+FINDING_9	Cursor-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_10	Codex-Innovation, Codex-Pragmatic	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	important	in_scope
+FINDING_11	Cursor-dyn-Workflow Contract Reviewer	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	important	oos
+FINDING_12	Cursor-Pragmatic	neutral							NO	partially-true	major	adequate	false	Codex	YES	true	major	excellent	false	Cursor	blocking	oos
+OOS_1	Cursor-Arch	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Arch	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_3	Cursor-Arch	neutral							YES	true	minor	good	false	Codex	NO	partially-true	minor	good	false	Cursor	latent	oos
+OOS_4	Cursor-Innovation	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	weak	false	Cursor	latent	oos
+OOS_5	Cursor-Pragmatic	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_6	Cursor-Pragmatic	neutral							YES	true	minor	good	false	Codex	NO	partially-true	nit	adequate	false	Cursor	latent	oos
+OOS_7	Cursor-Pragmatic	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_8	Cursor-Requirements	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	latent	oos
+OOS_9	Cursor-Requirements	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
