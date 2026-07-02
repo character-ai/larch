@@ -350,6 +350,40 @@ def _executing_tool_by_norm_basename(collector_env: Path) -> dict[str, str]:
     return result
 
 
+def _round_collector_tool_by_norm_basename(round_dir: Path) -> dict[str, str]:
+    for collector_env in _collector_env_paths_for_round(round_dir):
+        try:
+            if not collector_env.is_file() or collector_env.is_symlink() or collector_env.stat().st_size <= 0:
+                continue
+        except OSError:
+            continue
+        return _executing_tool_by_norm_basename(collector_env)
+    return {}
+
+
+def _manifest_fallback_base_label(*, slot: str, tool: str) -> str:
+    human_label = plan_review_round._slot_human_label(slot)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+    if human_label != slot:
+        return human_label
+    return f"{tool}/{slot}"
+
+
+def _fallback_reconciled_manifest_label(
+    *,
+    slot: str,
+    nominal_tool: str,
+    executing_tool: str,
+) -> tuple[str, str] | None:
+    tool = executing_tool.strip().lower()
+    if not tool or tool == "unknown":
+        return None
+    nominal = nominal_tool.strip().lower()
+    base = _manifest_fallback_base_label(slot=slot, tool=nominal)
+    if nominal and nominal != tool:
+        return base, f"{base} (via {tool.title()})"
+    return base, base
+
+
 def _fallback_label_remap(round_dirs: list[Path]) -> dict[str, str]:
     """Map slot human label -> reconciled ``(via <Tool>)`` label for fallback slots.
 
@@ -360,21 +394,37 @@ def _fallback_label_remap(round_dirs: list[Path]) -> dict[str, str]:
     """
     remap: dict[str, str] = {}
     for round_dir in round_dirs:
-        design = round_dir.parent.parent
-        tool_by_norm = _executing_tool_by_norm_basename(design / "collector-results.env")
+        tool_by_norm = _round_collector_tool_by_norm_basename(round_dir)
         if not tool_by_norm:
             continue
-        for manifest in (round_dir / "panel-manifest.ndjson", design / "plan-review-slots.ndjson"):
+        manifests = [round_dir / "panel-manifest.ndjson"]
+        if "plan-review" in round_dir.parts:
+            manifests.append(round_dir.parent.parent / "plan-review-slots.ndjson")
+        for manifest in manifests:
             for row in logging_util.iter_jsonl_dicts(_read_lines_best_effort(manifest)):
                 slot = row.get("slot")
+                nominal_tool = row.get("tool")
                 output = row.get("output")
-                if not isinstance(slot, str) or not isinstance(output, str):
+                if not (
+                    isinstance(slot, str)
+                    and slot
+                    and isinstance(nominal_tool, str)
+                    and nominal_tool
+                    and isinstance(output, str)
+                    and output
+                ):
                     continue
                 tool = tool_by_norm.get(voting.normalize_reviewer_basename(output), "")
                 if not tool:
                     continue
-                reconciled = plan_review_round.reconciled_reviewer_label(slot, executing_tool=tool)
-                base = plan_review_round._slot_human_label(slot)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+                labels = _fallback_reconciled_manifest_label(
+                    slot=slot,
+                    nominal_tool=nominal_tool,
+                    executing_tool=tool,
+                )
+                if labels is None:
+                    continue
+                base, reconciled = labels
                 if reconciled != base:
                     remap[base] = reconciled
     return remap

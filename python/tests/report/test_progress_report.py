@@ -135,6 +135,49 @@ def test_fallback_label_remap_annotates_executing_tool(tmp_path: Path) -> None:
     assert remap == {"Cursor-Arch": "Cursor-Arch (via Codex)"}
 
 
+def test_fallback_label_remap_annotates_code_review_parent_collector(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    round_dir = root / "round-1"
+    round_dir.mkdir(parents=True)
+    output = "cursor-specialist-arch-output.txt"
+    (round_dir / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "arch", "tool": "cursor", "output": output}) + "\n",
+        encoding="utf-8",
+    )
+    (root / "collector-results.env").write_text(
+        f"REVIEWER_FILE={output}\nTOOL=codex\nSTATUS=OK\n\n",
+        encoding="utf-8",
+    )
+
+    remap = progress_report._fallback_label_remap([round_dir])
+
+    assert not (round_dir / "collector-results.env").exists()
+    assert remap == {"cursor/arch": "cursor/arch (via Codex)"}
+
+
+def test_fallback_label_remap_prefers_round_local_collector(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    round_dir = root / "round-1"
+    round_dir.mkdir(parents=True)
+    output = "cursor-specialist-arch-output.txt"
+    (round_dir / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "arch", "tool": "cursor", "output": output}) + "\n",
+        encoding="utf-8",
+    )
+    (round_dir / "collector-results.env").write_text(
+        f"REVIEWER_FILE={output}\nTOOL=codex\nSTATUS=OK\n\n",
+        encoding="utf-8",
+    )
+    (root / "collector-results.env").write_text(
+        f"REVIEWER_FILE={output}\nTOOL=cursor\nSTATUS=OK\n\n",
+        encoding="utf-8",
+    )
+
+    remap = progress_report._fallback_label_remap([round_dir])
+
+    assert remap == {"cursor/arch": "cursor/arch (via Codex)"}
+
+
 def test_fallback_label_remap_empty_without_collector(tmp_path: Path) -> None:
     """No collector-results.env -> no remap (issue #5838)."""
     round_dir = tmp_path / "plan-review" / "round-1"
@@ -2490,6 +2533,42 @@ def test_render_phase_detail_top_reviewers_implement_from_classification(tmp_pat
     assert "2. codex/generalist — 1" in rendered
     assert "flat-jsonl" not in rendered
     assert "cursor-specialist-oos" not in rendered
+
+
+def test_render_phase_detail_top_reviewers_implement_from_classification_vendor_fallback(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    _write_round_meta(r1, accepted=1, rejected=0, reviewers=1)
+    output = "cursor-specialist-arch-output.txt"
+    (r1 / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "arch", "tool": "cursor", "output": output}) + "\n",
+        encoding="utf-8",
+    )
+    (root / "collector-results.env").write_text(
+        f"REVIEWER_FILE={output}\nTOOL=codex\nSTATUS=OK\n\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.code_review_classification_header().split("\t")
+    cols = dict.fromkeys(header, "")
+    cols.update({
+        "finding_id": "FINDING_1",
+        "reviewer_slots": output,
+        "voting_result": "accepted",
+        "v1_vote": "YES",
+        "v1_severity": "minor",
+        "scope": "in_scope",
+    })
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n" + "\t".join(cols[name] for name in header) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert not (r1 / "collector-results.env").exists()
+    assert "1. cursor/arch (via Codex) — 1" in rendered
 
 
 def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path: Path) -> None:
