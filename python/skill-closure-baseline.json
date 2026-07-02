@@ -1,7 +1,7 @@
 [
   {
-  "closure_content_estimated_tokens": 52355,
-  "closure_estimated_tokens": 52509,
+    "closure_content_estimated_tokens": 52355,
+    "closure_estimated_tokens": 52509,
     "closure_lines": 1671,
     "files": [
       "skills/design/SKILL.md",

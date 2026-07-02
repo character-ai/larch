@@ -5513,8 +5513,8 @@ def test_model_args_main_codex_role_ignores_default_and_global_env(
     assert capsys.readouterr().out.splitlines()[:2] == ["-m", "gpt-5.4-mini"]
 
 
-def test_codex_probe_blank_review_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    monkeypatch.setenv("LARCH_CODEX_REVIEW_MODEL", "   ")
+def test_codex_probe_blank_default_model_fails_closed(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    monkeypatch.setenv("LARCH_CODEX_MODEL", "   ")
     monkeypatch.setenv("TMPDIR", str(tmp_path))
     monkeypatch.setattr(_auth, "_prepare_codex_home", lambda *_args, **_kwargs: (0, ""))
 
