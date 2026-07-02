@@ -121,7 +121,6 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("implement", "clone-tag"): ("larch.implement.implement_dispatch", "clone_tag_main"),
     ("implement", "kill-active-leg"): ("larch.implement.implement_dispatch", "kill_active_leg_main"),
     ("implement", "normalize-coder-scout"): ("larch.implement.implement_dispatch", "normalize_coder_scout_main"),
-    ("implement", "step-0-bootstrap"): ("larch.implement.implement_dispatch", "step0_bootstrap_main"),
     ("implement", "step-0-degraded-gate"): ("larch.implement.implement_dispatch", "step0_degraded_gate_main"),
     ("implement", "step-2-post-dispatch"): ("larch.implement.implement_dispatch", "step2_post_dispatch_main"),
     ("implement", "step-5-review"): ("larch.implement.implement_dispatch", "step5_review_main"),

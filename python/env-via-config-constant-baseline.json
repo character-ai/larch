@@ -181,24 +181,6 @@
   },
   {
     "file": "larch/agents/agent_voters.py",
-    "qualified_symbol": "_append_voter1_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
-    "qualified_symbol": "_append_voter1_failure",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "subscript_load",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
     "qualified_symbol": "_plugin_root",
     "env_name": "CLAUDE_PLUGIN_ROOT",
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
@@ -348,6 +330,69 @@
     "constant": "ENV_CLAUDE_PLUGIN_ROOT",
     "access": "get",
     "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "_plugin_root",
+    "env_name": "CLAUDE_PLUGIN_ROOT",
+    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "HOME",
+    "constant": "ENV_HOME",
+    "access": "get",
+    "occurrence": 2,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "LOGNAME",
+    "constant": "ENV_LOGNAME",
+    "access": "get",
+    "occurrence": 5,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "PATH",
+    "constant": "ENV_PATH",
+    "access": "get",
+    "occurrence": 1,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "TMPDIR",
+    "constant": "ENV_TMPDIR",
+    "access": "get",
+    "occurrence": 3,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "USER",
+    "constant": "ENV_USER",
+    "access": "get",
+    "occurrence": 4,
+    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "env_name": "USER",
+    "constant": "ENV_USER",
+    "access": "get",
+    "occurrence": 6,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
@@ -828,15 +873,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "_plugin_root",
-    "env_name": "CLAUDE_PLUGIN_ROOT",
-    "constant": "ENV_CLAUDE_PLUGIN_ROOT",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/design/plan_quality.py",
     "qualified_symbol": "_record_validator_escalation",
     "env_name": "CLAUDE_PLUGIN_ROOT",
@@ -918,60 +954,6 @@
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "HOME",
-    "constant": "ENV_HOME",
-    "access": "get",
-    "occurrence": 2,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "LOGNAME",
-    "constant": "ENV_LOGNAME",
-    "access": "get",
-    "occurrence": 5,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "PATH",
-    "constant": "ENV_PATH",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "TMPDIR",
-    "constant": "ENV_TMPDIR",
-    "access": "get",
-    "occurrence": 3,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "USER",
-    "constant": "ENV_USER",
-    "access": "get",
-    "occurrence": 4,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
-    "env_name": "USER",
-    "constant": "ENV_USER",
-    "access": "get",
-    "occurrence": 6,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
     "file": "larch/design/plan_quality.py",
     "qualified_symbol": "validator_autofix_main",
     "env_name": "CLAUDE_PLUGIN_ROOT",
@@ -1005,24 +987,6 @@
     "constant": "ENV_IMPLEMENT_TMPDIR",
     "access": "get",
     "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/dispatch_bootstrap.py",
-    "qualified_symbol": "step0_bootstrap_main",
-    "env_name": "IMPLEMENT_TMPDIR",
-    "constant": "ENV_IMPLEMENT_TMPDIR",
-    "access": "get",
-    "occurrence": 1,
-    "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
-  },
-  {
-    "file": "larch/implement/dispatch_bootstrap.py",
-    "qualified_symbol": "step0_bootstrap_main",
-    "env_name": "ISSUE_NUMBER",
-    "constant": "ENV_ISSUE_NUMBER",
-    "access": "get",
-    "occurrence": 2,
     "reason": "grandfathered bare env literal pre-G-Cfg-2 ratchet"
   },
   {
