@@ -840,7 +840,7 @@ def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcom
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "skill": "implement",
         "run_id": "run-abc",
@@ -866,7 +866,7 @@ def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "skill": "implement",
         "run_id": "run-abc",
@@ -889,7 +889,7 @@ def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": 2,
         "skill": "implement",
         "run_id": "run-abc",

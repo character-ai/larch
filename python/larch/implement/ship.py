@@ -251,6 +251,29 @@ def _merge_pr_after_log_reconciliation(
     return merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
 
 
+def _resume_done_result(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    resume: ResumePlan,
+    repo_root: str,
+) -> ShipResult:
+    done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+    _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
+    return reconcile_committed_stalled_summary_if_recovered(
+        runner=runner,
+        ctx=done_ctx,
+        cwd=repo_root,
+        counters=_resume_reconciliation_counters(resume),
+    ) or ShipResult(
+        Outcome.OK,
+        pr_number=resume.pr_number,
+        pr_url=resume.pr_url,
+        merge_result=resume.merge_result,
+        detail="already done",
+    )
+
+
 def run_ship(
     ctx: RunContext,
     *,
@@ -270,23 +293,7 @@ def run_ship(
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
             raise Stalled("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
-            done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
-            _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
-            done_reconciliation = reconcile_committed_stalled_summary_if_recovered(
-                runner=runner,
-                ctx=done_ctx,
-                cwd=repo_root,
-                counters=_resume_reconciliation_counters(resume),
-            )
-            if done_reconciliation is not None:
-                return done_reconciliation
-            return ShipResult(
-                Outcome.OK,
-                pr_number=resume.pr_number,
-                pr_url=resume.pr_url,
-                merge_result=resume.merge_result,
-                detail="already done",
-            )
+            return _resume_done_result(runner=runner, ctx=ctx, resume=resume, repo_root=repo_root)
         if resume.start == "merged":
             working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
             merged_reconciliation = reconcile_committed_stalled_summary_if_recovered(
@@ -441,10 +448,10 @@ def run_ship(
 
         base_remote = "upstream" if working.forked or working.forked_target else "origin"
         preserve_counters = _merge_loop_uses_resume_counters(resume)
-        iteration = resume.iteration if preserve_counters else 0
-        rebase_count = resume.rebase_count if preserve_counters else 0
-        fix_attempts = resume.fix_attempts if preserve_counters else 0
-        transient_retries = resume.transient_retries if preserve_counters else 0
+        iteration: int = resume.iteration if preserve_counters else 0
+        rebase_count: int = resume.rebase_count if preserve_counters else 0
+        fix_attempts: int = resume.fix_attempts if preserve_counters else 0
+        transient_retries: int = resume.transient_retries if preserve_counters else 0
         initial_startup_deadline_available = (
             iteration == rebase_count == fix_attempts == transient_retries == 0
         )
