@@ -12,6 +12,7 @@ import stat
 import subprocess
 import sys
 from collections.abc import Callable
+from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -512,6 +513,87 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
     except (OSError, UnicodeDecodeError):
         return False
     return True
+
+
+def _pin_note_from_live_diff(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    resolved_base: str,
+    live_diff: tuple[str, str],
+) -> bool:
+    pinned = False
+    staged = staged_assessment_path(implement_tmpdir)
+    sidecar = _sidecar_path(implement_tmpdir)
+    try:
+        assessment_text = _read_regular_text_no_follow(staged)
+        diff_text, fingerprint = live_diff
+        write_staged_assessment(
+            implement_tmpdir=implement_tmpdir,
+            assessment_text=assessment_text,
+            assessed_head_sha=head_sha,
+            diff_fingerprint_value=fingerprint,
+            base_ref=resolved_base,
+            diff_text=diff_text,
+        )
+        refreshed_metadata = _read_env(sidecar)
+        metadata_valid = refreshed_metadata.get("STATUS") == "present" and refreshed_metadata.get("DIFF_FINGERPRINT") == fingerprint
+        if metadata_valid:
+            write_implement_note(
+                implement_tmpdir=implement_tmpdir,
+                note_text=assessment_text,
+                head_sha=head_sha,
+                metadata=refreshed_metadata,
+                base_ref=resolved_base,
+            )
+            pinned = True
+    except (OSError, UnicodeDecodeError):
+        pinned = False
+    return pinned
+
+
+def pin_note_from_staged_for_current_head(
+    implement_tmpdir: Path,
+    *,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
+    """Pin the staged assessment, using one live diff materialization when available."""
+    staged = staged_assessment_path(implement_tmpdir)
+    sidecar = _sidecar_path(implement_tmpdir)
+    pinned = False
+    if _regular_file(staged) and _regular_file(sidecar):
+        metadata = _read_env(sidecar)
+        resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+        if metadata.get("STATUS") == "present" and (repo_root is None or not resolved_base):
+            pinned = pin_note_from_staged(
+                implement_tmpdir,
+                head_sha=head_sha,
+                base_ref=base_ref,
+                repo_root=None,
+            )
+        elif metadata.get("STATUS") == "present" and repo_root is not None and resolved_base:
+            root: Path | None = None
+            with suppress(OSError):
+                root = Path(repo_root).resolve()
+            if root is not None:
+                live_diff = _materialize_live_diff(repo_root=root, resolved_base=resolved_base)
+                if live_diff is None:
+                    pinned = pin_note_from_staged(
+                        implement_tmpdir,
+                        head_sha=head_sha,
+                        base_ref=resolved_base,
+                        repo_root=None,
+                    )
+                elif metadata.get("DIFF_FINGERPRINT", ""):
+                    pinned = _pin_note_from_live_diff(
+                        implement_tmpdir=implement_tmpdir,
+                        head_sha=head_sha,
+                        resolved_base=resolved_base,
+                        live_diff=live_diff,
+                    )
+    return pinned
 
 
 def pin_note_from_staged(
