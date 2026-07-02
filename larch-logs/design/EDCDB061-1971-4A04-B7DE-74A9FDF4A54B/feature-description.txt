@@ -1,0 +1,22 @@
+# [BUG] #5923 residual: 5 TMPDIR leak sites remain and cleanup is manual-only; $TMPDIR top level still grows unboundedly
+
+## Symptom
+The #5923 fix (PR #5945) stopped the dominant leaker (tally-blocks, ~62% of leaked dirs, now nested under the per-run dir) and extended the /larch:cleanup sweep to the real macOS $TMPDIR. The issue's remaining criteria are unmet: repro scenarios 2 and 3 (repeated `/report-tokens analyze`; no-session `plan validate`) still leave uncleaned artifacts at $TMPDIR top level, and nothing runs the sweep automatically, so growth between manual cleanups is unbounded.
+
+## Remaining leak sites (verified at HEAD)
+- python/larch/report/report_tokens_cli.py:66 (bare mkdtemp, no cleanup)
+- python/larch/report/report_tokens_render.py:219 (bare mkdtemp, no cleanup)
+- python/larch/design/_plan_quality_commands.py:887 (mkstemp fallback)
+- scripts/sweep-design-logs.sh:17
+- quiet-log writes landing at $TMPDIR root
+
+## Expected behavior
+Per #5923: artifacts are cleaned when the owning process exits, or expire via a periodic age-based sweep, and $TMPDIR's top level stops growing unboundedly.
+
+## Suggested fix
+1. Per-site hygiene: wrap the two report-tokens `mkdtemp` uses and the `_plan_quality_commands.py` mkstemp fallback in try/finally (or contextlib) cleanup; route sweep-design-logs.sh scratch and quiet-log writes into run-scoped tmpdirs that the existing reaper already covers.
+2. Automatic expiry: wire `python3 python/cli.py cleanup run` (7-day age sweep) into a SessionStart hook, same pattern as the #5306 design-log sweep, so the sweep no longer depends on the operator remembering /larch:cleanup.
+3. Add a regression test that the report-tokens CLI leaves no new top-level $TMPDIR entries after a run.
+
+## Provenance
+Found by the 2026-07-01 closed-[BUG] fix audit. Original: #5923 (closed COMPLETED), fix commit 402fb148d (PR #5945). Verified at main 79b1c0270; the cited files are unchanged through 66e115601. Related: #5943 fixed the hook-scan timeout that this accumulation aggravates, not the leak itself.

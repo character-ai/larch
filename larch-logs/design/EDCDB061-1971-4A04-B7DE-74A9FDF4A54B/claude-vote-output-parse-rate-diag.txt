@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=3
+total_findings=3
+total_ballot_items=3
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=e7146609340797cb82f1d1003c9bbeb51c330e392dcaef094890caad775500da
+--- first 200 bytes of voter output ---
+Waiting for the background task to complete before the ballot becomes available.

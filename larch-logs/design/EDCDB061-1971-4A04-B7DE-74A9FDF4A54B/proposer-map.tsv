@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=97a1b56337f34041181abd853fd9424ed86d3a39193c7b49c95f9df3e9239871
+# neutral_ballot_sha256=ccefdb2137b7f8cbfabba71b02763623e196f448479ddfeed1b0710a0234f641
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+FINDING_2	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+OOS_1	Cursor-Requirements	- **Reviewer**: Cursor-Requirements
