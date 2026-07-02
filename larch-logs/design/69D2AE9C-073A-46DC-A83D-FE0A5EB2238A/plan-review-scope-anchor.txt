@@ -1,0 +1,42 @@
+## Symptom
+The #5797 fix (PR #5804) put `NO_OPEN_BROWSER=1` inside `cursor_auth_export_env()`, and every lane enumerated in #5797 calls it pre-spawn. One lane was missed: /design plan auto-fix. During `plan auto-fix-commands` / `plan validator-autofix`, a Cursor.app GUI window can still pop up over the operator's screen.
+
+## Root cause
+`_dispatch_vendor_fix` (python/larch/design/plan_quality.py:1087-1119) spawns `cursor agent -p` through run-external-agent with a plain `ctx.subprocess_env()` copy; nothing in that process chain sets NO_OPEN_BROWSER. Repo-wide, only 4 files reference NO_OPEN_BROWSER and none is in this path. The comment at python/larch/agents/_auth.py:168 ("all cursor lanes call this pre-spawn") is inaccurate for this lane.
+
+## Expected behavior
+All larch Cursor spawns run headless: this lane exports NO_OPEN_BROWSER=1 (via `cursor_auth_export_env()` or equivalent) before spawning, restoring the accuracy of the _auth.py comment and #5797's stated criterion ("across ALL larch Cursor lanes").
+
+## Suggested fix
+1. In the cursor branch of `_dispatch_vendor_fix` (python/larch/design/plan_quality.py:1087-1119), call `cursor_auth_export_env()` before spawning, or inject `NO_OPEN_BROWSER=1` into the env handed to run-external-agent for that spawn.
+2. Add a regression test mirroring python/tests/agents/test_agents.py:630-632 that asserts NO_OPEN_BROWSER=1 in this lane's spawn env.
+3. Re-check the other `cursor agent -p` composition sites reachable without `cursor_auth_export_env()` (repo grep for `run-external-agent` cursor branches) so the `_auth.py:168` "all cursor lanes" comment becomes true, then keep the comment.
+
+## Provenance
+Found by the 2026-07-01 closed-[BUG] fix audit. Original: #5797 (closed COMPLETED), fix 115b39806 (PR #5804), post-split backport 5e81e8613 (PR #5809). Verified at main 79b1c0270; plan_quality.py unchanged through 66e115601 (the _auth.py change in that delta touched only a Codex probe argument).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Close the #5797 gap: make the `/design` plan-autofix Cursor lane export `NO_OPEN_BROWSER=1` before spawning `cursor agent -p`, so no Composer GUI window can pop up during `plan auto-fix-commands` / `plan validator-autofix`.
+- Add regression coverage that proves this lane's spawn environment carries `NO_OPEN_BROWSER=1`.
+- Confirm (repo-wide) no other Cursor spawn site is missing this export, so the `_auth.py:168` "all cursor lanes" comment stays true.
+
+### Non-goals
+- No change to the codex branch of `_dispatch_vendor_fix`.
+- No change to Cursor auth, trust, or sandbox posture.
+- No broader refactor of `_dispatch_vendor_fix` or `cursor_auth_export_env()`.
+
+### Approach sketch
+- In `python/larch/design/plan_quality.py`, cursor branch of `_dispatch_vendor_fix`, call `agents.cursor_auth_export_env()` before building and spawning `cursor_cmd`. This mirrors the pre-spawn call already used in `_review_launcher.py`, `_ci_launcher.py`, `_drafter.py`, `coder_runner.py`, and `checks_lint_fix.py`.
+- Add a regression test in `python/tests/design/test_plan_quality.py` that exercises `_dispatch_vendor_fix` on the cursor branch and asserts `NO_OPEN_BROWSER=1` is present in the spawn environment, mirroring `test_agents.py:627-632`.
+- No other production file changes: a repo-wide sweep confirms every other Python Cursor-spawn site and the one Bash-embedded site (`skills/research/references/validation-phase.md`) already set this env var.
+
+### Surfaces in scope
+- `python/larch/design/plan_quality.py` (`_dispatch_vendor_fix`)
+- `python/tests/design/test_plan_quality.py` (new regression test)
+
+### Open questions
+- None.
