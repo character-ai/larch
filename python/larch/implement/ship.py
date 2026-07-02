@@ -185,7 +185,8 @@ def _no_checks_phase14_reason(*, runner: Runner, working: RunContext, cwd: str) 
         return ""
     if not isinstance(data, dict):
         return ""
-    merge_state = str(data.get("mergeStateStatus") or "")
+    typed = cast("dict[str, object]", data)
+    merge_state = str(typed.get("mergeStateStatus") or "")
     if merge_state in {"DIRTY", "BEHIND"}:
         return f"mergeStateStatus={merge_state}"
     return ""
