@@ -158,7 +158,7 @@ def _checks_relay_line(captured: dict[str, str]) -> str:
             line += f" WARN={captured['WARN']}"
         return line
     parts = ["STATUS=fail", f"FAILURE_REASON={captured.get('FAILURE_REASON', 'checks-failed')}"]
-    parts.extend(f"{key}={captured[key]}" for key in ("EXIT_CODE", "PHASE", "REDACTED_LOG_FILE") if captured.get(key))
+    parts.extend(f"{key}={captured[key]}" for key in ("EXIT_CODE", "PHASE", "DIGEST_FILE", "REDACTED_LOG_FILE") if captured.get(key))
     return " ".join(parts)
 
 

@@ -27,6 +27,16 @@ from larch.core import redact
 from larch.core.proc import CommandResult, Runner
 
 _RCC_MAX_ITER_CAP: Final = 6
+CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
+_CHECKS_FAILURE_DIGEST_ERROR_MAX_BYTES: Final = 512
+_CHECKS_FAILURE_DIGEST_MARKER_RE: Final = re.compile(
+    r"ERROR:|Error:|FAILED|Failed|Traceback|AssertionError|DEFECT"
+)
+_CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
+    r"(?<![\w./-])((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+):(\d+)(?::\d+)?\b"
+)
+_CHECKS_FAILURE_DIGEST_PRECOMMIT_RE: Final = re.compile(r"^(.+?)(?:\.{2,}|\s{2,})Failed\b")
+_CHECKS_FAILURE_DIGEST_DIRECT_RE: Final = re.compile(r"^=== Running direct relevant make target\(s\): (.+) ===$")
 
 
 def plugin_scripts_dir() -> Path:
@@ -45,6 +55,7 @@ class ChecksResult:
     warn: str | None
     raw_log_path: str | None = None
     failure_reason: str | None = None
+    digest_file_path: str | None = None
 
 
 @dataclass(frozen=True)
@@ -290,6 +301,7 @@ def _checks_failure(  # noqa: PLR0913,RUF100
     phase: str = "unknown",
     coverage: str = "changed-file-only",
     warn: str | None = None,
+    digest_file_path: str | None = None,
 ) -> ChecksResult:
     return ChecksResult(
         ok=False,
@@ -302,6 +314,7 @@ def _checks_failure(  # noqa: PLR0913,RUF100
         warn=warn,
         raw_log_path=raw_log_path,
         failure_reason=reason,
+        digest_file_path=digest_file_path,
     )
 
 
@@ -691,6 +704,173 @@ def _redact_log(*, log_file: Path, redacted_file: Path) -> bool:
     return True
 
 
+@dataclass
+class _ChecksFailureDigestRecord:
+    check: str
+    failure_count: int = 0
+    first_location: str = "unknown"
+    first_error: str = "unknown"
+
+
+def _utf8_prefix(text: str, max_bytes: int) -> str:
+    encoded = text.encode("utf-8")
+    if len(encoded) <= max_bytes:
+        return text
+    return encoded[:max_bytes].decode("utf-8", errors="ignore")
+
+
+def _digest_line(text: str) -> str:
+    return _utf8_prefix(text.strip().replace("\r", ""), _CHECKS_FAILURE_DIGEST_ERROR_MAX_BYTES) or "unknown"
+
+
+def _direct_digest_check(header_targets: str) -> str:
+    targets = tuple(target for target in header_targets.split() if target)
+    if len(targets) == 1:
+        return targets[0]
+    return "direct-make"
+
+
+def _precommit_digest_check(line: str) -> str | None:
+    match = _CHECKS_FAILURE_DIGEST_PRECOMMIT_RE.match(line)
+    if match is None:
+        return None
+    return match.group(1).strip(" .") or None
+
+
+def _digest_check_for_line(line: str, current_check: str) -> str:
+    if line.startswith("DEFECT:"):
+        return "contains-pins"
+    precommit_check = _precommit_digest_check(line)
+    if precommit_check:
+        return precommit_check
+    if "pre-commit not found" in line:
+        return "pre-commit"
+    return current_check
+
+
+def _digest_header_context(line: str, current_check: str) -> tuple[str, bool]:
+    direct_match = _CHECKS_FAILURE_DIGEST_DIRECT_RE.match(line)
+    if "=== Running pre-commit" in line:
+        return "pre-commit", True
+    if direct_match is not None:
+        return _direct_digest_check(direct_match.group(1)), True
+    if line == "=== Running agent-lint ===":
+        return "agent-lint", True
+    return current_check, False
+
+
+def _record_for_check(
+    records: dict[str, _ChecksFailureDigestRecord],
+    check: str,
+) -> _ChecksFailureDigestRecord:
+    record = records.get(check)
+    if record is None:
+        record = _ChecksFailureDigestRecord(check=check)
+        records[check] = record
+    return record
+
+
+def _update_digest_record(
+    records: dict[str, _ChecksFailureDigestRecord],
+    *,
+    check: str,
+    line: str,
+    marker_match: re.Match[str] | None,
+) -> None:
+    record = _record_for_check(records, check)
+    location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+    if record.first_location == "unknown" and location_match is not None:
+        record.first_location = f"{location_match.group(1)}:{location_match.group(2)}"
+    if marker_match is None:
+        return
+    record.failure_count += 1
+    if record.first_error == "unknown":
+        record.first_error = _digest_line(line)
+
+
+def _digest_record_group(record: _ChecksFailureDigestRecord) -> str:
+    return (
+        f"check={record.check}\n"
+        f"failure_count={record.failure_count}\n"
+        f"first_location={record.first_location}\n"
+        f"first_error={record.first_error}\n"
+    )
+
+
+def _checks_failure_digest_header(*, site: str, truncated: bool) -> str:
+    return (
+        "CHECKS_FAILURE_DIGEST v1\n"
+        f"site={site}\n"
+        f"digest_truncated={'true' if truncated else 'false'}\n"
+    )
+
+
+def _build_checks_failure_digest(*, redacted_log_text: str, site: str) -> str:
+    records: dict[str, _ChecksFailureDigestRecord] = {}
+    current_check = "unknown"
+    fallback_line = ""
+    for line in redacted_log_text.splitlines():
+        current_check, is_header = _digest_header_context(line, current_check)
+        if is_header:
+            continue
+
+        precommit_check = _precommit_digest_check(line)
+        if precommit_check is not None:
+            current_check = precommit_check
+        elif line.startswith("DEFECT:"):
+            current_check = "contains-pins"
+        marker_match = _CHECKS_FAILURE_DIGEST_MARKER_RE.search(line)
+        check = _digest_check_for_line(line, current_check)
+        if marker_match is not None:
+            if not fallback_line:
+                fallback_line = line
+            _update_digest_record(records, check=check, line=line, marker_match=marker_match)
+        elif records:
+            _update_digest_record(records, check=check, line=line, marker_match=None)
+
+    if not records:
+        record = _record_for_check(records, "unknown")
+        record.first_error = _digest_line(fallback_line) if fallback_line else "unknown"
+
+    body_groups = [_digest_record_group(record) for record in records.values()]
+    selected: list[str] = []
+    truncated = False
+    header = _checks_failure_digest_header(site=site, truncated=False)
+    for group in body_groups:
+        candidate = header + "".join(selected) + group
+        if len(candidate.encode("utf-8")) > CHECKS_FAILURE_DIGEST_MAX_BYTES:
+            truncated = True
+            break
+        selected.append(group)
+    header = _checks_failure_digest_header(site=site, truncated=truncated)
+    digest = header + "".join(selected)
+    if len(digest.encode("utf-8")) <= CHECKS_FAILURE_DIGEST_MAX_BYTES:
+        return digest
+    return _utf8_prefix(digest, CHECKS_FAILURE_DIGEST_MAX_BYTES)
+
+
+def _write_failure_digest_from_redacted(
+    *,
+    redacted_file: Path,
+    site: str,
+    attempt: str,
+    log_dir: Path,
+) -> str | None:
+    redacted_text = read_log_file_text(redacted_file)
+    if redacted_text is None:
+        return None
+    digest_file = log_dir / f"{site}-{attempt}.digest.txt"
+    try:
+        digest = _build_checks_failure_digest(redacted_log_text=redacted_text, site=site)
+        _ = digest_file.write_text(digest, encoding="utf-8")
+        digest_file.chmod(0o600)
+    except OSError:
+        with contextlib.suppress(OSError):
+            digest_file.unlink(missing_ok=True)
+        return None
+    return str(digest_file)
+
+
 def _is_no_validation_phases_log(log_file: Path) -> bool:
     text = read_log_file_text(log_file)
     return text is not None and "ERROR: no validation phases ran" in text
@@ -713,6 +893,16 @@ def _finish_logged_result(
         attempt = log_file.name.rsplit("-", 1)[-1].removesuffix(".log")
         redacted_file = log_dir / f"{site}-{attempt}.redacted.log"
         redacted_path = str(redacted_file) if _redact_log(log_file=log_file, redacted_file=redacted_file) else None
+        digest_path = (
+            _write_failure_digest_from_redacted(
+                redacted_file=redacted_file,
+                site=site,
+                attempt=attempt,
+                log_dir=log_dir,
+            )
+            if redacted_path is not None
+            else None
+        )
         return _checks_failure(
             site=site,
             exit_code=2,
@@ -722,6 +912,7 @@ def _finish_logged_result(
             phase="none",
             coverage="none",
             warn=warn,
+            digest_file_path=digest_path,
         )
     if ok:
         return ChecksResult(
@@ -746,6 +937,12 @@ def _finish_logged_result(
             coverage=coverage,
             warn="redaction-failed",
         )
+    digest_path = _write_failure_digest_from_redacted(
+        redacted_file=redacted_file,
+        site=site,
+        attempt=attempt,
+        log_dir=log_dir,
+    )
     return _checks_failure(
         site=site,
         exit_code=result_code,
@@ -755,6 +952,7 @@ def _finish_logged_result(
         phase=phase,
         coverage=coverage,
         warn=warn,
+        digest_file_path=digest_path,
     )
 
 
@@ -1170,6 +1368,10 @@ def checks_run_relevant_main(argv: list[str] | None = None) -> int:
         parts.extend([
             f"EXIT_CODE={result.exit_code}",
             f"PHASE={result.phase}",
+        ])
+        if result.digest_file_path:
+            parts.append(f"DIGEST_FILE={result.digest_file_path}")
+        parts.extend([
             f"REDACTED_LOG_FILE={result.redacted_log_path}",
         ])
     print(" ".join(parts))

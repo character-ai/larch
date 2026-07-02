@@ -1965,7 +1965,7 @@ def test_checks_relay_uses_whitespace_parser_without_parse_kv(monkeypatch: pytes
         raise AssertionError("line-oriented parse_kv must not parse checks relay")
 
     monkeypatch.setattr(implement_dispatch, "_parse_kv", fail_parse_kv)
-    line = "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 PHASE=checks REDACTED_LOG_FILE=/tmp/redacted.log trailing prose"
+    line = "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 PHASE=checks DIGEST_FILE=/tmp/digest.txt REDACTED_LOG_FILE=/tmp/redacted.log trailing prose"
 
     values = implement_dispatch._parse_whitespace_kv_line(line)
 
@@ -1974,11 +1974,12 @@ def test_checks_relay_uses_whitespace_parser_without_parse_kv(monkeypatch: pytes
         "FAILURE_REASON": "relevant-checks-failed",
         "EXIT_CODE": "2",
         "PHASE": "checks",
+        "DIGEST_FILE": "/tmp/digest.txt",
         "REDACTED_LOG_FILE": "/tmp/redacted.log",
     }
     assert implement_dispatch._checks_relay_line(values) == (
         "STATUS=fail FAILURE_REASON=relevant-checks-failed EXIT_CODE=2 "
-        "PHASE=checks REDACTED_LOG_FILE=/tmp/redacted.log"
+        "PHASE=checks DIGEST_FILE=/tmp/digest.txt REDACTED_LOG_FILE=/tmp/redacted.log"
     )
 
 
@@ -2182,7 +2183,7 @@ def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change
     )
 
     def fake_composite(_argv: list[str] | None = None) -> int:
-        print("STATUS=fail FAILURE_REASON=checks-failed REDACTED_LOG_FILE=/tmp/redacted.log")
+        print("STATUS=fail FAILURE_REASON=checks-failed DIGEST_FILE=/tmp/digest.txt REDACTED_LOG_FILE=/tmp/redacted.log")
         print("NEXT_ACTION=checks-failed")
         return 0
 
@@ -2194,8 +2195,9 @@ def test_step6_entry_checks_failed_relay_keeps_redacted_log_after_leading_change
     lines = capsys.readouterr().out.splitlines()
     assert rc == 0
     assert lines[:3] == ["FILES_CHANGED=true", "UNTRACKED_BASELINE=present", "GIT_PROBE_FAILED=false"]
-    assert lines[3] == "STATUS=fail FAILURE_REASON=checks-failed REDACTED_LOG_FILE=/tmp/redacted.log"
+    assert lines[3] == "STATUS=fail FAILURE_REASON=checks-failed DIGEST_FILE=/tmp/digest.txt REDACTED_LOG_FILE=/tmp/redacted.log"
     assert "NEXT_ACTION=checks-failed" in lines
+    assert any("DIGEST_FILE=/tmp/digest.txt" in line for line in lines)
     assert any("REDACTED_LOG_FILE=/tmp/redacted.log" in line for line in lines)
 
 

@@ -10,6 +10,8 @@ Structural reasons include `tmpdir-validation`, `site-validation`, `repo-root-un
 
 Act on the reason.
 Do not invoke repair-loop when no `REDACTED_LOG_FILE` exists.
+For prompt-side diagnosis, prefer `DIGEST_FILE` when it is present and readable. Fall back to `REDACTED_LOG_FILE` when the digest is absent, unreadable, or insufficient.
+At folded sites, key-scan the full composite stdout for both `DIGEST_FILE` and `REDACTED_LOG_FILE`, not only the first physical composite line. Bind `DIGEST_FILE` for diagnosis and reserve `REDACTED_LOG_FILE` for repair-loop input.
 Before skipping to Step 18 on this no-log path, whitespace-token-scan the first physical line of captured composite stdout for `EXIT_CODE`, `FAILURE_REASON`, and `PHASE`. Mirror `FAILURE_REASON` into `IMPLEMENT_BAIL_REASON` and `FINAL_BAIL_REASON`. Set `STALL_STEP` from the pinned site (`3` for `--site step3`, `6` for `--site step6`, `5` for Step 5 self-review). Default `PHASE` to `checks` when the composite line omits it.
 Then route to the default stall semantics in section 4: set `STALL_TRACKING=true`, skip to Step 18, and do not proceed on the site success path.
 
@@ -77,6 +79,7 @@ After the pathspec refresh fence succeeds, rewrite `$IMPLEMENT_TMPDIR/implementa
 
 If `REPO_ROOT` is empty, follow the Step 2.4 `repo-root-unresolved` bail contract in `${CLAUDE_PLUGIN_ROOT}/skills/implement/SKILL.md` instead of calling `recovery-paths`. Then re-run the section 2-pinned composite launcher with identical argv. For Step 6 after main-agent repair edits, re-run `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true` before any success-path routing or subsequent `checks repair-loop` invocation; do not reuse the initial orchestrator argv without `--force-checks true`.
 On `STATUS=fail` or composite `NEXT_ACTION=checks-failed` with `REDACTED_LOG_FILE`, re-invoke `checks repair-loop` with the same pinned `--site` and optional `--checks-site` pair from section 2 for this call site and the updated `--checks-log`.
+If a new `DIGEST_FILE` is present on re-entry, replace the previous digest for prompt-side diagnosis. Keep the updated `REDACTED_LOG_FILE` as the repair-loop input.
 Do not pass only `--checks-log`.
 Step 5 MAV and coder must repeat `--site step5-mav --checks-site step5-review-fixes`.
 Repeat until repair-loop `NEXT_ACTION` is `continue` or `stall`; `continue` still means re-run the same composite launcher before success routing. On Step 6, both `continue` and `main-agent-edit` repair paths must use `skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}" --force-checks true`; never re-enter Step 6 repair via bare `checks-commit-route`.
