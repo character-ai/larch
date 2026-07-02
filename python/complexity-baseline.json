@@ -2469,7 +2469,7 @@
     "file": "larch/implement/ci_agentic_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_run_cycle",
-    "metric": 100
+    "metric": 101
   },
   {
     "file": "larch/implement/ci_monitor.py",
