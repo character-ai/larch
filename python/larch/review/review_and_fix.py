@@ -882,7 +882,7 @@ def record_round_timing(argv: list[str] | None = None) -> int:
             if raw.isdigit():
                 rejected = int(raw)
             else:
-                rejected = len(re.findall(r"^(?:[0-9]+:)?FINDING_[0-9]+_OUTCOME=rejected$", _read_text(round_dir / "rejected-findings.md"), flags=re.MULTILINE))
+                rejected = _count_rejected_lines(round_dir / "rejected-findings.md")
     accepted = max(accepted, 0)
     rejected = max(rejected, 0)
     ledger = implement_tmpdir / "timing-ledger.tsv"

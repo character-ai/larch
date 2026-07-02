@@ -303,7 +303,31 @@ def test_tally_rescues_high_severity_neutral_findings_to_oos(tmp_path: Path) -> 
     assert emit.returncode == 0, emit.stderr
     rebuilt_rejected = (case / "rejected-findings.md").read_text(encoding="utf-8")
     assert "FINDING_1" not in rebuilt_rejected
-    assert "FINDING_2_OUTCOME=rejected" in rebuilt_rejected
+    assert "FINDING_2: Nit neutral" in rebuilt_rejected
+    assert "Low severity single-YES concern" in rebuilt_rejected
+    assert "Vote tally: YES=1 NO=2 JUDGE_ERROR=0" in rebuilt_rejected
+
+    log_root = tmp_path / "logs"
+    write_round = _run_cli(
+        "run-log",
+        "write-round",
+        "--log-root",
+        str(log_root),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-a",
+        "--round",
+        "1",
+        "--source-dir",
+        str(case),
+    )
+    assert write_round.returncode == 0, write_round.stderr
+    committed_rejected = (log_root / "implement" / "run-a" / "round-1" / "rejected-findings.md").read_text(
+        encoding="utf-8"
+    )
+    assert "FINDING_2: Nit neutral" in committed_rejected
+    assert "Low severity single-YES concern" in committed_rejected
 
 
 def test_tally_flags_under_quorum_findings(tmp_path: Path) -> None:
