@@ -135,7 +135,7 @@
     "file": "larch/agents/_claude_runner.py",
     "code": "C901",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/agents/_claude_runner.py",
@@ -153,7 +153,7 @@
     "file": "larch/agents/_claude_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 17
+    "metric": 18
   },
   {
     "file": "larch/agents/_claude_runner.py",
@@ -183,7 +183,7 @@
     "file": "larch/agents/_claude_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 77
+    "metric": 79
   },
   {
     "file": "larch/agents/_claude_runner.py",
@@ -513,6 +513,12 @@
     "file": "larch/agents/agent_waterfall.py",
     "code": "C901",
     "qualified_symbol": "_apply_collector_block",
+    "metric": 11
+  },
+  {
+    "file": "larch/agents/agent_waterfall.py",
+    "code": "C901",
+    "qualified_symbol": "_launch_slot",
     "metric": 11
   },
   {
@@ -2697,7 +2703,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 162
+    "metric": 161
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -4730,6 +4736,18 @@
   {
     "file": "larch/report/tokens.py",
     "code": "PLR0911",
+    "qualified_symbol": "_panel_context_from_tsv",
+    "metric": 7
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_panel_slot_kind_from_env",
+    "metric": 8
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "code": "PLR0911",
     "qualified_symbol": "token_record_vendor_main",
     "metric": 7
   },
@@ -4761,6 +4779,18 @@
     "file": "larch/report/tokens.py",
     "code": "PLR0913",
     "qualified_symbol": "TokenLedger.record_vendor",
+    "metric": 8
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "code": "PLR0913",
+    "qualified_symbol": "append_panel_prompt_size",
+    "metric": 11
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "code": "PLR0913",
+    "qualified_symbol": "build_panel_dispatch_env",
     "metric": 8
   },
   {
@@ -4995,7 +5025,7 @@
     "file": "larch/review/coder_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_findings_with_coder",
-    "metric": 15
+    "metric": 19
   },
   {
     "file": "larch/review/coder_runner.py",
@@ -5054,38 +5084,26 @@
   {
     "file": "larch/review/plan_review.py",
     "code": "C901",
-    "qualified_symbol": "_run_apply",
-    "metric": 15
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "C901",
     "qualified_symbol": "run_step3_review",
-    "metric": 36
+    "metric": 34
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0911",
     "qualified_symbol": "run_step3_review",
-    "metric": 17
-  },
-  {
-    "file": "larch/review/plan_review.py",
-    "code": "PLR0912",
-    "qualified_symbol": "_run_apply",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "run_step3_review",
-    "metric": 37
+    "metric": 34
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 138
+    "metric": 133
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5175,7 +5193,7 @@
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 60
+    "metric": 61
   },
   {
     "file": "larch/review/plan_review_round.py",
@@ -5630,6 +5648,12 @@
   {
     "file": "larch/review/review_tally.py",
     "code": "C901",
+    "qualified_symbol": "log_phase",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "C901",
     "qualified_symbol": "tally_code_votes",
     "metric": 62
   },
@@ -5656,6 +5680,12 @@
     "code": "PLR0912",
     "qualified_symbol": "emit_tally",
     "metric": 23
+  },
+  {
+    "file": "larch/review/review_tally.py",
+    "code": "PLR0912",
+    "qualified_symbol": "log_phase",
+    "metric": 13
   },
   {
     "file": "larch/review/review_tally.py",

@@ -234,15 +234,9 @@ def test_review_fix_coder_attempts_claude_before_main_agent(tmp_path: Path, monk
     result = review_and_fix.apply_findings_with_coder(input_file=accepted, round_dir=round_dir, result_file=result_file)
 
     assert seen == ["review.fix_coder"]
-<<<<<<< HEAD
     assert run_calls == ["codex", "cursor", "claude"]
     assert result.tool == "none"
     assert result.status == "main-agent-required"
-=======
-    assert run_calls == ["codex"]
-    assert result.tool == "codex"
-    assert result.status == "no-changes"
->>>>>>> 79f466f28 (Fix Step 3 check failures in panel prompt-size instrumentation)
 
 
 def test_ci_monitor_available_tiers_uses_ci_recovery_role(monkeypatch: pytest.MonkeyPatch) -> None:

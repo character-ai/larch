@@ -463,7 +463,6 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         "claude": _run_coder_claude,
     }
     attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
-    commit_failed = False
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
         if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):
