@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, cast
 
 from larch.agents import collect_results
 from larch.core import logging_util
@@ -423,15 +423,21 @@ def test_cmd_json_outer_launcher_uses_last_mode_flag(monkeypatch: pytest.MonkeyP
 def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     monkeypatch.setenv("LARCH_COLLECT_RESULTS_TRAP", "1")
-    captured: dict[str, str] = {}
+    monkeypatch.delenv("NO_OPEN_BROWSER", raising=False)
+    monkeypatch.setenv("CURSOR_API_KEY", "  collector-key  ")
+    captured_env: dict[str, str] = {}
 
     def fake_popen(args: list[str], **kwargs: object) -> object:
         _ = args
-        captured["env"] = json.dumps(dict(kwargs.get("env", {})))  # type: ignore[reportCallIssue, reportArgumentType]
+        env = kwargs.get("env", {})
+        assert isinstance(env, dict)
+        captured_env.update(cast("dict[str, str]", env))
+
         class _Proc:
             def wait(self, timeout: float = 0) -> int:
                 _ = timeout
                 return 0
+
         return _Proc()
 
     output = tmp_path / "cursor-retry-env.txt"
@@ -442,7 +448,9 @@ def test_env_without_test_hooks_strips_collect_results_vars(monkeypatch: pytest.
     monkeypatch.setattr(collect_results, "_wait_retry_plans", lambda _plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(collect_results, "_apply_empty_retry_results", lambda records, plans: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]  # noqa: ARG005
     assert collect_results.collect_results_main(["--timeout", "2", str(output)]) == 0
-    assert "LARCH_COLLECT_RESULTS_TRAP" not in captured.get("env", "")
+    assert "LARCH_COLLECT_RESULTS_TRAP" not in captured_env
+    assert captured_env["NO_OPEN_BROWSER"] == "1"
+    assert captured_env["CURSOR_API_KEY"] == "collector-key"
 
 
 def test_ns_retry_fields_emitted_on_not_substantive(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
