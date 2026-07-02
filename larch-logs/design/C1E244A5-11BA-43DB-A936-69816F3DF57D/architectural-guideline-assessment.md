@@ -1,0 +1,1 @@
+- G-Cfg-1 (wire-literals as Final in config.py): manifest filename literals stay inline, matching existing codebase convention for these files; pre-existing condition, not introduced by this fix.

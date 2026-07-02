@@ -1,0 +1,72 @@
+## Summary
+
+The vendor-fallback reviewer-attribution reconciliation added by #5838 is applied only to `/design` plan-review; it silently no-ops for `/review` code review, despite the #5838 commit message claiming both `/design` and `/review`. On a vendor fallback (a reviewer slot's configured tool fails its probe and the slot waterfalls to a different tool), code-review "Top reviewers" / reviewer-status attribution still credits the slot's configured tool, not the tool that actually executed.
+
+## Original report
+
+Audit of #5838's merged fix found that `_fallback_label_remap` reads only `/design` plan-review manifests, so the "(via <ExecutingTool>)" annotation never reaches `/review` code-review reporting.
+
+## Reproduction scenario
+
+1. Run `/review --diff` (code review) where a reviewer slot's primary vendor (e.g. Cursor) fails its preflight/probe and the slot waterfalls to another tool (Codex or the Claude floor).
+2. Inspect the final report's Top-reviewers table / reviewer-status attribution for that slot.
+3. Observe the slot is credited to its configured tool, not the executing tool. (Same scenario under `/design` is correctly annotated.)
+
+## Expected behavior
+
+Code-review reviewer attribution shows `<slot> (via <ExecutingTool>)` on vendor fallback, identical to the `/design` behavior #5838 delivered.
+
+## Observed behavior
+
+Only `/design` plan-review attribution is reconciled. `/review` code-review attribution is unreconciled and credits the configured tool.
+
+## Root cause analysis
+
+`_fallback_label_remap` (`python/larch/report/progress_report.py:353-367`) reads only `panel-manifest.ndjson` and `plan-review-slots.ndjson` — both `/design` plan-review artifacts. Code review records its slots in `code-voter-slots.ndjson` (and the code-review reviewer manifest), which the remap never consults. The shared renderer path is common to both surfaces, but the remap's manifest inputs are `/design`-only, so the annotation is a no-op for code review. Verified by direct read.
+
+## Evidence
+
+- `python/larch/report/progress_report.py:353` — `def _fallback_label_remap(round_dirs)`; `:367` reads `panel-manifest.ndjson` / `plan-review-slots.ndjson` only.
+- No reference to `code-voter-slots.ndjson` anywhere in the remap path.
+- #5838's tests (`test_fallback_label_remap_annotates_executing_tool`, `test_write_reviewer_status_tsv_annotates_vendor_fallback`) exercise only `/design` manifests; none use a code-review manifest.
+
+## Affected files
+
+- `python/larch/report/progress_report.py` — `_fallback_label_remap` and the Top-reviewers/reviewer-status callers that consume it.
+- The code-review slot-manifest producers (`code-voter-slots.ndjson`) — confirm they carry an executing-tool field the remap can key on.
+
+## Suggested fix(es)
+
+Extend `_fallback_label_remap` (or add a code-review sibling that the shared renderer also calls) to read the code-review slot manifests (`code-voter-slots.ndjson` plus the code-review reviewer manifest) and apply the same executing-tool annotation to code-review Top-reviewers. Add a regression test that exercises a code-review manifest with a vendor fallback and asserts the `(via <Tool>)` annotation.
+
+## Open questions
+
+- Do the code-review manifests already record the executing tool in the shape the remap expects (a `TOOL=` field), or must the producer be updated to emit it before the remap can annotate?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make vendor-fallback reviewer attribution (the `(via <Tool>)` annotation) work for `/review` code-review and `/implement` Step 5 review, not just `/design` plan-review, in the shared final-report Top-reviewers table.
+- Generalize the existing `_fallback_label_remap` machinery so one code path serves both surfaces, instead of bolting on a second design-shaped implementation.
+- Add regression coverage exercising a code-review manifest with a vendor fallback.
+
+### Non-goals
+- No retroactive re-rendering of already-committed historical run-log reports; the fix is forward-looking only.
+- No new live in-progress "reviewer-status" display for `/review` — that is a `/design`-only Step 3 UX feature with no code-review analog today.
+- No change to voting/point-competition behavior. `code-voter-slots.ndjson` is the voter manifest, not the reviewer/finder manifest this bug concerns; investigation found the reviewer/finder manifest (`panel-manifest.ndjson`) already carries the needed `tool` field for both surfaces.
+
+### Approach sketch
+- Generalize `_fallback_label_remap`'s directory-ancestor resolution in `progress_report.py`: it currently assumes `/design`'s two-level `plan-review/round-N` nesting (`round_dir.parent.parent`), which resolves to the wrong directory for code-review's shallower round nesting. Reuse the pattern already established by the working `_collector_env_paths_for_round` helper instead of the hardcoded ancestor jump.
+- Derive the nominal (pre-fallback) vendor from the manifest row's own `tool` field rather than reverse-parsing it from the slot-name string, since both `/design` and `/review` manifests already carry `tool` per row. Code-review slot names (e.g. `code-quality`) don't encode tool the way `/design`'s `cursor-plan-arch`/`codex-plan-arch` convention does, so the existing slot-name-prefix table can't recognize them.
+- The existing `/design`-only live `reviewer-status.tsv` display (`plan_review_round.write_reviewer_status_tsv`) stays as-is; whatever shared reconciliation logic remains may live in `progress_report.py` or move to a shared module, decided during plan drafting.
+- Add a code-review-flavored counterpart to the existing `test_fallback_label_remap_annotates_executing_tool` test.
+
+### Surfaces in scope
+- `python/larch/report/progress_report.py` (`_fallback_label_remap`, `_apply_fallback_remap`, ancestor/manifest resolution)
+- `python/tests/report/test_progress_report.py` (new regression test)
+- `python/larch/review/plan_review_round.py` (only if shared reconciliation logic needs to move here or be exposed differently)
+
+### Open questions
+- None.

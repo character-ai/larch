@@ -1,0 +1,1 @@
+Fix `/review` and `/implement` Step 5 Top-reviewer attribution by teaching `_fallback_label_remap` to use round-local code-review collector and manifest data, while preserving existing `/design` behavior.

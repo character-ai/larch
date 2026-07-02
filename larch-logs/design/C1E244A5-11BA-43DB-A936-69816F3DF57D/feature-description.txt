@@ -1,0 +1,46 @@
+# [BUG] /review vendor-fallback reviewer attribution not reconciled (only /design)
+
+## Summary
+
+The vendor-fallback reviewer-attribution reconciliation added by #5838 is applied only to `/design` plan-review; it silently no-ops for `/review` code review, despite the #5838 commit message claiming both `/design` and `/review`. On a vendor fallback (a reviewer slot's configured tool fails its probe and the slot waterfalls to a different tool), code-review "Top reviewers" / reviewer-status attribution still credits the slot's configured tool, not the tool that actually executed.
+
+## Original report
+
+Audit of #5838's merged fix found that `_fallback_label_remap` reads only `/design` plan-review manifests, so the "(via <ExecutingTool>)" annotation never reaches `/review` code-review reporting.
+
+## Reproduction scenario
+
+1. Run `/review --diff` (code review) where a reviewer slot's primary vendor (e.g. Cursor) fails its preflight/probe and the slot waterfalls to another tool (Codex or the Claude floor).
+2. Inspect the final report's Top-reviewers table / reviewer-status attribution for that slot.
+3. Observe the slot is credited to its configured tool, not the executing tool. (Same scenario under `/design` is correctly annotated.)
+
+## Expected behavior
+
+Code-review reviewer attribution shows `<slot> (via <ExecutingTool>)` on vendor fallback, identical to the `/design` behavior #5838 delivered.
+
+## Observed behavior
+
+Only `/design` plan-review attribution is reconciled. `/review` code-review attribution is unreconciled and credits the configured tool.
+
+## Root cause analysis
+
+`_fallback_label_remap` (`python/larch/report/progress_report.py:353-367`) reads only `panel-manifest.ndjson` and `plan-review-slots.ndjson` — both `/design` plan-review artifacts. Code review records its slots in `code-voter-slots.ndjson` (and the code-review reviewer manifest), which the remap never consults. The shared renderer path is common to both surfaces, but the remap's manifest inputs are `/design`-only, so the annotation is a no-op for code review. Verified by direct read.
+
+## Evidence
+
+- `python/larch/report/progress_report.py:353` — `def _fallback_label_remap(round_dirs)`; `:367` reads `panel-manifest.ndjson` / `plan-review-slots.ndjson` only.
+- No reference to `code-voter-slots.ndjson` anywhere in the remap path.
+- #5838's tests (`test_fallback_label_remap_annotates_executing_tool`, `test_write_reviewer_status_tsv_annotates_vendor_fallback`) exercise only `/design` manifests; none use a code-review manifest.
+
+## Affected files
+
+- `python/larch/report/progress_report.py` — `_fallback_label_remap` and the Top-reviewers/reviewer-status callers that consume it.
+- The code-review slot-manifest producers (`code-voter-slots.ndjson`) — confirm they carry an executing-tool field the remap can key on.
+
+## Suggested fix(es)
+
+Extend `_fallback_label_remap` (or add a code-review sibling that the shared renderer also calls) to read the code-review slot manifests (`code-voter-slots.ndjson` plus the code-review reviewer manifest) and apply the same executing-tool annotation to code-review Top-reviewers. Add a regression test that exercises a code-review manifest with a vendor fallback and asserts the `(via <Tool>)` annotation.
+
+## Open questions
+
+- Do the code-review manifests already record the executing tool in the shape the remap expects (a `TOOL=` field), or must the producer be updated to emit it before the remap can annotate?

@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- reviewer-slot failures are a separate surface the plan does not need to fix.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- matching standalone /review log layout is beyond the stated Top-reviewers attribution fix.
