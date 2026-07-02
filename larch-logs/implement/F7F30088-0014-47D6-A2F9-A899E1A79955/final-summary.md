@@ -1,13 +1,15 @@
-## /implement run F7F30088-0014-47D6-A2F9-A899E1A79955 — shipping
+## /implement run F7F30088-0014-47D6-A2F9-A899E1A79955 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:28:15
 - **Cost**: 💰 TOTAL ~$30.73 — Claude $5.92, Codex-5.5 $16.68, Codex-mini $0.24, Cursor $6.36, Claude (subprocess) $1.53  |  Tokens: 46695k
 - **Issue**: #5887 — https://github.com/character-ai/larch/issues/5887
+- **PR**: #6041 — https://github.com/character-ai/larch/pull/6041
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +59/-47, larch-logs +582/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
