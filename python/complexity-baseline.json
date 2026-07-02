@@ -2301,7 +2301,7 @@
     "file": "larch/git/rebase.py",
     "code": "C901",
     "qualified_symbol": "_resolve_conflicts",
-    "metric": 17
+    "metric": 19
   },
   {
     "file": "larch/git/rebase.py",
@@ -2325,7 +2325,7 @@
     "file": "larch/git/rebase.py",
     "code": "PLR0912",
     "qualified_symbol": "_resolve_conflicts",
-    "metric": 15
+    "metric": 17
   },
   {
     "file": "larch/git/rebase.py",
@@ -2367,7 +2367,7 @@
     "file": "larch/git/rebase.py",
     "code": "PLR0915",
     "qualified_symbol": "_resolve_conflicts",
-    "metric": 57
+    "metric": 63
   },
   {
     "file": "larch/implement/checks_lint_fix.py",
@@ -2703,7 +2703,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 45
+    "metric": 47
   },
   {
     "file": "larch/implement/ship.py",
@@ -2715,7 +2715,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 47
+    "metric": 50
   },
   {
     "file": "larch/implement/ship.py",
@@ -2727,7 +2727,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 161
+    "metric": 169
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -5127,7 +5127,7 @@
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 133
+    "metric": 129
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5499,7 +5499,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 134
+    "metric": 132
   },
   {
     "file": "larch/review/review_collect.py",
@@ -5667,7 +5667,7 @@
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "emit_tally",
-    "metric": 22
+    "metric": 19
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5703,7 +5703,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "emit_tally",
-    "metric": 23
+    "metric": 20
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5727,7 +5727,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "emit_tally",
-    "metric": 67
+    "metric": 61
   },
   {
     "file": "larch/review/review_tally.py",

@@ -32,6 +32,7 @@ from larch.implement import (
     dispatch_step2,
     dispatch_recovery,
 )
+from larch.core import config
 from larch.core import logging_util
 from larch.report import run_logs
 from larch.core.proc import CommandResult
@@ -125,6 +126,62 @@ def _route_exit(
     exit_rc = implement_dispatch.ship_route_exit_main(["--implement-tmpdir", str(tmp)])
     captured = capsys.readouterr()
     return exit_rc, captured.out, captured.err
+
+
+def test_ship_route_exit_routes_persisted_conflict_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "ship-pr-state.sh").write_text(
+        "RESUME_PHASE=ship-pr-rrr-phase14\n"
+        "CALLER_KIND=ship_pr_pre_push\n"
+        "CONFLICT_FILES=python/a.py,docs/b.md\n",
+        encoding="utf-8",
+    )
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        4,
+        {"outcome": "STALLED", "detail": "fixer waterfall could not resolve conflicts"},
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=conflict-fix\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in env
+    assert "CALLER_KIND=ship_pr_pre_push\n" in env
+    assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in env
+    assert "NEXT_ACTION=conflict-fix\n" in env
+
+
+def test_ship_route_exit_reships_no_checks_when_phase14_flag_pending(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
+        "RESUME_PHASE=ship-pr-rrr-phase14\n",
+        encoding="utf-8",
+    )
+
+    exit_rc, out, _err = _route_exit(
+        tmp,
+        capsys,
+        monkeypatch,
+        4,
+        {"outcome": "STALLED", "detail": config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED},
+    )
+
+    assert exit_rc == 0
+    assert out == "NEXT_ACTION=reship\n"
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert f"DETAIL={config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED}\n" in env
+    assert "NEXT_ACTION=reship\n" in env
 
 
 @pytest.mark.parametrize(

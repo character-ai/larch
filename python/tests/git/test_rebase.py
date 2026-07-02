@@ -491,7 +491,7 @@ def test_conflict_fixer_forbidden_path_reverts_and_stalls(
     monkeypatch.setattr(rebase.coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
     monkeypatch.setattr(rebase.coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden)
 
-    with pytest.raises(Stalled, match="conflict fixer touched forbidden path"):
+    with pytest.raises(PrePushConflictHandoff) as exc_info:
         rebase._resolve_conflicts(  # pyright: ignore[reportPrivateUsage]
             runner=runner,
             launch_fn=lambda tier, _csv: TierAttempt(
@@ -506,9 +506,10 @@ def test_conflict_fixer_forbidden_path_reverts_and_stalls(
             tmpdir=str(tmp_path),
             enable_pre_push_handoff=True,
         )
+    assert exc_info.value.conflict_files == ("README.md",)
+    assert (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
     assert ("git", "restore", "--staged", "--", "README.md") in runner.calls
     assert ("git", "checkout", "--merge", "--", "README.md") in runner.calls
-    assert not (tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).exists()
 
 
 def test_conflict_forbidden_snapshot_is_prelaunch_and_not_recomputed(

@@ -287,7 +287,7 @@ def _rebase_no_push(
     resolved = _autoresolve_generated_conflicts(runner, cwd=cwd)
     if resolved.status == "rebased":
         return resolved
-    if git.rebase_in_progress(runner, cwd=cwd):
+    if git.rebase_in_progress(runner, cwd=cwd) and not resolved.conflict_files:
         _ = git.rebase(runner, "--abort", cwd=cwd)
     return resolved
 

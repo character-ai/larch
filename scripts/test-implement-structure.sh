@@ -753,11 +753,11 @@ for needle in [
     'clear the sidecar only after private disposition completes',
     'Expect the checkpoint to stall while `security-oos-observations.md` remains non-empty',
     'complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper',
-    'when `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely',
+    'When `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely',
 ]:
     require(skill, needle, 'SKILL security-sidecar branch or phase14 conflict pin')
 require_near(skill, 'ship-pr-oos-checkpoint-router.md', 'step-8-oos-checkpoint.sh', 'oos router mandatory read before checkpoint fence', 900)
-require_near(skill, '**OOS checkpoint fence.**', 'ship-pr-oos-checkpoint-router.md', 'oos router read before checkpoint fence header', 1200)
+require_near(skill, '**OOS checkpoint fence.**', 'ship-pr-oos-checkpoint-router.md', 'oos router read before checkpoint fence header', 1500)
 skill_ci_fix_slice = branch_slice(skill_text, 'ci-fix')
 require_text(skill_ci_fix_slice, 'ship-pr-ci-fix.md', 'SKILL ci-fix branch names child reference')
 require_text(skill_ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'SKILL ci-fix branch carries mandatory-read marker')

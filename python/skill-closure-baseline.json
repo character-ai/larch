@@ -32,11 +32,11 @@
     "skill_md_lines": 697
   },
   {
-    "closure_content_estimated_tokens": 36536,
-    "closure_estimated_tokens": 36640,
-    "closure_lines": 1127,
-    "conditional_content_estimated_tokens": 19232,
-    "conditional_estimated_tokens": 19278,
+    "closure_content_estimated_tokens": 36660,
+    "closure_estimated_tokens": 36764,
+    "closure_lines": 1129,
+    "conditional_content_estimated_tokens": 19305,
+    "conditional_estimated_tokens": 19350,
     "conditional_files": [
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
@@ -60,9 +60,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 28675,
-    "skill_md_estimated_tokens": 28752,
-    "skill_md_lines": 793
+    "skill_md_content_estimated_tokens": 28689,
+    "skill_md_estimated_tokens": 28766,
+    "skill_md_lines": 794
   },
   {
     "closure_content_estimated_tokens": 49874,

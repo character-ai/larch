@@ -19,6 +19,7 @@ from typing import cast
 from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import oos_filer
+from larch.core import config
 from larch.implement import ship
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
@@ -179,6 +180,59 @@ def _classify_ship_needs_user_reason(reason: str) -> str:
     return "operator-bail"
 
 
+def _ship_route_conflict_handoff_fields(implement_tmpdir: Path) -> dict[str, str]:
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    resume_phase = _read_kv_file(path=state_file, key="RESUME_PHASE", default="")
+    caller_kind = _read_kv_file(path=state_file, key="CALLER_KIND", default="")
+    conflict_files = _read_kv_file(path=state_file, key="CONFLICT_FILES", default="")
+    if (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+        and conflict_files
+    ):
+        return {
+            "RESUME_PHASE": resume_phase,
+            "CALLER_KIND": caller_kind,
+            "CONFLICT_FILES": conflict_files,
+        }
+    return {}
+
+
+def _ship_route_phase14_reship_pending(
+    *,
+    implement_tmpdir: Path,
+    payload: Mapping[str, object],
+    exit_code: int,
+) -> bool:
+    if exit_code != SHIP_ROUTE_EXIT_STALLED:
+        return False
+    if payload.get("detail") != config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED:
+        return False
+    phase14_flag = implement_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    return phase14_flag.is_file() and not phase14_flag.is_symlink()
+
+
+def _ship_route_adjust_stalled_action(
+    *,
+    implement_tmpdir: Path,
+    payload: Mapping[str, object],
+    exit_code: int,
+    action: str,
+) -> tuple[str, dict[str, str]]:
+    if exit_code != SHIP_ROUTE_EXIT_STALLED:
+        return action, {}
+    route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
+    if route_fields:
+        return "conflict-fix", route_fields
+    if _ship_route_phase14_reship_pending(
+        implement_tmpdir=implement_tmpdir,
+        payload=payload,
+        exit_code=exit_code,
+    ):
+        return "reship", {}
+    return action, {}
+
+
 def _classify_ship_route_exit(*, exit_code: int, payload: dict[str, object]) -> tuple[str, str]:
     outcome, error = _ship_route_required_str(payload=payload, key="outcome")
     if error:
@@ -218,6 +272,7 @@ def _write_ship_route_handoff(
     payload: Mapping[str, object],
     action: str,
     delay_seconds: int = 0,
+    route_fields: Mapping[str, str] | None = None,
 ) -> None:
     handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
     detail_file = implement_tmpdir / ".ship-route-exit-detail.txt"
@@ -239,6 +294,12 @@ def _write_ship_route_handoff(
         else:
             lines.append(f"DETAIL={_ship_route_safe_line(detail)}")
     lines.extend(f"{key}={_ship_route_safe_line(payload[key])}" for key in _SHIP_ROUTE_EXIT_LEDGER_KEYS if key in payload)
+    if route_fields:
+        lines.extend(
+            f"{key}={_ship_route_safe_line(value)}"
+            for key, value in route_fields.items()
+            if _ship_route_safe_line(value)
+        )
     lines.append(f"NEXT_ACTION={action}")
     if delay_seconds:
         lines.append(f"RESHIP_DELAY_SECONDS={delay_seconds}")
@@ -296,6 +357,12 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
     action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
     if error:
         return _ship_route_exit_fail(message=error, handoff=handoff)
+    action, route_fields = _ship_route_adjust_stalled_action(
+        implement_tmpdir=implement_tmpdir,
+        payload=payload,
+        exit_code=exit_code,
+        action=action,
+    )
     delay_seconds = 0
     if action == "transient":
         count_file = implement_tmpdir / "ship-pr-net-retries-python.count"
@@ -317,6 +384,7 @@ def ship_route_exit_main(argv: list[str] | None = None) -> int:
             payload=payload,
             action=action,
             delay_seconds=delay_seconds,
+            route_fields=route_fields,
         )
     except OSError as exc:
         return _ship_route_exit_fail(message=f"cannot write route-exit handoff: {exc}", handoff=handoff)

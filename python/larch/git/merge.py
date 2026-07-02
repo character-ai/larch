@@ -497,10 +497,7 @@ def _maybe_review_required(
         config.MERGE_RESULT_POLICY_DENIED,
     }:
         return outcome
-    if (
-        outcome.result == config.MERGE_RESULT_ADMIN_FAILED
-        and _has_merge_conflict_signal(outcome.error)
-    ):
+    if _has_merge_conflict_signal(outcome.error):
         return MergeResult(
             result=config.MERGE_RESULT_MAIN_ADVANCED,
             error=outcome.error,
