@@ -1,13 +1,15 @@
-## /implement run 29B711DA-0FD0-4F45-8518-A9AB8B5E1233 — shipping
+## /implement run 29B711DA-0FD0-4F45-8518-A9AB8B5E1233 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:28:57
-- **Cost**: 💰 TOTAL ~$37.68 — Claude $5.99, Codex-5.5 $24.37, Codex-mini $0.74, Cursor $6.15, Claude (subprocess) $0.43  |  Tokens: 57075k
+- **Cost**: 💰 TOTAL ~$31.69 — Claude $0.00, Codex-5.5 $24.37, Codex-mini $0.74, Cursor $6.15, Claude (subprocess) $0.43  |  Tokens: 49397k
 - **Issue**: #5970 — https://github.com/character-ai/larch/issues/5970
+- **PR**: #6004 — https://github.com/character-ai/larch/pull/6004
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +952/-52, larch-logs +868/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
