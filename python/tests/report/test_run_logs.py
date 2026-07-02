@@ -782,6 +782,132 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     assert manifest["steps_ran"].get("step8") is True
 
 
+
+def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+    state = tmp_path / "ship-pr-state.sh"
+    _ = state.write_text(
+        "RUN_ID=run-abc\nSTALL_TRACKING=true\nMERGE=true\nPR_NUMBER=\nPHASE=stalled\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, str(state))
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+
+    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = implement_tmpdir, run_id
+        return {"cost_unavailable": True}
+
+    def fake_commit(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
+
+    skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+    assert not skip1.skipped
+    stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "— stalled" in stalled_summary
+    assert "- **Outcome**: stalled" in stalled_summary
+
+    _ = state.write_text(
+        "RUN_ID=run-abc\nSTALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
+        "PHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+
+    skip2 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
+
+    assert not skip2.skipped
+    recovered_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "— pr-created" in recovered_summary
+    assert "- **Outcome**: stalled" not in recovered_summary
+
+
+def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcome(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
+
+    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert "## /implement run run-abc — merged" in text
+    assert "- **Outcome**: stalled" not in text
+
+
+def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_IN_PROGRESS,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
+    assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
+
+
+def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "ship-pr-state.sh").write_text("BAIL_REASON=ci-failed\n", encoding="utf-8")
+
+    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
+    assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
+
+
 def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

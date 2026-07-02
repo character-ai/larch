@@ -3,8 +3,10 @@
 
 from __future__ import annotations
 
+import argparse
 import json
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -14,11 +16,21 @@ from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import git
 from larch.git import push
+from larch.report import final_report
 from larch.outcomes import Outcome
 from larch.report import run_logs
 from larch.state import finalize
+from larch.state import stall_recovery
 from larch.implement.ship_state import _tmpdir_under_allowed_root, _write_ship_state, _breadcrumb
 from larch.implement.ship_result import ShipResult, _write_terminal_finalize_if_terminal
+
+
+@dataclass(frozen=True)
+class ShipReconciliationCounters:
+    iteration: int = 0
+    rebase_count: int = 0
+    fix_attempts: int = 0
+    transient_retries: int = 0
 
 
 def _summary_from_manifest(ctx: RunContext) -> str:
@@ -37,6 +49,168 @@ def _summary_from_manifest(ctx: RunContext) -> str:
                 bullets = [item for item in cast("list[object]", bullets_obj) if isinstance(item, str)]
                 return "\n".join(f"- {item}" for item in bullets) + "\n"
     return "- Implement requested changes.\n"
+
+
+def _read_state(path: Path) -> dict[str, str]:
+    if not path.is_file():
+        return {}
+    data: dict[str, str] = {}
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key:
+            data[key] = value.strip().strip("'\"")
+    return data
+
+
+def _nonzero_exit_code(value: str) -> bool:
+    text = value.strip()
+    if not text or text == "unknown":
+        return False
+    try:
+        return int(text) != 0
+    except ValueError:
+        return False
+
+
+def _ship_has_active_failure_signal(tmpdir: Path) -> bool:
+    ship = _read_state(tmpdir / "ship-pr-state.sh")
+    return bool(
+        ship.get("BAIL_REASON", "").strip()
+        or ship.get("IMPLEMENT_BAIL_REASON", "").strip()
+        or ship.get("PHASE", "").strip() == "stalled"
+        or _nonzero_exit_code(ship.get("EXIT_CODE", ""))
+    )
+
+
+def _repo_final_summary_relpath(run_id: str) -> str:
+    return f"larch-logs/implement/{run_id}/final-summary.md"
+
+
+def _read_committed_final_summary_text(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    run_id: str,
+) -> str | None:
+    _ = ctx
+    rel = _repo_final_summary_relpath(run_id)
+    head_result = git.show_file(runner, f"HEAD:{rel}", cwd=cwd)
+    if head_result.returncode == 0 and head_result.stdout:
+        return head_result.stdout
+    repo_summary = Path(cwd) / rel
+    if repo_summary.is_file():
+        return repo_summary.read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def _committed_summary_heading_is_stalled(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+) -> bool:
+    run_id = run_logs.effective_run_id(ctx)
+    if not run_id:
+        return False
+    rel = _repo_final_summary_relpath(run_id)
+    text = _read_committed_final_summary_text(runner=runner, ctx=ctx, cwd=cwd, run_id=run_id)
+    if text is not None and final_report.summary_heading_is_stalled(text):
+        return True
+    branch = ctx.branch_name
+    if not branch:
+        return False
+    remote_result = git.show_file(runner, f"origin/{branch}:{rel}", cwd=cwd)
+    if remote_result.returncode != 0 or not remote_result.stdout:
+        return False
+    return final_report.summary_heading_is_stalled(remote_result.stdout)
+
+
+def _live_recovered_outcome(ctx: RunContext) -> str:
+    if _ship_has_active_failure_signal(Path(ctx.tmpdir)):
+        return ""
+    values = stall_recovery.normalized_outcome_values(
+        argparse.Namespace(implement_tmpdir=ctx.tmpdir, in_memory_stall_tracking="")
+    )
+    outcome = values.get("IMPLEMENT_NORMALIZED_OUTCOME", "")
+    return outcome if outcome in {"pr-created", "pr-created-draft", "merged"} else ""
+
+
+def reconcile_committed_stalled_summary_if_recovered(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    counters: ShipReconciliationCounters | None = None,
+) -> ShipResult | None:
+    """Correct a prior stalled log only on recovered success paths.
+
+    This is not a blanket post-ensure re-flush. Fresh PR creation remains push-only
+    to avoid moving HEAD and retriggering CI (#5217), and recoverable no-checks
+    stalls keep HEAD stable until later evidence is terminal (#5186).
+    """
+    resolved_counters = counters or ShipReconciliationCounters()
+    if not _committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd=cwd):
+        return None
+    if not _live_recovered_outcome(ctx):
+        return None
+    refresh = run_logs.flush_logs_pre(
+        runner=runner,
+        ctx=ctx.with_(state_file=None),
+        cwd=cwd,
+        strict_final_report=True,
+    )
+    if refresh.skipped:
+        _write_terminal_state(
+            ctx=ctx,
+            result=Outcome.STALLED,
+            step="run-log-reconciliation",
+            iteration=resolved_counters.iteration,
+            rebase_count=resolved_counters.rebase_count,
+            fix_attempts=resolved_counters.fix_attempts,
+            transient_retries=resolved_counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=ctx.pr_number,
+            pr_url=ctx.pr_url,
+            detail=f"run-log reconciliation flush skipped: {refresh.reason}",
+        )
+    try:
+        pushed = push.push_branch(runner=runner, ctx=ctx, cwd=cwd)
+    except ShipError as exc:
+        _write_terminal_state(
+            ctx=ctx,
+            result=Outcome.STALLED,
+            step="run-log-reconciliation-push",
+            iteration=resolved_counters.iteration,
+            rebase_count=resolved_counters.rebase_count,
+            fix_attempts=resolved_counters.fix_attempts,
+            transient_retries=resolved_counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=ctx.pr_number,
+            pr_url=ctx.pr_url,
+            detail=f"run-log reconciliation push failed: {str(exc).strip()}",
+        )
+    if pushed.status != "pushed":
+        _write_terminal_state(
+            ctx=ctx,
+            result=Outcome.STALLED,
+            step="run-log-reconciliation-push",
+            iteration=resolved_counters.iteration,
+            rebase_count=resolved_counters.rebase_count,
+            fix_attempts=resolved_counters.fix_attempts,
+            transient_retries=resolved_counters.transient_retries,
+        )
+        return ShipResult(
+            Outcome.STALLED,
+            pr_number=ctx.pr_number,
+            pr_url=ctx.pr_url,
+            detail=f"run-log reconciliation push failed: {pushed.status}",
+        )
+    return None
 
 
 def _write_ci_fix_detail_log(*, ctx: RunContext, detail: str) -> str:

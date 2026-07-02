@@ -537,6 +537,123 @@ def _derive_oos_fields(run_dir: Path) -> tuple[str, str]:
     return str(len(lines)), ",".join(sorted(set(urls)))
 
 
+def _manifest_pr_number(data: Mapping[str, object]) -> int:
+    for key in ("pr_number", "PR_NUMBER"):
+        value = data.get(key)
+        if isinstance(value, int) and value > 0:
+            return value
+        if isinstance(value, str) and value.strip().isdigit() and int(value.strip()) > 0:
+            return int(value.strip())
+    reserved = data.get("reserved")
+    if isinstance(reserved, dict):
+        return _manifest_pr_number(cast("Mapping[str, object]", reserved))
+    return 0
+
+
+def _manifest_only_recovered_outcome(run_dir: Path) -> str:
+    data = _json_object(run_dir / "manifest.json")
+    if data.get("status") == config.MANIFEST_STATUS_DONE and _manifest_pr_number(data) > 0:
+        return "merged"
+    return ""
+
+
+def _state_file_has_rows(path: Path) -> bool:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return False
+    return any(line.strip() and "=" in line for line in text.splitlines())
+
+
+def _outcome_with_manifest_only_backstop(
+    *,
+    implement_tmpdir: Path,
+    run_id: str,
+    outcome: str,
+    ship: Path,
+    final: Path,
+) -> str:
+    if _state_file_has_rows(ship) or _state_file_has_rows(final):
+        return outcome
+    recovered = _manifest_only_recovered_outcome(
+        implement_tmpdir / "larch-logs" / "implement" / run_id
+    )
+    return recovered or outcome
+
+
+def summary_heading_is_stalled(text: str) -> bool:
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        return line.rstrip("\n").rstrip().endswith("— stalled")
+    return False
+
+
+def _summary_stalled_heading_index(lines: list[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        if not line.strip():
+            continue
+        return idx if line.rstrip("\n").rstrip().endswith("— stalled") else None
+    return None
+
+
+def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
+    for idx, line in enumerate(lines):
+        if re.match(r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$", line.rstrip("\n")):
+            return idx
+    return None
+
+
+def _implement_tmpdir_from_run_dir(run_dir: Path) -> Path:
+    return run_dir.parent.parent.parent
+
+
+def _manifest_only_reconciliation_allowed(run_dir: Path) -> bool:
+    implement_tmpdir = _implement_tmpdir_from_run_dir(run_dir)
+    ship = implement_tmpdir / "ship-pr-state.sh"
+    final = implement_tmpdir / "finalize-state.sh"
+    return not _state_file_has_rows(ship) and not _state_file_has_rows(final)
+
+
+def stalled_summary_manifest_reconciliation_needed(run_dir: Path) -> bool:
+    summary = run_dir / "final-summary.md"
+    if (
+        not _manifest_only_reconciliation_allowed(run_dir)
+        or _manifest_only_recovered_outcome(run_dir) != "merged"
+        or not summary.is_file()
+    ):
+        return False
+    lines = summary.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
+    return _summary_stalled_heading_index(lines) is not None and _summary_stalled_outcome_index(lines) is not None
+
+
+def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
+    """Conservatively rewrite a manifest-only shipped summary away from stalled."""
+    if not _manifest_only_reconciliation_allowed(run_dir):
+        return False
+    outcome = _manifest_only_recovered_outcome(run_dir)
+    if outcome != "merged":
+        return False
+    summary = run_dir / "final-summary.md"
+    if not summary.is_file():
+        return False
+    text = summary.read_text(encoding="utf-8", errors="replace")
+    lines = text.splitlines(keepends=True)
+    heading_idx = _summary_stalled_heading_index(lines)
+    outcome_idx = _summary_stalled_outcome_index(lines)
+    if heading_idx is None or outcome_idx is None:
+        return False
+    line = lines[heading_idx]
+    newline = "\n" if line.endswith("\n") else ""
+    lines[heading_idx] = line.rstrip("\n").removesuffix("stalled") + outcome + newline
+    del lines[outcome_idx]
+    rewritten = "".join(lines)
+    if "- **Outcome**: stalled" in rewritten:
+        return False
+    larch_io.atomic_write(summary, rewritten, prefix=".final-summary-", nofollow=True)
+    return True
+
+
 def _derive_final_report_fields(
     implement_tmpdir: Path,
     *,
@@ -669,7 +786,13 @@ def write_final_report(
     outcome_values = stall_recovery.normalized_outcome_values(
         argparse.Namespace(implement_tmpdir=str(implement_tmpdir), in_memory_stall_tracking="")
     )
-    outcome = outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed")
+    outcome = _outcome_with_manifest_only_backstop(
+        implement_tmpdir=implement_tmpdir,
+        run_id=run_id or "unknown",
+        outcome=outcome_values.get("IMPLEMENT_NORMALIZED_OUTCOME", "bailed"),
+        ship=ship,
+        final=final,
+    )
     body = pr_body.render_run_summary(
         skill="implement",
         outcome=outcome,

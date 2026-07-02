@@ -394,6 +394,21 @@ def _render_token_timing_batches(*, ctx: RunContext, log_root: Path) -> None:
     # in-loop snapshots that duplicate the canonical NDJSON written above.
 
 
+def _reconcile_stalled_summary_backstop(*, ctx: RunContext, strict_final_report: bool) -> None:
+    run_dir = _run_log_dir(ctx)
+    try:
+        needed = final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
+        changed = final_report.reconcile_stalled_summary_from_manifest(run_dir)
+        still_needed = final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
+    except OSError as exc:
+        if strict_final_report:
+            raise ShipError(f"stalled summary reconciliation failed: {exc}") from exc
+        return
+    if strict_final_report and needed and (not changed or still_needed):
+        msg = "stalled summary reconciliation failed"
+        raise ShipError(msg)
+
+
 def _stage_pre_commit(
     *, runner: Runner,
     ctx: RunContext,
@@ -419,6 +434,7 @@ def _stage_pre_commit(
         else:
             with suppress(ShipError):
                 _write_final_report(runner=runner, ctx=ctx)
+        _reconcile_stalled_summary_backstop(ctx=ctx, strict_final_report=strict_final_report)
         _render_ledger_reports(runner=runner, ctx=ctx, log_root=log_root)
         _render_token_timing_batches(ctx=ctx, log_root=log_root)
     else:
