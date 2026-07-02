@@ -704,9 +704,11 @@ def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRo
                     violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
         if result.skill in FILE_RATCHET_TARGETS:
             baseline_files = set(row.files)
-            for rel in result.files:
-                if rel not in baseline_files:
-                    violations.append(f"{result.skill}: files added {rel}")
+            violations.extend(
+                f"{result.skill}: files added {rel}"
+                for rel in result.files
+                if rel not in baseline_files
+            )
     return violations
 
 
