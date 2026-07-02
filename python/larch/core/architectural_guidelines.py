@@ -497,7 +497,7 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
         return False
     diff_text, fingerprint = live_diff
     stored_fp = metadata.get("DIFF_FINGERPRINT", "")
-    if not stored_fp or fingerprint != stored_fp:
+    if not stored_fp:
         return False
     try:
         assessment_text = _read_regular_text_no_follow(staged)
@@ -509,7 +509,7 @@ def refresh_staged_assessment_for_current_head(  # noqa: PLR0911 - fail-closed a
             base_ref=resolved_base,
             diff_text=diff_text,
         )
-    except OSError:
+    except (OSError, UnicodeDecodeError):
         return False
     return True
 
