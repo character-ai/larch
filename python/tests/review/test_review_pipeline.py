@@ -2743,6 +2743,109 @@ printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\nALL
     assert capture.read_text(encoding="utf-8") == f"ARTIFACT={case_dir}\nSITE=implement Step 5\nROUND=2\n"
 
 
+def test_dispatch_panel_resolves_round_subdir_for_panel_artifact(tmp_path: Path) -> None:
+    run_root = tmp_path / "review-run"
+    round_dir = run_root / "round-3"
+    round_dir.mkdir(parents=True)
+    _ = (run_root / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (round_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    capture = tmp_path / "panel-env-round-subdir.txt"
+    waterfall = tmp_path / "waterfall-round-subdir.sh"
+    _write_executable(
+        waterfall,
+        """#!/usr/bin/env bash
+{
+  printf 'ARTIFACT=%s\n' "${LARCH_PANEL_ARTIFACT_DIR:-}"
+  printf 'SITE=%s\n' "${LARCH_PANEL_SITE:-}"
+  printf 'ROUND=%s\n' "${LARCH_PANEL_ROUND_NUM:-}"
+} >"$PANEL_ENV_CAPTURE"
+printf 'DISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\nALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\n'
+""",
+    )
+
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(round_dir / "review.diff"),
+        "--review-tmpdir",
+        str(run_root),
+        "--codex-available",
+        "true",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(run_root / "plan.md"),
+        "--round-num",
+        "3",
+        "--site",
+        "review Step 2",
+        env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall), "PANEL_ENV_CAPTURE": str(capture)},
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert capture.read_text(encoding="utf-8") == f"ARTIFACT={round_dir}\nSITE=review Step 2\nROUND=3\n"
+    assert not (run_root / "panel-prompt-sizes.tsv").exists()
+
+
+def test_dispatch_panel_materializes_panel_prompt_sizes(tmp_path: Path) -> None:
+    case_dir = tmp_path / "round-1"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    stub_bin = tmp_path / "bin"
+    stub_bin.mkdir()
+    _write_dispatch_vendor_stubs(stub_bin)
+    result = run_review(
+        "dispatch-panel",
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(case_dir / "review.diff"),
+        "--review-tmpdir",
+        str(case_dir),
+        "--codex-available",
+        "false",
+        "--cursor-available",
+        "true",
+        "--panel",
+        "simple",
+        "--plan-file",
+        str(case_dir / "plan.md"),
+        "--round-num",
+        "1",
+        "--site",
+        "implement Step 5",
+        env={
+            "CLAUDE_PLUGIN_ROOT": str(ROOT),
+            "LARCH_QUIET_DISABLE": "1",
+            "PATH": f"{stub_bin}:{os.environ.get('PATH', '')}",
+            "RUN_EXTERNAL_AGENT_POLL_INTERVAL": "0.05",
+            "LARCH_EXTERNAL_HEALTH_CHECK_TIMEOUT": "0",
+            "LARCH_TRANSIENT_RETRY_DELAY": "0",
+            "LARCH_CURSOR_LAUNCH_JITTER_MS": "0",
+            "LARCH_EXTERNAL_STARTUP_LOCK_FORCE_UNAME": "Linux",
+            "LARCH_LIB_CURSOR_AUTH_TEST_MODE": "1",
+            "LIB_CURSOR_AUTH_TEST_UNAME": "Linux",
+            "CURSOR_API_KEY": "test-key",
+        },
+    )
+
+    assert result.returncode == 0, result.stderr
+    tsv = case_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    text = tsv.read_text(encoding="utf-8")
+    data_lines = [line for line in text.splitlines() if line and not line.startswith("site\t")]
+    assert len(data_lines) >= 1
+    for line in data_lines:
+        fields = line.split("\t")
+        assert fields[4] == "specialist"
+    assert "# Review" not in text
+
+
 def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_available: str) -> list[dict[str, object]]:
     waterfall = case_dir.parent / "waterfall-noop.sh"
     _write_waterfall_noop(waterfall)

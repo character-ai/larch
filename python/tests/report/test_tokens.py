@@ -1178,6 +1178,14 @@ def test_panel_prompt_artifact_routes_design_round_output(tmp_path: Path, monkey
     assert path == output.parent / "panel-prompt-sizes.tsv"
 
 
+def test_panel_slot_kind_classifies_dyn_slots_before_plan_substring(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "dyn-migration-plan")
+    assert tokens._panel_slot_kind_from_env() == "specialist"  # pyright: ignore[reportPrivateUsage]
+
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "cursor-plan-arch")
+    assert tokens._panel_slot_kind_from_env() == "plan-review"  # pyright: ignore[reportPrivateUsage]
+
+
 def test_build_panel_dispatch_env_sets_panel_keys_without_mutating_parent(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
     artifact_dir = tmp_path / "round-3"

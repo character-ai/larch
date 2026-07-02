@@ -118,6 +118,7 @@ def test_dispatch_panel_and_aggregate_with_stub_waterfall(tmp_path: Path, monkey
     status = decompose.aggregate_partition(design_tmpdir=d, panel_outputs_file=d / "decompose" / "panel-outputs.ndjson", codex_present=True, cursor_present=True, output=d / "partition.md")
     assert status == "ok"
     assert (d / "partition.md").is_file()
+    assert not list(d.rglob("panel-prompt-sizes.tsv"))
 
 
 def _panel_stub(tmp_path: Path, *, mode: str = "ok", static_ok: str = "true", exit_code: int = 0, partial_first: bool = False, path_limit: int = 0) -> Path:

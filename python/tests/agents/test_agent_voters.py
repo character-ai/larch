@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import subprocess
 import sys
 import textwrap
@@ -15,6 +16,7 @@ import pytest
 
 from larch.agents import agent_voters
 from larch.core import proc
+from larch.report import tokens
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 CLI = REPO_ROOT / "python" / "cli.py"
@@ -69,6 +71,12 @@ class FakeHarness:
         rows = [__import__("json").loads(line) for line in slots_file.read_text(encoding="utf-8").splitlines() if line]
         codex_present = _value_after(args, "--codex-present") == "true"
         cursor_present = _value_after(args, "--cursor-present") == "true"
+        artifact_dir_raw = _value_after(args, "--panel-artifact-dir")
+        artifact_path = Path(artifact_dir_raw) / tokens.PANEL_PROMPT_SIZE_BASENAME if artifact_dir_raw else None
+        site = _value_after(args, "--site") or "implement Step 5"
+        round_num: int | None = None
+        if artifact_dir_raw and re.fullmatch(r"round-[0-9]+", Path(artifact_dir_raw).name):
+            round_num = int(Path(artifact_dir_raw).name.removeprefix("round-"))
 
         def _final_tool(primary: str) -> str:
             present = {"codex": codex_present, "cursor": cursor_present}
@@ -92,6 +100,17 @@ class FakeHarness:
             Path(str(out) + ".done").write_text("0\n", encoding="utf-8")
             outputs.append(str(out))
             tools.append(_final_tool(str(row.get("tool", "cursor"))))
+            if artifact_path is not None:
+                tokens.append_panel_prompt_size(
+                    artifact_path=artifact_path,
+                    output=out,
+                    tool=tools[-1],
+                    prompt="stub voter prompt",
+                    slot=str(row.get("slot", "")),
+                    slot_kind="voter",
+                    site=site,
+                    round_num=round_num,
+                )
         stdout = "ALL_OUTPUT_FILES=" + " ".join(outputs) + "\n"
         stdout += "ALL_OUTPUT_TOOLS=" + " ".join(tools) + "\n"
         stdout += "DISPATCH_OK=true\n"
@@ -1150,3 +1169,20 @@ def test_voter_dispatch_forwards_panel_artifact_dir(tmp_path: Path, monkeypatch:
 
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
     assert _value_after(waterfall, "--panel-artifact-dir") == str(review)
+
+
+def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    review = impl / "round-4"
+    review.mkdir(parents=True)
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    harness, _stub_root = _install_harness(monkeypatch, tmp_path, review)
+
+    assert agent_voters.dispatch_voters(_opts(ballot, review, round_num=4)) == 0
+
+    tsv = review / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    lines = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
+    assert len(lines) >= 1
+    assert all(line.split("\t")[4] == "voter" for line in lines)

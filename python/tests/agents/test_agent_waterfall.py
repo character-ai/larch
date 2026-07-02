@@ -1650,4 +1650,61 @@ def test_launch_slot_threads_panel_env(tmp_path: Path, monkeypatch: pytest.Monke
     assert captured_env["LARCH_PANEL_ARTIFACT_DIR"] == str(artifact_dir)
     assert captured_env["LARCH_PANEL_SLOT"] == "correctness"
     assert captured_env["LARCH_PANEL_ROUND_NUM"] == "7"
+
+
+def _tsv_rows(path: Path) -> list[dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    return [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:]]
+
+
+def test_waterfall_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    artifact_dir = tmp_path / "round-3"
+    artifact_dir.mkdir()
+    manifest = _slots_manifest(tmp_path, [("correctness", "cursor", "cursor-correctness-output.txt")])
+    env = {**stub_env, "CURSOR_API_KEY": "test-key"}
+    result = _run(
+        manifest,
+        env,
+        "--panel-artifact-dir",
+        str(artifact_dir),
+        "--site",
+        "review Step 2",
+        "--model-role",
+        "review",
+    )
+    assert result.returncode == 0, result.stderr
+    tsv = artifact_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    rows = _tsv_rows(tsv)
+    assert len(rows) >= 1
+    assert rows[0]["slot_kind"] == "specialist"
+    assert "review\n" not in tsv.read_text(encoding="utf-8")
+
+
+def test_waterfall_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    artifact_dir = tmp_path / "round-2"
+    artifact_dir.mkdir()
+    manifest = _slots_manifest(tmp_path, [("voter-1", "cursor", "cursor-vote-output.txt")])
+    env = {**stub_env, "CURSOR_API_KEY": "test-key"}
+    result = _run(
+        manifest,
+        env,
+        "--panel-artifact-dir",
+        str(artifact_dir),
+        "--site",
+        "implement Step 5",
+        "--model-role",
+        "vote",
+        "--codex-present",
+        "false",
+        "--cursor-present",
+        "true",
+    )
+    assert result.returncode == 0, result.stderr
+    tsv = artifact_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    rows = _tsv_rows(tsv)
+    assert len(rows) >= 1
+    assert rows[0]["slot_kind"] == "voter"
 # pyright: reportUnknownArgumentType=false, reportUnknownVariableType=false

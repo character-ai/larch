@@ -280,10 +280,10 @@ def _panel_slot_kind_from_env(env: Mapping[str, str] | None = None, *, slot_kind
         return "aggregator"
     if "voter" in lowered or "vote" in lowered or "voter" in phase or "voter" in task:
         return "voter"
-    if "plan" in lowered or "plan-review" in phase or "design" in site:
-        return "plan-review"
     if "specialist" in lowered or lowered.startswith("dyn-") or lowered in _PANEL_SPECIALIST_SLOT_NAMES:
         return "specialist"
+    if "-plan-" in lowered or "plan-review" in phase or "design" in site:
+        return "plan-review"
     return ""
 
 

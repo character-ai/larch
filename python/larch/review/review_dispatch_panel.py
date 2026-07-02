@@ -719,8 +719,17 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     total = static_cursor + static_codex + dynamic_slots
     if total:
         _diag(f"→ review: launching {total} reviewers ({static_cursor} Cursor static, {static_codex} Codex static, {dynamic_slots} dynamic)")
-    panel_artifact_dir = review_tmpdir
-    panel_round_dir = review_tmpdir if re.fullmatch(r"round-[0-9]+", review_tmpdir.name) else None
+    if re.fullmatch(r"round-[0-9]+", review_tmpdir.name):
+        panel_artifact_dir = review_tmpdir
+        panel_round_dir: Path | None = review_tmpdir
+    else:
+        round_subdir = review_tmpdir / f"round-{round_num}"
+        if round_subdir.is_dir():
+            panel_artifact_dir = round_subdir
+            panel_round_dir = round_subdir
+        else:
+            panel_artifact_dir = review_tmpdir
+            panel_round_dir = None
     panel_env = build_panel_dispatch_env(
         artifact_dir=panel_artifact_dir,
         site=site,

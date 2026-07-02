@@ -155,6 +155,7 @@ def test_dynamic_diff_mode_stages_large_diff_and_emits_warning(tmp_path: Path, m
     prompt = (out.parent / "staged-context" / "scout-dynamic-archetypes-prompt.md").read_text(encoding="utf-8")
     assert str(staged_diff) in prompt
     assert json.loads(out.read_text(encoding="utf-8"))["archetypes"][0]["name"] == "api-contract"
+    assert not list(tmp_path.rglob("panel-prompt-sizes.tsv"))
 
 
 def test_dynamic_zero_cap_writes_empty(tmp_path: Path, capsys) -> None:
