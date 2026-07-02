@@ -16,6 +16,7 @@ fail() { printf 'FAIL: %s\n' "$1" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$1"; }
 
 python3 -m py_compile "$ROOT/python/larch/design/design_postplan.py" || fail 'design_postplan.py py_compile failed'
+python3 -m py_compile "$ROOT/python/larch/design/design_gate_render.py" || fail 'design_gate_render.py py_compile failed'
 python3 -m py_compile "$ROOT/python/larch/review/plan_review.py" || fail 'plan_review.py py_compile failed'
 bash -n "$SETTLE" || fail 'design-step35-settle bash -n failed'
 
@@ -69,8 +70,11 @@ mk_design "$D_APPROVE"
   --approve-requested true --output "$D_APPROVE/run-params.json" >/dev/null
 [[ "$(gate_b_mode "$D_APPROVE/run-params.json")" == explicit-prompt ]] || fail '--per-round-approval should restore explicit prompt'
 
-grep -Fq 'Gate B — auto-applying N accepted finding(s)' "$APPROVAL_GATES" \
-  || fail 'approval-gates missing default auto-apply breadcrumb'
+python3 "$CLI" design render-gate --gate B --accepted-count 3 --approve-requested false \
+  | grep -Fq 'AUTO_APPLY_MESSAGE=ℹ 3.5: Gate B — auto-applying 3 accepted finding(s)' \
+  || fail 'render-gate missing default auto-apply breadcrumb'
+grep -Fq 'python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false' "$APPROVAL_GATES" \
+  || fail 'approval-gates missing default auto-apply renderer delegation'
 grep -Fq 'explicit per-round prompt' "$SKILL_MD" \
   || fail 'SKILL missing --per-round-approval explicit Gate B branch prose'
 grep -Fq 'NEXT_ACTION=step3b-bypass' "$SKILL_MD" \
