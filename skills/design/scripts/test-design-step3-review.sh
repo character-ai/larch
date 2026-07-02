@@ -76,7 +76,8 @@ grep -Fq '**⚠ /design Step 3: all plan reviewers failed at runtime; main agent
   || fail 'Step 3 degraded-empty-collector self-review warning missing from skill'
 grep -Fq 'Do not enter Gate B because there is no findings list to vote or apply.' "$SKILL_MD" \
   || fail 'Step 3 degraded-empty-collector must bypass Gate B after self-review'
-grep -Fq '`NEXT_ACTION=step3b-bypass` for all other bypass statuses' "$SKILL_MD" \
+# shellcheck disable=SC2016
+grep -Fq "\`NEXT_ACTION=step3b-bypass\` for all other bypass statuses" "$SKILL_MD" \
   || fail 'Step 3 panel-failed/tally-error ordinary bypass branch missing'
 if grep -Fq 'degraded-empty-collector, and MAV re-tally tally-error' "$SKILL_MD"; then
   fail 'Step 3 degraded-empty-collector must not be grouped with ordinary bypass statuses'
