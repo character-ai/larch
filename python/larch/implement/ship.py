@@ -272,6 +272,14 @@ def run_ship(
         if resume.start == "done":
             done_ctx = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
             _write_terminal_finalize_if_terminal(ctx=done_ctx, result=Outcome.OK, step="done")
+            done_reconciliation = reconcile_committed_stalled_summary_if_recovered(
+                runner=runner,
+                ctx=done_ctx,
+                cwd=repo_root,
+                counters=_resume_reconciliation_counters(resume),
+            )
+            if done_reconciliation is not None:
+                return done_reconciliation
             return ShipResult(
                 Outcome.OK,
                 pr_number=resume.pr_number,
@@ -281,6 +289,14 @@ def run_ship(
             )
         if resume.start == "merged":
             working = _hydrate_resume_context(ctx=ctx, resume=resume).with_(pr_closed=True)
+            merged_reconciliation = reconcile_committed_stalled_summary_if_recovered(
+                runner=runner,
+                ctx=working,
+                cwd=repo_root,
+                counters=_resume_reconciliation_counters(resume),
+            )
+            if merged_reconciliation is not None:
+                return merged_reconciliation
             _write_ship_state(
                 working,
                 phase="postmerge",

@@ -93,16 +93,14 @@ def _read_committed_final_summary_text(
     cwd: str,
     run_id: str,
 ) -> str | None:
+    _ = ctx
     rel = _repo_final_summary_relpath(run_id)
+    head_result = git.show_file(runner, f"HEAD:{rel}", cwd=cwd)
+    if head_result.returncode == 0 and head_result.stdout:
+        return head_result.stdout
     repo_summary = Path(cwd) / rel
     if repo_summary.is_file():
         return repo_summary.read_text(encoding="utf-8", errors="replace")
-    result = git.show_file(runner, f"HEAD:{rel}", cwd=cwd)
-    if result.returncode == 0 and result.stdout:
-        return result.stdout
-    tmpdir_summary = Path(ctx.tmpdir) / rel
-    if tmpdir_summary.is_file():
-        return tmpdir_summary.read_text(encoding="utf-8", errors="replace")
     return None
 
 
@@ -115,10 +113,17 @@ def _committed_summary_heading_is_stalled(
     run_id = run_logs.effective_run_id(ctx)
     if not run_id:
         return False
+    rel = _repo_final_summary_relpath(run_id)
     text = _read_committed_final_summary_text(runner=runner, ctx=ctx, cwd=cwd, run_id=run_id)
-    if text is None:
+    if text is not None and final_report.summary_heading_is_stalled(text):
+        return True
+    branch = ctx.branch_name
+    if not branch:
         return False
-    return final_report.summary_heading_is_stalled(text)
+    remote_result = git.show_file(runner, f"origin/{branch}:{rel}", cwd=cwd)
+    if remote_result.returncode != 0 or not remote_result.stdout:
+        return False
+    return final_report.summary_heading_is_stalled(remote_result.stdout)
 
 
 def _live_recovered_outcome(ctx: RunContext) -> str:
