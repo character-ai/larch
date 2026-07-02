@@ -1,8 +1,8 @@
 ## /implement run F63BAF58-0C87-4649-A5EF-79F318078CB1 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$94.01 — Claude $32.52, Codex-5.5 $32.76, Codex-mini $8.62, Cursor $19.78, Claude (subprocess) $0.33  |  Tokens: 201836k
+- **Duration**: 08:02:46
+- **Cost**: 💰 TOTAL ~$97.63 — Claude $36.14, Codex-5.5 $32.76, Codex-mini $8.62, Cursor $19.78, Claude (subprocess) $0.33  |  Tokens: 208225k
 - **Issue**: #5886 — https://github.com/character-ai/larch/issues/5886
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -108,3 +108,7 @@ codex/plan-fidelity-vote │                                                █�
 7. dynamic/dyn-review-loop-routing — 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
