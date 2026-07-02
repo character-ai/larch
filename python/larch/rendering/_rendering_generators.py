@@ -11,7 +11,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable
 from pathlib import Path
 
 from larch import io as larch_io
@@ -151,7 +151,6 @@ AUTO_HEADER_BY_VERB = {
     "codex-implementer": "python3 python/cli.py generate codex-implementer",
     "cursor-implementer": "python3 python/cli.py generate cursor-implementer",
     "topology-docs": "python3 python/cli.py generate topology-docs",
-    "conflict-resolution-code-reviewer": "python3 python/cli.py generate conflict-resolution-code-reviewer",
 }
 
 
@@ -209,42 +208,6 @@ REVIEWER_OUTPUT = {
     "reviewer-code-robustness-agent": REPO_ROOT / "agents" / "reviewer-code-robustness.md",
     "reviewer-security-structure-tests-agent": REPO_ROOT / "agents" / "reviewer-security-structure-tests.md",
 }
-
-
-CONFLICT_RESOLUTION_CODE_REVIEWER_OUTPUT = REPO_ROOT / "skills" / "shared" / "reviewer-templates-code-reviewer.md"
-
-
-def _section_line_range(lines: Sequence[str], *, start: str, end: str) -> tuple[int, int]:
-    try:
-        start_index = lines.index(start)
-    except ValueError as exc:
-        raise RenderError(f"ERROR: missing section anchor: {start}") from exc
-    try:
-        end_index = lines.index(end, start_index + 1)
-    except ValueError as exc:
-        raise RenderError(f"ERROR: missing section anchor after {start}: {end}") from exc
-    if end_index <= start_index:
-        raise RenderError(f"ERROR: empty section range: {start} to {end}")
-    return start_index, end_index
-
-
-def _conflict_resolution_code_reviewer_text() -> str:
-    source = REPO_ROOT / "skills" / "shared" / "reviewer-templates.md"
-    lines = _read_text(source).splitlines()
-    variables_start, variables_end = _section_line_range(lines, start="## Variables", end="## Reviewer: Code Reviewer")
-    code_start, code_end = _section_line_range(lines, start="## Reviewer: Code Reviewer", end="## Reviewer: Plan Fidelity")
-    variables = lines[variables_start:variables_end]
-    code_reviewer = lines[code_start:code_end]
-    if not variables or not code_reviewer:
-        raise RenderError("ERROR: empty conflict-resolution Code Reviewer fragment")
-    header = (
-        "<!-- AUTO-GENERATED: Derived from skills/shared/reviewer-templates.md. "
-        f"Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['conflict-resolution-code-reviewer']} -->"
-    )
-    body = [*variables, *code_reviewer]
-    while body and body[-1] == "":
-        body.pop()
-    return f"{header}\n\n" + "\n".join(body) + "\n"
 
 
 def _reviewer_agent_text(verb: str) -> str:
@@ -318,24 +281,6 @@ def generate_reviewer_code_robustness_agent_main(argv: list[str]) -> int:
 
 def generate_reviewer_security_structure_tests_agent_main(argv: list[str]) -> int:
     return _reviewer_agent_main(verb="reviewer-security-structure-tests-agent", argv=argv)
-
-
-def generate_conflict_resolution_code_reviewer_main(argv: list[str]) -> int:
-    logging_util.quiet_init(argv0="generate-conflict-resolution-code-reviewer.sh")
-    check, rc = _check_arg(argv)
-    if rc:
-        return rc
-    try:
-        return _diff_or_write(
-            target=CONFLICT_RESOLUTION_CODE_REVIEWER_OUTPUT,
-            text=_conflict_resolution_code_reviewer_text(),
-            check=check,
-            label="conflict-resolution-code-reviewer",
-        )
-    except RenderError as exc:
-        _err(str(exc))
-        return 1
-
 
 def _implementer_text(kind: str) -> str:
     base = _read_text(REPO_ROOT / "agents" / "_implementer-base.md")
@@ -529,7 +474,6 @@ _GENERATOR_VERB_TO_FUNC = {
     "codex-implementer": generate_codex_implementer_main,
     "cursor-implementer": generate_cursor_implementer_main,
     "topology-docs": generate_topology_docs_main,
-    "conflict-resolution-code-reviewer": generate_conflict_resolution_code_reviewer_main,
 }
 
 

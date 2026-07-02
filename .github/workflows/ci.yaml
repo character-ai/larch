@@ -420,7 +420,6 @@ jobs:
           # authoritative declarations of the focus-area tag set.
           BACKTICKED_FILES=(
             skills/shared/reviewer-templates.md
-            skills/shared/reviewer-templates-code-reviewer.md
             agents/code-reviewer.md
             agents/reviewer-structure.md
             agents/reviewer-correctness.md

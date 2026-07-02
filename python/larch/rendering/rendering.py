@@ -1694,12 +1694,10 @@ def diagrams_upsert_main(argv: list[str]) -> int:
 # Re-exports from sibling module — preserves `rendering.X` access for callers.
 from larch.rendering._rendering_generators import (  # noqa: E402
     RenderError,
-    _conflict_resolution_code_reviewer_text,
     _implementer_text,
     generate_check_main,
     generate_code_reviewer_agent_main,
     generate_codex_implementer_main,
-    generate_conflict_resolution_code_reviewer_main,
     generate_cursor_implementer_main,
     generate_pre_rendered_reviewer_prompts_main,
     generate_reviewer_code_robustness_agent_main,

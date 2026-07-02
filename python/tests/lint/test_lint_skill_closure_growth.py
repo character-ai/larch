@@ -24,7 +24,6 @@ def write_roots(root: Path, *, design: str = "", implement: str = "", review: st
 def write_panel_tier(root: Path) -> None:
     write(root, "agents/reviewer-a.md", "reviewer a\n")
     write(root, "skills/shared/reviewer-templates.md", "templates\n")
-    write(root, "skills/shared/reviewer-templates-code-reviewer.md", "code reviewer\n")
     write(root, "skills/shared/voting-protocol.md", "voting\n")
 
 
@@ -78,7 +77,6 @@ def test_ratcheted_targets_are_scanned_separately(tmp_path: Path) -> None:
     assert results["panel-tier"].files == (
         "agents/reviewer-a.md",
         "skills/shared/reviewer-templates.md",
-        "skills/shared/reviewer-templates-code-reviewer.md",
         "skills/shared/voting-protocol.md",
     )
 
@@ -759,19 +757,17 @@ def test_panel_tier_scan_includes_agents_and_shared_files(tmp_path: Path) -> Non
         "agents/reviewer-a.md",
         "agents/reviewer-b.md",
         "skills/shared/reviewer-templates.md",
-        "skills/shared/reviewer-templates-code-reviewer.md",
         "skills/shared/voting-protocol.md",
     )
     assert result.skill_md_lines == 0
     assert result.conditional_lines == 0
     assert not result.conditional_files
-    assert result.closure_lines == 5
+    assert result.closure_lines == 4
 
 
 def test_panel_tier_scan_fails_when_fixed_file_is_missing(tmp_path: Path) -> None:
     write(tmp_path, "agents/reviewer-a.md", "reviewer a\n")
     write(tmp_path, "skills/shared/reviewer-templates.md", "templates\n")
-    write(tmp_path, "skills/shared/voting-protocol.md", "voting\n")
 
     with pytest.raises(ScanError):
         _ = scg.scan_panel_tier(tmp_path)
@@ -779,7 +775,6 @@ def test_panel_tier_scan_fails_when_fixed_file_is_missing(tmp_path: Path) -> Non
 
 def test_panel_tier_scan_fails_when_agent_glob_is_empty(tmp_path: Path) -> None:
     write(tmp_path, "skills/shared/reviewer-templates.md", "templates\n")
-    write(tmp_path, "skills/shared/reviewer-templates-code-reviewer.md", "code reviewer\n")
     write(tmp_path, "skills/shared/voting-protocol.md", "voting\n")
 
     with pytest.raises(ScanError):

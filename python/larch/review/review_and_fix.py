@@ -462,6 +462,19 @@ def _record_step5_round_timing_before_gates(
     )
 
 
+def _flush_review_batches_for_result(*, implement_tmpdir: Path, run_id: str, rounds_completed: int, result: RoundResult | None) -> None:
+    with contextlib.suppress(Exception):
+        flush_review_batches(
+            impl_tmpdir=implement_tmpdir,
+            run_id=run_id,
+            rounds=rounds_completed,
+            _accepted=result.total_accepted_count if result else 0,
+            _rejected=result.total_rejected_count if result else 0,
+            exonerated=result.total_exonerated_count if result else 0,
+            _neutral=result.total_neutral_count if result else 0,
+        )
+
+
 # --- public entry points ---
 
 def step5(argv: list[str] | None = None) -> int:
@@ -524,8 +537,7 @@ def step5(argv: list[str] | None = None) -> int:
             prior_round = starting_round - 1
             prior_env = implement_tmpdir / f"round-{prior_round}" / "review-and-fix.env"
             if starting_round > round_cap and prior_env.is_file():
-                with contextlib.suppress(Exception):
-                    flush_review_batches(impl_tmpdir=implement_tmpdir, run_id=args.run_id, rounds=0, _accepted=0, _rejected=0, exonerated=0, _neutral=0)
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=0, result=None)
                 _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=0, final_round=prior_round, final_irf="complete", coder_status="", files_hint="", effective_cap=round_cap)
                 return 0
             if not _step5_probe_prior_round_env(implement_tmpdir=implement_tmpdir, prior_round=prior_round):
@@ -544,16 +556,7 @@ def step5(argv: list[str] | None = None) -> int:
                 final_irf = last.status if last else "complete"
                 coder_status = last.coder.status if last else ""
                 files_hint = last.coder.commit_sha if last else ""
-                with contextlib.suppress(Exception):
-                    flush_review_batches(
-                        impl_tmpdir=implement_tmpdir,
-                        run_id=args.run_id,
-                        rounds=rounds_completed,
-                        _accepted=last.total_accepted_count if last else 0,
-                        _rejected=last.total_rejected_count if last else 0,
-                        exonerated=last.total_exonerated_count if last else 0,
-                        _neutral=last.total_neutral_count if last else 0
-                    )
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=last)
                 _emit_step5_envelope(status="mav-resume-past-cap", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=prior, final_irf=final_irf, coder_status=coder_status, files_hint=files_hint, effective_cap=round_cap)
                 return 0
             args.round_num = str(round_num)
@@ -570,6 +573,13 @@ def step5(argv: list[str] | None = None) -> int:
                 _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
                 return 0
             if result.status == "self-review-required":
+                _record_step5_round_timing_before_gates(
+                    implement_tmpdir=implement_tmpdir,
+                    round_num=round_num,
+                    start_s=start_s,
+                    result=result,
+                )
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
                 _emit_step5_envelope(
                     status="self-review-required",
                     stall_tracking=False,
@@ -629,28 +639,10 @@ def step5(argv: list[str] | None = None) -> int:
                 terminal_status = "stall"
                 stall_tracking = True
                 stall_reason = f"round-failed-{result.status}"
-                with contextlib.suppress(Exception):
-                    flush_review_batches(
-                        impl_tmpdir=implement_tmpdir,
-                        run_id=args.run_id,
-                        rounds=rounds_completed,
-                        _accepted=result.total_accepted_count,
-                        _rejected=result.total_rejected_count,
-                        exonerated=result.total_exonerated_count,
-                        _neutral=result.total_neutral_count
-                    )
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
             if terminal_status == "stall":
                 _emit_step5_envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
-                with contextlib.suppress(Exception):
-                    flush_review_batches(
-                        impl_tmpdir=implement_tmpdir,
-                        run_id=args.run_id,
-                        rounds=rounds_completed,
-                        _accepted=result.total_accepted_count,
-                        _rejected=result.total_rejected_count,
-                        exonerated=result.total_exonerated_count,
-                        _neutral=result.total_neutral_count
-                    )
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
                 return result.rc or 2
             if terminal_status == "cap-hit":
                 _emit_step5_envelope(status="cap-hit", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)

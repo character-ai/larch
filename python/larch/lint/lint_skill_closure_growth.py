@@ -528,7 +528,6 @@ def scan_panel_tier(root: Path) -> SkillClosureResult:
         raise ScanError("panel-tier source scan found no agents/*.md files")
     fixed_files = (
         root / "skills/shared/reviewer-templates.md",
-        root / "skills/shared/reviewer-templates-code-reviewer.md",
         root / "skills/shared/voting-protocol.md",
     )
     for path in fixed_files:

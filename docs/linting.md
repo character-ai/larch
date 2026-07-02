@@ -55,7 +55,7 @@ When a production file is simplified, remove matching per-file ignore codes from
 
 ### SKILL.md closure growth ratchet
 
-`python3 python/cli.py skill-closure report` prints `design`, `implement`, `review`, and `panel-tier` separately. For skills, it reports each `SKILL.md` size plus direct always-loaded prompt-source closure. For `panel-tier`, it reports the fixed prompt-source set: `agents/*.md`, `skills/shared/reviewer-templates.md`, `skills/shared/reviewer-templates-code-reviewer.md`, and `skills/shared/voting-protocol.md`.
+`python3 python/cli.py skill-closure report` prints `design`, `implement`, `review`, and `panel-tier` separately. For skills, it reports each `SKILL.md` size plus direct always-loaded prompt-source closure. For `panel-tier`, it reports the fixed prompt-source set: `agents/*.md`, `skills/shared/reviewer-templates.md`, and `skills/shared/voting-protocol.md`.
 
 `python3 python/cli.py lint skill-closure-growth` compares those live metrics with `python/skill-closure-baseline.json`. It fails when `SKILL.md` lines, `SKILL.md` estimated tokens, `SKILL.md` content estimated tokens, closure lines, closure estimated tokens, or closure content estimated tokens grow past the baseline. `/review` also ratchets conditional closure lines and tokens. Design and implement conditional closure metrics stay report-only. The content-token metrics ignore blank lines, so blank-line-only churn does not create useful ratchet headroom.
 
