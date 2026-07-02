@@ -30,7 +30,7 @@ _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
 _CHECKS_FAILURE_DIGEST_ERROR_MAX_BYTES: Final = 512
 _CHECKS_FAILURE_DIGEST_MARKER_RE: Final = re.compile(
-    r"ERROR:|Error:|FAILED|Failed|Traceback|AssertionError|DEFECT"
+    r"ERROR:|Error:|FAILED|Failed|Traceback|AssertionError|DEFECT:"
 )
 _CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
     r"(?<![\w./-])((?:[A-Za-z0-9_.-]+/)*[A-Za-z0-9_.-]+):(\d+)(?::\d+)?\b"
@@ -770,18 +770,39 @@ def _record_for_check(
     return record
 
 
+def _apply_digest_location(
+    record: _ChecksFailureDigestRecord,
+    *,
+    line: str,
+    pending_location: str | None,
+) -> None:
+    if record.first_location != "unknown":
+        return
+    location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+    if location_match is not None:
+        record.first_location = f"{location_match.group(1)}:{location_match.group(2)}"
+    elif pending_location is not None:
+        record.first_location = pending_location
+
+
 def _update_digest_record(
     records: dict[str, _ChecksFailureDigestRecord],
     *,
     check: str,
     line: str,
     marker_match: re.Match[str] | None,
+    pending_location: str | None = None,
+    is_precommit_banner: bool = False,
 ) -> None:
     record = _record_for_check(records, check)
-    location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
-    if record.first_location == "unknown" and location_match is not None:
-        record.first_location = f"{location_match.group(1)}:{location_match.group(2)}"
+    _apply_digest_location(record, line=line, pending_location=pending_location)
+    if is_precommit_banner:
+        record.failure_count += 1
+        return
     if marker_match is None:
+        location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+        if location_match is not None and record.first_error == "unknown":
+            record.first_error = _digest_line(line)
         return
     record.failure_count += 1
     if record.first_error == "unknown":
@@ -811,6 +832,7 @@ def _parse_checks_failure_records(
     records: dict[str, _ChecksFailureDigestRecord] = {}
     current_check = "unknown"
     fallback_line = ""
+    pending_location: str | None = None
     for line in redacted_log_text.splitlines():
         current_check, is_header = _digest_header_context(line, current_check)
         if is_header:
@@ -819,16 +841,40 @@ def _parse_checks_failure_records(
         precommit_check = _precommit_digest_check(line)
         if precommit_check is not None:
             current_check = precommit_check
-        elif line.startswith("DEFECT:"):
+            _update_digest_record(
+                records,
+                check=precommit_check,
+                line=line,
+                marker_match=None,
+                is_precommit_banner=True,
+            )
+            continue
+        if line.startswith("DEFECT:"):
             current_check = "contains-pins"
+        location_match = _CHECKS_FAILURE_DIGEST_LOCATION_RE.search(line)
+        if location_match is not None:
+            pending_location = f"{location_match.group(1)}:{location_match.group(2)}"
         marker_match = _CHECKS_FAILURE_DIGEST_MARKER_RE.search(line)
         check = _digest_check_for_line(line, current_check)
         if marker_match is not None:
             if not fallback_line:
                 fallback_line = line
-            _update_digest_record(records, check=check, line=line, marker_match=marker_match)
+            _update_digest_record(
+                records,
+                check=check,
+                line=line,
+                marker_match=marker_match,
+                pending_location=pending_location,
+            )
+            pending_location = None
         elif records:
-            _update_digest_record(records, check=check, line=line, marker_match=None)
+            _update_digest_record(
+                records,
+                check=check,
+                line=line,
+                marker_match=None,
+                pending_location=pending_location,
+            )
 
     if not records:
         record = _record_for_check(records, "unknown")

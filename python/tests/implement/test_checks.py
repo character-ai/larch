@@ -157,7 +157,7 @@ def test_checks_failure_digest_precommit_hook_record() -> None:
     assert "check=ruff" in digest
     assert "failure_count=2" in digest
     assert "first_location=python/app.py:12" in digest
-    assert "first_error=ruff" in digest
+    assert "first_error=python/app.py:12:5: F401 imported but unused" in digest
 
 
 def test_checks_failure_digest_multiple_precommit_hooks_under_cap() -> None:
