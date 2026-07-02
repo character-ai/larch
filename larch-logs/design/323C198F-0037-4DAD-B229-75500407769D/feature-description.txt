@@ -1,0 +1,25 @@
+# Single-vendor code-review voting panel; both-down falls back to main-agent adjudication
+
+**Skills:** /implement Step 5 and /review only. /design plan voting is intentionally unchanged.
+
+**Initiative:** Cursor-cost reviewer/voter rebalance. This issue rebalances the code-review voting panel away from Cursor.
+
+**Changes:**
+
+- `review.voters`: all voters are the same vendor with distinct archetypes as today (validity, plan-fidelity, pragmatism). Per-voter waterfall: Codex/gpt-5.4-mini, then Cursor/composer-2.5, then Claude/sonnet-4.6. This flips the current Cursor-primary validity voter to Codex-primary, so the default panel is single-vendor Codex.
+- When both externals are unavailable: no voting. The main agent (Claude) adjudicates the ballot unilaterally via the existing zero-voter tier. Do not spawn three identical Claude voters; preserve the collapse-to-main-agent behavior.
+- `design.plan_voters` is unchanged: /design keeps its diverse Claude plus Codex plus Cursor plan-voter panel, because plan review is the keystone quality gate and vendor diversity guards against correlated blind spots.
+
+**Acceptance:**
+
+- Code-review voters resolve to single-vendor Codex-first with the stated waterfall.
+- Both-externals-down collapses to main-agent adjudication, not three Claude voters.
+- /design plan voting is untouched (still Claude plus Codex plus Cursor).
+
+**Prior art:**
+
+- #5856 (closed, empty body, no PR) was an earlier one-line capture of "switch review voters 100% to GPT 5.4 Mini, and try the same with the aggregator." This issue supersedes it with a full spec; the aggregator half is in the companion role-flip issue.
+- #5837 (DONE BUG) built the per-voter runtime waterfall (follow-up to #5817) and documented two failure modes this issue must respect: a voter tool that passes the availability probe but hard-fails at runtime must re-dispatch down the waterfall rather than drop the slot, and the terminal Claude tier must have ballot read access or it degrades to JUDGE_ERROR and a 0-judge panel. The "both-down -> main agent decides, no triplicate Claude" rule here is the deliberate end state for the 0-external case.
+- #4764 (DONE) stripped author attribution from ballots to remove same-vendor judge bias. Single-vendor voters reduce cross-vendor diversity on the panel; rely on the distinct archetypes (validity / plan-fidelity / pragmatism) and the anonymized ballot to mitigate, and watch the voter-agreement scoreboard after rollout.
+
+**Note:** gpt-5.4-mini has been evaluated as a reviewer and voter and looks reasonable.

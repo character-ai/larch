@@ -1,0 +1,4 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Approved Decision 1 and the plan explicitly preserve the single-Claude both-down floor; this duplicates prior OOS ledger rows without new evidence.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- DEGRADED_HARD_FAIL is a separate preflight abort path outside this plan’s voter-dispatch scope; zero-voter dispatch is not required by the approved both-down resolution.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Same both-down scope-reduction as round-1 OOS findings; approved outline keeps slot-1 Claude launch, so no necessity gate clears.

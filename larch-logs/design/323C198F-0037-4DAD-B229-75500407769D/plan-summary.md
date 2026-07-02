@@ -1,0 +1,1 @@
+Plan updates the code-review voter defaults so all three code-review voter slots are Codex-primary with Cursor then Claude fallback. It preserves the existing both-externals-down single-Claude slot-1 behavior and leaves `/design` plan voters untouched.

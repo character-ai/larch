@@ -1,0 +1,1 @@
+There is an active background task — the harness is blocking file reads until it completes. I need to wait for the `<task-notification>` before the ballot file becomes readable. Please let me know when the background task finishes and I'll cast the votes immediately.
