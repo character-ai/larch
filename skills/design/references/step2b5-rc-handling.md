@@ -1,5 +1,7 @@
 # Step 2b.5 action handling
 
+**Consumer**: `/design` retained Step 2b.5 callers and Gate A / discussion-round2 hard-size direct-entry paths.
+
 **Contract**: branch only on `STEP2B5_NEXT_ACTION`. Python chooses that action through `python/cli.py design step2b5` on retained paths and through `.design-postplan-emit-result.env` on merged direct-entry paths. Do not recompute the action from check-size rc, `SIZE_TRIGGER_FIRED`, `DRIFT_TRIGGER_FIRED`, or `partition_requested` in prompt prose.
 
 **When to load**: mandatory immediately before retained Step 2b.5 dispatch after `python/cli.py design step2b5` returns, including Override-after-defects and standalone Step 2b.5 recovery. Also mandatory before direct-entry dispatch for settle action `SETTLE_NEXT_ACTION=gate-a-hard-size`, where no same-turn `design step2b5` fence ran. Do not load for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`.
