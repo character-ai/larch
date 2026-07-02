@@ -1042,6 +1042,15 @@ def _round_summary_counts(
     return counts[0], counts[1], counts[2]
 
 
+def _compact_rejected_findings_from_tally(tally_text: str) -> str:
+    compact = "# Rejected Findings\n\n"
+    has_outcome_rows = "_OUTCOME=" in tally_text
+    for idx, line in enumerate(tally_text.splitlines(), start=1):
+        if line.endswith("_OUTCOME=rejected") or (not has_outcome_rows and line.endswith("_ACCEPTED=false")):
+            compact += f"{idx}:{line}\n"
+    return compact
+
+
 def _review_round_summary_body(
     *,
     review_tmpdir: Path,
@@ -1125,16 +1134,11 @@ def emit_tally(argv: list[str]) -> int:
         accepted_file=accepted_file,
     )
     _write(path=round_summary, text=body)
-    if rejected_file.is_file():
+    if rejected_file.is_file() and rejected_file.stat().st_size > 0:
         shutil.copyfile(rejected_file, rejected_full)
     else:
         _write(path=rejected_full, text="")
-    compact = "# Rejected Findings\n\n"
-    has_outcome_rows = "_OUTCOME=" in tally_text
-    for idx, line in enumerate(tally_text.splitlines(), start=1):
-        if line.endswith("_OUTCOME=rejected") or (not has_outcome_rows and line.endswith("_ACCEPTED=false")):
-            compact += f"{idx}:{line}\n"
-    _write(path=rejected_file, text=compact)
+        _write(path=rejected_file, text=_compact_rejected_findings_from_tally(tally_text))
     reviewer_paths = sorted(str(path) for path in review_tmpdir.glob("*-output.txt"))
     _write(
         path=review_summary,
