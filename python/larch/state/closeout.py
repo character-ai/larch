@@ -241,6 +241,20 @@ def _pin_architectural_guidelines_note_best_effort(*, tmpdir: Path, env: dict[st
             base_ref=base_ref,
             repo_root=repo.stdout.strip(),
         )
+        if not pinned and architectural_guidelines.staged_assessment_present(tmpdir):
+            refreshed = architectural_guidelines.refresh_staged_assessment_for_current_head(
+                tmpdir,
+                head_sha=current_head,
+                base_ref=base_ref,
+                repo_root=repo.stdout.strip(),
+            )
+            if refreshed:
+                pinned = architectural_guidelines.pin_note_from_staged(
+                    tmpdir,
+                    head_sha=current_head,
+                    base_ref=base_ref,
+                    repo_root=repo.stdout.strip(),
+                )
         return "ok" if pinned else "skipped"
     except Exception:
         return "failed"
