@@ -570,6 +570,22 @@ def step5(argv: list[str] | None = None) -> int:
                 _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
                 return 0
             if result.status == "self-review-required":
+                _record_step5_round_timing_before_gates(
+                    implement_tmpdir=implement_tmpdir,
+                    round_num=round_num,
+                    start_s=start_s,
+                    result=result,
+                )
+                with contextlib.suppress(Exception):
+                    flush_review_batches(
+                        impl_tmpdir=implement_tmpdir,
+                        run_id=args.run_id,
+                        rounds=rounds_completed,
+                        _accepted=result.total_accepted_count,
+                        _rejected=result.total_rejected_count,
+                        exonerated=result.total_exonerated_count,
+                        _neutral=result.total_neutral_count,
+                    )
                 _emit_step5_envelope(
                     status="self-review-required",
                     stall_tracking=False,

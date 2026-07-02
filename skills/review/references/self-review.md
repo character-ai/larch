@@ -14,7 +14,7 @@
 3. Review the gathered context yourself. Write raw findings to `$REVIEW_TMPDIR/findings.md` using the `### FINDING_N:` format.
 4. Write OOS observations to `$REVIEW_TMPDIR/oos.md` or `$REVIEW_TMPDIR/oos-accepted-review.md` only when they fit existing `/review` OOS rules.
 5. **Accepted-findings handoff**: copy in-scope self-review findings into `$REVIEW_TMPDIR/accepted-findings.md` under the normal `### FINDING_N:` contract. Auto-accept in-scope items. Write rejected items to `$REVIEW_TMPDIR/rejected-findings.md` when needed. Bind `ACCEPTED_FINDINGS_FILE` to `$REVIEW_TMPDIR/accepted-findings.md`.
-6. **Summary/tally refresh**: after adjudication, replace the stale panel-failed zero-finding summary. Write `$REVIEW_TMPDIR/self-review-tally.env` with counts derived from self-review artifacts: `ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`. Then invoke:
+6. **Summary/tally refresh**: after adjudication, replace the stale panel-failed zero-finding summary. Ensure `REVIEW_MODE` is already bound to the active mode (`diff` or `description`; the heavy-worker path is always `diff`). Write `$REVIEW_TMPDIR/self-review-tally.env` with counts derived from self-review artifacts: `ACCEPTED_COUNT`, `REJECTED_COUNT`, `EXONERATED_COUNT`, and `NEUTRAL_COUNT`. Then invoke:
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review emit-tally \
@@ -24,7 +24,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review emit-tally \
   --review-tmpdir "$REVIEW_TMPDIR" \
   --session-env-path "${SESSION_ENV_PATH:-}" \
   --round "${ROUND_NUM:-1}" \
-  --mode "${REVIEW_MODE:-diff}" \
+  --mode "$REVIEW_MODE" \
   --scout-status na \
   --dynamic-slots 0 \
   --static-slot-count 0

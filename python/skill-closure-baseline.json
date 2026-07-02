@@ -63,9 +63,9 @@
     "skill_md_lines": 793
   },
   {
-    "closure_content_estimated_tokens": 62787,
-    "closure_estimated_tokens": 63003,
-    "closure_lines": 2942,
+    "closure_content_estimated_tokens": 57971,
+    "closure_estimated_tokens": 58170,
+    "closure_lines": 2699,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,
     "conditional_files": [],
@@ -85,7 +85,6 @@
       "agents/reviewer-structure.md",
       "agents/reviewer-testing.md",
       "skills/shared/reviewer-templates.md",
-      "skills/shared/reviewer-templates-code-reviewer.md",
       "skills/shared/voting-protocol.md"
     ],
     "skill": "panel-tier",
@@ -94,11 +93,11 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 8392,
-    "closure_estimated_tokens": 8416,
+    "closure_content_estimated_tokens": 8417,
+    "closure_estimated_tokens": 8441,
     "closure_lines": 304,
-    "conditional_content_estimated_tokens": 3254,
-    "conditional_estimated_tokens": 3265,
+    "conditional_content_estimated_tokens": 3291,
+    "conditional_estimated_tokens": 3301,
     "conditional_files": [
       "skills/review/references/heavy-worker.md",
       "skills/review/references/self-review.md"
@@ -112,8 +111,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 4850,
-    "skill_md_estimated_tokens": 4859,
+    "skill_md_content_estimated_tokens": 4875,
+    "skill_md_estimated_tokens": 4884,
     "skill_md_lines": 114
   }
 ]

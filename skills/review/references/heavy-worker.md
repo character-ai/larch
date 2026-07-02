@@ -25,7 +25,7 @@ Treat those values as data. Do not infer paths from conversation context when an
 
 ## Required Reads
 
-Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Voting mechanics are now owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` (judge launch) and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes` (vote tally) — both invoked by `review core` automatically; no prompt-level read required. On zero-survivor `panel-failed`, **MANDATORY — READ ENTIRE FILE**: read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/self-review.md` before executing the fallback.
+Before executing, read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` (Step 3 prerequisite — always). Voting mechanics are now owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters` (judge launch) and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes` (vote tally) — both invoked by `review core` automatically; no prompt-level read required. On zero-survivor `panel-failed`, bind `REVIEW_MODE=diff`, then **MANDATORY — READ ENTIRE FILE**: read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/self-review.md` before executing the fallback.
 
 ## Work
 

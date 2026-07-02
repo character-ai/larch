@@ -437,9 +437,18 @@ def test_round_runner_maps_zero_survivor_panel_failed_to_self_review_required(tm
 def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
+    events: list[str] = []
+    timing_calls: list[list[str]] = []
+    flush_calls: list[dict[str, object]] = []
+    now = {"value": 10}
+
+    def fake_time() -> int:
+        now["value"] += 1
+        return now["value"]
 
     def fake_round(args, *, suppress_emit, review_core_impl=None):
         del args, suppress_emit, review_core_impl
+        events.append("round")
         return review_and_fix.RoundResult(
             0, "self-review-required", "panel-failed", 1, 0, 0, 0, 0, 0, 0, 0, 0,
             impl / "round-1" / "accepted-findings.md",
@@ -450,7 +459,20 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
             review_and_fix.CoderResult(0),
         )
 
+    def fake_record(argv):
+        events.append("timing")
+        timing_calls.append(argv)
+        return 0
+
+    def fake_flush(**kwargs):
+        events.append("flush")
+        flush_calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(review_and_fix.time, "time", fake_time)
     monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", fake_record)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", fake_flush)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
     out = capsys.readouterr().out
     assert rc == 0
@@ -458,6 +480,13 @@ def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, 
     assert "FINAL_REVIEW_AND_FIX_STATUS=self-review-required" in out
     assert "STALL_TRACKING=false" in out
     assert "STALL_REASON=\n" in out
+    assert events == ["round", "timing", "flush"]
+    assert len(timing_calls) == 1
+    timing_call = timing_calls[0]
+    assert timing_call[timing_call.index("--round") + 1] == "1"
+    assert timing_call[timing_call.index("--start-s") + 1] == "11"
+    assert len(flush_calls) == 1
+    assert flush_calls[0]["rounds"] == 1
 
 
 @MARK_STEP5
