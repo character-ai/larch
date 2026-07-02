@@ -2,7 +2,7 @@
 
 **Consumer**: `/design` Gate B post-apply, Step 1e Gate A re-entry optional-trailer guard, and Round 2 post-plan discussion revision after `design-step35-settle.sh` returns.
 
-**Contract**: single canonical prose table for orchestrator dispatch on `design-step35-settle.sh` machine actions. This file documents prompt-side branching only; it does not change wrapper behavior, Python-owned rc values, postplan semantics, or settle retry mechanics.
+**Contract**: prompt-side branch bodies for `design-step35-settle.sh` machine actions. Python chooses the action through `python/cli.py design settle-next-action`; this file does not derive actions from rc values.
 
 **When to load**: immediately before any orchestrator branches on `design-step35-settle.sh` output at Gate B post-apply, Gate A re-entry trailer guard, or discussion-round2 plan revision after the settle wrapper returns.
 
@@ -16,7 +16,7 @@ If the `SETTLE_NEXT_ACTION` action row is absent, stop for operator repair. Do n
 
 If `SETTLE_NEXT_ACTION` and wrapper rc disagree, stop for repair rather than silently choosing one.
 
-Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority.
+Wrapper exit codes remain diagnostics and legacy process contracts only. The orchestrator must not use them as fallback routing authority. `SETTLE_EXIT_RC` is compatibility output from the Python action envelope.
 
 Diagnostics:
 

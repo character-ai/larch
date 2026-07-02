@@ -116,23 +116,49 @@ design_settle_parse_postplan_rc() {
   done
 }
 
-design_settle_next_action_for_rc() {
-  local rc="$1"
-  case "$rc:$SITE" in
-    0:gate-b) printf '%s\n' 'gate-b-continue' ;;
-    0:gate-a|0:discussion-round2) printf '%s\n' 'gate-a-return' ;;
-    10:gate-b) printf '%s\n' 'gate-b-validator-fail' ;;
-    10:gate-a|10:discussion-round2) printf '%s\n' 'gate-a-validator-fail' ;;
-    12:gate-b) printf '%s\n' 'gate-b-hard-size' ;;
-    12:gate-a|12:discussion-round2) printf '%s\n' 'gate-a-hard-size' ;;
-    13:gate-b) printf '%s\n' 'gate-b-split' ;;
-    13:gate-a|13:discussion-round2) printf '%s\n' 'gate-a-split' ;;
-    *) return 1 ;;
-  esac
-}
-
 design_settle_emit_next_action() {
   printf 'SETTLE_NEXT_ACTION=%s\n' "$1"
+}
+
+design_settle_dispatch_next_action() {
+  local rc="$1" dispatch_out dispatch_rc dispatch_line
+  local action_row="" action_count=0 exit_rc="" exit_count=0
+  set +e
+  dispatch_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design settle-next-action --site "$SITE" --postplan-rc "$rc")
+  dispatch_rc=$?
+  set -e
+  while IFS= read -r dispatch_line || [ -n "$dispatch_line" ]; do
+    case "$dispatch_line" in
+      SETTLE_NEXT_ACTION=*)
+        action_row="$dispatch_line"
+        action_count=$((action_count + 1))
+        ;;
+      SETTLE_EXIT_RC=*)
+        exit_rc="${dispatch_line#SETTLE_EXIT_RC=}"
+        exit_count=$((exit_count + 1))
+        ;;
+    esac
+  done <<< "$dispatch_out"
+  if [ "$dispatch_rc" -ne 0 ]; then
+    printf '%s\n' "design-step35-settle.sh: settle-next-action failed with rc $dispatch_rc" >&2
+    exit 3
+  fi
+  if [ "$action_count" -ne 1 ]; then
+    printf '%s\n' "design-step35-settle.sh: settle-next-action must emit exactly one SETTLE_NEXT_ACTION row" >&2
+    exit 3
+  fi
+  if [ "$exit_count" -ne 1 ]; then
+    printf '%s\n' "design-step35-settle.sh: settle-next-action must emit exactly one SETTLE_EXIT_RC row" >&2
+    exit 3
+  fi
+  case "$exit_rc" in
+    ''|*[!0-9]*)
+      printf '%s\n' "design-step35-settle.sh: settle-next-action emitted non-numeric SETTLE_EXIT_RC=$exit_rc" >&2
+      exit 3
+      ;;
+  esac
+  printf '%s\n' "$action_row"
+  exit "$exit_rc"
 }
 
 design_settle_restore_gate_b_snapshot() {
@@ -294,23 +320,19 @@ case "$POSTPLAN_MACHINE_RC" in
     if [ "$SITE" = gate-b ]; then
       design_settle_atomic_write "$gate_b_phase_file" awaiting-continuation
     fi
-    design_settle_emit_next_action "$(design_settle_next_action_for_rc 0)"
-    exit 0
+    design_settle_dispatch_next_action 0
     ;;
   10|13)
     if [ "$SITE" = gate-b ]; then
       design_settle_atomic_write "$gate_b_phase_file" awaiting-postplan-operator
     fi
-    design_settle_emit_next_action "$(design_settle_next_action_for_rc "$POSTPLAN_MACHINE_RC")"
-    exit "$POSTPLAN_MACHINE_RC"
+    design_settle_dispatch_next_action "$POSTPLAN_MACHINE_RC"
     ;;
   11)
-    design_settle_emit_next_action pause
-    exit 11
+    design_settle_dispatch_next_action 11
     ;;
   12)
-    design_settle_emit_next_action "$(design_settle_next_action_for_rc 12)"
-    exit 12
+    design_settle_dispatch_next_action 12
     ;;
   *)
     printf '%s\n' "design-step35-settle.sh: unexpected POSTPLAN_RC=$POSTPLAN_MACHINE_RC" >&2

@@ -10,6 +10,7 @@ from larch import io as larch_io
 from collections.abc import Sequence
 
 from larch.git.repo_roots import consumer_repo_root
+from larch.design.design_session import step2b5_next_action_for
 
 
 # Drift-detection keys read from drift-baseline.env
@@ -175,6 +176,9 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
             "BASELINE_PLAN_LINES",
             "BASELINE_DIFF_LINES",
             "PARTITION_REQUESTED",
+            "STEP2B5_STATUS",
+            "STEP2B5_NEXT_ACTION",
+            "STEP2B5_EXIT_RC",
         ):
             if key in kvs:
                 print(f"{key}={kvs[key]}")
@@ -278,6 +282,14 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         "BASELINE_DIFF_LINES": size_kv.get("BASELINE_DIFF_LINES", ""),
         "PARTITION_REQUESTED": partition_requested,
     })
+    step2b5 = step2b5_next_action_for(
+        check_size_rc=check_size.returncode,
+        check_size_kvs=size_kv,
+        partition_requested=partition_requested == "true",
+    )
+    kvs["STEP2B5_STATUS"] = step2b5.status
+    kvs["STEP2B5_NEXT_ACTION"] = step2b5.action
+    kvs["STEP2B5_EXIT_RC"] = str(step2b5.exit_rc)
     if check_size.returncode != 0:
         _self_log_check_size_failure(
             root,
@@ -288,7 +300,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
             site="design Step 2b",
         )
         flush()
-        return 1
+        return step2b5.exit_rc
     if snapshot_original and kvs.get("PLAN_LINES") and kvs.get("DIFF_LINES"):
         _ = _run_cli(
             root,
@@ -306,15 +318,15 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         kvs["PLAN_SIZE_STATUS"] = "skipped-defects"
         flush()
         return 10
-    if kvs["SIZE_TRIGGER_FIRED"] == "true":
+    if step2b5.action == "hard-trigger":
         kvs["PLAN_SIZE_STATUS"] = "plan-size-trigger"
         flush()
         return 12
-    if partition_requested == "true":
+    if step2b5.action == "partition-split":
         kvs["PLAN_SIZE_STATUS"] = "partition-requested"
         flush()
         return 13
-    if kvs["DRIFT_TRIGGER_FIRED"] == "true":
+    if step2b5.action == "drift-advisory":
         kvs["PLAN_SIZE_STATUS"] = "drift-advisory"
         flush()
         print(f"⏩ 2b.5: plan-size — drift advisory (PLAN_LINES={kvs.get('PLAN_LINES','')} DIFF_LINES={kvs.get('DIFF_LINES','')}); proceeding")

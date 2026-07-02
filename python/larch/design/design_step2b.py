@@ -215,6 +215,18 @@ def _postplan_decide(
             writes=(),
             unlinks=(),
         )
+    if rc == 2 and "STEP2B5_NEXT_ACTION=rc2-warning" in captured_stdout.splitlines():
+        touches = [paths.step2b5_done]
+        if site in {"", "step2b"}:
+            touches.append(paths.step2b_done)
+        return PostplanDecision(
+            postplan_rc=0,
+            status="rc2-warning",
+            rows=("POSTPLAN_RC=0\n", "POSTPLAN_STATUS=rc2-warning\n"),
+            touches=tuple(touches),
+            writes=(),
+            unlinks=(),
+        )
     if rc == 2:
         fatal = "**⚠ Step 2b: design-postplan-emit.sh configuration error (exit 2); aborting /design.**"
     elif rc == 1:
@@ -291,7 +303,7 @@ def _shared_step2b_postplan_body(
         _print_text(captured)
         if decision.fatal_stderr:
             print(decision.fatal_stderr, file=sys.stderr)
-    return PostplanResult(rc, stdout_lines, decision.status, decision.inline_retry_scheduled)
+    return PostplanResult(decision.postplan_rc, stdout_lines, decision.status, decision.inline_retry_scheduled)
 
 
 def step2b_postplan_main(argv: Sequence[str]) -> int:

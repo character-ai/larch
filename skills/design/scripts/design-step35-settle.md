@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Shared post-rewrite settle wrapper for Gate B, Gate A after-discussion rewrites, and discussion Round 2. It runs the mechanical post-rewrite dedup, delegates postplan to `python/cli.py design step2b-postplan`, and centralizes the exit-code and marker contract that prompt-side prose previously respelled.
+Shared post-rewrite settle wrapper for Gate B, Gate A rewrites, and discussion Round 2. It runs dedup, delegates postplan to `python/cli.py design step2b-postplan`, and asks `python/cli.py design settle-next-action` for the action envelope.
 
 ## Primary callers
 
@@ -47,29 +47,29 @@ Missing or non-numeric Gate B rounds exit `2`.
 
 ## Exit code contract
 
-The wrapper also emits a whole-line `SETTLE_NEXT_ACTION=<value>` row on stdout before each deterministic dispatch exit. The row is required on stdout. A stderr-only action row does not satisfy the contract. The process rc remains a wrapper diagnostic and legacy process contract.
+The wrapper emits one stdout `SETTLE_NEXT_ACTION=<value>` row before each deterministic dispatch exit. For postplan-derived actions, `python/cli.py design settle-next-action --site <site> --postplan-rc <rc>` selects the row and emits `SETTLE_EXIT_RC=<n>`. The wrapper forwards the action row and exits with `SETTLE_EXIT_RC`. A stderr-only action row is invalid. The process rc remains a wrapper diagnostic and legacy process contract.
 
 | `SETTLE_NEXT_ACTION` | Meaning |
 | --- | --- |
-| `gate-b-continue` | Gate B clean postplan result. Continue to loop-mode or legacy continuation handling. |
-| `gate-a-return` | Gate A or discussion Round 2 clean postplan result. Return to Gate A. |
-| `dedup-revise` | Dedup found a revise-again result. Gate B restores `plan-pre-apply-round-N.txt` when present before returning for another prompt-side apply. |
+| `gate-b-continue` | Gate B clean postplan result. |
+| `gate-a-return` | Gate A or discussion Round 2 clean result. |
+| `dedup-revise` | Dedup found revise-again; Gate B restores `plan-pre-apply-round-N.txt` when present. |
 | `gate-b-validator-fail` | Gate B validator operator brake. |
-| `gate-a-validator-fail` | Gate A or discussion Round 2 validator operator brake. |
-| `pause` | Delegated pause-save terminal result. |
+| `gate-a-validator-fail` | Gate A / Round 2 validator brake. |
+| `pause` | Pause-save terminal result. |
 | `gate-b-hard-size` | Gate B hard plan-size brake. |
-| `gate-a-hard-size` | Gate A or discussion Round 2 hard plan-size brake. |
+| `gate-a-hard-size` | Gate A / Round 2 hard size brake. |
 | `gate-b-split` | Gate B split path. |
 | `gate-a-split` | Gate A or discussion Round 2 split path. |
 
 | Exit | Meaning |
 | --- | --- |
 | `0` | Settled. |
-| `1` | Dedup revise-again result; caller revises `plan.txt` and retries settle. |
-| `2` | Usage, invalid site, invalid tmpdir, or invalid Gate B round. |
-| `3` | Fail-closed wrapper or dedup contract failure. |
+| `1` | Dedup revise-again; caller retries settle. |
+| `2` | Usage, invalid site/tmpdir, or invalid Gate B round. |
+| `3` | Fail-closed wrapper or dedup failure. |
 | `10` | Validator operator brake. |
-| `11` | Delegated pause-save terminal result. |
+| `11` | Pause-save terminal result. |
 | `12` | Hard plan-size brake. |
 | `13` | Split path. |
 
