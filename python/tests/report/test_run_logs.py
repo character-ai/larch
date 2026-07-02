@@ -884,6 +884,30 @@ def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
     assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
 
 
+def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "ship-pr-state.sh").write_text("BAIL_REASON=ci-failed\n", encoding="utf-8")
+
+    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
+    assert "- **Outcome**: stalled" in (run_dir / "final-summary.md").read_text(encoding="utf-8")
+
+
 def test_flush_logs_pre_retains_reloaded_step8_after_final_report_reconcile(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

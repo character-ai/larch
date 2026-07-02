@@ -581,6 +581,14 @@ def _outcome_with_manifest_only_backstop(
     return recovered or outcome
 
 
+def summary_heading_is_stalled(text: str) -> bool:
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        return line.rstrip("\n").rstrip().endswith("— stalled")
+    return False
+
+
 def _summary_stalled_heading_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
         if not line.strip():
@@ -596,9 +604,24 @@ def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
     return None
 
 
+def _implement_tmpdir_from_run_dir(run_dir: Path) -> Path:
+    return run_dir.parent.parent.parent
+
+
+def _manifest_only_reconciliation_allowed(run_dir: Path) -> bool:
+    implement_tmpdir = _implement_tmpdir_from_run_dir(run_dir)
+    ship = implement_tmpdir / "ship-pr-state.sh"
+    final = implement_tmpdir / "finalize-state.sh"
+    return not _state_file_has_rows(ship) and not _state_file_has_rows(final)
+
+
 def stalled_summary_manifest_reconciliation_needed(run_dir: Path) -> bool:
     summary = run_dir / "final-summary.md"
-    if _manifest_only_recovered_outcome(run_dir) != "merged" or not summary.is_file():
+    if (
+        not _manifest_only_reconciliation_allowed(run_dir)
+        or _manifest_only_recovered_outcome(run_dir) != "merged"
+        or not summary.is_file()
+    ):
         return False
     lines = summary.read_text(encoding="utf-8", errors="replace").splitlines(keepends=True)
     return _summary_stalled_heading_index(lines) is not None and _summary_stalled_outcome_index(lines) is not None
@@ -606,6 +629,8 @@ def stalled_summary_manifest_reconciliation_needed(run_dir: Path) -> bool:
 
 def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
     """Conservatively rewrite a manifest-only shipped summary away from stalled."""
+    if not _manifest_only_reconciliation_allowed(run_dir):
+        return False
     outcome = _manifest_only_recovered_outcome(run_dir)
     if outcome != "merged":
         return False

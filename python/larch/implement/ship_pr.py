@@ -16,6 +16,7 @@ from larch.core.run_context import RunContext
 from larch.errors import ShipError
 from larch.git import git
 from larch.git import push
+from larch.report import final_report
 from larch.outcomes import Outcome
 from larch.report import run_logs
 from larch.state import finalize
@@ -81,18 +82,43 @@ def _ship_has_active_failure_signal(tmpdir: Path) -> bool:
     )
 
 
-def _committed_summary_heading_is_stalled(ctx: RunContext) -> bool:
+def _repo_final_summary_relpath(run_id: str) -> str:
+    return f"larch-logs/implement/{run_id}/final-summary.md"
+
+
+def _read_committed_final_summary_text(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    run_id: str,
+) -> str | None:
+    rel = _repo_final_summary_relpath(run_id)
+    repo_summary = Path(cwd) / rel
+    if repo_summary.is_file():
+        return repo_summary.read_text(encoding="utf-8", errors="replace")
+    result = git.show_file(runner, f"HEAD:{rel}", cwd=cwd)
+    if result.returncode == 0 and result.stdout:
+        return result.stdout
+    tmpdir_summary = Path(ctx.tmpdir) / rel
+    if tmpdir_summary.is_file():
+        return tmpdir_summary.read_text(encoding="utf-8", errors="replace")
+    return None
+
+
+def _committed_summary_heading_is_stalled(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+) -> bool:
     run_id = run_logs.effective_run_id(ctx)
     if not run_id:
         return False
-    summary = Path(ctx.tmpdir) / "larch-logs" / "implement" / run_id / "final-summary.md"
-    if not summary.is_file():
+    text = _read_committed_final_summary_text(runner=runner, ctx=ctx, cwd=cwd, run_id=run_id)
+    if text is None:
         return False
-    for line in summary.read_text(encoding="utf-8", errors="replace").splitlines():
-        if not line.strip():
-            continue
-        return line.strip().endswith("— stalled")
-    return False
+    return final_report.summary_heading_is_stalled(text)
 
 
 def _live_recovered_outcome(ctx: RunContext) -> str:
@@ -119,7 +145,7 @@ def reconcile_committed_stalled_summary_if_recovered(
     stalls keep HEAD stable until later evidence is terminal (#5186).
     """
     resolved_counters = counters or ShipReconciliationCounters()
-    if not _committed_summary_heading_is_stalled(ctx):
+    if not _committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd=cwd):
         return None
     if not _live_recovered_outcome(ctx):
         return None

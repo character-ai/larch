@@ -16,9 +16,10 @@ from larch.report import final_report
 from larch.report import run_log_flush
 from larch.report import run_logs
 from larch.implement import ship
+from larch.implement import ship_pr
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
-from larch.core.proc import CommandResult
+from larch.core.proc import CommandResult, ProcRunner
 from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
@@ -935,6 +936,45 @@ def test_recovered_draft_pr_reconciles_stalled_summary_before_ok(
     text = (tmp_path / "larch-logs" / "implement" / "run-abc" / "final-summary.md").read_text(encoding="utf-8")
     assert "— pr-created-draft" in text
     assert "- **Outcome**: stalled" not in text
+
+
+def _init_git_repo(repo: Path) -> None:
+    for argv in (
+        ["git", "init", "-q"],
+        ["git", "checkout", "-q", "-b", "feature"],
+        ["git", "config", "user.email", "t@example.com"],
+        ["git", "config", "user.name", "t"],
+    ):
+        _ = subprocess.run(argv, cwd=repo, check=True, capture_output=True)
+
+
+def test_committed_summary_gate_reads_repo_not_corrected_tmpdir(
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    session = tmp_path / "session"
+    repo.mkdir()
+    session.mkdir()
+    _init_git_repo(repo)
+    run_dir = repo / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    stalled = "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n"
+    _ = (run_dir / "final-summary.md").write_text(stalled, encoding="utf-8")
+    _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
+    _ = subprocess.run(["git", "commit", "-q", "-m", "stalled log"], cwd=repo, check=True, capture_output=True)
+
+    session_run_dir = session / "larch-logs" / "implement" / "run-abc"
+    session_run_dir.mkdir(parents=True)
+    corrected = "## /implement run run-abc — pr-created\n\n- **PR**: #7\n"
+    _ = (session_run_dir / "final-summary.md").write_text(corrected, encoding="utf-8")
+
+    ctx = make_run_context(
+        run_id="run-abc",
+        tmpdir=str(session),
+        manifest_path=str(session / "manifest.json"),
+    )
+
+    assert ship_pr._committed_summary_heading_is_stalled(runner=ProcRunner(), ctx=ctx, cwd=str(repo))
 
 
 def test_recovered_stalled_summary_push_failure_blocks_merge(
