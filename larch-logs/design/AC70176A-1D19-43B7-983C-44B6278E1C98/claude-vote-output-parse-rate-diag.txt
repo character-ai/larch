@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=11
+total_findings=11
+total_ballot_items=11
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=b74cafe6790192aa6829e2e15899975ffad0a68e79337ab1ac560687481fabfd
+--- first 200 bytes of voter output ---
+Ending turn as directed — awaiting task completion notification before reading the ballot.

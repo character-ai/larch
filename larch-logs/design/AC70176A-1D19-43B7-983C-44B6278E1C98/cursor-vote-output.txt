@@ -1,0 +1,12 @@
+Reading the ballot and verifying key claims against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_6: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_1 already accepted in-scope
+OOS_7: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- composite duplicate of OOS_1 through OOS_4 already on ballot
