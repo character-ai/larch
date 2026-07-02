@@ -1,8 +1,8 @@
 ## /implement run 445D1144-4835-44B1-860C-183FA6E92CA1 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$64.99 — Claude $1.57, Codex-5.5 $42.97, Codex-mini $1.76, Cursor $13.73, Claude (subprocess) $4.96  |  Tokens: 107315k
+- **Duration**: 07:34:33
+- **Cost**: 💰 TOTAL ~$158.43 — Claude $94.99, Codex-5.5 $42.97, Codex-mini $1.76, Cursor $13.73, Claude (subprocess) $4.98  |  Tokens: 265383k
 - **Issue**: #5974 — https://github.com/character-ai/larch/issues/5974
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -10,19 +10,13 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 0
 - **Run logs**: `larch-logs/implement/445D1144-4835-44B1-860C-183FA6E92CA1/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.2.1
 
 <!-- larch:run-summary v=1 -->
-
-## Exec Issues and Warnings
-Exec Issues (0):
-Warnings (2):
-  1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/report/run_logs.py
-  2. Step plan-review voter-dispatch claude — agent launch-claude-review (voter parse-rate check) warning (exit 0)
 
 ## Review Phase Detail
 
@@ -85,3 +79,7 @@ cursor/apply             │                                      ████�
 5. codex/testing — 4
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
