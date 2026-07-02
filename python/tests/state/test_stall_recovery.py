@@ -798,6 +798,69 @@ def test_normalize_outcome_stall_flag_with_bail_reason_stays_stalled(
     assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
 
 
+
+def test_normalize_outcome_stale_finalize_terminal_fields_with_clean_pr(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPR_URL=https://example.test/pr/12\n"
+        "PHASE=ci-initial\nMERGE_RESULT=\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\nBAIL_NEEDS_USER_INPUT=true\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=pr-created" in out
+    assert "IMPLEMENT_ANY_STALL_TRACKING=false" in out
+    assert "IMPLEMENT_FINALIZE_STALL_TRACKING=true" in out
+
+
+def test_normalize_outcome_stale_finalize_terminal_fields_with_clean_merge(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPHASE=postmerge\nMERGE_RESULT=merged\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=merged" in capsys.readouterr().out
+
+
+def test_normalize_outcome_finalize_overlay_not_stale_with_active_ship_failure(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _ = (tmp_path / "ship-pr-state.sh").write_text(
+        "STALL_TRACKING=false\nMERGE=true\nPR_NUMBER=12\nPHASE=ci-initial\n"
+        "MERGE_RESULT=\nBAIL_REASON=ci-fix-exhausted\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+
+    rc = stall_recovery.normalize_outcome_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert "IMPLEMENT_NORMALIZED_OUTCOME=stalled" in capsys.readouterr().out
+
+
 def test_classify_design_state_file_merge(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     primary = tmp_path / "design-failure-terminal-state.env"
     _ = primary.write_text(

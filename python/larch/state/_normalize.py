@@ -27,6 +27,18 @@ from larch.state._tokens import (
 )
 
 _IN_FLIGHT_SHIP_PHASES = frozenset({"ci-initial", "rebase", "pr-create"})
+_TERMINAL_MERGE_RESULTS = frozenset({"merged", "admin_merged", "already_merged"})
+_STALE_FINALIZE_OUTCOME_KEYS = frozenset(
+    {
+        "STALL_TRACKING",
+        "STALL_STEP",
+        "PHASE",
+        "BAIL_REASON",
+        "IMPLEMENT_BAIL_REASON",
+        "EXIT_CODE",
+        "BAIL_NEEDS_USER_INPUT",
+    }
+)
 
 _ISSUE_STDOUT_KEY_RE = re.compile(
     r"^(ISSUES_(CREATED|FAILED|DEDUPLICATED)|"
@@ -62,6 +74,59 @@ def _has_failure_signals(
         or _is_nonzero_exit_code(_state_value(ship=ship, fin=fin, key="EXIT_CODE"))
         or _truthy(bail_user)
     )
+
+
+
+def _has_clean_ship_recovery_evidence(ship: Mapping[str, str]) -> bool:
+    pr_number = ship.get("PR_NUMBER", "").strip()
+    pr_url = ship.get("PR_URL", "").strip()
+    merge_result = ship.get("MERGE_RESULT", "").strip()
+    has_ship_success_evidence = bool(
+        (pr_number and pr_number != "0")
+        or (pr_url and pr_url != "N/A")
+        or merge_result in _TERMINAL_MERGE_RESULTS
+    )
+    if not has_ship_success_evidence:
+        return False
+    if ship.get("PHASE", "").strip() == "stalled":
+        return False
+    return not bool(
+        ship.get("BAIL_REASON", "").strip()
+        or ship.get("IMPLEMENT_BAIL_REASON", "").strip()
+        or _is_nonzero_exit_code(ship.get("EXIT_CODE", ""))
+    )
+
+
+def _finalize_contains_stall_overlay(fin: Mapping[str, str]) -> bool:
+    return bool(
+        _truthy(fin.get("STALL_TRACKING", "false"))
+        or fin.get("STALL_STEP", "").strip()
+        or fin.get("PHASE", "").strip() == "stalled"
+        or fin.get("BAIL_REASON", "").strip()
+        or fin.get("IMPLEMENT_BAIL_REASON", "").strip()
+        or _is_nonzero_exit_code(fin.get("EXIT_CODE", ""))
+        or _truthy(fin.get("BAIL_NEEDS_USER_INPUT", "false"))
+    )
+
+
+def _finalize_stall_overlay_is_stale_after_recovery(
+    *, ship: Mapping[str, str], fin: Mapping[str, str]
+) -> bool:
+    """Return True when finalize terminal-stall fields predate later clean ship state."""
+    return _finalize_contains_stall_overlay(fin) and _has_clean_ship_recovery_evidence(ship)
+
+
+def _effective_finalize_for_outcome(
+    *, ship: Mapping[str, str], fin: Mapping[str, str]
+) -> Mapping[str, str]:
+    if not _finalize_stall_overlay_is_stale_after_recovery(ship=ship, fin=fin):
+        return fin
+    # Only outcome-choice fields from the stale terminal overlay are cleared.
+    # Raw finalize values are still emitted below as diagnostics.
+    effective = dict(fin)
+    for key in _STALE_FINALIZE_OUTCOME_KEYS:
+        effective[key] = ""
+    return effective
 
 
 def _has_pr_evidence(*, ship: Mapping[str, str], fin: Mapping[str, str]) -> bool:
@@ -137,26 +202,28 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     tmpdir = Path(args.implement_tmpdir)
     ship = _read_state_file(tmpdir / "ship-pr-state.sh")
     fin = _read_state_file(tmpdir / "finalize-state.sh")
+    fin_eff = _effective_finalize_for_outcome(ship=ship, fin=fin)
     ses = _read_state_file(tmpdir / "session-env.sh")
     seed = _read_state_file(tmpdir / "ship-seed-input.env")
     classification = _read_state_file(tmpdir / _DEFAULT_CLASSIFICATION_FILE)
     memory_stall = getattr(args, "in_memory_stall_tracking", "") or os.environ.get("STALL_TRACKING", "false")
     ship_stall = ship.get("STALL_TRACKING", "false")
     fin_stall = fin.get("STALL_TRACKING", "false")
+    effective_fin_stall = fin_eff.get("STALL_TRACKING", "false")
     ses_stall = ses.get("STALL_TRACKING", "false")
-    any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(fin_stall) or _truthy(ses_stall)
-    phase_stalled = _phase_counts_as_stalled(ship=ship, fin=fin, any_stall=any_stall)
-    merge_result = ship.get("MERGE_RESULT") or fin.get("MERGE_RESULT", "")
-    merge = ship.get("MERGE") or fin.get("MERGE", "")
-    draft = ship.get("DRAFT") or fin.get("DRAFT", "false")
-    pr_number = ship.get("PR_NUMBER") or fin.get("PR_NUMBER", "")
-    forked = ship.get("FORKED_TARGET") or fin.get("FORKED_TARGET") or ses.get("FORKED_TARGET", "false")
-    ci_passed = ship.get("CI_PASSED") or fin.get("CI_PASSED", "false")
-    design_done = fin.get("DESIGN_ONLY_DONE", "false")
-    bail_user = fin.get("BAIL_NEEDS_USER_INPUT", "false")
+    any_stall = _truthy(memory_stall) or _truthy(ship_stall) or _truthy(effective_fin_stall) or _truthy(ses_stall)
+    phase_stalled = _phase_counts_as_stalled(ship=ship, fin=fin_eff, any_stall=any_stall)
+    merge_result = ship.get("MERGE_RESULT") or fin_eff.get("MERGE_RESULT", "")
+    merge = ship.get("MERGE") or fin_eff.get("MERGE", "")
+    draft = ship.get("DRAFT") or fin_eff.get("DRAFT", "false")
+    pr_number = ship.get("PR_NUMBER") or fin_eff.get("PR_NUMBER", "")
+    forked = ship.get("FORKED_TARGET") or fin_eff.get("FORKED_TARGET") or ses.get("FORKED_TARGET", "false")
+    ci_passed = ship.get("CI_PASSED") or fin_eff.get("CI_PASSED", "false")
+    design_done = fin_eff.get("DESIGN_ONLY_DONE", "false")
+    bail_user = fin_eff.get("BAIL_NEEDS_USER_INPUT", "false")
 
     if (any_stall or phase_stalled) and _stall_signal_is_terminal(
-        ship=ship, fin=fin, bail_user=bail_user
+        ship=ship, fin=fin_eff, bail_user=bail_user
     ):
         outcome = "stalled"
     elif _truthy(forked):
@@ -168,16 +235,16 @@ def normalized_outcome_values(args: argparse.Namespace) -> dict[str, str]:
     elif merge_result == "already_merged":
         outcome = "force-merged-externally"
     elif (
-        _has_pr_evidence(ship=ship, fin=fin)
+        _has_pr_evidence(ship=ship, fin=fin_eff)
         and not merge_result
-        and _is_healthy_pre_terminal_pr_snapshot(ship=ship, fin=fin)
+        and _is_healthy_pre_terminal_pr_snapshot(ship=ship, fin=fin_eff)
         and not _truthy(bail_user)
     ):
         outcome = "pr-created-draft" if _truthy(draft) else "pr-created"
     elif (
-        not _has_pr_evidence(ship=ship, fin=fin)
+        not _has_pr_evidence(ship=ship, fin=fin_eff)
         and not merge_result
-        and not _has_failure_signals(ship=ship, fin=fin, bail_user=bail_user)
+        and not _has_failure_signals(ship=ship, fin=fin_eff, bail_user=bail_user)
     ):
         # Run is still in-flight (pre-PR committed snapshot); use a non-failure label
         # so the committed log does not misreport progressing runs as bailed.

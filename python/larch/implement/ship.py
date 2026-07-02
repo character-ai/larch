@@ -100,6 +100,8 @@ from larch.implement.ship_pr import (
     _postmerge_should_flush,
     _pr_title,
     _publish_post_pr_terminal_snapshot,
+    ShipReconciliationCounters,
+    reconcile_committed_stalled_summary_if_recovered,
     _summary_from_manifest,
     _write_ci_fix_detail_log,
     _write_terminal_state,
@@ -134,6 +136,41 @@ from larch.implement.ship_seed import (
 )
 
 
+def _invalid_context_result(ctx: RunContext) -> ShipResult | None:
+    if not _tmpdir_under_allowed_root(ctx.tmpdir):
+        return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
+    if not _state_file_under_tmpdir(ctx):
+        return ShipResult(Outcome.STALLED, detail="invalid state_file")
+    return None
+
+
+def _resume_reconciliation_counters(resume: ResumePlan) -> ShipReconciliationCounters:
+    return ShipReconciliationCounters(
+        resume.iteration,
+        resume.rebase_count,
+        resume.fix_attempts,
+        resume.transient_retries,
+    )
+
+
+def _blocked_resume_result(resume: ResumePlan) -> ShipResult | None:
+    if resume.start == "blocked-rebase-continuation":
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="unsupported-rebase-continuation",
+            detail=resume.detail,
+            pr_number=resume.pr_number,
+            pr_url=resume.pr_url,
+        )
+    if resume.start == "blocked-checkout-mismatch":
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="checkout-mismatch",
+            detail=resume.detail,
+        )
+    return None
+
+
 def _ship_postmerge_phase(
     *,
     runner: Runner,
@@ -164,6 +201,56 @@ def _ship_postmerge_phase(
     )
 
 
+def _complete_pr_created_without_merge(
+    *,
+    runner: Runner,
+    working: RunContext,
+    resume: ResumePlan,
+    ensured_status: str,
+    repo_root: str,
+) -> ShipResult:
+    _write_terminal_finalize_if_terminal(ctx=working, result=Outcome.OK, step="")
+    _write_ship_state(
+        working,
+        phase="done",
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+        terminal_outcome=Outcome.OK,
+    )
+    return reconcile_committed_stalled_summary_if_recovered(
+        runner=runner,
+        ctx=working,
+        cwd=repo_root,
+        counters=_resume_reconciliation_counters(resume),
+    ) or ShipResult(
+        Outcome.OK,
+        pr_number=working.pr_number,
+        pr_url=working.pr_url,
+        detail=ensured_status,
+    )
+
+
+def _merge_pr_after_log_reconciliation(
+    *,
+    runner: Runner,
+    working: RunContext,
+    repo_root: str,
+    counters: ShipReconciliationCounters,
+) -> merge.MergeResult | ShipResult:
+    _breadcrumb(step="merge")
+    reconciliation = reconcile_committed_stalled_summary_if_recovered(
+        runner=runner,
+        ctx=working,
+        cwd=repo_root,
+        counters=counters,
+    )
+    if reconciliation is not None:
+        return reconciliation
+    return merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
+
+
 def run_ship(
     ctx: RunContext,
     *,
@@ -172,26 +259,14 @@ def run_ship(
 ) -> ShipResult:
     try:
         repo_root = cwd or str(Path.cwd())
-        if not _tmpdir_under_allowed_root(ctx.tmpdir):
-            return ShipResult(Outcome.STALLED, detail="invalid tmpdir")
-        if not _state_file_under_tmpdir(ctx):
-            return ShipResult(Outcome.STALLED, detail="invalid state_file")
+        invalid = _invalid_context_result(ctx)
+        if invalid is not None:
+            return invalid
         base_ref = "main"
         resume = _resume_plan(ctx=ctx, runner=runner, cwd=repo_root)
-        if resume.start == "blocked-rebase-continuation":
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason="unsupported-rebase-continuation",
-                detail=resume.detail,
-                pr_number=resume.pr_number,
-                pr_url=resume.pr_url,
-            )
-        if resume.start == "blocked-checkout-mismatch":
-            return ShipResult(
-                Outcome.NEEDS_USER_INPUT,
-                needs_user_reason="checkout-mismatch",
-                detail=resume.detail,
-            )
+        blocked = _blocked_resume_result(resume)
+        if blocked is not None:
+            return blocked
         if "\n" in ctx.pr_url or "\r" in ctx.pr_url:
             raise Stalled("invalid newline in ship state value: PR_URL")
         if resume.start == "done":
@@ -336,21 +411,12 @@ def run_ship(
             except ShipError as exc:
                 _breadcrumb(step="warning", detail=str(exc))
         if not working.merge or working.draft or working.forked or working.forked_target or working.repo_unavailable:
-            _write_terminal_finalize_if_terminal(ctx=working, result=Outcome.OK, step="")
-            _write_ship_state(
-                working,
-                phase="done",
-                iteration=resume.iteration,
-                rebase_count=resume.rebase_count,
-                fix_attempts=resume.fix_attempts,
-                transient_retries=resume.transient_retries,
-                terminal_outcome=Outcome.OK,
-            )
-            return ShipResult(
-                Outcome.OK,
-                pr_number=working.pr_number,
-                pr_url=working.pr_url,
-                detail=ensured.status,
+            return _complete_pr_created_without_merge(
+                runner=runner,
+                working=working,
+                resume=resume,
+                ensured_status=ensured.status,
+                repo_root=repo_root,
             )
 
         post_ensure_terminal = _post_ensure_flush_and_push(runner, working=working, resume=resume, repo_root=repo_root)
@@ -587,8 +653,15 @@ def run_ship(
                 )
                 continue
 
-            _breadcrumb(step="merge")
-            merged: merge.MergeResult = merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
+            merged_or_terminal = _merge_pr_after_log_reconciliation(
+                runner=runner,
+                working=working,
+                repo_root=repo_root,
+                counters=ShipReconciliationCounters(iteration, rebase_count, fix_attempts, transient_retries),
+            )
+            if isinstance(merged_or_terminal, ShipResult):
+                return merged_or_terminal
+            merged = merged_or_terminal
             if merged.result == config.MERGE_RESULT_CI_NOT_READY:
                 review_decision = gh.pr_review_decision(
                     runner,

@@ -826,6 +826,208 @@ def test_merge_review_required_exits_as_needs_user_input(
     assert merge_calls["count"] == 1
 
 
+
+def _prepare_recovered_stalled_log(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    *,
+    draft: bool = False,
+) -> Path:
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
+    _ = (tmp_path / "session-env.sh").write_text("REPO=o/r\nMODE=N/A\n", encoding="utf-8")
+    _ = (tmp_path / "run-flags.sh").write_text("FORCE_REQUESTED=false\n", encoding="utf-8")
+    _ = (tmp_path / "finalize-state.sh").write_text(
+        "STALL_TRACKING=true\nSTALL_STEP=5\nPHASE=stalled\nEXIT_CODE=4\n",
+        encoding="utf-8",
+    )
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        f"PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\n"
+        f"REPO=o/r\nMERGE=true\nDRAFT={'true' if draft else 'false'}\nSTALL_TRACKING=false\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=str(state_file))
+    _ = run_logs.init_run(ctx)
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    _ = (run_dir / "final-summary.md").write_text(
+        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n",
+        encoding="utf-8",
+    )
+
+    def fake_token_fields(implement_tmpdir: Path, run_id: str) -> dict[str, object]:
+        _ = implement_tmpdir, run_id
+        return {"cost_unavailable": True}
+
+    def fake_commit(*_args: object, **_kwargs: object) -> CommandResult:
+        return CommandResult(("git", "commit"), 0, "a" * 40 + "\n", "", 0.0)
+
+    monkeypatch.setattr(final_report, "_final_report_token_fields", fake_token_fields)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda *_a, **_k: None)  # type: ignore[arg-type]
+    monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda **_k: "body")
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+    return state_file
+
+
+def test_recovered_open_pr_premerge_reconciles_stalled_summary_before_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path)
+    merge_calls = {"count": 0}
+
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+
+    def fake_merge(*_args: object, **_kwargs: object) -> object:
+        merge_calls["count"] += 1
+        return type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})()
+
+    monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert merge_calls["count"] == 1
+    text = (tmp_path / "larch-logs" / "implement" / "run-abc" / "final-summary.md").read_text(encoding="utf-8")
+    assert "— pr-created" in text
+    assert "- **Outcome**: stalled" not in text
+
+
+def test_recovered_draft_pr_reconciles_stalled_summary_before_ok(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path, draft=True)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    text = (tmp_path / "larch-logs" / "implement" / "run-abc" / "final-summary.md").read_text(encoding="utf-8")
+    assert "— pr-created-draft" in text
+    assert "- **Outcome**: stalled" not in text
+
+
+def test_recovered_stalled_summary_push_failure_blocks_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path)
+    merge_called = False
+
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    push_statuses = ["pushed", "failed"]
+
+    def fake_push(*_args: object, **_kwargs: object) -> object:
+        return ship.push.PushResult(remote="origin", attempts=1, status=push_statuses.pop(0))
+
+    monkeypatch.setattr(ship.push, "push_branch", fake_push)
+
+    def fake_merge(*_args: object, **_kwargs: object) -> object:
+        nonlocal merge_called
+        merge_called = True
+        return type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})()
+
+    monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "run-log reconciliation push failed: failed"
+    assert not merge_called
+
+
+
+def test_recovered_stalled_summary_push_exception_blocks_merge(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path)
+    merge_called = False
+
+    monkeypatch.setattr(
+        ship.ci_monitor,
+        "monitor",
+        lambda *_a, **_k: type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )(),
+    )
+    push_calls = {"count": 0}
+
+    def fake_push(*_args: object, **_kwargs: object) -> object:
+        push_calls["count"] += 1
+        if push_calls["count"] == 1:
+            return ship.push.PushResult(remote="origin", attempts=1, status="pushed")
+        raise ShipError("network unavailable")
+
+    def fake_merge(*_args: object, **_kwargs: object) -> object:
+        nonlocal merge_called
+        merge_called = True
+        return type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})()
+
+    monkeypatch.setattr(ship.push, "push_branch", fake_push)
+    monkeypatch.setattr(ship.merge, "merge_pr", fake_merge)
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert result.detail == "run-log reconciliation push failed: network unavailable"
+    assert not merge_called
+
+
 def test_post_ensure_fresh_run_is_push_only_no_reflush(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
