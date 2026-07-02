@@ -18,7 +18,7 @@ import shutil
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 
 from larch.core import config
 from larch.report import progress_report
@@ -361,6 +361,13 @@ def _merge_warn_tokens(*values: str) -> str:
     return ";".join(tokens)
 
 
+def _core_zero_survivor_panel_failed(core: Mapping[str, str]) -> bool:
+    return (
+        core.get("REVIEW_CORE_STATUS") == "panel-failed"
+        and core.get("THRESHOLD_REASON") == "no successful launched reviewer output"
+    )
+
+
 def _merge_dropped_reviewer_attempt(*, round_dir: Path, threshold_env: Path) -> None:
     if not threshold_env.is_file():
         return
@@ -535,7 +542,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
                 )
     status = "complete"
     exit_code = 0
-    if _core_status_is(core_status, ReviewCoreStatus.panel_failed, ReviewCoreStatus.aggregator_validation_exhausted):
+    if _core_zero_survivor_panel_failed(core):
+        status = "self-review-required"
+    elif _core_status_is(core_status, ReviewCoreStatus.panel_failed, ReviewCoreStatus.aggregator_validation_exhausted):
         status = str(core_status)
         exit_code = 2
     elif _core_status_is(core_status, ReviewCoreStatus.main_agent_vote_required):
@@ -558,7 +567,7 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
         status = "complete"
     else:
         status = core_status
-    if core_rc != 0 and exit_code == 0:
+    if core_rc != 0 and exit_code == 0 and status != "self-review-required":
         exit_code = core_rc
     if status in {"complete", "no-changes"} and accepted_count > 0 and not degraded_this_round:
         nit = min(_nit_count(accepted_file), accepted_count)

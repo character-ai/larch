@@ -374,6 +374,80 @@ def _finalize_dropped_reviewer_round(*, review_tmpdir: Path) -> None:
             continue
 
 
+def _parseable_review_output_present(*, review_tmpdir: Path) -> bool:
+    return any((review_tmpdir / name).is_file() and (review_tmpdir / name).stat().st_size > 0 for name in ("findings.md", "oos.md"))
+
+
+def _zero_survivor_reason_protected(reason: str) -> bool:
+    protected_prefixes = (
+        "dispatch-panel",
+        "no successful static reviewer",
+        "pre-vote-oos-gate",
+        "tally-code-votes",
+        "proposer-map",
+        "findings-pre-aggregate",
+        "aggregation-validation-exhausted",
+    )
+    return any(reason.startswith(prefix) for prefix in protected_prefixes)
+
+
+def _rewrite_threshold_env(*, threshold_out: Path, threshold_ok: str, threshold_reason: str) -> None:
+    lines = threshold_out.read_text(encoding="utf-8", errors="replace").splitlines() if threshold_out.is_file() else []
+    updated: list[str] = []
+    seen_ok = False
+    seen_reason = False
+    seen_coverage_ok = False
+    seen_coverage_reason = False
+    for line in lines:
+        if line.startswith("THRESHOLD_OK="):
+            updated.append(f"THRESHOLD_OK={threshold_ok}")
+            seen_ok = True
+        elif line.startswith("THRESHOLD_REASON="):
+            updated.append(f"THRESHOLD_REASON={threshold_reason}")
+            seen_reason = True
+        elif line.startswith("COVERAGE_GATE_OK="):
+            updated.append("COVERAGE_GATE_OK=false")
+            seen_coverage_ok = True
+        elif line.startswith("COVERAGE_GATE_REASON="):
+            updated.append(f"COVERAGE_GATE_REASON={threshold_reason}")
+            seen_coverage_reason = True
+        else:
+            updated.append(line)
+    if not seen_ok:
+        updated.append(f"THRESHOLD_OK={threshold_ok}")
+    if not seen_reason:
+        updated.append(f"THRESHOLD_REASON={threshold_reason}")
+    if not seen_coverage_ok:
+        updated.append("COVERAGE_GATE_OK=false")
+    if not seen_coverage_reason:
+        updated.append(f"COVERAGE_GATE_REASON={threshold_reason}")
+    _write_text(path=threshold_out, text="\n".join(updated) + "\n")
+
+
+def _normalize_zero_survivor_threshold(
+    *,
+    review_tmpdir: Path,
+    collector_results: Path,
+    threshold_out: Path,
+    threshold_ok: str,
+    threshold_reason: str,
+) -> tuple[str, str, bool]:
+    """Normalize all-launched-reviewer runtime collapse to the shared discriminator."""
+    success_count = _collector_success_count(collector_results)
+    parseable = _parseable_review_output_present(review_tmpdir=review_tmpdir)
+    if success_count != 0:
+        return threshold_ok, threshold_reason, False
+    if parseable:
+        _append_text(path=threshold_out, text="COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=parseable reviewer output present\n")
+        return threshold_ok, threshold_reason, True
+    if _zero_survivor_reason_protected(threshold_reason):
+        return threshold_ok, threshold_reason, False
+    threshold_ok = "false"
+    threshold_reason = "no successful launched reviewer output"
+    _rewrite_threshold_env(threshold_out=threshold_out, threshold_ok=threshold_ok, threshold_reason=threshold_reason)
+    return threshold_ok, threshold_reason, True
+
+
 def _core_common_rows(*, status: str, round_num: int, review_tmpdir: Path, panel_mode: str, panel_shape: str, accepted: str = "0", rejected: str = "0", exonerated: str = "0", neutral: str = "0", oos_drift: str = "0", accepted_file: Path | None = None, threshold_reason: str = "") -> tuple[tuple[str, object], ...]:
     rows: list[tuple[str, object]] = [
         ("REVIEW_CORE_STATUS", status),
@@ -389,7 +463,7 @@ def _core_common_rows(*, status: str, round_num: int, review_tmpdir: Path, panel
         ("PANEL_MODE", panel_mode),
         ("PANEL_SHAPE", panel_shape),
     ]
-    if threshold_reason:
+    if threshold_reason or status == "panel-failed":
         rows.append(("THRESHOLD_REASON", threshold_reason))
     return tuple(rows)
 
@@ -874,19 +948,13 @@ def _review_core_body(
     threshold_ok = threshold.get("THRESHOLD_OK", "true")
     threshold_reason = threshold.get("THRESHOLD_REASON", "")
     not_substantive = int(threshold.get("NOT_SUBSTANTIVE_SLOTS", "0") or "0") if threshold.get("NOT_SUBSTANTIVE_SLOTS", "0").isdigit() else 0
-    coverage_recorded = False
-    if threshold_ok != "false":
-        success_count = _collector_success_count(collector_results)
-        parseable = (review_tmpdir / "findings.md").stat().st_size > 0 if (review_tmpdir / "findings.md").is_file() else False
-        parseable = parseable or ((review_tmpdir / "oos.md").stat().st_size > 0 if (review_tmpdir / "oos.md").is_file() else False)
-        if success_count == 0 and not parseable:
-            threshold_ok = "false"
-            threshold_reason = "no successful launched reviewer output"
-            _append_text(path=threshold_out, text=f"COVERAGE_GATE_OK=false\nCOVERAGE_GATE_REASON={threshold_reason}\n")
-            coverage_recorded = True
-        elif success_count == 0:
-            _append_text(path=threshold_out, text="COVERAGE_GATE_OK=true\nCOVERAGE_GATE_REASON=parseable reviewer output present\n")
-            coverage_recorded = True
+    threshold_ok, threshold_reason, coverage_recorded = _normalize_zero_survivor_threshold(
+        review_tmpdir=review_tmpdir,
+        collector_results=collector_results,
+        threshold_out=threshold_out,
+        threshold_ok=threshold_ok,
+        threshold_reason=threshold_reason,
+    )
     if threshold_ok != "false":
         reason = _static_coverage_reason(
             collector=collector_results,

@@ -2,7 +2,9 @@
 
 **Consumer**: Step 5 when `self_review=true`.
 **Contract**: Authoritative body for inline main-agent self-review.
-**When to load**: **MANDATORY — READ ENTIRE FILE** only when `self_review=true`.
+**When to load**: **MANDATORY — READ ENTIRE FILE** when `self_review=true` or `STEP5_REVIEW_STATUS=self-review-required`.
+
+Entry conditions: this reference is used for explicit `--self-review` and runtime zero-survivor fallback when `STEP5_REVIEW_STATUS=self-review-required`. The same artifacts remain authoritative: `self-review-accepted.md`, `rejected-findings.md`, `oos-accepted-main-agent.md`, self-review tally, and the checks-commit route.
 
 When `self_review=true`, self-review inline. First, mark Step 5 telemetry best-effort, then print the Step 5 banner.
 

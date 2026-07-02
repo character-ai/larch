@@ -369,6 +369,98 @@ def test_step5_handoff_envelope_uses_false_stall_tracking(tmp_path, monkeypatch,
     assert "STALL_TRACKING=false" in out
 
 
+@MARK_STEP5
+def test_round_runner_maps_zero_survivor_panel_failed_to_self_review_required(tmp_path, monkeypatch):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    args = argparse.Namespace(
+        implement_tmpdir=str(impl),
+        session_env_path=str(impl / "session-env.sh"),
+        codex_available="true",
+        cursor_available="true",
+        round_num="1",
+        dynamic_archetypes="0",
+        pre_scouted_manifest="",
+        diff_file="",
+        commit_count="0",
+        plan_file=str(impl / "plan.txt"),
+        feature_file=str(impl / "feature-description.txt"),
+        run_id="",
+        round_cap="2",
+    )
+
+    def fake_core(argv: list[str]) -> int:
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        (out_dir / "rejected-findings.md").write_text("", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=panel-failed")
+        logging_util.emit("THRESHOLD_REASON=no successful launched reviewer output")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 2
+
+    result = round_runner._run_round(args, suppress_emit=True, review_core_impl=fake_core)
+
+    assert result.rc == 0
+    assert result.status == "self-review-required"
+    assert result.core_status == "panel-failed"
+
+
+@MARK_STEP5
+def test_step5_zero_survivor_emits_self_review_required_without_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            0, "self-review-required", "panel-failed", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=self-review-required" in out
+    assert "FINAL_REVIEW_AND_FIX_STATUS=self-review-required" in out
+    assert "STALL_TRACKING=false" in out
+    assert "STALL_REASON=\n" in out
+
+
+@MARK_STEP5
+def test_step5_static_panel_failed_still_stalls(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            2, "panel-failed", "panel-failed", 1, 0, 0, 0, 0, 0, 0, 0, 0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1", "--round-cap", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_TRACKING=true" in out
+    assert "STALL_REASON=panel-failed" in out
+
+
 @MARK_STARTING_ROUND
 def test_step5_starting_round_missing_prior_emits_invalid(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

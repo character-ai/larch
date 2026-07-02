@@ -94,7 +94,7 @@ Examples:
 
 For other skills and phases, include elapsed time immediately after each `✅` and `❌`. The timer for each entry starts when that agent/reviewer was launched.
 
-Voting-Protocol skills (`/design`, `/review`, `/implement` Phase 3 conflict review) use the 3-reviewer composition:
+Voting-Protocol skills (`/design`, `/review`) use the 3-reviewer composition:
 
 ```
 📊 Reviewers: | Code: ✅ 2m31s | Codex: ⏳ | Cursor: ✅ 4m12s |

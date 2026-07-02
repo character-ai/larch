@@ -1171,6 +1171,8 @@ def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) ->
     assert "STEP3_REVIEW_LOOP_STATUS=degraded-empty-collector" in proc.stdout
     assert "NEXT_ACTION=step3b-bypass" in proc.stdout
     assert "LOOP_STATUS=degraded-empty-collector" in proc.stdout
+    assert "LOOP_STATUS=panel-failed" not in proc.stdout
+    assert "LOOP_STATUS=tally-error" not in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "1\n"
 
 

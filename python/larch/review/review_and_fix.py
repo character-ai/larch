@@ -569,6 +569,19 @@ def step5(argv: list[str] | None = None) -> int:
                 _emit_step5_envelope(status=result.status, stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
                 _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
                 return 0
+            if result.status == "self-review-required":
+                _emit_step5_envelope(
+                    status="self-review-required",
+                    stall_tracking=False,
+                    stall_reason="",
+                    rounds_completed=rounds_completed,
+                    final_round=round_num,
+                    final_irf=result.status,
+                    coder_status=result.coder.status,
+                    files_hint=result.coder.commit_sha,
+                    effective_cap=round_cap,
+                )
+                return 0
             _record_step5_round_timing_before_gates(
                 implement_tmpdir=implement_tmpdir,
                 round_num=round_num,
