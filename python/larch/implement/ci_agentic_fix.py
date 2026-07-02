@@ -331,7 +331,7 @@ def _read_ci_fix_done_exit(output: Path) -> int | None:
         return None
     try:
         return int(done.read_text(encoding="utf-8", errors="replace").strip())
-    except ValueError:
+    except (OSError, ValueError):
         return None
 
 
