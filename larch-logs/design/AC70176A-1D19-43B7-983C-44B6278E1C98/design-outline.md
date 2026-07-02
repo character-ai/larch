@@ -1,0 +1,28 @@
+## Proposed Design Outline
+
+### Goals
+- Rebalance three registry role orders off Cursor-primary (issue #5888): `review.fix_coder`, `review.findings_aggregator`, `design.plan_findings_aggregator`.
+- Replace `design.plan_revision`'s external Cursor→Codex→headless-Claude waterfall with inline application by the interactive /design orchestrator.
+
+### Non-goals
+- No changes to `review.panel`, `design.plan_review_panel`, `design.decompose_panel`/`decompose_aggregator`, or any voter role (out of scope per issue).
+- No new model-config knobs — the named models (gpt-5.4-mini, composer-2.5, sonnet-4.6) are already existing defaults reachable via existing model_role plumbing.
+
+### Approach sketch
+- `config.py`: reorder `review.fix_coder` to `(codex, cursor, claude)`; flip `review.findings_aggregator` / `design.plan_findings_aggregator` single-slot `tool` to `codex`; remove the `design.plan_revision` RoleDefault entirely.
+- `coder_runner.py`: add a real Claude dispatch runner (`agent launch-claude-review`, same helper `design.plan_revision` already used) as `review.fix_coder`'s third automated tier, before the existing `main-agent-required` bailout.
+- `plan_review.py`: remove the in-loop external revise dispatch; always route finding-application through prompt-side Gate B (reusing its existing Write-tool-based inline apply), regardless of `approve_requested`.
+- Delete the now-dead `plan revise-waterfall` CLI verb and its implementation/tests.
+- Update docs (`external-reviewers.md`, `SECURITY.md`, design SKILL.md and its Gate B / plan-review references) and role-default tests to match.
+
+### Surfaces in scope
+- `python/larch/core/config.py`
+- `python/larch/review/coder_runner.py`
+- `python/larch/review/plan_review.py`
+- `python/larch/design/plan_quality.py`, `python/larch/cli.py` (revise-waterfall removal)
+- `docs/external-reviewers.md`, `SECURITY.md`, `docs/workflow-lifecycle.md`, `docs/python-migration.md`
+- `skills/design/SKILL.md`, `skills/design/references/approval-gates.md`, `skills/design/references/plan-review.md`
+- `python/tests/core/test_external_role_defaults.py`, `python/tests/agents/test_external_dispatch.py`, `python/tests/design/test_plan_quality.py`
+
+### Open questions
+- None.

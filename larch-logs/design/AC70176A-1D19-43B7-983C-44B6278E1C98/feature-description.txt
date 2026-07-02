@@ -1,0 +1,19 @@
+# Cost-rebalance coder, aggregator, and plan-revision roles
+
+**Skills:** /implement, /review, /design.
+
+**Initiative:** Cursor-cost reviewer/voter rebalance. These registry-role flips move token-heavy or mechanical roles off Cursor-primary. Low risk and high cost value; a good candidate to land early.
+
+**Changes:**
+
+- `review.fix_coder` (applies accepted review fixes; /implement and /review): change to Codex/gpt-5.4-mini, then Cursor/composer-2.5, then Claude/sonnet-4.6 (was Cursor then Codex).
+- `review.findings_aggregator` (shared by /implement Step 5 and /review): flip to Codex/gpt-5.4-mini, then Cursor, then Claude (was Cursor-primary). The role is shared, so the flip necessarily applies to both skills.
+- `design.plan_findings_aggregator` (/design): flip to Codex/gpt-5.4-mini, then Cursor, then Claude (was Cursor-primary). The aggregator is a mechanical merge step with low quality risk, so flipping all three skills is safe and saves Cursor on every round.
+- `design.plan_revision` (applies accepted plan findings; /design): perform inline in the main agent, dropping the external Cursor-then-Codex-then-Claude waterfall. This raises cost slightly but gives quality control via the operator's choice of which main agent runs /design.
+
+**Prior art:** the aggregator half of this issue (flip the review aggregator to Codex) was also captured in #5856 (closed, empty body, no PR); this issue supersedes it with the full role list. The companion voting issue carries the voter half.
+
+**Acceptance:**
+
+- The three registry roles resolve to the new orders.
+- /design plan revision runs in the invoking /design agent, not an external tool.
