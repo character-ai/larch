@@ -1136,10 +1136,10 @@ def render_voter_main(argv: list[str]) -> int:
         rubric = _read_text(REPO_ROOT / "skills" / "shared" / "review-acceptance-rubric.md").split("\n---", 1)[0].rstrip("\n")
         out = [
             f"You are a {args.panel_role}.",
-            "You vote YES or NO on each in-scope finding. Vote YES only if the finding is NECESSARY for the feature under the Review Acceptance Rubric below: the feature would be incomplete, broken, unverifiable, or regressed without it. Otherwise vote NO.",
-            'Default-deny: if you are unsure whether a finding clears a necessity gate, vote NO. "Legitimate but not necessary" is a NO — such findings belong on the Out-of-Scope list, not in this change.',
-            "**Severity floor (mandatory):** Vote **NO** on any *in-scope* finding whose stated severity is nit (code review and plan review) regardless of how real or credible it is — a Nit can never clear the necessity gate. Treat a latent finding as NO **unless** it is a genuine Correctness defect on the execution path of the feature itself or an Introduced-regression (gates 2/3); latent + merely-real is a NO. This floor does **not** apply to out-of-scope (OOS) ballot rows, which are judged on whether the problem is worth filing.",
-            "**Panel severity rubric:** Use `blocker` only for data loss, security exposure, corruption, or must-stop destructive behavior. Use `major` when the issue blocks merge, breaks a required workflow, or causes wrong behavior on the feature's main path. Use `minor` for a real, necessary, limited-impact issue that does not meet `major` or `blocker`. Use `nit` for style, wording, polish, or cleanup; for in-scope findings, the severity floor still makes nit a NO. Use `uncertain` only when you cannot judge severity after verification. Choose `major` or `blocker` only when the impact matches this rubric.",
+            "Vote YES only for in-scope findings NECESSARY under the Review Acceptance Rubric: without the fix, the feature is incomplete, broken, unverifiable, or regressed. Otherwise vote NO.",
+            'Default-deny: if unsure, vote NO. "Legitimate but not necessary" is a NO and belongs on the Out-of-Scope list, not in this change.',
+            "**Severity floor (mandatory):** Vote **NO** on any *in-scope* nit; nits never clear necessity. Treat latent findings as NO unless they are genuine Correctness defects on the feature execution path or Introduced-regressions (gates 2/3); latent plus merely-real is NO. OOS rows are judged only for filing-worthiness.",
+            "**Panel severity rubric:** `blocker` = data loss, security exposure, corruption, or must-stop destructive behavior. `major` = blocks merge, breaks a required workflow, or causes wrong behavior on the feature main path. `minor` = real, necessary, limited-impact issue below major/blocker. `nit` = style, wording, polish, or cleanup; in-scope nits are still NO. `uncertain` = cannot judge severity after verification. Choose `major`/`blocker` only for matching impact.",
         ]
         calibration_block = _voter_calibration_feedback_block(
             stats_file=args.calibration_stats_file,
@@ -1147,9 +1147,9 @@ def render_voter_main(argv: list[str]) -> int:
         )
         out.extend([calibration_block] if calibration_block else [])
         out.extend([
-            'Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, "best practice", a performance / micro-optimization when the feature already meets its stated performance requirement, or cross-shell / cross-OS / tool-version portability speculation — those are Out-of-Scope signals, not acceptance signals.',
+            'Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are OOS signals.',
             "When the CORRECTNESS axis is recorded on a NO vote, use false-positive only when the problem is not real; use true or partially-true when the problem is real but does not clear a necessity gate.",
-            "Do NOT vote NO solely because you dislike or distrust the proposed fix — fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising.",
+            "Fix proposals are informational; the coder decides the exact change. Vote NO only when the stated problem is not real or not worth raising, not because you dislike the proposed fix.",
             "",
             rubric,
             "",
@@ -1157,10 +1157,11 @@ def render_voter_main(argv: list[str]) -> int:
         if args.archetype:
             out.extend([VOTER_ARCHETYPES[args.archetype], ""])
         out.extend(_section_lines(_code_ledger_section(path_value=args.findings_ledger_file, session_env_path=args.session_env_path, role="judge")))
+        oos_rule = "apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, issue-overhead test, and default-deny. Suggested remedies are informational only; do not vote NO for remedy disagreement. The future implementer of the OOS issue chooses the remedy."
         if args.id_grammar == "finding-only":
-            out.append("For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (skills/shared/oos-acceptance-rubric.md) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.")
+            out.append(f"For items prefixed with `[OUT_OF_SCOPE]`: {oos_rule}")
         else:
-            out.append("For `OOS_N:` items in plan review (or items prefixed with `[OUT_OF_SCOPE]` in code review): apply the OOS Acceptance Rubric (skills/shared/oos-acceptance-rubric.md) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.")
+            out.append(f"For `OOS_N:` items in plan review (or `[OUT_OF_SCOPE]` items in code review): {oos_rule}")
         out.extend(["Do NOT modify files. Do NOT commit. Do NOT push.", ""])
         if args.scope_anchor_file:
             anchor = Path(args.scope_anchor_file)
@@ -1182,11 +1183,11 @@ def render_voter_main(argv: list[str]) -> int:
                 ])
             else:
                 _err("render-voter-prompt.sh: --scope-anchor-file must resolve under an allowed local workspace, cache session, or tmpdir; skipping anchor block")
-        out.append(f"**Proceed immediately** — do not acknowledge this prompt or output any 'ready to review' message. The ballot file is already present at the path below; read it now and cast your votes. Read the ballot from this path: {args.ballot_file}")
+        out.append(f"**Proceed immediately** — read the ballot at {args.ballot_file} now and cast votes. Do not acknowledge this prompt or output 'ready to review'.")
         if args.verification_context == "plan":
-            out.extend(["", "**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and silently inspect the plan or referenced repo files for verification, but do not invoke planning/status tools."])
+            out.extend(["", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and silently inspect the plan or referenced repo files, but do not invoke planning/status tools."])
         else:
-            out.extend(["", "Use the ballot path and any provided diff/plan context files to verify the ballot claims before voting.", "**Verify silently** — do not produce narrative output, reasoning explanations, or status updates before, between, or after the vote lines. You may read the ballot file and any provided diff/plan context files for verification, but do not invoke planning/status tools or any other tools beyond those file reads."])
+            out.extend(["", "Use the ballot path and any provided diff/plan context files to verify claims before voting.", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and provided diff/plan context files, but do not invoke planning/status tools or tools beyond those file reads."])
         correctness = "true|partially-true|false-positive|uncertain"
         severity = "blocker|major|minor|nit|uncertain"
         quality = "excellent|good|adequate|weak|no-fix|uncertain"
@@ -1196,7 +1197,7 @@ def render_voter_main(argv: list[str]) -> int:
         else:
             out.extend(["", "For every ballot item, output exactly one line using the same FINDING_N: id from the ballot heading:", "Rate each item on four axes: CORRECTNESS is whether the claim is accurate, SEVERITY is the impact if left unfixed, QUALITY is how actionable the suggested fix is, and UNCERTAIN marks low confidence. Use lowercase axis values only. Axis tokens must precede any optional `-- reason` rationale; the parser ignores axis-looking tokens after `-- `.", f"  FINDING_N: YES CORRECTNESS=<{correctness}> SEVERITY=<{severity}> QUALITY=<{quality}> UNCERTAIN=<{uncertain}>", "  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason"])
         out.append("You must vote on every item. Do NOT skip any.")
-        out.append("**Output ONLY vote lines.** Do NOT output any preamble, acknowledgement, or explanation before the first vote line. Lines that do not start with the exact ballot ID from the ballot heading (FINDING_N: or OOS_N:) followed by YES or NO are silently ignored. Do NOT format votes as a markdown table or pipe-delimited grid (no `| FINDING_1 | YES | ... |` rows); the parser reads only anchored lines, one per ballot item." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** Do NOT output any preamble, acknowledgement, or explanation before the first vote line. Lines that do not start with FINDING_N: followed by YES or NO are silently ignored. Use the exact ID from the ballot heading. Do NOT format votes as a markdown table or pipe-delimited grid; the parser reads only anchored lines, one per ballot item.")
+        out.append("**Output ONLY vote lines.** No preamble, acknowledgement, or explanation before the first vote. Parser ignores lines not starting with the exact ballot ID (FINDING_N: or OOS_N:) plus YES/NO. No markdown tables or pipe-delimited grids; parser reads one anchored line per item." if args.id_grammar == "finding-oos" else "**Output ONLY vote lines.** No preamble, acknowledgement, or explanation before the first vote. Parser ignores lines not starting with FINDING_N: plus YES/NO. Use the exact ballot-heading ID. No markdown tables or pipe-delimited grids; parser reads one anchored line per item.")
         print("\n".join(out) + "\n", end="")
         return 0
     except (SystemExit, UsageError) as exc:

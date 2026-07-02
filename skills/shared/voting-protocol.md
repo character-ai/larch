@@ -4,11 +4,11 @@ Shared voting protocol for adjudicating review findings. Used by `/design` (plan
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes YES/NO on each finding. `/design` (plan review) normally uses a 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 (code review) use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`. All code-review voters waterfall Codex, then Cursor, then Claude. Findings with 2+ YES votes are accepted in the full tier. When voters are unavailable, the panel degrades through the tier table below and never fails open. `/review` voter dispatch is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters`; vote tally is owned by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn competition points based on how their findings perform in voting.
+After deduplication, a panel casts YES/NO votes on each finding. `/design` plan review normally uses three voters (Claude, Codex, Cursor). `/review` and `/implement` Step 5 code review use three fixed slots: `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`; each waterfalls Codex, then Cursor, then Claude. Full-tier findings need 2+ YES votes. Unavailable voters degrade through the tier table and never fail open. `/review` dispatch is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent dispatch-voters`; tally is `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review tally-code-votes`. Original reviewers earn points from vote outcomes.
 
 ## Ballot Format
 
-Before sending to voters, assign each deduplicated finding a stable sequential ID. The ballot file uses `### FINDING_N:` markdown heading blocks — one block per finding. For `/design` plan review, `python/cli.py plan-review tally` (implementation: `python/plan_review.py`) also splits `### OOS_N:` blocks; for `/review` code review, `review tally-code-votes` accepts both `### FINDING_N:` and `### OOS_N:` headings, while legacy OOS-tagged code-review rows may still appear as `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
+Assign each deduplicated finding a stable sequential ID before voting. Ballots use one `### FINDING_N:` markdown block per finding. `/design` plan review (`python/cli.py plan-review tally`, implemented in `python/plan_review.py`) also splits `### OOS_N:` blocks. `/review` code review (`review tally-code-votes`) accepts both `### FINDING_N:` and `### OOS_N:` headings; legacy OOS code-review rows may still be `### FINDING_N:` headings with `[OUT_OF_SCOPE]` in the title:
 
 ```markdown
 ### FINDING_1: <short title>
@@ -22,11 +22,11 @@ Before sending to voters, assign each deduplicated finding a stable sequential I
 - **Suggested revision**: <what to change>
 ```
 
-Prepend the voter instructions as free prose before the first `### FINDING_N:` block (they are ignored by the parsers). Voter-facing ballots must not reveal proposer identity. Reviewer lines keep the stable `Reviewer` / `Reviewer(s)` shape but use `anonymous`; proposer attribution is retained out of band in `proposer-map.tsv` for scoring and audit. Body text is not scrubbed. Attribution labels remain skill-specific after tally: `/design` uses `Code` / `Codex` / `Cursor`; `/review` uses specialist labels (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`) for its hard panel. Simple panels add `Claude-Generic` and use a reduced external-specialist set. `/research` does not participate in voting. It uses the Negotiation Protocol instead.
+Prepend voter instructions as parser-ignored prose before the first `### FINDING_N:` block. Voter-facing ballots must hide proposer identity: keep `Reviewer` / `Reviewer(s)` labels but set them to `anonymous`, while scoring and audit use `proposer-map.tsv`. Body text is not scrubbed. Tally attribution stays skill-specific: `/design` uses `Code` / `Codex` / `Cursor`; `/review` uses specialist labels (`Correctness`, `Testing`, `Edge-cases`, `Codex-Correctness`, `Codex-Testing`, `Codex-Edge-cases`). Simple panels add `Claude-Generic` and a smaller external-specialist set. `/research` uses the Negotiation Protocol, not voting.
 
 ## Voter Output Format
 
-Each voter must output one line per ballot item, **using the same ID that appears on the ballot heading for this run**. The ID form depends on the skill:
+Each voter outputs one line per ballot item, **using the same ID that appears on that run's ballot heading**:
 
 - **`/design` plan review**: in-scope headings are `### FINDING_N:`, OOS headings are `### OOS_N:` — vote lines use `FINDING_N:` and `OOS_N:` respectively.
 - **`/review` code review**: vote lines use the same ID form as the ballot heading. In-scope headings use `FINDING_N:`; OOS headings may use `OOS_N:`. Legacy `[OUT_OF_SCOPE]` rows under `FINDING_N:` still vote with `FINDING_N:`.
@@ -41,7 +41,7 @@ OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false
 ...
 ```
 
-Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter output are tolerated and mapped to `NO`. If a voter's output contains valid votes for some findings but is missing votes for others, use the valid votes; missing ballot entries produce `JUDGE_ERROR` at the per-voter level (parser fallback). `JUDGE_ERROR` does not reduce the panel tier; the quorum basis is the number of available voter files for the round.
+Valid vote tokens are `YES` and `NO`; legacy stray `EXONERATE` maps to `NO`. If output has valid votes for some findings and misses others, keep the valid votes; missing entries produce per-voter `JUDGE_ERROR` parser fallback. `JUDGE_ERROR` does not lower the panel tier; quorum is based on available voter files for the round.
 
 ## Threshold Rules
 
@@ -52,9 +52,9 @@ Valid vote tokens are `YES` and `NO`. Stray `EXONERATE` tokens from old voter ou
 | 1 | 1 | Binding single-judge decision; YES accepts, NO rejects |
 | 0 | Main agent decides | No automated vote; main agent reads ballot as untrusted data and adjudicates |
 
-Dispatchers emit degraded-panel warnings when effective voters drop below the expected panel size. For `/review` and `/implement` Step 5 code review the expected size is the three-slot code-review panel when Cursor or Codex voter lanes are available, or **one Claude fallback voter** when neither external voter lane is active. All code-review voters waterfall Codex, then Cursor, then Claude on the external path. A single-Claude fallback is the designed state and raises **no** warning; only a genuine failure of an *expected* judge degrades the panel. (`/design` plan review still back-fills unavailable externals to keep the expected size at three.) `effective` means status is not `failed` and the voter output is substantive enough to contribute valid vote lines after any retry path settles. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholder slots keep their `vN_tool` attribution but do not inflate the quorum.
+Dispatchers warn when effective voters fall below the expected panel size. For `/review` and `/implement` Step 5, expected size is the three-slot code-review panel when Cursor or Codex lanes are available, or **one Claude fallback voter** when neither external lane is active. Code-review voters waterfall Codex, then Cursor, then Claude. A single-Claude fallback is intentional and warns only if that expected judge fails. (`/design` still back-fills unavailable externals to keep expected size three.) `effective` means not `failed` and substantive enough to contribute valid vote lines after retries. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholders keep `vN_tool` attribution but do not inflate quorum.
 
-After the acceptance threshold, each finding is classified into one of three operator-facing outcomes: `accepted`, `neutral` (≥1 YES but below acceptance threshold; -0.25 points to the proposing reviewer unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). The classifier lives in `python/voting.py::classify_result`; tally scripts map the label to KV and JSON at the emission boundary. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `blocker` or `major` neutral to OOS artifacts with classification `scope=oos`. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped.
+After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `python/voting.py::classify_result` owns classification; tally scripts map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `blocker` or `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped.
 
 ## Voter Panel Composition
 
@@ -80,20 +80,20 @@ Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
 <!-- OOS voter rubric: canonical runtime voter text is emitted by python/cli.py render voter. Keep OOS paragraph parity across skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and this voting-protocol template manually. -->
 
-For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`) — vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, and issue-overhead test, with default-deny. Treat any suggested remedy in the item body as *informational only* — do not vote NO because you disagree with the proposed fix. The future implementer of the OOS issue chooses the actual remedy.
+For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, issue-overhead test, and default-deny. Suggested remedies are informational only; do not vote NO for remedy disagreement. The future implementer of the OOS issue chooses the remedy.
 
 ```
-You are a {VOTER_ROLE} participating in a voting panel. You will be presented with a list of proposed changes to {REVIEW_CONTEXT}. For each finding, vote YES or NO:
+You are a {VOTER_ROLE} on a voting panel. For each proposed change to {REVIEW_CONTEXT}, vote YES or NO:
 - **YES**: The finding is NECESSARY for the feature per the Review Acceptance Rubric (`skills/shared/review-acceptance-rubric.md`): the feature would be incomplete, broken, unverifiable, or regressed without it.
 - **NO**: The finding does not clear the necessity gate — it may be real or valuable, but the feature ships correctly without it. Route it to Out-of-Scope instead.
 
-Default-deny. If you are unsure whether a finding clears a necessity gate, vote NO. "Legitimate but not necessary" is a NO.
+Default-deny. If unsure, vote NO. "Legitimate but not necessary" is a NO.
 
-**Severity floor (mandatory):** Vote **NO** on any *in-scope* finding whose stated severity is nit (code review and plan review) regardless of how real or credible it is — a Nit can never clear the necessity gate. Treat a latent finding as NO **unless** it is a genuine Correctness defect on the execution path of the feature itself or an Introduced-regression (gates 2/3); latent + merely-real is a NO. This floor does **not** apply to out-of-scope (OOS) ballot rows, which are judged on whether the problem is worth filing.
+**Severity floor (mandatory):** Vote **NO** on any *in-scope* nit; nits never clear necessity. Treat latent findings as NO unless they are genuine Correctness defects on the feature execution path or Introduced-regressions (gates 2/3); latent plus merely-real is NO. OOS rows are judged only for filing-worthiness.
 
-Do NOT vote YES because the change would be cleaner, more robust, more consistent, more flexible, more idiomatic, "best practice", a performance / micro-optimization when the feature already meets its stated performance requirement, or cross-shell / cross-OS / tool-version portability speculation — those are Out-of-Scope signals, not acceptance signals.
+Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are Out-of-Scope signals, not acceptance signals.
 
-**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording (see the prose paragraph immediately above this fenced template for the canonical lowest-common-denominator clause). In this template's structural shape: YES files a GitHub issue for future tracking; NO means trivial/incorrect or not worth tracking. OOS items are never implemented in this PR — YES means "file an issue," not "implement now." Vote YES only when the observation is concrete and important enough to justify a durable GitHub issue (typical signals: specific file:line or a reproducible failure mode); use NO for trivial, incorrect, or not-issue-worthy observations.
+**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording; the paragraph above is the canonical shared clause. Here, YES means file a future GitHub issue and NO means trivial, incorrect, or not worth tracking. OOS items are never implemented in this PR. Vote YES only for concrete, important observations worth a durable issue, such as a specific file:line or reproducible failure mode.
 
 {BALLOT}
 
@@ -164,11 +164,11 @@ Attribution labels are skill-specific (e.g., `/design` uses `Code`/`Codex`/`Curs
 
 ## Out-of-Scope Observations
 
-Reviewers may return a second list of **out-of-scope observations** — pre-existing issues or concerns beyond the PR's scope that are worth surfacing for future attention. These are handled alongside in-scope findings but with different semantics:
+Reviewers may return **out-of-scope observations**: pre-existing issues or concerns beyond the PR scope that merit future attention. They are handled beside in-scope findings with different semantics:
 
 ### OOS on the Ballot
 
-The ballot format for OOS items depends on the skill:
+OOS ballot format depends on the skill:
 
 - **`/design` plan review** (`python/cli.py plan-review tally`): OOS items get `OOS_` prefixed IDs (e.g., `OOS_1`, `OOS_2`) and appear as `### OOS_N:` heading blocks on the ballot:
 
@@ -182,13 +182,13 @@ The ballot format for OOS items depends on the skill:
 
 ### OOS Vote Semantics
 
-For out-of-scope items, the vote meanings are:
+For OOS items, votes mean:
 - **YES**: This observation deserves a GitHub issue for future attention.
 - **NO**: Not worth tracking — the observation is trivial or incorrect.
 
-If an OOS item receives 2+ YES votes, it is **accepted** and will be filed as a GitHub issue by `/implement` Step 9a.1 (`/issue` batch mode). In `/review` description mode, accepted OOS items are recorded in local artifacts for the operator to file manually via `/issue` (no automatic filing in this mode). Otherwise it remains an observation reported in the PR body.
+With 2+ YES votes, an OOS item is **accepted** and `/implement` Step 9a.1 files it as a GitHub issue via `/issue` batch mode. In `/review` description mode, accepted OOS items are local artifacts for the operator to file manually via `/issue`; no automatic filing occurs. Otherwise, the item remains a PR-body observation.
 
-**OOS items are never implemented in the current PR** — accepted OOS items result in issue creation only. This cleanly separates "fix now" (in-scope findings) from "fix later" (OOS observations).
+**OOS items are never implemented in the current PR**. Accepted OOS creates issues only, separating "fix now" in-scope findings from "fix later" OOS observations.
 
 ### OOS Scoring
 
@@ -204,7 +204,7 @@ Out-of-scope items stay flat in the live voting classifier: accepted OOS earns a
 
 ### OOS Scoreboard
 
-The scoreboard includes additional columns for OOS items:
+The scoreboard adds OOS columns:
 
 ```
 | Reviewer | ... | OOS Proposed | OOS Accepted | OOS-Neutral | OOS-Rejected | ...
@@ -223,14 +223,14 @@ Accepted OOS items can be tagged as **security findings** that are held locally 
 
 ### OOS Reporting
 
-OOS items are **not** written to `rejected-findings.md`. They follow a separate pipeline:
+OOS items are **not** written to `rejected-findings.md`; they use this separate pipeline:
 
 - **Accepted OOS items — reviewer voting path** (2+ YES): Plan-review OOS accepted by the `/design` panel is written to `$DESIGN_TMPDIR/oos-accepted-design.md` (and visibility text to `$DESIGN_TMPDIR/oos.md`) during `/design` Step 3 tally/finalize. Code-review OOS accepted by the `/review` panel is written to `$REVIEW_TMPDIR/oos-accepted-review.md` during review tally; `review core` mirrors a copy at `$IMPLEMENT_TMPDIR/oos-accepted-review.md` for `/implement` Step 9a.1 and disposition gates.
 - **Accepted OOS items — main-agent dual-write path** (no vote required): Written to `oos-accepted-main-agent.md` in `$IMPLEMENT_TMPDIR` by the main agent at discovery time, every time it logs a `Pre-existing Code Issues` entry to `execution-issues.md`. This is the mechanical enforcement of `/implement`'s Follow-up Work Principle for the `Pre-existing Code Issues` category — see `/implement` SKILL.md → "Follow-up Work Principle" and "Mechanical enforcement of the principle: `Pre-existing Code Issues` dual-write". Durable follow-up work outside that category is not auto-filed via this path — the main agent files it manually via `/issue` per the principle. This path is unconditional and runs in every mode (`--quick`, `--merge`, `--draft`, `--no-merge`, or any future flag). It does NOT pass through a voting panel — main-agent classification is the policy gate.
 - **Unified filing**: `/implement` Step 9a.1 reads accepted OOS from the main-agent artifact, the plan-review artifact (`$DESIGN_TMPDIR/oos-accepted-design.md` when `/design` ran in-session, with implement-local fallbacks documented in `/implement` SKILL.md for disposition gates and ship-pr), and `$IMPLEMENT_TMPDIR/oos-accepted-review.md`, deduplicates across phases, and creates GitHub issues via `/issue` (batch mode) with LLM-based semantic duplicate detection against open + recently-closed GitHub issues. All three artifacts share the same `### OOS_N:` schema (Description, Reviewer, Vote tally, Phase). Main-agent items use Reviewer=`Main agent`, Vote tally=`N/A — auto-filed per policy`, Phase=`implement`.
 - **Non-accepted OOS items**: Collected and reported in a dedicated `<details><summary>Out-of-Scope Observations</summary>` section in the PR body for future reference.
 
-External reviewers **in diff mode** differ by slot type. **Specialist external slots** (Cursor and Codex specialists loaded from `agents/reviewer-*.md`) use dual-list output (with `### In-Scope Findings` and `### Out-of-Scope Observations` section headers) and can contribute OOS items via voting. **In `/review` description mode**, all external reviewers produce dual-list output matching the Claude subagent contract and contribute OOS observations via voting — see `${CLAUDE_PLUGIN_ROOT}/skills/review/SKILL.md` Step 3a. Claude subagent reviewers (which use the dual-list templates from `reviewer-templates.md`) produce OOS items via voting in both modes; the main agent's dual-write path produces OOS items without voting.
+External reviewers **in diff mode** vary by slot type. **Specialist external slots** (Cursor and Codex specialists from `agents/reviewer-*.md`) use dual-list output (`### In-Scope Findings` and `### Out-of-Scope Observations`) and can contribute OOS items via voting. **In `/review` description mode**, all external reviewers use the Claude subagent dual-list contract and contribute OOS via voting; see `${CLAUDE_PLUGIN_ROOT}/skills/review/SKILL.md` Step 3a. Claude subagent reviewers use `reviewer-templates.md` dual-list templates and produce OOS items via voting in both modes. The main agent dual-write path produces OOS items without voting.
 
 ## Zero Accepted Findings
 

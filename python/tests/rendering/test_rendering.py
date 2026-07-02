@@ -1019,19 +1019,19 @@ def test_render_voter_no_archetype_matches_default_output(tmp_path: Path, capsys
 def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     assert "Panel severity rubric" in text
-    assert "`blocker` only for data loss, security exposure, corruption" in text
-    assert "`major` when the issue blocks merge" in text
-    assert "`minor` for a real, necessary, limited-impact issue" in text
-    assert "`nit` for style, wording, polish, or cleanup" in text
-    assert "`uncertain` only when you cannot judge severity after verification" in text
+    assert "`blocker` = data loss, security exposure, corruption" in text
+    assert "`major` = blocks merge" in text
+    assert "`minor` = real, necessary, limited-impact issue" in text
+    assert "`nit` = style, wording, polish, or cleanup" in text
+    assert "`uncertain` = cannot judge severity after verification" in text
 
 
 def test_render_voter_immediate_action_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     assert "Proceed immediately" in text
-    assert "do not acknowledge this prompt" in text
-    assert "Read the ballot from this path" in text
-    assert "Do NOT output any preamble, acknowledgement, or explanation before the first vote line" in text
+    assert "Do not acknowledge this prompt" in text
+    assert "read the ballot at" in text
+    assert "No preamble, acknowledgement, or explanation before the first vote" in text
 
 
 def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
