@@ -69,22 +69,32 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     return args
 
 
-def _write_empty_report(temp_root: Path) -> bool:
+def _print_advertised_artifact(line: str) -> None:
+    print(redact.redact_secrets_only(line))
+
+
+def _write_empty_report(temp_root: Path, *, preserve_holder: list[bool]) -> None:
     print(redact.redact("## Report Tokens Analysis"))
     print()
     print(redact.redact("No parseable token reports found."))
     cache_path = temp_root / "report-cache.ndjson"
+    if _path_is_under(cache_path, temp_root):
+        preserve_holder[0] = True
     _ = cache_path.write_text("", encoding="utf-8")
-    print(redact.redact(f"Cache JSON: {cache_path}"))
-    return _path_is_under(cache_path, temp_root)
+    _print_advertised_artifact(f"Cache JSON: {cache_path}")
 
 
 def _print_analysis(*, analysis: str, plot_paths: list[Path], no_plot: bool) -> None:
-    print(redact.redact(analysis))
+    body, sep, cache_suffix = analysis.partition("\n\nCache JSON:")
+    if sep:
+        print(redact.redact(body))
+        _print_advertised_artifact(f"Cache JSON:{cache_suffix}")
+    else:
+        print(redact.redact(analysis))
     if plot_paths:
         print(redact.redact("\nPlots written to:"))
         for path in plot_paths:
-            print(redact.redact(f"- {path}"))
+            _print_advertised_artifact(f"- {path}")
     elif no_plot:
         print(redact.redact("\nPlot generation disabled."))
     else:
@@ -111,7 +121,13 @@ def _post_report_if_requested(*, no_issue: bool, scanned: ScanResult, sections: 
     return None
 
 
-def _main_with_temp_root(*, args: argparse.Namespace, temp_root: Path, repo_override: str | None) -> tuple[int, bool]:
+def _main_with_temp_root(
+    *,
+    args: argparse.Namespace,
+    temp_root: Path,
+    repo_override: str | None,
+    preserve_holder: list[bool],
+) -> int:
     skill: Skill = args.skill
     no_issue = bool(args.no_issue) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_ISSUE)
     no_plot = bool(args.no_plot) or env_flag_enabled(config.ENV_LARCH_REPORT_TOKENS_NO_PLOT)
@@ -119,9 +135,10 @@ def _main_with_temp_root(*, args: argparse.Namespace, temp_root: Path, repo_over
         scanned = _scan_reports(skill, repo_override=repo_override, resolve_repo=not no_issue)
     except ShipError as exc:
         print(str(exc), file=sys.stderr)
-        return config.EXIT_BAIL, False
+        return config.EXIT_BAIL
     if not scanned.records:
-        return config.EXIT_OK, _write_empty_report(temp_root)
+        _write_empty_report(temp_root, preserve_holder=preserve_holder)
+        return config.EXIT_OK
 
     priced = tuple(price_run(proc, record=record) for record in scanned.records)
     actual_spend: float | None = _actual_spend()
@@ -142,24 +159,28 @@ def _main_with_temp_root(*, args: argparse.Namespace, temp_root: Path, repo_over
     )
     cache_advertised = _path_is_under(Path(cache_path), temp_root) and f"Cache JSON: {cache_path}" in analysis
     plot_paths = plot(proc, skill=skill, records=priced, plot_parent_dir=temp_root, no_plot=no_plot)
-    preserve_temp_root = bool(plot_paths) or cache_advertised
+    preserve_holder[0] = bool(plot_paths) or cache_advertised
     _print_analysis(analysis=analysis, plot_paths=plot_paths, no_plot=no_plot)
     post_rc = _post_report_if_requested(no_issue=no_issue, scanned=scanned, sections=sections, skill=skill)
     if post_rc is not None:
-        return post_rc, preserve_temp_root
-    return config.EXIT_OK, preserve_temp_root
+        return post_rc
+    return config.EXIT_OK
 
 
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     temp_root = Path(tempfile.mkdtemp(prefix="larch-report-tokens."))
-    preserve_temp_root = False
+    preserve_holder = [False]
     repo_override: str | None = os.environ.get(config.ENV_LARCH_REPORT_TOKENS_REPO)
     try:
-        rc, preserve_temp_root = _main_with_temp_root(args=args, temp_root=temp_root, repo_override=repo_override)
-        return rc
+        return _main_with_temp_root(
+            args=args,
+            temp_root=temp_root,
+            repo_override=repo_override,
+            preserve_holder=preserve_holder,
+        )
     finally:
-        if not preserve_temp_root:
+        if not preserve_holder[0]:
             shutil.rmtree(temp_root, ignore_errors=True)
 
 

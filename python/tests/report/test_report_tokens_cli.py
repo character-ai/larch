@@ -339,3 +339,113 @@ def test_post_failure_after_cache_output_preserves_root(monkeypatch: pytest.Monk
     assert "Cache JSON:" in capsys.readouterr().out
     cache_path = _single_cache_path(tmp_path)
     assert cache_path.is_file()
+
+
+def test_exception_during_print_after_preserve_decision_preserves_root(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _isolate_cli_temp_root(monkeypatch, tmp_path)
+    record = _record()
+    original_print_analysis = report_tokens_cli._print_analysis
+
+    def exploding_print_analysis(*, analysis: str, plot_paths: list[Path], no_plot: bool) -> None:
+        original_print_analysis(analysis=analysis, plot_paths=plot_paths, no_plot=no_plot)
+        raise BrokenPipeError()
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None, resolve_repo: bool = True) -> ScanResult:
+        _ = (_runner, skill, repo_override, resolve_repo)
+        return ScanResult(tmp_path, None, (record,))
+
+    def fake_price(_runner: object, record: RunRecord) -> RunRecord:
+        return record
+
+    def fake_plot(*args: object, **kwargs: object) -> list[Path]:
+        _ = (args, kwargs)
+        return []
+
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
+    monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
+    monkeypatch.setattr(report_tokens_cli, "_print_analysis", exploding_print_analysis)
+    with pytest.raises(BrokenPipeError):
+        _ = report_tokens_cli.main(["--skill", "implement", "--no-issue", "--no-plot"])
+    assert "Cache JSON:" in capsys.readouterr().out
+    cache_path = _single_cache_path(tmp_path)
+    assert cache_path.is_file()
+
+
+def _cache_path_from_stdout(out: str) -> Path:
+    for line in out.splitlines():
+        if line.startswith("Cache JSON:"):
+            return Path(line.removeprefix("Cache JSON:").strip())
+    raise AssertionError("Cache JSON line missing from stdout")
+
+
+def test_stdout_advertised_cache_path_is_concrete_and_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _isolate_cli_temp_root(monkeypatch, tmp_path)
+    record = _record()
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None, resolve_repo: bool = True) -> ScanResult:
+        _ = (_runner, skill, repo_override, resolve_repo)
+        return ScanResult(tmp_path, None, (record,))
+
+    def fake_price(_runner: object, record: RunRecord) -> RunRecord:
+        return record
+
+    def fake_plot(*args: object, **kwargs: object) -> list[Path]:
+        _ = (args, kwargs)
+        return []
+
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
+    monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
+    assert report_tokens_cli.main(["--skill", "implement", "--no-issue", "--no-plot"]) == config.EXIT_OK
+    out = capsys.readouterr().out
+    cache_path = _cache_path_from_stdout(out)
+    assert config.REDACTED_TMPDIR not in str(cache_path)
+    assert "larch-report-tokens" in str(cache_path)
+    assert cache_path.is_file()
+
+
+def test_stdout_advertised_plot_path_is_concrete_and_exists(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _isolate_cli_temp_root(monkeypatch, tmp_path)
+    record = _record()
+    plot_file: Path | None = None
+
+    def fake_scan(_runner: object, skill: str, repo_override: str | None = None, resolve_repo: bool = True) -> ScanResult:
+        _ = (_runner, skill, repo_override, resolve_repo)
+        return ScanResult(tmp_path, None, (record,))
+
+    def fake_price(_runner: object, record: RunRecord) -> RunRecord:
+        return record
+
+    def fake_plot(*args: object, **kwargs: object) -> list[Path]:
+        _ = args
+        nonlocal plot_file
+        plot_parent_dir = kwargs["plot_parent_dir"]
+        assert isinstance(plot_parent_dir, Path)
+        plot_file = plot_parent_dir / "plot-advertised.png"
+        _ = plot_file.write_text("plot", encoding="utf-8")
+        return [plot_file]
+
+    monkeypatch.setattr(report_tokens_cli.sys, "platform", "linux")
+    monkeypatch.setattr(report_tokens_cli, "scan", fake_scan)
+    monkeypatch.setattr(report_tokens_cli, "price_run", fake_price)
+    monkeypatch.setattr(report_tokens_cli, "plot", fake_plot)
+    assert report_tokens_cli.main(["--skill", "implement", "--no-issue"]) == config.EXIT_OK
+    out = capsys.readouterr().out
+    plot_lines = [line.removeprefix("- ").strip() for line in out.splitlines() if line.startswith("- ") and "plot" in line]
+    assert plot_lines
+    plot_path = Path(plot_lines[0])
+    assert config.REDACTED_TMPDIR not in str(plot_path)
+    assert plot_path.is_file()
