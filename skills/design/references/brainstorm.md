@@ -74,12 +74,14 @@ The launcher `.meta` file's `STDERR_SINK=` value must point at the matching fail
 
 **Framing** (when the registry-selected tool is external and available):
 
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
 ```
 
 **Scope** (when the registry-selected tool is external and available):
 
+**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
