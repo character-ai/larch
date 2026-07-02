@@ -19,6 +19,7 @@ from larch.errors import ShipError
 
 _REPO_RE = re.compile(r"^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$")
 _PR_SUFFIX_RE = re.compile(r"\(#([0-9]+)\)$")
+_COMPANION_ISSUE_PREFIX_RE = re.compile(r"^Fixes #([0-9]+):")
 _git_cwd: str | None = None
 
 
@@ -54,6 +55,25 @@ def _tsv(value: object) -> str:
     return str(value if value is not None else "").replace("\t", " ").replace("\r", " ").replace("\n", " ")
 
 
+def _companion_issue_title(*, repo: str, pr_title: object) -> str | None:
+    if not isinstance(pr_title, str):
+        return None
+    match = _COMPANION_ISSUE_PREFIX_RE.match(pr_title)
+    if not match:
+        return None
+    issue = _gh_json(["issue", "view", match.group(1), "--repo", repo, "--json", "title"])
+    if not isinstance(issue, dict):
+        return None
+    title = issue.get("title")
+    if isinstance(title, str) and title.strip():
+        return title
+    return None
+
+
+def _release_note_title(*, repo: str, pr_title: object) -> object:
+    return _companion_issue_title(repo=repo, pr_title=pr_title) or pr_title
+
+
 def _semver_tuple(v: str) -> tuple[int, int, int]:
     a, b, c = v.split(".")
     return int(a), int(b), int(c)
@@ -80,7 +100,7 @@ def _origin_repo(repo_root: Path) -> str | None:
     return res.stdout.strip() if res.returncode == 0 else None
 
 
-def _write_pr_row(*, path: Path, pr: dict[str, object]) -> None:
+def _write_pr_row(*, path: Path, repo: str, pr: dict[str, object]) -> None:
     labels = pr.get("labels")
     label_names = ""
     if isinstance(labels, list):
@@ -90,7 +110,13 @@ def _write_pr_row(*, path: Path, pr: dict[str, object]) -> None:
         author_login = str(author.get("login") or "unknown")
     else:
         author_login = "unknown"
-    row = [pr.get("number", ""), pr.get("title", ""), label_names, author_login, pr.get("url", "")]
+    row = [
+        pr.get("number", ""),
+        _release_note_title(repo=repo, pr_title=pr.get("title", "")),
+        label_names,
+        author_login,
+        pr.get("url", ""),
+    ]
     with path.open("a", encoding="utf-8") as handle:
         handle.write("\t".join(_tsv(x) for x in row) + "\n")
 
@@ -165,7 +191,7 @@ def main(argv: list[str] | None = None) -> int:
         if str(pr.get("title", "")).startswith(config.TRANSPARENT_LARCH_LOGS_SUBJECT_PREFIX):
             ignored.add(int(pr.get("number", n)))
             continue
-        _write_pr_row(path=pr_list_file, pr=pr)
+        _write_pr_row(path=pr_list_file, repo=args.repo, pr=pr)
         written.add(int(pr.get("number", n)))
     if missing:
         return _emit_error("pr-metadata-incomplete", f"could not fetch PR metadata for: {' '.join(missing)}")
@@ -198,7 +224,7 @@ def main(argv: list[str] | None = None) -> int:
                 "author": {"login": (p.get("user") or {}).get("login", "unknown")},
                 "url": p.get("html_url", ""),
             }
-            _write_pr_row(path=pr_list_file, pr=row)
+            _write_pr_row(path=pr_list_file, repo=args.repo, pr=row)
             written.add(num)
             print(f"NOTE: commit {sha} resolved to PR #{num} via GitHub API ({subj})", file=sys.stderr)
         else:

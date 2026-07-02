@@ -1,5 +1,4 @@
 # pyright: reportUnknownVariableType=false, reportUnknownMemberType=false, reportUnknownArgumentType=false, reportUnusedCallResult=false, reportOptionalSubscript=false, reportOptionalMemberAccess=false, reportPossiblyUnboundVariable=false, reportUnnecessaryComparison=false, reportUnknownLambdaType=false, reportArgumentType=false, reportUnknownParameterType=false, reportMissingParameterType=false, reportUnusedImport=false, reportUnusedFunction=false, reportPrivateUsage=false, reportUnusedVariable=false
-# ruff: noqa: TC002
 # pylint: skip-file
 """Representative tests for release Python helpers."""
 
@@ -369,7 +368,14 @@ class Classification:
     bump_type = "PATCH"
 
 
-def _prepare_common(monkeypatch: pytest.MonkeyPatch, runner: ReleasePrepareRunner, *, repo: str = "o/r", pr_view: object | None = None) -> None:
+def _prepare_common(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: ReleasePrepareRunner,
+    *,
+    repo: str = "o/r",
+    pr_view: object | None = None,
+    issue_view: object | None = None,
+) -> None:
     monkeypatch.setattr(release_prepare.proc, "run", runner.run)
     monkeypatch.setattr(release_prepare, "_origin_repo", lambda _root: repo)
     def gh_json(argv):
@@ -379,6 +385,8 @@ def _prepare_common(monkeypatch: pytest.MonkeyPatch, runner: ReleasePrepareRunne
             return []
         if argv[:2] == ["pr", "view"]:
             return pr_view
+        if argv[:2] == ["issue", "view"]:
+            return issue_view
         raise AssertionError(f"unexpected gh json argv: {argv}")
     monkeypatch.setattr(release_prepare, "_gh_json", gh_json)
     monkeypatch.setattr(release_prepare.version_bump, "classify_bump", lambda *_args, **_kwargs: Classification())
@@ -447,6 +455,64 @@ def test_release_prepare_pr_list_tsv_column_order(monkeypatch: pytest.MonkeyPatc
     assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
     assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
         "12\tFeature title\tenhancement,release-note\talice\thttps://github.com/o/r/pull/12"
+    ]
+
+
+def test_release_prepare_pr_list_uses_companion_issue_title(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
+    runner = ReleasePrepareRunner(
+        repo_root,
+        log_subjects="Fixes #34: Implement issue #34 (#12)\n",
+        log_hash_subjects="abc Fixes #34: Implement issue #34 (#12)\n",
+    )
+    pr_view = {
+        "number": 12,
+        "title": "Fixes #34: Implement issue #34",
+        "labels": [],
+        "author": {"login": "alice"},
+        "url": "u12",
+    }
+    _prepare_common(monkeypatch, runner, pr_view=pr_view, issue_view={"title": "Add release approve bypass"})
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
+        "12\tAdd release approve bypass\t\talice\tu12"
+    ]
+
+
+@pytest.mark.parametrize("issue_view", [None, [], {"title": ""}, {"title": 34}])
+def test_release_prepare_pr_list_falls_back_when_companion_issue_title_unavailable(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    issue_view: object | None,
+) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
+    runner = ReleasePrepareRunner(
+        repo_root,
+        log_subjects="Fixes #34: Implement issue #34 (#12)\n",
+        log_hash_subjects="abc Fixes #34: Implement issue #34 (#12)\n",
+    )
+    pr_view = {
+        "number": 12,
+        "title": "Fixes #34: Implement issue #34",
+        "labels": [],
+        "author": {"login": "alice"},
+        "url": "u12",
+    }
+    _prepare_common(monkeypatch, runner, pr_view=pr_view, issue_view=issue_view)
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
+        "12\tFixes #34: Implement issue #34\t\talice\tu12"
+    ]
+
+
+def test_release_prepare_commit_to_pulls_uses_companion_issue_title(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    repo_root = Path(release_prepare.__file__).resolve().parents[3]
+    pulls = json.dumps([{"number": 13, "title": "Fixes #34: Implement issue #34", "labels": [], "user": {"login": "me"}, "html_url": "u13"}])
+    runner = ReleasePrepareRunner(repo_root, log_subjects="", log_hash_subjects="def Orphan subject\n", api_stdout=pulls)
+    _prepare_common(monkeypatch, runner, issue_view={"title": "Resolve orphan behavior"})
+    assert release_prepare.main(["--repo", "o/r", "--out-dir", str(tmp_path)]) == 0
+    assert (tmp_path / "pr-list.tsv").read_text(encoding="utf-8").splitlines() == [
+        "13\tResolve orphan behavior\t\tme\tu13"
     ]
 
 
