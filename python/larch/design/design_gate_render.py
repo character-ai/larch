@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -68,11 +69,11 @@ def _gate_a_options(*, without_see_full_plan: bool) -> tuple[GateOption, ...]:
     options = [
         GateOption(
             "Ready for review",
-            "Launch the design review against the current plan.",
+            "route to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`. Do not add a separate Gate A wrapper. Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.",
         ),
         GateOption(
             "Discuss more",
-            "Continue the post-plan discussion before review.",
+            "remain in Gate A; conduct another discussion sub-round, then re-render Gate A.",
         ),
     ]
     if without_see_full_plan:
@@ -80,7 +81,7 @@ def _gate_a_options(*, without_see_full_plan: bool) -> tuple[GateOption, ...]:
     return (
         GateOption(
             "See full plan",
-            "Re-display the current plan, then return to this prompt without advancing.",
+            "re-display the current `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header (verbatim, no diff vs. prior version), then run `python/cli.py design render-gate --gate A --without-see-full-plan` and re-fire with those rows. This option never advances state; it loops back to the prompt.",
         ),
         *options,
     )
@@ -121,18 +122,17 @@ def _review_count(design_tmpdir: str | None) -> tuple[int, str]:
     if not design_tmpdir:
         return 0, ""
     path = Path(design_tmpdir) / "review-round-count.txt"
-    try:
-        raw = path.read_text(encoding="utf-8").strip()
-    except FileNotFoundError:
+    if not path.is_file() or path.is_symlink():
         return 0, ""
-    except OSError as exc:
-        raise ValueError(f"failed to read review-round-count.txt: {exc}") from exc
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return 0, ""
     if not raw:
         return 0, ""
-    try:
-        return int(raw), ""
-    except ValueError:
+    if not re.fullmatch(r"[0-9]+", raw):
         return 0, "non-numeric"
+    return int(raw, 10), ""
 
 
 def _gate_c_options(*, without_see_full_plan: bool, at_cap: bool, panel_failed: bool) -> tuple[GateOption, ...]:
@@ -140,27 +140,27 @@ def _gate_c_options(*, without_see_full_plan: bool, at_cap: bool, panel_failed: 
     options = [
         GateOption(
             approve_label,
-            "Approve the current plan and continue immediately to finalize.",
+            "exit Gate C; proceed to Step 5 finalize. Run Step 5b OOS filing, Step 5b.5 post-approval architecture diagram, then Step 5c plan write, diagram upsert, `[DESIGNED]` rename, and design log publish.",
         )
     ]
     if not without_see_full_plan:
         options.append(
             GateOption(
                 "See full plan",
-                "Show the full current plan, then return to this prompt without advancing.",
+                "Run `python/cli.py plan-review preview --design-tmpdir \"$DESIGN_TMPDIR\" --variant full`, then re-render Gate C with `--without-see-full-plan`. This option performs no state mutation and never advances control past Gate C.",
             )
         )
     options.append(
         GateOption(
             "Discuss further",
-            "Return to Gate A discussion before another review pass.",
+            "re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`. When Gate A exits via **Ready for review**, re-enter Step 3 with the revised plan; any settled review path must continue through Step 3b finalize, Step 4, and back to Gate C. Do not run Step 5b.5 until a later Gate C **Approve**.",
         )
     )
     if not at_cap:
         options.append(
             GateOption(
                 "Re-run review panel",
-                "Launch another review panel against the current plan.",
+                "present only when the renderer includes it. Route to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and re-enter Step 3 with the current `plan.txt` after all user-approved or operator-approved/applied feedback. The round cursor advances at Step 3 entry when `plan-after-round-<cursor>.txt` already exists; `NEXT_ACTION` routing, Step 3b finalize, Step 4, and Gate C fire again on fresh findings. Do not run Step 5b.5 until a subsequent Gate C **Approve**. Findings from prior manual review runs are NOT preserved; each manual re-run is a fresh look at the latest plan.",
             )
         )
     return tuple(options)
