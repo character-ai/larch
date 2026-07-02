@@ -1,8 +1,8 @@
 ## /implement run 5BCCC59E-81CA-49EA-806B-0D9B6F1BB701 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$27.06 — Claude $0.90, Codex-5.5 $19.05, Codex-mini $0.86, Cursor $5.87, Claude (subprocess) $0.38  |  Tokens: 45636k
+- **Duration**: 01:31:56
+- **Cost**: 💰 TOTAL ~$40.11 — Claude $13.95, Codex-5.5 $19.05, Codex-mini $0.86, Cursor $5.87, Claude (subprocess) $0.38  |  Tokens: 64215k
 - **Issue**: #5889 — https://github.com/character-ai/larch/issues/5889
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -10,13 +10,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/5BCCC59E-81CA-49EA-806B-0D9B6F1BB701/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.2.1
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a: Architectural-guidelines assessment flagged one minor deviation — `_rewrite_threshold_env` in `python/larch/review/review_core_body.py` hand-parses/rewrites `THRESHOLD_OK=`/`THRESHOLD_REAS...
 
 ## Review Phase Detail
 
@@ -54,3 +59,7 @@ cursor/validity-vote              │                                 ███�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
