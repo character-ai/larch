@@ -1,0 +1,55 @@
+**Skills:** /implement, /review, /design.
+
+**Initiative:** difficulty-tiers, child 1 of 3. Instrumentation only: capture a TRIVIAL / MODERATE / HARD difficulty rating on every run and commit it to run logs. No panel behavior changes in this issue; panel tiering lands in the companion tiered-panels issue.
+
+**Rationale:** PRs differ wildly in complexity and risk, but review spend is uniform. Backtest over the 100 most recent /implement panel runs (2026-06-26 to 2026-07-02): 78% of accepted findings came from runs above 528 changed LOC; small runs (up to 141 LOC, 33 runs) produced 12 accepted findings with only 2 Cursor-only catches; about 30% of recent runs already skip the panel via manual `--self-review`, so the operator is hand-tiering today. Rating capture is the prerequisite for tier-adaptive panels and for calibration.
+
+**Changes:**
+
+- /review: the dynamic-archetype scout also emits a difficulty rating (TRIVIAL | MODERATE | HARD) with a confidence level and bounded rationale.
+- /implement: the Step 2 coder emits a self-rating in its structured manifest. `agents/codex-implementer.md` and `agents/cursor-implementer.md` change together (launcher parity). Claude-coder runs rate in the main agent at Step 2 completion.
+- /design: the plan writer rates at plan time. The rating is stamped on the tracking issue (wire-format field per docs/issue-anchored-plan.md plus a `difficulty:<tier>` label) and read by /implement Step 0 as a prior.
+- Applied tier = the most severe of design-time rating, implement-time rating, and floors. The rating is pure model judgment (no computed complexity meter), anchored by a small committed set of worked examples (3 per tier drawn from real run logs, refreshed from calibration misses). Low confidence bumps one tier.
+- Escalate-only floors, the single mechanical exception: diffs touching hooks/, redaction or secret handling, ship/merge drivers, session-env writers, or CI workflows force at least MODERATE. Floors can raise a tier, never lower it.
+- New committed batch `difficulty-rating.json` on every run (implement, review, design): `schema_version`, `rater`, `rater_tool`, `rater_model`, `predicted_tier`, `confidence`, bounded `rationale`, `design_tier` / `implement_tier` when both exist, `applied_tier`, `override_source` (operator | floor | none), `floors_applied`, `audit_upgrade`, `escalations`, `panel_skipped`. `--self-review` runs skip the panel as today but still log the rating (informational; `panel_skipped=self-review`) so operator routing stays analyzable.
+- `round-meta.json` gains a `difficulty` section: `tier_in_effect`, `ceiling_in_effect`, escalation trigger when fired. Fields are defined here; the tiered-panels issue populates the escalation values.
+- `panel-manifest.ndjson` records vendor and resolved model per slot, including dynamic twins. Today `dyn-*` slot attribution is vendor-blind, which blocked part of the initiative backtest.
+- `final-summary.md` gains a `- **Difficulty**:` bullet (predicted, applied, escalation or audit note).
+- Add `difficulty-rating.json` to the /gc-run-logs consumer-core keep sets and `docs/run-logs-required-files.tsv` so the calibration corpus survives slimming.
+
+**Acceptance:**
+
+- Every run commits `difficulty-rating.json`, including `--self-review` runs.
+- The tracking issue carries the difficulty label and wire-format field from /design, and /implement Step 0 reads it.
+- `panel-manifest.ndjson` carries vendor plus model for every slot including dynamic twins.
+- Keep sets and the required-files manifest are updated; panel behavior is unchanged.
+
+**Prior art:** #5886 (DONE) restructured the panel this initiative parameterizes. Severity caveat: voter severity is inflated (174 of 188 accepted findings rated major or higher in the backtest window), so calibration keys on accepted counts and substantiality signals, not severities.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Capture a TRIVIAL/MODERATE/HARD rating on every /implement, /review, /design run; commit it as `difficulty-rating.json`.
+- Extend run-log schema (round-meta, panel-manifest, final-summary) plus the tracking-issue wire field and label so ratings are analyzable.
+- Keep panel behavior unchanged. Instrumentation only.
+
+### Non-goals
+- No tier-adaptive panel routing or escalation behavior (the tiered-panels child owns that).
+- No computed complexity meter. Rating stays pure model judgment.
+- No backfill of past runs. Forward-only.
+
+### Approach sketch
+- One shared core `python/larch/calibration/difficulty.py` plus a `difficulty` cli.py verb: Tier domain type, confidence bump, mechanical floors, applied-tier, record and batch write.
+- Register a `difficulty-rating` run-log batch; add it to the required-files TSV and gc keep sets.
+- Rate at each site: /design plan writer stamps a wire field and `difficulty:<tier>` label; /implement coder self-rates in its manifest (plus a Claude main-agent branch); /review scout emits a rating.
+- Add per-slot vendor and resolved model to panel-manifest; add a `difficulty` section to round-meta; add a `- **Difficulty**:` bullet to each final-summary.
+
+### Surfaces in scope
+- `python/larch/calibration/`, `python/larch/report/` (run_log_batch, gc_run_logs, progress_report, final_report), `python/larch/review/`, `python/larch/design/`, `python/larch/implement/`.
+- `agents/*implementer.md`, `skills/implement/references/codex-manifest-schema.md`, `skills/gc-run-logs/SKILL.md`, `skills/implement/SKILL.md`, `skills/design/SKILL.md`.
+- `docs/issue-anchored-plan.md`, `docs/run-logs-required-files.tsv`, a new rubric+examples doc, a new floor-glob manifest.
+
+### Open questions
+- Corpus depth: seed a concise set now, defer full curation to calibration. Floors: deterministic path-glob manifest. Both resolved from Round 1.
