@@ -1,0 +1,198 @@
+## Goal
+Implement issue #5973: [IMPLEMENTING] [BUG] #5923 residual: 5 TMPDIR leak sites remain and cleanup is manual-only; $TMPDIR top level still grows unboundedly.
+
+## Implementation Plan
+## Plan
+
+### Approach
+
+Use the approved outline as binding scope. The approach synthesis is `NO_SKETCHES`, so this plan is based on direct repo inspection.
+
+Keep the fix narrow:
+
+- Register automatic SessionStart cleanup via `python3 python/cli.py cleanup run` (age-based `larch-*` sweep, including `larch-report-tokens.*`).
+- Fix `/report-tokens analyze` temp-root hygiene without breaking advertised stdout paths.
+- **Preserve** `temp_root` when the CLI prints an advertised artifact path (`Cache JSON:` and/or plot paths). Those paths must remain readable after CLI exit; SessionStart `cleanup run` bounds retention (7-day default, `larch-*` pattern).
+- **Synchronously delete** `temp_root` only when nothing was advertised (for example `ShipError` during scan before cache write).
+- Add `atexit` cleanup for `render(..., temp_root=None)` fallback mkdtemp (process-lifetime only).
+- Do not synchronously clean `_plan_quality_commands.py` fallback logs.
+- Do not change `sweep-design-logs.sh` scratch or quiet-log behavior.
+
+### Files to modify/create
+
+### UPDATED: python/larch/report/report_tokens_cli.py
+
+- Import `shutil`.
+- Wrap the CLI body after `temp_root = Path(tempfile.mkdtemp(...))` in `try/finally`.
+- Track `preserve_temp_root = False`.
+- After `render(...)` (or empty-scan cache write), set `cache_advertised = True` whenever `Cache JSON:` is printed with a path under `temp_root`.
+- After `plot(...)`, set `preserve_temp_root = True` when `bool(plot_paths)` **or** `cache_advertised`.
+- In `finally`, call `shutil.rmtree(temp_root, ignore_errors=True)` only when `preserve_temp_root` is false.
+- Keep all existing exit codes and stderr behavior.
+- Ensure synchronous cleanup runs only on paths where nothing was advertised:
+  - `ShipError` during scan before cache write,
+  - other failures before any `Cache JSON:` print.
+- Ensure preservation runs on:
+  - empty scan success (empty cache file still advertised),
+  - normal success with cache,
+  - success with generated plots on any platform,
+  - macOS with `LARCH_REPORT_TOKENS_NO_OPEN` when plots exist,
+  - post-issue failure after cache/plot output.
+- Do **not** use a darwin-only preserve gate; advertised cache and plot paths outlive CLI exit and expire via SessionStart cleanup.
+
+### UPDATED: python/larch/report/report_tokens_render.py
+
+- Add a small process-exit cleanup path for `_cache_path(temp_root=None)`.
+- Keep `temp_root` callers unchanged.
+- For the fallback `mkdtemp` case:
+  - create the same `larch-report-tokens.` temp root,
+  - register an `atexit` cleanup using `shutil.rmtree(..., ignore_errors=True)`,
+  - return the same `root / "report-cache.ndjson"` path.
+- This keeps fallback cache files available while the owning Python process runs, then removes them at process exit.
+
+### NEW: scripts/cleanup-sessionstart.sh
+
+- Add a thin SessionStart hook wrapper.
+- **Ship as mode `100755`** (executable); hooks invoke it directly.
+- Mirror the existing `scripts/sweep-design-logs.sh` contract:
+  - `set -euo pipefail`,
+  - resolve `CLI="${CLAUDE_PLUGIN_ROOT:-$SCRIPT_DIR/..}/python/cli.py"`,
+  - exit 0 if `python3` or `cli.py` is unavailable,
+  - launch `python3 "$CLI" cleanup run` in the background,
+  - redirect output to a bounded cleanup log under `${TMPDIR:-/tmp}` with a `larch-` prefix,
+  - `disown` best-effort,
+  - always exit 0.
+- Use no Bash polling loop.
+
+### NEW: scripts/cleanup-sessionstart.md
+
+- Document the hook contract.
+- Include:
+  - primary caller: `hooks/hooks.json` SessionStart,
+  - executable-bit requirement (`100755`),
+  - always-exit-0 invariant,
+  - detached background execution,
+  - output redirection,
+  - CLI verb `cleanup run`,
+  - edit-in-sync notes for the hook registration and CLI verb.
+
+### UPDATED: hooks/hooks.json
+
+- Add a new `SessionStart` entry with matcher `startup|resume|clear|compact`.
+- Register command `${CLAUDE_PLUGIN_ROOT}/scripts/cleanup-sessionstart.sh`.
+- Use timeout `10`.
+- Place it near the existing SessionStart maintenance hooks (adjacent to `sweep-design-logs.sh`).
+
+### NEW: scripts/test-cleanup-sessionstart.sh
+
+- Add a Bash harness modeled on `scripts/test-sweep-design-logs.sh`.
+- **Ship as mode `100755`.**
+- Pin executable precondition first (same as `test-sweep-design-logs.sh`: fail if hook script missing or not `-x`).
+- Cover:
+  - hook registration in `hooks/hooks.json` (matcher, command path, timeout `10`),
+  - missing `python3` exits 0 and emits no stdout,
+  - missing `cli.py` exits 0 and emits no stdout,
+  - stub CLI receives `cleanup run`,
+  - script contains background launch and `disown`,
+  - source contains unconditional `exit 0`.
+- Avoid repository writes. Use harness tmpdirs only.
+
+### NEW: scripts/test-cleanup-sessionstart.md
+
+- Document the harness purpose, scope, executable-bit precondition, and Makefile target.
+
+### UPDATED: Makefile
+
+- Add `test-cleanup-sessionstart` to `.PHONY`.
+- Add the target:
+  - `python3 python/cli.py timing harness-mark --label $@ -- bash scripts/test-cleanup-sessionstart.sh`
+- Add it to `test-harnesses-5` alongside `test-sweep-design-logs`.
+
+### UPDATED: agent-lint.toml
+
+- Add G004 exclude entries mirroring the `test-sweep-design-logs` block:
+  - `scripts/test-cleanup-sessionstart.sh`
+  - `scripts/test-cleanup-sessionstart.md`
+- Comment: Makefile-only harness for `scripts/cleanup-sessionstart.sh` SessionStart hook; referenced from `test-cleanup-sessionstart` target and sibling `.md` only.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+- Add:
+  - `scripts/cleanup-sessionstart.sh`
+- Keep ASCII sort order consistent with the existing inventory.
+
+### UPDATED: python/tests/report/test_report_tokens_cli.py
+
+- Add focused unit tests for CLI temp-root policy with `TMPDIR` isolation and monkeypatched boundaries (scan, render, plot, price, post):
+  - **scan `ShipError` before cache write:** created `larch-report-tokens.*` root is removed synchronously.
+  - **empty scan success:** root is preserved; advertised `Cache JSON:` path exists after `main()` exits.
+  - **no-plot success with records:** root is preserved; cache path exists after exit.
+  - **plot success on non-darwin (`sys.platform` monkeypatched to `linux`):** root is preserved when `plot_paths` is non-empty; advertised plot paths remain readable.
+  - **darwin + `LARCH_REPORT_TOKENS_NO_OPEN` + non-empty `plot_paths`:** root is preserved (plots advertised despite no auto-open).
+  - **post failure after cache output:** root is preserved.
+- Use monkeypatched `tempfile.mkdtemp` or isolated `TMPDIR` so assertions inspect only test-owned roots.
+
+### UPDATED: python/tests/report/test_report_tokens_render.py
+
+- Add coverage for `render(..., temp_root=None)` fallback cleanup registration.
+- Prefer a subprocess regression that:
+  - sets `TMPDIR` to a test-owned directory,
+  - imports and calls `render` without `temp_root`,
+  - exits,
+  - asserts no `larch-report-tokens.*` top-level entry remains.
+- If subprocess setup is too heavy, monkeypatch `atexit.register`, run the captured cleanup callback, and assert the fallback root is removed.
+
+### UPDATED: skills/report-tokens/SKILL.md
+
+- Add one sentence under the stdout contract: advertised `Cache JSON:` and plot paths remain on disk after CLI exit and expire via automatic SessionStart `cleanup run` age sweep (`larch-*` pattern), not unbounded manual growth.
+
+### MAY_UPDATE: docs/skills.md
+
+- Align the `/report-tokens` durable-cache sentence with the same SessionStart expiry note if the existing "durable" wording implies indefinite retention.
+
+### Edge cases
+
+- **Advertised cache or plots:** preserve `temp_root`; paths stay readable after CLI exit; SessionStart cleanup expires them by age.
+- **No advertised output:** synchronous delete in `finally` (scan failure before cache write).
+- **`--no-plot` with cache:** preserve (cache still advertised).
+- **`LARCH_REPORT_TOKENS_NO_OPEN` with plots:** preserve plot paths even without auto-open.
+- **Post issue failure:** preserve when cache/plots were already printed.
+- **Render fallback:** cleanup at owning process exit via `atexit`, not before the caller reads the returned cache path.
+- **SessionStart hook failures:** hook must fail open and exit 0.
+- **Repeated analyze runs:** preserved roots accumulate briefly but are bounded by age-based `cleanup run`, not unbounded forever.
+
+### Failure modes
+
+- `shutil.rmtree(..., ignore_errors=True)` can fail silently on synchronous-delete paths. Matches cleanup best-effort behavior; does not change CLI exit semantics.
+- Preserved report-tokens roots can coexist with active runs until age expiry. The existing `cleanup run` nested-activity scan is the safety boundary.
+- Hook log files may remain for up to the cleanup retention window. They use the `larch-*` cleanup pattern, so growth is bounded.
+
+### Testing strategy
+
+Run targeted tests only:
+
+- `python3 -m pytest python/tests/report/test_report_tokens_cli.py python/tests/report/test_report_tokens_render.py`
+- `bash scripts/test-cleanup-sessionstart.sh`
+- `make test-cleanup-sessionstart`
+- `make agent-lint` (or full `make lint` if convenient) to verify new harness excludes.
+- `make py-lint` only if Python dependencies are already installed and the implementer changed the Python files.
+- `make lint-bash32` or `make shellcheck` for the new shell scripts if available.
+
+## Acceptance
+
+Run targeted tests only:
+
+- `python3 -m pytest python/tests/report/test_report_tokens_cli.py python/tests/report/test_report_tokens_render.py`
+- `bash scripts/test-cleanup-sessionstart.sh`
+- `make test-cleanup-sessionstart`
+- `make agent-lint` (or full `make lint` if convenient) to verify new harness excludes.
+- `make py-lint` only if Python dependencies are already installed and the implementer changed the Python files.
+- `make lint-bash32` or `make shellcheck` for the new shell scripts if available.
+
+diff_added: 395
+diff_deleted: 30
+mechanical_churn: false
+diff_lines: 425
+
+## Test plan
+(no test plan section in plan-file)
