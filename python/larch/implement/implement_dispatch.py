@@ -106,7 +106,6 @@ from larch.implement.dispatch_leg import (
 
 # --- step 0 bootstrap ---
 from larch.implement.dispatch_bootstrap import (
-    step0_bootstrap_main,
     step0_degraded_gate_main,
 )
 
