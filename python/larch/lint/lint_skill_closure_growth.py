@@ -69,8 +69,8 @@ REGISTRY_PATH_RE = re.compile(
     r"(?P<bare>(?:\$\{CLAUDE_PLUGIN_ROOT\}/|\./|/)?[A-Za-z0-9_./{}$+-]*skills/[A-Za-z0-9_-]+/scripts/step-name-registry\.tsv)"
 )
 SESSION_START_REGISTRY_RE = re.compile(r"\bRead\b.*?step-name-registry\.tsv", re.IGNORECASE)
-REVIEW_SESSION_SETUP_RE = re.compile(r"\buse\b.*?session-setup-output\.md.*?\bfor\b", re.IGNORECASE)
-REVIEW_EXTERNAL_REVIEWERS_RE = re.compile(r"\bprocedure\s+in\b.*?external-reviewers\.md", re.IGNORECASE)
+SESSION_SETUP_OUTPUT_RE = re.compile(r"\buse\b.*?session-setup-output\.md.*?\bfor\b", re.IGNORECASE)
+EXTERNAL_REVIEWERS_PROCEDURE_RE = re.compile(r"\bprocedure\s+in\b.*?external-reviewers\.md", re.IGNORECASE)
 IMPLEMENT_FINAL_SUMMARY_RE = re.compile(r"\bfollow\b.*?final-summary-emit\.md", re.IGNORECASE)
 
 
@@ -289,7 +289,8 @@ def _first_supported_path_match(text: str) -> re.Match[str] | None:
 
 
 def _sentence_clause(line: str, match: re.Match[str]) -> str:
-    sentence_start = max(line.rfind(". ", 0, match.start()) + 2, 0)
+    previous_sentence = line.rfind(". ", 0, match.start())
+    sentence_start = 0 if previous_sentence == -1 else previous_sentence + 2
     sentence_end_match = re.search(r"\.(?:\s|$)", line[match.end() :])
     if sentence_end_match is None:
         return line[sentence_start:]
@@ -299,16 +300,18 @@ def _sentence_clause(line: str, match: re.Match[str]) -> str:
 
 def _narrow_directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
     patterns: list[re.Pattern[str]]
-    if skill == "review":
-        patterns = [SESSION_START_REGISTRY_RE, REVIEW_SESSION_SETUP_RE, REVIEW_EXTERNAL_REVIEWERS_RE]
-    elif skill in {"design", "implement"}:
-        patterns = [SESSION_START_REGISTRY_RE]
-        if skill == "implement":
-            patterns.append(IMPLEMENT_FINAL_SUMMARY_RE)
+    if skill in {"design", "review"}:
+        patterns = [
+            SESSION_START_REGISTRY_RE,
+            SESSION_SETUP_OUTPUT_RE,
+            EXTERNAL_REVIEWERS_PROCEDURE_RE,
+        ]
+    elif skill == "implement":
+        patterns = [SESSION_START_REGISTRY_RE, IMPLEMENT_FINAL_SUMMARY_RE]
     else:
         patterns = []
     return [
-        DirectiveMatch(index=0, clause=_sentence_clause(line, match), supported=True)
+        DirectiveMatch(index=match.start(), clause=_sentence_clause(line, match), supported=True)
         for pattern in patterns
         for match in pattern.finditer(line)
     ]
@@ -358,6 +361,22 @@ def _body_after_bullet(stripped_line: str) -> str:
     return bullet_match.group("body").lstrip()
 
 
+def _prefix_is_conditional(prefix: str) -> bool:
+    if CONDITIONAL_TEXT_RE.search(prefix) is None:
+        return False
+    current_sentence = prefix.rsplit(". ", 1)[-1]
+    body = _body_after_bullet(current_sentence.strip())
+    if CONDITIONAL_PREFIX_RE.match(body.lstrip("* ")):
+        return True
+    if "fail" in current_sentence.lower() and CONDITIONAL_TEXT_RE.search(
+        prefix.removesuffix(current_sentence)
+    ) is not None:
+        return True
+    if ":" not in current_sentence:
+        return False
+    return CONDITIONAL_TEXT_RE.search(current_sentence) is not None
+
+
 def _line_is_conditional(line: str, directive_index: int) -> bool:
     if "force_requested=false" in line and "preflight-plan-audit.md" in line:
         return False
@@ -369,11 +388,11 @@ def _line_is_conditional(line: str, directive_index: int) -> bool:
     body = _body_after_bullet(stripped)
     if CONDITIONAL_PREFIX_RE.match(body):
         return True
-    if body.startswith(("`", "**`")) or BRANCH_BULLET_RE.match(body):
+    prefix = line[:directive_index]
+    if BRANCH_BULLET_RE.match(body) or (body.startswith(("`", "**`")) and ":" in prefix):
         return True
 
-    prefix = line[:directive_index]
-    if CONDITIONAL_TEXT_RE.search(prefix) is not None:
+    if _prefix_is_conditional(prefix):
         return True
 
     suffix = line[directive_index:]

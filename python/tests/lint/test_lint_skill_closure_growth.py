@@ -684,6 +684,79 @@ def test_review_step0_narrow_eager_patterns_are_counted(tmp_path: Path) -> None:
     )
 
 
+def test_design_step0_shared_narrow_patterns_are_counted(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
+            "Run the procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` immediately.\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
+    write(tmp_path, "skills/shared/external-reviewers.md", "external\n")
+    write(tmp_path, "skills/design/references/flags.md", "flags\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == (
+        "skills/design/SKILL.md",
+        "skills/shared/session-setup-output.md",
+        "skills/shared/external-reviewers.md",
+        "skills/design/references/flags.md",
+    )
+
+
+def test_narrow_pattern_after_read_completely_keeps_both_references(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        review=(
+            "root\n"
+            "Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely before setup. "
+            "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
+        ),
+    )
+    write(tmp_path, "skills/review/references/domain-rules.md", "domain\n")
+    write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
+
+    result = scg.scan_skill(tmp_path, "review")
+
+    assert result.files == (
+        "skills/review/SKILL.md",
+        "skills/review/references/domain-rules.md",
+        "skills/shared/session-setup-output.md",
+    )
+
+
+def test_mid_line_condition_before_narrow_pattern_marks_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        review=(
+            "root\n"
+            "Step 0 branch uses setup only when degraded: "
+            "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
+        ),
+    )
+    write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
+
+    result = scg.scan_skill(tmp_path, "review")
+
+    assert result.files == ("skills/review/SKILL.md",)
+    assert result.conditional_files == ("skills/shared/session-setup-output.md",)
+
+
+def test_sentence_clause_keeps_first_character_without_prior_boundary() -> None:
+    line = "Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile."
+
+    matches = scg._narrow_directive_matches(  # pyright: ignore[reportPrivateUsage]
+        line,
+        "implement",
+    )
+
+    assert matches[0].clause.startswith("Follow ")
+
+
 def test_implement_final_summary_narrow_follow_pattern_is_counted(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
@@ -859,8 +932,12 @@ def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() 
     result = scg.scan_skill(repo_root, "design")
 
     assert "skills/design/scripts/step-name-registry.tsv" in result.files
+    assert "skills/shared/session-setup-output.md" in result.files
+    assert "skills/shared/external-reviewers.md" in result.files
     assert "skills/design/references/plan-review.md" in result.files
     assert "skills/design/references/plan-review.md" not in result.conditional_files
+    assert "skills/shared/session-setup-output.md" not in result.conditional_files
+    assert "skills/shared/external-reviewers.md" not in result.conditional_files
     assert "skills/design/references/decompose-panel.md" not in result.files
     assert "skills/design/references/validator-failure.md" not in result.files
     assert "skills/design/references/settle-rc-dispatch.md" not in result.files
