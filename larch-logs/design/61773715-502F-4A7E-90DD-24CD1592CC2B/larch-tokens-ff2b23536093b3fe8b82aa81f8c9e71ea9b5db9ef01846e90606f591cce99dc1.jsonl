@@ -1,0 +1,10 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-07-02T04:05:34Z"}
+{"type":"vendor","vendor":"codex","input":54121,"output":4083,"cache_read":269952,"cache_create":0,"total":328156,"raw":"codex_plan_draft","ts":"2026-07-02T04:22:21Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":55350,"output":3391,"cache_read":317952,"cache_create":0,"total":376693,"raw":"codex_review","ts":"2026-07-02T04:24:19Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":39876,"output":4508,"cache_read":259328,"cache_create":0,"total":303712,"raw":"codex_review","ts":"2026-07-02T04:24:35Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":62892,"output":3718,"cache_read":699904,"cache_create":0,"total":766514,"raw":"codex_review","ts":"2026-07-02T04:24:36Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":68307,"output":4621,"cache_read":535680,"cache_create":0,"total":608608,"raw":"codex_review","ts":"2026-07-02T04:24:37Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":110767,"output":8393,"cache_read":1919918,"cache_create":0,"total":2039078,"raw":"cursor_review","ts":"2026-07-02T04:25:53Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":98151,"output":9178,"cache_read":1612282,"cache_create":0,"total":1719611,"raw":"cursor_review","ts":"2026-07-02T04:25:56Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":94725,"output":8003,"cache_read":1443847,"cache_create":0,"total":1546575,"raw":"cursor_review","ts":"2026-07-02T04:25:57Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":110125,"output":9409,"cache_read":1264064,"cache_create":0,"total":1383598,"raw":"cursor_review","ts":"2026-07-02T04:27:02Z","model":"composer-2.5"}

@@ -1,0 +1,43 @@
+## Symptom
+The dominant nested-claude failure mode documented in #5714 (empty output plus claude's own nonzero exit, message "No messages returned from query"; 5x vs 1x timeout in #5714's evidence) still fails the claude-ci lint-fix lane single-shot. Only genuine exit-124 timeouts retry.
+
+## Root cause
+python/larch/implement/ci_agentic_fix.py:521-541 gates the retry on `launcher_exit == config.EXIT_TIMEOUT` (124) only. The launcher writes claude's own exit code to `.done` (python/larch/agents/_ci_launcher.py:865-891, 923), and empty-query failures exit nonzero but not 124, so the retry never fires for them. The in-code comment claims "(empty-output/exit-124)" coverage that the condition does not provide.
+
+## Expected behavior
+Retry parity with the #5677 pattern already used by the /design plan voter and (after #5732) the code-flow diagram lane: bounded retry when the output file is empty or missing OR exit is 124, with the retry logged to execution issues.
+
+## Suggested fix
+1. Widen the retry gate in ci_agentic_fix.py:521-541 to `launcher_exit == config.EXIT_TIMEOUT or output file missing/empty`, mirroring `_voter_needs_retry` (plan_review_panel.py) and `_needs_diagram_retry` (pr_body.py). Keep it bounded (1 retry like #5677, or reuse the 4-retry constant from #5732 if consistency is preferred).
+2. Log the retry to execution-issues.md with a `.retried` sidecar, matching the code-flow lane.
+3. Correct the in-code comment so it describes the actual condition.
+
+## Provenance
+Found by the 2026-07-01 closed-[BUG] fix audit. Original: #5714 (closed COMPLETED), fix commit 5f791969e (PR #5722), extended by 51c236599 (PR #5743, #5732). Verified at main 79b1c0270; ci_agentic_fix.py unchanged through 66e115601.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Widen the retry gate in `ci_agentic_fix.py`'s `_run_cycle` so the single bounded retry fires on `launcher_exit == config.EXIT_TIMEOUT` **or** a missing/empty output file, mirroring `_voter_needs_retry` (plan_review_panel.py) and `_needs_diagram_retry` (pr_body.py).
+- Make the execution-issues.md retry log entry describe the real triggering condition instead of a hardcoded "(exit 124)".
+- Correct the stale in-code comment that already (inaccurately) claims empty-output coverage.
+
+### Non-goals
+- No new `.retried`-sidecar mechanism: `_emit_ci_retry_warning` already logs directly to `execution-issues.md` inline at the retry site, so the cross-module sidecar hand-off used by the code-flow diagram lane (needed there because the write happens in a different module than the log call) is not needed here.
+- No change to retry count/bounds: stays a single retry per Decision 1 (discussion-round1.md), not the 4-retry code-flow constant.
+- No change to the outer `--max-cycles` cycle loop, `_wait_for_ci`, or any other launch site in this file (only one call site matches the bug).
+
+### Approach sketch
+- Keep computing `launcher_exit` from the first `agents.launch_tier` call as today.
+- Widen the `if launcher_exit == config.EXIT_TIMEOUT:` at ci_agentic_fix.py:521 to also retry when the output file is missing or zero-byte.
+- Extend `_emit_ci_retry_warning` to accept the resolved `launcher_exit` so the log entry reflects the real exit code instead of a hardcoded "(exit 124)".
+- Update the stale comment above the widened `if` to describe both trigger conditions accurately.
+
+### Surfaces in scope
+- `python/larch/implement/ci_agentic_fix.py` (`_run_cycle`, `_emit_ci_retry_warning`)
+- `python/tests/implement/test_ci_agentic_fix.py` (new regression test for the empty-output retry path; existing exit-124 retry test stays green)
+
+### Open questions
+- None.
