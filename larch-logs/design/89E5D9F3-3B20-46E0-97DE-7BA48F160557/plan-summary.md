@@ -1,0 +1,1 @@
+Add best-effort panel prompt-size logging for reviewer, voter, aggregator, and review-fix coder dispatches. Commit the count-only TSV through existing review, implement, and design log paths. Add `token measure-panel-cost` to rank observed panel prompt and agent-file cost from committed logs.

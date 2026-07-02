@@ -1,0 +1,17 @@
+# md-to-py-XI: instrument per-slot rendered prompt bytes (panel-tier realized measurement)
+
+**Context.** Rounds V-X measured and ratcheted only the orchestrator closure (`skill-closure report` #5783, eager/conditional split #5872, token ratchet #5873, realized cost #5871). The panel tier is unmeasured: every reviewer, voter, aggregator, and implementer slot carries a rendered prompt plus an agent system-prompt file, multiplied by slots, rounds, and runs. Lifetime phase data (#5962) attributes about 26.5B tokens to /implement Step 5 review (Cursor 13.1B, Codex 9.3B, Claude 4.1B) and about 9.1B to Step 2 implementation. No per-slot or per-source-file prompt-size signal exists anywhere in the tooling.
+
+**Scope.**
+
+- Python-side only. At dispatch time, log rendered prompt bytes plus estimated tokens per slot (specialist, voter, plan-review, aggregator, implementer) and the agent-file bytes used, into a run-log artifact: extend panel-manifest rows or add a prompt-size TSV batch alongside `review-panel-manifest`.
+- Add `python3 python/cli.py token measure-panel-cost` (or extend `measure-realized-cost`) to aggregate committed logs into per-source-file panel-tier bytes/tokens and loads-per-run.
+- No SKILL.md behavior changes; rendered prompt content itself is unchanged.
+
+**Acceptance.**
+
+- A committed run log contains per-slot prompt sizes for at least /implement Step 5 and /review panels.
+- The aggregate command ranks panel-tier source files by realized bytes times frequency.
+- `make py-lint` and `make py-test` pass with coverage for the aggregation.
+
+Part of md-to-py-XI (round X: #5885). Land-first enabler for the round's panel-tier density children, same posture as #5871/#5783.

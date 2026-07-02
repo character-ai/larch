@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Undercounting Cursor preamble bytes is real but not on the feature's primary execution path; the feature ships correct logging without this fix.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real gap but materiality floor not met; per-slot bytes as specified are delivered without measuring wire-level additions.
+OOS_2: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=uncertain UNCERTAIN=true -- Insufficient detail to assess materiality; cannot clear backlog gate without concrete impact and trigger.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real but duplicates OOS_1 class of concern; same rationale, does not clear materiality floor for backlog.

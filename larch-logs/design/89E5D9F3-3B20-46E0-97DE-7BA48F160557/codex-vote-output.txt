@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- explicit opt-in in agent_waterfall is a design hardening choice, not required for the feature; producer-side env wiring can satisfy the scope.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicates prior round's accepted out-of-scope Cursor prompt-size finding.

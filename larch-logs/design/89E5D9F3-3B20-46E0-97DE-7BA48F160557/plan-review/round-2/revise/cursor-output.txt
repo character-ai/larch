@@ -1,0 +1,377 @@
+Verifying the cited entrypoints and env wiring so the revised plan matches the codebase.
+## Plan
+
+## Approach
+
+Implement count-only prompt-size instrumentation in Python with one centralized artifact router, opt-in panel gating, explicit panel-env producers at every panel dispatch entrypoint, and locked concurrent appends.
+
+- Add helpers in `python/larch/report/tokens.py`.
+- Log one TSV row per launched panel slot.
+- Store only counts and safe identifiers:
+  - skill or site.
+  - round number when known.
+  - slot kind: `specialist`, `plan-review`, `voter`, `aggregator`, `implementer`.
+  - slot/tool/output basename.
+  - prompt bytes and estimated tokens.
+  - agent-file repo path, bytes, and estimated tokens when an agent file exists.
+- Never store rendered prompt text.
+- Keep logging best-effort. Catch read/write/lock errors and continue dispatch.
+- Use the same `(len(text) + 3) // 4` estimate used by skill-closure metrics.
+- Reuse the existing `TokenLedger` `fcntl` flock pattern (`TOKEN_LOCK_TIMEOUT_S`, skip-on-timeout) for header creation and row appends so parallel panel dispatch cannot corrupt a shared TSV.
+
+**Single artifact authority**
+
+All writes route through `append_panel_prompt_size(...)` plus `panel_prompt_size_artifact_for_output(...)`. Launchers must not hardcode `Path(args.output).parent / "panel-prompt-sizes.tsv"`.
+
+`panel_prompt_size_artifact_for_output()` resolution order:
+
+1. `LARCH_PANEL_ARTIFACT_DIR` when set and valid: `<dir>/panel-prompt-sizes.tsv`.
+2. Parsed `plan-review/round-<N>` from `LARCH_PANEL_ROUND_DIR` or an output path under that tree.
+3. For implement/review round-local outputs already under `round-<N>/`, use that round directory.
+4. Fall back to `output.parent` only when steps 1–3 do not apply.
+
+Design plan-review rows must land only under `plan-review/round-<N>/panel-prompt-sizes.tsv`. Do not commit a top-level `$DESIGN_TMPDIR/panel-prompt-sizes.tsv`.
+
+**Opt-in panel gating**
+
+Prompt-size logging runs only when `LARCH_PANEL_SLOT` is non-empty and classified `slot_kind` is one of: `specialist`, `plan-review`, `voter`, `aggregator`, `implementer`. Unknown or missing panel context skips logging. This excludes non-panel `agent launch-review` / `agent launch-claude-review` callers such as `plan_scout`, plan-autofix (`plan_quality`), and `decompose`.
+
+Panel dispatch producers must set the env block (or pass `--panel-artifact-dir` into `dispatch-waterfall`) before any panel child launch. Do not infer panel logging from default `site` alone inside `agent_waterfall`; that would risk instrumenting out-of-scope waterfall callers.
+
+**Shared producer helper**
+
+Add `build_panel_dispatch_env(...)` in `tokens.py` returning a child-env dict merged with `os.environ`. All panel producers call this helper so artifact dir, site, round keys, and per-slot `LARCH_PANEL_SLOT` stay consistent across design plan-review, `/implement` Step 5, and `/review`.
+
+**Env contract** (set by panel dispatchers, forwarded through `agent_waterfall` `Popen` and direct voter launches):
+
+- `LARCH_PANEL_SLOT`
+- `LARCH_PANEL_PHASE`
+- `LARCH_PANEL_PRIMARY_TOOL`
+- `LARCH_PANEL_SITE`
+- `LARCH_PANEL_ROUND_NUM` (when known)
+- `LARCH_PANEL_ROUND_DIR` (design plan-review round directory or implement/review `round-<N>` when applicable)
+- `LARCH_PANEL_ARTIFACT_DIR` (preferred TSV parent; usually equals `round_dir` for design and implement round-local paths)
+- `LARCH_PANEL_SOURCE_AGENT_FILE` (repo-relative agent path for prompt_file-backed slots such as aggregator)
+
+Use `env={**os.environ, ...}` for subprocess launches.
+
+**Artifact basename:** `panel-prompt-sizes.tsv`
+
+**Committed paths:**
+
+- `/implement` Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
+- `/review`: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv` when tmpdir is run-root; `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when dispatch uses a round directory.
+- `/design`: `larch-logs/design/<RUN_ID>/plan-review/round-<N>/panel-prompt-sizes.tsv` only.
+
+Add `python3 python/cli.py token measure-panel-cost`.
+
+- Scan committed `panel-prompt-sizes.tsv` files under design `plan-review/round-*`, implement `round-*`, and review run logs.
+- Ignore design top-level `panel-prompt-sizes.tsv` if present from legacy runs.
+- Aggregate by `agent_file` when present.
+- Also include generated/no-agent buckets so voters and generated plan-review prompts are not dropped.
+- Output TSV sorted by realized bytes descending.
+- Include dispatch count, runs observed, loads per run, prompt bytes/tokens, agent bytes/tokens, and total realized bytes/tokens.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/tokens.py
+
+Add:
+
+- `PanelPromptSizeRow` frozen dataclass.
+- `_locked_tsv_append(path, write_fn)` helper mirroring `TokenLedger._append` flock semantics.
+- `append_panel_prompt_size(...)`.
+- `panel_prompt_size_artifact_for_output(*, output: Path, site: str = "", round_dir: Path | None = None)`.
+- `build_panel_dispatch_env(*, artifact_dir: Path, site: str, round_num: int | None = None, round_dir: Path | None = None, slot: str = "", phase: str = "", primary_tool: str = "", source_agent_file: str = "")` returning a merged child env dict.
+- `_panel_slot_kind_from_env()` / `_panel_logging_enabled()` gating helpers.
+- `measure_panel_cost()`.
+- `measure_panel_cost_main()`.
+
+Helper behavior:
+
+- **Gating:** return immediately unless `LARCH_PANEL_SLOT` is set and inferred `slot_kind` is recognized.
+- **Artifact routing:** resolve TSV path only through `panel_prompt_size_artifact_for_output(...)`; honor `LARCH_PANEL_ARTIFACT_DIR` over `output.parent`.
+- Resolve repo-relative agent paths only when the file is under the repo; prefer `LARCH_PANEL_SOURCE_AGENT_FILE` when set.
+- Read prompt text from the rendered prompt string or prompt file.
+- Compute UTF-8 byte counts.
+- Compute estimated tokens with `(bytes + 3) // 4`.
+- Use flock-protected header creation for a new TSV.
+- Append rows under flock with skip-on-lock-timeout; no exception escapes.
+- Do not include prompt text or raw absolute tmpdir paths.
+
+Aggregator behavior:
+
+- Parse TSVs header-first.
+- Skip malformed rows.
+- Derive skill and run id from committed path (`plan-review/round-N` for design).
+- Count each run once per aggregate key for `runs_observed`.
+- Sort by `realized_bytes` descending, then `agent_file`, then `slot_kind`.
+- Write to `larch-logs/measure-panel-cost/<date>.tsv`.
+- Print `WROTE\t<relative-path>` from the CLI wrapper.
+
+### UPDATED: python/larch/cli.py
+
+Register:
+
+- `("token", "measure-panel-cost"): ("larch.report.tokens", "measure_panel_cost_main")`.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Register a replace-mode TSV batch:
+
+- `panel-prompt-sizes`: `.tsv`, `replace`, `none`.
+
+Add `panel-prompt-sizes.tsv` to the round artifact allowlist so implement `run-log write-round` commits it.
+
+### UPDATED: python/larch/report/run_logs.py
+
+No schema rewrite is needed.
+
+Add or adjust tests only if `write-round` needs a small path-level inclusion assertion through this module's public CLI path.
+
+### UPDATED: python/larch/agents/agent_waterfall.py
+
+Extend `Options` with optional `panel_artifact_dir: str = ""`.
+
+Add CLI flag `--panel-artifact-dir` to `dispatch-waterfall` parsing. When non-empty, treat the dispatch as panel-instrumented.
+
+In `_launch_slot`:
+
+- When `opts.panel_artifact_dir` is set (or `LARCH_PANEL_ARTIFACT_DIR` is already present from a parent), build per-slot child env via `build_panel_dispatch_env(...)` with `slot=slot.name`, `site=opts.site`, `artifact_dir=Path(opts.panel_artifact_dir)`, and inferred `round_num` / `round_dir` from the artifact path when it matches `round-<N>`.
+- Pass `env=child_env` into the `Popen` call for both `launch-review` and `launch-claude-review`.
+- Do not set panel env when `panel_artifact_dir` is absent and no `LARCH_PANEL_ARTIFACT_DIR` is already in the inherited env.
+
+Do not set panel env for non-panel waterfall callers (`decompose`, scout, plan-autofix).
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+Before `agent dispatch-waterfall` (and before any `DISPATCH_WATERFALL` override), compute panel artifact directory:
+
+- When `review_tmpdir.name` matches `round-<N>`, use `review_tmpdir`.
+- Otherwise use `review_tmpdir / f"round-{round_num}"` when round-local outputs are written there, else `review_tmpdir`.
+
+Pass panel context into waterfall dispatch:
+
+- Add `--panel-artifact-dir <artifact_dir>` to `waterfall_args`.
+- When using `_run_command_string` / `_run_python_cli`, pass `env=build_panel_dispatch_env(artifact_dir=..., site=site, round_num=round_num, round_dir=artifact_dir when round-local)` into the subprocess wrapper so children inherit base panel keys even before per-slot slot names are applied inside `agent_waterfall`.
+
+This covers `/implement` Step 5 and standalone `/review` specialist panel dispatch.
+
+### UPDATED: python/larch/agents/agent_voters.py
+
+Before `_dispatch_waterfall` and any direct `launch-claude-review` voter launch:
+
+- Compute `artifact_dir` from `review_tmpdir` (round-local when `review_tmpdir.name` matches `round-<N>`, else `review_tmpdir`).
+- Pass `--panel-artifact-dir` on the `dispatch-waterfall` argv.
+- Pass `env=build_panel_dispatch_env(artifact_dir=..., site=opts.site, round_num=opts.round_num, round_dir=artifact_dir when round-local)` into `proc.run` for waterfall dispatch.
+- For direct Claude voter `Popen` / `proc.run` paths, merge the same panel env with per-voter `LARCH_PANEL_SLOT` set to the voter slot name.
+
+Ensure voter rows append to the round-scoped or review-tmpdir TSV, not an unrelated parent directory.
+
+### UPDATED: python/larch/agents/_review_launcher.py
+
+After `_review_resolve_prompt(args)` succeeds and before launching Cursor or Codex:
+
+- Skip unless `_panel_logging_enabled()` is true.
+- Call `append_panel_prompt_size(...)` with `artifact_path=panel_prompt_size_artifact_for_output(output=output, site=args.site)`.
+- Use the resolved prompt string for prompt bytes.
+- Use `args.agent_file` when present; otherwise honor `LARCH_PANEL_SOURCE_AGENT_FILE`.
+- Infer `slot_kind` from env slot context and timing task kind.
+- Continue if logging fails.
+
+This covers code-review specialists, dynamic reviewers, external voters, and aggregator launches that use `agent launch-review` only when panel env is set.
+
+### UPDATED: python/larch/agents/_claude_runner.py
+
+Instrument `launch_claude_review_main` only when panel env is present.
+
+- Log the rendered prompt file used for Claude review/voter launches.
+- Preserve current temp-file cleanup.
+- Use `args.agent_file` when the prompt came from a rendered agent.
+- Route through `panel_prompt_size_artifact_for_output(...)`, not `output.parent` alone.
+
+Do not instrument generic Claude subprocess launches unless reached through `launch_claude_review_main` with panel context.
+
+### UPDATED: python/larch/review/coder_runner.py
+
+In `apply_findings_with_coder`, immediately after `_compose_coder_prompt(...)` writes `coder-prompt.md` and before the coder waterfall loop:
+
+- Establish explicit local implementer panel context (do not rely on parent env):
+  - `LARCH_PANEL_SLOT=implementer`
+  - `LARCH_PANEL_SITE=review.fix_coder` (or caller site when passed through later)
+  - `LARCH_PANEL_ARTIFACT_DIR=<round_dir>`
+  - `LARCH_PANEL_ROUND_DIR=<round_dir>` and `LARCH_PANEL_ROUND_NUM=<N>` when `round_dir.name` matches `round-<N>` or `round_num` is provided
+- Call `append_panel_prompt_size(...)` once per fix pass with `slot_kind=implementer`, `prompt_file=round_dir / "coder-prompt.md"`, no agent file, and `tool` as the first attempted coder when known or `review.fix_coder` before the loop.
+- Scope guard: only `review.fix_coder` / review-and-fix coder application. Do not instrument `/implement` Step 2 feature-writing coder.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Extend `review log-phase` allowlist with `panel-prompt-sizes`.
+
+When the caller logs `review-panel-manifest`, also look for sibling `panel-prompt-sizes.tsv`.
+
+- If present and non-empty, write `panel-prompt-sizes` best-effort using the same run id and log root.
+- Do not require a SKILL.md change.
+- Do not fail the parent `review-panel-manifest` log if this extra write fails. Emit a warning only.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+**`dispatch_panel`:** after `round_dir` is created, export panel env for all specialist waterfall children:
+
+- `LARCH_PANEL_ARTIFACT_DIR=<round_dir>`
+- `LARCH_PANEL_ROUND_DIR=<round_dir>`
+- `LARCH_PANEL_ROUND_NUM=<round_num>`
+- `LARCH_PANEL_SITE=design Step 3`
+- Pass `--panel-artifact-dir <round_dir>` to `dispatch-waterfall`.
+
+**`dispatch_voters`:** add `--round-num` (required from `plan_review_round` caller). Compute `round_dir = design / "plan-review" / f"round-{round_num}"`. Before waterfall and `_launch_claude_voter`, set the same panel env on subprocess env dicts and pass `--panel-artifact-dir`. Pass env into the direct `launch-claude-review` `Popen` for voter-1.
+
+Ensure voter rows append to `round_dir / "panel-prompt-sizes.tsv"`, not `$DESIGN_TMPDIR` root beside `*-vote-output.txt`.
+
+### UPDATED: python/larch/review/plan_review_round.py
+
+When invoking `plan-review voter-dispatch`, pass `--round-num <round_num>`.
+
+When invoking `review aggregate-findings` with `--round-dir`, ensure the round directory matches `plan-review/round-<N>/`.
+
+### UPDATED: python/larch/review/review_aggregate.py
+
+For every aggregation dispatch (`input_mode=plan` and `input_mode=code`):
+
+- Resolve `artifact_dir = round_dir` when `round_dir` is set; else `review_tmpdir` when it is round-local (`round-<N>`); else `review_tmpdir`.
+- Before `dispatch-waterfall`, build child env with:
+  - `LARCH_PANEL_SLOT=aggregator`
+  - `LARCH_PANEL_SITE` from caller site / args
+  - `LARCH_PANEL_ARTIFACT_DIR=<artifact_dir>`
+  - `LARCH_PANEL_ROUND_DIR` / `LARCH_PANEL_ROUND_NUM` when round-local
+  - `LARCH_PANEL_SOURCE_AGENT_FILE=agents/orchestrator-aggregator.md`
+- Pass `env=child_env` into `subprocess.run(dispatch_argv, env=...)` and add `--panel-artifact-dir <artifact_dir>` to dispatch args.
+- Keep `aggregator-prompt.md` / `aggregator-output.txt` at tmpdir root if needed; logging still targets `artifact_dir/panel-prompt-sizes.tsv`.
+- Keep existing `aggregator-slots.ndjson` shape; rely on launcher-side logging for `aggregator-prompt.md` with explicit source-agent attribution.
+
+### UPDATED: docs/run-logs.md
+
+Document `panel-prompt-sizes.tsv`.
+
+Include:
+
+- count-only artifact.
+- no rendered prompt text.
+- committed locations for design (`plan-review/round-N/` only), implement, and review.
+- opt-in panel gating via `LARCH_PANEL_SLOT`.
+- explicit panel-env producers at dispatch entrypoints (`review_dispatch_panel`, `agent_voters`, plan-review panel, aggregator, fix-coder).
+- flock-protected concurrent append behavior.
+- `token measure-panel-cost` purpose and output.
+- best-effort behavior.
+
+### UPDATED: python/tests/report/test_tokens.py
+
+Add tests for:
+
+- helper writes header plus one row under flock.
+- helper omits prompt text.
+- malformed or missing agent files do not raise.
+- logging skipped when `LARCH_PANEL_SLOT` is absent.
+- `panel_prompt_size_artifact_for_output()` prefers `LARCH_PANEL_ARTIFACT_DIR` over `output.parent`.
+- design site routes to `plan-review/round-N/panel-prompt-sizes.tsv`.
+- `build_panel_dispatch_env()` emits expected keys without mutating caller env.
+- `measure_panel_cost()` aggregates design, implement, and review TSVs.
+- output is sorted by realized bytes.
+- generated/no-agent rows are retained.
+- design top-level TSV is ignored by aggregation.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add a `write-round` test proving `panel-prompt-sizes.tsv` is included in committed implement round artifacts.
+
+### UPDATED: python/tests/agents/test_agent_voters.py
+
+Add or extend a dispatch-voters test to assert a code-voter launch creates or contributes to `panel-prompt-sizes.tsv` under the expected round-local path when panel env / `--panel-artifact-dir` is set. Keep assertions count-based.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+Add or extend a `review dispatch-panel` test to assert specialist prompt-size rows are produced for launched review slots when `--panel-artifact-dir` is forwarded.
+
+Add a test that `plan_scout` or another non-panel `launch-review` caller does not create `panel-prompt-sizes.tsv`.
+
+Add a test that `apply_findings_with_coder` writes an implementer row into `round_dir/panel-prompt-sizes.tsv` without requiring parent panel env.
+
+Also cover aggregator rows where the existing harness can do so without broad fixture churn.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+
+Assert plan-review panel dispatch writes `panel-prompt-sizes.tsv` under `plan-review/round-<N>/` for specialists.
+
+Assert voter-dispatch with `--round-num` writes voter rows into the same round-scoped TSV, not a top-level design TSV.
+
+### UPDATED: python/tests/review/test_review_aggregate.py
+
+Assert plan-mode aggregation with `--round-dir` logs aggregator prompt-size rows into `plan-review/round-N/panel-prompt-sizes.tsv` with `agent_file=agents/orchestrator-aggregator.md`.
+
+Add a code-mode (`input_mode=code`) test asserting the same aggregator env wiring writes rows with `agent_file=agents/orchestrator-aggregator.md` into the review tmpdir or round-local TSV.
+
+### UPDATED: python/tests/design/test_design_log_publish_flow.py
+
+Add a publish test proving `plan-review/round-1/panel-prompt-sizes.tsv` survives design log publishing and contains specialist plus voter/aggregator rows when those slots ran.
+
+Assert no committed top-level `panel-prompt-sizes.tsv` under the design run root.
+
+### MAY_UPDATE: docs/run-log-batches.md
+
+Update only if the batch registry documentation is expected to list every registered batch by name in this repo version.
+
+## Edge cases
+
+- Missing prompt file: skip logging for that slot.
+- Missing agent file: log prompt bytes and leave agent fields blank or zero.
+- Prompt render failure: no row is required because no rendered prompt exists.
+- Missing `LARCH_PANEL_SLOT`: skip logging (decompose, scout, plan-autofix).
+- Missing producer panel env: skip logging; producers must set env or `--panel-artifact-dir` explicitly.
+- Waterfall fallback: log the actual launched tier, not every possible tier, when launcher-side context is available.
+- Multiple rounds: append rows to the same round-scoped TSV with `round_num`.
+- Design top-level exclusions: keep `panel-prompt-sizes.tsv` in `plan-review/round-N/` only; voter/aggregator rows must not remain at `$DESIGN_TMPDIR` root.
+- Implement/review round dirs: when `review_tmpdir` is already `round-N`, artifact dir is that directory; otherwise use run-root tmpdir or `round-N` subdirectory per dispatch conventions.
+- Fix-coder implementer: local panel context in `apply_findings_with_coder` must not depend on unrelated parent env and must not instrument `/implement` Step 2 feature coder.
+- Code-review aggregator: code mode must set `LARCH_PANEL_SOURCE_AGENT_FILE=agents/orchestrator-aggregator.md` like plan mode.
+- Concurrent appends: flock timeout skips the row best-effort; dispatch continues.
+- Lock unavailable (non-Unix): degrade to unlocked append with warning, matching `TokenLedger` import fallback.
+
+## Failure modes
+
+- Logging write or lock fails: dispatch still proceeds.
+- Aggregation sees old logs without the TSV: skip them.
+- TSV row is malformed: skip that row.
+- No panel prompt logs exist: command writes header-only TSV and exits 0.
+- A future prompt source is generated, not file-backed: aggregate it in a generated bucket so frequency is still visible.
+- Stray top-level design TSV from pre-fix runs: aggregation ignores it; publish flow does not commit it.
+- Panel env omitted at a producer: that path produces no rows; tests on `review_dispatch_panel`, `agent_voters`, `coder_runner`, and code-mode `review_aggregate` guard against silent omission.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/report/test_tokens.py`
+- `python3 -m pytest python/tests/report/test_run_logs.py`
+- `python3 -m pytest python/tests/agents/test_agent_voters.py`
+- `python3 -m pytest python/tests/review/test_review_pipeline.py`
+- `python3 -m pytest python/tests/review/test_plan_review_panel.py`
+- `python3 -m pytest python/tests/review/test_review_aggregate.py`
+- `python3 -m pytest python/tests/design/test_design_log_publish_flow.py`
+
+Then run required Python gates:
+
+- `make py-lint`
+- `make py-test`
+
+## Out of scope
+
+- No SKILL.md behavior changes.
+- No rendered prompt content changes.
+- No `/implement` Step 2 feature-coder instrumentation.
+- No hard-required completeness entry in `docs/run-logs-required-files.tsv`.
+- No instrumentation of decompose, plan_scout, or plan-autofix launches.
+
+diff_added: 920
+diff_deleted: 40
+mechanical_churn: false
+diff_lines: 960
