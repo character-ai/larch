@@ -255,6 +255,7 @@ def test_publish_excluded_predicate() -> None:
         is_dir=False,
         top_level=True,
     )
+    assert design_log_publish_flow._publish_excluded("panel-prompt-sizes.tsv", is_dir=False, top_level=True)
     kept = [
         "plan.txt",
         "composed-plan.diff",
@@ -272,6 +273,7 @@ def test_publish_excluded_predicate() -> None:
         "scout-plan-manifest.json",
         "findings-classification.tsv",  # not *.txt.tsv
         "plan-review-slots.ndjson",
+        "panel-prompt-sizes.tsv",
     ]
     for name in kept:
         assert not design_log_publish_flow._publish_excluded(name, is_dir=False), name
@@ -308,6 +310,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
         "step2b-codex-raw.40818.txt": "RAW2",
         "cursor-plan-arch-output.txt.json": "{}",  # *.txt.json
         "findings-ledger.tsv": "round\tfinding_id\n",
+        "panel-prompt-sizes.tsv": "site\tslot\n",
     }
     for name, body in {**keep, **drop}.items():
         _ = (design / name).write_text(body, encoding="utf-8")
@@ -316,6 +319,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
     pr_round.mkdir(parents=True)
     _ = (pr_round / "findings.md").write_text("NF", encoding="utf-8")
     _ = (pr_round / "codex-vote-output.txt").write_text("VOTE", encoding="utf-8")
+    _ = (pr_round / "panel-prompt-sizes.tsv").write_text("site\tslot\n", encoding="utf-8")
     _ = (pr_round / "codex-vote-output.txt.events.jsonl").write_text("{}", encoding="utf-8")
     _ = (pr_round / "findings-ledger.tsv").write_text("round\tfinding_id\n", encoding="utf-8")
     # Whole-subtree drops.
@@ -343,6 +347,7 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
         assert f"{base}/{name}" in tree, f"expected kept: {name}\n{tree}"
     assert f"{base}/plan-review/round-1/findings.md" in tree, tree
     assert f"{base}/plan-review/round-1/codex-vote-output.txt" in tree, tree
+    assert f"{base}/plan-review/round-1/panel-prompt-sizes.tsv" in tree, tree
     assert f"{base}/manifest.json" in tree, tree
     for name in drop:
         assert f"{base}/{name}" not in tree, f"expected dropped: {name}\n{tree}"

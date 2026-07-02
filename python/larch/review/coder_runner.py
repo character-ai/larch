@@ -30,6 +30,7 @@ from larch.review._raf_util import (
     _write_env,
     _write_text,
 )
+from larch.report.tokens import append_panel_prompt_size, build_panel_dispatch_env, panel_prompt_size_artifact_for_output
 from larch.review.snapshot import (
     _capture_round_tracked_paths,
     _capture_round_untracked_paths,
@@ -402,7 +403,40 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         return result
     submodules = _submodule_paths()
     _write_text(path=round_dir / "submodule-paths.txt", text="\n".join(submodules) + ("\n" if submodules else ""))
-    prompt_body = _compose_coder_prompt(prompt_file=round_dir / "coder-prompt.md", findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
+    prompt_path = round_dir / "coder-prompt.md"
+    prompt_body = _compose_coder_prompt(prompt_file=prompt_path, findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
+    fix_coder_order = external_defaults.tool_order("review.fix_coder")
+    first_tool = next((tool for tool in fix_coder_order if tool in {"cursor", "codex"}), "review.fix_coder")
+    panel_env = build_panel_dispatch_env(
+        artifact_dir=round_dir,
+        site="review.fix_coder",
+        round_num=round_num,
+        round_dir=round_dir,
+        slot="implementer",
+        phase="review.fix_coder",
+        primary_tool=first_tool,
+    )
+    panel_updates = {key: value for key, value in panel_env.items() if key.startswith("LARCH_PANEL_")}
+    previous_panel_env = {key: os.environ.get(key) for key in panel_updates}
+    try:
+        os.environ.update(panel_updates)
+        append_panel_prompt_size(
+            artifact_path=panel_prompt_size_artifact_for_output(output=round_dir / "coder-output.log", round_dir=round_dir),
+            output=round_dir / "coder-output.log",
+            tool=first_tool,
+            prompt_file=prompt_path,
+            slot_kind="implementer",
+            site="review.fix_coder",
+            round_num=round_num,
+            slot="implementer",
+            phase="review.fix_coder",
+        )
+    finally:
+        for key, value in previous_panel_env.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
     tool_log = round_dir / "coder-output.log"
     _ensure_pre_coder_snapshot(round_dir)
     mode = _snapshot_mode(round_dir)
@@ -428,7 +462,7 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         "cursor": _run_coder_cursor,
         "claude": _run_coder_claude,
     }
-    attempts = [(tool, runner_by_tool[tool]) for tool in external_defaults.tool_order("review.fix_coder") if tool in runner_by_tool]
+    attempts = [(tool, runner_by_tool[tool]) for tool in fix_coder_order if tool in runner_by_tool]
     for tool, runner in attempts:
         _write_attempt_pre_tracked_paths(round_dir=round_dir, pre_head=pre_head, mode=mode)
         if not runner(round_dir=round_dir, prompt_body=prompt_body, tool_log=tool_log):

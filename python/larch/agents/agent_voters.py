@@ -21,6 +21,7 @@ from larch.review import voting
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
+from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 DISPATCH_LABEL = "agent dispatch-voters"
@@ -147,6 +148,12 @@ def _parse_rate_ctx_args(*, bounded_diff: str, bounded_plan: str) -> list[str]:
     if bounded_plan:
         args.extend(["--ctx=--plan-file", "--ctx", bounded_plan])
     return args
+
+
+def _panel_artifact_context(*, review_tmpdir: Path, round_num: int, site: str) -> tuple[Path, Path | None, dict[str, str]]:
+    artifact_dir, round_dir = resolve_panel_artifact_dir(review_tmpdir=review_tmpdir, round_num=round_num)
+    env = build_panel_dispatch_env(artifact_dir=artifact_dir, site=site, round_num=round_num, round_dir=round_dir)
+    return artifact_dir, round_dir, env
 
 
 def _feedback_enabled() -> bool:
@@ -300,11 +307,14 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
 
 
 def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str], review_tmpdir: Path) -> str:
+    artifact_dir, _round_dir, panel_env = _panel_artifact_context(review_tmpdir=review_tmpdir, round_num=opts.round_num, site=opts.site)
     result = proc.run(
         [
             *_cli_argv("agent", "dispatch-waterfall"),
             "--slots-file",
             manifest,
+            "--panel-artifact-dir",
+            str(artifact_dir),
             "--codex-present",
             opts.codex_available,
             "--cursor-present",
@@ -323,7 +333,8 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
             "--claude-read-tools-add-dir",
             str(review_tmpdir),
             *ctx_args,
-        ]
+        ],
+        env=panel_env,
     )
     if result.returncode != 0:
         _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode} — proceeding with partial or empty result")

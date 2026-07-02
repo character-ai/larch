@@ -20,6 +20,7 @@ larch-logs/
       plan-review/
         round-<N>/
           findings-classification.tsv
+          panel-prompt-sizes.tsv
   implement/
     <RUN_ID>/
       manifest.json
@@ -51,6 +52,7 @@ larch-logs/
         review-round-summary.md
         review-summary.json
         voting-tally.md
+        panel-prompt-sizes.tsv
         aggregator-validate.stderr / aggregator-dispatch.stderr (when the findings aggregator fails; committed under the round directory when `write-round` runs)
         *-output.txt
         *-output.txt.meta
@@ -65,6 +67,7 @@ larch-logs/
       review-scout-manifest.json
       review-round-summary.md
       review-findings-classification-round-<N>.tsv
+      panel-prompt-sizes.tsv
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
@@ -154,6 +157,20 @@ tmpdir and secrets redaction. This trimming is specific to the committed round
 artifacts; the session tmpdir may still hold raw sidecars for in-run retries.
 If JSON trimming fails, `write-round` fails closed instead of copying the raw
 sidecar into `larch-logs/`.
+
+### panel prompt-size telemetry
+
+`panel-prompt-sizes.tsv` is count-only telemetry for panel-tier prompts. It records safe identifiers, rendered prompt byte and estimated-token counts, and agent-file byte and estimated-token counts when a repo-local agent file exists. It never stores rendered prompt text.
+
+Rows are written only when `LARCH_PANEL_SLOT` is set and the slot class is recognized as specialist, plan-review, voter, aggregator, or implementer. Dispatch producers set the panel environment explicitly in review dispatch, code voters, plan-review dispatch, aggregation, and review-fix coder paths. Appends use a best-effort flock-protected TSV writer, so lock or write failures skip telemetry without failing the parent dispatch.
+
+Committed locations are:
+
+- Design plan review: `larch-logs/design/<RUN_ID>/plan-review/round-<N>/panel-prompt-sizes.tsv` only. Top-level design copies are ignored.
+- Implement Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
+- Standalone review: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv`, or `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when the dispatch is round-local.
+
+`python3 python/cli.py token measure-panel-cost` aggregates committed panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a ranked TSV under `larch-logs/measure-panel-cost/` with dispatch counts, runs observed, loads per run, prompt counts, agent counts, and total realized counts.
 
 ### design plan-review `findings-classification.tsv`
 

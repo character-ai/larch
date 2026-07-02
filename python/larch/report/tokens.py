@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import collections
+import csv
 import hashlib
 import json
 import os
@@ -12,7 +13,7 @@ import re
 import subprocess
 import sys
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field as dataclass_field
 from datetime import datetime, UTC
 from pathlib import Path
 from typing import Any, Literal, cast
@@ -46,6 +47,58 @@ class TokenRecord:
 class TimingRecord:
     tool: str
     duration_ms: int
+
+
+PANEL_PROMPT_SIZE_BASENAME = "panel-prompt-sizes.tsv"
+_PANEL_PROMPT_SIZE_FIELDS = (
+    "site",
+    "phase",
+    "round_num",
+    "slot",
+    "slot_kind",
+    "tool",
+    "output",
+    "prompt_bytes",
+    "prompt_tokens",
+    "agent_file",
+    "agent_bytes",
+    "agent_tokens",
+)
+_PANEL_SLOT_KINDS = frozenset({"specialist", "plan-review", "voter", "aggregator", "implementer"})
+_PANEL_SPECIALIST_SLOT_NAMES = frozenset({"correctness", "edge-cases", "testing", "generalist"})
+_PANEL_ROUND_RE = re.compile(r"^round-([0-9]+)$")
+
+
+@dataclass(frozen=True)
+class PanelPromptSizeRow:
+    site: str
+    phase: str
+    round_num: str
+    slot: str
+    slot_kind: str
+    tool: str
+    output: str
+    prompt_bytes: int
+    prompt_tokens: int
+    agent_file: str = ""
+    agent_bytes: int = 0
+    agent_tokens: int = 0
+
+    def as_tsv_row(self) -> list[str]:
+        return [
+            self.site,
+            self.phase,
+            self.round_num,
+            self.slot,
+            self.slot_kind,
+            self.tool,
+            self.output,
+            str(self.prompt_bytes),
+            str(self.prompt_tokens),
+            self.agent_file,
+            str(self.agent_bytes),
+            str(self.agent_tokens),
+        ]
 
 
 # Mutable accumulator: add() sums token counts into the fields in place.
@@ -174,6 +227,244 @@ def _int_field(*, data: Mapping[str, Any], key: str) -> int:
         return int(value)  # type: ignore[arg-type]
     except (TypeError, ValueError):
         return 0
+
+
+
+def _estimate_tokens_for_bytes(byte_count: int) -> int:
+    return (max(0, byte_count) + 3) // 4
+
+
+def _path_under(child: Path, parent: Path) -> bool:
+    try:
+        child.resolve().relative_to(parent.resolve())
+    except (OSError, ValueError):
+        return False
+    return True
+
+
+def _repo_relative_agent_path(raw: str | Path | None) -> tuple[str, int, int]:
+    if raw is None or str(raw) == "":
+        return "", 0, 0
+    repo = _repo_root()
+    path = Path(raw)
+    if not path.is_absolute():
+        path = repo / path
+    try:
+        resolved = path.resolve(strict=True)
+    except OSError:
+        return "", 0, 0
+    if not _path_under(resolved, repo) or not resolved.is_file() or resolved.is_symlink():
+        return "", 0, 0
+    try:
+        data = resolved.read_bytes()
+    except OSError:
+        return "", 0, 0
+    rel = resolved.relative_to(repo.resolve()).as_posix()
+    return rel, len(data), _estimate_tokens_for_bytes(len(data))
+
+
+def _panel_slot_kind_from_env(env: Mapping[str, str] | None = None, *, slot_kind: str = "") -> str:
+    if slot_kind in _PANEL_SLOT_KINDS:
+        return slot_kind
+    env_map = os.environ if env is None else env
+    slot = (env_map.get("LARCH_PANEL_SLOT") or "").strip()
+    phase = (env_map.get("LARCH_PANEL_PHASE") or "").strip().lower()
+    site = (env_map.get("LARCH_PANEL_SITE") or "").strip().lower()
+    task = (env_map.get("LARCH_TIMING_TASK_KIND") or "").strip().lower()
+    if not slot:
+        return ""
+    lowered = slot.lower()
+    if lowered == "implementer":
+        return "implementer"
+    if lowered == "aggregator" or "aggregator" in phase:
+        return "aggregator"
+    if "voter" in lowered or "vote" in lowered or "voter" in phase or "voter" in task:
+        return "voter"
+    if "plan-review" in phase or "design" in site:
+        return "plan-review"
+    if "specialist" in lowered or lowered.startswith("dyn-") or lowered in _PANEL_SPECIALIST_SLOT_NAMES:
+        return "specialist"
+    if "-plan-" in lowered:
+        return "plan-review"
+    return ""
+
+
+def _panel_logging_enabled(env: Mapping[str, str] | None = None) -> bool:
+    return _panel_slot_kind_from_env(env) in _PANEL_SLOT_KINDS
+
+
+def _round_num_from_path(path: Path | None) -> int | None:
+    if path is None:
+        return None
+    for part in reversed(path.parts):
+        match = _PANEL_ROUND_RE.fullmatch(part)
+        if match:
+            return int(match.group(1))
+    return None
+
+
+def _round_dir_from_output(output: Path) -> Path | None:
+    for parent in (output.parent, *output.parents):
+        if _PANEL_ROUND_RE.fullmatch(parent.name):
+            return parent
+    return None
+
+
+def _valid_panel_artifact_dir(raw: str) -> Path | None:
+    if not raw or "\x00" in raw:
+        return None
+    try:
+        path = Path(raw)
+    except (OSError, ValueError):
+        return None
+    return path if str(path) else None
+
+
+def panel_prompt_size_artifact_for_output(*, output: Path, site: str = "", round_dir: Path | None = None) -> Path:
+    env_dir = _valid_panel_artifact_dir(os.environ.get("LARCH_PANEL_ARTIFACT_DIR", ""))
+    if env_dir is not None:
+        return env_dir / PANEL_PROMPT_SIZE_BASENAME
+    if round_dir is not None:
+        return round_dir / PANEL_PROMPT_SIZE_BASENAME
+    env_round = _valid_panel_artifact_dir(os.environ.get("LARCH_PANEL_ROUND_DIR", ""))
+    if env_round is not None and _PANEL_ROUND_RE.fullmatch(env_round.name):
+        return env_round / PANEL_PROMPT_SIZE_BASENAME
+    output_round = _round_dir_from_output(output)
+    if output_round is not None:
+        return output_round / PANEL_PROMPT_SIZE_BASENAME
+    _ = site
+    return output.parent / PANEL_PROMPT_SIZE_BASENAME
+
+
+def resolve_panel_artifact_dir(*, review_tmpdir: Path, round_num: int | None = None) -> tuple[Path, Path | None]:
+    if _PANEL_ROUND_RE.fullmatch(review_tmpdir.name):
+        return review_tmpdir, review_tmpdir
+    if round_num is not None:
+        round_subdir = review_tmpdir / f"round-{round_num}"
+        if round_subdir.is_dir():
+            return round_subdir, round_subdir
+    return review_tmpdir, None
+
+
+def build_panel_dispatch_env(
+    *,
+    artifact_dir: Path,
+    site: str,
+    round_num: int | None = None,
+    round_dir: Path | None = None,
+    slot: str = "",
+    phase: str = "",
+    primary_tool: str = "",
+    source_agent_file: str = "",
+) -> dict[str, str]:
+    env = dict(os.environ)
+    env["LARCH_PANEL_ARTIFACT_DIR"] = str(artifact_dir)
+    env["LARCH_PANEL_SITE"] = site
+    env["LARCH_PANEL_SLOT"] = slot
+    env["LARCH_PANEL_PHASE"] = phase
+    env["LARCH_PANEL_PRIMARY_TOOL"] = primary_tool
+    env["LARCH_PANEL_SOURCE_AGENT_FILE"] = source_agent_file
+    effective_round_dir = round_dir
+    if effective_round_dir is None and _PANEL_ROUND_RE.fullmatch(artifact_dir.name):
+        effective_round_dir = artifact_dir
+    if effective_round_dir is not None:
+        env["LARCH_PANEL_ROUND_DIR"] = str(effective_round_dir)
+    effective_round_num = round_num if round_num is not None else _round_num_from_path(effective_round_dir or artifact_dir)
+    if effective_round_num is not None:
+        env["LARCH_PANEL_ROUND_NUM"] = str(effective_round_num)
+    return env
+
+
+def _locked_tsv_append(path: Path, write_fn: Any) -> None:
+    _ensure_regular_file(path)
+    try:
+        import fcntl
+    except ImportError:  # pragma: no cover
+        with path.open("a", encoding="utf-8", newline="") as handle:
+            write_fn(handle, path.stat().st_size == 0)
+    else:
+        deadline = time.monotonic() + TOKEN_LOCK_TIMEOUT_S
+        with path.open("a+", encoding="utf-8", newline="") as handle:
+            while True:
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if time.monotonic() >= deadline:
+                        print(
+                            f"panel prompt size: WARNING: flock lock acquisition failed; skipping append for {path}",
+                            file=sys.stderr,
+                        )
+                        return
+                    time.sleep(0.05)
+            try:
+                handle.seek(0, os.SEEK_END)
+                write_fn(handle, handle.tell() == 0)
+            finally:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with contextlib_suppress_oserror():
+        path.chmod(0o600)
+
+
+def _write_panel_prompt_row(path: Path, row: PanelPromptSizeRow) -> None:
+    def _write(handle: Any, needs_header: object) -> None:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        if needs_header:
+            writer.writerow(_PANEL_PROMPT_SIZE_FIELDS)
+        writer.writerow(row.as_tsv_row())
+
+    _locked_tsv_append(path, _write)
+
+
+def append_panel_prompt_size(
+    *,
+    artifact_path: Path,
+    output: Path | str = "",
+    tool: str = "",
+    prompt: str | None = None,
+    prompt_file: Path | str | None = None,
+    agent_file: Path | str | None = None,
+    slot_kind: str = "",
+    site: str = "",
+    round_num: int | str | None = None,
+    slot: str = "",
+    phase: str = "",
+) -> None:
+    try:
+        inferred_kind = _panel_slot_kind_from_env(slot_kind=slot_kind)
+        if inferred_kind not in _PANEL_SLOT_KINDS:
+            return
+        prompt_text = prompt
+        if prompt_text is None:
+            if prompt_file is None or str(prompt_file) == "":
+                return
+            prompt_text = Path(prompt_file).read_text(encoding="utf-8", errors="replace")
+        prompt_bytes = len(prompt_text.encode("utf-8"))
+        env_agent = os.environ.get("LARCH_PANEL_SOURCE_AGENT_FILE", "")
+        source_agent = str(agent_file or env_agent or "")
+        agent_rel, agent_bytes, agent_tokens = _repo_relative_agent_path(source_agent)
+        env_round = os.environ.get("LARCH_PANEL_ROUND_NUM", "")
+        effective_round = str(round_num if round_num is not None else env_round)
+        if effective_round and not _UINT_RE.fullmatch(effective_round):
+            effective_round = ""
+        output_name = Path(str(output)).name if output else ""
+        row = PanelPromptSizeRow(
+            site=site or os.environ.get("LARCH_PANEL_SITE", ""),
+            phase=phase or os.environ.get("LARCH_PANEL_PHASE", ""),
+            round_num=effective_round,
+            slot=slot or os.environ.get("LARCH_PANEL_SLOT", ""),
+            slot_kind=inferred_kind,
+            tool=tool or os.environ.get("LARCH_PANEL_PRIMARY_TOOL", ""),
+            output=output_name,
+            prompt_bytes=prompt_bytes,
+            prompt_tokens=_estimate_tokens_for_bytes(prompt_bytes),
+            agent_file=agent_rel,
+            agent_bytes=agent_bytes,
+            agent_tokens=agent_tokens,
+        )
+        _write_panel_prompt_row(artifact_path, row)
+    except Exception as exc:  # best-effort telemetry must not interrupt dispatch
+        print(f"panel prompt size: write skipped: {exc}", file=sys.stderr)
 
 
 def normalize_sidecar(data: dict[str, Any], *, tool: str) -> TokenRecord | None:
@@ -1997,6 +2288,106 @@ def _measure_repo_root_from_larch_logs_path(path: Path) -> Path:
     return path.parent
 
 
+@dataclass
+class _PanelCostAggregate:
+    dispatch_count: int = 0
+    prompt_bytes: int = 0
+    prompt_tokens: int = 0
+    agent_bytes: int = 0
+    agent_tokens: int = 0
+    runs: set[tuple[str, str]] = dataclass_field(default_factory=set)
+
+
+def _panel_context_from_tsv(path: Path, repo: Path) -> tuple[str, str] | None:
+    try:
+        rel = path.relative_to(repo / "larch-logs")
+    except ValueError:
+        return None
+    parts = rel.parts
+    if len(parts) < 3:
+        return None
+    skill, run_id = parts[0], parts[1]
+    if skill == "design":
+        # Only plan-review/round-N panel logs are valid design panel telemetry.
+        if len(parts) != 5 or parts[2] != "plan-review" or not _PANEL_ROUND_RE.fullmatch(parts[3]):
+            return None
+    elif skill == "implement":
+        if len(parts) != 4 or not _PANEL_ROUND_RE.fullmatch(parts[2]):
+            return None
+    elif skill == "review":
+        if not (len(parts) == 3 or (len(parts) == 4 and _PANEL_ROUND_RE.fullmatch(parts[2]))):
+            return None
+    else:
+        return None
+    return skill, run_id
+
+
+def _iter_panel_prompt_size_files(repo: Path) -> list[Path]:
+    root = repo / "larch-logs"
+    if not root.is_dir():
+        return []
+    return sorted(
+        path
+        for path in root.glob(f"**/{PANEL_PROMPT_SIZE_BASENAME}")
+        if path.is_file() and not path.is_symlink() and _panel_context_from_tsv(path, repo) is not None
+    )
+
+
+def _uint_cell(row: Mapping[str, str], key: str) -> int:
+    raw = row.get(key, "")
+    return int(raw) if _UINT_RE.fullmatch(str(raw)) else 0
+
+
+def measure_panel_cost() -> Path:
+    repo = _repo_root()
+    out_path = repo / "larch-logs" / "measure-panel-cost" / f"{_measure_stamp()}.tsv"
+    aggregates: dict[tuple[str, str, str], _PanelCostAggregate] = {}
+    for tsv in _iter_panel_prompt_size_files(repo):
+        context = _panel_context_from_tsv(tsv, repo)
+        if context is None:
+            continue
+        skill, run_id = context
+        try:
+            with tsv.open(encoding="utf-8", errors="replace", newline="") as handle:
+                reader = csv.DictReader(handle, delimiter="\t")
+                if not reader.fieldnames or "slot_kind" not in reader.fieldnames:
+                    continue
+                for row in reader:
+                    slot_kind = (row.get("slot_kind") or "").strip()
+                    if slot_kind not in _PANEL_SLOT_KINDS:
+                        continue
+                    agent_file = (row.get("agent_file") or "").strip() or f"generated/no-agent:{slot_kind}"
+                    key = (skill, agent_file, slot_kind)
+                    agg = aggregates.setdefault(key, _PanelCostAggregate())
+                    agg.dispatch_count += 1
+                    agg.prompt_bytes += _uint_cell(row, "prompt_bytes")
+                    agg.prompt_tokens += _uint_cell(row, "prompt_tokens")
+                    agg.agent_bytes += _uint_cell(row, "agent_bytes")
+                    agg.agent_tokens += _uint_cell(row, "agent_tokens")
+                    agg.runs.add((skill, run_id))
+        except OSError:
+            continue
+    rows: list[tuple[int, str, str, str, _PanelCostAggregate]] = []
+    for (skill, agent_file, slot_kind), agg in aggregates.items():
+        realized = agg.prompt_bytes + agg.agent_bytes
+        rows.append((realized, skill, agent_file, slot_kind, agg))
+    rows.sort(key=lambda item: (-item[0], item[2], item[3], item[1]))
+    lines = [
+        "skill\tagent_file\tslot_kind\tdispatch_count\truns_observed\tloads_per_run\t"
+        "prompt_bytes\tprompt_tokens\tagent_bytes\tagent_tokens\trealized_bytes\trealized_tokens\n"
+    ]
+    for realized, skill, agent_file, slot_kind, agg in rows:
+        runs_observed = len(agg.runs)
+        loads_per_run = agg.dispatch_count / runs_observed if runs_observed else 0.0
+        realized_tokens = agg.prompt_tokens + agg.agent_tokens
+        lines.append(
+            f"{skill}\t{agent_file}\t{slot_kind}\t{agg.dispatch_count}\t{runs_observed}\t{loads_per_run:.6f}\t"
+            f"{agg.prompt_bytes}\t{agg.prompt_tokens}\t{agg.agent_bytes}\t{agg.agent_tokens}\t{realized}\t{realized_tokens}\n"
+        )
+    _atomic_text(path=out_path, text="".join(lines))
+    return out_path
+
+
 def _atomic_text(*, path: Path, text: str) -> None:
     larch_io.atomic_write(path, text, prefix=f".{path.name}.", nofollow=True, newline="\n")
 
@@ -2272,6 +2663,18 @@ def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+
+def measure_panel_cost_main(argv: list[str] | None = None) -> int:
+    _ = argv
+    path = measure_panel_cost()
+    try:
+        rel = path.relative_to(_repo_root()).as_posix()
+    except ValueError:
+        rel = str(path)
+    print(f"WROTE\t{rel}")
+    return 0
+
+
 def measure_md_cost_main(argv: list[str] | None = None) -> int:
     _ = argv
     path = measure_md_cost()
@@ -2326,3 +2729,4 @@ def _flag_map(args: list[str]) -> dict[str, str]:
             opts[args[idx]] = args[idx + 1]
             idx += 2
     return opts
+# pyright: reportUnusedCallResult=false, reportUnusedFunction=false, reportUnknownVariableType=false

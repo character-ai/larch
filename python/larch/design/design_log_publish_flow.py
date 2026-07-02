@@ -143,6 +143,7 @@ _PUBLISH_EXCLUDE_TOPLEVEL_NAMES = frozenset({
     "architecture-diagram-generation.failure.log",
     "architecture-diagram-sanitizer.failure.log",
     "panel-manifest.ndjson",
+    "panel-prompt-sizes.tsv",
 })
 
 

@@ -1003,7 +1003,7 @@ def _review_core_body(
             threshold_reason="findings-pre-aggregate-snapshot-failed",
         )
 
-    aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode]
+    aggregate_args = ["--findings-file", str(review_tmpdir / "findings.md"), "--review-tmpdir", str(review_tmpdir), "--codex-present", codex_available, "--cursor-present", cursor_available, "--mode", mode, "--round-num", str(round_num)]
     if session_env_path:
         aggregate_args.extend(["--session-env-path", session_env_path])
     if diff_file:

@@ -246,6 +246,32 @@ def test_cursor_plan_review_launch_keeps_no_issues_with_inlined_plan_input(tmp_p
     assert out.read_text(encoding="utf-8") == '{"no_issues_found": true}\n'
 
 
+def test_launch_review_without_panel_slot_writes_no_panel_prompt_sizes(tmp_path: Path) -> None:
+    bin_dir = _stub_bin(
+        tmp_path,
+        "cursor",
+        "#!/usr/bin/env bash\ncat <<'JSON'\n{\"result\":\"ok\",\"usage\":{\"inputTokens\":1,\"outputTokens\":1,\"cacheReadTokens\":0,\"cacheWriteTokens\":0}}\nJSON\n",
+    )
+    out = tmp_path / "scout-dynamic-output.raw"
+    proc = _run(
+        [
+            "--tool",
+            "cursor",
+            "--output",
+            str(out),
+            "--timeout",
+            STUB_AGENT_TIMEOUT,
+            "--prompt",
+            "scout prompt body",
+            "--timing-task-kind",
+            "scout-dynamic-archetypes",
+        ],
+        {"PATH": f"{bin_dir}:{os.environ['PATH']}", "CURSOR_API_KEY": "test-key"},
+    )
+    assert proc.returncode == 0
+    assert not list(tmp_path.rglob("panel-prompt-sizes.tsv"))
+
+
 def test_codex_add_dir_rejects_missing_output_parent(tmp_path: Path) -> None:
     out = tmp_path / "missing" / "out.txt"
     proc = _run(["--tool", "codex", "--output", str(out), "--timeout", STUB_AGENT_TIMEOUT, "--prompt", "hi"])

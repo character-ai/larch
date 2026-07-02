@@ -1,0 +1,29 @@
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+===== review fixer claude-ci =====
+exit-code: 1
+===== diag =====
+Malformed Claude review-fix JSON: Expecting value: line 1 column 1 (char 0)
+Narrative output.
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors
+===== lint fixer claude-ci =====
+exit-code: 124
+===== diag =====
+⚠ claude.ai connectors are disabled because ANTHROPIC_API_KEY or another auth source is set and takes precedence over your claude.ai login · Unset it to load your organization's connectors

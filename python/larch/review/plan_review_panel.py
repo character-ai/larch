@@ -27,6 +27,7 @@ from larch.core import config
 from larch.core import proc as larch_proc
 from larch.core import redact
 from larch.report import run_logs
+from larch.report.tokens import build_panel_dispatch_env
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -476,11 +477,20 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         cmd = [waterfall]
     else:
         cmd = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "agent", "dispatch-waterfall"]
+    panel_env = build_panel_dispatch_env(
+        artifact_dir=round_dir,
+        site="design Step 3",
+        round_num=ns.round_num,
+        round_dir=round_dir,
+        phase="plan-review",
+    )
     proc = subprocess.run(
         [
             *cmd,
             "--slots-file",
             str(manifest),
+            "--panel-artifact-dir",
+            str(round_dir),
             "--plan-file",
             ns.plan_file,
             "--feature-file",
@@ -504,6 +514,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         text=True,
         capture_output=True,
         check=False,
+        env=panel_env,
     )
     print(proc.stdout, end="")
     if proc.returncode != 0:
@@ -659,7 +670,7 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
     return proc.stdout.strip() or "SKIPPED"
 
 
-def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path) -> int:
+def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path, env: dict[str, str] | None = None) -> int:
     # lint-subprocess-via-runner: ok voter launch uses raw subprocess to capture the returncode for the bounded retry (#5677)
     return subprocess.run(
         [
@@ -686,6 +697,7 @@ def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path) -> in
         capture_output=True,
         text=True,
         check=False,
+        env=env,
     ).returncode
 
 
@@ -707,8 +719,20 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     parser.add_argument("--codex-available", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--cursor-available", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--scope-anchor-file", default="")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--round-num", type=int, required=True)  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     design = _validate_tmpdir(parser=parser, value=ns.design_tmpdir, create=True)
+    if ns.round_num <= 0:
+        parser.exit(2, "cli.py plan-review voter-dispatch: --round-num must be positive\n")
+    round_dir = design / "plan-review" / f"round-{ns.round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    panel_env = build_panel_dispatch_env(
+        artifact_dir=round_dir,
+        site="design Step 3",
+        round_num=ns.round_num,
+        round_dir=round_dir,
+        phase="plan-review-voters",
+    )
     ballot = Path(ns.ballot_file)
     policies = {policy.slot_name: policy for policy in external_defaults.voter_policies("design.plan_voters")}
     scope_anchor = ns.scope_anchor_file or str(design / "plan-review-scope-anchor.txt")
@@ -781,11 +805,11 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             ),
         )
         voter_1_path = design / policies["voter-1"].output_name
-        rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
+        rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
         voter_1_retried = "false"
         if _voter_needs_retry(rc=rc, output=voter_1_path):
             voter_1_retried = "true"
-            rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
+            rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
         voter_1_status = "launched" if rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0 else "failed"
         voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
         if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
@@ -936,6 +960,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         cwd=str(_REPO_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=stderr_file,
+        env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"},
     )
 
     manifest = design / "plan-voter-slots.ndjson"
@@ -964,6 +989,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             "dispatch-waterfall",
             "--slots-file",
             str(manifest),
+            "--panel-artifact-dir",
+            str(round_dir),
             "--codex-present",
             ns.codex_available,
             "--cursor-present",
@@ -984,6 +1011,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             text=True,
             capture_output=True,
             check=False,
+            env=panel_env,
         )
         waterfall_output = wf.stdout
 
@@ -996,7 +1024,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     voter_1_retried = "false"
     if _voter_needs_retry(rc=voter1_rc, output=voter_1_path):
         voter_1_retried = "true"
-        voter1_rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path)
+        voter1_rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
         _ = Path(f"{voter_1_path}.done").write_text(f"{voter1_rc}\n", encoding="utf-8")
 
     wf_kv = _parse_kv(waterfall_output)

@@ -1784,3 +1784,268 @@ def test_renumber_findings_uses_heading_inclusive_blocks() -> None:
     assert review_aggregate._renumber_findings(
         "### FINDING_9: old\nbody\n\n### FINDING_10: old\nbody\n",
     ) == "### FINDING_1: old\nbody\n\n### FINDING_2: old\nbody\n"
+
+
+def test_aggregate_forwards_panel_artifact_dir_and_env(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: same bug
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: same bug
+""",
+        encoding="utf-8",
+    )
+    capture = tmp_path / "capture.txt"
+    dispatch = tmp_path / "dispatch.sh"
+    dispatch.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf 'ARGS=%s\n' \"$*\" >\"$AGG_CAPTURE\"\n"
+        "printf 'SLOT=%s\n' \"${LARCH_PANEL_SLOT:-}\" >>\"$AGG_CAPTURE\"\n"
+        "printf 'AGENT=%s\n' \"${LARCH_PANEL_SOURCE_AGENT_FILE:-}\" >>\"$AGG_CAPTURE\"\n"
+        "slots=''\n"
+        'while [ $# -gt 0 ]; do case "$1" in --slots-file) slots="$2"; shift 2;; *) shift;; esac; done\n'
+        "out=$(python3 - <<'PY2' \"$slots\"\nimport json, sys\nrow=json.loads(open(sys.argv[1], encoding='utf-8').readline())\nprint(row['output'])\nPY2\n)\n"
+        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: important\n- **Concern**: merged\nEOF\n"
+        "printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=cursor\n' \"$out\"\n",
+        encoding="utf-8",
+    )
+    dispatch.chmod(0o755)
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "description",
+        "--input-mode",
+        "plan",
+        "--round-dir",
+        str(round_dir),
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), AGG_CAPTURE=str(capture)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    captured = capture.read_text(encoding="utf-8")
+    assert "--panel-artifact-dir" in captured
+    assert str(round_dir) in captured
+    assert "SLOT=aggregator" in captured
+    assert "AGENT=agents/orchestrator-aggregator.md" in captured
+
+
+def _write_aggregate_dispatch_with_tsv(tmp_path: Path) -> Path:
+    dispatch = tmp_path / "dispatch-with-tsv.sh"
+    pythonpath = ROOT / "python"
+    dispatch.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "artifact=''\n"
+        "slots=''\n"
+        'while [ $# -gt 0 ]; do case "$1" in --panel-artifact-dir) artifact="$2"; shift 2;; --slots-file) slots="$2"; shift 2;; *) shift;; esac; done\n'
+        "out=$(PYTHONPATH="
+        f"{pythonpath}"
+        " python3 - <<'PY2' \"$slots\"\n"
+        "import json, sys\n"
+        "row=json.loads(open(sys.argv[1], encoding='utf-8').readline())\n"
+        "print(row['output'])\n"
+        "PY2\n"
+        ")\n"
+        "cat >\"$out\" <<'EOF'\n"
+        "### FINDING_1: Merged\n"
+        "- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n"
+        "- **Severity**: important\n"
+        "- **Concern**: merged\n"
+        "EOF\n"
+        "PYTHONPATH="
+        f"{pythonpath}"
+        " python3 - <<'PY3' \"$artifact\" \"$out\"\n"
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "from larch.report.tokens import append_panel_prompt_size, PANEL_PROMPT_SIZE_BASENAME\n"
+        "append_panel_prompt_size(\n"
+        "    artifact_path=Path(sys.argv[1]) / PANEL_PROMPT_SIZE_BASENAME,\n"
+        "    output=Path(sys.argv[2]),\n"
+        "    tool='cursor',\n"
+        "    prompt='aggregator prompt body',\n"
+        "    slot_kind='aggregator',\n"
+        "    agent_file='agents/orchestrator-aggregator.md',\n"
+        ")\n"
+        "PY3\n"
+        "printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_TOOLS=cursor\\n' \"$out\"\n",
+        encoding="utf-8",
+    )
+    dispatch.chmod(0o755)
+    return dispatch
+
+
+def _aggregate_tsv_rows(path: Path) -> list[dict[str, str]]:
+    lines = path.read_text(encoding="utf-8").splitlines()
+    header = lines[0].split("\t")
+    return [dict(zip(header, line.split("\t"), strict=False)) for line in lines[1:]]
+
+
+def test_aggregate_materializes_panel_prompt_sizes_plan_mode(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: same bug
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: same bug
+""",
+        encoding="utf-8",
+    )
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    dispatch = _write_aggregate_dispatch_with_tsv(tmp_path)
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "description",
+        "--input-mode",
+        "plan",
+        "--round-dir",
+        str(round_dir),
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    tsv = round_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    rows = _aggregate_tsv_rows(tsv)
+    assert len(rows) == 1
+    assert rows[0]["slot_kind"] == "aggregator"
+    assert rows[0]["agent_file"] == "agents/orchestrator-aggregator.md"
+    assert not (tmp_path / "panel-prompt-sizes.tsv").exists()
+
+
+def test_aggregate_materializes_panel_prompt_sizes_code_mode(tmp_path: Path) -> None:
+    run_root = tmp_path / "impl-run"
+    round_dir = run_root / "round-2"
+    round_dir.mkdir(parents=True)
+    findings = run_root / "findings.md"
+    findings.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: same bug
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: same bug
+""",
+        encoding="utf-8",
+    )
+    dispatch = _write_aggregate_dispatch_with_tsv(tmp_path)
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(run_root),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "description",
+        "--round-num",
+        "2",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    tsv = round_dir / "panel-prompt-sizes.tsv"
+    assert tsv.is_file()
+    rows = _aggregate_tsv_rows(tsv)
+    assert len(rows) == 1
+    assert rows[0]["slot_kind"] == "aggregator"
+    assert rows[0]["agent_file"] == "agents/orchestrator-aggregator.md"
+    assert not (run_root / "panel-prompt-sizes.tsv").exists()
+
+
+def test_aggregate_resolves_round_subdir_for_panel_artifact(tmp_path: Path) -> None:
+    run_root = tmp_path / "review-run"
+    round_dir = run_root / "round-3"
+    round_dir.mkdir(parents=True)
+    findings_path = run_root / "findings.md"
+    findings_path.write_text(
+        """### FINDING_1: Dup A
+- **Reviewer**: cursor-a-output.txt
+- **Severity**: important
+- **Concern**: same bug
+
+### FINDING_2: Dup B
+- **Reviewer**: cursor-b-output.txt
+- **Severity**: important
+- **Concern**: same bug
+""",
+        encoding="utf-8",
+    )
+    capture = tmp_path / "capture-round-subdir.txt"
+    dispatch = tmp_path / "dispatch.sh"
+    dispatch.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf 'ARGS=%s\\n' \"$*\" >\"$AGG_CAPTURE\"\n"
+        "artifact=''\n"
+        "slots=''\n"
+        'while [ $# -gt 0 ]; do case "$1" in --panel-artifact-dir) artifact="$2"; shift 2;; --slots-file) slots="$2"; shift 2;; *) shift;; esac; done\n'
+        "out=$(python3 - <<'PY2' \"$slots\"\nimport json, sys\nrow=json.loads(open(sys.argv[1], encoding='utf-8').readline())\nprint(row['output'])\nPY2\n)\n"
+        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: important\n- **Concern**: merged\nEOF\n"
+        "printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_TOOLS=cursor\\n' \"$out\"\n",
+        encoding="utf-8",
+    )
+    dispatch.chmod(0o755)
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings_path),
+        "--review-tmpdir",
+        str(run_root),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "description",
+        "--round-num",
+        "3",
+        env=_aggregate_env(tmp_path, AGGREGATE_DISPATCH_SH=str(dispatch), AGG_CAPTURE=str(capture)),
+    )
+
+    assert result.returncode == 0, result.stderr
+    captured = capture.read_text(encoding="utf-8")
+    assert str(round_dir) in captured
+    assert not (run_root / "panel-prompt-sizes.tsv").exists()
+# pyright: reportUnusedCallResult=false

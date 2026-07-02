@@ -1506,10 +1506,39 @@ def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
     assert (round_dir / "review-core-threshold.env").read_text(encoding="utf-8") == "THRESHOLD_OK=true\n"
 
 
+
+def test_write_round_commits_panel_prompt_sizes(tmp_path: Path) -> None:
+    source = tmp_path / "source-round"
+    source.mkdir()
+    _ = (source / "panel-prompt-sizes.tsv").write_text(
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+        "review\t\t1\tcorrectness\tspecialist\tcursor\tout.txt\t12\t3\tagents/reviewer-testing.md\t8\t2\n",
+        encoding="utf-8",
+    )
+
+    rc = run_logs.larch_log_write_round_main([
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--round",
+        "1",
+        "--source-dir",
+        str(source),
+    ])
+
+    assert rc == 0
+    committed = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1" / "panel-prompt-sizes.tsv"
+    assert committed.is_file()
+    assert "prompt_bytes" in committed.read_text(encoding="utf-8")
+
 def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
     assert run_logs._round_artifact_included("voting-tally-degraded-attempt-1.md")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("voting-tally-degraded-attempt-2.md")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("panel-manifest.ndjson.output-files.dropped-slots")  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._round_artifact_included("panel-prompt-sizes.tsv")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("dropped-dyn-lint-cursor-straggler-dropped.txt")  # pyright: ignore[reportPrivateUsage]
     assert not run_logs._round_artifact_included("dyn-lint-output.txt")  # pyright: ignore[reportPrivateUsage]
 

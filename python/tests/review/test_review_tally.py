@@ -2133,3 +2133,26 @@ def test_tally_seed_oos_seq_counts_mixed_oos_and_finding_headings(tmp_path: Path
     )
 
     assert review_tally._seed_oos_seq(str(session_env)) == 3  # pyright: ignore[reportPrivateUsage]
+
+
+def test_log_phase_accepts_panel_prompt_sizes_batch(tmp_path: Path) -> None:
+    payload = tmp_path / "panel-prompt-sizes.tsv"
+    payload.write_text("site\tslot\nreview\tcorrectness\n", encoding="utf-8")
+
+    result = run_review(
+        "log-phase",
+        "--run-id",
+        "run-abc",
+        "--batch",
+        "panel-prompt-sizes",
+        "--action",
+        "write",
+        "--payload-file",
+        str(payload),
+        "--log-root",
+        str(tmp_path / "logs"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert (tmp_path / "logs" / "review" / "run-abc" / "panel-prompt-sizes.tsv").is_file()
+# pyright: reportUnusedCallResult=false

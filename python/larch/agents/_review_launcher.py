@@ -24,6 +24,7 @@ from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
+from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, _panel_logging_enabled
 
 from larch.agents._types import (
     _CTRL_RE,
@@ -1175,6 +1176,20 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
     return result.exit_code
 
 
+def _review_log_panel_prompt_size(*, args: argparse.Namespace, output: Path, prompt: str) -> None:
+    if not _panel_logging_enabled():
+        return
+    artifact = panel_prompt_size_artifact_for_output(output=output, site=getattr(args, "site", ""))
+    append_panel_prompt_size(
+        artifact_path=artifact,
+        output=output,
+        tool=getattr(args, "tool", ""),
+        prompt=prompt,
+        agent_file=getattr(args, "agent_file", "") or "",
+        site=getattr(args, "site", ""),
+    )
+
+
 def launch_review_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = _review_parser()
@@ -1195,6 +1210,7 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     prompt_rc, prompt = _review_resolve_prompt(args)
     if prompt_rc != 0:
         return prompt_rc
+    _review_log_panel_prompt_size(args=args, output=output, prompt=prompt)
     if args.tool == "codex":
         return _review_launch_codex(args=args, prompt=prompt)
     return _review_launch_cursor(args=args, original_prompt=prompt)
