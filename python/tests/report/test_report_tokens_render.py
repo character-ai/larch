@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+import tempfile
+from typing import TYPE_CHECKING
 from pathlib import Path
+from collections.abc import Callable
 
+from larch.report import report_tokens_render
 from larch.report.report_tokens_models import PhaseRow, RunRecord, VendorTotals
 from larch.report.report_tokens_render import render, title_for_skill
+
+if TYPE_CHECKING:
+    import pytest
+
+FIXTURES = Path(__file__).resolve().parents[2] / "fixtures"
 
 
 def _without_rates_section(body: str) -> str:
@@ -71,7 +80,7 @@ def test_render_implement_golden_markdown(tmp_path: Path) -> None:
     )
     body, _sections, cache = render(skill="implement", records=(record,), temp_root=tmp_path)
     normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
-    expected = Path("fixtures/report_tokens_implement_golden.md").read_text(encoding="utf-8").rstrip("\n")
+    expected = (FIXTURES / "report_tokens_implement_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 
 
@@ -120,7 +129,7 @@ def test_render_design_golden_markdown(tmp_path: Path) -> None:
     )
     body, _sections, cache = render(skill="design", records=(simple, hard), temp_root=tmp_path)
     normalized = _without_rates_section(body).replace(f"Cache JSON: {cache}", "Cache JSON: <CACHE>")
-    expected = Path("fixtures/report_tokens_design_golden.md").read_text(encoding="utf-8").rstrip("\n")
+    expected = (FIXTURES / "report_tokens_design_golden.md").read_text(encoding="utf-8").rstrip("\n")
     assert normalized == expected
 
 
@@ -230,3 +239,28 @@ def test_render_design_cache_retains_workflow(tmp_path: Path) -> None:
 def test_title_for_skill_prefixes() -> None:
     assert title_for_skill("design", timestamp="2026-01-01 00:00 UTC").startswith("[Design Analysis Report]")
     assert title_for_skill("implement", timestamp="2026-01-01 00:00 UTC").startswith("[Implement Analysis Report]")
+
+
+def test_render_fallback_temp_root_registers_exit_cleanup(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    original_mkdtemp = tempfile.mkdtemp
+    registered: list[tuple[Callable[..., object], tuple[object, ...], dict[str, object]]] = []
+
+    def fake_mkdtemp(suffix: str = "", prefix: str = "tmp", **kwargs: object) -> str:
+        requested_dir = kwargs.get("dir")
+        target_dir = str(tmp_path) if requested_dir is None else str(requested_dir)
+        return original_mkdtemp(suffix=suffix, prefix=prefix, dir=target_dir)
+
+    def fake_register(function: Callable[..., object], *args: object, **kwargs: object) -> None:
+        registered.append((function, args, kwargs))
+
+    monkeypatch.setattr(report_tokens_render.tempfile, "mkdtemp", fake_mkdtemp)
+    monkeypatch.setattr(report_tokens_render.atexit, "register", fake_register)
+
+    _body, _sections, cache = render(skill="implement", records=(_record(),))
+
+    assert cache.is_file()
+    assert cache.parent.name.startswith("larch-report-tokens.")
+    assert registered
+    function, args, kwargs = registered[-1]
+    _ = function(*args, **kwargs)
+    assert not cache.parent.exists()
