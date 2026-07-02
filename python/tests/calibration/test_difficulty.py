@@ -21,7 +21,7 @@ def test_validate_rating_low_confidence_bumps_and_sanitizes() -> None:
 @pytest.mark.parametrize("tier", ["", "EASY", "harder"])
 def test_validate_rating_rejects_invalid_tiers(tier: str) -> None:
     with pytest.raises(ValueError, match="predicted_tier"):
-        difficulty.validate_rating_object({"predicted_tier": tier, "confidence": "medium", "rationale": "x"})
+        _ = difficulty.validate_rating_object({"predicted_tier": tier, "confidence": "medium", "rationale": "x"})
 
 
 def test_floors_raise_only() -> None:

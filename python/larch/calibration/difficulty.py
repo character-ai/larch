@@ -11,6 +11,7 @@ import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import cast
 from larch import io as larch_io
 from larch.core import proc
 
@@ -89,7 +90,7 @@ def confidence_valid(value: str) -> bool:
 
 
 def tier_max(*tiers: str | None) -> str:
-    present = [tier for tier in tiers if tier_valid(tier or "")]
+    present = [tier for tier in tiers if tier is not None and tier_valid(tier)]
     if not present:
         return TRIVIAL
     return max(present, key=lambda tier: _TIER_RANK[tier])
@@ -113,13 +114,14 @@ def sanitize_rationale(value: object, *, max_chars: int = RATIONALE_MAX_CHARS) -
 def validate_rating_object(obj: object) -> DifficultyRating:
     if not isinstance(obj, dict):
         raise ValueError("rating must be a JSON object")
-    predicted = str(obj.get("predicted_tier") or "").upper()
-    confidence = str(obj.get("confidence") or "").lower()
+    data = cast("dict[str, object]", obj)
+    predicted = str(data.get("predicted_tier") or "").upper()
+    confidence = str(data.get("confidence") or "").lower()
     if not tier_valid(predicted):
         raise ValueError("predicted_tier must be TRIVIAL, MODERATE, or HARD")
     if not confidence_valid(confidence):
         raise ValueError("confidence must be low, medium, or high")
-    rationale = sanitize_rationale(obj.get("rationale"))
+    rationale = sanitize_rationale(data.get("rationale"))
     if not rationale:
         raise ValueError("rationale must be non-empty after sanitization")
     return DifficultyRating(
@@ -405,7 +407,7 @@ def render_line_main(argv: list[str] | None = None) -> int:
     if not isinstance(data, dict):
         print("STATUS=error\nERROR=record must be object", file=sys.stderr)
         return 1
-    print(difficulty_line(data))
+    print(difficulty_line(cast("dict[str, object]", data)))
     return 0
 
 

@@ -172,7 +172,7 @@ def _difficulty_summary_line(design_tmpdir: Path) -> str:
         except (OSError, json.JSONDecodeError):
             data = None
         if isinstance(data, dict):
-            return difficulty.difficulty_line(data)
+            return difficulty.difficulty_line(cast("dict[str, object]", data))
     raw_rating = difficulty.read_rating_file(design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME)
     if raw_rating is not None:
         return f"predicted {raw_rating.adjusted_tier}; applied {raw_rating.adjusted_tier}"

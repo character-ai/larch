@@ -513,7 +513,7 @@ def test_render_final_summary_write_failure_skips_upsert(
 
 
 def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:
-    (tmp_path / "difficulty-rating.json").write_text(
+    _ = (tmp_path / "difficulty-rating.json").write_text(
         '{"predicted_tier":"MODERATE","applied_tier":"HARD","floors_applied":[{"path":"hooks/x"}],"confidence":"medium"}\n',
         encoding="utf-8",
     )

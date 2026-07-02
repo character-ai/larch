@@ -1376,8 +1376,14 @@
   {
     "file": "larch/design/design_publish.py",
     "code": "C901",
+    "qualified_symbol": "_splice_plan_provenance",
+    "metric": 11
+  },
+  {
+    "file": "larch/design/design_publish.py",
+    "code": "C901",
     "qualified_symbol": "publish_core",
-    "metric": 37
+    "metric": 43
   },
   {
     "file": "larch/design/design_publish.py",
@@ -1395,13 +1401,13 @@
     "file": "larch/design/design_publish.py",
     "code": "PLR0912",
     "qualified_symbol": "publish_core",
-    "metric": 38
+    "metric": 44
   },
   {
     "file": "larch/design/design_publish.py",
     "code": "PLR0915",
     "qualified_symbol": "publish_core",
-    "metric": 124
+    "metric": 143
   },
   {
     "file": "larch/design/design_router.py",
@@ -1707,13 +1713,13 @@
     "file": "larch/design/design_summary.py",
     "code": "PLR0913",
     "qualified_symbol": "invoke_render",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/design/design_summary.py",
     "code": "PLR0915",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 88
+    "metric": 89
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1851,7 +1857,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "C901",
     "qualified_symbol": "parse_optional_metadata",
-    "metric": 18
+    "metric": 20
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1893,7 +1899,7 @@
     "file": "larch/design/plan_quality.py",
     "code": "PLR0912",
     "qualified_symbol": "parse_optional_metadata",
-    "metric": 18
+    "metric": 20
   },
   {
     "file": "larch/design/plan_quality.py",
@@ -1922,6 +1928,12 @@
   {
     "file": "larch/design/plan_quality.py",
     "code": "PLR0915",
+    "qualified_symbol": "parse_optional_metadata",
+    "metric": 54
+  },
+  {
+    "file": "larch/design/plan_quality.py",
+    "code": "PLR0915",
     "qualified_symbol": "validator_autofix_main",
     "metric": 58
   },
@@ -1929,7 +1941,7 @@
     "file": "larch/design/plan_scout.py",
     "code": "C901",
     "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 28
+    "metric": 29
   },
   {
     "file": "larch/design/plan_scout.py",
@@ -1941,7 +1953,7 @@
     "file": "larch/design/plan_scout.py",
     "code": "PLR0912",
     "qualified_symbol": "scout_dynamic_archetypes",
-    "metric": 35
+    "metric": 36
   },
   {
     "file": "larch/design/plan_scout.py",
@@ -2229,7 +2241,7 @@
     "file": "larch/git/pr_body.py",
     "code": "C901",
     "qualified_symbol": "render_run_summary",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2253,7 +2265,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0912",
     "qualified_symbol": "render_run_summary",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2277,7 +2289,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
-    "metric": 54
+    "metric": 57
   },
   {
     "file": "larch/git/push.py",
@@ -2673,7 +2685,7 @@
     "file": "larch/implement/preflight.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 27
+    "metric": 28
   },
   {
     "file": "larch/implement/preflight.py",
@@ -2685,7 +2697,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0912",
     "qualified_symbol": "preflight_main",
-    "metric": 28
+    "metric": 29
   },
   {
     "file": "larch/implement/preflight.py",
@@ -2697,7 +2709,7 @@
     "file": "larch/implement/preflight.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 93
+    "metric": 97
   },
   {
     "file": "larch/implement/ship.py",
@@ -4413,7 +4425,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0913",
     "qualified_symbol": "_round_meta_object",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/report/progress_report.py",
@@ -5595,7 +5607,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "C901",
     "qualified_symbol": "dispatch_panel",
-    "metric": 54
+    "metric": 56
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5619,7 +5631,7 @@
     "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 64
+    "metric": 66
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -6261,7 +6273,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_plan",
-    "metric": 60
+    "metric": 63
   },
   {
     "file": "larch/state/bootstrap.py",

@@ -512,6 +512,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     elif plan_rc != 0:
         return 2
 
+    design_difficulty = ""
     if plan_from_extracted_block and block_present == "true" and plan_path.is_file() and plan_path.stat().st_size > 0:
         try:
             _refuse_unreviewed_plan(plan_path=plan_path, issue=issue)

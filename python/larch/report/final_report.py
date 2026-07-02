@@ -96,7 +96,7 @@ def _difficulty_summary_line(run_dir: Path) -> str:
         data: object = json.loads(record.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
         return ""
-    return difficulty.difficulty_line(data) if isinstance(data, dict) else ""
+    return difficulty.difficulty_line(cast("dict[str, object]", data)) if isinstance(data, dict) else ""
 
 
 def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:

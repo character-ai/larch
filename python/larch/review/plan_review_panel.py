@@ -190,7 +190,14 @@ def _generic_plan_codex_row(
 
 def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
     try:
-        role = model_role if model_role in {"default", "review", "vote", "fix"} else "default"
+        if model_role == "review":
+            role = "review"
+        elif model_role == "vote":
+            role = "vote"
+        elif model_role == "fix":
+            role = "fix"
+        else:
+            role = "default"
         argv = list(resolve_model_args(tool, with_effort=(tool == "codex"), codex_role=role).argv)
     except (ValueError, KeyError):
         return "unknown"
@@ -205,8 +212,8 @@ def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
 def _with_attribution(row: dict[str, object]) -> dict[str, object]:
     tool = str(row.get("tool") or "unknown")
     role = str(row.get("model_role") or "default")
-    row.setdefault("vendor", tool)
-    row.setdefault("resolved_model", _resolved_model_for_row(tool, role))
+    _ = row.setdefault("vendor", tool)
+    _ = row.setdefault("resolved_model", _resolved_model_for_row(tool, role))
     return row
 
 def _plugin_root() -> Path:
