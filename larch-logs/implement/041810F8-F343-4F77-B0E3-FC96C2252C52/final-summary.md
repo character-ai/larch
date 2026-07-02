@@ -1,8 +1,8 @@
 ## /implement run 041810F8-F343-4F77-B0E3-FC96C2252C52 — shipping
 
 - **Mode**: N/A
-- **Duration**: N/A
-- **Cost**: 💰 TOTAL ~$10.55 — Claude $0.47, Codex-5.5 $3.84, Codex-mini $0.69, Cursor $5.33, Claude (subprocess) $0.22  |  Tokens: 18854k
+- **Duration**: 00:25:18
+- **Cost**: 💰 TOTAL ~$13.79 — Claude $3.71, Codex-5.5 $3.84, Codex-mini $0.69, Cursor $5.33, Claude (subprocess) $0.22  |  Tokens: 24181k
 - **Issue**: #5952 — https://github.com/character-ai/larch/issues/5952
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -60,3 +60,7 @@ aggregator                      │                                             
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
