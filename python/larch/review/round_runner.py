@@ -472,7 +472,9 @@ def _run_round(args: argparse.Namespace, *, suppress_emit: bool, review_core_imp
     round_oos = round_dir / "oos-accepted-review.md"
     degraded_this_round = False
     voting_tally_file = round_dir / "voting-tally.md"
-    if voting_tally_file.is_file() and "⚠ Degraded code-review panel" in _read_text(voting_tally_file):
+    degraded_banner_present = voting_tally_file.is_file() and "⚠ Degraded code-review panel" in _read_text(voting_tally_file)
+    retry_degraded_panel = degraded_banner_present and not _core_status_is(core_status, ReviewCoreStatus.zero_findings)
+    if retry_degraded_panel:
         degraded_this_round = True
         _err(f"⏳ /implement Step 5: round {round_num} panel was degraded (banner triggered); retrying with fresh panel.")
         if degraded_retry_flag.is_file() and not degraded_retry_done.is_file():
