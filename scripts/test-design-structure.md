@@ -14,4 +14,6 @@ It also pins the Python lifecycle strings for parsed argv persistence, degraded-
 
 It runs the `/design` `SKILL.md` closure growth ratchet after in-place prose compression. The ratchet includes blank-line-neutral content-token metrics.
 
+The harness pins Gate A, Gate B default, and Gate C prompt-copy delegation to `python/cli.py design render-gate`, including CLI registry and lifecycle stdout registration.
+
 The harness also pins the post-approval Step 5 reference split: `skills/design/SKILL.md` keeps the Step 5 entry read, prepare fence, `oos-step5b-dispatch.md` adjacency, diagram/Step 5c fences, and final-summary bindings; `skills/design/references/finalize-step5.md` owns the moved OOS, diagram, compose/publish, readability-anchor, and warning-replay body prose. It verifies sanitizer fail-closed paths write `architecture-diagram.skipped`, chat diagram markers remain absent, and moved Step 5 body needles are not duplicated inline.

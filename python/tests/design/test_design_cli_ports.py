@@ -19,6 +19,7 @@ EXPECTED = {
         ("log-publish", "larch.design.design_log_publish_flow", "log_publish_main"),
         ("pause-save", "larch.design.design_pause", "pause_save_main"),
         ("pause-load", "larch.design.design_pause", "pause_load_main"),
+        ("render-gate", "larch.design.design_gate_render", "render_gate_main"),
         ("render-final-summary", "larch.design.design_summary", "render_final_summary_main"),
         ("stage-terminal-state", "larch.design.design_lifecycle", "stage_terminal_state_main"),
         ("failure-report", "larch.design.design_lifecycle", "failure_report_main"),
