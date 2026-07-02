@@ -20,6 +20,7 @@ from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config
+from larch.errors import ShipError
 from larch.report import run_log_corpus
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
 from larch.rendering.render_session_transcript import strip_plugin_cache_read_suffix
@@ -2301,7 +2302,11 @@ def measure_realized_cost_main(argv: list[str] | None = None) -> int:
 
 def measure_cache_efficiency_main(argv: list[str] | None = None) -> int:
     _ = argv
-    path = measure_cache_efficiency()
+    try:
+        path = measure_cache_efficiency()
+    except ShipError as exc:
+        print(str(exc), file=sys.stderr)
+        return config.EXIT_BAIL
     repo_root = _measure_repo_root_from_larch_logs_path(path)
     print(f"WROTE\t{path.relative_to(repo_root)}")
     return 0
