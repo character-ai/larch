@@ -1,0 +1,5 @@
+I'm unable to read the ballot file right now. The system is returning an error:
+
+> An immediate-background wait is active. End the turn and wait for `<task-notification>`; do not poll progress artifacts.
+
+There appears to be a background task in progress that is blocking file reads. Please wait for the background task to complete (you should receive a `<task-notification>`), then retry this request.

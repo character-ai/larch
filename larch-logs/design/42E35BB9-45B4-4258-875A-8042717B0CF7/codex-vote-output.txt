@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Baseline regeneration is already in the plan; an extra freshness proof is verification polish, not required for this density pass.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The plan already requires preserving each contract verbatim; keeping shared tails synchronized is an implementation choice, not a missing feature requirement.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The outline already says to keep each specialist file's distinct focus while removing overlapping guidance, so wholesale template copying is not required.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The issue anchors the panel-tier ratchet, but the exact aggregate math note is not necessary to deliver the token-reduction pass.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The plan already makes make py-test part of the required validation, so this claim is not real.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Broader testing is not backlog-material here, and the acceptance path already names the required harnesses.
