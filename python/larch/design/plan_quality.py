@@ -1094,6 +1094,7 @@ def _dispatch_vendor_fix(
             return 1
         wrapped = wrap.stdout
         model_args = list(agents.resolve_model_args("cursor", with_effort=True).argv)
+        agents.cursor_auth_export_env()
         cursor_cmd = [
             sys.executable,
             str(cli),
