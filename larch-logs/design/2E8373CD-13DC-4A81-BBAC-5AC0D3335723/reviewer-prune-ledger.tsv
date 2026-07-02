@@ -1,0 +1,18 @@
+round	tool	slot	label	accepted_count	weighted_accepted_count	rejected_count	total_count
+1	cursor	cursor-plan-arch	Cursor-Arch	4	8	2	8
+1	codex	codex-plan-arch	Codex-Arch	1	2	0	1
+1	cursor	cursor-plan-innovation	Cursor-Innovation	5	10	1	7
+1	codex	codex-plan-innovation	Codex-Innovation	2	4	0	2
+1	cursor	cursor-plan-pragmatic	Cursor-Pragmatic	3	6	2	7
+1	codex	codex-plan-pragmatic	Codex-Pragmatic	1	2	0	1
+1	cursor	cursor-plan-requirements	Cursor-Requirements	3	6	2	6
+1	codex	codex-plan-requirements	Codex-Requirements	2	4	0	2
+1	cursor	dyn-cursor-plan-workflow-contract-reviewer	Cursor-dyn-Workflow Contract Reviewer	1	2	0	3
+1	codex	dyn-codex-plan-workflow-contract-reviewer	Codex-dyn-Workflow Contract Reviewer	1	2	0	1
+2	cursor	cursor-plan-arch	Cursor-Arch	1	2	2	5
+2	codex	codex-plan-arch	Codex-Arch	1	2	0	2
+2	cursor	cursor-plan-innovation	Cursor-Innovation	1	2	3	6
+2	codex	codex-plan-innovation	Codex-Innovation	1	2	0	1
+2	codex	codex-plan-pragmatic	Codex-Pragmatic	1	2	0	1
+2	cursor	cursor-plan-requirements	Cursor-Requirements	1	2	3	5
+2	codex	codex-plan-requirements	Codex-Requirements	1	2	0	1

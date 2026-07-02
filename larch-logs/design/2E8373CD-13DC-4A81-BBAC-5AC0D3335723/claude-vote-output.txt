@@ -1,0 +1,1 @@
+A background task is currently blocking reads. Ending the turn to wait for the task notification before casting votes.

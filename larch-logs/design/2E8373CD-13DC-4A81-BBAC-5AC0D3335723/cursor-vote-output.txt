@@ -1,0 +1,14 @@
+Reading the ballot and verifying key claims against the codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- SKILL.md already mandates loading self-review.md on self-review-required; header wording alone is not execution-blocking.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Duplicate doc drift; SKILL.md is authoritative and runtime follows it.
+OOS_2: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Duplicate stale header; runtime loads conflict-resolution.md, not this intro line.
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Exact duplicate of OOS_2 at the same location.
+OOS_5: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Duplicate of OOS_1/OOS_7 with no new evidence.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=weak UNCERTAIN=false -- Hypothetical future regression; plan already pins explicit Step 5 branch order.
+OOS_7: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- Duplicate of prior plan-review.md OOS items.
+OOS_8: NO CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- Duplicate of OOS_3 at the same review-agents row.
+OOS_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Rare conflict path; stale table shape is cosmetic and below backlog materiality.

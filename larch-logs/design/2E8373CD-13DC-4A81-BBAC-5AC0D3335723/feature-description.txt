@@ -1,0 +1,19 @@
+# Availability policy: review-stage both-down self-review; conflict resolution self-review only
+
+**Skills:** /implement, /review, /design (review stage); /implement conflict resolution.
+
+**Initiative:** Cursor-cost reviewer/voter rebalance. Defines what happens when external reviewers are unavailable, and removes externals from the conflict-resolution path.
+
+**Existing behavior to preserve (do not re-implement):** abort-at-start when both Codex and Cursor are unavailable already exists via the Step 0 degraded-tools gate, which hard-fails in every mode when both tools are down. Keep it.
+
+**Changes:**
+
+- New runtime path: when both externals were healthy at the Step 0 gate but both fail at runtime by the review stage (auth expiry, quota, timeout), do not abort mid-run. Proceed with main-agent Claude self-review and emit a loud warning. This is the both-tools analogue of the existing single-tool runtime-timeout fallback.
+- /implement conflict resolution (Phase 3, the `ship_pr_pre_push` non-trivial-resolution path): drop the external reviewer panel entirely; main-agent self-review only. The `early_rebase` and trivial-all skips already bypass the panel; this removes the remaining Codex/Cursor panel launch.
+
+**Acceptance:**
+
+- Runtime both-down at the review stage yields a loud-warned main-agent self-review rather than an abort.
+- Conflict resolution Phase 3 no longer launches Codex or Cursor; the main agent self-reviews non-trivial resolutions.
+
+**Note:** main-agent self-review on the conflict path is a deliberate cost and latency trade; non-trivial merge resolutions are rare (only the final ship rebase with non-trivial conflicts), so the frequency-weighted cost is low.

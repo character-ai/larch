@@ -1,0 +1,46 @@
+**Skills:** /implement, /review, /design (review stage); /implement conflict resolution.
+
+**Initiative:** Cursor-cost reviewer/voter rebalance. Defines what happens when external reviewers are unavailable, and removes externals from the conflict-resolution path.
+
+**Existing behavior to preserve (do not re-implement):** abort-at-start when both Codex and Cursor are unavailable already exists via the Step 0 degraded-tools gate, which hard-fails in every mode when both tools are down. Keep it.
+
+**Changes:**
+
+- New runtime path: when both externals were healthy at the Step 0 gate but both fail at runtime by the review stage (auth expiry, quota, timeout), do not abort mid-run. Proceed with main-agent Claude self-review and emit a loud warning. This is the both-tools analogue of the existing single-tool runtime-timeout fallback.
+- /implement conflict resolution (Phase 3, the `ship_pr_pre_push` non-trivial-resolution path): drop the external reviewer panel entirely; main-agent self-review only. The `early_rebase` and trivial-all skips already bypass the panel; this removes the remaining Codex/Cursor panel launch.
+
+**Acceptance:**
+
+- Runtime both-down at the review stage yields a loud-warned main-agent self-review rather than an abort.
+- Conflict resolution Phase 3 no longer launches Codex or Cursor; the main agent self-reviews non-trivial resolutions.
+
+**Note:** main-agent self-review on the conflict path is a deliberate cost and latency trade; non-trivial merge resolutions are rare (only the final ship rebase with non-trivial conflicts), so the frequency-weighted cost is low.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- When both externals were healthy at Step 0 but zero survive by the review stage, do a loud-warned main-agent self-review instead of an unreviewed bypass (`/design`) or a stall (`/review`, `/implement` Step 5).
+- Remove the Codex/Cursor panel from `/implement` conflict-resolution Phase 3 (`ship_pr_pre_push` non-trivial path); main agent self-reviews resolutions, keeping the 2-round retry cap.
+
+### Non-goals
+- Do not change the Step 0 degraded-tools gate's hard-fail-both-down behavior.
+- Do not change voter fallback (single-Claude-voter-when-Cursor-unavailable already exists).
+- Do not extend `audit_runs.py` / `final_report.py` analytics for the new paths beyond the existing `execution-issues.md` warning; that is a follow-up.
+
+### Approach sketch
+- `/design` Step 3: on `LOOP_STATUS=degraded-empty-collector`, main agent reviews and directly revises `plan.txt`, warns loudly, then proceeds via the existing Step 3b-bypass destination.
+- `/implement` Step 5: route the zero-survivor branch of `panel-failed` into the existing `--self-review` inline procedure instead of stalling as a Tool Failure.
+- `/review`: add a new main-agent self-review pass, modeled on `/implement`'s, triggered by the same zero-survivor branch.
+- Conflict-resolution Phase 3: drop reviewer launch and voting; main agent reviews its own resolution from the existing per-file context blocks.
+
+### Surfaces in scope
+- `python/larch/review/plan_review_round.py` (or sibling loop file) for the `/design` hook.
+- `python/larch/review/review_core_body.py`, `review_threshold.py` for the shared `/review`/Step 5 coverage-gate branch.
+- `skills/implement/references/self-review.md`, `skills/implement/SKILL.md` Step 5 wiring.
+- `skills/review/SKILL.md` plus a new self-review reference for `/review`.
+- `skills/implement/references/conflict-resolution.md` Phase 3.
+- `skills/shared/external-reviewers.md` for the documented contract.
+
+### Open questions
+- None. Step 1c resolved the architectural forks; two low-stakes scope assumptions are recorded in `discussion-round1.md`.
