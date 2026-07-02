@@ -406,7 +406,7 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
     prompt_path = round_dir / "coder-prompt.md"
     prompt_body = _compose_coder_prompt(prompt_file=prompt_path, findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
     fix_coder_order = external_defaults.tool_order("review.fix_coder")
-    first_tool = next((tool for tool in fix_coder_order if tool in {"cursor", "codex"}), "review.fix_coder")
+    first_tool = next((tool for tool in fix_coder_order if tool in {"codex", "cursor", "claude"}), "review.fix_coder")
     panel_env = build_panel_dispatch_env(
         artifact_dir=round_dir,
         site="review.fix_coder",
