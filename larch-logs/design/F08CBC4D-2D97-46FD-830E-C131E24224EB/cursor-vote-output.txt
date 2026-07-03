@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan already mandates skill-side post-denial probe-plus-retry recovery; json_deny retune is optional hardening not required to stop the stall
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already specifies implement-specific live-dir resolver, classifier, and step binding mirroring Step 8
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent same-class risk on an unobserved path; plan non-goal and outside this issue's minimum fix
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- approved outline requires Step 3/5 sentinel-probe carve-out; clone-scoping alone does not deliver the sanctioned recovery path

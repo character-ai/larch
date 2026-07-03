@@ -1,0 +1,46 @@
+### FINDING_1: Stale Step 3/5 contract surfaces in AGENTS.md and CI pins
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Hook Safety Reviewer
+- **Severity**: important
+- **Concern**: The plan leaves the top-level Step 3/5 contract stale on two authoritative surfaces: `AGENTS.md` and the anti-polling harness literals. Without updating both, Tier-1 guidance and CI assertions can keep enforcing the old notification-only behavior and recreate the stall.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: AGENTS.md. Split premature vs post-denial recovery for Steps 3 and 5 (hook-denied output read after a genuine completion notification: one sentinel probe, one retry, stall if absent). Update the matching AGENTS pins in scripts/test-implement-anti-polling-rule.sh.
+  - From Cursor-Innovation: Add ### UPDATED: AGENTS.md mirroring the NEVER #8 split (premature stays notification-only; denied read after genuine completion gets one sentinel probe plus one output retry). Extend scripts/test-implement-anti-polling-rule.sh with matching AGENTS pins.
+  - From Cursor-Innovation: When editing scripts/test-implement-anti-polling-rule.sh, explicitly replace those pins with the new split contract (premature notification-only plus post-denial probe forms and retry-on-present). Keep the premature-notification substring pins that test-design-structure.sh also expects.
+  - From Cursor-Pragmatic: Add ### UPDATED: AGENTS.md mirroring the NEVER #8 split (premature vs genuine-completion deny), exact probe forms, one-shot output retry, and absent-sentinel stall routing. Update the matching AGENTS.md pins in scripts/test-implement-anti-polling-rule.sh.
+  - From Cursor-dyn-Hook Safety Reviewer: Add ### UPDATED: AGENTS.md mirroring the new premature-vs-post-denial split; update the anti-polling harness pins that currently require the old notification-only strings
+
+### FINDING_2: Step 3/5 wait prose needs inline post-denial recovery
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Hook Safety Reviewer
+- **Severity**: important
+- **Concern**: Step 3 and Step 5 still only say to wait, then parse or read output. That leaves no bounded recovery at the failure site when a genuine completion notification is followed by a denied output read, so the orchestrator can still stall on the step-local prose even if NEVER #8 changes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add short post-notification denial recovery bullets at the Step 3 and Step 5 wait sites: after a genuine completion notification, if the output read is hook-denied, run the exact Step 3/5 sentinel probe, retry the denied read once when present, and route to the existing stall/failure path when absent (do not wait for another notification).
+  - From Cursor-Innovation: Add a minimal Step 5 post-notification block (and the same pattern at Step 3 if output reads happen there): on hook deny after a genuine completion notification, run the exact Step 5 sentinel probe once; if present retry the denied read once; if absent route to existing stall handling without waiting for another notification.
+  - From Cursor-Pragmatic: Step 8 documents post-notification recovery beside its fence; Steps 3/5 only say wait then parse/read. The live failure followed the hook deny text because step-local guidance had no bounded recovery. NEVER #8 alone is easy to miss at the failure site. Add Step 3 and Step 5 post-notification blocks beside their background fences (mirror Step 8): genuine notification with denied output read -> one allowed sentinel probe -> retry the denied read once -> if sentinel still absent, route to existing Step 3/5 stall handling without waiting for another notification. Keep premature notifications notification-only.
+  - From Cursor-dyn-Hook Safety Reviewer: Add a minimal Step 3/5 post-notification bullet adjacent to each background wait (mirror Step 8 shape): on deny immediately after a genuine completion notification, run the exact sentinel probe forms and one output retry; never wait for a second notification
+
+### FINDING_3: Hook deny text still tells the orchestrator to wait
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Cursor-dyn-Hook Safety Reviewer
+- **Severity**: blocking
+- **Concern**: The generic deny guidance still tells the orchestrator to wait for another notification, which is the exact stale instruction that caused the stall after a genuine completion notification. The plan needs a bounded retry path or a targeted deny reason for that post-completion case.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Update the plan to revise or specialize this deny reason for denied task-output reads after genuine Step 3/5 completion: point to the one same-step sentinel probe and one retry path, and add a harness assertion pinning that guidance.
+  - From Codex-Innovation: Update the deny reason, or add a narrow task-output deny helper for implement-step3-checks and implement-step5-review, so it points to the one same-step terminal-sentinel probe after a genuine completion notification while preserving the normal wait instruction for other probes
+  - From Codex-Pragmatic: Update the plan to change the relevant deny guidance, or add a targeted task-output deny reason, so it explicitly points to the new bounded Step 3/5 post-genuine-notification sentinel-probe recovery path instead of only saying to wait.
+  - From Cursor-dyn-Hook Safety Reviewer: Add to NEVER #8 and orchestrator-never.md: after a genuine Step 3/5 completion notification, a denied task-output Bash/Read must NOT be treated as "wait for another notification"; run the bounded sentinel-probe + one retry path instead. Optionally note in hook-bg-poll-guard.md that SKILL authority wins for that case (keep json_deny unchanged only if prose override is explicit)
+
+### FINDING_4: Step 5 terminal sentinel mutation matcher is incomplete
+- **Reviewer(s)**: Codex-Innovation, Codex-Requirements, Codex-dyn-Hook Safety Reviewer
+- **Severity**: important
+- **Concern**: The Step 5 terminal sentinel is not covered by the mutation-deny path, so a live Step 5 marker could still be forged with `touch` or truncation while the probe carve-out is being introduced. That undermines the guard that is supposed to protect the new Step 5 sentinel target.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add step-5-terminal to the mutation sentinel match, and add a focused negative test that Step 5 sentinel touch or redirect commands deny while the Step 5 marker is live
+  - From Codex-Requirements: Add step-5-terminal to the terminal-sentinel mutation detector and add a focused negative test for touch/truncate against "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"; step-3-terminal is already covered.
+  - From Codex-dyn-Hook Safety Reviewer: Add only `step-5-terminal` to the mutation-target matcher and add focused `implement-step5-review` touch/truncate denial coverage beside the existing Step 3 and Step 8 mutation tests. Keep other implement sentinels unchanged unless separately required.
+
+### FINDING_5: Implement Step 3/5 needs its own live-marker clamp
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The plan risks reusing the design clamp and resolver for implement probes, but implement Step 3 and Step 5 need their own live-marker binding. If the probe is allowed without the matching IMPLEMENT_TMPDIR live-step check, the read can still be denied and the stall remains.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add dedicated implement Step 3/5 classifier and clamp pair mirroring bash_is_step8_handoff_foreground_probe and step8_handoff_probe_clamp: implement live-dir resolver, step-3-terminal and step-5-terminal in probe_sentinel_name, and explicit binding to the matching live STEP before the generic deny loop.

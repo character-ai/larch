@@ -1,0 +1,1 @@
+1	the step 5 terminal sentinel is not covered by the mutation-deny path, so a live step 5 marker could still be forged with `touch` or truncation while the probe carve-out is being introduced. that undermines the guard that is supposed to protect the new step 5 sentinel target.
