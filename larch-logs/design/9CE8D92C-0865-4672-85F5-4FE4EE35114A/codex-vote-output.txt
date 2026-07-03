@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Sorting the submodule list already stabilizes the Step 3 prefix source; reordering the whole prompt is beyond the necessary fix.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The extra ordering assertions are helpful, but this test gap is not required to deliver the cache-prefix change.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=no-fix UNCERTAIN=false -- The rewrite can keep the existing annotation token, so no breakage is demonstrated.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- round_runner is orchestration-only here, so adding it to the cache-key guard is not necessary for the feature.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- round_runner is real but too far from the Step 3/5 prompt surfaces to justify OOS filing here.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same overbroad harness expansion; the material gain for this issue is too small.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- orchestration-only files are not a concrete enough trigger for this cache-prefix bug.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- voter-lane prompt ordering is outside the Step 3/5 claude_sub scope anchor.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- coder-fix prompt ordering is a separate lane and not necessary for this plan.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate round_runner overbreadth, not material enough for this feature.

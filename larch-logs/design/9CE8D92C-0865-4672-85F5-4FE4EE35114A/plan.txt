@@ -1,0 +1,93 @@
+## Approach
+
+Use direct code changes only. `approach-synthesis.txt` is `NO_SKETCHES`, so this plan comes from repository inspection and the approved outline.
+
+Keep content unchanged. Change ordering and deterministic path order only.
+
+## Files to modify/create
+
+### UPDATED: python/larch/rendering/rendering.py
+
+- Refactor `_render_specialist_text` into stable and dynamic chunks.
+- Put the large reviewer body before per-session values.
+- Keep all current text, including:
+  - diff or description task wording
+  - optional feature and plan blocks
+  - architectural guidelines section
+  - findings ledger section
+  - specialist tagging
+  - competition notice
+- Move the dynamic task preamble and optional `feature_file` / `plan_file` blocks after the stable reviewer checklist.
+- Move unavoidable per-round sections after the stable prefix when safe, especially rendered ledger content and per-session paths.
+- Update the stale `# intentionally non-stable:` comments. They should say the path values are unavoidable per-session prompt inputs and are intentionally placed after the stable prefix.
+- Preserve validation and cache-key inputs in `render_specialist_main`. The renderer cache must still key on file contents and arguments.
+
+### UPDATED: python/larch/core/coder_delta_guards.py
+
+- Return `submodule_paths(...)` in deterministic sorted order after collecting unique paths from:
+  - `.gitmodules` via `git config`
+  - `.gitmodules` text fallback
+  - `git submodule foreach`
+- Keep deduplication semantics.
+- Do not change forbidden-path matching or revert behavior.
+
+### UPDATED: scripts/test-cache-key-discipline.sh
+
+- Add an explicit prompt-surface file list for:
+  - `python/larch/implement/checks_lint_fix.py`
+  - `python/larch/review/coder_runner.py`
+  - `python/larch/review/review_dispatch_panel.py`
+  - `python/larch/review/round_runner.py`
+- Fail if any listed file is missing.
+- Run the existing unstable-pattern scan over those files.
+- Keep the guard conservative. Do not build a full Python parser.
+
+### UPDATED: scripts/test-cache-key-discipline.md
+
+- Update the scope text so it matches the expanded harness coverage.
+- Name the added Python prompt construction surfaces.
+- Keep the invariant that new prompt-construction files must be added to the harness and doc together.
+
+### UPDATED: python/tests/rendering/test_rendering.py
+
+- Add a focused `_render_specialist_text` test with a diff file plus plan and feature files.
+- Assert the reviewer body appears before:
+  - the diff-file task line
+  - the feature block
+  - the plan block
+- Assert the dynamic paths and untrusted blocks remain present.
+- Avoid brittle full-prompt snapshots.
+
+### UPDATED: python/tests/core/test_coder_delta_guards.py
+
+- Add a `submodule_paths` test with out-of-order and duplicate sources.
+- Use a fake runner and a temporary `.gitmodules`.
+- Assert the returned tuple is sorted and unique.
+
+## Edge cases
+
+- `mode=description` must still include `description_text` and `scope_files`.
+- `mode=diff` without `diff_file` must still include the `git diff` instruction.
+- Small-branch `commit_count` behavior must stay unchanged.
+- Missing plan, feature, or ledger files must keep existing validation behavior.
+- Duplicate submodule paths from multiple discovery methods must appear once.
+
+## Failure modes
+
+- Moving task context too far can alter reviewer behavior. Keep every sentence and only change order.
+- Leaving a dynamic ledger before stable sections can still break prefix caching. Place dynamic content after stable content where the output contract allows it.
+- Cache-key guard expansion can create false positives if it scans non-prompt code too broadly. Limit it to the four requested files.
+- Sorting submodule paths can change display order. This is intended and should not affect matching semantics.
+
+## Testing strategy
+
+Run targeted tests:
+
+- `python3 -m pytest python/tests/rendering/test_rendering.py python/tests/core/test_coder_delta_guards.py`
+- `make test-cache-key-discipline`
+- `python3 -m ruff check python/larch/rendering/rendering.py python/larch/core/coder_delta_guards.py python/tests/rendering/test_rendering.py python/tests/core/test_coder_delta_guards.py`
+
+After implementation lands, measure acceptance with at least 8 new runs and compare Step 3 and Step 5 `claude_sub` create/read ratios against the 2026-07-03 baseline TSV. Confirm review and checks outcomes did not materially change.
+
+difficulty: MODERATE
+diff_lines: 150

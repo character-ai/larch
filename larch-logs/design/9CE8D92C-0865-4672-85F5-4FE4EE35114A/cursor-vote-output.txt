@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already targets Step 3 via sorted submodule_paths; lint-fix prompt reorder is optional ordering beyond approved outline
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already mandates stable-before-dynamic reorder; extra chunk-order prose is specification polish not a necessity gap
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan-mandated test covers the stated body-before-dynamic contract; ledger ordering assertions are optional hardening
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly requires keeping the `# intentionally non-stable:` prefix when updating comments, so harness breakage is avoidable
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- plan already specifies sorted submodule_paths and the planned fake-runner test
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- plan already adds the four-file harness expansion and matching scope-doc update
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- dropping round_runner is scope tightening only; scanning it is harmless and matches the approved outline file list
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- maintenance-noise concern fails the issue-overhead bar while the design is already in flight
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real over-listing but low materiality and better handled in the active plan edit than a tracked issue
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent duplicate of the round_runner scope concern with no concrete trigger on this path
+OOS_4: NO CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false -- real voter-ledger ordering debt but out of issue scope and dominated by specialist-path fixes
+OOS_5: NO CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- real coder-fix ordering concern but explicitly secondary to specialist rendering for Step 5 acceptance
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate round_runner harness nit with no standalone filing payoff

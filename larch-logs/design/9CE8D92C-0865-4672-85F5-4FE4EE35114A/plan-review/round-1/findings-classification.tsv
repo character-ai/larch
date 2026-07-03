@@ -1,0 +1,14 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-dyn-Cache Prefix Reviewer	rejected	NO	false-positive	minor	adequate	false	Claude	NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_2	Cursor-Arch, Cursor-Requirements, Codex-dyn-Cache Prefix Reviewer	neutral	NO	partially-true	nit	adequate	false	Claude	YES	true	major	good	false	Codex	NO	partially-true	nit	adequate	false	Cursor	important	oos
+FINDING_3	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Cache Prefix Reviewer, Codex-dyn-Cache Prefix Reviewer	rejected	NO	partially-true	nit	good	false	Claude	NO	partially-true	nit	good	false	Codex	NO	true	nit	good	false	Cursor	important	in_scope
+FINDING_4	Cursor-Innovation	rejected	NO	partially-true	minor	adequate	true	Claude	NO	false-positive	uncertain	no-fix	false	Codex	NO	partially-true	nit	adequate	false	Cursor	blocking	in_scope
+FINDING_5	Codex-dyn-Cache Prefix Reviewer	neutral	NO	partially-true	nit	adequate	false	Claude	YES	true	major	good	false	Codex	NO	partially-true	nit	excellent	false	Cursor	important	oos
+FINDING_6	Codex-dyn-Cache Prefix Reviewer	neutral	NO	true	minor	good	false	Claude	YES	true	major	good	false	Codex	NO	true	nit	excellent	false	Cursor	important	oos
+FINDING_7	Cursor-Requirements	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	good	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos
+OOS_2	Cursor-Innovation	rejected	NO	partially-true	minor	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	oos
+OOS_3	Cursor-Pragmatic	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_4	Cursor-Pragmatic	neutral	YES	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true		good	true	Cursor	latent	oos
+OOS_5	Cursor-Requirements	rejected	NO	partially-true	minor	adequate	true	Claude	NO	true	minor	adequate	false	Codex	NO	true		adequate	true	Cursor	latent	oos
+OOS_6	Cursor-dyn-Cache Prefix Reviewer	rejected	NO	partially-true	nit	adequate	false	Claude	NO	true	nit	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	nit	oos
