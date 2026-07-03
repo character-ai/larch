@@ -73,6 +73,7 @@ from larch.review.plan_review_loop import (
     persist_retally_step3_env,
     plan_review_continuation,
     record_plan_review_round_timing,
+    _record_gate_b_apply_timing_from_round_window,
     _record_design_round_timing_from_start_file,
     run_plan_review_round,
     step3_loop_emit_envelope,
@@ -225,7 +226,10 @@ def _write_design_round_meta(*, tmpdir: Path, round_num: int) -> None:
             _ = _run_command(argv=[round_meta_override, "--round-dir", round_dir])
     else:
         _ = _run_command(argv=[sys.executable, str(_plugin_root() / "python" / "cli.py"), "progress", "write-design-round-meta", "--round-dir", round_dir])
-    _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num)
+    end_s = int(time.time())
+    if (tmpdir / f".gate-b-postapply-ready-{round_num}").is_file():
+        _record_gate_b_apply_timing_from_round_window(tmpdir=tmpdir, round_num=round_num, end_s=end_s)
+    _record_design_round_timing_from_start_file(tmpdir=tmpdir, round_num=round_num, end_s=end_s)
 
 
 def _gate_b_apply_required_status(*, tmpdir: Path, round_num: int, approve_requested: bool) -> str:

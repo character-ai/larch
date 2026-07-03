@@ -27,6 +27,22 @@ def test_timing_vendor_task_accepts_claude_and_basename(tmp_path: Path) -> None:
     assert "/tmp/secret" not in text
 
 
+def test_timing_vendor_task_accepts_gate_b_apply(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    timing.TimingLedger(ledger, skill="design").record_vendor_task(
+        vendor="claude",
+        task_kind="gate-b-apply",
+        start_s=20,
+        end_s=35,
+        output="gate-b-apply-round-1.out",
+    )
+    assert "unknown task-kind" not in capsys.readouterr().err
+    row = ledger.read_text(encoding="utf-8").strip().split("\t")
+    assert row[0:2] == ["v1", "vendor"]
+    assert row[3] == "design"
+    assert row[5:11] == ["claude", "gate-b-apply", "20", "35", "15", "gate-b-apply-round-1.out"]
+
+
 def test_timing_report_design_omits_workflow_path(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "timing-ledger.tsv"
     _ = ledger.write_text(

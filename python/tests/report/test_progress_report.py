@@ -2790,6 +2790,36 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     assert "No reviewer timing tasks overlapped this round." not in rendered
 
 
+def test_render_phase_detail_design_gantt_labels_gate_b_apply(tmp_path: Path) -> None:
+    root = tmp_path / "rounds"
+    _write_round_meta(root / "round-1")
+    timing = tmp_path / "timing-ledger.tsv"
+    _write_round_timing(timing, skill="design", round_num=1, start_s=100, end_s=240)
+    _write_vendor_timing(
+        timing,
+        "codex-plan-requirements-output.txt",
+        110,
+        180,
+        kind="codex-plan-requirements",
+        skill="design",
+    )
+    _write_vendor_timing(
+        timing,
+        "gate-b-apply-round-1.out",
+        180,
+        240,
+        vendor="claude",
+        kind="gate-b-apply",
+        skill="design",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="design", timing_ledger=timing)
+
+    assert "### Round 1 reviewer timing" in rendered
+    assert "gate-b/apply" in rendered
+    assert "window 0:00-2:20 (140s)" in rendered
+
+
 def test_render_phase_detail_splits_gantt_per_attempt(tmp_path: Path) -> None:
     # Issue #5504: a stall recovery reruns round 1 in the same session, leaving two round rows
     # for round 1. The Gantt must render one section per attempt, each with its own tight

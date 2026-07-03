@@ -60,6 +60,8 @@ from larch.review.plan_review_normalize import (
     step3_stage_postplan_failed,
 )
 
+TIMING_VENDOR_COLS = 13
+
 
 def step3_loop_persist_envelope(
     *,
@@ -546,7 +548,70 @@ def _append_canonical_round_timing(*, tmpdir: Path, round_num: int, start_s: int
     )
 
 
-def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int) -> None:
+def _gate_b_apply_start_s(*, ledger: Path, round_start_s: int, end_s: int, output_basename: str) -> int | None:
+    if not ledger.is_file():
+        return None
+    try:
+        lines = ledger.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return None
+    latest_end_s: int | None = None
+    duplicate = False
+    for line in lines:
+        cols = line.split("\t")
+        if len(cols) < TIMING_VENDOR_COLS or cols[0] != "v1" or cols[1] != "vendor" or cols[3] != "design":
+            continue
+        kind = cols[6]
+        if kind == "gate-b-apply" and Path(cols[10]).name == output_basename:
+            duplicate = True
+        if kind == "gate-b-apply":
+            continue
+        try:
+            row_start_s = int(cols[7])
+            row_end_s = int(cols[8])
+        except ValueError:
+            continue
+        if row_end_s <= round_start_s or row_start_s >= end_s:
+            continue
+        latest_end_s = row_end_s if latest_end_s is None else max(latest_end_s, row_end_s)
+    if duplicate or latest_end_s is None or latest_end_s >= end_s:
+        return None
+    return latest_end_s
+
+
+def _record_gate_b_apply_timing_from_round_window(*, tmpdir: Path, round_num: int, end_s: int) -> None:
+    """Record the Gate B apply/dedup/postplan span for a completed design round."""
+    start_file = tmpdir / "plan-review" / f"round-{round_num}" / "round-start-s"
+    try:
+        round_start_s = int(start_file.read_text(encoding="utf-8").strip())
+    except (OSError, ValueError):
+        return
+    if round_start_s <= 0 or end_s <= round_start_s:
+        return
+    ledger = tmpdir / "timing-ledger.tsv"
+    output = f"gate-b-apply-round-{round_num}.out"
+    gate_b_start_s = _gate_b_apply_start_s(
+        ledger=ledger,
+        round_start_s=round_start_s,
+        end_s=end_s,
+        output_basename=output,
+    )
+    if gate_b_start_s is None:
+        return
+    try:
+        TimingLedger(path=ledger, skill="design").record_vendor_task(
+            vendor="claude",
+            task_kind="gate-b-apply",
+            start_s=gate_b_start_s,
+            end_s=end_s,
+            output=output,
+            status="complete",
+        )
+    except (OSError, ValueError):
+        return
+
+
+def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int, end_s: int | None = None) -> None:
     """Record canonical per-round timing for a completed design plan-review round."""
     start_file = tmpdir / "plan-review" / f"round-{round_num}" / "round-start-s"
     try:
@@ -555,7 +620,8 @@ def _record_design_round_timing_from_start_file(*, tmpdir: Path, round_num: int)
         return
     if start_s <= 0:
         return
-    _append_canonical_round_timing(tmpdir=tmpdir, round_num=round_num, start_s=start_s, end_s=int(time.time()))
+    round_end_s = int(time.time()) if end_s is None else end_s
+    _append_canonical_round_timing(tmpdir=tmpdir, round_num=round_num, start_s=start_s, end_s=round_end_s)
 
 
 def record_plan_review_round_timing(argv: Sequence[str]) -> int:

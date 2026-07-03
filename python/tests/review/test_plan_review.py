@@ -2332,6 +2332,46 @@ def test_write_design_round_meta_records_round_timing_from_start_file(
         tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
     )
     assert window == (1000, 1200)
+    assert "gate-b-apply" not in (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
+
+
+def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
+    (tmp_path / ".gate-b-postapply-ready-1").touch()
+    _ = (tmp_path / "timing-ledger.tsv").write_text(
+        "v1\tvendor\t1050\tdesign\t-\tcodex\tcodex-plan-requirements\t1010\t1050\t40\tcodex.out\t0\tcomplete\n"
+        "v1\tvendor\t1125\tdesign\t-\tclaude\tclaude-plan-voter\t1060\t1125\t65\tclaude-vote.out\t0\tsignal\n",
+        encoding="utf-8",
+    )
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
+
+    plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
+    plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
+
+    rows = [line.split("\t") for line in (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8").splitlines()]
+    gate_b_rows = [row for row in rows if len(row) >= 13 and row[1] == "vendor" and row[6] == "gate-b-apply"]
+    assert len(gate_b_rows) == 1
+    assert gate_b_rows[0][3] == "design"
+    assert gate_b_rows[0][5] == "claude"
+    assert gate_b_rows[0][7] == "1125"
+    assert gate_b_rows[0][8] == "1200"
+    assert gate_b_rows[0][10] == "gate-b-apply-round-1.out"
+
+    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+        tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
+    )
+    assert window == (1000, 1200)
 
 
 def test_preview_gatec_header_and_invalid_threshold(tmp_path: Path) -> None:
