@@ -240,13 +240,13 @@ def test_pause_save_uses_real_log_publish_path(
             return subprocess.CompletedProcess(cmd, rc, stdout=out.getvalue(), stderr=err.getvalue())
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
-    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")  # type: ignore[attr-defined]
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))  # type: ignore[attr-defined]
     monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
-    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # type: ignore[attr-defined]  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
 
     rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])

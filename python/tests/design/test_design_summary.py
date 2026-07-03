@@ -567,7 +567,7 @@ def test_final_summary_request_skips_upsert_and_forces_post_phase(
 
     def fake_render(argv: list[str]) -> int:
         calls.append(argv)
-        (tmp_path / "final-summary.md").write_text("enriched\n", encoding="utf-8")
+        _ = (tmp_path / "final-summary.md").write_text("enriched\n", encoding="utf-8")
         return 0
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -613,11 +613,11 @@ def test_final_summary_request_unlinks_stale_file_on_failed_render(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     stale = tmp_path / "final-summary.md"
-    stale.write_text("stale\n", encoding="utf-8")
+    _ = stale.write_text("stale\n", encoding="utf-8")
 
     def fake_render(_argv: list[str]) -> int:
         assert not stale.exists()
-        stale.write_text("partial\n", encoding="utf-8")
+        _ = stale.write_text("partial\n", encoding="utf-8")
         return 1
 
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
@@ -650,10 +650,13 @@ def test_render_final_summary_accepts_paused_outcome(
     def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
         if args[:2] == ("render", "run-summary"):
             out_file = Path(args[args.index("--output-file") + 1])
-            out_file.write_text("## paused\n", encoding="utf-8")
+            _ = out_file.write_text("## paused\n", encoding="utf-8")
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
+    def fake_gate(**_kw: object) -> None:
+        return
+
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
-    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", lambda **_kw: None)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     assert design_summary.render_final_summary_main(["--outcome", "paused"]) == 0

@@ -1325,7 +1325,7 @@ def test_design_clarify_publish_failure_skips_summary_render(
     )
 
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
-    assert summary_calls == []
+    assert not summary_calls
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "PUBLISH_OK=false\n" in result
     assert "SUMMARY_OUTCOME=cancelled-clarify\n" in result
