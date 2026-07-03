@@ -1,0 +1,3 @@
+FILE_DESIGN_OOS_STATUS=annotate-complete
+OOS_ANN_RC=0
+STEP5B_STATUS=annotate-complete

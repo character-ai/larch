@@ -1,0 +1,31 @@
+### FINDING_1: Zero-findings short-circuit clears cumulative OOS artifacts
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The zero-findings short-circuit in `plan_review_round.py` still clears cumulative OOS output, so a round-2 `zero-findings-degraded-panel` continuation can erase round-1 accepted OOS content, and possibly `accepted-plan-findings-all.md`, before Step 5b runs. Fixing only `plan_review_tally.py` does not address the live short-circuit path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: python/larch/review/plan_review_round.py: change _reset_zero_findings_tally_artifacts to clear only per-round artifacts (accepted-plan-findings.md, rejected-findings.md, oos.md, voting-tally.md). Do not blank oos-accepted-design.md or accepted-plan-findings-all.md. Extend the new regression test with an execute_round (or equivalent) zero-findings scenario that seeds cumulative files and asserts they survive.
+  - From Cursor-Innovation: Add ### UPDATED: python/larch/review/plan_review_round.py: remove oos-accepted-design.md and accepted-plan-findings-all.md from _reset_zero_findings_tally_artifacts blank list; keep clearing only per-round artifacts (accepted-plan-findings.md, rejected-findings.md, oos.md, voting-tally.md).
+  - From Cursor-Pragmatic: Add python/larch/review/plan_review_round.py to firm scope. In _reset_zero_findings_tally_artifacts, clear only per-round artifacts (accepted-plan-findings.md, rejected-findings.md, oos.md, voting-tally.md). Do not blank oos-accepted-design.md or accepted-plan-findings-all.md. Extend test_execute_round_zero_findings_clears_stale_tally_artifacts so it still asserts per-round clears but preserves seeded cumulative OOS/all content.
+  - From Cursor-Requirements: Remove oos-accepted-design.md from the artifacts cleared in _reset_zero_findings_tally_artifacts; keep clearing only accepted-plan-findings.md, rejected-findings.md, and oos.md (and refresh voting-tally.md).
+  - From Codex-Innovation: Add python/larch/review/plan_review_round.py to the firm changes. Stop blanking oos-accepted-design.md in _reset_zero_findings_tally_artifacts while keeping round-local files reset, and cover that zero-findings short-circuit in the regression test.
+  - From Codex-Pragmatic: Add python/larch/review/plan_review_round.py to the firm changes. Keep accepted-plan-findings.md, rejected-findings.md, and oos.md current-round-only there, but stop clearing oos-accepted-design.md and do not clear accepted-plan-findings-all.md. Cover the round-level zero-finding path, not only direct tally.
+  - From Codex-Requirements: Add `python/larch/review/plan_review_round.py` to the firm changes. Keep `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, and `voting-tally.md` round-local, but do not clear cumulative accepted files there. Update the zero-findings round test to seed and assert preserved `oos-accepted-design.md` and `accepted-plan-findings-all.md`.
+
+### FINDING_2: Zero-findings regression coverage misses the live short-circuit path
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The current and proposed regression coverage focuses on the wrong path or the wrong postcondition: a tally-only test can pass while the real `execute_round` zero-findings short-circuit still regresses, and the existing round-level test currently encodes the opposite empty-file contract for cumulative OOS.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: python/tests/review/test_plan_review_round.py: revise test_execute_round_zero_findings_clears_stale_tally_artifacts so per-round files are still cleared but oos-accepted-design.md (and accepted-plan-findings-all.md when seeded) remain. Optionally seed accepted-plan-findings-all.md in the same test.
+  - From Cursor-Innovation: Extend coverage in test_plan_review_round.py (or the new test): seed cumulative files, run execute_round through zero-findings-degraded-panel, assert oos-accepted-design.md and accepted-plan-findings-all.md retain round-1 content while per-round files are cleared.
+  - From Cursor-Innovation: Update that test: still assert per-round accepted-plan-findings.md / rejected-findings.md / oos.md are cleared; assert oos-accepted-design.md (and accepted-plan-findings-all.md when seeded) are preserved across zero-findings rounds.
+  - From Cursor-Pragmatic: Add a round-level test (test_plan_review_round.py or test_step3_loop_zero_findings_*) that seeds cumulative artifacts after round 1, runs round 2 through the zero-findings-degraded-panel path, and asserts oos-accepted-design.md and accepted-plan-findings-all.md still contain round 1 content while accepted-plan-findings.md is cleared per #5032.
+  - From Cursor-Requirements: Add ### UPDATED: python/tests/review/test_plan_review_round.py (or fold into the new tally test plan): preserve seeded cumulative OOS (and accepted-plan-findings-all.md when present) while still asserting per-round accepted-plan-findings.md / rejected-findings.md / oos.md are cleared.
+
+### FINDING_3: Preserve Gate-B skip markers across cumulative accepted files
+- **Reviewer(s)**: Codex-Arch, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: With `--per-round-approval`, cumulative `accepted-plan-findings-all.md` can outlive the per-round skip markers in `rejected-findings.md`, so a skipped finding may be reported as accepted after a later zero-finding continuation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add a minimum skip-preservation step: remove exact skipped blocks from `accepted-plan-findings-all.md` during one-by-one Gate B, or persist cumulative skip data and make `compose_findings` filter against it. Add a focused multi-round skip regression.
+  - From Codex-Pragmatic: Either append to accepted-plan-findings-all.md only after Gate B settles, using the post-approval accepted-plan-findings.md apply set, or persist one-by-one skip markers across rounds so _filter_gate_b can still exclude skipped blocks from the cumulative accepted file.
