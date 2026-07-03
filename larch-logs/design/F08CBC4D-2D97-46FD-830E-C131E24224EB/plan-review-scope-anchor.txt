@@ -1,0 +1,94 @@
+## Summary
+
+During a live `/implement --merge` run, `scripts/hook-bg-poll-guard.sh` denied a plain `Bash cat` read of a background task's own output file immediately after a genuine, non-premature `<task-notification>` (status=completed, exit code 0) for that same task, with the hook's generic "An immediate-background wait is active" deny message. Retrying the byte-identical command shortly after succeeded immediately with no other change, indicating the guard's live-marker/sentinel-visibility check raced against (and, at least once, lost to) the underlying step's actual completion — contradicting the "race-free" design comment written directly above the relevant check in the hook itself. Because the skill treats this step as notification-only with no documented recovery path for "denied immediately after this step's own genuine notification," the orchestrator stalled silently for roughly 1 hour 48 minutes until the user intervened.
+
+## Original report
+
+During /implement --merge 6063 (RUN_ID DA3667CC-FF8C-4EE6-943C-19B98F4F173C), Step 5's code-review loop (step-5-review.sh, launched via Bash run_in_background) sent a genuine completion <task-notification> (status=completed, exit code 0). Immediately afterward, a single Bash attempt to `cat` the task's own output file (the standard, previously-successful pattern used for Step 3/4's background task moments earlier in the same run) was blocked by an orchestrator guard hook with the exact message: "An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts." Since the background task had already completed and already delivered its one notification, no further notification was ever coming, so the agent (following that instruction literally) stalled idle for approximately 1 hour 48 minutes (output file mtime 19:22:50 vs the user's next message at 21:11:10 PDT) until the user asked what was going on. Retrying the exact same `cat` command at that point succeeded immediately and returned the correct STEP5_REVIEW_STATUS=complete output, with no special recovery steps needed — strongly suggesting the guard's "active bg-wait" marker for the implement-step5-review site did not clear promptly when the underlying task genuinely finished (a race between task-notification delivery and marker/sentinel clearing in hook-bg-poll-guard.sh), rather than the notification being premature.
+
+## Reproduction scenario
+
+1. Run `/implement --merge <issue-N>` on a repo with `larch` installed as a plugin (so `hooks/hooks.json` registers `scripts/hook-bg-poll-guard.sh` as a PreToolUse hook).
+2. Let the run reach Step 5 and launch `skills/implement/scripts/step-5-review.sh` via Bash with `run_in_background: true`.
+3. Wait for the `<task-notification>` reporting the review loop's completion (status=completed, exit code 0).
+4. Immediately issue a plain `Bash` `cat` of that task's own captured-output file path (the same path given in the notification's `output-file` field).
+5. Observed (this run): the `cat` was denied by a PreToolUse hook with `hookSpecificOutput.permissionDecision=deny` and reason text "An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."
+6. Retried the identical `cat` command (no other tool calls, no file changes) after a long idle gap: it succeeded immediately and returned the expected `STEP5_REVIEW_STATUS=complete ...` payload.
+
+This was observed once in a live session; it has not been independently re-reproduced under controlled/instrumented conditions.
+
+## Expected behavior
+
+After a genuine (non-premature, exit-code-bearing) `<task-notification>` reports a background task complete, a subsequent read of that same task's own output file should either succeed, or — if a hook denies it due to some transient/lagging internal state — the orchestrator-facing guidance should provide a documented, bounded, immediate retry path. It should never be the case that the only available response is "wait for another `<task-notification>`" when the task has already delivered its one and only notification and no further notification will ever arrive.
+
+## Observed behavior
+
+The read was denied with the hook's generic deny message instructing the orchestrator to wait for another `<task-notification>`. Per the skill's own guidance (`/implement` NEVER #8 and `skills/shared/orchestrator-never.md`, which treat Step 5 as "notification-only" and forbid probing sentinels or polling), the orchestrator had no sanctioned action other than to end the turn and wait. Since the task had already completed and already delivered its one notification, no further notification was ever coming, so the run stalled silently for roughly 1h48m until the user asked what was happening. A retry of the exact same command at that point succeeded immediately with no special handling.
+
+## Root cause analysis
+
+Based on static reading of `scripts/hook-bg-poll-guard.sh` (root cause not confirmed by instrumentation — stated with explicit uncertainty):
+
+- `marker_is_live()` treats a step's background wait as still "live" unless `marker_step_completed()` finds that step's terminal sentinel already on disk. For `implement-step5-review` the sentinel is `$IMPLEMENT_TMPDIR/.completed/step-5-terminal`.
+- The comment directly above `marker_step_completed()` states this check is "Race-free: each step writes its sentinel before the task process exits on terminal paths, and exits before the notification fires" — i.e., the hook's own author already assumed a hard happens-before ordering (sentinel write → process exit → notification delivery) with no defensive fallback for that ordering not holding.
+- The observed sequence (denied immediately post-notification; succeeded on retry moments later with no other change) is a direct counter-example to that assumed ordering: from the hook's perspective the sentinel was apparently not yet visible at the moment of the first read, even though the notification had already reported the step's exit code 0.
+- Separately, and possibly compounding the above: `bash_has_probe_target()` has one case arm, `*tasks/*.output*`, that is unconditional on the specific live marker's `dir` — unlike the neighboring `$IMPLEMENT_TMPDIR`/`$DESIGN_TMPDIR` reference arm in the same function, which requires `bash_probe_target_dir_plausible` clone-tag correlation before matching. This means that whenever *any* marker anywhere under an allowed marker parent is still considered live (for any step, not necessarily `implement-step5-review` specifically), a plain read of *any* `tasks/*.output` path is denied by the generic probe-verb-plus-target loop (`bash_has_probe_verb` + `bash_has_probe_target` → `deny_if_needed`), regardless of whether that output file actually belongs to the live step. This would widen the blast radius of any single lagging/stale marker to block unrelated task-output reads too.
+- These two hypotheses are not mutually exclusive and neither has been confirmed as *the* cause; both are plausible from the code alone.
+
+## Evidence
+
+- Step 5 (`step-5-review.sh`) was launched via Bash `run_in_background`; the resulting `<task-notification>` reported `status=completed`, "completed (exit code 0)".
+- Immediately after, a `cat` of that task's own output-file path was denied by a PreToolUse hook with reason text matching the static string emitted by `json_deny()` in `scripts/hook-bg-poll-guard.sh`: "An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."
+- The output file's mtime (checked shortly after) was 19:22:50 local time; the user's next message occurred at 21:11:10 the same day — roughly 1h48m with no tool calls or progress in between, consistent with the orchestrator ending its turn to wait for a notification that had, in fact, already fired.
+- Retrying the byte-identical `cat` command at that later point returned the correct `STEP5_REVIEW_STATUS=complete ...` payload immediately, with no special recovery steps, no additional wait, and no change to any file or state on disk.
+- `marker_step_completed()` in `scripts/hook-bg-poll-guard.sh` explicitly names `implement-step5-review` (mapped to sentinel `.completed/step-5-terminal`) in its case statement and describes the check as "race-free" — this is exactly the step the incident occurred on.
+- Comparably, the immediately-preceding Step 3/4 background task's output was read successfully right after its own notification, with no denial — consistent with the failure being an intermittent race rather than a deterministic/always-on block.
+
+## Affected files
+
+- `scripts/hook-bg-poll-guard.sh` — `marker_is_live()`, `marker_step_completed()`, `bash_has_probe_target()`: the guard logic implicated above.
+- `skills/implement/SKILL.md` — NEVER #8 and the Step 5 wait-contract prose, which tell the orchestrator to treat Step 5 as notification-only but do not document any recovery path for a denied read immediately after that same step's own genuine notification.
+- `skills/shared/orchestrator-never.md` — the cross-skill "notification-only" guidance for `/implement` Steps 3 and 5, which currently only addresses *premature* notifications, not a denial following a *genuine* one.
+
+## Suggested fix(es)
+
+- Inside the hook, when a marker's step has a sentinel check that just missed (`marker_step_completed()` returns false), consider a bounded re-check (e.g., re-stat once more, or after a very short delay) before concluding the marker is live, rather than deciding on a single stat — if filesystem write-visibility lag is the actual cause.
+- Scope `bash_has_probe_target()`'s `*tasks/*.output*` case arm to the specific live marker's `dir` using the same `bash_probe_target_dir_plausible` correlation already applied to the `$IMPLEMENT_TMPDIR`/`$DESIGN_TMPDIR` reference arm just above it, so a lagging or stale marker for one step cannot block reads of an unrelated task's output.
+- Document an explicit, bounded, immediate-retry recovery path in `skills/shared/orchestrator-never.md` and/or `skills/implement/SKILL.md` NEVER #8 for "denied while reading a task's own output immediately after that same task's genuine (non-premature, exit-code-bearing) `<task-notification>`," distinct from the existing premature-notification handling, so the orchestrator does not stall indefinitely waiting for a notification that will never come.
+- No single fix is proposed as certain to be correct without reproducing the race under instrumentation; the above are candidate directions for `/design` to evaluate.
+
+## Open questions
+
+- Is the `.completed/step-5-terminal` sentinel write in `step-5-review.sh` (or whichever wrapper owns it) synchronized (e.g., an explicit flush/fsync, or a blocking rename-into-place) before the process exits, or can filesystem write-visibility itself lag behind process-exit detection by the harness that delivers `<task-notification>`?
+- At hook-denial time, is there a way to record or later inspect which specific live marker (if any, beyond `implement-step5-review`) was responsible for a given deny, so the "genuine sentinel-visibility race" hypothesis can be distinguished from the "stale/unrelated marker plus unconditional tasks/output match" hypothesis?
+- Should orchestrator-facing guidance add an explicit one-shot immediate retry (not a sleep loop) for exactly this "denied right after this step's own genuine notification" case, mirroring the existing Step 8 `.step-8-ship-handoff.rc` foreground-probe carve-out that Step 8 already has but Steps 3/5 do not?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix the confirmed cross-clone blast-radius bug in `bash_has_probe_target()` (`scripts/hook-bg-poll-guard.sh`): its Bash-tool-path `tasks/*.output*` match is unconditional, unlike the equivalent Read-tool-path `path_is_task_output` check, which already requires `bash_probe_target_dir_plausible` clone-correlation (#5925 follow-up). This causes any live bg-wait marker anywhere on the machine to block a plain read of any task's output file.
+- Give `/implement` Steps 3 and 5 (`implement-step3-checks`, `implement-step5-review`) a sanctioned, bounded, one-shot foreground-probe recovery path, mirroring Step 8's existing `.step-8-ship-handoff.rc` carve-out, so a denied read right after that step's own genuine completion notification never causes an indefinite stall.
+- Correct the stale "Race-free" comment above `marker_step_completed()` so it accurately reflects current understanding.
+
+### Non-goals
+- No speculative defensive re-check/retry in `marker_step_completed()` for the unconfirmed sentinel-visibility race (Step 1c default; the confirmed cross-clone bug already explains the reported symptom).
+- No change to `implement-step5-resume`, `implement-step5-self-review`, `implement-step6-checks`, or `implement-step7a` notification-only behavior; not requested, and existing tests already pin it.
+- No instrumented reproduction of the timing race.
+
+### Approach sketch
+- Scope `bash_has_probe_target()`'s `tasks/*.output*` case arm behind `bash_probe_target_dir_plausible`, mirroring the already-fixed Read-tool path.
+- Add hook matcher/clamp logic for `implement-step3-checks` (`.completed/step-3-terminal`) and `implement-step5-review` (`.completed/step-5-terminal`) foreground probes, mirroring `bash_is_step8_handoff_foreground_probe` / `probe_target_live_dir_step8` / `step8_handoff_probe_clamp`.
+- Update `skills/implement/SKILL.md` NEVER #8 and `skills/shared/orchestrator-never.md` to document the new bounded recovery path for Steps 3/5 alongside the existing Step 8 carve-out.
+- Add regression tests mirroring the existing cross-clone Read-tool tests and the Step 8 carve-out tests.
+
+### Surfaces in scope
+- `scripts/hook-bg-poll-guard.sh`
+- `scripts/test-hook-bg-poll-guard.sh`
+- `scripts/hook-bg-poll-guard.md`
+- `skills/implement/SKILL.md`
+- `skills/shared/orchestrator-never.md`
+
+### Open questions
+- None.

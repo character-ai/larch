@@ -1,0 +1,9 @@
+The ballot at `<TMPDIR>/ballot.txt` is currently inaccessible. Every attempt to read it — including via Read tool and an Explore subagent — returns the hook's deny message:
+
+> An immediate-background wait is active. End the turn and wait for `<task-notification>`; do not poll progress artifacts.
+
+The hook (`scripts/hook-bg-poll-guard.sh`) has an active `.bg-wait-active` marker whose directory is `claude-design-larch3-l754t__j`, and the ballot lives directly under that same directory — so `path_under_dir` in the Read-tool branch matches unconditionally, blocking every read attempt.
+
+This is the exact bug the plan is meant to fix (a read of a legitimate, non-polling result file being denied because any live marker in the same session dir blocks all reads from that dir).
+
+**What I need to proceed:** either the background task in that session completes and cleans up its marker, or the ballot is placed in a location outside the live marker directory (or the guard is temporarily disabled via `LARCH_BG_POLL_GUARD_DISABLE=1`). Once the Read unblocks I can vote immediately.

@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- AGENTS/test pin updates are a follow-up, not necessary to ship the scoped fix.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Step-local recovery prose is a placement preference, not a necessary part of the fix.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The generic deny copy can stay if the new bounded recovery path is allowed and documented.
+FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- The plan already calls for implement-specific probe and clamp logic, so this is not a distinct gap.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Self-review is outside the anchored scope and not clearly material enough to file here.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The deny copy is a follow-up concern, not a required part of the scoped fix.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- The scope-reduction concern is speculative, and the plan's parity machinery is part of the stated fix.
