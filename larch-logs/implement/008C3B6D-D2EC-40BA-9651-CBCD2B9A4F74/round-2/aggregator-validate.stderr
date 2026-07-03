@@ -1,0 +1,3 @@
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_3 not traceable to scoped input (first 80 chars: '`Remove the trailing compatibility section, or update it to the same pointer-res')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_7 not traceable to scoped input (first 80 chars: '`Rebase/default the assessment-file path inside `step-architectural-guidelines-w')
+warning: fix text for slot 'dyn-dyn-launcher' in FINDING_8 not traceable to scoped input (first 80 chars: '`Fail closed before \\`rm\\`/\\`test\\` when resolved \\`IMPLEMENT_TMPDIR\\` is empty ')
