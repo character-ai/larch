@@ -4992,7 +4992,7 @@ def test_pin_and_load_guidelines_note_empty_fingerprint_fails_after_live_materia
     materialize_mock = Mock(return_value=live_diff)
     monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", materialize_mock)
 
-    note = ship._pin_and_load_guidelines_note(
+    note, warning_logged = ship._pin_and_load_guidelines_note(
         implement_tmpdir=str(tmp_path),
         head_sha="head",
         base_ref="origin/main",
@@ -5001,6 +5001,7 @@ def test_pin_and_load_guidelines_note_empty_fingerprint_fails_after_live_materia
 
     materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
     assert note == ship.architectural_guidelines.dropped_note_message()
+    assert warning_logged is True
     assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
@@ -5025,13 +5026,14 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_write_failure(
 
     monkeypatch.setattr(ship.architectural_guidelines, "write_implement_note", fail_write_note)
 
-    note = ship._pin_and_load_guidelines_note(
+    note, warning_logged = ship._pin_and_load_guidelines_note(
         implement_tmpdir=str(tmp_path),
         head_sha="head",
         base_ref="origin/main",
     )
 
     assert note == ship.architectural_guidelines.dropped_note_message()
+    assert warning_logged is True
     assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
@@ -5072,7 +5074,7 @@ def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_pa
         diff_text=initial_diff,
     )
 
-    note = ship._pin_and_load_guidelines_note(
+    note, warning_logged = ship._pin_and_load_guidelines_note(
         implement_tmpdir=str(tmp_path),
         head_sha=head_sha,
         base_ref="origin/main",
@@ -5080,6 +5082,7 @@ def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_pa
     )
 
     assert note == "moving note"
+    assert warning_logged is False
     assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8")
     git("update-ref", "refs/remotes/origin/main", head_sha)
     ship.architectural_guidelines.write_staged_assessment(
@@ -5091,7 +5094,7 @@ def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_pa
         diff_text=initial_diff,
     )
 
-    refreshed_note = ship._pin_and_load_guidelines_note(
+    refreshed_note, refreshed_warning_logged = ship._pin_and_load_guidelines_note(
         implement_tmpdir=str(tmp_path),
         head_sha=head_sha,
         base_ref="origin/main",
@@ -5099,6 +5102,7 @@ def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_pa
     )
 
     assert refreshed_note == "moving note"
+    assert refreshed_warning_logged is False
     assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == ""
     durable_metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
     assert durable_metadata["DIFF_FINGERPRINT"] == ship.architectural_guidelines.diff_fingerprint("")
