@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- RECOVERY_BRANCH is ignored, but the current flow already surfaces publish failure via PUBLISH_OK=false; requiring it to hard-fail is extra policy.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- a top-level import of a helper from clarify into terminal/step5c would cycle, but that placement choice is not necessary for the feature.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the concrete dry-run path in log-publish already bypasses the post-publish renderer; this side-effect claim is speculative.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- heading syntax is a plan-formatting nit, not a required feature correction.
+FINDING_8: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate log-publish risk is real, but the anchored issue already defers this scope.
