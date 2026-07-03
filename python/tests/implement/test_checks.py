@@ -3416,8 +3416,9 @@ def test_direct_targets_are_ci_first_no_local_make_fanout(tmp_path: Path) -> Non
 
 
 def test_local_relevant_checks_ci_superset_guard() -> None:
-    precommit = Path(".pre-commit-config.yaml").read_text(encoding="utf-8")
-    workflow = Path(".github/workflows/ci.yaml").read_text(encoding="utf-8")
+    repo_root = Path(__file__).resolve().parents[3]
+    precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
 
     assert "id: ruff" in precommit
     assert "ruff check --fix" in precommit
