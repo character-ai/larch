@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:38:27
-- **Cost**: 💰 TOTAL ~$9.54 — Claude $0.72, Codex-5.5 $2.48, Codex-mini $1.46, Cursor $4.58, Claude (subprocess) $0.30  |  Tokens: 20964k
+- **Cost**: 💰 TOTAL ~$12.35 — Claude $3.53, Codex-5.5 $2.48, Codex-mini $1.46, Cursor $4.58, Claude (subprocess) $0.30  |  Tokens: 25311k
 - **Issue**: #5984 — https://github.com/character-ai/larch/issues/5984
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -62,3 +62,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Stale shard nodeids after the test renames. Concern: The shard map still lists old `test_design_parse_argv_*` nodeids after the rename to `test_design_parse_flags_*`, so a subset of tests remains misassigned in shard bookkeeping. This is shard-hygiene debt only; round-robin fallback still runs the orphaned test…
 - **Round 1 OOS_2** (nit): Parser edge-case coverage is still implicit. Concern: The documented parser edge cases (`--difficulty` missing/invalid, no args, and `--` separator) do not have dedicated pytest coverage, so future edits could change those behaviors without a focused regression signal.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
