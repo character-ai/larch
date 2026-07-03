@@ -1,0 +1,43 @@
+# bg-poll-guard: hardening and test-coverage follow-ups from #6108/#6135
+
+Four follow-ups from issue #6108 / PR #6135 (bg-poll-guard cross-clone marker filtering). All four touch `scripts/hook-bg-poll-guard.sh` and/or its test file.
+
+## 1. Add same-clone bare-path direct-probe test (from #6137)
+
+The #6108 plan called for an explicit test: "Same-clone Bash direct dir probe denies." `scripts/test-hook-bg-poll-guard.sh` covers same-clone denial for Monitor, TaskOutput, `Read` under the live marker dir, `tasks/*.output` Bash and Read, and subdirectory-cwd probes. No case exercises the bare `*"$dir"*` match in `bash_has_probe_target` directly: a Bash command whose only content is the live marker directory path, with no wrapping verb.
+
+Add a same-clone test that sends a bare `$dir`-only Bash command and asserts deny. Without it, a regression in the raw `*"$dir"*` branch, or in the result-path (`path_is_known_result`) coverage in `scripts/hook-bg-poll-guard.sh`, can land without failing CI.
+
+**Files**: `scripts/test-hook-bg-poll-guard.sh`, `scripts/hook-bg-poll-guard.sh`.
+
+## 2. Make assert_deny verify the marker's real STEP value (from #6140)
+
+`assert_deny()` in `scripts/test-hook-bg-poll-guard.sh` asserts a deny reason contains `.bg-wait-active`, `STEP=...`, and `hook_version=...`. The `STEP=` check only confirms the token is present. It never compares the emitted value against the STEP the test wrote into the live marker file.
+
+A stale constant, or a wrong value substituted into `deny_reason_with_marker()` in `scripts/hook-bg-poll-guard.sh`, would still pass every current assertion.
+
+Strengthen `assert_deny` to accept an expected step value and compare it against the value the deny JSON actually reports.
+
+**Files**: `scripts/test-hook-bg-poll-guard.sh`.
+
+## 3. Track hardening idea: stamp clone identity at marker-creation time (from #6138)
+
+`scripts/hook-bg-poll-guard.sh` filters foreign-clone `.bg-wait-active` markers using `.larch-keepalive`'s `CLONE_PATH`. When `cwd` is empty, or `.larch-keepalive` is missing, unreadable, or unparsable, the hook keeps the marker as a fail-safe. This is documented, intentional behavior from the #6108 plan's Edge Cases, not a bug: it favors false denials over false allows.
+
+The residual risk is real: a cross-clone false positive, the original #6108 incident, can still recur whenever clone identity is unknown, until a stronger session-local identity signal exists.
+
+Track this as a future hardening idea: have the hook wrapper stamp a durable, unambiguous clone identity at marker-creation time, instead of inferring it later from `cwd` or `.larch-keepalive`.
+
+**Files**: `scripts/hook-bg-poll-guard.sh`.
+
+## 4. Guard against clone-ownership helper drift across two hooks (from #6139)
+
+`clone_paths_same()` and `marker_foreign_clone()` exist twice: once in `scripts/hook-no-progress-guard.sh` (added by #5927), once in `scripts/hook-bg-poll-guard.sh` (added by #6108). The #6108 plan chose duplication deliberately: AGENTS.md keeps contract-bearing hooks self-contained, and larch avoids a shared Bash library for hooks.
+
+The tradeoff is real. A future fix to one copy's clone-matching logic, for example a new edge case in subdirectory-path comparison, can land in one hook and not the other. That reintroduces inconsistent cross-clone behavior between the two guards.
+
+Consider one of:
+- A short comment in each function pointing at its sibling, so an editor touching one remembers to check the other.
+- A structural test that asserts the two implementations stay byte-identical, or behaviorally equivalent on a shared fixture set, so drift fails CI instead of surfacing as a future incident.
+
+**Files**: `scripts/hook-bg-poll-guard.sh`, `scripts/hook-no-progress-guard.sh`.

@@ -1,0 +1,175 @@
+## Plan
+
+Implement the approved hardening as a hook and marker-contract change. Keep the hooks self-contained. Preserve fail-open behavior for malformed hook input and fail-closed behavior when clone identity is unknown.
+
+## Approach
+
+1. Close the bare-dir-only Bash gap in `hook-bg-poll-guard.sh`.
+   - Add a narrow bare-dir classifier after marker diagnosis and foreground-probe carve-outs, before the generic verb-gated deny loop.
+   - Match commands whose effective shell text is only the retained live marker dir, including quoted and `/private` path aliases.
+   - Deny only after known-foreign markers have already been filtered.
+
+2. Stamp clone identity into `.bg-wait-active`.
+   - Add `CLONE_PATH` to every marker writer, sourced by copying the value already present in the sibling tmpdir's `.larch-keepalive` at write time — never independently recompute `cwd`. Bash writers read it with the same `marker_value`-style keepalive lookup the hooks already use; Python writers reuse an existing `.larch-keepalive` reader (for example `_read_keepalive_clone_path` in `python/larch/agents/_run_external.py`, or an equivalent helper). This guarantees the embedded value and `.larch-keepalive`'s value can never disagree by construction, so `marker_foreign_clone()` cannot misclassify a same-clone marker as foreign due to two independently-computed cwd values.
+   - Use best-effort writes. A stamp failure must not abort the wrapper.
+   - In both hooks, make `marker_foreign_clone()` prefer `CLONE_PATH` from `.bg-wait-active`.
+   - In `hook-bg-poll-guard.sh`, also update `marker_clone_identity_canon()` (the resolver `bash_probe_target_dir_plausible()` uses for Monitor/TaskOutput and generic tmpdir-variable gating) to the same marker-local-first, keepalive-fallback preference, so both clone-identity call paths agree once the embedded stamp exists.
+   - Fall back to `.larch-keepalive` when the embedded field is absent, empty, unreadable, or uncanonical.
+   - Keep unknown identity fail-closed: do not skip the marker unless identity is known and foreign.
+
+3. Keep duplicated clone helpers in sync.
+   - Make `clone_paths_same()` and `marker_foreign_clone()` byte-identical in both hooks.
+   - Add a structural test that extracts those two function bodies from both hooks and fails on drift.
+   - Do not extract a shared Bash library.
+
+4. Strengthen deny assertions.
+   - Change `assert_deny` to take `expected_step`.
+   - Parse the actual `STEP=...` value from the deny reason.
+   - Update every existing `assert_deny` call to pass the step written by the nearest `write_marker` or `write_marker_at` setup.
+   - Add the new same-clone bare-dir-only Bash regression test.
+
+5. Update docs and targeted tests.
+   - Update hook docs for embedded marker identity, fallback behavior, and bare-dir denial.
+   - Update script docs for marker writers that now stamp clone identity.
+   - Add tests for embedded identity preference, keepalive fallback, missing identity fail-safe behavior, and helper drift.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-bg-poll-guard.sh
+Add bare-dir-only Bash denial. Update `marker_foreign_clone()` and `marker_clone_identity_canon()` to prefer marker-local `CLONE_PATH`, then fall back to `.larch-keepalive`. Keep `clone_paths_same()` and `marker_foreign_clone()` byte-identical with `hook-no-progress-guard.sh`.
+
+### UPDATED: scripts/hook-bg-poll-guard.md
+Document marker-local `CLONE_PATH`, fallback to `.larch-keepalive`, unknown-identity fail-closed behavior, the new bare-dir-only Bash denial, and that `bash_probe_target_dir_plausible()`'s resolver now agrees with `marker_foreign_clone()`.
+
+### UPDATED: scripts/hook-no-progress-guard.sh
+Update `marker_foreign_clone()` with the same marker-local `CLONE_PATH` preference and fallback. Keep the duplicated clone helpers byte-identical with `hook-bg-poll-guard.sh`.
+
+### UPDATED: scripts/hook-no-progress-guard.md
+Document marker-local clone identity and the preserved fail-safe behavior when the embedded stamp and keepalive identity are unavailable.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+Thread `expected_step` through all `assert_deny` calls. Add the same-clone bare `$dir`-only Bash deny regression. Add coverage for marker-local `CLONE_PATH` preference, keepalive fallback, and missing identity fail-safe behavior.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.md
+Update invariants for exact STEP verification, bare-dir denial, and marker-local clone identity tests.
+
+### UPDATED: scripts/test-hook-no-progress-guard.sh
+Add marker-local clone identity tests for Stop and UserPromptSubmit paths. Cover preference over conflicting keepalive, fallback when absent, and unknown identity still blocking/counting.
+
+### UPDATED: scripts/test-hook-no-progress-guard.md
+Update invariants for marker-local clone identity and fallback behavior.
+
+### NEW: scripts/test-hook-clone-ownership-parity.sh
+Add a Bash 3.2-compatible structural test that extracts `clone_paths_same()` and `marker_foreign_clone()` from both hooks and compares them byte-for-byte.
+
+### NEW: scripts/test-hook-clone-ownership-parity.md
+Document the structural drift test, its scope, and the deliberate no-shared-library choice.
+
+### UPDATED: Makefile
+Add a `test-hook-clone-ownership-parity` target and wire it into the same shard area as hook guard tests.
+
+### UPDATED: skills/design/scripts/design-step3-review.sh
+Add `CLONE_PATH` to the marker written by `design_bg_wait_marker_start`.
+
+### UPDATED: skills/design/scripts/design-step3-review.md
+Document that the wrapper stamps clone identity into `.bg-wait-active`.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.sh
+Add `CLONE_PATH` to the Step 4 tail marker.
+
+### UPDATED: skills/design/scripts/design-step3b-tail.md
+Document the marker-local clone identity stamp.
+
+### UPDATED: python/larch/design/design_core.py
+Add `CLONE_PATH` to `_bg_wait_marker_context()` so design Step 5c and final-summary markers carry clone identity.
+
+### UPDATED: skills/design/scripts/design-step5c.md
+Document the clone identity field emitted by the Python marker context.
+
+### UPDATED: skills/design/SKILL.md
+Update the final-summary marker note to include marker-local clone identity.
+
+### UPDATED: skills/implement/scripts/step-5-review.sh
+Add `CLONE_PATH` to the Step 5 review marker.
+
+### UPDATED: skills/implement/scripts/step-5-review.md
+Document the clone identity field in the Step 5 review marker.
+
+### UPDATED: skills/implement/scripts/step-6-entry.sh
+Add `CLONE_PATH` to the Step 6 checks marker.
+
+### UPDATED: skills/implement/scripts/step-6-entry.md
+Document the clone identity field in the Step 6 marker.
+
+### UPDATED: skills/implement/scripts/step-8-ship.sh
+Add `CLONE_PATH` to the Step 8 ship marker.
+
+### UPDATED: skills/implement/scripts/step-8-ship.md
+Document the clone identity field in the Step 8 marker.
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+Add `CLONE_PATH` to the Python bg-wait marker writer for checks/commit-route waits (covers `implement-step3-checks`, `implement-step5-self-review`, and `implement-step5-resume` — this is the live Step 3 marker writer; `skills/implement/scripts/run-step-checks.sh` is not invoked from `skills/implement/SKILL.md` and its own `--site step3` marker block is dead code, so it is intentionally left untouched).
+
+### UPDATED: python/larch/implement/step_7a.py
+Add `CLONE_PATH` to the Step 7a bg-wait marker writer.
+
+### UPDATED: skills/implement/scripts/step-7a.md
+Document the clone identity field in the Step 7a marker.
+
+### MAY_UPDATE: skills/implement/scripts/test-step-8-ship.sh
+Update static or dynamic marker assertions if they need to pin the new `CLONE_PATH` line.
+
+### MAY_UPDATE: python/tests/design/test_design_lifecycle.py
+Add or adjust marker-content assertions if existing design marker tests cover the marker payload.
+
+### MAY_UPDATE: python/tests/implement/test_implement_dispatch.py
+Add or adjust marker-content assertions for `dispatch_commit_route` if existing tests cover marker payloads.
+
+### MAY_UPDATE: python/tests/implement/test_step_7a.py
+Add or adjust marker-content assertions for Step 7a if existing tests cover marker payloads.
+
+## Edge cases
+
+- Marker has embedded `CLONE_PATH`, keepalive is missing: use embedded identity.
+- Marker has embedded `CLONE_PATH`, keepalive conflicts: embedded identity wins.
+- Marker lacks embedded `CLONE_PATH`: use current keepalive behavior.
+- Both identity sources are absent, unreadable, symlinked, malformed, or uncanonical: keep the marker and block/count as same-clone.
+- `cwd` is empty or uncanonical: preserve fail-safe behavior in no-progress guard and existing bg-poll behavior for bare tmpdir variables.
+- Bare-dir command uses `/private` alias on macOS: treat it as the same marker dir.
+- `.bg-wait-active` diagnosis commands remain allowed only for the existing marker-only read shapes.
+
+## Failure modes
+
+- A marker writer misses `CLONE_PATH`: hooks still fall back to `.larch-keepalive`, but the hardening is incomplete.
+- The two hook helper copies drift: the new structural test fails.
+- `assert_deny` call sites pass stale expected steps: the bg-poll harness fails with the parsed deny reason.
+- The bare-dir classifier is too broad: it may deny harmless commands. Keep it limited to exact retained marker dirs.
+- The marker-local identity path is trusted too much: avoid false allows by falling back to fail-closed behavior whenever the stamp cannot be canonicalized.
+
+## Testing strategy
+
+Run targeted tests only:
+
+- `make test-hook-bg-poll-guard`
+- `make test-hook-no-progress-guard`
+- `make test-hook-clone-ownership-parity`
+- `make lint-bash32`
+- `python3 -m pytest python/tests/design/test_design_lifecycle.py python/tests/implement/test_implement_dispatch.py python/tests/implement/test_step_7a.py`
+- If Step 8 assertions change: `bash skills/implement/scripts/test-step-8-ship.sh`
+
+## Acceptance
+
+Run targeted tests only:
+
+- `make test-hook-bg-poll-guard`
+- `make test-hook-no-progress-guard`
+- `make test-hook-clone-ownership-parity`
+- `make lint-bash32`
+- `python3 -m pytest python/tests/design/test_design_lifecycle.py python/tests/implement/test_implement_dispatch.py python/tests/implement/test_step_7a.py`
+- If Step 8 assertions change: `bash skills/implement/scripts/test-step-8-ship.sh`
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+mechanical_churn: true
+diff_lines: 700

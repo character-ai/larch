@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- approved outline in the scope anchor already mandates marker-time CLONE_PATH at creation sites, so deferring all writers drops an approved deliverable rather than fixing a defect
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- hook-only read-path changes cannot satisfy the approved goal of durable embedded clone identity without the planned writer migration
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same approved-outline scope as FINDING_1; bare-dir, assert_deny, and parity test are already covered and full stamping matches outline item 2
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 OOS_1 with no new evidence; SECURITY.md can be updated in the same PR per the plan's sibling-doc rule
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round-1 OOS_1; no materially new trigger beyond restating the keepalive-only docs gap

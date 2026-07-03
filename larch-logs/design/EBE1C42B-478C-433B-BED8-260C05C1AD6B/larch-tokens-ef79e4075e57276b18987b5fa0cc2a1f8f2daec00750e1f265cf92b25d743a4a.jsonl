@@ -1,0 +1,22 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-07-03T16:50:00Z"}
+{"type":"vendor","vendor":"codex","input":128773,"output":7207,"cache_read":714240,"cache_create":0,"total":850220,"raw":"codex_plan_draft","ts":"2026-07-03T17:05:21Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":56827,"output":3876,"cache_read":308096,"cache_create":0,"total":368799,"raw":"codex_review","ts":"2026-07-03T17:08:17Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":73877,"output":3661,"cache_read":465280,"cache_create":0,"total":542818,"raw":"codex_review","ts":"2026-07-03T17:08:18Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":65989,"output":4421,"cache_read":420096,"cache_create":0,"total":490506,"raw":"codex_review","ts":"2026-07-03T17:08:18Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":69775,"output":5108,"cache_read":294400,"cache_create":0,"total":369283,"raw":"codex_review","ts":"2026-07-03T17:08:28Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":109498,"output":11072,"cache_read":1251712,"cache_create":0,"total":1372282,"raw":"codex_review","ts":"2026-07-03T17:09:37Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":128629,"output":9441,"cache_read":1131603,"cache_create":0,"total":1269673,"raw":"cursor_review","ts":"2026-07-03T17:10:04Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":126156,"output":11902,"cache_read":2470665,"cache_create":0,"total":2608723,"raw":"cursor_review","ts":"2026-07-03T17:10:14Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":138577,"output":10191,"cache_read":2270842,"cache_create":0,"total":2419610,"raw":"cursor_review","ts":"2026-07-03T17:10:27Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":157911,"output":10028,"cache_read":1862224,"cache_create":0,"total":2030163,"raw":"cursor_review","ts":"2026-07-03T17:10:39Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":138408,"output":10049,"cache_read":1023009,"cache_create":0,"total":1171466,"raw":"cursor_review","ts":"2026-07-03T17:10:41Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":8409,"output":4075,"cache_read":6528,"cache_create":0,"total":19012,"raw":"codex_review","ts":"2026-07-03T17:11:08Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":106917,"output":3870,"cache_read":288837,"cache_create":0,"total":399624,"raw":"cursor_review","ts":"2026-07-03T17:12:16Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":30552,"output":11802,"cache_read":187392,"cache_create":0,"total":229746,"raw":"codex_review","ts":"2026-07-03T17:12:28Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"claude_sub","input":18,"output":17599,"cache_read":761294,"cache_create":42526,"total":821437,"raw":"claude_vote","ts":"2026-07-03T17:17:05Z","model":"claude-sonnet-4-6"}
+{"type":"vendor","vendor":"cursor","input":109501,"output":8920,"cache_read":1075406,"cache_create":0,"total":1193827,"raw":"cursor_review","ts":"2026-07-03T17:25:59Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":124581,"output":15588,"cache_read":2054556,"cache_create":0,"total":2194725,"raw":"cursor_review","ts":"2026-07-03T17:27:33Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":242280,"output":13870,"cache_read":2374806,"cache_create":0,"total":2630956,"raw":"cursor_review","ts":"2026-07-03T17:27:36Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":83510,"output":5233,"cache_read":310302,"cache_create":0,"total":399045,"raw":"cursor_review","ts":"2026-07-03T17:28:55Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":14643,"output":12515,"cache_read":66560,"cache_create":0,"total":93718,"raw":"codex_review","ts":"2026-07-03T17:29:08Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"claude_sub","input":6,"output":13555,"cache_read":191618,"cache_create":36255,"total":241434,"raw":"claude_vote","ts":"2026-07-03T17:32:02Z","model":"claude-sonnet-4-6"}
