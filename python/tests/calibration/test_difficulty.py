@@ -41,6 +41,22 @@ def test_floors_raise_only() -> None:
     assert record.override_source == "floor"
 
 
+def test_fallback_does_not_upgrade_valid_model_rating() -> None:
+    record = difficulty.build_record(
+        rater="fallback",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "TRIVIAL", "confidence": "high", "rationale": "small doc edit"}
+        ),
+        fallback_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "recovery fallback"}
+        ),
+    )
+
+    assert record.predicted_tier == difficulty.TRIVIAL
+    assert record.applied_tier == difficulty.TRIVIAL
+    assert record.override_source == "none"
+
+
 def test_write_record_json_shape(tmp_path: Path) -> None:
     out = tmp_path / "difficulty-rating.json"
     record = difficulty.build_record(

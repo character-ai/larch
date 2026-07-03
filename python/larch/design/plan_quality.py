@@ -260,7 +260,7 @@ def parse_difficulty_metadata(plan_text: str) -> str:
     return difficulty.plan_difficulty(plan_text)
 
 def validate_difficulty_metadata(plan_text: str, *, require: bool = False) -> tuple[bool, str]:
-    lines = plan_text.splitlines()
+    lines = difficulty.trailing_plan_metadata_lines(plan_text)
     found = ""
     malformed = ""
     for raw in lines:

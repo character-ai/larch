@@ -329,6 +329,7 @@ if args[:2] == ["plan", "validate"]:
     with open(os.environ["RECORD_FILE"], "w", encoding="utf-8") as fh:
         print("REPO_ROOT=" + repo_root, file=fh)
         print("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", ""), file=fh)
+        print("LARCH_REQUIRE_PLAN_DIFFICULTY=" + os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", ""), file=fh)
     print("VALIDATE_STATUS=ok")
     print("VALIDATE_DEFECT_COUNT=0")
     raise SystemExit(0)
@@ -373,3 +374,4 @@ def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: 
     )
     assert Path(recorded["REPO_ROOT"]).resolve() == consumer.resolve()
     assert Path(recorded["CLAUDE_PLUGIN_ROOT"]).resolve() == plugin_root.resolve()
+    assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == "1"

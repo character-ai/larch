@@ -31,6 +31,9 @@ FLOOR_MANIFEST = Path(__file__).resolve().parents[3] / "docs" / "difficulty-floo
 _TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PLAN_DIFFICULTY_RE = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
+_PLAN_TRAILER_LINE_RE = re.compile(
+    r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$"
+)
 
 
 @dataclass(frozen=True)
@@ -185,12 +188,32 @@ def match_floors(paths: tuple[str, ...], floors: tuple[DifficultyFloor, ...] | N
 
 
 def plan_difficulty(text: str) -> str:
-    lines = text.splitlines()
-    for line in reversed(lines):
+    for line in reversed(trailing_plan_metadata_lines(text)):
         match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
         if match:
             return match.group(1)
     return ""
+
+
+def rewrite_plan_difficulty(text: str, tier: str) -> str:
+    if not tier_valid(tier):
+        return text
+    lines = text.splitlines(keepends=True)
+    span = _trailing_metadata_span(text.splitlines())
+    if span is None:
+        return text
+    start, end = span
+    replacement = f"difficulty: {tier}\n"
+    for idx in range(start, end):
+        if lines[idx].startswith("difficulty:"):
+            newline = "\n" if lines[idx].endswith("\n") else ""
+            lines[idx] = f"difficulty: {tier}{newline}"
+            return "".join(lines)
+    insert_at = end
+    while insert_at > start and lines[insert_at - 1].startswith("diff_lines:"):
+        insert_at -= 1
+    lines.insert(insert_at, replacement)
+    return "".join(lines)
 
 
 def label_for_tier(tier: str) -> str:
@@ -207,6 +230,29 @@ def _rating_from_tier(tier: str, *, rationale: str) -> DifficultyRating | None:
     if not tier_valid(tier):
         return None
     return DifficultyRating(predicted_tier=tier, confidence="medium", rationale=sanitize_rationale(rationale) or "wire metadata", adjusted_tier=tier)
+
+
+def _trailing_metadata_span(lines: list[str]) -> tuple[int, int] | None:
+    end = len(lines)
+    while end > 0 and not lines[end - 1].strip():
+        end -= 1
+    if end == 0:
+        return None
+    start = end
+    while start > 0 and _PLAN_TRAILER_LINE_RE.fullmatch(lines[start - 1].rstrip("\n")):
+        start -= 1
+    if start == end:
+        return None
+    return start, end
+
+
+def trailing_plan_metadata_lines(text: str) -> tuple[str, ...]:
+    lines = text.splitlines()
+    span = _trailing_metadata_span(lines)
+    if span is None:
+        return ()
+    start, end = span
+    return tuple(lines[start:end])
 
 
 def build_record(
@@ -229,8 +275,9 @@ def build_record(
     model_tier = tier_max(
         design_rating.adjusted_tier if design_rating else None,
         implement_rating.adjusted_tier if implement_rating else None,
-        fallback_rating.adjusted_tier if fallback_rating else None,
     )
+    if model_tier == TRIVIAL and design_rating is None and implement_rating is None and fallback_rating is not None:
+        model_tier = fallback_rating.adjusted_tier
     floors = match_floors(changed_paths)
     applied = tier_max(model_tier, floors.tier)
     derived_override = "floor" if floors.matches and _TIER_RANK[floors.tier] > _TIER_RANK[model_tier] else "none"

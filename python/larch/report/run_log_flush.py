@@ -17,6 +17,7 @@ from typing import cast
 from larch.core import config
 from larch.core import proc
 from larch.core import redact
+from larch.calibration import difficulty
 from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import ShipError
@@ -453,6 +454,63 @@ def _render_token_timing_batches(*, ctx: RunContext, log_root: Path) -> None:
     # in-loop snapshots that duplicate the canonical NDJSON written above.
 
 
+def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | None) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id or not cwd:
+        return
+    run_dir = log_root / "implement" / run_id
+    record_path = run_dir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if not record_path.is_file() or record_path.is_symlink():
+        return
+    try:
+        data: object = json.loads(record_path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if not isinstance(data, dict):
+        return
+    predicted = str(data.get("predicted_tier") or "").upper()
+    confidence = str(data.get("confidence") or "").lower()
+    rationale = str(data.get("rationale") or "")
+    if not predicted or not confidence or not rationale:
+        return
+    try:
+        source_rating = difficulty.validate_rating_object(
+            {"predicted_tier": predicted, "confidence": confidence, "rationale": rationale}
+        )
+    except ValueError:
+        return
+    changed = subprocess.run(
+        ["git", "diff", "--name-only", "HEAD"],
+        cwd=cwd,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if changed.returncode != 0:
+        return
+    changed_paths = tuple(line.strip() for line in (changed.stdout or "").splitlines() if line.strip())
+    rater = str(data.get("rater") or "unknown")
+    with suppress(OSError, ValueError):
+        kwargs: dict[str, object] = {
+            "rater": rater,
+            "rater_tool": str(data.get("rater_tool") or "unknown"),
+            "rater_model": str(data.get("rater_model") or "unknown"),
+            "changed_paths": changed_paths,
+            "panel_skipped": str(data.get("panel_skipped") or ""),
+            "audit_upgrade": str(data.get("audit_upgrade") or ""),
+            "escalations": tuple(str(item) for item in data.get("escalations") or ()),
+        }
+        if rater == "implement":
+            kwargs["implement_rating"] = source_rating
+        elif rater == "fallback":
+            kwargs["fallback_rating"] = source_rating
+        else:
+            kwargs["design_rating"] = source_rating
+        refreshed = difficulty.build_record(**kwargs)  # type: ignore[arg-type]
+        difficulty.write_record(record_path, refreshed)
+        _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="difficulty-rating", input_file=record_path)
+
+
 def _reconcile_stalled_summary_backstop(*, ctx: RunContext, strict_final_report: bool) -> None:
     run_dir = _run_log_dir(ctx)
     try:
@@ -472,11 +530,14 @@ def _stage_pre_commit(
     *, runner: Runner,
     ctx: RunContext,
     log_root: Path,
+    cwd: str | None = None,
     mode: str = "refresh",
     strict_final_report: bool = False,
 ) -> None:
     run_dir = _run_log_dir(ctx)
     run_dir.mkdir(parents=True, exist_ok=True)
+    if mode in {"refresh", "flush"}:
+        _refresh_difficulty_record(ctx=ctx, log_root=log_root, cwd=cwd)
     if mode == "refresh":
         _render_execution_issues_batch(
             ctx=ctx,
@@ -542,6 +603,7 @@ def flush_logs_pre(
             runner=runner,
             ctx=ctx,
             log_root=log_root,
+            cwd=cwd,
             mode="refresh",
             strict_final_report=strict_final_report,
         )
@@ -962,7 +1024,7 @@ def larch_log_flush_main(argv: list[str]) -> int:
         repo_unavailable=False,
     )
     try:
-        _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, mode="flush")
+        _stage_pre_commit(runner=proc, ctx=ctx, log_root=log_root, cwd=str(Path.cwd()), mode="flush")
         result = _commit_run(log_root=log_root, skill="implement", run_id=run_id, cwd=str(Path.cwd()))
         if result.returncode != 0:
             detail = result.stderr.strip()

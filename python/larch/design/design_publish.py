@@ -299,11 +299,7 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
             diff_idx = idx
             break
-    existing_difficulty = ""
-    for line in lines:
-        stripped = line.rstrip("\n")
-        if stripped.startswith("difficulty: ") and difficulty.tier_valid(stripped[len("difficulty: ") :]):
-            existing_difficulty = stripped[len("difficulty: ") :]
+    existing_difficulty = difficulty.plan_difficulty(text)
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
@@ -716,14 +712,17 @@ def publish_core(argv: Sequence[str]) -> int:
 
     if review_status or rounds_completed:
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
-        _ = composed_plan.write_text(
-            _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed),
-            encoding="utf-8",
-        )
+        original = _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed)
+        _ = composed_plan.write_text(original, encoding="utf-8")
     plan_text = composed_plan.read_text(encoding="utf-8", errors="replace")
     design_rating, raw_rating_invalid = _resolve_publish_difficulty_rating(design_tmpdir=design_tmpdir, plan_text=plan_text)
     if raw_rating_invalid:
         return 5
+    if design_rating is not None:
+        rewritten = difficulty.rewrite_plan_difficulty(plan_text, design_rating.adjusted_tier)
+        if rewritten != plan_text:
+            _ = composed_plan.write_text(rewritten, encoding="utf-8")
+            plan_text = rewritten
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")

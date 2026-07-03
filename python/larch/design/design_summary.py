@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -182,6 +183,47 @@ def _difficulty_summary_line(design_tmpdir: Path) -> str:
         if tier:
             return f"predicted {tier}; applied {tier}"
     return ""
+
+
+def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
+    if not run_id or run_id == "unknown":
+        return
+    record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if not (record_path.is_file() and not record_path.is_symlink()):
+        raw_rating = difficulty.read_rating_file(design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME)
+        if raw_rating is None:
+            for candidate in (design_tmpdir / "composed-plan.md", design_tmpdir / "plan.txt"):
+                if not candidate.is_file() or candidate.is_symlink():
+                    continue
+                tier = difficulty.plan_difficulty(candidate.read_text(encoding="utf-8", errors="replace"))
+                if tier:
+                    raw_rating = difficulty.validate_rating_object(
+                        {"predicted_tier": tier, "confidence": "medium", "rationale": "design plan metadata"}
+                    )
+                    break
+        if raw_rating is None:
+            return
+        with contextlib.suppress(OSError, ValueError):
+            record = difficulty.build_record(
+                rater="design",
+                rater_tool="claude",
+                rater_model="unknown",
+                design_rating=raw_rating,
+            )
+            difficulty.write_record(record_path, record)
+    with contextlib.suppress(OSError, ValueError):
+        _run_cli(
+            "run-log",
+            "write",
+            "--skill",
+            "design",
+            "--run-id",
+            run_id,
+            "--batch",
+            "difficulty-rating",
+            "--input-file",
+            str(record_path),
+        )
 
 def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     status_file = design_tmpdir / "step2b-drafter-status.txt"
@@ -441,6 +483,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     if issue and issue != "0" and repo and "/" in repo:
         issue_url = f"https://github.com/{repo}/issues/{issue}"
 
+    _persist_difficulty_record(design_tmpdir, run_id=run_id)
     _refresh_final_reports(design_tmpdir)
     buckets = _read_token_report(design_tmpdir)
     cost_args = _build_cost_args(buckets)

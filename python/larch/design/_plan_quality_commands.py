@@ -869,7 +869,7 @@ def validate_plan_main(argv: list[str]) -> int:
     rows = parse_plan_commands(plan_text=plan_text, repo_root=repo, plugin_root=plugin)
     summary = validate_plan_command_rows(rows=rows, repo_root=repo, registry=None, source_kind=source_kind, plugin_root=plugin)
     difficulty_defects = 0
-    for raw in plan_text.splitlines():
+    for raw in difficulty.trailing_plan_metadata_lines(plan_text):
         if raw.startswith("difficulty:") and not difficulty.tier_valid(raw[len("difficulty:") :].strip()):
             difficulty_defects = 1
             break
@@ -903,5 +903,4 @@ def validate_plan_main(argv: list[str]) -> int:
         log_path = Path(name)
     emit_kv(key="VALIDATE_LOG_FILE", value=str(log_path))
     return 0
-
 

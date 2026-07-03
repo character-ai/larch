@@ -98,6 +98,23 @@ def test_optional_trailer_has_any_equivalent() -> None:
     assert not plan_quality.parse_optional_metadata("body\ndiff_lines: 2\n").keys
 
 
+def test_validate_difficulty_metadata_ignores_body_tokens() -> None:
+    plan = (
+        "body\n"
+        "difficulty: NOT-A-TRAILER\n"
+        "\n"
+        "review_status: complete\n"
+        "rounds_completed: 2\n"
+        "difficulty: HARD\n"
+        "diff_lines: 9\n"
+    )
+
+    ok, found = plan_quality.validate_difficulty_metadata(plan, require=True)
+
+    assert ok is True
+    assert found == "HARD"
+
+
 _TRAILER_AWK_PARSE_CASES = [
     ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", 3, "100", "50", "true"),
     ("none-present", "body\ndiff_lines: 1\n", 0, None, None, "false"),

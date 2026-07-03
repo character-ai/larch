@@ -539,6 +539,7 @@ def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path:
     )
 
     assert result.returncode == 0, result.stderr
+    assert "difficulty: MODERATE" in (design / "composed-plan.md").read_text(encoding="utf-8")
     calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
     sync = next(call for call in calls if call[:2] == ["difficulty", "sync-labels"])
     assert sync[sync.index("--tier") + 1] == "MODERATE"
