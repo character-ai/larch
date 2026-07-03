@@ -12,6 +12,7 @@ import argparse
 import importlib
 import os
 import sys
+from typing import Any
 
 _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("agent", "model-args"): ("larch.agents.agents", "model_args_main"),
