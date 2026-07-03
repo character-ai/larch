@@ -1719,7 +1719,13 @@
     "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "failure_report_core",
-    "metric": 63
+    "metric": 71
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "code": "C901",
+    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
+    "metric": 16
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1785,7 +1791,13 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "failure_report_core",
-    "metric": 192
+    "metric": 225
+  },
+  {
+    "file": "larch/design/design_terminal.py",
+    "code": "PLR0915",
+    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
+    "metric": 53
   },
   {
     "file": "larch/design/design_terminal.py",

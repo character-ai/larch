@@ -533,47 +533,134 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         populate_sensitive()
 
     def file_tier_a_after_compose(body_file: Path) -> None:
+        if compose_env_key(key="STALL_RECOVERY_REPORT_STATUS", default=""):
+            return
+
+        def append_env_file(source: Path) -> None:
+            with compose_env.open("a", encoding="utf-8") as dest:
+                dest.write(source.read_text(encoding="utf-8", errors="replace"))
+
+        def append_fallback(reason: str) -> None:
+            with compose_env.open("a", encoding="utf-8") as dest:
+                dest.write("STALL_RECOVERY_REPORT_STATUS=fallback-print-required\n")
+                dest.write(f"STALL_RECOVERY_REPORT_FALLBACK_REASON={reason}\n")
+
+        def reason_with_status(reason: str, status: str) -> str:
+            clean = re.sub(r"[^A-Za-z0-9_.:/+-]+", "-", status).strip("-")[:80]
+            return f"{reason}:{clean}" if clean else reason
+
+        def file_issue_after_dedup() -> str:
+            repo = ns.repo
+            if not repo:
+                gh_out = subprocess.run(  # lint-subprocess-via-runner: ok current-repo gh lookup is a blocking stdout capture mirroring the tier-a filing helpers
+                    ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+                    capture_output=True,
+                    text=True,
+                    check=False,
+                )
+                repo = gh_out.stdout.strip() if gh_out.returncode == 0 else ""
+            fallback_reason = ""
+            if not repo:
+                fallback_reason = "tier-a-current-repo-unresolved"
+            else:
+                first = body_file.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
+                title = (
+                    first[0].removeprefix("### ").removeprefix("[Bug] ")
+                    if first
+                    else "/design terminal failure"
+                )
+                helper = (
+                    Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
+                    / "scripts"
+                    / "file-failure-report-cross-repo.sh"
+                )
+                if not helper.is_file():
+                    fallback_reason = "tier-a-file-helper-missing"
+                else:
+                    helper_out = design_tmpdir / "design-failure-tier-a-file.env"
+                    try:
+                        with (
+                            helper_out.open("w", encoding="utf-8") as stdout_handle,
+                            (
+                                design_tmpdir / "design-failure-tier-a-file.stderr.log"
+                            ).open("w", encoding="utf-8") as stderr_handle,
+                        ):
+                            run_rc = subprocess.run(  # lint-subprocess-via-runner: ok tier-a file helper streams stdout/stderr to open sidecar log handles instead of captured pipes
+                                [
+                                    str(helper),
+                                    "--repo",
+                                    repo,
+                                    "--body-file",
+                                    str(body_file),
+                                    "--title",
+                                    title or "/design terminal failure",
+                                    "--publication-tier",
+                                    "tier-a",
+                                ],
+                                stdout=stdout_handle,
+                                stderr=stderr_handle,
+                                check=False,
+                            ).returncode
+                    except OSError:
+                        run_rc = 1
+                    if run_rc != 0:
+                        fallback_reason = "tier-a-file-helper-failed"
+                    else:
+                        file_norm = design_tmpdir / "design-failure-tier-a-file.normalized.env"
+                        if (
+                            _run_stall_main(
+                                callable_obj=stall_recovery.normalize_file_failure_report_env_main,
+                                argv=[
+                                    *helper_common(),
+                                    "--file-failure-report-env",
+                                    str(helper_out),
+                                ],
+                                stdout_path=file_norm,
+                            )
+                            == 0
+                        ):
+                            append_env_file(file_norm)
+                        else:
+                            fallback_reason = "tier-a-normalize-failed"
+            return fallback_reason
+
         dedup_env = design_tmpdir / "design-failure-tier-a-dedup.env"
+        fallback_reason = ""
         if _run_stall_main(
             callable_obj=stall_recovery.dedup_tier_a_report_main,
             argv=[*helper_common(), "--body-file", str(body_file)],
             stdout_path=dedup_env,
             stderr_path=design_tmpdir / "design-failure-tier-a-dedup.stderr.log",
         ) != 0:
+            fallback_reason = "tier-a-dedup-helper-failed"
+        else:
+            status = _read_env_value(path=dedup_env, key="STALL_RECOVERY_REPORT_STATUS", default="")
+            if status in {"dedup-comment", "dry-run", "fallback-print-required", "filed", "printed"}:
+                append_env_file(dedup_env)
+                return
+            if status in {"no-match", "lookup-failed-open"}:
+                fallback_reason = file_issue_after_dedup()
+            else:
+                fallback_reason = reason_with_status("tier-a-dedup-status-unexpected", status)
+        if fallback_reason:
+            append_fallback(fallback_reason)
             return
-        status = _read_env_value(path=dedup_env, key="STALL_RECOVERY_REPORT_STATUS", default="")
-        if status in {"dedup-comment", "dry-run", "fallback-print-required", "filed", "printed"}:
-            with compose_env.open("a", encoding="utf-8") as dest:
-                dest.write(dedup_env.read_text(encoding="utf-8", errors="replace"))
-            return
-        if status not in {"no-match", "lookup-failed-open"}:
-            return
-        repo = ns.repo
-        if not repo:
-            gh_out = subprocess.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"], capture_output=True, text=True, check=False)
-            repo = gh_out.stdout.strip() if gh_out.returncode == 0 else ""
-        if not repo:
-            return
-        first = body_file.read_text(encoding="utf-8", errors="replace").splitlines()[:1]
-        title = first[0].removeprefix("### ").removeprefix("[Bug] ") if first else "/design terminal failure"
-        helper = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3])) / "scripts" / "file-failure-report-cross-repo.sh"
-        helper_out = design_tmpdir / "design-failure-tier-a-file.env"
-        run = subprocess.run(
-            [str(helper), "--repo", repo, "--body-file", str(body_file), "--title", title or "/design terminal failure", "--publication-tier", "tier-a"],
-            stdout=helper_out.open("w", encoding="utf-8"),
-            stderr=(design_tmpdir / "design-failure-tier-a-file.stderr.log").open("w", encoding="utf-8"),
-            check=False,
-        )
-        if run.returncode != 0:
-            return
-        file_norm = design_tmpdir / "design-failure-tier-a-file.normalized.env"
-        if _run_stall_main(callable_obj=stall_recovery.normalize_file_failure_report_env_main, argv=[*helper_common(), "--file-failure-report-env", str(helper_out)], stdout_path=file_norm) == 0:
-            with compose_env.open("a", encoding="utf-8") as dest:
-                dest.write(file_norm.read_text(encoding="utf-8", errors="replace"))
 
-    def handle_compose_outcome(*, kind: str, decision: str, sentinel: Path, artifact_key: str, last_surface: str, last_output: Path) -> None:
+    def handle_compose_outcome(
+        *,
+        kind: str,
+        decision: str,
+        sentinel: Path,
+        artifact_key: str,
+        last_surface: str,
+        last_output: Path,
+    ) -> None:
         status = compose_env_key(key="STALL_RECOVERY_REPORT_STATUS", default="")
-        if not status and panel_failure_evidence_present() and last_output.stat().st_size if last_output.exists() else False:
+        last_output_nonempty = last_output.is_file() and last_output.stat().st_size > 0
+        retry_evidence_present = panel_failure_evidence_present() or (
+            kind == "escalation-success" and escalation_evidence_present()
+        )
+        if not status and retry_evidence_present and last_output_nonempty:
             if last_surface == "issue-input":
                 file_tier_a_after_compose(last_output)
                 status = compose_env_key(key="STALL_RECOVERY_REPORT_STATUS", default="")
