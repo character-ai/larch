@@ -1,0 +1,44 @@
+**Context.** #5871 landed the read-capture chain: `render_session_transcript` keeps sanitized reference `Read` blocks (name plus normalized `file_path`, no contents), and /design Step 5c captures the session transcript before log publish. Coverage is still partial: `token measure-references-heatmap` observes only 9 reference reads across 1,305 committed implement runs, and design reports `reference_capture_status=not-yet-measured` pending post-#5871 runs. Background: #3718 (v3 prose-and-errors-only transcripts) intentionally dropped all tool_call blocks; #5871 re-admitted sanitized reference `Read` stubs only.
+
+**Scope.**
+
+- Verify every new /implement and /design run with a RUN_ID commits `session-transcript.jsonl` on log-publishing paths, including stall and bail paths that still publish logs; close any residual capture gaps found.
+- Extend capture to standalone /review runs that write larch-log batches, so a future review heatmap has data to accrue.
+- Report coverage in the heatmap output: transcript-bearing runs versus total runs per skill, so measured versus not-yet-measured is visible per corpus slice.
+- Respect the #3718 v3 slimming policy: sanitized reference `Read` stubs only, no file contents, no other tool blocks, no committed-log rewrites.
+
+**Acceptance.**
+
+- New runs of all three skills commit transcripts on log-publishing paths.
+- `token measure-references-heatmap` emits design rows after the next committed design run and reports per-skill coverage ratios.
+
+Part of md-to-py-XI (round X: #5885). Follow-up to #5871 (capture chain) and #3718 (v3 transcript policy).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Close the concrete transcript-capture gaps found in `/design` (clarify publish path) and `/implement` (bail/stall paths before Step 7a) so every committed run log carries `session-transcript.jsonl`.
+- Extend transcript capture to standalone `/review`'s larch-log batch writer.
+- Add per-skill coverage-ratio reporting to `token measure-references-heatmap` (transcript-bearing runs vs. total runs per skill).
+
+### Non-goals
+- No backfill or rewriting of historical committed `larch-logs/` runs (issue constraint: "no committed-log rewrites").
+- No change to the v3 transcript schema/policy (`render_session_transcript`'s sanitized-Read-stub, prose-errors-only contract) — capture wiring only.
+- No change to nested `/review`-within-`/implement` log ownership; only standalone `/review`'s own batch write is in scope.
+
+### Approach sketch
+- `/design`: make the clarify publish path (`clarify.py` → `design log-publish`) reuse the same transcript-capture step Step 5c already runs, so clarify round-trips also commit a transcript.
+- `/implement`: add a best-effort session-transcript safety net at Step 18 finalize, mirroring the existing `execution-issues flush-safety-net` pattern, so runs that bail/stall before Step 7a still capture a transcript when logs are committed.
+- `/review`: register a transcript batch in the Step 4 log-writer path (`review_tally.py` batch allowlist + `skills/review/SKILL.md` Step 4) alongside the existing `review-context`/`review-tally`/etc. batches.
+- Reporting: extend `measure_references_heatmap()` in `tokens.py` with a per-skill coverage summary, reusing the measured/not-yet-measured convention already established in `measure_realized_cost()`.
+
+### Surfaces in scope
+- `python/larch/design/clarify.py`, `design_publish.py`, `design_log_publish_flow.py`
+- `python/larch/implement/dispatch_step18.py`, `skills/implement/scripts/step-18.sh`/`.md`
+- `python/larch/review/review_tally.py`, `skills/review/SKILL.md` (Step 4)
+- `python/larch/report/tokens.py` (`measure_references_heatmap`), `docs/run-logs.md`
+
+### Open questions
+- None.

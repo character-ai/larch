@@ -1,0 +1,1 @@
+Close transcript capture gaps for design clarify, implement Step 18 bail/stall finalization, and standalone review logging. Add heatmap coverage ratios and focused tests without changing transcript schema or backfilling old logs.

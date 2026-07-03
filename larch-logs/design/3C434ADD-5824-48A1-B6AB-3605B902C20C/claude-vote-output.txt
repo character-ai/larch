@@ -1,0 +1,1 @@
+I cannot read the ballot file — the harness is blocking all reads due to an active immediate-background wait. Ending the turn to wait for the `<task-notification>` before proceeding.

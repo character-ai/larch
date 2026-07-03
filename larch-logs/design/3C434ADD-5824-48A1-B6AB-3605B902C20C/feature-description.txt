@@ -1,0 +1,17 @@
+# md-to-py-XI: write session-transcript.jsonl in every run so the reference heatmap accrues
+
+**Context.** #5871 landed the read-capture chain: `render_session_transcript` keeps sanitized reference `Read` blocks (name plus normalized `file_path`, no contents), and /design Step 5c captures the session transcript before log publish. Coverage is still partial: `token measure-references-heatmap` observes only 9 reference reads across 1,305 committed implement runs, and design reports `reference_capture_status=not-yet-measured` pending post-#5871 runs. Background: #3718 (v3 prose-and-errors-only transcripts) intentionally dropped all tool_call blocks; #5871 re-admitted sanitized reference `Read` stubs only.
+
+**Scope.**
+
+- Verify every new /implement and /design run with a RUN_ID commits `session-transcript.jsonl` on log-publishing paths, including stall and bail paths that still publish logs; close any residual capture gaps found.
+- Extend capture to standalone /review runs that write larch-log batches, so a future review heatmap has data to accrue.
+- Report coverage in the heatmap output: transcript-bearing runs versus total runs per skill, so measured versus not-yet-measured is visible per corpus slice.
+- Respect the #3718 v3 slimming policy: sanitized reference `Read` stubs only, no file contents, no other tool blocks, no committed-log rewrites.
+
+**Acceptance.**
+
+- New runs of all three skills commit transcripts on log-publishing paths.
+- `token measure-references-heatmap` emits design rows after the next committed design run and reports per-skill coverage ratios.
+
+Part of md-to-py-XI (round X: #5885). Follow-up to #5871 (capture chain) and #3718 (v3 transcript policy).

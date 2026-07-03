@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- review heatmap visibility is future-facing here; the standalone review capture can still ship.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- the duplicate writer concern is real, but removing it would drop a planned standalone review commit path.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same duplicate-writer objection, but it is not a necessity-gated blocker for the feature.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the extra flush call is redundant cleanup, not required for transcript capture.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- same writer concern, but it does not clear the necessity gate.
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate flush-safety-net cleanup is not needed for the feature path.

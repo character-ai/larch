@@ -1,0 +1,31 @@
+### FINDING_1: Review Step 0 binds the wrong session key for `claude-source`
+- **Reviewer(s)**: Cursor-Arch, Codex-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Standalone review Step 0 can skip or misbind the source snapshot because it uses `SESSION_ID` instead of the session key `token claude-source` expects, and it does not enforce `SESSION_UUID` matching before writing `claude-source.env`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Mirror `design_publish._fetch_claude_source_snapshot`: gate on non-empty `LARCH_TOKEN_SESSION_ID`, export it for `token claude-source`, require `SESSION_UUID` to match, write `$REVIEW_TMPDIR/claude-source.env` from stdout, set `LARCH_CLAUDE_SOURCE_FILE` to that path.
+  - From Codex-Pragmatic: Run token claude-source with LARCH_TOKEN_SESSION_ID="$SESSION_ID" and bind LARCH_CLAUDE_SOURCE_FILE only when SESSION_UUID matches SESSION_ID. Leave it empty and skip capture on mismatch.
+  - From Cursor-Requirements: Drop the `SESSION_ID` binding. When `LARCH_CLAUDE_SOURCE_FILE` is empty, call `token claude-source` with `LARCH_TOKEN_SESSION_ID` from caller-env or host env when set; otherwise rely on the helper latest-mtime fallback. Write `$REVIEW_TMPDIR/claude-source.env` only when stdout contains `TRANSCRIPT_PATH`, matching `design_publish._materialize_claude_source_snapshot`
+
+### FINDING_2: Design publish capture must not run on `--dry-run`
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Concern**: Capturing the design transcript too early would run snapshot/hoist work during `--dry-run` invocations instead of only on the real publish path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Call `_capture_design_transcript` only on the non-dry-run path, after the dry-run early return and before `_publish_design_logs`.
+
+### FINDING_3: Standalone review logs never reach the heatmap
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: Standalone review transcript commits are invisible to the heatmap because review run logs do not create an accepted manifest and the corpus scanner rejects review directories without a numeric `issue_number`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Before relying on coverage rows, either initialize an accepted review manifest before commit or make measure_references_heatmap use a narrow review-specific walker that counts safe committed review transcript dirs without requiring an issue manifest
+  - From Codex-Innovation: Initialize the review run log before Step 4 writes and adjust the heatmap/run-log corpus path to count standalone review manifests without requiring `issue_number`, or otherwise populate a valid manifest field the existing reader accepts. Add the review heatmap test with a standalone review run that has no tracking issue.
+  - From Codex-Requirements: Before review batch writes or transcript capture, initialize larch-logs/review/$RUN_ID/manifest.json, and update the corpus scanner or heatmap path to accept review manifests without issue_number while keeping safe_transcript_path checks. Add the planned review heatmap test with that real standalone review shape.
+
+### FINDING_4: Review Step 4 adds a second transcript writer
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Step 4 risks bypassing the transcript renderer by adding a second session-transcript write path through `review log-phase` when `run-log capture-transcript` already exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Remove `session-transcript` from the Step 4 log-phase batch list. Drop the `review_tally.py` allowlist and `test_review_tally.py` additions. Keep one writer: `run-log capture-transcript` before cleanup, then best-effort `run-log commit`
