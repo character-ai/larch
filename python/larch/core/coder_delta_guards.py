@@ -50,7 +50,6 @@ def coder_forbidden_paths(runner: Runner, *, cwd: str | None = None) -> tuple[st
 
 def submodule_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...]:
     seen: set[str] = set()
-    paths: list[str] = []
     cwd_path = Path(cwd or ".")
     gitmodules = cwd_path / ".gitmodules"
     if gitmodules.is_file():
@@ -60,23 +59,20 @@ def submodule_paths(runner: Runner, *, cwd: str | None = None) -> tuple[str, ...
         )
         for line in result.stdout.splitlines():
             parts = line.split(maxsplit=1)
-            if len(parts) == 2 and parts[1] not in seen:  # noqa: PLR2004
+            if len(parts) == 2 and parts[1]:  # noqa: PLR2004
                 seen.add(parts[1])
-                paths.append(parts[1])
         for line in gitmodules.read_text(encoding="utf-8", errors="replace").splitlines():
             match = re.match(r"^\s*path\s*=\s*(.+)\s*$", line)
             if match:
                 path = match.group(1).strip()
-                if path and path not in seen:
+                if path:
                     seen.add(path)
-                    paths.append(path)
     result = runner.run(["git", "submodule", "foreach", "--quiet", "echo $sm_path"], cwd=cwd)
     for raw in result.stdout.splitlines():
         path = raw.strip()
-        if path and path not in seen:
+        if path:
             seen.add(path)
-            paths.append(path)
-    return tuple(paths)
+    return tuple(sorted(seen))
 
 
 def path_matches_forbidden( *,path: str, forbidden: tuple[str, ...]) -> bool:
