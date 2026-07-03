@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan already derives audit peer tiers from pre-audit committed fields.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan already treats escalated/substantial runs as HARD without needing classification.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- report-body relay is a convenience, not required for the analyzer.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- reuse suggestion is optional architecture polish.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- helper import is optional and the plan already has acceptable local handling.
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- prose dedup is not a required feature change.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate `--out` relay concern; still not necessary.

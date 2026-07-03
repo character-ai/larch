@@ -1,0 +1,20 @@
+# difficulty-tiers: difficulty-calibration analyzer
+
+**Skills:** diagnostic tooling (`python3 python/cli.py`); reads committed larch-logs only.
+
+**Initiative:** difficulty-tiers, child 3 of 3. The initiative rolls out without a shadow phase, so rollout safety rests on escalation, the 1:30 audits, and this retrospective analyzer.
+
+**Changes:**
+
+- New diagnostic-only verb `python3 python/cli.py difficulty-calibration analyze`, modeled on /voter-calibration, plus a user-facing skill entry point.
+- Joins `difficulty-rating.json` with the findings-classification TSVs, token/timing per-round arrays, and the rejected-analysis verdicts sidecar (post-merge false-negative labels).
+- Realized-difficulty formula, severity-inflation-safe: HARD if the run escalated, tripped the substantiality gate, or accepted 3 or more in-scope findings; TRIVIAL if it accepted 0; else MODERATE. Severities are excluded on purpose: 174 of 188 accepted findings in the backtest window were rated major or higher, so severity does not discriminate.
+- Reports: predicted-vs-realized confusion matrix per skill and per rater, under-rating misses with links, per-tier cost and latency, audit-run deltas (audited runs vs matched unaudited peers), escalation statistics, and tier-distribution drift (re-anchor the rubric when the rater model changes).
+
+**Acceptance:**
+
+- Produces all reports from committed logs alone; tolerates pre-initiative runs (absent batches) and gc-slimmed directories.
+- Diagnostic only: changes no thresholds, panels, or points.
+- Documented alongside the other run-log analyzers.
+
+**Prior art:** /voter-calibration (structure to mirror), /fluff-analysis (value-density lens for review rounds), /rejected-analysis (verified false-negative labels).
