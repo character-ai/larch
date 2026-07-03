@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:17:12
-- **Cost**: 💰 TOTAL ~$7.13 — Claude $0.53, Codex-5.5 $2.24, Codex-mini $1.00, Cursor $3.14, Claude (subprocess) $0.22  |  Tokens: 12418k
+- **Cost**: 💰 TOTAL ~$11.24 — Claude $4.64, Codex-5.5 $2.24, Codex-mini $1.00, Cursor $3.14, Claude (subprocess) $0.22  |  Tokens: 17040k
 - **Issue**: #6116 — https://github.com/character-ai/larch/issues/6116
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Docstring should separate cumulative and per-round artifact contracts. Concern: The module header still blurs the cumulative `oos-accepted-design.md` / `accepted-plan-findings-all.md` contract with the per-round tally files, which can mislead maintainers.
 - **Round 1 OOS_2** (latent): Empty-ballot zero-findings path still needs coverage. Concern: The second zero-findings short-circuit on an empty ballot should have its own regression test so future edits don't reintroduce the original cumulative-file loss on that branch.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
