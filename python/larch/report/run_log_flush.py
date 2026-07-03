@@ -505,7 +505,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
         else:
             kwargs["design_rating"] = source_rating
         refreshed = difficulty.build_record(**kwargs)  # type: ignore[arg-type]
-        refreshed = difficulty._merge_existing_record_fields(  # pyright: ignore[reportPrivateUsage]
+        refreshed = difficulty._merge_existing_record_fields(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
             refreshed,
             data,
             argparse.Namespace(

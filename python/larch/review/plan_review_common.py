@@ -84,8 +84,8 @@ def _seed_plan_review_difficulty_record(design_tmpdir: Path) -> None:
     record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     if record_path.is_symlink():
         return
-    existing = difficulty._load_record_data(record_path)  # pyright: ignore[reportPrivateUsage]
-    if existing and difficulty._record_resolution_is_persisted(existing):  # pyright: ignore[reportPrivateUsage]
+    existing = difficulty._load_record_data(record_path)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    if existing and difficulty._record_resolution_is_persisted(existing):  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         return
     raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
     raw_rating = difficulty.read_rating_file(raw_path)
@@ -123,7 +123,7 @@ def _seed_plan_review_difficulty_record(design_tmpdir: Path) -> None:
             override_tier="",
             panel_tier="",
         )
-        record = difficulty._merge_existing_record_fields(record, existing, blank_args)  # pyright: ignore[reportPrivateUsage]
+        record = difficulty._merge_existing_record_fields(record, existing, blank_args)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
     difficulty.write_record(record_path, record)
 
 
@@ -139,7 +139,7 @@ def design_escalation_authorized(design_tmpdir: Path) -> bool:
             continue
         values = _read_kv_file(path)
         reason = values.get("PLAN_REVIEW_CONTINUE_REASON", "")
-        if reason in {"escalated-high-accepted"}:
+        if reason == "escalated-high-accepted":
             return True
     data_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     if data_path.is_file() and not data_path.is_symlink():

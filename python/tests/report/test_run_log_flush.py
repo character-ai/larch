@@ -3,8 +3,10 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from typing import TYPE_CHECKING
 
-import pytest
+if TYPE_CHECKING:
+    import pytest
 
 from larch.calibration import difficulty
 from larch.report import run_log_flush
