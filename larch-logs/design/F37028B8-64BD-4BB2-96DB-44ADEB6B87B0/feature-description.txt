@@ -1,0 +1,22 @@
+# [BUG] Architectural-guideline drop warnings can silently miss committed run logs (flush timing + swallowed append)
+
+## Summary
+
+When the ship-time (or any Step 8+) architectural-guidelines pin drops the note, the accompanying diagnostic warning appended to `$IMPLEMENT_TMPDIR/execution-issues.md` can fail to reach the committed run log. Operators then see `Warnings: 0` and no committed `execution-issues.md`, even though the drop-notice code path is proven (by unit tests) to append a warning. Two independent mechanisms:
+
+1. **Flush timing** (OOS_1, important): Step 8+ guideline-drop warnings land only in the temp `execution-issues.md` after Step 7a's primary pre-ship flush. Step 18's teardown safety-net did not capture the late Step-8 append in the observed run, so the committed `larch-logs/implement/<run-id>/execution-issues.md` was absent.
+2. **Swallowed append** (OOS_5, nit): warning-append failures are hidden behind `suppress(Exception)`, so a failed append disappears independently of the flush-timing issue.
+
+## Evidence
+
+- Issue #6059 run RUN_ID `8D812696-8581-4C0C-AEF3-8F6634D73683` reported `Warnings: 0` with no committed `execution-issues.md` despite rendering the drop notice.
+- This is issue #6059 Suggested-fix #3 and Open-question #2.
+
+## Provenance
+
+Surfaced as out-of-scope code-review findings (OOS_1, OOS_5) during `/implement` of #6059 (merged as PR #6060). Reviewer-proposed; not independently re-verified.
+
+## Suggested fix
+
+- Guarantee Step 8+ execution-issues warnings reach the committed log: flush immediately after logging the specific guideline-drop warning, or verify Step 18 teardown's safety-net flush captures late Step-8 appends.
+- Do not swallow warning-append failures silently.

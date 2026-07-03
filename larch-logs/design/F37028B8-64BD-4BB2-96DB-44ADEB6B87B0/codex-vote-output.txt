@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- legitimate regression concern, but preserving the public no-logs-commit contract is not necessary for the warning-flush feature itself.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- same no-logs-commit compatibility concern; it is real, but it is orthogonal to the feature’s required committed-log path.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- the push-blocking case is a real compatibility concern, but it is outside the minimum scope needed to ship the warning-log fix.
