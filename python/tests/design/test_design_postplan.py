@@ -374,4 +374,5 @@ def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: 
     )
     assert Path(recorded["REPO_ROOT"]).resolve() == consumer.resolve()
     assert Path(recorded["CLAUDE_PLUGIN_ROOT"]).resolve() == plugin_root.resolve()
-    assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == "1"
+    # Postplan does not require difficulty; enforcement is scoped to the publish path.
+    assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == ""

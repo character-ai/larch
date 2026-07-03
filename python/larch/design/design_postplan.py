@@ -259,7 +259,10 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     validate_env: dict[str, str] = os.environ.copy()
     validate_env["DESIGN_TMPDIR"] = str(design_tmpdir)
     validate_env["LARCH_QUIET_DISABLE"] = "1"
-    validate_env["LARCH_REQUIRE_PLAN_DIFFICULTY"] = "1"
+    # Difficulty presence is enforced at the authoritative publish path
+    # (design_publish sets LARCH_REQUIRE_PLAN_DIFFICULTY). The gate-b postplan
+    # re-validation stays graceful on missing difficulty, matching the
+    # best-effort _write_design_difficulty_sidecar above.
     # Resolve plan-command script existence against the consumer repo first (it
     # may carry scripts absent from the plugin cache), while preserving the
     # plugin cache as CLAUDE_PLUGIN_ROOT so plugin-only scripts still pass the
