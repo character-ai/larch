@@ -157,7 +157,14 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
         enable_pre_push_handoff: bool,
     ) -> object:
         del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
-        return object()
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=False,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
 
     pin_calls: list[dict[str, object]] = []
 
@@ -200,6 +207,77 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     assert _read_state(state)["PHASE"] == "rebase"
 
 
+def test_ship_rebase_phase_rebased_invalidates_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    invalidate_calls: list[str] = []
+
+    def fake_invalidate(implement_tmpdir: str) -> bool:
+        invalidate_calls.append(implement_tmpdir)
+        return False
+
+    def fail_pin_or_invalidate(**_kwargs: object) -> bool:
+        raise AssertionError("pin helper should not be called after a rebased rebase")
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "post-rebase-head")
+    monkeypatch.setitem(
+        ship._ship_rebase_phase.__globals__,
+        "_invalidate_guidelines_note",
+        fake_invalidate,
+    )
+    monkeypatch.setitem(
+        ship._ship_rebase_phase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fail_pin_or_invalidate,
+    )
+
+    result = ship._ship_rebase_phase(
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=4,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    assert result.terminal is None
+    assert result.rebase_count == 5
+    assert invalidate_calls == [str(tmp_path)]
+    assert _read_state(state)["PHASE"] == "rebase"
+
+
 def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
@@ -225,7 +303,14 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
         enable_pre_push_handoff: bool,
     ) -> object:
         del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
-        return object()
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=False,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
 
     pin_calls: list[dict[str, object]] = []
 
@@ -265,6 +350,90 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
             "repo_root": str(tmp_path),
         },
     ]
+    assert not flag.is_file()
+    assert data["PHASE"] == "ci-initial"
+    assert data["REBASE_COUNT"] == "2"
+    assert data.get("RESUME_PHASE", "") == ""
+    assert data.get("CALLER_KIND", "") == ""
+    assert data["LAST_MONITORED_HEAD"] == "abc123"
+
+
+def test_ship_phase14_rebase_rebased_invalidates_guidelines_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    _ = flag.write_text("", encoding="utf-8")
+    _ = state.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "RESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n"
+        "LAST_MONITORED_HEAD=abc123\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    invalidate_calls: list[str] = []
+
+    def fake_invalidate(implement_tmpdir: str) -> bool:
+        invalidate_calls.append(implement_tmpdir)
+        return False
+
+    def fail_pin_or_invalidate(**_kwargs: object) -> bool:
+        raise AssertionError("pin helper should not be called after a rebased rebase")
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "phase14-head")
+    monkeypatch.setitem(
+        ship._ship_phase14_rebase.__globals__,
+        "_invalidate_guidelines_note",
+        fake_invalidate,
+    )
+    monkeypatch.setitem(
+        ship._ship_phase14_rebase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fail_pin_or_invalidate,
+    )
+
+    new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        phase14_flag=flag,
+        iteration=2,
+        rebase_count=1,
+        fix_attempts=0,
+        transient_retries=0,
+        last_monitored_head="abc123",
+    )
+
+    data = _read_state(state)
+    assert new_count == 2
+    assert invalidate_calls == [str(tmp_path)]
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
