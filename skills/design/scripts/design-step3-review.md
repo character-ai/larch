@@ -10,7 +10,7 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 
 ## Invariants
 
-- Writes `$DESIGN_TMPDIR/.bg-wait-active` after pause-save checks and removes it on exit so hook enforcement covers the immediate-background wait.
+- Writes `$DESIGN_TMPDIR/.bg-wait-active` after pause-save checks and removes it on exit so hook enforcement covers the immediate-background wait. The marker copies `CLONE_PATH` from sibling `.larch-keepalive` when available; marker setup remains best-effort.
 - Accepts `--session-env-path` from the prompt-side Bash call.
 - Accepts `--claude-pid` when the wrapped logic must refresh session state.
 - Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`.

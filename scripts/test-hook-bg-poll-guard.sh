@@ -24,9 +24,11 @@ mkdir -p "$HOME"
 D="$TMP/claude-design-bg-guard"
 mkdir -p "$D/tasks" "$D/plan-review/round-1"
 MARKER="$D/.bg-wait-active"
+EXPECTED_STEP="design-step3-review"
 
 write_marker() {
   local pid="$1" start="$2" timeout="${3:-21600}" step="${4:-design-step3-review}"
+  EXPECTED_STEP="$step"
   cat >"$MARKER" <<EOF_MARKER
 PID=$pid
   CLAUDE_PID=$$
@@ -73,6 +75,7 @@ run_payload_with_marker() {
 
 write_marker_at() {
   local marker="$1" pid="$2" start="$3" timeout="${4:-21600}" step="${5:-design-step3-review}"
+  EXPECTED_STEP="$step"
   cat >"$marker" <<EOF_MARKER
 PID=$pid
 CLAUDE_PID=$$
@@ -97,7 +100,7 @@ assert_allow() {
 }
 
 assert_deny() {
-  local out="$1" label="$2" reason
+  local out="$1" label="$2" expected_step="$3" reason actual_step
   if printf '%s' "$out" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; then
     pass "$label"
   else
@@ -109,10 +112,10 @@ assert_deny() {
     *.bg-wait-active*) ;;
     *) fail "$label deny reason must include the triggering .bg-wait-active marker" ;;
   esac
-  case "$reason" in
-    *STEP=*) ;;
-    *) fail "$label deny reason must include marker STEP metadata" ;;
-  esac
+  actual_step=$(printf '%s' "$reason" | sed -n 's/.*STEP=\([^[:space:]]*\).*/\1/p')
+  if [ "$actual_step" != "$expected_step" ]; then
+    fail "$label deny reason STEP mismatch: got '$actual_step', want '$expected_step'"
+  fi
   case "$reason" in
     *hook_version=*) ;;
     *) fail "$label deny reason must include hook_version metadata" ;;
@@ -149,7 +152,7 @@ assert_allow "$out" 'disable env var allows'
 
 touch "$D/plan-review/round-1/ballot.txt"
 out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=0 run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
-assert_deny "$out" 'live marker plus non-1 Claude subprocess exemption still denies Read'
+assert_deny "$out" 'live marker plus non-1 Claude subprocess exemption still denies Read' "$EXPECTED_STEP"
 
 out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1 run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
 assert_allow "$out" 'live marker plus Claude subprocess exemption allows Read'
@@ -158,34 +161,34 @@ out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1 run_payload "$(payload_monitor)")
 assert_allow "$out" 'live marker plus Claude subprocess exemption allows Monitor'
 
 out=$(run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
-assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies'
+assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'live marker plus Bash ls DESIGN_TMPDIR denies'
+assert_deny "$out" 'live marker plus Bash ls DESIGN_TMPDIR denies' "$EXPECTED_STEP"
 
 session_tmpdir_ls="ls \"\$SESSION_TMPDIR\""
 out=$(run_payload "$(payload_bash "$session_tmpdir_ls")")
-assert_deny "$out" 'live marker plus Bash ls SESSION_TMPDIR denies'
+assert_deny "$out" 'live marker plus Bash ls SESSION_TMPDIR denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_bash 'cat .step3-review-result.env' "$D")")
-assert_deny "$out" 'live marker plus cat result env in tmpdir context denies'
+assert_deny "$out" 'live marker plus cat result env in tmpdir context denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_bash "sleep 30 && $design_tmpdir_ls")")
-assert_deny "$out" 'live marker plus sleep N && probe denies'
+assert_deny "$out" 'live marker plus sleep N && probe denies' "$EXPECTED_STEP"
 
 watcher_cmd="while [ ! -f .step3-review-result.env ]; do sleep 5; $design_tmpdir_ls; done"
 out=$(run_payload "$(payload_bash "$watcher_cmd")")
-assert_deny "$out" 'live marker plus watcher loop denies'
+assert_deny "$out" 'live marker plus watcher loop denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_read 'tasks/foo.output')")
-assert_deny "$out" 'live marker plus Read tasks/foo.output denies'
+assert_deny "$out" 'live marker plus Read tasks/foo.output denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_bash "\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh")")
 assert_allow "$out" 'wrapper-routed design-run call allows'
 
 compound_wrapper_probe="\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh && $design_tmpdir_ls"
 out=$(run_payload "$(payload_bash "$compound_wrapper_probe")")
-assert_deny "$out" 'compound wrapper plus appended probe denies'
+assert_deny "$out" 'compound wrapper plus appended probe denies' "$EXPECTED_STEP"
 
 # #4725: the bare background sleep-loop Step 3 recovery waiter is now DENIED (it
 # used to be allowed). It is a zero-output background task that breeds its own
@@ -193,21 +196,21 @@ assert_deny "$out" 'compound wrapper plus appended probe denies'
 # terminal-sentinel probe path instead.
 step3_recovery_waiter="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter" "$D")")
-assert_deny "$out" 'exact Step 3 recovery waiter denies'
+assert_deny "$out" 'exact Step 3 recovery waiter denies' "$EXPECTED_STEP"
 
 step3_recovery_waiter_braced="until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_braced" "$D")")
-assert_deny "$out" 'braced Step 3 recovery waiter denies'
+assert_deny "$out" 'braced Step 3 recovery waiter denies' "$EXPECTED_STEP"
 
 # #4489 / #4725: a single leading DESIGN_TMPDIR=<abs>; assignment still matches the
 # exact-waiter shape, so the prefixed waiter is denied too.
 step3_recovery_waiter_prefixed="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed" "$D")")
-assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter denies'
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter denies' "$EXPECTED_STEP"
 
 step3_recovery_waiter_prefixed_braced="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\${DESIGN_TMPDIR}/.completed/step-3-terminal\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_braced" "$D")")
-assert_deny "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter denies'
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed braced Step 3 recovery waiter denies' "$EXPECTED_STEP"
 
 # #4725: the sanctioned replacement for the denied waiter is the foreground,
 # non-sleeping terminal-sentinel probe, which stays allowed when the sentinel is
@@ -222,19 +225,19 @@ assert_allow "$out" 'foreground terminal-sentinel probe (sanctioned waiter repla
 
 step3_recovery_waiter_prefixed_probe="DESIGN_TMPDIR=/tmp/larch-design-xyz; until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_prefixed_probe" "$D")")
-assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter with appended probe denies'
+assert_deny "$out" 'DESIGN_TMPDIR-prefixed Step 3 recovery waiter with appended probe denies' "$EXPECTED_STEP"
 
 step3_recovery_waiter_probe="until [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ]; do sleep 30; done && cat \"\$DESIGN_TMPDIR/.step3-review-result.env\""
 out=$(run_payload "$(payload_bash "$step3_recovery_waiter_probe" "$D")")
-assert_deny "$out" 'Step 3 recovery waiter with appended probe denies'
+assert_deny "$out" 'Step 3 recovery waiter with appended probe denies' "$EXPECTED_STEP"
 
 filetest_loop='while [ ! -f .step3-review-result.env ]; do sleep 5; done'
 out=$(run_payload "$(payload_bash "$filetest_loop" "$D")")
-assert_deny "$out" 'live marker plus file-test sleep loop denies'
+assert_deny "$out" 'live marker plus file-test sleep loop denies' "$EXPECTED_STEP"
 
 step3_result_waiter="until [ -f \"\$DESIGN_TMPDIR/.step3-review-result.env\" ]; do sleep 30; done"
 out=$(run_payload "$(payload_bash "$step3_result_waiter" "$D")")
-assert_deny "$out" 'Step 3 result-env waiter remains denied'
+assert_deny "$out" 'Step 3 result-env waiter remains denied' "$EXPECTED_STEP"
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
@@ -258,17 +261,17 @@ assert_allow "$out" 'absent final-summary terminal sentinel foreground probe all
 write_marker $$ "$(date +%s)" 21600 design-step5c
 nonterminal_step5c_probe='test -f "${DESIGN_TMPDIR}/.completed/step-5c" && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$nonterminal_step5c_probe" "$D")")
-assert_deny "$out" 'foreground probe of non-terminal Step 5c sentinel denies'
+assert_deny "$out" 'foreground probe of non-terminal Step 5c sentinel denies' "$EXPECTED_STEP"
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 nonterminal_step3_probe='test -f "${DESIGN_TMPDIR}/.completed/step-3" && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$nonterminal_step3_probe" "$D")")
-assert_deny "$out" 'foreground probe of non-terminal Step 3 sentinel denies'
+assert_deny "$out" 'foreground probe of non-terminal Step 3 sentinel denies' "$EXPECTED_STEP"
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 nonterminal_step35_probe='[[ -f "${DESIGN_TMPDIR}/.completed/step-3.5" ]] && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$nonterminal_step35_probe" "$D")")
-assert_deny "$out" 'foreground probe of Step 3.5 sentinel denies'
+assert_deny "$out" 'foreground probe of Step 3.5 sentinel denies' "$EXPECTED_STEP"
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
@@ -282,39 +285,39 @@ mkdir -p "$D/.completed"
 : >"$D/.completed/step-3"
 rm -f "$D/.completed/step-3-terminal"
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'stale step-3 milestone without step-3-terminal does not release marker'
+assert_deny "$out" 'stale step-3 milestone without step-3-terminal does not release marker' "$EXPECTED_STEP"
 rm -f "$D/.completed/step-3"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 
 sentinel_probe_sleep='test -f "${DESIGN_TMPDIR}/.completed/step-3-terminal" && sleep 1'
 out=$(run_payload "$(payload_bash "$sentinel_probe_sleep" "$D")")
-assert_deny "$out" 'foreground terminal sentinel probe plus sleep denies'
+assert_deny "$out" 'foreground terminal sentinel probe plus sleep denies' "$EXPECTED_STEP"
 
 sentinel_probe_until='until [ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]; do :; done'
 out=$(run_payload "$(payload_bash "$sentinel_probe_until" "$D")")
-assert_deny "$out" 'foreground terminal sentinel probe wrapped in until denies'
+assert_deny "$out" 'foreground terminal sentinel probe wrapped in until denies' "$EXPECTED_STEP"
 
 sentinel_probe_while='while [ ! -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]; do :; done'
 out=$(run_payload "$(payload_bash "$sentinel_probe_while" "$D")")
-assert_deny "$out" 'foreground terminal sentinel probe wrapped in while denies'
+assert_deny "$out" 'foreground terminal sentinel probe wrapped in while denies' "$EXPECTED_STEP"
 
 result_env_probe='test -f "$DESIGN_TMPDIR/.step3-review-result.env" && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$result_env_probe" "$D")")
-assert_deny "$out" 'foreground probe of Step 3 result env denies'
+assert_deny "$out" 'foreground probe of Step 3 result env denies' "$EXPECTED_STEP"
 
 publish_env_probe='test -f "$DESIGN_TMPDIR/.design-publish-result.env" && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$publish_env_probe" "$D")")
-assert_deny "$out" 'foreground probe of publish result env denies'
+assert_deny "$out" 'foreground probe of publish result env denies' "$EXPECTED_STEP"
 
 for verb in cat ls stat jq; do
   appended_probe="test -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" && $verb \"\$DESIGN_TMPDIR/.step3-review-result.env\""
   out=$(run_payload "$(payload_bash "$appended_probe" "$D")")
-  assert_deny "$out" "foreground terminal sentinel probe with appended $verb denies"
+  assert_deny "$out" "foreground terminal sentinel probe with appended $verb denies" "$EXPECTED_STEP"
 done
 
 cmd_sub_probe='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo $(cat "$DESIGN_TMPDIR/.step3-review-result.env")'
 out=$(run_payload "$(payload_bash "$cmd_sub_probe" "$D")")
-assert_deny "$out" 'foreground terminal sentinel probe with command substitution in echo tail denies'
+assert_deny "$out" 'foreground terminal sentinel probe with command substitution in echo tail denies' "$EXPECTED_STEP"
 
 # #5610: a compound probe referencing BOTH a tasks output file (which excludes it from the
 # simple foreground-probe classifier at bash_is_terminal_sentinel_foreground_probe) AND the
@@ -326,11 +329,11 @@ write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
 compound_taskoutput_sentinel_probe='wc -c "$DESIGN_TMPDIR/tasks/foo.output" && [ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]'
 out=$(run_payload "$(payload_bash "$compound_taskoutput_sentinel_probe" "$D")")
-assert_deny "$out" 'compound tasks/output plus terminal-sentinel probe denies via generic path'
+assert_deny "$out" 'compound tasks/output plus terminal-sentinel probe denies via generic path' "$EXPECTED_STEP"
 
 informal_probe="DESIGN_TMPDIR=/tmp/informal-design; [ -f \"\$DESIGN_TMPDIR/.completed/step-3-terminal\" ] && echo DONE || echo WAIT"
 out=$(run_payload "$(payload_bash "$informal_probe" "$D")")
-assert_deny "$out" 'foreground probe with DESIGN_TMPDIR outside live marker dir denies'
+assert_deny "$out" 'foreground probe with DESIGN_TMPDIR outside live marker dir denies' "$EXPECTED_STEP"
 
 D_INFORMAL="$TMP/informal-design"
 mkdir -p "$D_INFORMAL"
@@ -345,7 +348,7 @@ rm -rf "$D_INFORMAL"
 
 touch_forgery="touch \"\$DESIGN_TMPDIR/.completed/step-3-terminal\""
 out=$(run_payload "$(payload_bash "$touch_forgery" "$D")")
-assert_deny "$out" 'live marker plus touch of terminal sentinel denies'
+assert_deny "$out" 'live marker plus touch of terminal sentinel denies' "$EXPECTED_STEP"
 
 for alt_forgery in \
   ': >"\$DESIGN_TMPDIR/.completed/step-3-terminal"' \
@@ -357,12 +360,12 @@ for alt_forgery in \
   'install /etc/hosts "\$DESIGN_TMPDIR/.completed/step-3-terminal"'
 do
   out=$(run_payload "$(payload_bash "$alt_forgery" "$D")")
-  assert_deny "$out" "live marker plus alternate sentinel forgery denies: $alt_forgery"
+  assert_deny "$out" "live marker plus alternate sentinel forgery denies: $alt_forgery" "$EXPECTED_STEP"
 done
 
 sidecar_forgery=': >"\$DESIGN_TMPDIR/.step3-terminal-persisted-this-run"'
 out=$(run_payload "$(payload_bash "$sidecar_forgery" "$D")")
-assert_deny "$out" 'live marker plus sidecar forgery denies'
+assert_deny "$out" 'live marker plus sidecar forgery denies' "$EXPECTED_STEP"
 
 mkdir -p "$D/.completed"
 write_marker $$ "$(date +%s)" 21600 design-step3-review
@@ -370,13 +373,13 @@ rm -f "$D/.completed/step-3-terminal"
 : >"$D/.completed/real-terminal-target"
 ln -s "$D/.completed/real-terminal-target" "$D/.completed/step-3-terminal"
 out=$(run_payload "$(payload_bash "$terminal_probe_step3" "$D")")
-assert_deny "$out" 'symlinked terminal sentinel foreground probe denies'
+assert_deny "$out" 'symlinked terminal sentinel foreground probe denies' "$EXPECTED_STEP"
 rm -f "$D/.completed/step-3-terminal"
 
 write_marker $$ "$(date +%s)" 21600 design-step5c
 : >"$D/.completed/step-5c"
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'Step 5c non-terminal sentinel does not release marker'
+assert_deny "$out" 'Step 5c non-terminal sentinel does not release marker' "$EXPECTED_STEP"
 : >"$D/.completed/step-5c-terminal"
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'Step 5c terminal sentinel releases marker'
@@ -386,22 +389,23 @@ out=$(run_payload "$(payload_bash "rg plan-review docs/" "/tmp/other-repo")")
 assert_allow "$out" 'plan-review substring outside live tmpdir allows'
 
 out=$(run_payload "$(payload_bash "awk '{print}' \"\$DESIGN_TMPDIR/plan-review/round-1/foo-output.txt\"")")
-assert_deny "$out" 'live marker plus awk against DESIGN_TMPDIR output denies'
+assert_deny "$out" 'live marker plus awk against DESIGN_TMPDIR output denies' "$EXPECTED_STEP"
 
 # #5684: production-divergence regression. In production the hook's PPID/input never
 # match the marker's stored CLAUDE_PID and LARCH_BG_POLL_GUARD_SESSION_PID is unset, so
 # the old CLAUDE_PID equality check rejected every marker and the guard never fired. A
 # live marker (alive PID, within age) must now deny regardless of the stored CLAUDE_PID,
 # with no session-PID env set. This is exactly the real hook environment.
+EXPECTED_STEP=design-step3-review
 printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(date +%s)" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER"
 out=$(printf '%s' "$(payload_bash "$design_tmpdir_ls")" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
-assert_deny "$out" 'live marker denies regardless of stored CLAUDE_PID without session-PID env (#5684)'
+assert_deny "$out" 'live marker denies regardless of stored CLAUDE_PID without session-PID env (#5684)' "$EXPECTED_STEP"
 write_marker $$ "$(date +%s)"
 printf '0\n' >"$D/bg-poll-guard-denials.count"
 chmod 444 "$D/bg-poll-guard-denials.count" 2>/dev/null || true
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 chmod 644 "$D/bg-poll-guard-denials.count" 2>/dev/null || true
-assert_deny "$out" 'deny JSON emitted even when telemetry count write fails'
+assert_deny "$out" 'deny JSON emitted even when telemetry count write fails' "$EXPECTED_STEP"
 
 out=$(printf '{not-json' | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 assert_allow "$out" 'malformed JSON silently allows'
@@ -414,7 +418,7 @@ out=$(printf '%s' "$(payload_bash "$design_tmpdir_ls")" | PATH="$NOJQ" LARCH_BG_
 assert_allow "$out" 'missing jq path silently allows'
 
 out=$(run_payload "$(payload_bash 'grep foo final-summary.md' "$D")")
-assert_deny "$out" 'deny JSON carries PreToolUse and permissionDecision=deny'
+assert_deny "$out" 'deny JSON carries PreToolUse and permissionDecision=deny' "$EXPECTED_STEP"
 
 count=$(awk 'NR==1 { print; exit }' "$D/bg-poll-guard-denials.count" 2>/dev/null || printf '0')
 case "$count" in ''|*[!0-9]*) count=0 ;; esac
@@ -442,19 +446,19 @@ write_marker $$ "$(date +%s)" 21600 design-step3-review
 : >"$D/.completed/step-3-terminal"
 rm -f "$D/.step3-terminal-persisted-this-run"
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'step3 terminal sentinel without persist sidecar does not release marker'
+assert_deny "$out" 'step3 terminal sentinel without persist sidecar does not release marker' "$EXPECTED_STEP"
 rm -f "$D/.completed/step-3-terminal" "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 design-step5c
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'step-3-terminal sentinel does not release a non-step3 marker'
+assert_deny "$out" 'step-3-terminal sentinel does not release a non-step3 marker' "$EXPECTED_STEP"
 
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 rm -f "$D/.completed/step-3-terminal"
 : >"$D/.completed/real-target"
 ln -s "$D/.completed/real-target" "$D/.completed/step-3-terminal"
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'symlinked completion sentinel does not release'
+assert_deny "$out" 'symlinked completion sentinel does not release' "$EXPECTED_STEP"
 rm -f "$D/.completed/step-3-terminal" "$MARKER"
 
 # #4450: extend the same-turn completion release to design-step5c and
@@ -494,9 +498,9 @@ assert_allow "$out" 'probe clamp: 1st foreground probe allows'
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
 assert_allow "$out" 'probe clamp: 2nd foreground probe allows'
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
-assert_deny "$out" 'probe clamp: 3rd consecutive probe against absent sentinel denies'
+assert_deny "$out" 'probe clamp: 3rd consecutive probe against absent sentinel denies' "$EXPECTED_STEP"
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
-assert_deny "$out" 'probe clamp: stays denied while sentinel absent'
+assert_deny "$out" 'probe clamp: stays denied while sentinel absent' "$EXPECTED_STEP"
 
 # Per-sentinel isolation: a Step 5c probe is unaffected by the tripped step-3 clamp.
 write_marker $$ "$(date +%s)" 21600 design-step5c
@@ -527,7 +531,7 @@ rm -f "$D/.completed/step-3-terminal"
 out=$(LARCH_BG_POLL_GUARD_PROBE_THRESHOLD=1 run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
 assert_allow "$out" 'probe clamp: threshold=1 allows 1st probe'
 out=$(LARCH_BG_POLL_GUARD_PROBE_THRESHOLD=1 run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
-assert_deny "$out" 'probe clamp: threshold=1 denies 2nd probe'
+assert_deny "$out" 'probe clamp: threshold=1 denies 2nd probe' "$EXPECTED_STEP"
 reset_probe_counters
 rm -f "$MARKER"
 
@@ -539,7 +543,7 @@ assert_allow "$out" 'probe clamp: pre-relaunch 1st probe allows'
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
 assert_allow "$out" 'probe clamp: pre-relaunch 2nd probe allows'
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
-assert_deny "$out" 'probe clamp: pre-relaunch 3rd probe denies'
+assert_deny "$out" 'probe clamp: pre-relaunch 3rd probe denies' "$EXPECTED_STEP"
 write_marker 999999 "$(date +%s)" 21600 design-step3-review
 out=$(run_payload "$(payload_bash "$probe_clamp_cmd" "$D")")
 assert_allow "$out" 'probe clamp: dead marker removal clears counter sidecar'
@@ -566,7 +570,7 @@ assert_allow "$out" 'parallel clamp: dir A 1st probe allows'
 out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_a" "$D_A")")
 assert_allow "$out" 'parallel clamp: dir A 2nd probe allows'
 out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_a" "$D_A")")
-assert_deny "$out" 'parallel clamp: dir A 3rd probe denies'
+assert_deny "$out" 'parallel clamp: dir A 3rd probe denies' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_b" "$D_B")")
 assert_allow "$out" 'parallel clamp: dir B unaffected after dir A clamp tripped'
 rm -f "$MARKER_A" "$MARKER_B" \
@@ -578,7 +582,7 @@ mkdir -p "$D_IMPL/.completed"
 MARKER_IMPL="$D_IMPL/.bg-wait-active"
 write_marker_at "$MARKER_IMPL" $$ "$(date +%s)" 21600 implement-step3-checks
 out=$(run_payload_auto_markers "$(payload_monitor "$D_IMPL")")
-assert_deny "$out" 'TMPDIR claude-implement-* fallback discovery without marker override denies Monitor'
+assert_deny "$out" 'TMPDIR claude-implement-* fallback discovery without marker override denies Monitor' "$EXPECTED_STEP"
 rm -f "$MARKER_IMPL"
 
 # Many TMPDIR larch-*/claude-*-prefixed dirs stay well under the hook's 10s PreToolUse
@@ -592,7 +596,7 @@ write_marker_at "$MARKER_PERF" $$ "$(date +%s)" 21600 implement-step3-checks
 start_ts=$(date +%s)
 out=$(run_payload_auto_markers "$(payload_monitor "$D_PERF")")
 elapsed=$(( $(date +%s) - start_ts ))
-assert_deny "$out" '#5943: discovery over 3000 TMPDIR session dirs still denies Monitor'
+assert_deny "$out" '#5943: discovery over 3000 TMPDIR session dirs still denies Monitor' "$EXPECTED_STEP"
 if [ "$elapsed" -le 5 ]; then
   pass "#5943: discovery over 3000 TMPDIR session dirs stays bounded (elapsed=${elapsed}s)"
 else
@@ -604,21 +608,21 @@ rm -rf "$TMP"/larch-perf-*
 # Monitor and TaskOutput are always denied while any live marker is active.
 write_marker $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload "$(payload_monitor)")
-assert_deny "$out" 'live design marker plus Monitor denies'
+assert_deny "$out" 'live design marker plus Monitor denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_taskoutput)")
-assert_deny "$out" 'live design marker plus TaskOutput denies'
+assert_deny "$out" 'live design marker plus TaskOutput denies' "$EXPECTED_STEP"
 
 # Implement bg-wait markers: implement-step3-checks and implement-step5-review.
 write_marker $$ "$(date +%s)" 21600 implement-step3-checks
 out=$(run_payload "$(payload_monitor)")
-assert_deny "$out" 'live implement-step3-checks marker plus Monitor denies'
+assert_deny "$out" 'live implement-step3-checks marker plus Monitor denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_taskoutput)")
-assert_deny "$out" 'live implement-step3-checks marker plus TaskOutput denies'
+assert_deny "$out" 'live implement-step3-checks marker plus TaskOutput denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
-assert_deny "$out" 'live implement-step3-checks marker denies Bash probe'
+assert_deny "$out" 'live implement-step3-checks marker denies Bash probe' "$EXPECTED_STEP"
 
 # implement-step3-checks terminal sentinel releases the marker.
 mkdir -p "$D/.completed"
@@ -649,7 +653,7 @@ assert_allow "$out" 'implement Step 3 terminal probe allows while absent, first 
 out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
 assert_allow "$out" 'implement Step 3 terminal probe allows while absent, second attempt'
 out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
-assert_deny "$out" 'implement Step 3 terminal probe clamps repeated absent probes'
+assert_deny "$out" 'implement Step 3 terminal probe clamps repeated absent probes' "$EXPECTED_STEP"
 : >"$D/.completed/step-3-terminal"
 out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
 assert_allow "$out" 'implement Step 3 terminal sentinel presence releases marker and allows probe'
@@ -662,21 +666,21 @@ rm -f "$D/.completed/step-3-terminal" "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
-assert_deny "$out" 'implement Step 3 terminal probe bound to Step 5 marker denies'
+assert_deny "$out" 'implement Step 3 terminal probe bound to Step 5 marker denies' "$EXPECTED_STEP"
 rm -f "$MARKER"
 
 # implement-step5-review marker and terminal sentinel.
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload "$(payload_monitor)")
-assert_deny "$out" 'live implement-step5-review marker plus Monitor denies'
+assert_deny "$out" 'live implement-step5-review marker plus Monitor denies' "$EXPECTED_STEP"
 
 out=$(run_payload "$(payload_taskoutput)")
-assert_deny "$out" 'live implement-step5-review marker plus TaskOutput denies'
+assert_deny "$out" 'live implement-step5-review marker plus TaskOutput denies' "$EXPECTED_STEP"
 
 # IMPLEMENT_TMPDIR reference in Bash probe is denied when implement marker is live.
 implement_probe='ls "$IMPLEMENT_TMPDIR"'
 out=$(run_payload "$(payload_bash "$implement_probe")")
-assert_deny "$out" 'live implement-step5-review marker plus Bash ls IMPLEMENT_TMPDIR denies'
+assert_deny "$out" 'live implement-step5-review marker plus Bash ls IMPLEMENT_TMPDIR denies' "$EXPECTED_STEP"
 
 # implement-step5-review terminal sentinel releases the marker.
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
@@ -705,7 +709,7 @@ assert_allow "$out" 'implement Step 5 terminal probe allows while absent, first 
 out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
 assert_allow "$out" 'implement Step 5 terminal probe allows while absent, second attempt'
 out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
-assert_deny "$out" 'implement Step 5 terminal probe clamps repeated absent probes'
+assert_deny "$out" 'implement Step 5 terminal probe clamps repeated absent probes' "$EXPECTED_STEP"
 : >"$D/.completed/step-5-terminal"
 out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
 assert_allow "$out" 'implement Step 5 terminal sentinel presence releases marker and allows probe'
@@ -718,34 +722,34 @@ rm -f "$D/.completed/step-5-terminal" "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 implement-step3-checks
 out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
-assert_deny "$out" 'implement Step 5 terminal probe bound to Step 3 marker denies'
+assert_deny "$out" 'implement Step 5 terminal probe bound to Step 3 marker denies' "$EXPECTED_STEP"
 rm -f "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 implement_step5_appended='test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" && cat "$IMPLEMENT_TMPDIR/tasks/foo.output"'
 out=$(run_payload "$(payload_bash "$implement_step5_appended" "$D")")
-assert_deny "$out" 'implement Step 5 terminal probe with appended cat denies'
+assert_deny "$out" 'implement Step 5 terminal probe with appended cat denies' "$EXPECTED_STEP"
 implement_step5_bracket='[ -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" ]'
 out=$(run_payload "$(payload_bash "$implement_step5_bracket" "$D")")
-assert_deny "$out" 'implement Step 5 bracket terminal probe remains denied'
+assert_deny "$out" 'implement Step 5 bracket terminal probe remains denied' "$EXPECTED_STEP"
 touch_step5_terminal='touch "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
 out=$(run_payload "$(payload_bash "$touch_step5_terminal" "$D")")
-assert_deny "$out" 'live Step 5 marker plus touch terminal sentinel forgery denies'
+assert_deny "$out" 'live Step 5 marker plus touch terminal sentinel forgery denies' "$EXPECTED_STEP"
 truncate_step5_terminal=': >"$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
 out=$(run_payload "$(payload_bash "$truncate_step5_terminal" "$D")")
-assert_deny "$out" 'live Step 5 marker plus truncate terminal sentinel forgery denies'
+assert_deny "$out" 'live Step 5 marker plus truncate terminal sentinel forgery denies' "$EXPECTED_STEP"
 rm -f "$MARKER"
 
 # implement-step8-ship marker, rc release sentinel, and sanctioned rc probe.
 rm -f "$D/.step-8-ship-handoff.rc" "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" "$MARKER"
 write_marker $$ "$(date +%s)" 21600 implement-step8-ship
 out=$(run_payload "$(payload_monitor)")
-assert_deny "$out" 'live implement-step8-ship marker plus Monitor denies'
+assert_deny "$out" 'live implement-step8-ship marker plus Monitor denies' "$EXPECTED_STEP"
 out=$(run_payload "$(payload_taskoutput)")
-assert_deny "$out" 'live implement-step8-ship marker plus TaskOutput denies'
+assert_deny "$out" 'live implement-step8-ship marker plus TaskOutput denies' "$EXPECTED_STEP"
 step8_ordinary_probe='ls "$IMPLEMENT_TMPDIR"'
 out=$(run_payload "$(payload_bash "$step8_ordinary_probe")")
-assert_deny "$out" 'live implement-step8-ship marker plus ordinary IMPLEMENT_TMPDIR probe denies'
+assert_deny "$out" 'live implement-step8-ship marker plus ordinary IMPLEMENT_TMPDIR probe denies' "$EXPECTED_STEP"
 step8_rc_probe='test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 step8_rc_probe_braced='test -f "${IMPLEMENT_TMPDIR}/.step-8-ship-handoff.rc"'
 step8_rc_probe_pointer='IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
@@ -760,7 +764,7 @@ assert_allow "$out" 'Step 8 handoff rc probe allows while rc absent, first attem
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
 assert_allow "$out" 'Step 8 handoff rc probe allows while rc absent, second attempt'
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
-assert_deny "$out" 'Step 8 handoff rc probe denies after clamp threshold'
+assert_deny "$out" 'Step 8 handoff rc probe denies after clamp threshold' "$EXPECTED_STEP"
 : >"$D/.step-8-ship-handoff.rc"
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
 assert_allow "$out" 'Step 8 handoff rc presence clears clamp and allows probe'
@@ -777,29 +781,29 @@ write_marker $$ "$(date +%s)" 21600 implement-step8-ship
 : >"$D/.step-8-real-rc"
 ln -s "$D/.step-8-real-rc" "$D/.step-8-ship-handoff.rc"
 out=$(run_payload "$(payload_monitor)")
-assert_deny "$out" 'symlinked Step 8 handoff rc does not release marker'
+assert_deny "$out" 'symlinked Step 8 handoff rc does not release marker' "$EXPECTED_STEP"
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
-assert_deny "$out" 'symlinked Step 8 handoff rc probe denies'
+assert_deny "$out" 'symlinked Step 8 handoff rc probe denies' "$EXPECTED_STEP"
 rm -f "$D/.step-8-ship-handoff.rc" "$D/.step-8-real-rc" "$MARKER"
 
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
-assert_deny "$out" 'Step 8 handoff rc probe under implement-step5-review marker denies'
+assert_deny "$out" 'Step 8 handoff rc probe under implement-step5-review marker denies' "$EXPECTED_STEP"
 rm -f "$MARKER"
 
 touch_step8_rc='touch "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 write_marker $$ "$(date +%s)" 21600 implement-step8-ship
 out=$(run_payload "$(payload_bash "$touch_step8_rc" "$D")")
-assert_deny "$out" 'live Step 8 marker plus touch rc forgery denies'
+assert_deny "$out" 'live Step 8 marker plus touch rc forgery denies' "$EXPECTED_STEP"
 truncate_step8_rc=': >"$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 out=$(run_payload "$(payload_bash "$truncate_step8_rc" "$D")")
-assert_deny "$out" 'live Step 8 marker plus truncate rc forgery denies'
+assert_deny "$out" 'live Step 8 marker plus truncate rc forgery denies' "$EXPECTED_STEP"
 touch_step8_rc_cwd='touch .step-8-ship-handoff.rc'
 out=$(run_payload "$(payload_bash "$touch_step8_rc_cwd" "$D")")
-assert_deny "$out" 'live Step 8 marker plus cwd-relative touch rc forgery denies'
+assert_deny "$out" 'live Step 8 marker plus cwd-relative touch rc forgery denies' "$EXPECTED_STEP"
 truncate_step8_rc_cwd=': > .step-8-ship-handoff.rc'
 out=$(run_payload "$(payload_bash "$truncate_step8_rc_cwd" "$D")")
-assert_deny "$out" 'live Step 8 marker plus cwd-relative truncate rc forgery denies'
+assert_deny "$out" 'live Step 8 marker plus cwd-relative truncate rc forgery denies' "$EXPECTED_STEP"
 rm -f "$D/.step-8-ship-handoff.rc" "$MARKER"
 
 D_STEP5="$SESSIONS/wait-step5"
@@ -814,7 +818,7 @@ out=$(run_payload_auto_markers "$(payload_bash "$multi_step8_probe" "$D_STEP8")"
 assert_allow "$out" 'parallel markers bind Step 8 rc probe to Step 8 tmpdir and allow'
 wrong_step8_probe="IMPLEMENT_TMPDIR=$D_STEP5; test -f \"\$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc\""
 out=$(run_payload_auto_markers "$(payload_bash "$wrong_step8_probe" "$D_STEP5")")
-assert_deny "$out" 'parallel markers deny Step 8 rc probe bound to non-Step 8 tmpdir'
+assert_deny "$out" 'parallel markers deny Step 8 rc probe bound to non-Step 8 tmpdir' implement-step5-review
 rm -f "$MARKER_STEP5" "$MARKER_STEP8" "$D_STEP8/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
 
 write_marker $$ "$(date +%s)" 21600 implement-step8-ship
@@ -839,11 +843,11 @@ do
   mkdir -p "$D/.completed"
   write_marker $$ "$(date +%s)" 21600 "$step"
   out=$(run_payload "$(payload_monitor)")
-  assert_deny "$out" "live $step marker plus Monitor denies"
+  assert_deny "$out" "live $step marker plus Monitor denies" "$EXPECTED_STEP"
   out=$(run_payload "$(payload_taskoutput)")
-  assert_deny "$out" "live $step marker plus TaskOutput denies"
+  assert_deny "$out" "live $step marker plus TaskOutput denies" "$EXPECTED_STEP"
   out=$(run_payload "$(payload_bash "$implement_probe" "$D")")
-  assert_deny "$out" "live $step marker plus ordinary tmpdir probe denies"
+  assert_deny "$out" "live $step marker plus ordinary tmpdir probe denies" "$EXPECTED_STEP"
   : >"$D/$sentinel"
   out=$(run_payload "$(payload_monitor)")
   assert_allow "$out" "$step terminal sentinel releases Monitor"
@@ -851,14 +855,14 @@ do
   : >"$D/.completed/real-target"
   ln -s "$D/.completed/real-target" "$D/$sentinel"
   out=$(run_payload "$(payload_monitor)")
-  assert_deny "$out" "symlinked $step terminal sentinel does not release"
+  assert_deny "$out" "symlinked $step terminal sentinel does not release" "$EXPECTED_STEP"
   rm -f "$D/$sentinel" "$D/.completed/real-target" "$MARKER"
   if [ "$kind" = implement ]; then
     terminal_basename=${sentinel##*/}
     impl_terminal_probe="test -f \"\$IMPLEMENT_TMPDIR/.completed/$terminal_basename\""
     write_marker $$ "$(date +%s)" 21600 "$step"
     out=$(run_payload "$(payload_bash "$impl_terminal_probe" "$D")")
-    assert_deny "$out" "$step does not gain an implement foreground terminal-probe carve-out"
+    assert_deny "$out" "$step does not gain an implement foreground terminal-probe carve-out" "$EXPECTED_STEP"
     rm -f "$MARKER"
   fi
 done
@@ -872,13 +876,13 @@ assert_allow "$out" 'absent Step 4 terminal sentinel foreground probe allows'
 out=$(run_payload "$(payload_bash "$step4_foreground_probe" "$D")")
 assert_allow "$out" 'Step 4 foreground probe allows second absent attempt'
 out=$(run_payload "$(payload_bash "$step4_foreground_probe" "$D")")
-assert_deny "$out" 'Step 4 foreground probe clamps repeated absent probes'
+assert_deny "$out" 'Step 4 foreground probe clamps repeated absent probes' "$EXPECTED_STEP"
 non_step4_probe='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo WAIT'
 out=$(run_payload "$(payload_bash "$non_step4_probe" "$D")")
-assert_deny "$out" 'design-step4-tail denies non-Step-4 foreground terminal probe'
+assert_deny "$out" 'design-step4-tail denies non-Step-4 foreground terminal probe' "$EXPECTED_STEP"
 ordinary_step4_probe='test -f "$DESIGN_TMPDIR/.completed/step-4" && cat "$DESIGN_TMPDIR/rejected-findings.md"'
 out=$(run_payload "$(payload_bash "$ordinary_step4_probe" "$D")")
-assert_deny "$out" 'Step 4 foreground probe with appended read denies'
+assert_deny "$out" 'Step 4 foreground probe with appended read denies' "$EXPECTED_STEP"
 rm -f "$D/.completed/step-4" "$D"/bg-poll-guard-probe-denials.*.count "$MARKER"
 
 # #5925/#6080/#6108: cross-session false-positive regression. A live marker
@@ -937,19 +941,40 @@ else
 fi
 rm -f "$MARKER_UNRELATED"
 
+write_marker_at "$MARKER_UNRELATED" $$ "$(date +%s)" 21600 design-step3-review
+printf 'CLONE_PATH=%s\n' "$CWD_FOREIGN" >>"$MARKER_UNRELATED"
+write_keepalive "$D_UNRELATED" "$CWD_OWN"
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
+assert_allow "$out" '#6138: marker-local foreign CLONE_PATH wins over same-clone keepalive for Monitor'
+rm -f "$MARKER_UNRELATED"
+write_keepalive "$D_UNRELATED" "$CWD_FOREIGN"
+
 write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
+printf 'CLONE_PATH=%s\n' "$CWD_OWN" >>"$MARKER_OWN"
+write_keepalive "$D_OWN" "$CWD_FOREIGN"
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
+assert_deny "$out" '#6138: marker-local same-clone CLONE_PATH wins over foreign keepalive for Monitor' "$EXPECTED_STEP"
+write_keepalive "$D_OWN" "$CWD_OWN"
 out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_OWN")")
-assert_deny "$out" '#5925: same-clone live marker still denies bare IMPLEMENT_TMPDIR reference from its own repo cwd'
+assert_deny "$out" '#5925: same-clone live marker still denies bare IMPLEMENT_TMPDIR reference from its own repo cwd' "$EXPECTED_STEP"
+out=$(run_payload_auto_markers "$(payload_bash "\"$D_OWN\"" "$CWD_OWN")")
+assert_deny "$out" '#6137: same-clone bare live marker dir Bash command denies' "$EXPECTED_STEP"
+case "$D_OWN" in
+  /private/*) D_OWN_ALIAS="${D_OWN#/private}" ;;
+  *) D_OWN_ALIAS="/private$D_OWN" ;;
+esac
+out=$(run_payload_auto_markers "$(payload_bash "\"$D_OWN_ALIAS\"" "$CWD_OWN")")
+assert_deny "$out" '#6137: same-clone bare live marker dir Bash command denies through /private alias' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN_SUB")")
-assert_deny "$out" '#6108: same-clone keepalive still denies Monitor from a repo subdirectory cwd'
+assert_deny "$out" '#6108: same-clone keepalive still denies Monitor from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN_SUB")")
-assert_deny "$out" '#6108: same-clone keepalive still denies TaskOutput from a repo subdirectory cwd'
+assert_deny "$out" '#6108: same-clone keepalive still denies TaskOutput from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN_SUB")")
-assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Read from a repo subdirectory cwd'
+assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Read from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN_SUB")")
-assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Bash from a repo subdirectory cwd'
+assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Bash from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_read "$D_OWN/plan-review/ballot.txt" "$CWD_OWN")")
-assert_deny "$out" '#6108: same-clone Read under live marker dir still denies'
+assert_deny "$out" '#6108: same-clone Read under live marker dir still denies' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_read "$MARKER_OWN" "$CWD_OWN")")
 assert_allow "$out" '#6108: same-clone Read of .bg-wait-active diagnosis marker allows'
 out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\"" "$CWD_OWN")")
@@ -959,7 +984,16 @@ assert_allow "$out" '#6108: same-clone awk read of .bg-wait-active diagnosis mar
 out=$(run_payload_with_marker "$MARKER_OWN" "$(payload_bash "cat \"$MARKER_OWN\" # \"$D_OWN/plan-review/ballot.txt\"" "$CWD_OWN")")
 assert_allow "$out" '#6108: comment-suffix .bg-wait-active diagnosis still allows after stripping comments'
 out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\" && cat tasks/foo.output" "$CWD_OWN")")
-assert_deny "$out" '#6108: mixed marker diagnosis plus progress artifact still denies'
+assert_deny "$out" '#6108: mixed marker diagnosis plus progress artifact still denies' "$EXPECTED_STEP"
+rm -f "$MARKER_OWN"
+
+write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
+write_keepalive "$D_OWN" "$CWD_OWN"
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN_SUB")")
+assert_deny "$out" '#6138: marker without CLONE_PATH falls back to keepalive clone identity' "$EXPECTED_STEP"
+rm -f "$D_OWN/.larch-keepalive"
+out=$(run_payload_auto_markers "$(payload_bash "\"$D_OWN\"" "$CWD_FOREIGN")")
+assert_deny "$out" '#6138: missing marker and keepalive identity still fails safe for direct marker-dir probe' "$EXPECTED_STEP"
 rm -f "$MARKER_OWN"
 
 # Hyphenated clone tags must still correlate correctly when keepalive identity is
@@ -972,7 +1006,7 @@ mkdir -p "$D_HYPHEN/.completed"
 MARKER_HYPHEN="$D_HYPHEN/.bg-wait-active"
 write_marker_at "$MARKER_HYPHEN" $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_HYPHEN")")
-assert_deny "$out" '#5925: hyphenated clone tag fallback still correlates and denies from its own repo cwd'
+assert_deny "$out" '#5925: hyphenated clone tag fallback still correlates and denies from its own repo cwd' "$EXPECTED_STEP"
 rm -f "$MARKER_HYPHEN"
 
 # The DESIGN_TMPDIR shape (not just IMPLEMENT_TMPDIR) must still deny from its
@@ -985,7 +1019,7 @@ MARKER_DESIGN_OWN="$D_DESIGN_OWN/.bg-wait-active"
 write_keepalive "$D_DESIGN_OWN" "$CWD_DESIGN_OWN"
 write_marker_at "$MARKER_DESIGN_OWN" $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload_auto_markers "$(payload_bash "$design_tmpdir_ls" "$CWD_DESIGN_OWN")")
-assert_deny "$out" '#5925: same-clone live design marker denies bare DESIGN_TMPDIR reference from its own repo cwd'
+assert_deny "$out" '#5925: same-clone live design marker denies bare DESIGN_TMPDIR reference from its own repo cwd' "$EXPECTED_STEP"
 rm -f "$MARKER_DESIGN_OWN"
 
 # Missing/empty cwd cannot establish plausibility for the bare-reference match

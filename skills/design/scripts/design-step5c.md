@@ -12,7 +12,7 @@ Thin wrapper for the `/design` Step 5c Python entrypoint.
 
 - Delegates directly to `python/cli.py design step5c` after deriving and exporting `CLAUDE_PLUGIN_ROOT` when needed.
 - The Python entrypoint owns source-env rehydration, pause-save handling, publish-tail orchestration, and all Step 5c status artifacts.
-- The Python entrypoint writes `$DESIGN_TMPDIR/.bg-wait-active` after publish preconditions and pause-save checks, then removes it on exit so hook enforcement covers publish/result parsing.
+- The Python entrypoint writes `$DESIGN_TMPDIR/.bg-wait-active` after publish preconditions and pause-save checks, copies `CLONE_PATH` from `.larch-keepalive` when available, then removes it on exit so hook enforcement covers publish/result parsing.
 - It accepts `--session-env-path`, `--claude-pid`, `--plugin-root`, `--mode`, and `--skip-validate` from the prompt-side launcher.
 - It calls the publish tail in-process through `design_publish.publish_core`, while `python/cli.py design publish` remains the legacy/internal publish-tail verb.
 - It parses publish rc `0` from `.design-publish-result.env` first with stdout fallback.

@@ -154,12 +154,17 @@ design_bg_wait_marker_start() {
   esac
   _bg_wait_marker="$DESIGN_TMPDIR/.bg-wait-active"
   _bg_wait_tmp="${_bg_wait_marker}.tmp.$$"
+  _bg_wait_clone_path=""
+  if [ -f "$DESIGN_TMPDIR/.larch-keepalive" ] && [ ! -L "$DESIGN_TMPDIR/.larch-keepalive" ]; then
+    _bg_wait_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$DESIGN_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+  fi
   {
     printf 'PID=%s\n' "$$"
     printf 'CLAUDE_PID=%s\n' "${CLAUDE_PID:-}"
     printf 'START_EPOCH=%s\n' "$(date +%s)"
     printf 'STEP=%s\n' "$step"
     printf 'TIMEOUT_S=21600\n'
+    printf 'CLONE_PATH=%s\n' "$_bg_wait_clone_path"
   } >"$_bg_wait_tmp" || return 1
   mv -f "$_bg_wait_tmp" "$_bg_wait_marker" || { rm -f "$_bg_wait_tmp" 2>/dev/null || true; return 1; }
   trap 'rm -f "${_bg_wait_marker:-}" "${_bg_wait_tmp:-}"' EXIT

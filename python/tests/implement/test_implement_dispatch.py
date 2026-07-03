@@ -43,6 +43,15 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(["git", "-C", str(repo), *args], text=True, capture_output=True, check=False)
 
 
+def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
+    (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
+    dispatch_commit_route._write_bg_wait_marker(tmpdir=tmp_path, step="implement-step3-checks", timeout_s=15600)
+
+    marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
+    assert "STEP=implement-step3-checks\n" in marker_text
+    assert f"CLONE_PATH={tmp_path}\n" in marker_text
+
+
 @pytest.fixture(autouse=True)
 def quiet_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

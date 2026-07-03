@@ -45,13 +45,17 @@ step6_cleanup() {
 }
 
 write_step6_marker() {
-    local start claude_pid
+    local start claude_pid clone_path
     rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
     start=$(date +%s 2>/dev/null) || start=0
     case "$start" in ''|*[!0-9]*) start=0 ;; esac
     claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-    printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step6-checks\nTIMEOUT_S=15600\n' \
-        "$$" "$claude_pid" "$start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+    clone_path=""
+    if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
+        clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+    fi
+    printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step6-checks\nTIMEOUT_S=15600\nCLONE_PATH=%s\n' \
+        "$$" "$claude_pid" "$start" "$clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 }
 
 rehydrate_plugin_root

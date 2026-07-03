@@ -71,8 +71,12 @@ trap _step5_cleanup EXIT
 _step5_start=$(date +%s 2>/dev/null) || _step5_start=0
 case "$_step5_start" in ''|*[!0-9]*) _step5_start=0 ;; esac
 _step5_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\n' \
-  "$$" "$_step5_claude_pid" "$_step5_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+_step5_clone_path=""
+if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
+  _step5_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+fi
+printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\nCLONE_PATH=%s\n' \
+  "$$" "$_step5_claude_pid" "$_step5_start" "$_step5_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 
 if [ -n "$difficulty_override" ]; then
   python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \

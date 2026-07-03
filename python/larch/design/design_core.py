@@ -157,6 +157,18 @@ def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
             (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
 
 
+def _read_keepalive_clone_path(tmpdir: Path) -> str:
+    keepalive = tmpdir / ".larch-keepalive"
+    if not keepalive.is_file() or keepalive.is_symlink():
+        return ""
+    with contextlib.suppress(OSError):
+        for line in keepalive.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key == "CLONE_PATH":
+                return value.strip()
+    return ""
+
+
 @contextlib.contextmanager
 def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid: str = ""):
     tmpdir = Path(design_tmpdir)
@@ -173,6 +185,7 @@ def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid:
                 f"START_EPOCH={int(time.time())}",
                 f"STEP={step}",
                 "TIMEOUT_S=21600",
+                f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}",
                 "",
             ]
         )
