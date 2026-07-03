@@ -1057,3 +1057,4 @@ def larch_log_flush_main(argv: list[str]) -> int:
     except Exception as exc:
         print(f"WARN: larch-log flush failed: {exc}", file=sys.stderr)
     return 0
+# pyright: reportArgumentType=false

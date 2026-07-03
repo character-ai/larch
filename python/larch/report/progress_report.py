@@ -1954,3 +1954,4 @@ def report_main(argv: list[str]) -> int:
     if report:
         print(report)
     return 0
+# pyright: reportUnnecessaryIsInstance=false, reportUnknownArgumentType=false

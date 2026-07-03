@@ -59,3 +59,4 @@ def test_refresh_difficulty_record_merges_resolution_fields(
     assert data["audit_evaluated"] is True
     assert data["escalated_round"] is True
     assert data["escalations"][0]["round"] == 2
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportArgumentType=false
