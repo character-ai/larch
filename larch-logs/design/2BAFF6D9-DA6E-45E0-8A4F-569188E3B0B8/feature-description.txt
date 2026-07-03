@@ -1,0 +1,66 @@
+# [BUG] /design: plan-review round-to-round artifacts (oos-accepted-design.md, accepted-plan-findings-all.md) reset instead of cumulating
+
+## Summary
+
+`/design`'s Step 3 plan-review loop documents that `accepted-plan-findings-all.md` and `oos-accepted-design.md` cumulate across automatic continuation rounds within one `/design` invocation, but neither actually does. `python/larch/review/plan_review_tally.py` unconditionally blanks both files (plus `rejected-findings.md` and `oos.md`) at the start of every round's tally pass, and no cumulation helper exists anywhere in the codebase to repopulate them with prior-round content. A unanimously-accepted OOS finding from round 1 of a real `/design` run was silently lost as a result, and would never have been auto-filed as a follow-up issue if it hadn't been manually recovered from earlier tool output in the same conversation.
+
+## Original report
+
+While running `/design` on issue #6106 (larch), plan review round 1 found 2 accepted in-scope findings and 1 accepted OOS finding (`OOS_1`, vote YES=3/NO=0/Result=accepted, recommending a regression test). Gate B applied the 2 findings and the loop auto-continued into round 2 (a pruned backup panel), which found nothing new (`LOOP_STATUS=zero-findings-degraded-panel`). After round 2 completed, `oos-accepted-design.md`, `oos.md`, `rejected-findings.md`, and `voting-tally.md` were all 0 bytes, and `accepted-plan-findings-all.md` did not exist at all. Step 5b's OOS-filing prepare step then correctly reported `FILE_DESIGN_OOS_STATUS=skip-no-items` based on the (wrongly empty) live artifact, so the accepted `OOS_1` finding was never auto-filed. It was filed by hand as issue #6114 after manual recovery from the conversation's own tool-call history, and this bug report documents why the automatic path failed.
+
+## Reproduction scenario
+
+1. Run `/design <issue>` on any feature where round 1 of Step 3 plan review accepts at least one OOS finding (2+ YES votes on an `OOS_N` ballot item) alongside 1+ accepted in-scope findings.
+2. Let Gate B auto-apply the in-scope findings (default `approve_requested=false`) and let the loop auto-continue to round 2.
+3. Have round 2 (the pruned/backup panel) find zero new findings — a very common outcome once round 1's findings are applied and the plan stabilizes.
+4. Inspect `$DESIGN_TMPDIR/oos-accepted-design.md`, `oos.md`, `rejected-findings.md`, and `accepted-plan-findings-all.md` after round 2 completes (before Step 5b runs).
+
+Directly observed in this session: `oos-accepted-design.md` was non-empty and contained the accepted `OOS_1` block after round 1 (confirmed via `python/cli.py plan-review preview --variant gate-b` output), then was 0 bytes after round 2. `accepted-plan-findings-all.md` never existed at any point in the session despite round 1 having 2 accepted in-scope findings.
+
+## Expected behavior
+
+Per `skills/design/references/plan-review.md`: "`accepted-plan-findings-all.md` cumulation: `_accumulate_round_accepted_all` appends current-round accepted in-scope findings across automatic continuation rounds before Gate C" and "`oos-accepted-design.md` cumulation: `_accumulate_round_oos` appends accepted OOS before successful terminal status mapping so cumulative OOS survives automatic single-pass reruns." Both files should contain the union of all accepted findings/OOS items across every round of one continuous Step 3 loop, so a later round finding nothing new does not erase an earlier round's real, voted-in results.
+
+## Observed behavior
+
+Neither cumulation happens. `oos-accepted-design.md` (and `oos.md`, `rejected-findings.md`, `voting-tally.md`) are unconditionally reset to empty at the top of every round's tally pass and only ever reflect the CURRENT round's results, not the union across rounds. `accepted-plan-findings-all.md` is never created by the real pipeline at all in this session (it only appears in test fixtures that seed it manually, and in a cleanup/unlink list — see Evidence).
+
+## Root cause analysis
+
+Confirmed by direct source reading and cross-referenced against the live session's empty artifacts:
+
+- `python/larch/review/plan_review_tally.py` lines 664-669 unconditionally write empty text to `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, and `oos-accepted-design.md` at the start of every `_tally` call (i.e., every single round), before `_render(...)` repopulates them with that round's own results only.
+- No function named `_accumulate_round_oos` exists anywhere in `python/` (`grep -rn "_accumulate_round_oos" python/` returns zero matches), despite being named as the cumulation mechanism in `skills/design/references/plan-review.md`.
+- `accepted-plan-findings-all.md` is referenced in exactly two files repo-wide (`plan_review_loop.py`, `compose_review.py`) and zero of those references write cumulative content to it across rounds — `plan_review_loop.py`'s only reference is inside `_step3_state_main`'s `direct_review_entry` branch, which **deletes** `accepted-plan-findings-all.md` / `.accepted-plan-findings-all.prev.md` (and the `oos-accepted-design.md` counterparts) as part of manual Gate A/C re-entry cleanup; `compose_review.py`'s only reference is a **reader** with a fallback to the plain (non-cumulative) `accepted-plan-findings.md` when the "-all" file is missing or empty.
+- The `.accepted-plan-findings-all.prev.md` and `.oos-accepted-design.prev.md` sidecar filenames (which look like they could back a snapshot-then-merge cumulation mechanism) are referenced only in that same delete-on-reentry cleanup list; nothing in the codebase writes or reads them as a snapshot.
+- Existing test coverage (`python/tests/review/test_plan_review.py`, e.g. `test_step3_state_direct_review_entry_clears_restores_and_consumes`) only exercises the delete-on-manual-reentry behavior for these filenames (seeding them by hand with `write_text("x\n", ...)` and asserting they're gone after reentry). No test anywhere exercises or asserts actual multi-round accumulation of real content for either file.
+- Directly confirmed empirically in this live `/design` session: `accepted-plan-findings-all.md` never existed on disk despite round 1 having `ACCEPTED_COUNT=2`, and `oos-accepted-design.md` went from populated (round 1) to 0 bytes (after round 2), matching the code-level defect exactly.
+
+## Evidence
+
+- `python/larch/review/plan_review_tally.py:664-669` — unconditional per-round blank of `accepted-plan-findings.md`, `rejected-findings.md`, `oos.md`, `oos-accepted-design.md`.
+- `grep -rn "_accumulate_round_oos" python/` → zero matches repo-wide.
+- `grep -rln "accepted-plan-findings-all" python/` → only `plan_review_loop.py` (delete-on-reentry cleanup) and `compose_review.py` (reader with non-cumulative fallback); no writer.
+- `python/tests/review/test_plan_review.py:604-641` (`test_step3_state_direct_review_entry_clears_restores_and_consumes`) — seeds `accepted-plan-findings-all.md` / `oos-accepted-design.md` by hand and asserts they're deleted on manual reentry; does not test accumulation.
+- `skills/design/references/plan-review.md` "Single-pass review" section — documents the cumulation contract for both files that the code does not implement.
+- Live session artifacts for `/design` issue #6106: `oos-accepted-design.md` contained the accepted `OOS_1` block after round 1 (via `plan-review preview --variant gate-b` stdout), then was 0 bytes after round 2 completed; `accepted-plan-findings-all.md` never existed; `rejected-findings.md`, `oos.md`, `voting-tally.md` were also 0 bytes / round-2-only after round 2.
+
+## Affected files
+
+- `python/larch/review/plan_review_tally.py` — owns the unconditional per-round blank at lines 664-669; the actual fix site.
+- `python/larch/review/plan_review_loop.py` — owns round orchestration and the (currently cleanup-only) references to `accepted-plan-findings-all.md` / `oos-accepted-design.md` / their `.prev.md` sidecars; likely home for a real accumulate-before-blank step if one is added.
+- `skills/design/references/plan-review.md` — documents `_accumulate_round_accepted_all` and `_accumulate_round_oos` as if implemented; needs correction either way (implement the helpers, or fix the doc to match reality).
+- `python/tests/review/test_plan_review.py` — has cleanup-path coverage for these filenames but no accumulation-path coverage.
+- `python/larch/design/design_oos.py`, `python/larch/issue/file_oos.py` — Step 5b OOS-filing consumers that trust `oos-accepted-design.md` as the source of truth; they behave correctly given the (wrongly empty) input, so they are not root cause, just downstream victims.
+
+## Suggested fix(es)
+
+1. In `plan_review_tally.py`, before the unconditional blank at lines 664-669, read the existing `oos-accepted-design.md` (and, if `accepted-plan-findings-all.md` is meant to work the same way, that file too) into memory, then after `_render(...)` populates the current round's content, merge (union, not overwrite) prior content back in and write the union. Alternatively, move accumulation to the outer loop driver in `plan_review_loop.py` so it wraps every per-round tally call uniformly, snapshotting before each round and merging after.
+2. Actually implement `_accumulate_round_accepted_all` and `_accumulate_round_oos` (or equivalent), matching the contract already documented in `skills/design/references/plan-review.md`, or update that doc to describe the real (non-cumulative) behavior if cumulation is intentionally out of scope.
+3. Add regression test coverage that actually exercises multi-round accumulation: run round 1 with N accepted findings/OOS items, run round 2 with zero, and assert the "-all" / accepted-OOS artifacts still contain round 1's content afterward. The existing tests only cover the unrelated delete-on-manual-reentry path.
+4. Consider whether Step 5b's OOS-filing prepare step should treat an unexpectedly-empty `oos-accepted-design.md` after a multi-round loop as suspicious (e.g., warn if any round reported `ACCEPTED_COUNT>0` for OOS but the final file is empty) as a defense-in-depth signal, independent of fixing the root cause.
+
+## Open questions
+
+- Is `accepted-plan-findings-all.md` cumulation (not just OOS) considered load-bearing anywhere downstream (e.g., final-summary rendering, `compose_review.py`'s reader), or has its absence gone unnoticed because the non-cumulative `accepted-plan-findings.md` fallback in `compose_review.py` silently covers for it in the common single-round case?
+- Should `rejected-findings.md` and `oos.md` (the non-accepted variants) also cumulate for accurate final-summary / Step 4 rejected-findings reporting, or is per-round-only intentional for those two specifically?

@@ -1,0 +1,8 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	2	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	34732	8683		0	0
+design Step 3	phase1	2	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	34674	8669		0	0
+design Step 3	phase1	2	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	34719	8680		0	0
+design Step 3	phase1	2	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	26980	6745		0	0
+design Step 3	phase1	2	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	34836	8709		0	0
+design Step 3	phase1	2	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	26863	6716		0	0
+design Step 3	phase1	2	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	26818	6705		0	0

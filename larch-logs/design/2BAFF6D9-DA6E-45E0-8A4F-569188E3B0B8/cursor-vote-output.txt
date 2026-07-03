@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- `--per-round-approval` skip-marker drift is a real edge case but outside the default auto-continue OOS-loss scope this issue fixes.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
