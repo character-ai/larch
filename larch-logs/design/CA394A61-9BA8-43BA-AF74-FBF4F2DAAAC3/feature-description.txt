@@ -1,0 +1,15 @@
+# md-to-py-XII: measure realized checks-digest savings; extend to design validator loop if positive
+
+**Context.** The #5982 digest is wired (`skills/implement/SKILL.md` lines 134 and 515, `skills/review/SKILL.md` line 68, `skills/implement/references/checks-repair-loop.md`) and tested; #6019 fixed the marker-less-content defect. No real run has exercised it: no `.digest.txt` artifact and no real `DIGEST_FILE=` failure envelope exists under `larch-logs/`. Savings are prospective only, and the second #5982 acceptance criterion (measurable before/after deltas) was deferred.
+
+**Scope.**
+
+- Once 5 or more real checks failures have produced digests, measure the token delta (digest reads vs redacted-log reads) from committed logs.
+- If the delta is positive, extend the digest pattern to the design validator-failure loop (`skills/design/references/validator-failure.md` path); if not, record the no-go with data.
+
+**Acceptance.**
+
+- A committed measurement quantifying the realized delta.
+- A go/no-go decision for the design-side extension, filed or declined with evidence.
+
+Part of md-to-py-XII (round XI: #5986). Independent; waits on organic failure data, not on another issue.
