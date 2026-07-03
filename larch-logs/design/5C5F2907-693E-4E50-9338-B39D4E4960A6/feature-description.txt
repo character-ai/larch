@@ -1,0 +1,91 @@
+# [FEATURE] /analyze-bugs: tiered low-cost verification of closed [BUG] fixes
+
+[FEATURE] /analyze-bugs: tiered low-cost verification of closed [BUG] fixes
+
+## Problem
+
+An ad-hoc "read the last 200 [BUG] issues and verify each was fixed in main completely and correctly" run cost $300+ and was stopped at ~160 bugs. The orchestrator spawned 24 sub-agents, each consuming 160K+ tokens on the top-tier session model. Root causes:
+
+- **Wrong model tier**: sub-agents inherited the session model for every token.
+- **Open-ended re-discovery per agent**: full issue bodies (~4-5K tokens each, dominated by in-body /design plan blocks), raw fix diffs (12-31K tokens on sampled fixes), repeated `gh` calls, no input caps.
+- **No result caching**: interruption lost all work; each periodic re-run would pay full price again.
+
+This audit is valuable to run periodically, so it needs to be ~20-30x cheaper and resumable.
+
+## Goal
+
+A dev-only skill `/analyze-bugs -n N` that verifies the last N closed [BUG] issues were actually fixed in main, at roughly $10-15 per full 200-bug run and $1-3 for incremental periodic runs.
+
+## Measured baseline (2026-07-03)
+
+- Last-200 `[BUG]` title window: 186 matching issues, 184 closed, 2 open (#4781 to #6095).
+- Issue-to-fix mapping is deterministic: `git log --grep "Fixes #N"` resolved all sampled issues; `gh issue view N --json closedByPullRequestsReferences` verified as fallback.
+- Raw `git show` diffs for sampled fixes: ~12-31K tokens. Issue bodies: ~4-5K tokens, mostly plan blocks. Both must be stripped/capped during prefetch.
+
+## Design: four-stage funnel
+
+Tokens are spent only where semantic judgment is needed.
+
+**Stage 0: deterministic prefetch ($0 LLM tokens).** New stdlib-only module `python/analyze_bugs.py` behind `python3 python/cli.py analyze-bugs ...`:
+
+- One `gh issue list` call for the last N [BUG] issues (state, stateReason).
+- Mechanical verdicts with no LLM: OPEN becomes NOT_FIXED; closed as not-planned becomes WONTFIX; closed as completed with no traceable fix commit becomes NEEDS_DEEP.
+- Map issue to fix commit via local `git log --grep "Fixes #N"`; fallback `closedByPullRequestsReferences`.
+- Emit one bundle file per bug: issue body with plan-block and boilerplate stripped (reuse named-block helpers), fix diff at `-U1` capped (~4K tokens), list of later commits touching the same files (`git log <sha>..HEAD -- <files>`), revert scan.
+
+**Stage 1: batch triage on Haiku (~$1.50 per 200 bugs).** Dev-only agent `.claude/agents/bug-fix-triage.md` with `model: haiku` and no tools; bundles are inlined in the prompt, ~10 bugs per agent (batching amortizes per-agent system-prompt overhead). Rubric: map each numbered work item in the issue to diff evidence. Output is strict JSONL: {issue, verdict, missing_items, reason, needs_deep}. Instruction is asymmetric: when unsure, escalate. Verdicts: FIXED_CLEAR, FIXED_LIKELY, SUSPECT, NEEDS_DEEP.
+
+**Stage 2: deep verify on Sonnet, flagged bugs only (~$9 at 30-40 flagged).** Dev-only agent `.claude/agents/bug-fix-verifier.md` with `model: sonnet`, tools limited to Read/Grep/Glob, explicit read budget in the prompt. Read-only code inspection at HEAD: fix still present, issue work items actually satisfied, regressions from later commits. Capped by `--deep-max`. Verdicts: CONFIRMED_FIXED, INCOMPLETE, REGRESSED, NOT_FIXED, UNVERIFIABLE.
+
+**Stage 3: report (~$0).** Python merges verdicts into a markdown table: counts by verdict, suspects with reasons and links. Report-only by default; the skill then offers to file ONE combined follow-up issue via /issue listing NOT_FIXED / INCOMPLETE / REGRESSED findings, gated on operator approval.
+
+## Ledger: incremental runs and resume
+
+Local cache (not committed): `~/.cache/larch/analyze-bugs/<repo>/ledger.jsonl`, keyed by (issue number, fix commit sha, hash of later-commits-to-touched-files). Consequences:
+
+- Re-runs skip unchanged keys: periodic runs only pay for new bugs and bugs whose fix surface changed since the last verdict.
+- Interrupted runs resume for free.
+- A post-fix commit touching the same files invalidates that bug's key and forces re-verdict: exactly the regression case the audit exists to catch.
+
+## Flags
+
+- `-n COUNT` (default 200)
+- `--deep-max M` (default 30)
+- `--deep-model sonnet|opus|fable` (default sonnet)
+- `--refresh` (ignore ledger, re-verdict everything)
+- `--sample K` (send K random FIXED verdicts through the deep verifier to measure the triage false-pass rate)
+
+## Cost model (2026-07 pricing: Haiku $1/$5, Sonnet $3/$15 per MTok)
+
+| Stage | Model | Est. cost per 200 bugs |
+|---|---|---|
+| Prefetch + mechanical verdicts | none | $0 |
+| Triage (~19 batch agents) | Haiku | ~$1.50 |
+| Deep verify (~30-40 bugs) | Sonnet | ~$9 |
+| Report + orchestration | session model | ~$1-2 |
+| **Total** | | **~$12-15** |
+
+Incremental weekly run: ~$1-3. Estimates should be validated by the skill printing its own token/cost summary line at end of run.
+
+## Accuracy guardrails
+
+- Haiku triage is a screen, not a certifier: it sorts "obviously covered" from "needs a real look" and must escalate on any doubt.
+- The correctness question is always answered by the deep model, never by Haiku.
+- `--sample K` quantifies the triage false-pass rate so the escalation threshold can be tuned with data.
+- Prior is favorable: these fixes already passed the multi-reviewer /implement pipeline; the real quarry is incomplete work items, reverts/regressions, and closed-without-fix cases.
+
+## Confirmed decisions (operator, 2026-07-03)
+
+1. Deep pass is read-only code inspection; no test execution.
+2. Ledger is a local cache, not committed to the repo.
+3. Deep model defaults to Sonnet.
+4. Report-only by default; offer to file one combined follow-up issue, gated on approval.
+
+## Work items
+
+1. `python/analyze_bugs.py` (stdlib-only) with `python3 python/cli.py analyze-bugs {prefetch,ledger,report}` verbs, plus `python/test_analyze_bugs.py` regression coverage.
+2. `.claude/agents/bug-fix-triage.md` (model: haiku, no tools) and `.claude/agents/bug-fix-verifier.md` (model: sonnet, Read/Grep/Glob only).
+3. `.claude/skills/analyze-bugs/SKILL.md` (dev-only, `$PWD/...` paths per repo rule) orchestrating stages 0-3 with the flags above; frontmatter description must carry a "Use when" trigger per S017.
+4. Ledger read/write/skip logic with the (issue, fix_sha, later-history hash) key under `~/.cache/larch/analyze-bugs/`.
+5. Report format plus the combined follow-up offer wired to /issue.
+6. End-of-run token/cost summary line (reuse report-tokens pricing machinery where practical).
