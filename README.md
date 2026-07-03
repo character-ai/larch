@@ -196,6 +196,12 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2">Generate a backlog-and-process insight report from a repo's GitHub issues. Verdict mode skips the full backlog report, emits a filtered corpus block with explicit gate PASS/FAIL, and gates token allocation on a post-<code>52.1.0</code>, post-<code>2026-06-26</code>, incentivized-era realized-outcome corpus with strict <code>started_at</code> eligibility and a mechanical #5461 shipped check: closed with <code>closedByPullRequestsReferences</code>, not <code>NOT_PLANNED</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#analyze-bugs"><code>/analyze-bugs</code></a></td>
+      <td><code>[-n COUNT] [--deep-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K]</code></td>
+    </tr>
+    <tr><td colspan="2">Dev-only cached audit for recent <code>[BUG]</code> issues. Defaults to <code>-n 200</code>, stores its local ledger under <code>~/.cache/larch/analyze-bugs/</code>, prints a report by default, and offers one combined follow-up issue only after approval.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#audit-runs"><code>/audit-runs</code></a></td>
       <td><code>--skill &lt;design|implement&gt; [&lt;verbal-description&gt;] [--repo owner/name] [--allow-concurrent]</code></td>
     </tr>

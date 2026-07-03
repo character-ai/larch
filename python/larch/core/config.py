@@ -382,6 +382,28 @@ CLAUDE_OPUS_4_8_MODEL: Final = "claude-opus-4-8"
 CLAUDE_SONNET_4_6_MODEL: Final = "claude-sonnet-4-6"
 CLAUDE_HAIKU_4_5_MODEL: Final = "claude-haiku-4-5"
 CLAUDE_FABLE_5_MODEL: Final = "claude-fable-5"
+ANALYZE_BUGS_CACHE_DIR_NAME: Final = "analyze-bugs"
+ANALYZE_BUGS_DEFAULT_COUNT: Final = 200
+ANALYZE_BUGS_DEFAULT_DEEP_MAX: Final = 30
+ANALYZE_BUGS_DEFAULT_BATCH_SIZE: Final = 10
+ANALYZE_BUGS_DEEP_MODEL_ALIASES: Final[dict[str, tuple[str, str]]] = {
+    "sonnet": (CLAUDE_SONNET_4_6_MODEL, CLAUDE_SONNET_4_6_MODEL),
+    "opus": (CLAUDE_OPUS_4_8_MODEL, CLAUDE_OPUS_4_8_MODEL),
+    "fable": (CLAUDE_FABLE_5_MODEL, CLAUDE_FABLE_5_MODEL),
+}
+ANALYZE_BUGS_TRIAGE_VERDICTS: Final[tuple[str, ...]] = (
+    "FIXED_CLEAR",
+    "FIXED_LIKELY",
+    "SUSPECT",
+    "NEEDS_DEEP",
+)
+ANALYZE_BUGS_DEEP_VERDICTS: Final[tuple[str, ...]] = (
+    "CONFIRMED_FIXED",
+    "INCOMPLETE",
+    "REGRESSED",
+    "NOT_FIXED",
+    "UNVERIFIABLE",
+)
 CLAUDE_CI_FIX_MODEL: Final = CLAUDE_OPUS_4_8_MODEL
 CLAUDE_SUB_DEFAULT_MODEL_BY_RAW: Final[dict[str, str]] = {
     "claude_review": CLAUDE_SONNET_4_6_MODEL,

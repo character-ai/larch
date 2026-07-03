@@ -243,6 +243,7 @@ These skills live under `.claude/skills/` and are **dev-only**: they are not exp
 
 - [`/agnix-fix`](#agnix-fix)
 - [`/analyze-issues`](#analyze-issues)
+- [`/analyze-bugs`](#analyze-bugs)
 - [`/audit-runs`](#audit-runs)
 - [`/combine-issues`](#combine-issues)
 - [`/larch-size`](#larch-size)
@@ -268,6 +269,16 @@ Generate a backlog-and-process insight report from the current repository's GitH
 `--ground-truth-verdict` switches to verdict-only output for `docs/ground-truth-verdict.md`. Defaults are `--since-date 2026-06-26` at UTC midnight, `--min-larch-version 52.1.0`, and `--min-runs 150` unique log-root-relative `run_dir` values. The filter flags are no-ops outside verdict mode. Verdict mode suppresses the legacy diagnostic `Corpus:` subsection, exits non-zero on gate failure, and prints explicit gate PASS/FAIL from `GroundTruthStats`.
 
 Verdict eligibility uses strict manifest `started_at`, not `updated_at`. Filed-OOS joins and accepted-evidence matching are keyed by log-root-relative `run_dir_key` values such as `implement/run-1` and `design/run-1`. Degraded enrichment or targeted filed-OOS fetch failures force NO-GO and appear in the verdict corpus block. The #5461 shipped gate resolves bulk issue data before live `gh` and requires `closedByPullRequestsReferences`, not bare `CLOSED` or `NOT_PLANNED`. Verdict mode only emits stdout evidence; shipping token allocation still requires updating `docs/ground-truth-verdict.md` with a human GO decision after reviewing the report.
+
+### `/analyze-bugs`
+
+**Arguments**: `[-n COUNT] [--deep-max M] [--deep-model sonnet|opus|fable] [--refresh] [--sample K] [--repo owner/name]`
+
+**Source**: [`.claude/skills/analyze-bugs/SKILL.md`](../.claude/skills/analyze-bugs/SKILL.md)
+
+Dev-only cached audit for recent `[BUG]` title-prefix issues. Stage 0 fetches the newest window, strips `larch:plan` blocks, maps `Fixes #N` commits against a pinned evidence ref, caps bundles, and stores run files plus a local ledger under `~/.cache/larch/analyze-bugs/`. Stage 1 sends only uncached capped bundles to the Haiku triage agent. Stage 2 sends suspect, needs-deep, mechanical needs-deep, and sampled rows to the deep verifier, bounded by `--deep-max` and priced through the same `--deep-model` alias. Stage 3 renders a markdown report with counts, issue rows, sample calibration, and an estimated cost line.
+
+The default window is `-n 200`, the default deep cap is `30`, and `--refresh` ignores cache skips. `--sample K` draws deterministic calibration samples only from triage `FIXED_CLEAR` and `FIXED_LIKELY` rows not already deep-queued. The skill does not run tests. It is report-only by default and offers one combined follow-up issue for `NOT_FIXED`, `INCOMPLETE`, and `REGRESSED` findings only after approval.
 
 ### `/audit-runs`
 
