@@ -10,6 +10,24 @@
 === larch-quiet-read-session-env-key.sh-48437.log ===
 === larch-quiet-sessionstart-health.sh-16406.log ===
 === larch-quiet-sessionstart-health.sh-7444.log ===
+=== larch-quiet-ship.py-28767.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 13s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 27s
+ci_monitor: poll 3/180 pending after 31s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 41s
+ci_monitor: poll 4/180 pending after 45s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 55s
+ci_monitor: poll 5/180 pending after 58s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 68s
+ci_monitor: poll 6/180 pending after 71s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 81s
+ci_monitor: CI pass after 85s -> merge
+ship.py: merge
 === larch-quiet-ship.py-36795.log ===
 ship.py: pr-prep: postbump/Flush+Push
 ship.py: pr-create: PR
