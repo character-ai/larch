@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
+import fcntl
 import os
 import re
 import sys
@@ -17,7 +19,7 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, TextIO
 
 from larch.core import config
 from larch.core import proc
@@ -41,6 +43,18 @@ _CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
 )
 _CHECKS_FAILURE_DIGEST_PRECOMMIT_RE: Final = re.compile(r"^(.+?)(?:\.{2,}|\s{2,})Failed\b")
 _CHECKS_FAILURE_DIGEST_DIRECT_RE: Final = re.compile(r"^=== Running direct relevant make target\(s\): (.+) ===$")
+CHECKS_DIGEST_SIZE_BASENAME: Final = "checks-digest-sizes.tsv"
+_CHECKS_DIGEST_SIZE_FIELDS: Final = (
+    "site",
+    "attempt",
+    "redacted_bytes",
+    "digest_bytes",
+    "redacted_tokens",
+    "digest_tokens",
+    "saved_bytes",
+    "saved_tokens",
+    "digest_truncated",
+)
 
 
 def plugin_scripts_dir() -> Path:
@@ -334,6 +348,127 @@ def _clean_child_env() -> dict[str, str]:
 
 def _write_log(*, log_fd: int, text: str) -> None:
     _ = os.write(log_fd, text.encode("utf-8", errors="replace"))
+
+
+def _estimated_tokens_for_bytes(byte_count: int) -> int:
+    return (max(0, byte_count) + 3) // 4
+
+
+@dataclass(frozen=True)
+class _ChecksDigestSizeRow:
+    site: str
+    attempt: str
+    redacted_bytes: int
+    digest_bytes: int
+    redacted_tokens: int
+    digest_tokens: int
+    saved_bytes: int
+    saved_tokens: int
+    digest_truncated: bool
+
+    def as_tsv_row(self) -> list[str]:
+        return [
+            self.site,
+            self.attempt,
+            str(self.redacted_bytes),
+            str(self.digest_bytes),
+            str(self.redacted_tokens),
+            str(self.digest_tokens),
+            str(self.saved_bytes),
+            str(self.saved_tokens),
+            "true" if self.digest_truncated else "false",
+        ]
+
+
+def _checks_digest_run_artifact(canonical_tmp: Path) -> Path | None:
+    root = canonical_tmp / "larch-logs"
+    if not root.is_dir() or root.is_symlink():
+        return None
+    candidates: list[Path] = []
+    for skill in ("implement", "review"):
+        skill_root = root / skill
+        if not skill_root.is_dir() or skill_root.is_symlink():
+            continue
+        try:
+            with os.scandir(skill_root) as entries:
+                candidates.extend(
+                    Path(entry.path) / CHECKS_DIGEST_SIZE_BASENAME
+                    for entry in entries
+                    if entry.is_dir(follow_symlinks=False)
+                )
+        except OSError:
+            continue
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _locked_tsv_append(path: Path, row: _ChecksDigestSizeRow) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.is_symlink():
+        raise OSError(f"refusing symlink TSV: {path}")
+    if path.exists() and not path.is_file():
+        raise OSError(f"refusing non-file TSV: {path}")
+    deadline = time.monotonic() + 5.0
+    with path.open("a+", encoding="utf-8", newline="") as handle:
+        while True:
+            try:
+                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                break
+            except BlockingIOError:
+                if time.monotonic() >= deadline:
+                    print(
+                        f"checks digest telemetry: WARNING: flock lock acquisition failed; skipping append for {path}",
+                        file=sys.stderr,
+                    )
+                    return
+                time.sleep(0.05)
+        try:
+            handle.seek(0, os.SEEK_END)
+            _write_checks_digest_size_tsv(handle=handle, row=row, needs_header=handle.tell() == 0)
+        finally:
+            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+    with contextlib.suppress(OSError):
+        path.chmod(0o600)
+
+
+def _write_checks_digest_size_tsv(*, handle: TextIO, row: _ChecksDigestSizeRow, needs_header: bool) -> None:
+    writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+    if needs_header:
+        writer.writerow(_CHECKS_DIGEST_SIZE_FIELDS)
+    writer.writerow(row.as_tsv_row())
+
+
+def _record_checks_digest_size_telemetry(
+    *,
+    log_dir: Path,
+    site: str,
+    attempt: str,
+    redacted_text: str,
+    digest: str,
+) -> None:
+    try:
+        if log_dir.name != "relevant-checks":
+            return
+        artifact = _checks_digest_run_artifact(log_dir.parent)
+        if artifact is None:
+            return
+        redacted_bytes = len(redacted_text.encode("utf-8"))
+        digest_bytes = len(digest.encode("utf-8"))
+        redacted_tokens = _estimated_tokens_for_bytes(redacted_bytes)
+        digest_tokens = _estimated_tokens_for_bytes(digest_bytes)
+        row = _ChecksDigestSizeRow(
+            site=site,
+            attempt=attempt,
+            redacted_bytes=redacted_bytes,
+            digest_bytes=digest_bytes,
+            redacted_tokens=redacted_tokens,
+            digest_tokens=digest_tokens,
+            saved_bytes=redacted_bytes - digest_bytes,
+            saved_tokens=redacted_tokens - digest_tokens,
+            digest_truncated="digest_truncated=true" in digest.splitlines(),
+        )
+        _locked_tsv_append(artifact, row)
+    except Exception as exc:  # best-effort telemetry must not alter checks flow
+        print(f"checks digest telemetry: write skipped: {exc}", file=sys.stderr)
 
 
 def _run_logged(
@@ -794,6 +929,13 @@ def _write_failure_digest_from_redacted(
         digest = _build_checks_failure_digest(redacted_log_text=redacted_text, site=site)
         _ = digest_file.write_text(digest, encoding="utf-8")
         digest_file.chmod(0o600)
+        _record_checks_digest_size_telemetry(
+            log_dir=log_dir,
+            site=site,
+            attempt=attempt,
+            redacted_text=redacted_text,
+            digest=digest,
+        )
     except OSError:
         with contextlib.suppress(OSError):
             digest_file.unlink(missing_ok=True)

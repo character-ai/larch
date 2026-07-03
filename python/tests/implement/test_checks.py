@@ -264,6 +264,75 @@ def test_checks_failure_digest_cap_preserves_utf8(monkeypatch: pytest.MonkeyPatc
     assert digest.encode("utf-8").decode("utf-8") == digest
 
 
+
+def test_write_failure_digest_appends_count_only_telemetry(tmp_path: Path) -> None:
+    session = tmp_path / "claude-implement-test"
+    log_dir = session / "relevant-checks"
+    run_dir = session / "larch-logs" / "implement" / "run-abc"
+    log_dir.mkdir(parents=True)
+    run_dir.mkdir(parents=True)
+    redacted = log_dir / "step6-1.redacted.log"
+    raw_failure = "ERROR: raw failure text from pytest"
+    redacted_text = f"=== Running pre-commit on 1 changed file(s) ===\n{raw_failure}\n"
+    redacted.write_text(redacted_text, encoding="utf-8")
+
+    digest_path = _crr._write_failure_digest_from_redacted(  # pyright: ignore[reportPrivateUsage]
+        redacted_file=redacted,
+        site="step6",
+        attempt="1",
+        log_dir=log_dir,
+    )
+
+    assert digest_path is not None
+    digest = Path(digest_path).read_text(encoding="utf-8")
+    assert raw_failure in digest
+    telemetry = run_dir / "checks-digest-sizes.tsv"
+    rows = telemetry.read_text(encoding="utf-8").splitlines()
+    assert len(rows) == 2
+    header = rows[0].split("\t")
+    row = dict(zip(header, rows[1].split("\t"), strict=False))
+    assert row["site"] == "step6"
+    assert row["attempt"] == "1"
+    assert row["redacted_bytes"] == str(len(redacted_text.encode("utf-8")))
+    assert row["digest_bytes"] == str(len(digest.encode("utf-8")))
+    assert row["saved_bytes"] == str(len(redacted_text.encode("utf-8")) - len(digest.encode("utf-8")))
+    tsv_text = telemetry.read_text(encoding="utf-8")
+    assert raw_failure not in tsv_text
+    assert redacted_text not in tsv_text
+    assert digest not in tsv_text
+    assert str(tmp_path) not in tsv_text
+
+
+def test_write_failure_digest_skips_telemetry_without_unique_run_dir(tmp_path: Path) -> None:
+    session = tmp_path / "claude-implement-test"
+    log_dir = session / "relevant-checks"
+    log_dir.mkdir(parents=True)
+    redacted = log_dir / "step6-1.redacted.log"
+    redacted.write_text("ERROR: failed\n", encoding="utf-8")
+
+    digest_path = _crr._write_failure_digest_from_redacted(  # pyright: ignore[reportPrivateUsage]
+        redacted_file=redacted,
+        site="step6",
+        attempt="1",
+        log_dir=log_dir,
+    )
+
+    assert digest_path is not None
+    assert not list(session.glob("larch-logs/*/*/checks-digest-sizes.tsv"))
+
+    (session / "larch-logs" / "implement" / "run-1").mkdir(parents=True)
+    (session / "larch-logs" / "review" / "run-2").mkdir(parents=True)
+    digest_path = _crr._write_failure_digest_from_redacted(  # pyright: ignore[reportPrivateUsage]
+        redacted_file=redacted,
+        site="step6",
+        attempt="2",
+        log_dir=log_dir,
+    )
+
+    assert digest_path is not None
+    assert not list(session.glob("larch-logs/*/*/checks-digest-sizes.tsv"))
+
+
 def test_checks_failure_digest_uses_only_redacted_source() -> None:
     secret = "ghp_" + "a" * 36
     text = f"ERROR: token {config.REDACTED_TOKEN}\n"

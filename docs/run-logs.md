@@ -43,6 +43,7 @@ larch-logs/
       token-report.json
       timing-report.json
       execution-issues.ndjson
+      checks-digest-sizes.tsv
       session-transcript.jsonl
       breadcrumbs/
         quiet.log
@@ -71,6 +72,7 @@ larch-logs/
       review-round-summary.md
       review-findings-classification-round-<N>.tsv
       panel-prompt-sizes.tsv
+      checks-digest-sizes.tsv
 ```
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
@@ -174,6 +176,19 @@ Committed locations are:
 - Standalone review: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv`, or `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when the dispatch is round-local.
 
 `python3 python/cli.py token measure-panel-cost` aggregates committed panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a ranked TSV under `larch-logs/measure-panel-cost/` with dispatch counts, runs observed, loads per run, prompt counts, agent counts, and total realized counts.
+
+### checks digest-size telemetry
+
+`checks-digest-sizes.tsv` is count-only telemetry for relevant-checks failure digests. It records byte and estimated-token counts for the redacted failure log and the generated digest, plus signed `saved_bytes` and `saved_tokens` values. Savings can be negative when a digest is larger than a tiny redacted log. The file never stores log text, digest text, commands, failure lines, prompts, or absolute paths.
+
+Committed locations are:
+
+- Implement checks failures: `larch-logs/implement/<RUN_ID>/checks-digest-sizes.tsv`.
+- Standalone review checks failures: `larch-logs/review/<RUN_ID>/checks-digest-sizes.tsv`.
+
+Writes are best-effort. A telemetry lock or write failure prints a warning and does not change the checks result or the `DIGEST_FILE=` failure envelope. The writer skips telemetry unless exactly one active implement or review run directory exists under the session `larch-logs/` tree.
+
+`python3 python/cli.py token measure-checks-digest-savings` aggregates committed checks-digest TSVs into `larch-logs/measure-checks-digest-savings/<DATE>.tsv`. It reports `status=insufficient-data` until at least 5 valid rows exist. With 5 or more rows, positive aggregate signed token savings yields `recommendation=go-design-validator-extension`; zero or negative aggregate token savings yields `recommendation=no-go-design-validator-extension`. The design-validator digest extension remains gated on a future positive measurement.
 
 ### design plan-review `findings-classification.tsv`
 
@@ -578,8 +593,9 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 **Default policy (slim)**:
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
-- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
+- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
 - The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
+- The consumer-core keep set for `/review` dirs includes `manifest.json`, `final-summary.md`, `difficulty-rating.json`, and `checks-digest-sizes.tsv`, so digest savings telemetry survives default slimming before enough samples accrue.
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.
 

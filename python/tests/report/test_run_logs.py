@@ -1523,6 +1523,36 @@ def test_larch_log_write_rebases_root_relative_log_root_and_input_file(
     assert (session / "larch-logs" / "implement" / "run-abc" / "token-report.json").read_text(encoding="utf-8") == "token report\n"
 
 
+
+def test_checks_digest_sizes_batch_is_append_mode_tsv(tmp_path: Path) -> None:
+    assert run_logs._batch_mode("checks-digest-sizes") == "append"  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._batch_extension("checks-digest-sizes") == ".tsv"  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._batch_sanitizer("checks-digest-sizes") == "none"  # pyright: ignore[reportPrivateUsage]
+    record = tmp_path / "row.tsv"
+    record.write_text(
+        "site\tattempt\tredacted_bytes\tdigest_bytes\tredacted_tokens\tdigest_tokens\tsaved_bytes\tsaved_tokens\tdigest_truncated\n"
+        "step6\t1\t100\t20\t25\t5\t80\t20\tfalse\n",
+        encoding="utf-8",
+    )
+
+    rc = run_logs.larch_log_append_main([
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--batch",
+        "checks-digest-sizes",
+        "--record-file",
+        str(record),
+    ])
+
+    assert rc == 0
+    committed = tmp_path / "larch-logs" / "implement" / "run-abc" / "checks-digest-sizes.tsv"
+    assert committed.read_text(encoding="utf-8") == record.read_text(encoding="utf-8")
+
+
 def test_larch_log_append_rebases_root_relative_log_root_and_record_file(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

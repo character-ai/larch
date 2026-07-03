@@ -371,6 +371,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("token", "measure-references-heatmap"): ("larch.report.tokens", "measure_references_heatmap_main"),
     ("token", "measure-realized-cost"): ("larch.report.tokens", "measure_realized_cost_main"),
     ("token", "measure-panel-cost"): ("larch.report.tokens", "measure_panel_cost_main"),
+    ("token", "measure-checks-digest-savings"): ("larch.report.tokens", "measure_checks_digest_savings_main"),
     ("timing", "mark"): ("larch.report.timing", "timing_mark_main"),
     ("timing", "record-vendor-task"): ("larch.report.timing", "timing_record_vendor_task_main"),
     ("timing", "record-round"): ("larch.report.timing", "timing_record_round_main"),
