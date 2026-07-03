@@ -1,0 +1,57 @@
+### FINDING_1: Missing PID can silently skip stable implement launcher
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: If `_phase_infra` reaches the implement bootstrap path without `LARCH_CLAUDE_PID`, `session write-implement-env` can be skipped instead of failing, leaving only the tmpdir-local `larch-run.sh` and no PID-keyed `implement-run-$PPID.sh` for the next post-Step-0 fence.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Treat empty LARCH_CLAUDE_PID as fatal in _phase_infra once implement-run is required: emit_step_failed("write-implement-env") when pid is missing, not only when the write call returns non-zero.
+
+### FINDING_2: Step 8 handoff commands still depend on fresh-shell IMPLEMENT_TMPDIR
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: The Step 8 handoff probe and stale-handoff clear are still executed as direct shell fences, so a fresh shell can expand `"$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` to `/.step-8-ship-handoff.rc` and either miss a completed ship or touch the wrong file.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Route both operations through implement-run-$PPID.sh via a tiny wrapper script, or document and test a one-line pointer-based probe that does not require exported IMPLEMENT_TMPDIR.
+  - From Cursor-Pragmatic: Resolve tmpdir from `current-implement-env-$PPID.sh` (same pointer the new runner uses) in those two commands, or route them through a one-line helper invoked via `implement-run-$PPID.sh`.
+
+### FINDING_3: Prompt-side tmpdir-derived paths still root-relative before rehydration
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Several hardened entrypoints still pass tmpdir-derived path args through the caller shell, so `--json-file`, `--input`, sidecars, `--answers`, and related paths can become root-relative before the CLI rehydrates the real tmpdir.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Resolve each tmpdir-derived path from os.environ IMPLEMENT_TMPDIR plus basename when the argv path is empty or not under the resolved tmpdir, mirroring the --tmpdir fallback.
+  - From Codex-Arch: For each prompt-side fence that passes a tmpdir-derived path argument, either omit redundant args and derive them from the resolved tmpdir inside the entrypoint, or reconstruct those specific path args after tmpdir fallback. Cover route-exit --json-file, normalize-coder-scout --input, recovery-paths sidecars/out-file, and the Step 2 redispatch --answers path if it remains prompt-side.
+  - From Cursor-Pragmatic: After resolving tmpdir from argv or IMPLEMENT_TMPDIR, treat missing/unreadable `--json-file` (including root-only paths from empty expansion) as absent and default to `implement_tmpdir / ".step-8-ship-handoff.json"`.
+  - From Codex-Pragmatic: Audit prompt-side post-Step-0 fences for shell-expanded argv. For each required value, either derive it after runner rehydration inside the CLI or script, omit tmpdir-derived path args when the CLI can default from the resolved tmpdir, or change the prompt contract to substitute concrete literals instead of shell variables.
+  - From Cursor-Requirements: For these hardened entrypoints, derive the conventional sidecar paths from the resolved tmpdir when explicit argv paths are empty or missing; cover with the same empty-argv-plus-env execution tests already planned for `--tmpdir`.
+
+### FINDING_4: Empty coder/expected-branch still shell-expand away
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Cursor-Requirements, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The launcher/tmpdir fix still leaves required non-tmpdir argv such as `--coder` and `--expected-branch` vulnerable to empty caller-shell expansion, so Step 2 can fail with a missing coder and the external-complete path can fail with an empty expected branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Teach run_dispatch_main to recover an empty --coder from the resolved tmpdir's bootstrap-routing.env or another durable Step 0 source, validate it against the safe coder set, and add the empty --coder execution case to the planned test.
+  - From Codex-Innovation: Do not keep the rest of each command unchanged; either make affected entrypoints reconstruct all session-derived argv from the exported IMPLEMENT_TMPDIR and durable routing files, or change prompt fences so session-derived args are literal or resolved inside the called wrapper before execution
+  - From Cursor-Requirements: After resolving tmpdir from env, fall back to `coder` from `session-env.sh` (bootstrap already persists it) when argv `--coder` is empty; add a focused test mirroring empty-argv plus env/session-env.
+  - From Codex-Requirements: Extend the plan with targeted durable fallbacks for these required values. Have `run_dispatch_main` recover empty coder from `$IMPLEMENT_TMPDIR/bootstrap-routing.env`, and have `step2_post_dispatch_main` recover empty expected branch from the same durable `BRANCH_NAME`. Add empty-argv tests for both paths.
+
+### FINDING_5: Step 16-17 direct Python fence still bypasses launcher rehydration
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The Step 16-17 exception still invokes `python/cli.py` directly from a fresh shell with `--implement-tmpdir "$IMPLEMENT_TMPDIR"` and no launcher rehydration, so terminal report generation can still fail when the env var is absent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Use the same `implement-run-$PPID.sh` prefix as other post-Step-0 fences for step-16-17, or add the same pointer-based tmpdir resolution used by the new runner.
+
+### FINDING_6: Resume bootstrap still assumes exported IMPLEMENT_TMPDIR
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The resume fence still calls `step-0-bootstrap.sh` directly from a fresh shell, so bootstrap can reject the resume path before Step 2 when `IMPLEMENT_TMPDIR` is not exported.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Route the resume fence through the new PID-keyed runner, for example with the same LARCH_CLAUDE_PID prefix before "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-0-bootstrap.sh --mode resume, or otherwise make the resume command recover IMPLEMENT_TMPDIR without caller shell state.
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/larch/implement/dispatch_ship.py:340-349
+- **Concern**: [SCOPE-REDUCTION] ship route-exit still trusts expanded --json-file paths. Scenario: Plan hardens only --implement-tmpdir. The Step 8 fence keeps --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json", which a fresh shell expands to /.step-8-ship-handoff.json even after implement-run exports IMPLEMENT_TMPDIR, because argv is fixed before exec. route-exit then reads the wrong file and Step 8+ routing fails after a real ship notification.
+- **Proposed resolution**: Drop --json-file from the route-exit fence and rely on the existing default implement_tmpdir/.step-8-ship-handoff.json, or ignore unreadable json-file values that are not under the resolved implement tmpdir.

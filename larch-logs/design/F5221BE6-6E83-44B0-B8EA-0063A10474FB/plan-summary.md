@@ -1,0 +1,1 @@
+Implement the approved PID-keyed `/implement` launcher plan. Add `implement-run-$PPID.sh` beside the existing current-env pointer, switch prompt-side fences to that stable path, and update tests that pin the old launcher contract.

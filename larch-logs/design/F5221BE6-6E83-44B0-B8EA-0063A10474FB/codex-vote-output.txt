@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- missing-pid path is not shown on the feature path, so this is speculative and not necessary to the launcher fix.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- this broadens the fix to other tmpdir-arg rehydration, which is beyond the launcher-path scope.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- required coder/expected-branch recovery is a separate hardening problem beyond the launcher-scope fix.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the prior-round Step 16-17 launcher-bypass issue, with no materially new evidence.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- resume bootstrap is a separate pre-Step-0 path, not part of the post-Step-0 launcher fix.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- this is a scope-reduction on path-arg handling beyond the launcher-path change.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- fixture coverage only, no material feature impact.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- concrete bug, but it is a secondary fallback-path hardening item and does not clear the materiality bar here.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate coverage nit, no new material impact.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of the Step 16-17 direct-fence concern already declined in the prior round.
