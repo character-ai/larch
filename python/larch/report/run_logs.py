@@ -254,10 +254,8 @@ def larch_log_write_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return _larch_log_fail(code=1, message="invalid write arguments")
-    if not Path(args.input_file).is_file():
-        return _larch_log_fail(code=1, message=f"input file not found: {args.input_file}")
     try:
-        path, written, unchanged = _write_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, input_file=Path(args.input_file))
+        path, written, unchanged = _write_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, input_file=args.input_file)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
     _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)
@@ -271,10 +269,8 @@ def larch_log_append_main(argv: list[str]) -> int:
     args = _parse_common(parser=parser, argv=argv)
     if args is None:
         return _larch_log_fail(code=1, message="invalid append arguments")
-    if not Path(args.record_file).is_file():
-        return _larch_log_fail(code=1, message=f"record file not found: {args.record_file}")
     try:
-        path, written, unchanged = _append_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, record_file=Path(args.record_file))
+        path, written, unchanged = _append_batch(log_root=args.log_root_path, skill=args.skill, run_id=args.run_id, batch=args.batch, record_file=args.record_file)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _larch_log_fail(code=1 if isinstance(exc, ValueError) else 2, message=str(exc))
     _emit_larch_log_envelope(path=path, written=written, unchanged=unchanged)

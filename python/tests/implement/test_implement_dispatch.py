@@ -135,6 +135,28 @@ def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
     assert f"SCOUT_CODER_MANIFEST={tmp / 'scout-coder-manifest.json'}" in capsys.readouterr().out
 
 
+def test_normalize_coder_scout_root_relative_argv_rebases_to_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    source = tmp / "scout-coder-manifest.raw.json"
+    source.write_text('{"archetypes":[]}\n', encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, Path] = {}
+
+    def fake_normalize_coder_scout(*, tmpdir: Path, input_path: Path, producer: str = "external") -> str:
+        _ = producer
+        seen["tmpdir"] = tmpdir
+        seen["input_path"] = input_path
+        return "ok"
+
+    monkeypatch.setattr(dispatch_manifest, "normalize_coder_scout", fake_normalize_coder_scout)
+
+    assert implement_dispatch.normalize_coder_scout_main(["--tmpdir", "", "--input", "/scout-coder-manifest.raw.json"]) == 0
+    assert seen == {"tmpdir": tmp, "input_path": source}
+
+
 def test_recovery_paths_empty_tmpdir_argv_falls_back_to_env(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -183,6 +205,65 @@ def test_recovery_paths_empty_tmpdir_argv_falls_back_to_env(
 
     assert rc == 0
     assert seen == {"repo_root": repo, "tmpdir": tmp, "out_file": out}
+
+
+def test_recovery_paths_root_relative_argv_rebases_to_tmpdir(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pre = tmp / "step2-prelaunch-porcelain.nul"
+    post = tmp / "step2-postlaunch-porcelain.nul"
+    digests = tmp / "step2-prelaunch-content-digests.txt"
+    out = tmp / "step2-recovery-paths.nul"
+    for path in (pre, post, digests):
+        path.write_bytes(b"")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, Path] = {}
+
+    def fake_compute_recovery_paths(
+        *,
+        repo_root: Path,
+        tmpdir: Path,
+        porcelain: implement_dispatch.RecoveryPorcelainInputs,
+        out_file: Path,
+    ) -> bool:
+        seen["repo_root"] = repo_root
+        seen["tmpdir"] = tmpdir
+        seen["prelaunch_porcelain"] = porcelain.prelaunch_porcelain
+        seen["postlaunch_porcelain"] = porcelain.postlaunch_porcelain
+        seen["prelaunch_digests"] = porcelain.prelaunch_digests
+        seen["out_file"] = out_file
+        return True
+
+    monkeypatch.setattr(dispatch_recovery, "compute_recovery_paths", fake_compute_recovery_paths)
+
+    rc = implement_dispatch.recovery_paths_main([
+        "--repo-root",
+        str(repo),
+        "--tmpdir",
+        "",
+        "--prelaunch-porcelain",
+        "/step2-prelaunch-porcelain.nul",
+        "--postlaunch-porcelain",
+        "/step2-postlaunch-porcelain.nul",
+        "--prelaunch-digests",
+        "/step2-prelaunch-content-digests.txt",
+        "--out-file",
+        "/step2-recovery-paths.nul",
+    ])
+
+    assert rc == 0
+    assert seen == {
+        "repo_root": repo,
+        "tmpdir": tmp,
+        "prelaunch_porcelain": pre,
+        "postlaunch_porcelain": post,
+        "prelaunch_digests": digests,
+        "out_file": out,
+    }
 
 
 def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:

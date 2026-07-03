@@ -101,6 +101,19 @@ def _clear_external_scout_state(tmpdir: Path) -> None:
             path.unlink()
 
 
+def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
+    if not raw:
+        return tmpdir / default_relpath
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            candidate.relative_to(tmpdir)
+            return candidate
+        except ValueError:
+            return tmpdir / Path(*candidate.parts[1:])
+    return tmpdir / candidate
+
+
 def _submodule_roots(repo: Path) -> list[str]:
     out = _git_stdout(repo, "submodule", "status", "--recursive")
     roots: list[str] = []
@@ -242,7 +255,7 @@ def normalize_coder_scout(
 def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
     parser.add_argument("--tmpdir", default="")
-    parser.add_argument("--input", required=True)
+    parser.add_argument("--input", default="")
     parser.add_argument("--producer", choices=("external", "main-agent"), default="external")
     args = parser.parse_args(argv)
     raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
@@ -254,7 +267,11 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
         print(f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}", file=sys.stderr)
         return 2
     _rehydrate_plugin_root(tmpdir)
-    status = normalize_coder_scout(tmpdir=tmpdir, input_path=Path(args.input), producer=args.producer)
+    status = normalize_coder_scout(
+        tmpdir=tmpdir,
+        input_path=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.input, default_relpath="scout-coder-manifest.raw.json"),
+        producer=args.producer,
+    )
     _emit_kv(key="SCOUT_CODER_STATUS", value=status)
     _emit_kv(key="SCOUT_CODER_MANIFEST", value=str(tmpdir / "scout-coder-manifest.json"))
     return 0

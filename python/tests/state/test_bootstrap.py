@@ -98,6 +98,30 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert "/*|*..*)" in text
 
 
+def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-123.sh"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text("IMPLEMENT_TMPDIR=/tmp/impl\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "123")
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    seen: dict[str, object] = {}
+
+    def fake_run_bootstrap(opts):
+        seen["resume_plan_tail"] = opts.resume_plan_tail
+        print("IMPLEMENT_TMPDIR=/tmp/impl\n")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+
+    rc = bootstrap.invoke_main(["--mode", "resume"])
+
+    assert rc == 0
+    assert seen["resume_plan_tail"] is True
+    assert os.environ["IMPLEMENT_TMPDIR"] == "/tmp/impl"
+
+
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 
