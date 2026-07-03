@@ -1437,7 +1437,7 @@
     "file": "larch/design/design_router.py",
     "code": "PLR0913",
     "qualified_symbol": "_merge_router_flags",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/design/design_router.py",
@@ -3900,18 +3900,6 @@
     "metric": 13
   },
   {
-    "file": "larch/lint/lint_readability_preamble.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 13
-  },
-  {
-    "file": "larch/lint/lint_readability_preamble.py",
-    "code": "PLR0912",
-    "qualified_symbol": "main",
-    "metric": 16
-  },
-  {
     "file": "larch/lint/lint_skill_invocations.py",
     "code": "C901",
     "qualified_symbol": "allowed_tools_contains_skill",
@@ -5145,13 +5133,13 @@
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 129
+    "metric": 130
   },
   {
     "file": "larch/review/plan_review_loop.py",
     "code": "C901",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 15
+    "metric": 17
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5163,7 +5151,7 @@
     "file": "larch/review/plan_review_loop.py",
     "code": "PLR0912",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 16
+    "metric": 19
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5187,7 +5175,7 @@
     "file": "larch/review/plan_review_loop.py",
     "code": "PLR0915",
     "qualified_symbol": "plan_review_continuation",
-    "metric": 71
+    "metric": 84
   },
   {
     "file": "larch/review/plan_review_normalize.py",
@@ -5216,6 +5204,18 @@
   {
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0913",
+    "qualified_symbol": "_dynamic_slot_rows",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_generic_plan_codex_row",
+    "metric": 6
+  },
+  {
+    "file": "larch/review/plan_review_panel.py",
+    "code": "PLR0913",
     "qualified_symbol": "_parse_rate_retry",
     "metric": 6
   },
@@ -5229,13 +5229,13 @@
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0913",
     "qualified_symbol": "_static_slot_rows",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0915",
     "qualified_symbol": "dispatch_panel",
-    "metric": 61
+    "metric": 65
   },
   {
     "file": "larch/review/plan_review_round.py",
@@ -5295,7 +5295,7 @@
     "file": "larch/review/plan_review_round.py",
     "code": "PLR0915",
     "qualified_symbol": "execute_round",
-    "metric": 127
+    "metric": 128
   },
   {
     "file": "larch/review/plan_review_tally.py",
@@ -5451,7 +5451,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "_preflight_step5",
-    "metric": 21
+    "metric": 23
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5469,7 +5469,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "step5",
-    "metric": 29
+    "metric": 30
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5481,7 +5481,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "_preflight_step5",
-    "metric": 20
+    "metric": 22
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5493,7 +5493,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "step5",
-    "metric": 31
+    "metric": 32
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5505,7 +5505,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "_preflight_step5",
-    "metric": 54
+    "metric": 59
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5517,7 +5517,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 132
+    "metric": 149
   },
   {
     "file": "larch/review/review_collect.py",
@@ -5589,61 +5589,61 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0913",
     "qualified_symbol": "_review_core_body",
-    "metric": 14
+    "metric": 16
   },
   {
     "file": "larch/review/review_core_body.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 217
+    "metric": 223
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
     "code": "C901",
-    "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "C901",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 12
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "C901",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 56
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "PLR0911",
-    "qualified_symbol": "_valid_dynamic_archetype",
-    "metric": 11
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "PLR0911",
-    "qualified_symbol": "dispatch_panel",
-    "metric": 11
-  },
-  {
-    "file": "larch/review/review_dispatch_panel.py",
-    "code": "PLR0912",
     "qualified_symbol": "_synthesize_dynamic_slots",
     "metric": 13
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 12
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "C901",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 62
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_valid_dynamic_archetype",
+    "metric": 11
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0911",
+    "qualified_symbol": "dispatch_panel",
+    "metric": 13
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
+    "code": "PLR0912",
+    "qualified_symbol": "_synthesize_dynamic_slots",
+    "metric": 14
+  },
+  {
+    "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0912",
     "qualified_symbol": "dispatch_panel",
-    "metric": 66
+    "metric": 73
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
     "code": "PLR0913",
     "qualified_symbol": "_synthesize_dynamic_slots",
-    "metric": 8
+    "metric": 10
   },
   {
     "file": "larch/review/review_gather.py",
@@ -6297,7 +6297,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "invoke_main",
-    "metric": 93
+    "metric": 95
   },
   {
     "file": "larch/state/closeout.py",
@@ -6483,7 +6483,7 @@
     "file": "larch/state/session_env.py",
     "code": "C901",
     "qualified_symbol": "write_run_params_main",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/state/session_env.py",
