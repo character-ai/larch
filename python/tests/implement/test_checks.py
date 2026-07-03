@@ -3494,6 +3494,8 @@ def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str,
                 "test-step3-orchestrator-fence",
                 "test-references-headers",
                 "test-implement-anti-polling-rule",
+                "test-lint-readability-preamble",
+                "test-brainstorm-prompts",
             },
         ),
         ("skills/shared/design-background-wait.md", {"test-implement-anti-polling-rule"}),
@@ -3505,6 +3507,9 @@ def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str,
                 "test-render-cost-line-callsites",
                 "test-references-headers",
                 "test-implement-anti-polling-rule",
+                "test-lint-readability-preamble",
+                "test-design-structure",
+                "test-brainstorm-prompts",
             },
         ),
         ("python/larch/review/review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
@@ -3532,7 +3537,9 @@ def test_direct_targets_chronic_surface_full_union_sets(
 ) -> None:
     # These are full union expectations, not one-row spot checks. The design and
     # implement SKILL paths combine their structure rows, the skills/* references
-    # header row, and the anti-polling row. The design SKILL also inherits the
+    # header row, the anti-polling row, and the readability-preamble rule targets
+    # (test-lint-readability-preamble, test-design-structure, test-brainstorm-prompts)
+    # that the skills/*/SKILL.md glob routes to. The design SKILL also inherits the
     # Step 3 MAV fence targets. Top-level python/*.py paths inherit py-lint and
     # py-test when the toolchain probes are stubbed available.
     targets = set(_direct_targets_with_toolchain((path,), tmp_path, monkeypatch))
