@@ -14,6 +14,7 @@ from collections.abc import Callable, Sequence
 from contextlib import redirect_stdout
 from io import StringIO
 from pathlib import Path
+from typing import TextIO
 
 import pytest
 
@@ -2766,6 +2767,126 @@ def test_failure_report_escalation_success_from_ledger(tmp_path: Path, monkeypat
     )
     _, stdout, _ = _capture_failure_report(tmp_path, "approved", monkeypatch)
     assert "DESIGN_FAILURE_REPORT_DECISION=escalation-success" in stdout
+
+
+@pytest.mark.parametrize(
+    "case",
+    [
+        (1, "", 0, 0, "tier-a-dedup-helper-failed"),
+        (0, "unexpected-status", 0, 0, "tier-a-dedup-status-unexpected:unexpected-status"),
+        (0, "no-match", 1, 0, "tier-a-file-helper-failed"),
+        (0, "no-match", 0, 1, "tier-a-normalize-failed"),
+    ],
+)
+def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    case: tuple[int, str, int, int, str],
+) -> None:
+    dedup_rc, dedup_status, file_rc, normalize_rc, expected_reason = case
+    ledger = tmp_path / "design-failure-escalation-ledger.tsv"
+    ledger.write_text(
+        "utc=2026-01-01T00:00:00Z\t"
+        "site=step3-review\t"
+        "trigger=main-agent-vote-required\t"
+        "step=step3\t"
+        "phase=validation\t"
+        "dispatcher=design-step3-review\t"
+        "exit_code=unknown\t"
+        "failure_detail_log=\n",
+        encoding="utf-8",
+    )
+
+    def always_tier_a(_design_tmpdir: Path) -> bool:
+        return True
+
+    monkeypatch.setattr(  # pyright: ignore[reportPrivateUsage]
+        design_terminal,
+        "_tier_a_eligible",
+        always_tier_a,
+    )
+
+    def fake_run(
+        args: Sequence[str],
+        *,
+        stdout: TextIO | None = None,
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[Sequence[str]]:
+        if stdout is not None:
+            stdout.write(
+                "FILE_FAILURE_REPORT_STATUS=filed\n"
+                "FILE_FAILURE_REPORT_URL=https://github.com/example/repo/issues/1\n"
+            )
+        return subprocess.CompletedProcess(args=args, returncode=file_rc)
+
+    monkeypatch.setattr(design_terminal.subprocess, "run", fake_run)
+
+    def fake_stall(
+        callable_obj: object,
+        argv: list[str],
+        *,
+        stdout_path: Path | None = None,
+        stderr_path: Path | None = None,
+    ) -> int:
+        del stderr_path
+        if callable_obj is stall_recovery.compose_report_main:
+            output = Path(argv[argv.index("--output-file") + 1])
+            output.write_text("### [Bug] Tier A escalation\n\nBody.\n", encoding="utf-8")
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_KIND=escalation-success\n",
+                    encoding="utf-8",
+                )
+            return 0
+        if callable_obj is stall_recovery.dedup_tier_a_report_main:
+            if stdout_path is not None:
+                stdout_path.write_text(
+                    f"STALL_RECOVERY_REPORT_STATUS={dedup_status}\n",
+                    encoding="utf-8",
+                )
+            return dedup_rc
+        if callable_obj is stall_recovery.normalize_file_failure_report_env_main:
+            if normalize_rc == 0 and stdout_path is not None:
+                stdout_path.write_text(
+                    "STALL_RECOVERY_REPORT_STATUS=filed\n"
+                    "STALL_RECOVERY_REPORT_ARTIFACT=artifact.md\n",
+                    encoding="utf-8",
+                )
+            return normalize_rc
+        if callable_obj in {
+            stall_recovery.populate_sensitive_corpus_main,
+            stall_recovery.init_attempts_main,
+        }:
+            return 0
+        raise AssertionError(f"unexpected stall helper: {callable_obj}")
+
+    monkeypatch.setattr(  # pyright: ignore[reportPrivateUsage]
+        design_terminal,
+        "_run_stall_main",
+        fake_stall,
+    )
+    out = tmp_path / "failure-report.stdout.log"
+    err = tmp_path / "failure-report.stderr.log"
+    assert design_lifecycle.capture_contract_stream_to_paths(
+        design_lifecycle.failure_report_core,
+        out,
+        err,
+        [
+            "--design-tmpdir",
+            str(tmp_path.resolve()),
+            "--outcome",
+            "approved",
+            "--repo",
+            "example/repo",
+        ],
+    ) == 0
+    stdout_text = out.read_text(encoding="utf-8")
+    assert "DESIGN_FAILURE_REPORT_DECISION=fallback-print-required" in stdout_text
+    assert f"DESIGN_FAILURE_REPORT_REASON={expected_reason}" in stdout_text
+    assert f"| Reason | `{expected_reason}` |" in (
+        tmp_path / "design-failure-chat-print.md"
+    ).read_text(encoding="utf-8")
+    assert "compose-status-missing" not in stdout_text
 
 
 def test_failure_report_failed_judge_panel_terminal_gate(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
