@@ -349,6 +349,25 @@ def test_audit_pairing_renders_deltas_and_na_when_no_peer(tmp_path: Path) -> Non
     assert "| implement | AUDIT-NOPEER | 2026-06 | HARD | 0 | n/a | n/a |" in report
 
 
+def test_drift_skips_runs_without_started_at(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    dated = _run(root, "implement", "DATED", applied=difficulty.TRIVIAL, month="2026-06")
+    undated = _run(root, "implement", "UNDATED", applied=difficulty.MODERATE, month="2026-06")
+    manifest = json.loads((undated / "manifest.json").read_text(encoding="utf-8"))
+    manifest.pop("started_at", None)
+    (undated / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    for run in (dated, undated):
+        _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"))
+
+    _corpus, report = _report(root)
+    by_month = report.split("### By Month", 1)[1].split("### By Rater Model", 1)[0]
+    by_model = report.split("### By Rater Model", 1)[1]
+
+    assert "| unknown |" not in by_month
+    assert "| 2026-06 | 1 | 0 | 0 |" in by_month
+    assert "| gpt-test | 1 | 1 | 0 |" in by_model
+
+
 def test_under_rating_and_sidecar_burden(tmp_path: Path) -> None:
     root = _root(tmp_path)
     run = _run(root, "implement", "MISS", applied=difficulty.MODERATE, predicted=difficulty.MODERATE)
@@ -364,6 +383,22 @@ def test_under_rating_and_sidecar_burden(tmp_path: Path) -> None:
 
     assert corpus.degraded["duplicate_sidecar_rows"] == 1
     assert "| implement | MISS | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1; stale=1 |" in report
+
+
+def test_under_rating_sidecar_ignores_unaccepted_identity_rows(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "MISS-EMPTY", applied=difficulty.MODERATE, predicted=difficulty.MODERATE, escalated=True)
+    _implement_tsv(run, 1, _code_row("FINDING_1", "rejected"), _code_row("FINDING_2", "rejected"))
+    (root / "rejected-analysis-verdicts.tsv").write_text(
+        SIDECAR_HEADER
+        + "\n1\thash1\timplement\tMISS-EMPTY\t1\tFINDING_1\tv1\tstale\tloc\tevidence\t2026-01-01T00:00:00Z"
+        + "\n1\thash1\timplement\tMISS-EMPTY\t1\tFINDING_1\tv1\tconfirmed\tloc\tevidence\t2026-01-02T00:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    _corpus, report = _report(root)
+
+    assert "| implement | MISS-EMPTY | 42 | MODERATE | MODERATE | HARD | 0 | n/a | confirmed=0 |" in report
 
 
 def test_under_rating_missing_sidecar_renders_na(tmp_path: Path) -> None:
@@ -390,6 +425,40 @@ def test_under_rating_sidecar_matches_accepted_identities_without_hash(tmp_path:
     _corpus, report = _report(root)
 
     assert "| implement | MATCH | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1 |" in report
+
+
+def test_audit_deltas_render_na_without_source_or_floor_tiers(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "AUDIT-NO-TIERS", rating=False, audit=True, month="2026-05")
+    _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"))
+    (run / "difficulty-rating.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "rater": "implement",
+                "rater_tool": "codex",
+                "rater_model": "gpt-test",
+                "confidence": "medium",
+                "rationale": "fixture",
+                "design_tier": None,
+                "implement_tier": None,
+                "applied_tier": difficulty.MODERATE,
+                "override_source": "none",
+                "floors_applied": [],
+                "audit_upgrade": None,
+                "escalations": [],
+                "panel_skipped": None,
+                "audit_evaluated": True,
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    corpus, report = _report(root)
+    record = next(item for item in corpus.records if item.run_id == "AUDIT-NO-TIERS")
+
+    assert record.pre_audit_tier is None
+    assert "| implement | AUDIT-NO-TIERS | 2026-05 | n/a | 0 | n/a | n/a |" in report
 
 
 def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

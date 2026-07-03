@@ -114,11 +114,15 @@ class RunRecord:
     def pre_audit_tier(self) -> str | None:
         if self.rating is None:
             return None
-        base = difficulty.tier_max(
-            difficulty.normalize_tier(self.rating.get("design_tier"), "") or None,
-            difficulty.normalize_tier(self.rating.get("implement_tier"), "") or None,
-            difficulty.normalize_tier(self.rating.get("predicted_tier"), "") or None,
-        )
+        base_tiers = [
+            tier
+            for tier in (
+                difficulty.normalize_tier(self.rating.get("design_tier"), ""),
+                difficulty.normalize_tier(self.rating.get("implement_tier"), ""),
+                difficulty.normalize_tier(self.rating.get("predicted_tier"), ""),
+            )
+            if tier
+        ]
         floors = self.rating.get("floors_applied")
         floor_tiers: list[str] = []
         if isinstance(floors, list):
@@ -127,7 +131,9 @@ class RunRecord:
                     floor = difficulty.normalize_tier(item.get("floor"), "")
                     if floor:
                         floor_tiers.append(floor)
-        tier = difficulty.tier_max(base, *floor_tiers)
+        if not base_tiers and not floor_tiers:
+            return None
+        tier = difficulty.tier_max(*base_tiers, *floor_tiers)
         return tier if difficulty.tier_valid(tier) else None
 
 
@@ -742,12 +748,14 @@ def _sidecar_note(record: RunRecord) -> str:
     if not record.sidecar_present:
         return "confirmed=n/a"
     accepted_keys = {identity.key for identity in record.classification.accepted_identities}
+    if not accepted_keys:
+        return "confirmed=0"
     counts = Counter[str]()
     for row in record.sidecar_rows:
         verdict = str(row.get("verdict") or "").strip().lower().replace("-", "_")
         if not verdict:
             continue
-        if accepted_keys and not _sidecar_row_matches(row, accepted_keys):
+        if not _sidecar_row_matches(row, accepted_keys):
             continue
         counts[verdict] += 1
     confirmed = counts.get("confirmed", 0)
@@ -889,9 +897,10 @@ def _render_drift(records: Sequence[RunRecord]) -> list[str]:
     for record in records:
         if record.rating is None:
             continue
-        month = record.started_month or UNKNOWN
+        month = record.started_month
         model = _unknown_if_empty(record.rating.get("rater_model"))
-        by_month[month][record.applied_tier] += 1
+        if month is not None:
+            by_month[month][record.applied_tier] += 1
         by_model[model][record.applied_tier] += 1
     if not by_month:
         lines.append("| n/a | 0 | 0 | 0 |")
