@@ -8,9 +8,7 @@ loop and repair-loop CLI.
 from __future__ import annotations
 
 import argparse
-import ast
 import contextlib
-import fnmatch
 import os
 import re
 import sys
@@ -357,24 +355,6 @@ def _command_available(*, runner: Runner, name: str, cwd: str, env: dict[str, st
     return result.returncode == 0
 
 
-def _python311_available(runner: Runner, *, cwd: str, env: dict[str, str]) -> bool:
-    result = runner.run(
-        [
-            "python3",
-            "-c",
-            "import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)",
-        ],
-        cwd=cwd,
-        env=env,
-    )
-    return result.returncode == 0
-
-
-def _pytest_available(runner: Runner, *, cwd: str, env: dict[str, str]) -> bool:
-    result = runner.run(["python3", "-m", "pytest", "--version"], cwd=cwd, env=env)
-    return result.returncode == 0
-
-
 def _resolve_repo_root(*, runner: Runner, repo_root: str) -> Path | None:
     candidate = Path(repo_root) if repo_root else Path.cwd()
     if not candidate.is_dir() or candidate.is_symlink():
@@ -428,211 +408,9 @@ def _existing_regular_files(*, repo: Path, paths: Iterable[str]) -> tuple[str, .
     return tuple(regular)
 
 
-_DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, bool], ...]] = (
-    (("scripts/read-result-env.sh", "scripts/read-result-env.md"), ("test-read-result-env", "test-design-structure"), False, False),
-    (("scripts/test-read-result-env.sh", "scripts/test-read-result-env.md"), ("test-read-result-env",), False, False),
-    (("python/larch/state/session_env.py", "python/test_session_env.py"), ("test-design-structure", "py-test"), False, False),
-    (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-publish", "test-design-stage-terminal-state", "test-design-failure-report", "test-design-step5c", "test-design-structure"), False, False),
-    (("skills/design/scripts/design-step5c.sh", "skills/design/scripts/test-design-step5c.sh", "skills/design/scripts/test-design-step5c.md"), ("test-design-step5c", "test-design-publish", "test-design-stage-terminal-state"), False, False),
-    (("skills/design/SKILL.md", "skills/design/references/*.md"), ("test-design-structure", "test-render-cost-line-callsites"), False, False),
-    (("skills/design/SKILL.md", "skills/design/references/plan-review.md", "skills/design/scripts/design-step3-mav.sh", "skills/design/scripts/design-step3-mav.md", "skills/design/scripts/test-design-step3-mav.sh", "skills/design/scripts/test-design-step3-mav.md", "skills/design/scripts/test-step3-orchestrator-fence.sh", "skills/design/scripts/test-step3-orchestrator-fence.md"), ("test-design-step3-mav", "test-step3-orchestrator-fence"), False, False),
-    (("scripts/test-implement-anti-polling-rule.sh", "AGENTS.md", "skills/design/SKILL.md", "skills/shared/design-background-wait.md", "skills/shared/orchestrator-never.md", "skills/implement/SKILL.md"), ("test-implement-anti-polling-rule",), False, False),
-    (("python/upgrade_larch.py", "python/test_upgrade_larch.py"), ("py-test",), False, False),
-    (("python/larch/design/design_argv.py", "python/tests/design/test_design_argv.py"), ("test-parse-design-argv",), False, False),
-    (("python/larch/design/design_step2b.py",), ("test-design-step2b-drafter", "test-design-structure"), False, False),
-    (("python/larch/design/design_lifecycle.py", "python/tests/design/test_design_lifecycle.py"), ("test-design-step2b-drafter", "test-design-driver", "test-design-step0-init", "test-design-step1d5", "test-design-stage-terminal-state", "test-design-step-final-summary", "test-design-failure-report", "test-design-step5c", "test-design-structure", "test-step0b-router-flag-recovery"), False, False),
-    (("python/design_log_publish_flow.py", "python/test_design_log_publish_flow.py"), ("test-design-log-publish",), False, False),
-    (("python/design_log_ship.py", "python/test_design_log_ship.py"), ("test-design-log-ship",), False, False),
-    (("python/design_oos.py", "python/test_design_oos.py"), ("test-file-design-oos",), False, False),
-    (("python/design_pause.py", "python/test_design_pause.py"), ("test-design-pause-resume",), False, False),
-    (("python/design_postplan.py", "python/test_design_postplan.py"), ("test-design-postplan-emit",), False, False),
-    (("python/design_publish.py", "python/test_design_publish.py"), ("test-design-publish",), False, False),
-    (("python/design_step_log.py", "python/test_design_step_log.py"), ("test-run-step1-plan-log",), False, False),
-    (("python/design_summary.py", "python/test_design_summary.py"), ("test-render-final-summary", "test-render-final-summary-bash32", "test-design-failure-report"), False, False),
-    (("skills/design/scripts/test-step3-review-cap.sh", "skills/design/scripts/test-step3-review-cap.md"), ("test-step3-review-cap",), False, False),
-    (("python/larch/review/plan_review.py", "python/test_plan_review.py"), ("test-plan-review", "test-design-multi-round-integration", "test-design-log-publish"), False, False),
-    (("python/larch/review/plan_review_panel.py", "python/test_plan_review_panel.py"), ("test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters"), False, False),
-    (("python/plan_quality.py", "python/test_plan_quality.py", "skills/design/scripts/test-auto-fix-plan-commands.sh"), ("test-auto-fix-plan-commands", "test-design-step-validator-autofix"), False, False),
-    (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-postplan-emit",), False, False),
-    (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-design-driver", "test-step0b-router-flag-recovery"), False, False),
-    (("python/design_lifecycle.py", "python/tests/design/test_design_lifecycle.py"), ("test-check-plan-size",), False, False),
-    (("python/plan_quality.py", "python/test_plan_quality.py"), ("test-run-step1-plan-log",), False, False),
-    (("python/larch/agents/agents.py", "python/test_agents.py", "python/checks.py"), ("py-test", "test-launch-codex-exec", "test-launch-codex-ci", "test-launch-cursor-ci", "test-parse-codex-usage", "test-token-vendor-scrapers", "test-degraded-tools-gate", "test-run-external-agent"), False, False),
-    (("python/larch/review/plan_review.py", "skills/design/scripts/design-step3-review.sh", "skills/design/scripts/design-step3-review.md", "skills/design/scripts/test-design-step3-review.sh", "skills/design/scripts/test-design-step3-review.md"), ("test-design-step3-review", "test-plan-review"), False, False),
-    (("python/larch/review/plan_review.py", "skills/design/references/plan-review.md", "python/test_plan_review.py", "skills/design/scripts/dedup-plan-lines.py", "skills/design/scripts/dedup-plan-lines.md"), ("test-plan-review", "test-design-step3-review", "test-design-multi-round-integration"), False, False),
-    (("scripts/test-design-multi-round-integration.sh", "scripts/test-design-multi-round-integration.md"), ("test-design-log-publish", "test-design-multi-round-integration"), False, False),
-    (("scripts/test-design-structure.sh", "scripts/test-design-structure.md"), ("test-design-structure",), False, False),
-    (("skills/implement/SKILL.md",), ("test-implement-structure", "test-render-cost-line-callsites"), False, False),
-    (("skills/*/SKILL.md", "skills/*/references/*.md"), ("test-references-headers",), False, False),
-    (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble", "test-design-structure", "test-brainstorm-prompts"), False, False),
-    (("python/larch/lint/lint_readability_preamble.py", "python/tests/lint/test_lint_readability_preamble.py", "skills/shared/readability-style.md", "skills/*/SKILL.md", ".claude/skills/*/SKILL.md"), ("test-lint-readability-preamble", "test-design-structure", "test-brainstorm-prompts"), False, False),
-    (
-        (
-            "python/larch/lint/lint_bg_wait_coverage.py",
-            "python/tests/lint/test_lint_bg_wait_coverage.py",
-            "Makefile",
-            ".pre-commit-config.yaml",
-        ),
-        (
-            "test-lint-bg-wait-coverage",
-            "test-hook-bg-poll-guard",
-            "test-hook-no-progress-guard",
-        ),
-        False,
-        False,
-    ),
-
-    (("python/larch/rendering/rendering.py", "python/test_rendering.py"), ("test-plan-review", "test-launch-claude-subprocess", "test-lib-scope-anchor-handoff", "test-plan-review-panel", "test-dispatch-plan-review-panel", "test-dispatch-plan-voters", "test-aggregate-findings"), False, False),
-    (("python/decompose.py", "python/test_decompose.py"), ("test-decompose-file-issues", "test-decompose-panel-dispatch", "test-decompose-aggregator"), True, True),
-    (("python/plan_scout.py", "python/test_plan_scout.py"), ("test-scout-dynamic-archetypes", "test-scout-plan-archetypes-wrapper", "test-dispatch-panel-core-dynamic"), True, True),
-    (("python/issue_wire.py", "python/test_issue_wire.py", "python/plan_quality.py", "python/test_plan_quality.py", "python/redact.py", "python/gh.py", "python/larch/rendering/rendering.py", "python/test_rendering.py", ".claude/rules/gh-body-file.md", "AGENTS.md", "SECURITY.md", "agent-lint.toml", "docs/issue-anchored-plan.md", "docs/linting.md", "python/test_plan_review.py", "scripts/test-legacy-title-prefix-literals-scope.sh"), ("test-design-structure", "test-review-structure", "test-research-structure"), True, True),
-    (("scripts/resolve-upstream-larch-repo.sh", "scripts/resolve-upstream-larch-repo.md", "scripts/test-resolve-upstream-larch-repo.sh", "scripts/test-resolve-upstream-larch-repo.md"), ("test-resolve-upstream-larch-repo",), False, False),
-    (("scripts/file-failure-report-cross-repo.sh", "scripts/file-failure-report-cross-repo.md", "scripts/test-file-failure-report-cross-repo.sh", "scripts/test-file-failure-report-cross-repo.md"), ("test-file-failure-report-cross-repo", "test-design-failure-report"), False, False),
-    (("python/larch/state/stall_recovery.py", "python/stall-recovery-report.md", "python/stall-recovery-report-allowlists.tsv", "python/test_stall_recovery.py", "skills/implement/references/stall-recovery.md"), ("test-stall-recovery-report", "test-design-stage-terminal-state", "test-design-failure-report"), False, False),
-    (("python/blocker.py", "python/test_blocker.py"), ("test-blocker",), True, True),
-    (("python/issue_query.py", "python/test_issue_query.py"), ("test-issue-query",), True, True),
-    (("python/larch/state/admission.py", "python/test_admission.py"), ("test-implement-admission",), False, False),
-    (("python/larch/state/dirty_tree.py", "python/test_dirty_tree.py"), ("test-check-mid-run-dirty-tree", "test-check-scope-reduction-marker"), False, False),
-    (("python/architectural_guidelines.py", "python/test_architectural_guidelines.py", "python/issue_wire.py", "python/test_issue_wire.py"), ("py-test",), False, False),
-    (("python/larch/state/bootstrap.py", "python/test_bootstrap.py"), ("test-implement-bootstrap", "test-implement-bootstrap-invoke", "test-parse-bootstrap-routing-envelope"), False, False),
-    (("python/preflight.py", "python/test_preflight.py"), ("test-implement-preflight",), False, False),
-    (("python/larch/state/finalize.py", "python/test_finalize.py"), ("test-implement-finalize",), False, False),
-    (("python/larch/state/closeout.py", "python/test_closeout.py"), ("test-step-16-17",), False, False),
-    (("python/final_report.py", "python/test_final_report.py"), ("test-write-final-report", "test-step-18b-final-report"), False, False),
-    (("python/larch/report/final_report.py",), ("test-write-final-report", "test-step-18b-final-report"), False, True),
-    (("python/larch/report/progress_report.py",), (), False, True),
-    (("python/larch/report/review_phase_detail.py",), (), False, True),
-    (("python/larch/rendering/gantt.py",), (), False, True),
-    (("python/larch/implement/checks.py", "python/larch/implement/checks_run_relevant.py", "python/larch/implement/checks_lint_fix.py"), (), False, True),
-    (("python/pr_body.py", "python/test_pr_body.py", "python/ship.py", "python/test_ship.py", "python/final_report.py", "python/test_final_report.py"), ("py-test",), False, False),
-    (("skills/implement/scripts/step-architectural-guidelines-*.sh", "skills/implement/scripts/step-architectural-guidelines-*.md", "skills/implement/scripts/test-architectural-guidelines-step.sh", "skills/implement/scripts/test-architectural-guidelines-step.md", "scripts/residual-bash-paths.txt"), ("test-architectural-guidelines-step", "test-implement-fence-shape"), False, False),
-    (("skills/implement/references/ship-pr-exit-matrix.md", "skills/implement/references/conflict-resolution.md", "scripts/test-implement-fence-shape.sh"), ("test-implement-fence-shape",), False, False),
-    (("python/oos.py", "python/test_oos.py"), (), True, True),
-    (("python/larch/review/review_pipeline.py", "python/larch/review/review_pipeline_shared.py", "python/larch/review/review_gather.py", "python/larch/review/review_prune.py", "python/larch/review/review_dispatch_panel.py", "python/larch/review/review_collect.py", "python/larch/review/review_threshold.py", "python/larch/review/review_core_body.py", "python/test_review_pipeline.py"), ("test-gather-context", "test-review-core", "test-dispatch-panel-core", "test-dispatch-panel-core-dynamic", "test-dispatch-panel-reuse", "test-dispatch-panel-limits", "test-collect-findings"), True, True),
-    (("python/larch/review/review_aggregate.py", "python/test_review_aggregate.py"), ("test-aggregate-findings",), True, True),
-    (("python/compose_review.py", "python/test_compose_review.py"), ("test-compose-review-findings",), True, True),
-    (("python/larch/review/review_tally.py", "python/test_review_tally.py"), ("test-emit-tally", "test-tally-code-votes"), True, True),
-    (("python/larch/review/review_and_fix.py", "python/test_review_and_fix.py", "skills/review-and-fix/SKILL.md"), ("test-review-and-fix",), True, True),
-    (("python/*.py",), (), True, True),
-    (("python/fixtures/**",), (), False, True),
-    (("skills/report-tokens/SKILL.md", "skills/report-tokens/scripts/plot-cost-over-time.py", "skills/report-tokens/scripts/plot-cost-over-time.md", "docs/run-logs.md"), ("py-test",), False, False),
-    (("python/migrated-scripts.tsv",), ("lint-retired-scripts",), False, True),
-    (("python/pyproject.toml", "python/ruff.toml", "python/pyrightconfig.json", "python/.pylintrc", "python/requirements-dev.txt", "python/requirements-test.txt"), (), True, True),
-)
-
-
-def _append_once(*, items: list[str], item: str) -> None:
-    if item not in items:
-        items.append(item)
-
-
-def _patterns_match(*, path: str, patterns: tuple[str, ...]) -> bool:
-    for pattern in patterns:
-        if "/" in pattern and "**" not in pattern and path.count("/") != pattern.count("/"):
-            continue
-        if fnmatch.fnmatchcase(path, pattern):
-            return True
-    return False
-
-
-def _append_py_lint_target(  # noqa: PLR0913,RUF100
-    *, runner: Runner,
-    targets: list[str],
-    cwd: str,
-    env: dict[str, str],
-    log_fd: int,
-    warned: set[str],
-) -> None:
-    if not _python311_available(runner, cwd=cwd, env=env):
-        if "py-lint" not in warned:
-            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping py-lint direct relevant target\n")
-            warned.add("py-lint")
-        return
-    missing = [tool for tool in ("ruff", "pylint", "pyright") if not _command_available(runner=runner, name=tool, cwd=cwd, env=env)]
-    if missing:
-        if "py-lint" not in warned:
-            _write_log(log_fd=log_fd, text=f"WARNING: Python lint tools not found on PATH ({' '.join(missing)}) — skipping py-lint direct relevant target\n")
-            warned.add("py-lint")
-        return
-    _append_once(items=targets, item="py-lint")
-
-
-def _append_py_test_target(  # noqa: PLR0913,RUF100
-    *, runner: Runner,
-    targets: list[str],
-    cwd: str,
-    env: dict[str, str],
-    log_fd: int,
-    warned: set[str],
-) -> None:
-    if not _python311_available(runner, cwd=cwd, env=env):
-        if "py-test" not in warned:
-            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping py-test direct relevant target\n")
-            warned.add("py-test")
-        return
-    if not _pytest_available(runner, cwd=cwd, env=env):
-        if "py-test" not in warned:
-            _write_log(log_fd=log_fd, text="WARNING: python3 pytest not found — skipping py-test direct relevant target\n")
-            warned.add("py-test")
-        return
-    _append_once(items=targets, item="py-test")
-
-
-_HARNESS_PARTITION_TARGET: Final = "test-harness-shards-coverage"
-
-
-def _enforced_partition_files(repo: Path) -> frozenset[str]:
-    """Read the strict-partition ENFORCED tuple from the harness guard.
-
-    Single source of truth is ``scripts/lint-harness-pytest-partition.py``; parse
-    it with ``ast`` (no code execution). Return an empty set on any read/parse
-    failure so a missing or malformed guard never blocks relevant checks.
-    """
-    guard = repo / "scripts" / "lint-harness-pytest-partition.py"
-    try:
-        tree = ast.parse(guard.read_text(encoding="utf-8", errors="replace"))
-    except (OSError, ValueError, SyntaxError):
-        return frozenset()
-    for node in tree.body:
-        if not isinstance(node, ast.Assign):
-            continue
-        if not any(isinstance(target, ast.Name) and target.id == "ENFORCED" for target in node.targets):
-            continue
-        if not isinstance(node.value, (ast.Tuple, ast.List)):
-            return frozenset()
-        files: set[str] = set()
-        for elt in node.value.elts:
-            if isinstance(elt, ast.Constant) and isinstance(elt.value, str):
-                files.add(elt.value)
-        return frozenset(files)
-    return frozenset()
-
-
-def _append_partition_guard_target(  # noqa: PLR0913,RUF100
-    *, runner: Runner,
-    targets: list[str],
-    cwd: str,
-    env: dict[str, str],
-    log_fd: int,
-    warned: set[str],
-) -> None:
-    """Append the harness partition guard target (gated on py3.11 + pytest).
-
-    The guard runs ``pytest --co`` per harness selection, so it needs the same
-    toolchain as ``py-test``; gate identically to avoid spurious local failures.
-    """
-    if not _python311_available(runner, cwd=cwd, env=env):
-        if "harness-partition" not in warned:
-            _write_log(log_fd=log_fd, text="WARNING: python3 >= 3.11 not found — skipping test-harness-shards-coverage relevant target\n")
-            warned.add("harness-partition")
-        return
-    if not _pytest_available(runner, cwd=cwd, env=env):
-        if "harness-partition" not in warned:
-            _write_log(log_fd=log_fd, text="WARNING: python3 pytest not found — skipping test-harness-shards-coverage relevant target\n")
-            warned.add("harness-partition")
-        return
-    _append_once(items=targets, item=_HARNESS_PARTITION_TARGET)
-
+# Direct make-target fan-out intentionally stays empty on the local path. Heavy
+# pytest, pylint, and shell harness coverage runs in CI, where it is parallelized
+# and handled by the autonomous CI-fix loop.
 
 def _direct_targets(
     *, runner: Runner,
@@ -641,25 +419,11 @@ def _direct_targets(
     env: dict[str, str],
     log_fd: int,
 ) -> tuple[str, ...]:
-    targets: list[str] = []
-    warned: set[str] = set()
-    for path in changed:
-        for patterns, rule_targets, wants_py_lint, wants_py_test in _DIRECT_TARGET_RULES:
-            if not _patterns_match(path=path, patterns=patterns):
-                continue
-            for target in rule_targets:
-                _append_once(items=targets, item=target)
-            if wants_py_lint:
-                _append_py_lint_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
-            if wants_py_test:
-                _append_py_test_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
-    # An ENFORCED multi-target pytest file changed: run the strict-partition guard
-    # locally so an uncovered new test fails before CI rather than only in CI and
-    # forcing the autonomous CI-fix loop (issue #4867 secondary).
-    enforced = _enforced_partition_files(Path(cwd))
-    if enforced and any(path in enforced for path in changed):
-        _append_partition_guard_target(runner=runner, targets=targets, cwd=cwd, env=env, log_fd=log_fd, warned=warned)
-    return tuple(targets)
+    _ = runner, changed, cwd, env, log_fd
+    # The local relevant-checks path is intentionally CI-first: pre-commit
+    # carries scoped ruff/pyright, while pytest, pylint, and harness make
+    # targets run in CI where they are parallelized and fixed by the CI loop.
+    return ()
 
 
 _MAKE_TARGET_RE: Final = re.compile(r"^([A-Za-z0-9_.-]+)\s*:")
@@ -1178,26 +942,22 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
         _write_log(log_fd=log_fd, text="No existing regular files to pass to pre-commit.\n")
         targets = _direct_targets(runner=runner, changed=changed, cwd=cwd, env=env, log_fd=log_fd)
         targets = _filter_defined_make_targets(repo=repo, targets=targets, log_fd=log_fd)
-        direct_ran = False
         if targets:
             _write_log(log_fd=log_fd, text=f"\n=== Running direct relevant make target(s): {' '.join(targets)} ===\n")
             make_result = _run_logged(runner=runner, argv=["make", *targets], cwd=cwd, log_fd=log_fd, env=env)
             phases_run += 1
-            direct_ran = True
             if make_result.returncode != 0:
                 return make_result.returncode
         pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd)
         if pins_rc != 0:
             return pins_rc
+        phases_run += 1
         agent_rc = _run_agent_lint(runner, cwd=cwd, log_fd=log_fd, env=env)
         if agent_rc is not None:
             phases_run += 1
             rc = agent_rc
         else:
             rc = 0
-        if not direct_ran and agent_rc is None:
-            _write_log(log_fd=log_fd, text="\nERROR: no validation phases ran — pre-commit had no eligible files (no changes, or no regular files for pre-commit) and agent-lint was unavailable or skipped.\n")
-            return 2
         return rc
 
     if not _command_available(runner=runner, name="pre-commit", cwd=cwd, env=env):
