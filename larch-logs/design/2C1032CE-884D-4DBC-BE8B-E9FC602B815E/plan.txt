@@ -1,0 +1,102 @@
+## Files to modify/create
+
+### UPDATED: python/larch/report/timing.py
+Add a canonical `TIMING_VENDOR_MIN_COLS = 13` constant near `TIMING_TASK_KINDS_ALLOWED` and `TIMING_VENDORS_ALLOWED`.
+
+### UPDATED: python/larch/review/plan_review_loop.py
+Import `TIMING_VENDOR_MIN_COLS` with `TimingLedger`.
+
+Remove the local `TIMING_VENDOR_COLS = 13`.
+
+Use `TIMING_VENDOR_MIN_COLS` in `_gate_b_apply_start_s`.
+
+### UPDATED: python/larch/report/progress_report.py
+Import `TIMING_VENDOR_MIN_COLS` from `larch.report.timing`.
+
+Remove the local `TIMING_VENDOR_MIN_COLS = 13`.
+
+Add `"gate-b-apply"` to `_CODER_APPLY_TASK_KINDS` so `_cap_gantt_rows_reserving_apply` reserves the Gate B apply row under `PROGRESS_GANTT_ROW_CAP`.
+
+Keep `_derive_progress_label` unchanged. It already labels `gate-b-apply` as `gate-b/apply`.
+
+### UPDATED: python/tests/review/test_plan_review.py
+Import `plan_review_loop` directly, or access the helper through an existing import only if already exposed.
+
+Add focused tests for `_gate_b_apply_start_s`:
+- Missing or empty ledger returns `None`.
+- Latest vendor end equal to `end_s` returns `None`.
+- Latest vendor end after `end_s` returns `None`.
+- Unreadable or read-failing ledger returns `None`, using monkeypatch instead of chmod-only behavior so the test is stable across platforms.
+- Existing `gate-b-apply` row with the same output basename returns `None`.
+
+Add a regression test for the ready-marker-with-no-vendor-rows case:
+- Create `round-start-s`.
+- Touch `.gate-b-postapply-ready-1`.
+- Leave the ledger absent or without vendor rows.
+- Call `_write_design_round_meta`.
+- Assert no `gate-b-apply` row is written.
+- Assert the canonical round window stays unchanged.
+
+### UPDATED: python/tests/report/test_progress_report.py
+Add a row-cap regression test for `gate-b-apply`.
+
+Use the existing `_write_vendor_timing` helper and the pattern from `test_progress_vendor_rows_reserve_coder_apply_under_cap`:
+- Fill `PROGRESS_GANTT_ROW_CAP` with earlier design reviewer rows.
+- Add a later `gate-b-apply` row.
+- Call `_progress_vendor_rows`.
+- Assert the capped result still contains `gate-b/apply`.
+- Assert one non-apply row was dropped to preserve the cap.
+
+## Approach
+
+Keep the change narrow.
+
+First, move only the shared vendor-row column-count literal into `python/larch/report/timing.py`. This matches the approved outline and keeps the constant near timing-ledger task/vendor definitions. Do not move unrelated column index constants.
+
+Second, treat `gate-b-apply` as an apply lane for row-cap purposes. The label already exists. The missing piece is only membership in `_CODER_APPLY_TASK_KINDS`.
+
+Third, add direct tests around the private helper because the current coverage exercises only the happy path through `_write_design_round_meta`. Use direct helper tests for boundary behavior and one integration-style test for no-vendor rows.
+
+Do not implement the excluded issue items:
+- No per-attempt design round timing rows.
+- No flock-timeout retry or `execution-issues` surfacing.
+- No public Gate B helper export or module restructuring.
+
+## Edge cases
+
+- A ledger with no readable vendor rows must not invent a Gate B apply span.
+- A vendor row ending exactly at `end_s` leaves no positive Gate B apply window.
+- A vendor row ending after `end_s` must not produce a negative or clamped apply span.
+- A duplicate `gate-b-apply-round-N.out` row must keep idempotency.
+- Row-cap logic must keep total rows at `PROGRESS_GANTT_ROW_CAP` while preserving `gate-b/apply`.
+
+## Failure modes
+
+1. **Constant import drift**
+   - Warning signal: pyright or import errors in `progress_report.py` or `plan_review_loop.py`.
+   - Mitigation: import only from `larch.report.timing`, which both modules already depend on or can safely depend on.
+
+2. **Gate B row still disappears under cap**
+   - Warning signal: new cap regression test fails or rendered phase detail lacks `gate-b/apply`.
+   - Mitigation: ensure `_progress_vendor_rows` marks `kind in _CODER_APPLY_TASK_KINDS` after deriving the row kind.
+
+3. **Unreadable-ledger test is platform-flaky**
+   - Warning signal: test passes locally but fails in CI due to permissions behavior.
+   - Mitigation: monkeypatch `Path.read_text` for the target ledger to raise `OSError` instead of relying only on chmod.
+
+## Testing strategy
+
+Run focused tests only:
+- `python3 -m pytest python/tests/review/test_plan_review.py -k "gate_b_apply"`
+- `python3 -m pytest python/tests/report/test_progress_report.py -k "gate_b_apply or reserve_coder_apply_under_cap"`
+- `python3 -m pytest python/tests/report/test_timing.py -k "gate_b_apply or vendor_task_accepts"`
+
+Run lint/type checks only if the implementer has the Python dev dependencies available:
+- `make py-lint`
+- `python3 python/cli.py checks run-relevant`
+
+difficulty: MODERATE
+diff_added: 85
+diff_deleted: 4
+mechanical_churn: false
+diff_lines: 95

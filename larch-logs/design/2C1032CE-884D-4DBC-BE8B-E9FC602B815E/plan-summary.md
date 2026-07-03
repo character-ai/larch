@@ -1,0 +1,1 @@
+Plan fixes the three approved issue #6091 items only: reserve `gate-b-apply` under the Gantt row cap, add focused Gate B timing helper tests, and share the timing vendor column-count constant from `timing.py`.

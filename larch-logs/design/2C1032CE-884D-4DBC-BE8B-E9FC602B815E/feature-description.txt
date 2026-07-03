@@ -1,0 +1,50 @@
+# Gate B apply timing: follow-up findings from PR #6082 review
+
+## Context
+
+These 6 findings surfaced during `/implement`'s Step 5 code review of issue #6068 / PR #6082 (adding a labeled `gate-b/apply` bar to the `/design` plan-review round Gantt chart). None survived the reviewer panel's voting process as accepted findings (in-scope or OOS), so they were not auto-filed by the OOS pipeline. Filing them together here per operator request, so they're tracked instead of lost.
+
+Two reviewer specialists (`cursor-specialist-edge-cases`, `cursor-specialist-testing`) independently raised these against the new code in `python/larch/review/plan_review_loop.py` (`_gate_b_apply_start_s`, `_record_gate_b_apply_timing_from_round_window`), `python/larch/report/timing.py` (`TIMING_TASK_KINDS_ALLOWED`), and `python/larch/report/progress_report.py` (`_derive_progress_label`).
+
+## Important
+
+### Round reruns can suppress fresh timing rows
+**Reviewers**: cursor-specialist-correctness, cursor-specialist-testing, dyn-dyn-timing-ledger
+**Concern**: Existing round-row and Gate B idempotence can suppress fresh timing rows on rerun, so a replayed round may not get a new window or a second `gate-b-apply` span.
+**Suggested fixes**:
+- Decide whether design re-entry should get per-attempt round rows like `/implement` stall recovery does.
+- Version the output basename per attempt, or clear prior `gate-b-apply` rows on Step 3 re-entry.
+
+## Latent
+
+### Timing append failures can hide Gate B timing (raised twice, same root cause)
+**Reviewer**: cursor-specialist-edge-cases (raised independently in two review passes — same underlying concern, kept as one item here)
+**Concern**: `TimingLedger._append` can skip appends on flock lock timeout with only a warning, so Gate B timing (and any vendor timing row) can fail or be lost quietly under contention.
+**Suggested fix**: Consider surfacing the append failure to `execution-issues` or adding a retry. Pre-existing behavior, amplified by the new `gate-b-apply` row type since a dropped row now means a visibly missing Gantt bar rather than just a missing metric.
+
+### Gate B apply can still be dropped under the row cap
+**Reviewer**: cursor-specialist-testing
+**Concern**: Under the Gantt row cap, `gate-b-apply` is not reserved, so a heavy reviewer panel can truncate it and bring back the original unlabeled trailing-space bug this feature was meant to fix.
+**Suggested fix**: Add `gate-b-apply` to `_CODER_APPLY_TASK_KINDS` (or equivalent row-cap-exempt set) if cap truncation is actually observed in production.
+
+## Nit
+
+### Missing tests for Gate B helper edge cases
+**Reviewers**: cursor-specialist-edge-cases, cursor-specialist-testing
+**Concern**: `_gate_b_apply_start_s`'s empty-ledger, boundary, and unreadable-ledger paths are not directly covered, so overlap and max-end regressions could hide a missing Gate B bar.
+**Suggested fixes**:
+- Add focused tests for `_gate_b_apply_start_s` returning `None` on: empty ledger, latest vendor end equal to or after `end_s`, and unreadable ledger.
+- Add a test: `.gate-b-postapply-ready-1` present, no vendor rows, assert no `gate-b-apply` row and the round window is unchanged.
+
+### Gate B timing helper is imported across modules
+**Reviewer**: cursor-specialist-edge-cases
+**Concern**: A private (underscore-prefixed) Gate B timing helper is imported across modules, which makes refactoring the timing path brittle.
+**Suggested fix**: Export a public helper, or colocate Gate B timing logic in one module if this area grows further.
+
+### Timing vendor column constants are duplicated
+**Reviewer**: cursor-specialist-testing
+**Concern**: The new `TIMING_VENDOR_COLS` constant in `plan_review_loop.py` duplicates the existing vendor-column-count constant (`TIMING_VENDOR_MIN_COLS`) in `progress_report.py`. Both encode the same `v1 vendor` timing-ledger column count; future layout changes could drift between the two.
+**Suggested fix**: Import or share one constant between `progress_report` and the Gate B timing module instead of redefining it.
+
+---
+*Filed from the `/implement` run for issue #6068 (PR #6082); combined per the "multiple medium-sized findings -> one issue" triage convention.*
