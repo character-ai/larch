@@ -119,4 +119,6 @@ Print the markdown report and the `ANALYZE_BUGS_COST_ESTIMATE=...` line. The est
 
 ## Follow-up filing gate
 
-If the report names a follow-up body file, ask for approval before filing. On approval, call `/issue` once with that generated body. Do not call `gh issue create` directly. On rejection, stop after printing the report.
+If the report names a follow-up body file, ask for approval before filing. On rejection, stop after printing the report. Do not call `gh issue create` directly.
+
+On approval, invoke `/issue` via the Skill tool once with that generated body file.
