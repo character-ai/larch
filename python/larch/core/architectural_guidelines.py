@@ -168,8 +168,13 @@ def resolve_diff_base(*, forked_target: bool) -> tuple[str, str]:
 def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_ref: str) -> str:
     """Return a merge-base..HEAD diff for orchestrator assessment."""
     target = f"{base_remote}/{base_ref}"
+    head_errors: list[str] = []
+    head_sha = _current_head(repo_root, verify_commit=True, error_out=head_errors)
+    if not head_sha:
+        msg = head_errors[0] if head_errors else "could not resolve HEAD"
+        raise RuntimeError(msg)
     merge_base = subprocess.run(
-        ["git", "merge-base", "HEAD", target],  # noqa: S607
+        ["git", "merge-base", head_sha, target],  # noqa: S607
         cwd=repo_root,
         text=True,
         capture_output=True,
@@ -180,7 +185,7 @@ def materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_r
         raise RuntimeError(msg)
     base_sha = merge_base.stdout.strip()
     diff = subprocess.run(
-        ["git", "diff", f"{base_sha}..HEAD", "--", ".", ":(exclude)larch-logs/**"],  # noqa: S607
+        ["git", "diff", f"{base_sha}..{head_sha}", "--", ".", ":(exclude)larch-logs/**"],  # noqa: S607
         cwd=repo_root,
         text=True,
         capture_output=True,
@@ -712,12 +717,18 @@ def _bool_arg(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
 
-def _current_head(repo_root: Path | None = None) -> str:
+def _current_head(repo_root: Path | None = None, *, verify_commit: bool = False, error_out: list[str] | None = None) -> str:
     cmd = ["git"]
     if repo_root is not None:
         cmd.extend(["-C", str(repo_root)])
-    cmd.extend(["rev-parse", "HEAD"])
+    cmd.append("rev-parse")
+    if verify_commit:
+        cmd.extend(["--verify", "HEAD^{commit}"])
+    else:
+        cmd.append("HEAD")
     completed = subprocess.run(cmd, text=True, capture_output=True, check=False)
+    if completed.returncode != 0 and error_out is not None:
+        error_out.append((completed.stderr or completed.stdout or "could not resolve HEAD").strip())
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
