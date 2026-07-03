@@ -13,6 +13,7 @@ from typing import cast
 
 from larch.core import logging_util
 from larch.review import plan_review
+from larch.review import plan_review_loop
 from larch.review import plan_review_normalize
 from larch.review import plan_review_round
 from larch.report import progress_report
@@ -2333,6 +2334,157 @@ def test_write_design_round_meta_records_round_timing_from_start_file(
     )
     assert window == (1000, 1200)
     assert "gate-b-apply" not in (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
+
+
+def _write_design_vendor_timing(
+    ledger: Path,
+    *,
+    kind: str,
+    start_s: int,
+    end_s: int,
+    output: str = "reviewer.out",
+    vendor: str = "codex",
+) -> None:
+    duration = max(0, end_s - start_s)
+    with ledger.open("a", encoding="utf-8") as handle:
+        _ = handle.write(
+            f"v1\tvendor\t{end_s}\tdesign\t-\t{vendor}\t{kind}\t"
+            f"{start_s}\t{end_s}\t{duration}\t{output}\t0\tcomplete\n"
+        )
+
+
+def test_gate_b_apply_start_s_missing_or_empty_ledger_returns_none(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+
+    assert (
+        plan_review_loop._gate_b_apply_start_s(  # pyright: ignore[reportPrivateUsage]
+            ledger=ledger,
+            round_start_s=1000,
+            end_s=1200,
+            output_basename="gate-b-apply-round-1.out",
+        )
+        is None
+    )
+
+    _ = ledger.write_text("", encoding="utf-8")
+    assert (
+        plan_review_loop._gate_b_apply_start_s(  # pyright: ignore[reportPrivateUsage]
+            ledger=ledger,
+            round_start_s=1000,
+            end_s=1200,
+            output_basename="gate-b-apply-round-1.out",
+        )
+        is None
+    )
+
+
+@pytest.mark.parametrize("latest_end_s", [1200, 1201])
+def test_gate_b_apply_start_s_rejects_boundary_and_after_end(
+    tmp_path: Path,
+    latest_end_s: int,
+) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_design_vendor_timing(
+        ledger,
+        kind="codex-plan-requirements",
+        start_s=1010,
+        end_s=latest_end_s,
+    )
+
+    assert (
+        plan_review_loop._gate_b_apply_start_s(  # pyright: ignore[reportPrivateUsage]
+            ledger=ledger,
+            round_start_s=1000,
+            end_s=1200,
+            output_basename="gate-b-apply-round-1.out",
+        )
+        is None
+    )
+
+
+def test_gate_b_apply_start_s_unreadable_ledger_returns_none(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_design_vendor_timing(
+        ledger,
+        kind="codex-plan-requirements",
+        start_s=1010,
+        end_s=1100,
+    )
+    real_read_text = Path.read_text
+
+    def fail_target_read_text(self: Path, encoding: str | None = None, errors: str | None = None) -> str:
+        if self == ledger:
+            raise OSError("blocked ledger")
+        return real_read_text(self, encoding=encoding, errors=errors)
+
+    monkeypatch.setattr(Path, "read_text", fail_target_read_text)
+
+    assert (
+        plan_review_loop._gate_b_apply_start_s(  # pyright: ignore[reportPrivateUsage]
+            ledger=ledger,
+            round_start_s=1000,
+            end_s=1200,
+            output_basename="gate-b-apply-round-1.out",
+        )
+        is None
+    )
+
+
+def test_gate_b_apply_start_s_existing_output_basename_returns_none(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_design_vendor_timing(
+        ledger,
+        kind="codex-plan-requirements",
+        start_s=1010,
+        end_s=1100,
+    )
+    _write_design_vendor_timing(
+        ledger,
+        kind="gate-b-apply",
+        start_s=1100,
+        end_s=1200,
+        output="gate-b-apply-round-1.out",
+        vendor="claude",
+    )
+
+    assert (
+        plan_review_loop._gate_b_apply_start_s(  # pyright: ignore[reportPrivateUsage]
+            ledger=ledger,
+            round_start_s=1000,
+            end_s=1250,
+            output_basename="gate-b-apply-round-1.out",
+        )
+        is None
+    )
+
+
+def test_write_design_round_meta_with_gate_b_apply_ready_marker_without_vendor_rows(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
+    (tmp_path / ".gate-b-postapply-ready-1").touch()
+
+    def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.delenv("WRITE_DESIGN_ROUND_META_SH", raising=False)
+    monkeypatch.setattr(plan_review, "_run_command", fake_run_command)
+    monkeypatch.setattr(plan_review.time, "time", lambda: 1200)  # type: ignore[arg-type]
+
+    plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
+
+    ledger_text = (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8")
+    assert "gate-b-apply" not in ledger_text
+    window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
+        tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
+    )
+    assert window == (1000, 1200)
 
 
 def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(

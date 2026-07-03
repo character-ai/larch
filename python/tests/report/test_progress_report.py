@@ -949,6 +949,36 @@ def test_progress_vendor_rows_reserve_coder_apply_under_cap(tmp_path: Path) -> N
     assert labels.count("codex/correctness") == progress_report.PROGRESS_GANTT_ROW_CAP - 1
 
 
+def test_progress_vendor_rows_reserve_gate_b_apply_under_cap(tmp_path: Path) -> None:
+    ledger = tmp_path / "timing-ledger.tsv"
+    for i in range(progress_report.PROGRESS_GANTT_ROW_CAP):
+        _write_vendor_timing(
+            ledger,
+            "codex-plan-requirements-output.txt",
+            100 + i,
+            150,
+            vendor="codex",
+            kind="codex-plan-requirements",
+            skill="design",
+        )
+    _write_vendor_timing(
+        ledger,
+        "gate-b-apply-round-1.out",
+        200,
+        300,
+        vendor="claude",
+        kind="gate-b-apply",
+        skill="design",
+    )
+
+    rows = progress_report._progress_vendor_rows(timing_ledger=ledger, window_start_s=100, window_end_s=400, label_map={})
+
+    labels = [row.label for row in rows]
+    assert len(rows) == progress_report.PROGRESS_GANTT_ROW_CAP
+    assert labels.count("gate-b/apply") == 1
+    assert len([label for label in labels if label != "gate-b/apply"]) == progress_report.PROGRESS_GANTT_ROW_CAP - 1
+
+
 def test_progress_vendor_rows_cap_without_apply_keeps_earliest(tmp_path: Path) -> None:
     # Backward compatibility: with no coder-apply lane present, the row cap still
     # keeps the earliest-starting rows and drops the latest, exactly as the

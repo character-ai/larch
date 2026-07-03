@@ -41,6 +41,7 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
     "claude-relevant-checks", "claude-lint-fix", "vendor-misc", "implement-code-flow",
 })
+TIMING_VENDOR_MIN_COLS = 13
 TIMING_LOCK_TIMEOUT_S = 5.0
 TIMING_VENDORS_ALLOWED: frozenset[str] = frozenset({"codex", "cursor", "claude"})
 _TASK_KIND_RE = re.compile(r"^[a-z][a-z0-9-]{0,63}$")

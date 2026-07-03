@@ -1,0 +1,17 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_upgrade": null,
+  "confidence": "high",
+  "design_tier": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Touches shared timing constants, design review timing, progress rendering, and focused regression tests.",
+  "schema_version": 1
+}
