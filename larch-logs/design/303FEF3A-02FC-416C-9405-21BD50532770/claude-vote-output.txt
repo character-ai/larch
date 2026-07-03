@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly excludes deps shell positional params as a non-goal; bash argv dispatch is a different class from awk field refs and is not mitigable the same way per scope anchor
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly non-goals bootstrap-recovery awk; circular-dependency reasoning is sound and confirmed by scope anchor
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan does not mandate a _MACHINE_STDOUT_KEYS test; finding asks for additional coverage beyond plan requirements; gate 4 default-deny
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit severity; scope reduction; unused cr-strip surface is real but no correctness defect; nit cannot clear necessity gate
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- lint is explicitly in scope per scope anchor goal G-Enf-1; scope reduction finding argues against the scope anchor itself, not the plan
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same substance as FINDING_5; latent/scope-reduction; nit severity cannot clear gate
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=true -- bootstrap reference file risk is latent and unconfirmed; plan correctly scoped lint to SKILL.md files; too speculative for OOS filing

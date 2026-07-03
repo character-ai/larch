@@ -1,0 +1,3 @@
+{"slot":"cursor-plan-innovation","tool":"cursor","output":"<TMPDIR>/plan-review/round-2/cursor-plan-innovation-output.txt","vendor":"cursor","resolved_model":"composer-2.5","focus_area":"innovation"}
+{"slot":"cursor-plan-requirements","tool":"cursor","output":"<TMPDIR>/plan-review/round-2/cursor-plan-requirements-output.txt","vendor":"cursor","resolved_model":"composer-2.5","focus_area":"requirements"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-requirements-output.txt","vendor":"codex","resolved_model":"gpt-5.5","model_role":"default","focus_area":"requirements"}

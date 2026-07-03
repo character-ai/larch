@@ -1,0 +1,16 @@
+Reviewing the plan against the codebase: searching for the KV helper, lint, and approved awk call-site migrations.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/tests/test_cli.py:186-224	Planned test_cli.py update only calls for a generic registry assertion for ("kv", "get"), not an explicit _MACHINE_STDOUT_KEYS check	An implementer can register kv get in _REGISTRY but omit _MACHINE_STDOUT_KEYS; importability tests still pass, yet inherited quiet banners can prefix command-substitution stdout and break release/pause/deps parsing (the plan's own failure-mode)	Mirror python/tests/design/test_design_step_log.py:14-16: assert registry target and ("kv", "get") in cli._MACHINE_STDOUT_KEYS; add ["kv", "get"] to test_machine_stdout_entrypoints_disable_inherited_quiet cases
+
+**1. risk-integration — `python/tests/test_cli.py:186-224`**
+
+The plan correctly routes all 13 approved awk KV sites (`.claude/skills/release/SKILL.md:303-305,330-332`; `skills/pause/SKILL.md:55-58`; `skills/deps/SKILL.md:62-64`) through `kv get` with the right match policy (`--match first` for release/deps, `--match last` for pause). That aligns with `larch.io.kv_value` / `read_kv` last-match semantics in `python/larch/io.py:95-165`.
+
+The quiet-mode contract is specified in the plan's `python/larch/cli.py` update (`_MACHINE_STDOUT_KEYS`), but the planned `python/tests/test_cli.py` work only mentions a vague "registry assertion." Without an explicit `_MACHINE_STDOUT_KEYS` test (pattern at `python/tests/design/test_design_step_log.py:14-16`), this regression is easy to ship.
+
+**Plan fidelity otherwise looks sound**
+
+- **Match semantics**: First/last mapping matches current `exit` vs `tail -1` behavior; deps `substr(..., index($0,"=")+1)` is equivalent to returning everything after `KEY=` for `REPO` / `ORIGIN_SLUG`.
+- **Lint scope**: Scanning `skills/*/SKILL.md` and `.claude/skills/*/SKILL.md`, awk-only detection, `case "$1"` carve-out, and the `skills/implement/SKILL.md:244` bootstrap exemption match the issue scope.
+- **Pause harness**: `skills/pause/scripts/test-pause-skill.sh` stub updates are called out; stubs must return value-only stdout for `kv get`, not `KEY=value` lines.
+- **Quiet mode**: `_MACHINE_STDOUT_KEYS` plus `cli.main()`'s `LARCH_QUIET_DISABLE=1` gate (`python/larch/cli.py:811-812`) is the right mechanism; it just needs the explicit test called out above.
