@@ -3411,9 +3411,9 @@ def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ..
 
 
 def test_direct_targets_are_ci_first_no_local_make_fanout(tmp_path: Path) -> None:
-    assert _direct_targets_for(("skills/implement/SKILL.md",), tmp_path) == ()
-    assert _direct_targets_for(("python/larch/review/review_and_fix.py",), tmp_path) == ()
-    assert _direct_targets_for(("python/test_plan_review.py",), tmp_path) == ()
+    assert not _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
+    assert not _direct_targets_for(("python/larch/review/review_and_fix.py",), tmp_path)
+    assert not _direct_targets_for(("python/test_plan_review.py",), tmp_path)
 
 
 def test_local_relevant_checks_ci_superset_guard() -> None:
