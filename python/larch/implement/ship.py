@@ -227,6 +227,12 @@ def _flush_guidelines_warning_before_pr(
     reason = refresh.reason or "unknown"
     if refresh.error:
         reason = f"{reason}: {logging_util.sanitize_diagnostic_line(refresh.error)}"
+    if refresh.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
+        _breadcrumb(
+            step="warning",
+            detail=f"guidelines warning refresh skipped: {reason} (warning cannot be committed)",
+        )
+        return
     _breadcrumb(step="warning", detail=f"guidelines warning refresh skipped: {reason}")
     _write_terminal_state(
         ctx=ctx.with_(stall_tracking=True, stall_step=step),

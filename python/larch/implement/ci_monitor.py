@@ -1224,8 +1224,14 @@ def _refresh_run_logs_before_ci_push(
                 reason = skip.reason or "unknown"
                 if skip.error:
                     reason = f"{reason}: {logging_util.sanitize_diagnostic_line(skip.error)}"
-                _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
-                ok = False
+                if skip.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
+                    _warn_stderr(
+                        f"ship-pr: run-log refresh skipped before CI-fix push: {reason} "
+                        "(warning cannot be committed)"
+                    )
+                else:
+                    _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
+                    ok = False
             elif skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
                 _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
                 ok = False

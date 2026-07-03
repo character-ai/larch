@@ -100,6 +100,14 @@ def _replace_guidelines_sidecar_value(tmpdir: Path, *, key: str, value: str) -> 
     sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _seed_warning_flush_inputs(tmpdir: Path, *, warning: str) -> None:
+    _ = (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    _ = (tmpdir / "execution-issues.md").write_text(
+        f"### Warnings\n- {warning}\n",
+        encoding="utf-8",
+    )
+
+
 def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
@@ -5491,6 +5499,96 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
     assert result.outcome is Outcome.STALLED
     assert "architectural-guidelines warning run-log refresh skipped" in result.detail
     assert ensure_calls == 0
+
+
+@pytest.mark.parametrize("merge", [False, True])
+def test_guidelines_warning_real_flush_commits_before_pr_create(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    merge: bool,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+
+    def noop(*_args: object, **_kwargs: object) -> None:
+        return None
+
+    def fake_commit(
+        *_args: object,
+        **_kwargs: object,
+    ) -> CommandResult:
+        return CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
+    monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", noop)
+    monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", noop)
+    monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", noop)
+    monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", noop)
+    monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", noop)
+
+    ctx = _ctx(tmp_path, merge=merge)
+    run_logs.init_run(ctx)
+    _seed_warning_flush_inputs(tmp_path, warning="architectural-guidelines warning")
+
+    def fake_ensure_pr(
+        *,
+        runner: object,  # noqa: ARG001  # pylint: disable=unused-argument
+        ctx: RunContext,  # noqa: ARG001  # pylint: disable=unused-argument
+        body: str,  # noqa: ARG001  # pylint: disable=unused-argument
+        title: str,  # noqa: ARG001  # pylint: disable=unused-argument
+        cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
+        base: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
+    ) -> object:
+        run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+        batch = run_dir / "execution-issues.ndjson"
+        assert batch.is_file()
+        assert "architectural-guidelines warning" in batch.read_text(encoding="utf-8")
+        assert (tmp_path / ".execution-issues-flushed.sha").is_file()
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
+    if merge:
+        monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"))
+    else:
+        monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+
+    result = ship.run_ship(_ctx(tmp_path, merge=merge), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+
+
+def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_NO_LOGS_COMMIT)
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", lambda *_a, **_k: ("Guidelines dropped", True))
+    ensure_calls = 0
+
+    def fake_ensure_pr(*_args: object, **_kwargs: object) -> object:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
+
+    result = ship.run_ship(_ctx(tmp_path, no_logs_commit=True, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert ensure_calls == 1
 
 
 def test_open_pr_resume_pins_guidelines_note_before_compose(
