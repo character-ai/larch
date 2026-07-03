@@ -174,9 +174,27 @@ check_agent_prompt_literals() {
   done
 }
 
+check_python_prompt_surfaces() {
+  local file
+
+  for file in \
+    "python/larch/implement/checks_lint_fix.py" \
+    "python/larch/review/coder_runner.py" \
+    "python/larch/review/review_dispatch_panel.py" \
+    "python/larch/review/round_runner.py"
+  do
+    if [[ ! -f "$REPO_ROOT/$file" ]]; then
+      report_violation "$file" 1 "prompt construction source file missing" "$file"
+      continue
+    fi
+    check_unstable_patterns_in_file "$file"
+  done
+}
+
 check_render_specialist_prompt_paths
 check_skill_prompt_literals
 check_agent_prompt_literals
+check_python_prompt_surfaces
 
 if (( FAIL > 0 )); then
   printf '\n%s cache-key discipline violation(s) found.\n' "$FAIL" >&2

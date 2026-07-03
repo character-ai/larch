@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import argparse
 import os
 import subprocess
 import sys
@@ -256,6 +257,43 @@ def test_render_specialist_cache_hit(tmp_path: Path, capsys: pytest.CaptureFixtu
     _ = cache_files[0].write_text("CACHE HIT SENTINEL\n", encoding="utf-8")
     assert rendering.render_specialist_main(args) == 0
     assert capsys.readouterr().out == "CACHE HIT SENTINEL\n"
+
+
+def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path: Path) -> None:
+    diff_file = tmp_path / "changes.diff"
+    feature_file = tmp_path / "feature.md"
+    plan_file = tmp_path / "plan.md"
+    _ = diff_file.write_text("diff --git a/example.py b/example.py\n", encoding="utf-8")
+    _ = feature_file.write_text("UNIQUE_FEATURE_MARKER\n", encoding="utf-8")
+    _ = plan_file.write_text("UNIQUE_PLAN_MARKER\n", encoding="utf-8")
+    text = rendering._render_specialist_text(  # pyright: ignore[reportPrivateUsage]
+        argparse.Namespace(
+            agent_file=str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+            mode="diff",
+            description_text="",
+            scope_files="",
+            competition_notice=False,
+            competition_notice_file="",
+            diff_file=str(diff_file),
+            diff_mode="generic",
+            commit_count="1",
+            plan_file=str(plan_file),
+            feature_file=str(feature_file),
+            findings_ledger_file="",
+            session_env_path="",
+        ),
+    )
+
+    body_index = text.index("You are a specialist code reviewer")
+    task_index = text.index("Review all code changes on the current branch vs main.")
+    feature_index = text.index("UNIQUE_FEATURE_MARKER")
+    plan_index = text.index("UNIQUE_PLAN_MARKER")
+    assert body_index < task_index
+    assert body_index < feature_index
+    assert body_index < plan_index
+    assert str(diff_file) in text
+    assert "<feature_description" in text
+    assert "<implementation_plan" in text
 
 
 def test_render_specialist_cache_setup_failure_falls_back_uncached(

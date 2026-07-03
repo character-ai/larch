@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from larch.core import coder_delta_guards
 from larch.core import config
 
@@ -51,3 +53,32 @@ def test_coder_forbidden_paths_include_plugin_json() -> None:
     forbidden = coder_delta_guards.coder_forbidden_paths(_Runner())  # type: ignore[arg-type]
     assert config.PLUGIN_JSON_PATH in forbidden
     assert ".gitmodules" in forbidden
+
+
+def test_submodule_paths_returns_sorted_unique_paths(tmp_path: Path) -> None:
+    _ = (tmp_path / ".gitmodules").write_text(
+        """
+[submodule "vendor/z"]
+    path = vendor/z
+[submodule "vendor/a"]
+    path = vendor/a
+""",
+        encoding="utf-8",
+    )
+
+    class _Runner:
+        def run(self, argv: object, **_kwargs: object) -> object:
+            key: tuple[str, ...] = tuple(argv)  # type: ignore[arg-type]
+            if key[:4] == ("git", "config", "-f", ".gitmodules"):
+                stdout = "submodule.vendor.z.path vendor/z\nsubmodule.vendor.b.path vendor/b\n"
+                return type("R", (), {"returncode": 0, "stdout": stdout})()
+            if key[:3] == ("git", "submodule", "foreach"):
+                return type("R", (), {"returncode": 0, "stdout": "vendor/a\nvendor/c\n"})()
+            return type("R", (), {"returncode": 0, "stdout": ""})()
+
+    assert coder_delta_guards.submodule_paths(_Runner(), cwd=str(tmp_path)) == (  # type: ignore[arg-type]
+        "vendor/a",
+        "vendor/b",
+        "vendor/c",
+        "vendor/z",
+    )
