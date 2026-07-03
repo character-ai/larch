@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=4
+total_findings=4
+total_ballot_items=4
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=13783d5d9ed9132ee22b32c1b6f1e6b959f77e1bf2b3d032c80843aba113b6b4
+--- first 200 bytes of voter output ---
+I need to wait for the background task to complete before reading the ballot file. Ending turn to wait for the `<task-notification>`.

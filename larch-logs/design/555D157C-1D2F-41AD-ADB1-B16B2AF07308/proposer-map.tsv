@@ -1,0 +1,7 @@
+# attributed_ballot_sha256=b60d5ce0aad22a40467e628ab265fd8944be263ae7c090adac037b771abf415d
+# neutral_ballot_sha256=1bbf8817c73205699ad7ed4d40a30a48581f6e48099ddcf4912d53c966812318
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Prompt Contract	- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Prompt Contract
+FINDING_2	Cursor-Arch, Cursor-Innovation	- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+FINDING_3	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+OOS_1	Cursor-Arch	- **Reviewer**: Cursor-Arch

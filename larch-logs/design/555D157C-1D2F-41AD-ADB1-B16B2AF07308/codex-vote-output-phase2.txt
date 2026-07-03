@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already preserves hard-guard prefixes and path tokens; generator hooks are discoverable from _rendering_generators.py per scope anchor.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- test_generated_implementers_include_scout_sidecar already enforces the substring; make py-test catches removal.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Header guard strings are advisory; workspace-write and HEAD checks are enforced mechanically by sandbox and dispatcher.
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Latent density-target gap only; skill-closure report reveals shortfall without a separate issue.
