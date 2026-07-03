@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- line 28 conditions alias assertions on issue URLs, and dedup-comment fixtures realistically use comment URLs that never populate those aliases.
