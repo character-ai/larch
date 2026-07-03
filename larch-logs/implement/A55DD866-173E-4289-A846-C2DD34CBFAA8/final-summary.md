@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:58:49
-- **Cost**: 💰 TOTAL ~$10.57 — Claude $0.99, Codex-5.5 $6.54, Codex-mini $0.33, Cursor $1.41, Claude (subprocess) $1.30  |  Tokens: 12442k
+- **Cost**: 💰 TOTAL ~$16.68 — Claude $7.10, Codex-5.5 $6.54, Codex-mini $0.33, Cursor $1.41, Claude (subprocess) $1.30  |  Tokens: 20687k
 - **Issue**: #6107 — https://github.com/character-ai/larch/issues/6107
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Missing structural pin for the Step 4 guard pattern. Concern: There is still no structural pin that enforces the `run-log validate-run-id` guard pattern or blocks reintroduced inline slug-regex checks.
 - **Round 1 OOS_6** (nit): Optional acceptance points at an unregistered site. Concern: The optional acceptance prose references a site that is not registered, so operators hit a missing-site error without added signal.
 - **Round 1 OOS_7** (latent): Quiet-mode coverage misses the end-to-end CLI path. Concern: Quiet-mode coverage for `validate-run-id` only mocks the entrypoint and asserts `LARCH_QUIET_DISABLE`; it does not verify that the full `cli.main(["run-log", "validate-run-id", "--run-id=-abc123"])` path prints `VALID=true` under inherited quiet mode.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
