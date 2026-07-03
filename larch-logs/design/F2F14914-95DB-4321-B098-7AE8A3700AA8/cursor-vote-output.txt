@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- approved outline lists design_pause.py as an in-scope secondary surface requiring the same ordering fix
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- pause ordering is explicitly in the approved surfaces list, not plan overreach
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- deferring pause contradicts the scope anchor goal to fix ordering everywhere log-publish runs
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate scope-reduction; pause remains a named in-scope surface in the approved outline
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- full-sweep make targets are advisory plan prose and do not block delivering the fix
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly defers cancellation log-publish; gap is real but not material enough for a follow-up under this bug scope
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate deferred-path item; failed-publish-tail is explicitly out of scope for this fix
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- cancellation log-publish omission is an acknowledged non-goal, not a proportionate separate issue here
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- ledger duplicate of deferred failed-publish-tail ordering; plan already documents the deferral
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate cancellation-path gap explicitly excluded by plan non-goals
