@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:32:15
-- **Cost**: 💰 TOTAL ~$19.25 — Claude $2.48, Codex-5.5 $12.71, Codex-mini $0.59, Cursor $2.29, Claude (subprocess) $1.18  |  Tokens: 27273k
+- **Cost**: 💰 TOTAL ~$21.21 — Claude $4.42, Codex-5.5 $12.71, Codex-mini $0.59, Cursor $2.29, Claude (subprocess) $1.20  |  Tokens: 29987k
 - **Issue**: #6175 — https://github.com/character-ai/larch/issues/6175
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -70,3 +70,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): local final-summary render ignores upsert failure. Concern: The local render path can report success even if `upsert_final_summary_from_disk` failed, leaving the tracking comment stale while the summary workflow appears complete.
 - **Round 1 OOS_3** (important): terminal RECOVERY_BRANCH publish coverage is missing. Concern: The terminal publish/recovery path is not exercised end-to-end for `RECOVERY_BRANCH`, so parsing regressions or missing execution-issues warnings could slip through while the terminal path still completes.
 - **Round 1 OOS_4** (important): log_publish render failure still reports success. Concern: `log_publish_main` can emit `PUBLISH_OK=true` after a pre-copy render failure, which weakens the downstream contract and can leave callers with no valid summary to upsert.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
