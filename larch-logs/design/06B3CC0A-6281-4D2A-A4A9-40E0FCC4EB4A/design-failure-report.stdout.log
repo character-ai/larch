@@ -1,0 +1,3 @@
+DESIGN_FAILURE_REPORT_DECISION=fallback-print-required
+DESIGN_FAILURE_REPORT_REASON=tier-a-dedup-status-unexpected
+DESIGN_FAILURE_REPORT_ARTIFACT=<TMPDIR>/design-failure-chat-print.md

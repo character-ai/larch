@@ -1,0 +1,13 @@
+# [OOS] Gap 1 names the step-5 bash wrapper; the plan only exercises review-and-fix step5 --difficulty
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Arch
+**Phase**: design
+
+## Description
+
+Gap 1 names the step-5 bash wrapper; the plan only exercises review-and-fix step5 --difficulty. Scenario: A regression that drops DIFFICULTY_OVERRIDE forwarding in step-5-review.sh would not be caught. The mapping under test is still covered at the CLI boundary.
+
+---
+*This issue was automatically created by the larch `/design` workflow from an out-of-scope observation surfaced during plan review.*

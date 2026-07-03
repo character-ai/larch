@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": "MODERATE",
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": null,
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "design",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Test-only pytest coverage for DIFFICULTY_OVERRIDE forwarding in both Step 5 bash wrappers; single-file addition, no production code changes.",
+  "round_cap": 2,
+  "schema_version": 1
+}

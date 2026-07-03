@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates prior-round FINDING_1 with no materially new evidence; the argv-path concern was already raised.
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicates prior-round FINDING_2 with no materially new evidence; the env-pollution concern was already raised.
