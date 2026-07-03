@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ordering assertion in tests is "more robust" coverage beyond what the plan mandates; the plan requires only that populated files exist after the exits
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- CODE_REVIEW_LINE has no producer anywhere in the repo (grep confirmed), so "historical or future snapshots carrying it" is unfounded speculation; removing dead code cannot regress real callers
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- latent speculative concern requiring a future refactor to insert an early return between envelope and flush on the stall path; no concrete trigger, default-deny

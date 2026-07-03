@@ -1,0 +1,18 @@
+### FINDING_1: Flush-failure logging must stay best-effort
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The flush-failure path still lets `run_logs.append_execution_issue(...)` raise, so a warning write can turn a normal `complete` or `cap-hit` exit into a Step 5 stall/internal-error instead of preserving the successful result.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Wrap append_execution_issue in contextlib.suppress(OSError), matching _append_record_escalation_tool_failure (line 437-438); keep _err(stderr) warning unconditional
+  - From Codex-Arch: Keep the stderr warning, but wrap the execution-issue append in its own best-effort suppression so logging failure cannot change Step 5's terminal rc or envelope.
+  - From Cursor-Innovation: In _flush_review_batches_for_result, use try/except that logs via _err, appends a Warnings execution issue, and returns normally; never re-raise. Add an explicit plan note that the wrapper must not propagate exceptions to the outer handler, or the fix reintroduces a stall on the two success paths
+  - From Codex-Innovation: Wrap the warning append in its own best-effort `try/except` or `contextlib.suppress(...)`, and keep `_err(...)` as the only mandatory side effect in the flush-failure path
+  - From Codex-Pragmatic: Wrap the warning append in best-effort suppression so the exception path cannot change the Step 5 return code.
+  - From Codex-Requirements: Wrap the execution-issues append in its own `try/except` or `contextlib.suppress(OSError)` so a failed warning write cannot turn the flush failure into a hard Step 5 error.
+
+### FINDING_2: Add ordering coverage for flush before envelope
+- **Reviewer(s)**: Codex-dyn-Step5 Runlog Contract
+- **Severity**: important
+- **Concern**: The new complete/cap-hit tests only prove the flush is called; they do not prove it happens before `_emit_step5_envelope(...)`, so a later refactor could reorder the operations and recreate the regression on the terminal success paths.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Step5 Runlog Contract: Record call order with an `events` list or a patched envelope emitter and assert flush precedes envelope for both complete and cap-hit, like `test_step5_zero_survivor_emits_self_review_required_without_stall` at `python/tests/review/test_review_and_fix.py:437-489`.

@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan-mandated file-existence tests already catch the missing-flush regression; ordering assertions are optional refactor hardening
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- CODE_REVIEW_LINE has no producer; removing the dead fallback is explicit approved cleanup, not required scope reduction
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- execution-issues append matches the approved outline and write_self_review_tally precedent; FINDING_1 best-effort guard fixes the stall risk without dropping observability
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- stall path already flushes on exit; envelope-before-flush reorder risk is speculative and outside this bug's necessity gate
