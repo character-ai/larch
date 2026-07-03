@@ -1,0 +1,1 @@
+Reorder Step 5 reviewer prompt assembly so stable reviewer instructions precede per-run paths and context. Sort Step 3 submodule paths. Extend the cache-key guard to the prompt files named by the scope.

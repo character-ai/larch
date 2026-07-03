@@ -1,0 +1,15 @@
+# md-to-py-XII: claude_sub cache-prefix stability for implement Steps 3 and 5
+
+**Context.** `token measure-cache-efficiency` (#5977) shows the worst per-run outliers all sit in the `claude_sub` lane, with cache_create/cache_read ratios up to 2.9 (runs #4773 at 2.90, #5854 at 2.86, #5109 at 2.49). Highest-volume steps: Step 5 code review (21.9M create / 161.8M read) and Step 3 checks first pass (16.7M create / 106.3M read over 1,173 runs). Create-heavy subprocess calls suggest an unstable prompt prefix: each call rebuilds context instead of reading cache.
+
+**Scope.**
+
+- Root-cause prefix instability in the Claude-subprocess lane for Steps 3 and 5 (context assembly order, per-call variation, session reuse).
+- Fix assembly to keep a stable cacheable prefix where possible.
+
+**Acceptance.**
+
+- Per-step `claude_sub` create/read ratio for Steps 3 and 5 improves vs the 2026-07-03 baseline TSV, measured on 8 or more new runs.
+- Checks and review outcomes unchanged.
+
+Part of md-to-py-XII (round XI: #5986). Independent.
