@@ -7,6 +7,8 @@ allowed-tools: Bash, Read, Task, AskUserQuestion, Skill
 
 # /analyze-bugs
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+
 Dev-only workflow for verifying whether recent `[BUG]` issues were fixed in `main`. The workflow is report-only by default. It files at most one combined follow-up issue, and only after explicit approval.
 
 ## Flags
