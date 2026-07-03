@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:36:29
-- **Cost**: 💰 TOTAL ~$20.94 — Claude $0.86, Codex-5.5 $14.97, Codex-mini $1.20, Cursor $3.56, Claude (subprocess) $0.35  |  Tokens: 32785k
+- **Cost**: 💰 TOTAL ~$24.01 — Claude $3.93, Codex-5.5 $14.97, Codex-mini $1.20, Cursor $3.56, Claude (subprocess) $0.35  |  Tokens: 38020k
 - **Issue**: #6106 — https://github.com/character-ai/larch/issues/6106
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -83,3 +83,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Live-diff test coverage misses the production repo_root path. Concern: The helper unit test does not pass repo_root, so it skips the live-diff branch that production callers use. A regression in repo_root/live-diff delegation or materialization could slip through.
 - **Round 1 OOS_2** (nit): No test covers pin failure falling back to invalidate and drop notice. Concern: There is no test for the branch where pin is attempted with a non-empty head SHA but `pin_note_from_staged_for_current_head` returns false. The invalidate-and-drop-notice path is therefore unverified.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
