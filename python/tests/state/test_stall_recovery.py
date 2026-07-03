@@ -1,6 +1,7 @@
 from pathlib import Path
 
 import argparse
+import io
 import os
 import subprocess
 import tempfile
@@ -2060,6 +2061,48 @@ def test_dedup_tier_a_report_rejects_outside_body_file(tmp_path: Path, capsys: p
         assert "--body-file outside implement tmpdir" in capsys.readouterr().err
     finally:
         Path(outside).unlink(missing_ok=True)
+
+
+def test_dedup_tier_a_report_normalizes_helper_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    body_file = tmp_path / "stall-recovery-issue-input.md"
+    _ = body_file.write_text("# body\n", encoding="utf-8")
+    plugin_root = tmp_path / "plugin"
+    script_dir = plugin_root / "scripts"
+    script_dir.mkdir(parents=True)
+    helper = script_dir / "file-failure-report-cross-repo.sh"
+    _ = helper.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    issue_url = "https://github.com/owner/repo/issues/6192"
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd and cmd[0] == "gh":
+            return subprocess.CompletedProcess(cmd, 0, stdout="owner/repo\n", stderr="")
+        stdout = kwargs.get("stdout")
+        assert isinstance(stdout, io.TextIOBase)
+        _ = stdout.write(
+            "FILE_FAILURE_REPORT_STATUS=dedup-comment\n"
+            f"FILE_FAILURE_REPORT_URL={issue_url}\n"
+        )
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(stall_recovery.subprocess, "run", fake_run)
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+
+    rc = stall_recovery.dedup_tier_a_report_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--body-file", str(body_file),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "STALL_RECOVERY_REPORT_STATUS=dedup-comment" in out
+    assert f"STALL_RECOVERY_REPORT_URL={issue_url}" in out
+    assert f"STALL_RECOVERY_REPORT_ISSUE_URL={issue_url}" in out
+    assert "STALL_RECOVERY_REPORT_ISSUE_NUMBER=6192" in out
+    assert "FILE_FAILURE_REPORT_STATUS=" not in out
 
 
 def test_dedup_tier_a_report_uses_prefixed_compose_slices(

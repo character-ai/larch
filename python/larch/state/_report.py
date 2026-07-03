@@ -705,14 +705,6 @@ def compose_report(args: argparse.Namespace) -> int:
     return 0
 
 
-def _emit_env_file(path: Path) -> None:
-    if not path.is_file():
-        return
-    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-        if "=" in line and not line.lstrip().startswith("#"):
-            print(line)
-
-
 def dedup_tier_a_report(args: argparse.Namespace) -> int:
     tmpdir = Path(args.implement_tmpdir)
     if os.environ.get("LARCH_STALL_RECOVERY_DRY_RUN"):
@@ -777,8 +769,9 @@ def dedup_tier_a_report(args: argparse.Namespace) -> int:
             stdout=handle,
             check=False,
         )
-    _emit_env_file(out)
-    return 0
+    return normalize_file_failure_report_env(
+        argparse.Namespace(implement_tmpdir=str(tmpdir), file_failure_report_env=str(out))
+    )
 
 
 def chat_print(args: argparse.Namespace) -> int:
