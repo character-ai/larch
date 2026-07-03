@@ -776,14 +776,14 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     reason = "small-clean"
     if tally_status == "ok" and loop_status == "complete":
         degraded = 0
+    cap = effective_authorized_cap(tmpdir)
+    panel_tier = ""
     if step3_reason.startswith("ballot-items-lost") and accepted == 0 and degraded and tally_status == "ok" and loop_status == "zero-findings-degraded-panel":
         cont = True
         reason = "ballot-items-lost"
     elif ns.approve_requested == "true":
         reason = "explicit-approve"
-    cap = effective_authorized_cap(tmpdir)
-    panel_tier = ""
-    if high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD and high_new > 0 and review_count < plan_review_round_cap("HARD"):
+    elif high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD and high_new > 0 and review_count < plan_review_round_cap("HARD"):
         cont = True
         resolution = resolve_plan_review_tier(tmpdir)
         from larch.calibration import difficulty  # noqa: PLC0415
