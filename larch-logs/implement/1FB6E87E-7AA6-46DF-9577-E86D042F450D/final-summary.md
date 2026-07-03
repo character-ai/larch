@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:31:48
-- **Cost**: 💰 TOTAL ~$14.03 — Claude $0.80, Codex-5.5 $9.17, Codex-mini $0.57, Cursor $2.34, Claude (subprocess) $1.15  |  Tokens: 17718k
+- **Cost**: 💰 TOTAL ~$19.05 — Claude $5.82, Codex-5.5 $9.17, Codex-mini $0.57, Cursor $2.34, Claude (subprocess) $1.15  |  Tokens: 26046k
 - **Issue**: #6080 — https://github.com/character-ai/larch/issues/6080
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -64,3 +64,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): Clamp predicate mismatch between design and implement. Concern: The design and implement clamp predicates use different file tests, so the two checks are not behaviorally aligned.
 - **Round 1 OOS_3** (latent): Missing full #6080 integration sequence. Concern: There is no end-to-end test for the full #6080 sequence. The current coverage does not prove denied output read, allowed sentinel probe, then allowed output read after sentinel creation.
 - **Round 1 OOS_4** (nit): Token-count baseline drift is generated metadata. Concern: The token-count drift in the diff is generated metadata rather than a functional behavior change.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
