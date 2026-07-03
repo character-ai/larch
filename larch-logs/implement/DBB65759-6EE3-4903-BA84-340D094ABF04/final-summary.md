@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:12:25
-- **Cost**: 💰 TOTAL ~$5.48 — Claude $0.33, Codex-5.5 $2.97, Codex-mini $0.28, Cursor $1.76, Claude (subprocess) $0.14  |  Tokens: 6853k
+- **Cost**: 💰 TOTAL ~$8.85 — Claude $3.70, Codex-5.5 $2.97, Codex-mini $0.28, Cursor $1.76, Claude (subprocess) $0.14  |  Tokens: 10652k
 - **Issue**: #6087 — https://github.com/character-ai/larch/issues/6087
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (nit): `chore(larch-logs)` flush is outside review scope. Concern: The reviewer explicitly marked this `chore(larch-logs)` flush as out of review scope.
 - **Round 1 OOS_2** (nit): README still omits `--skip-approve` semantics. Concern: `README.md` still leaves the `/release` description row without the `--skip-approve` non-empty-window semantics that `docs/skills.md` already documents.
 - **Round 1 OOS_3** (latent): Private release skill has no mechanical flag-parser coverage. Concern: `lint-skill-md-flag-signature` does not scan `.claude/skills/`, so the private release skill's inline Step 1 parser is not mechanically validated and could regress without CI catching it.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
