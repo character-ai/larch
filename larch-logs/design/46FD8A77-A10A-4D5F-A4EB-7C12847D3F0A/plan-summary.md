@@ -1,0 +1,1 @@
+Plan: add a fresh PID-keyed activation sentinel for `deny-edit-write.sh`, wire `/research` and current `/bug` consumers to create and remove it, preserve fail-closed `/tmp` checks only while active, and update harnesses plus docs.

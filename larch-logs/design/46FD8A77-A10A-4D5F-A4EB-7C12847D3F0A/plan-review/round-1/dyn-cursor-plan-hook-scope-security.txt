@@ -1,0 +1,64 @@
+Reviewing the activation-sentinel plan against the current hook, skill wiring, and tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/research/references/research-phase.md:65-100	Step 1.1.c abort paths clean tmpdir only; plan omits research-phase.md	After operator abort or validation failure at Step 1.1.c the activation sentinel can remain fresh for up to the 6h TTL while the harness hook registration may still leak, partially reproducing the cross-skill deny the issue targets	Add ### UPDATED: skills/research/references/research-phase.md: remove the activation sentinel in every cleanup-tmpdir abort branch (lines 67, 93, 99), mirroring Step 4 cleanup
+1	in_scope	important	correctness	skills/bug/SKILL.md:83	Step 3 security abort removes BUG_TMPDIR but plan only adds sentinel removal at Step 5	Investigation can discover a security issue after Step 2 wrote the sentinel; Step 3 removes the tmpdir (line 83) but leaves a fresh activation file, so a leaked hook can keep denying unrelated skills until TTL expires	Add sentinel removal to the Step 3 security-abort branch in skills/bug/SKILL.md and pin it in scripts/test-bug-structure.sh
+1	in_scope	important	risk-integration	scripts/deny-edit-write.sh (planned); scripts/hook-bg-poll-guard.sh:600-605	PPID-keyed activation lacks a production-shaped match test despite prior hook PID mismatch	The plan keys sentinel create and hook lookup on $PPID and lists PID skew as a failure mode, but #5684 documents that PreToolUse hook PPID/input did not match session-stored PIDs in production; if Bash-tool $PPID and hook $PPID diverge, activation_is_live stays false, the gate fail-opens, and /research loses mechanical /tmp-only enforcement while the skill is running	Add one harness case that creates the sentinel from a parent subshell and invokes the hook from a sibling child sharing that parent (or document and test the exact PID convention); abort setup if sentinel write succeeds but a probe hook call sees inactive
+
+## Findings
+
+### 1. correctness — `skills/research/references/research-phase.md:65-100`
+
+The plan updates `skills/research/SKILL.md` with “abort path” sentinel cleanup prose, but the only `/research` abort fences that call `session cleanup-tmpdir` live in `skills/research/references/research-phase.md`, not in `SKILL.md`.
+
+```65:68:skills/research/references/research-phase.md
+    abort)
+      echo "**⚠ /research: aborted by operator at Step 1.1.c.**"
+      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+      exit 0
+```
+
+Similar cleanup-only exits appear at lines 92-94 and 98-100. Step 0 creates the activation sentinel after session setup (per plan), so these mid-run aborts can leave a fresh sentinel in `${XDG_CACHE_HOME:-$HOME/.cache}/larch/deny-edit-write-active/` while the harness may still route `deny-edit-write.sh` to unrelated skills. That partially reintroduces the reported leak (deny without an active read-only skill), bounded by the 360-minute TTL in the plan’s approach section.
+
+**Suggested revision:** Add `### UPDATED: skills/research/references/research-phase.md` and remove the activation sentinel in each `cleanup-tmpdir` abort branch before exit.
+
+---
+
+### 2. correctness — `skills/bug/SKILL.md:83`
+
+The plan wires sentinel removal for Step 5 security abort (current line 145) and Step 6/7, but `/bug` can also abort on security grounds during Step 3 after Step 2 has already created the sentinel:
+
+```83:83:skills/bug/SKILL.md
+If investigation reveals a security vulnerability rather than ordinary functional breakage, abort before Step 4 using the same security message and `SECURITY.md` guidance from Step 1. Remove `$BUG_TMPDIR` if it exists, then stop.
+```
+
+Step 1 security triage (lines 49-55) runs before any tmpdir or sentinel exist. Step 3 reuses the same abort pattern but not the planned sentinel teardown, so a fresh `bug-$PPID` marker can outlive the run.
+
+**Suggested revision:** Extend the Step 3 security-abort instruction to remove the activation sentinel alongside `$BUG_TMPDIR`, and add a matching pin in `scripts/test-bug-structure.sh`.
+
+---
+
+### 3. risk-integration — planned `scripts/deny-edit-write.sh` activation gate; `scripts/hook-bg-poll-guard.sh:600-605`
+
+The plan’s minimum-change defense is sound on axis separation: activation ambiguity fail-opens (fixing leaked unconditional deny at `scripts/deny-edit-write.sh:64-150`), while active path resolution stays fail-closed (`scripts/deny-edit-write.sh:25-26`, `81-86`). Inactive-gate tests with isolated cache and stale-mtime cases address stale sentinel and missing-`jq` when inactive.
+
+The weak link is PID coupling. The plan creates `skill-$PPID` sentinels from orchestrator Bash and has `activation_is_live()` match hook `$PPID`. The plan’s failure-modes section flags parent-PID skew but proposes no mitigation. Repo precedent from #5684 states production PreToolUse hooks did not align with session-stored PID metadata:
+
+```600:605:scripts/hook-bg-poll-guard.sh
+  # #5684: liveness is NOT scoped by CLAUDE_PID. In production the hook's PPID and
+  # input never match the marker's stored CLAUDE_PID (hook input carries no claude_pid,
+  # LARCH_BG_POLL_GUARD_SESSION_PID is unset outside tests), so the old equality check
+  # rejected every marker and the guard never fired.
+```
+
+If hook `$PPID` differs from the Bash-tool `$PPID` used at sentinel creation, `activation_is_live()` returns false, the gate exits 0 at the planned pre-`jq` branch, and repo `Write`/`Edit` calls proceed during a live `/research` or `/bug` run — the opposite of the read-only guarantee the issue needs while those skills execute.
+
+**Suggested revision:** Add one production-shaped harness case (parent/child subshells sharing a parent PID) or fail setup loudly when a post-write probe hook still sees inactive activation. Do not broaden scope beyond validating the PID contract.
+
+---
+
+## What the plan gets right (no finding)
+
+- Preserving `/bug`’s `Write` hook frontmatter (`skills/bug/SKILL.md:6-12`) alongside `/research`’s matcher (`skills/research/SKILL.md:6-11`) matches current dual-consumer reality; `.claude/rules/research-readonly-hook-coupling.md:6-11` is stale today and the plan correctly broadens it.
+- Placing `activation_is_live()` before the `jq`-absent deny branch (`scripts/deny-edit-write.sh:64-67`) fixes today’s unconditional deny when `jq` is missing and no sentinel exists — required for inactive leak recovery.
+- Step 4 unconditional cleanup (`skills/research/SKILL.md:394-400`) plus Step 7 `/bug` cleanup are the right primary teardown surfaces; TTL is an acceptable backstop only when explicit teardown is missed.
+- Sentinel write failure → loud abort (plan approach) matches the contract at `skills/research/SKILL.md:50-52`: running read-only skills without mechanical guard is worse than aborting setup.

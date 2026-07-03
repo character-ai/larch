@@ -1,0 +1,73 @@
+# [BUG] research read-only hook leaks across skills, blocking writes outside /tmp
+
+## Summary
+
+`/research`'s skill-scoped PreToolUse hook (`scripts/deny-edit-write.sh`, wired only through `skills/research/SKILL.md` frontmatter to enforce that skill's advertised read-only-repo contract) leaked into a completely unrelated `/design` session in the same conversation and is now denying every `Write`/`Edit`/`NotebookEdit` call outside canonical `/tmp`, even though `/larch:research` was never invoked. The block persisted for the remainder of the session (confirmed still active after the `/design` run that triggered it fully completed).
+
+## Original report
+
+/research's skill-scoped read-only PreToolUse hook (deny-edit-write.sh) leaked into an unrelated /design session and is still blocking all Write/Edit/NotebookEdit outside /tmp, even though /research was never invoked
+
+## Reproduction scenario
+
+Exact trigger conditions are not fully isolated (this surfaced organically during a live long-running session), but the observed sequence in this conversation was:
+
+1. Ran `/larch:design -s 6158`. Early in the run (Step 1d.7 outline gate), a `Write` to `$DESIGN_TMPDIR/design-outline.md` (a path under `~/.cache/larch/sessions/...`, not `/tmp`) succeeded normally.
+2. Continued through the `/design` run: Step 2b plan drafting (spawns a Codex subprocess in the background) and Step 3 plan review (spawns many Cursor/Codex reviewer subprocesses in the background), each waited on via immediate-background `Bash` + `<task-notification>`.
+3. Mid-`/design` (while Step 3's review panel was running in the background), invoked `/larch:bug` → which invoked `/larch:issue` as a child Skill — both completed successfully, each writing only under `/tmp` (`$BUG_TMPDIR`, `$ISSUE_TMPDIR`).
+4. Returned to the `/design` run at Gate B (Step 3.5) and attempted a `Write` to `$DESIGN_TMPDIR/plan.txt` (same non-`/tmp` directory that had accepted a `Write` in step 1). This `Write` was denied with:
+   ```
+   /research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted.
+   ```
+5. Retried the identical `Write` once — denied again with the same message (ruling out a one-off transient glitch).
+6. Continued the `/design` run to full completion (plan published, issue renamed `[DESIGNED]`, design log published via PR) using a `/tmp`-stage-then-`Bash cp` workaround for every subsequent file write outside `/tmp` (since the hook's matcher is `Edit|Write|NotebookEdit` only — `Bash` is unaffected).
+7. After the `/design` run fully finished, re-tested with a trivial `Write` to a scratch file directly under the repo root (`<OPERATOR_REPO_PATH>/.hook-recheck-scratch.tmp`) — still denied with the identical message, confirming the block outlives the `/design` run that first exposed it and is not scoped to that run.
+
+`/larch:research` was never invoked anywhere in the visible session transcript.
+
+## Expected behavior
+
+`scripts/deny-edit-write.sh` should only ever deny `Write`/`Edit`/`NotebookEdit` calls while `/larch:research` is the actively-executing skill, per its own documented contract (`.claude/rules/research-readonly-hook-coupling.md`): the hook is wired exclusively through `skills/research/SKILL.md`'s frontmatter `hooks:` block, matcher `Edit|Write|NotebookEdit`, and is not referenced anywhere else in the repo (checked `hooks/hooks.json`, `.claude/settings.json`, `.claude/settings.local.json`, and user-level `~/.claude/settings.json` — none reference `deny-edit-write.sh`). Once `/research` finishes (or is never invoked), unrelated skills such as `/design` should be able to `Write`/`Edit`/`NotebookEdit` repo-tree and session-tmpdir files normally.
+
+## Observed behavior
+
+The hook fired mid-`/design`-run with no `/research` invocation anywhere in the session, denied a legitimate `/design` Gate B `Write`, and remained active afterward (confirmed via a fresh repo-root scratch-file `Write` attempt after the `/design` run's own Step 6 cleanup had already completed). This means, if unaddressed, the block could persist for the remainder of the Claude Code session, silently forcing every later skill that needs to `Write`/`Edit` outside `/tmp` (docs updates, `/implement` code edits, etc.) to either fail outright or require the same manual `/tmp`-stage-then-`cp` workaround.
+
+## Root cause analysis
+
+Uncertain — this looks like a Claude Code harness-level issue in skill-scoped `PreToolUse` hook lifecycle management, not a defect in this repo's own Bash/Python source:
+
+- `scripts/deny-edit-write.sh` itself is unconditionally deny-by-default for any non-`/tmp` target; it has no internal "is `/research` the caller" check, by design — the *scoping* is supposed to come entirely from the fact that this hook is registered only for the duration `/research`'s own `hooks:` frontmatter binding is active (per `.claude/rules/research-readonly-hook-coupling.md`).
+- Given `/larch:research` was never invoked in this session, the only plausible explanations are: (a) a stale skill-scoped hook registration from an actual `/research` invocation earlier in this same long-running conversation, before context summarization trimmed it out of the visible window, that the harness failed to tear down when that skill "completed"; or (b) a harness bug where skill-scoped hooks declared via `SKILL.md` frontmatter can leak into later, unrelated skill invocations under some condition (long background waits, nested `Skill`-tool child invocations, or something else) without ever having been triggered by an actual `/research` run.
+- I cannot distinguish between (a) and (b) from inside this environment — the underlying hook-registration state is internal to the Claude Code harness, not something visible in transcript or repo files.
+
+## Evidence
+
+- `skills/research/SKILL.md` frontmatter (lines ~6-13): wires `hooks: PreToolUse: - matcher: "Edit|Write|NotebookEdit" hooks: - command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh"`.
+- `.claude/rules/research-readonly-hook-coupling.md`: documents that `/research` is "the only larch skill whose SKILL.md frontmatter wires a PreToolUse hooks: block" to this script, and that the deny script's allow predicate is canonical-`/tmp`-only.
+- `scripts/deny-edit-write.sh`: unconditional deny-outside-`/tmp` logic with the fixed `permissionDecisionReason` string exactly matching what was observed: `"/research is a read-only-repo skill -- Edit/Write/NotebookEdit outside /tmp is not permitted."`.
+- `hooks/hooks.json`: no reference to `deny-edit-write.sh` (grepped, zero matches) — rules out project-level global wiring.
+- `.claude/settings.json`, `.claude/settings.local.json`, `~/.claude/settings.json`: no reference to `deny-edit-write.sh` — rules out settings-level global wiring.
+- Live transcript evidence (this session): a `Write` to `$DESIGN_TMPDIR/design-outline.md` succeeded early in the `/design` run; a later `Write` to `$DESIGN_TMPDIR/plan.txt` (same non-`/tmp` directory) was denied with the exact `/research` message after intervening background `/design` work and a `/bug`→`/issue` child-Skill detour; a retry of the same `Write` was denied identically; a fresh `Write` to an unrelated repo-root scratch path, attempted after the `/design` run had fully completed and cleaned up its own tmpdir, was still denied with the identical message.
+
+## Affected files
+
+- `scripts/deny-edit-write.sh` — the hook script whose deny logic fired outside its intended scope; relevant if a code-level mitigation (for example, an explicit scope token check) is chosen.
+- `skills/research/SKILL.md` — the sole source of this hook's intended activation scope (frontmatter `hooks:` block); relevant context for understanding the intended lifecycle.
+- `.claude/rules/research-readonly-hook-coupling.md` — documents the intended one-skill-only coupling; may need a note about this cross-session/cross-skill leak risk once the harness-level root cause is understood.
+
+This is likely primarily a Claude Code harness (not larch-repo) issue, so a full fix may live outside this repository; the affected-files list above is scoped to what a larch maintainer could inspect or adjust from this side (for example, adding defense-in-depth to the hook itself).
+
+## Suggested fix(es)
+
+No concrete larch-repo-side fix identified yet, since the leak appears to originate in the harness's skill-scoped hook lifecycle rather than in `deny-edit-write.sh`'s own logic. Possible directions, in rough order of how actionable they are from this repo:
+
+- Defense-in-depth in `scripts/deny-edit-write.sh` itself: accept an explicit scope/session token (for example, an env var the harness sets only while `/research` is the active skill) and require it to be present before denying, so a leaked/stale hook registration fails open instead of fail-closed-forever. This would be a deliberate posture change from the current fail-closed-on-ambiguity design documented in the script's own header comment, so it needs careful review against `.claude/rules/research-readonly-hook-coupling.md`'s stated invariants before adopting.
+- Report the underlying lifecycle behavior upstream to the Claude Code team if it reproduces outside this repo's specific skill, since `research-readonly-hook-coupling.md` documents this as the *only* larch skill using a skill-scoped `PreToolUse` hook — meaning this may be the first time this exact leak pattern would have been exercised in practice.
+- Document the observed symptom and the `/tmp`-stage-then-`Bash cp` workaround somewhere operator-visible (for example, `docs/troubleshooting`-style guidance or a note in `research-readonly-hook-coupling.md`), so a future agent or operator who hits this mid-session recognizes it immediately instead of re-diagnosing from scratch.
+
+## Open questions
+
+- Is this reproducible outside of `/design` specifically, or tied to the immediate-background `Bash` + `<task-notification>` wait pattern `/design` uses heavily? A minimal repro (invoke `/research` briefly, let it exit, then try an unrelated skill's `Write`) would help isolate whether long background waits or nested `Skill`-tool calls are load-bearing to the leak.
+- Does the leak survive a fresh Claude Code process/session, or is it scoped to the lifetime of one long conversation (as observed here, spanning context-summarization boundaries)?
+- Is there an existing Claude Code harness-level issue tracker (outside this repo) where this class of skill-scoped-hook-lifecycle bug should also be filed?
