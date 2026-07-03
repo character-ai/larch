@@ -15,6 +15,10 @@ def _result(stdout: str = "", rc: int = 0, stderr: str = "") -> CommandResult:
     return CommandResult(("cmd",), rc, stdout, stderr, 0.01)
 
 
+def _write_json(path: Path, payload: dict[str, object]) -> None:
+    path.write_text(json.dumps(payload, sort_keys=True, indent=2) + "\n", encoding="utf-8")
+
+
 def _issue(number: int, title: str, *, state: str = "CLOSED", reason: str = "COMPLETED", body: str = "body") -> dict[str, object]:
     return {
         "number": number,
@@ -40,8 +44,30 @@ def test_fetch_filters_bug_prefix_and_keeps_state_all_on_fallback() -> None:
 
     assert [issue.number for issue in selected] == [2, 3]
     assert all("--state" in call and "all" in call for call in runner.calls)
-    assert "stateReason" in runner.calls[0][-1]
-    assert "stateReason" not in runner.calls[1][-1]
+    assert any("stateReason" in arg for arg in runner.calls[0])
+    assert not any("stateReason" in arg for arg in runner.calls[1])
+
+
+def test_fetch_bug_issues_pages_until_count_met() -> None:
+    page1 = [_issue(number, f"refactor {number}") for number in range(1, 101)]
+    page2 = [_issue(number, f"refactor {number}") for number in range(101, 200)]
+    page2.append(_issue(200, "[BUG] newest"))
+    runner = RecordingRunner(responses=[_result(json.dumps(page1)), _result(json.dumps(page2))], strict=True)
+
+    selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=1)
+
+    assert [issue.number for issue in selected] == [200]
+    assert runner.calls[0][-2:] == ["--page", "1"]
+    assert runner.calls[1][-2:] == ["--page", "2"]
+
+
+def test_cache_key_changes_with_state_and_state_reason() -> None:
+    base = analyze_bugs._cache_key(issue_number=1, fix_sha="sha", later_history_hash="later", state="OPEN", state_reason="COMPLETED")  # pyright: ignore[reportPrivateUsage]
+    changed_state = analyze_bugs._cache_key(issue_number=1, fix_sha="sha", later_history_hash="later", state="CLOSED", state_reason="COMPLETED")  # pyright: ignore[reportPrivateUsage]
+    changed_reason = analyze_bugs._cache_key(issue_number=1, fix_sha="sha", later_history_hash="later", state="OPEN", state_reason="NOT_PLANNED")  # pyright: ignore[reportPrivateUsage]
+
+    assert base != changed_state
+    assert base != changed_reason
 
 
 def test_plan_block_malformed_forces_needs_deep(tmp_path: Path) -> None:
@@ -61,6 +87,66 @@ def test_plan_block_malformed_forces_needs_deep(tmp_path: Path) -> None:
 
     assert bundle.mechanical_verdict == "NEEDS_DEEP"
     assert "malformed" in bundle.mechanical_reason
+
+
+def test_build_bundle_record_rejects_unreadable_git_fix_sha(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(7, "[BUG] git fix", "CLOSED", "COMPLETED", "body", "u", "", ())
+    runner = RecordingRunner(
+        responses=[
+            _result("deadbeef\x1fFixes #7\x1e"),
+            _result(rc=1, stderr="fatal: Not a valid object name deadbeef"),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert bundle.fix_sha == ""
+    assert bundle.mechanical_verdict == "NEEDS_DEEP"
+    assert "Not a valid object name" in bundle.mechanical_reason
+
+
+def test_build_bundle_record_rejects_unreadable_pr_fix_sha(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(
+        7,
+        "[BUG] pr fix",
+        "CLOSED",
+        "COMPLETED",
+        "body",
+        "u",
+        "",
+        ({"number": 9, "url": "https://github.com/o/r/pull/9"},),
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(""),
+            _result(json.dumps({"mergeCommit": {"oid": "deadbeef"}})),
+            _result(rc=1, stderr="fatal: Not a valid object name deadbeef"),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert bundle.fix_sha == ""
+    assert bundle.mechanical_verdict == "NEEDS_DEEP"
+    assert "Not a valid object name" in bundle.mechanical_reason
 
 
 def test_exact_fix_reference_newest_wins_and_prefix_collision() -> None:
@@ -86,6 +172,7 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
             _result("file.py\n"),
             _result("later: touch\n"),
             _result("diff --git a/file.py b/file.py\n"),
+            _result(""),
             _result(""),
         ],
         strict=True,
@@ -179,6 +266,177 @@ def test_deep_queue_priority_cap_and_model_alias(tmp_path: Path) -> None:
     assert summary["DEEP_CAP_TRUNCATED"] == "true"
     queue = [json.loads(line) for line in (run_dir / "deep-queue.jsonl").read_text(encoding="utf-8").splitlines()]
     assert [row["issue"] for row in queue] == [1, 2]
+
+
+def test_ledger_compute_keeps_no_fix_deep_candidates_pending(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    body_path = run_dir / "issue-1-body.md"
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "1",
+            "repo": "o/r",
+            "run_id": "run-1",
+            "run_dir": str(run_dir),
+            "evidence_ref": "origin/main",
+            "bugs_requested": 1,
+            "bugs_selected": 1,
+            "generated_at": 1,
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "triage_batch_paths": [],
+            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+            "issues": [
+                {
+                    "issue_number": 1,
+                    "title": "[BUG] no fix",
+                    "state": "CLOSED",
+                    "state_reason": "COMPLETED",
+                    "url": "u",
+                    "body_path": str(body_path),
+                    "bundle_path": str(bundle_path),
+                    "fix_sha": "",
+                    "fix_source": "git-log",
+                    "touched_files": [],
+                    "later_history_hash": "later",
+                    "mechanical_verdict": "NEEDS_DEEP",
+                    "mechanical_reason": "closed issue has no traceable unique fix commit",
+                    "cache_key": "cache-key",
+                    "sampled": False,
+                }
+            ],
+        },
+    )
+    _ = body_path.write_text("body\n", encoding="utf-8")
+    _ = bundle_path.write_text("bundle\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps(
+            {
+                "cache_key": "cache-key",
+                "issue": 1,
+                "fix_sha": "",
+                "later_history_hash": "later",
+                "triage_verdict": "",
+                "triage_reason": "",
+                "triage_missing_items": [],
+                "triage_needs_deep": False,
+                "deep_verdict": "CONFIRMED_FIXED",
+                "deep_reason": "stale deep verdict",
+                "sampled": False,
+                "stages_complete": ["deep"],
+                "updated_at": 1,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    summary = analyze_bugs.ledger_compute(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", refresh=False, sample=0, deep_max=10, deep_model="sonnet", batch_size=10)
+
+    assert summary["DEEP_PENDING"] == 1
+    queue = [json.loads(line) for line in (run_dir / "deep-queue.jsonl").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert [row["issue"] for row in queue] == [1]
+
+
+def test_load_ledger_quarantines_corrupt_lines(tmp_path: Path) -> None:
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": "ok", "issue": 1, "fix_sha": "", "later_history_hash": "", "stages_complete": []}) + "\n"
+        + "not-json\n"
+        + "[]\n",
+        encoding="utf-8",
+    )
+
+    records, corrupt_count = analyze_bugs.load_ledger(ledger)
+
+    assert list(records) == ["ok"]
+    assert corrupt_count == 2
+    assert list(tmp_path.glob("ledger.jsonl.corrupt-*"))
+
+
+def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    body1 = run_dir / "issue-1-body.md"
+    body2 = run_dir / "issue-2-body.md"
+    bundle1 = run_dir / "issue-1-bundle.md"
+    bundle2 = run_dir / "issue-2-bundle.md"
+    for path, text in ((body1, "body 1\n"), (body2, "body 2\n"), (bundle1, "bundle 1\n"), (bundle2, "bundle 2\n")):
+        _ = path.write_text(text, encoding="utf-8")
+    key1 = "cache-1"
+    key2 = "cache-2"
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "1",
+            "repo": "o/r",
+            "run_id": "run-1",
+            "run_dir": str(run_dir),
+            "evidence_ref": "origin/main",
+            "bugs_requested": 2,
+            "bugs_selected": 2,
+            "generated_at": 1,
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "triage_batch_paths": [],
+            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+            "issues": [
+                {
+                    "issue_number": 1,
+                    "title": "[BUG] open stale",
+                    "state": "OPEN",
+                    "state_reason": "",
+                    "url": "https://github.com/o/r/issues/1",
+                    "body_path": str(body1),
+                    "bundle_path": str(bundle1),
+                    "fix_sha": "",
+                    "fix_source": "git-log",
+                    "touched_files": [],
+                    "later_history_hash": "later-1",
+                    "mechanical_verdict": "NOT_FIXED",
+                    "mechanical_reason": "issue is still open",
+                    "cache_key": key1,
+                    "sampled": False,
+                },
+                {
+                    "issue_number": 2,
+                    "title": "[BUG] truncated stale",
+                    "state": "CLOSED",
+                    "state_reason": "COMPLETED",
+                    "url": "https://github.com/o/r/issues/2",
+                    "body_path": str(body2),
+                    "bundle_path": str(bundle2),
+                    "fix_sha": "sha2",
+                    "fix_source": "git-log",
+                    "touched_files": [],
+                    "later_history_hash": "later-2",
+                    "mechanical_verdict": "",
+                    "mechanical_reason": "",
+                    "cache_key": key2,
+                    "sampled": False,
+                },
+            ],
+        },
+    )
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps({"cache_key": key1, "issue": 1, "fix_sha": "", "later_history_hash": "later-1", "deep_verdict": "CONFIRMED_FIXED", "deep_reason": "stale", "stages_complete": ["deep"], "sampled": False}) + "\n"
+        + json.dumps({"cache_key": key2, "issue": 2, "fix_sha": "sha2", "later_history_hash": "later-2", "deep_verdict": "FIXED_CLEAR", "deep_reason": "clear", "stages_complete": ["deep"], "sampled": False}) + "\n",
+        encoding="utf-8",
+    )
+    _write_json(run_dir / "ledger-summary.json", {"DEEP_TRUNCATED_ISSUES": [2], "DEEP_RATE_MODEL": "claude-sonnet-4.5", "DEEP_MODEL": "claude-sonnet-4.5"})
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    assert "NOT_FIXED" in report
+    assert "deep cap truncated this candidate" in report
+    assert "ANALYZE_BUGS_COST_ESTIMATE=" in report
+    assert (run_dir / "report.md").read_text(encoding="utf-8") == report
+    follow_up = (run_dir / "follow-up-issue.md").read_text(encoding="utf-8")
+    assert "# Analyze-bugs follow-up" in follow_up
+    assert "#1: NOT_FIXED" in follow_up
 
 
 def test_cli_dispatches_analyze_bugs_help() -> None:

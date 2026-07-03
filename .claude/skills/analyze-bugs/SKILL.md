@@ -69,7 +69,7 @@ LEDGER_OUT=$(python3 "$PWD/python/cli.py" analyze-bugs ledger \
 
 Read `TRIAGE_BATCH_PATHS`, `DEEP_QUEUE_PATH`, `DEEP_MODEL`, and `DEEP_RATE_MODEL` from whole-line KVs. Python validates the deep-model alias before any Task spend.
 
-For each triage batch path, launch `bug-fix-triage` with the file path and instructions to read the capped bundles listed inside it. Save the agent JSONL output under `$RUN_DIR/triage-results-N.jsonl`.
+For each triage batch path, launch `bug-fix-triage` with the file path and inline the capped bundle markdowns referenced by that batch into the Task prompt. Do not rely on the triage task having a `Read` tool. Save the agent JSONL output under `$RUN_DIR/triage-results-N.jsonl`.
 
 Ingest each triage result:
 

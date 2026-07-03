@@ -334,26 +334,32 @@ def _issue_list_argv(repo: str, *, limit: int, fields: Sequence[str]) -> list[st
 
 
 def fetch_bug_issues(runner: Runner, *, repo: str, count: int) -> tuple[list[IssueRecord], int]:
+    if count <= 0:
+        return [], 0
     fields = ["number", "title", "state", "stateReason", "body", "url", "closedAt", "closedByPullRequestsReferences"]
     fallback_fields = ["number", "title", "state", "body", "url", "closedAt"]
     selected: list[IssueRecord] = []
     last_corpus_len = 0
-    limits = [limit for limit in GIT_LOG_SCAN_LIMITS if limit >= min(count, GIT_LOG_SCAN_LIMITS[-1])]
-    if not limits:
-        limits = [min(max(count * 4, 100), GIT_LOG_SCAN_LIMITS[-1])]
-    for limit in limits:
-        result = runner.run(_issue_list_argv(repo, limit=limit, fields=fields))
+    limit = 100
+    page = 1
+    while True:
+        result = runner.run(_issue_list_argv(repo, limit=limit, fields=fields) + ["--page", str(page)])
         if result.returncode != 0:
-            result = runner.run(_issue_list_argv(repo, limit=limit, fields=fallback_fields))
+            result = runner.run(_issue_list_argv(repo, limit=limit, fields=fallback_fields) + ["--page", str(page)])
         if result.returncode != 0:
             raise AnalyzeBugsError(f"gh issue list failed: {(result.stderr or result.stdout).strip()}")
         raw_rows = _parse_json_array(result.stdout, desc="gh issue list")
         last_corpus_len = len(raw_rows)
         issues = [issue for row in raw_rows if (issue := _issue_from_raw(row)) is not None]
-        selected = [issue for issue in issues if _bug_title(issue.title)][:count]
-        if len(selected) >= count or len(raw_rows) < limit:
+        for issue in issues:
+            if _bug_title(issue.title):
+                selected.append(issue)
+                if len(selected) >= count:
+                    return selected[:count], last_corpus_len
+        if len(raw_rows) < limit:
             break
-    return selected, last_corpus_len
+        page += 1
+    return selected[:count], last_corpus_len
 
 
 def _exact_issue_reference_re(issue: int) -> re.Pattern[str]:
@@ -454,13 +460,26 @@ def find_fix_by_pr_refs(runner: Runner, *, issue: IssueRecord, repo: str) -> Fix
     return FixEvidence(issue.number, "", "closedByPullRequestsReferences", reason="no PR merge commit")
 
 
+def _validate_local_fix_sha(runner: Runner, fix: FixEvidence) -> FixEvidence:
+    if not fix.fix_sha:
+        return fix
+    result = runner.run(["git", "cat-file", "-e", f"{fix.fix_sha}^{{commit}}"])
+    if result.returncode == 0:
+        return fix
+    detail = (result.stderr or result.stdout or f"commit {fix.fix_sha} is unavailable locally").strip()
+    reason = f"{fix.source}: {detail}" if detail else fix.source
+    return FixEvidence(fix.issue_number, "", fix.source, ambiguous=fix.ambiguous, reason=reason)
+
+
 def resolve_fix_evidence(runner: Runner, *, issue: IssueRecord, repo: str, evidence_ref: str) -> FixEvidence:
     fix = find_fix_by_git_log(runner, issue=issue.number, evidence_ref=evidence_ref)
     if fix.fix_sha:
-        return fix
+        return _validate_local_fix_sha(runner, fix)
     if issue.closed_by_pull_requests:
         pr_fix = find_fix_by_pr_refs(runner, issue=issue, repo=repo)
-        if pr_fix.fix_sha or pr_fix.ambiguous:
+        if pr_fix.fix_sha:
+            return _validate_local_fix_sha(runner, pr_fix)
+        if pr_fix.ambiguous:
             return pr_fix
     return fix
 
@@ -519,8 +538,10 @@ def _later_history_hash(*, fix_sha: str, evidence_ref: str, files: Sequence[str]
     return hasher.hexdigest()
 
 
-def _cache_key(*, issue_number: int, fix_sha: str, later_history_hash: str) -> str:
-    return hashlib.sha256(f"{issue_number}\0{fix_sha}\0{later_history_hash}".encode()).hexdigest()
+def _cache_key(*, issue_number: int, fix_sha: str, later_history_hash: str, state: str, state_reason: str) -> str:
+    norm_state = state.strip().upper()
+    norm_reason = state_reason.strip().upper()
+    return hashlib.sha256(f"{issue_number}\0{fix_sha}\0{later_history_hash}\0{norm_state}\0{norm_reason}".encode()).hexdigest()
 
 
 def _capped(text: str, cap: int) -> str:
@@ -545,7 +566,13 @@ def build_bundle_record(
     touched = _touched_files(runner, fix_sha=fix.fix_sha)
     later = _later_history(runner, fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched)
     later_hash = _later_history_hash(fix_sha=fix.fix_sha, evidence_ref=evidence_ref, files=touched, later_history=later)
-    cache_key = _cache_key(issue_number=issue.number, fix_sha=fix.fix_sha, later_history_hash=later_hash)
+    cache_key = _cache_key(
+        issue_number=issue.number,
+        fix_sha=fix.fix_sha,
+        later_history_hash=later_hash,
+        state=issue.state,
+        state_reason=issue.state_reason,
+    )
 
     body_path = run_dir / f"issue-{issue.number}-body.md"
     bundle_path = run_dir / f"issue-{issue.number}-bundle.md"
@@ -803,7 +830,7 @@ def _priority_deep_candidates(
     by_priority: list[tuple[int, BundleRecord, LedgerRecord | None, str]] = []
     for bundle in bundles:
         record = _record_for_bundle(ledger, bundle)
-        if _complete(record, "deep", refresh=refresh):
+        if bundle.fix_sha and _complete(record, "deep", refresh=refresh):
             continue
         if bundle.mechanical_verdict == "NEEDS_DEEP":
             by_priority.append((0, bundle, record, "mechanical"))
@@ -827,7 +854,7 @@ def _priority_deep_candidates(
             record = _record_for_bundle(ledger, bundle)
             if not record or record.triage_verdict not in {"FIXED_CLEAR", "FIXED_LIKELY"}:
                 continue
-            if _complete(record, "deep", refresh=refresh):
+            if bundle.fix_sha and _complete(record, "deep", refresh=refresh):
                 continue
             pool.append(bundle)
         rng = random.Random("analyze-bugs-sample")
@@ -1077,6 +1104,8 @@ def ledger_main(argv: list[str]) -> int:
 
 
 def _final_verdict(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, tuple[str, ...], bool]:
+    if bundle.mechanical_verdict:
+        return bundle.mechanical_verdict, bundle.mechanical_reason, (), False
     if record and record.deep_verdict:
         return record.deep_verdict, record.deep_reason, (), record.sampled
     if record and record.triage_verdict:
