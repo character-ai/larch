@@ -1,11 +1,12 @@
 #!/usr/bin/env bash
-# deny-edit-write.sh — skill-scoped PreToolUse hook that permits
-# Edit/Write/NotebookEdit only when the tool's target path resolves to
-# an absolute path under canonical /tmp. Every other outcome — missing
-# path, relative path, traversal, symlink cycle, resolution failure,
-# jq runtime failure — denies, so the repo working tree is never
-# written to while /research is active. Belt-and-suspenders second
-# mechanical layer on top of the `allowed-tools` frontmatter.
+# deny-edit-write.sh — token-gated skill-scoped PreToolUse hook. While a
+# recognized skill token has a fresh activation sentinel, Edit/Write/
+# NotebookEdit are permitted only when the tool's target path resolves to
+# an absolute path under canonical /tmp. Every other active outcome —
+# missing path, relative path, traversal, symlink cycle, resolution
+# failure, jq runtime failure — denies, so the repo working tree is not
+# written through this tool surface. Leaked, stale, tokenless, or unknown
+# registrations fail open before path parsing.
 #
 # Stdin: JSON with .tool_input.file_path or .tool_input.notebook_path
 #        (absolute path). NotebookEdit uses notebook_path; fall back
@@ -17,12 +18,14 @@
 #       availability or version-specific hook-failure handling.
 #
 # INVARIANTS:
-#   1. deny JSON is composed only from fixed ASCII literals — no
+#   1. activation is token-scoped and TTL-bounded. Missing, stale, or
+#      unrecognized activation exits 0 with empty stdout.
+#   2. deny JSON is composed only from fixed ASCII literals — no
 #      runtime-derived interpolation. The `jq -cn` and `printf` paths
 #      emit byte-identical output.
-#   2. every error branch routes through block() which emits the deny
-#      envelope then exits 0 — no silent fall-through to empty stdout.
-#   3. allow requires a positively proven canonical path under /tmp;
+#   3. every active error branch routes through block() which emits the
+#      deny envelope then exits 0 — no silent fall-through to empty stdout.
+#   4. active allow requires a positively proven canonical path under /tmp;
 #      any ambiguity denies.
 #
 # Style mirrors scripts/block-submodule-edit.sh (stdin-JSON contract,
@@ -37,9 +40,44 @@
 # and emit a deny envelope rather than aborting with no hook decision.
 set -uo pipefail
 
+SKILL_TOKEN="${1:-}"
+DENY_EDIT_WRITE_TTL_MINUTES=360
+
 exec 3>&1
-hook_emit() { printf '%s
-' "$1" >&3; }
+hook_emit() { printf '%s\n' "$1" >&3; }
+
+activation_dir() {
+  if [[ -n "${XDG_CACHE_HOME:-}" ]]; then
+    printf '%s/larch/deny-edit-write-active' "$XDG_CACHE_HOME"
+  elif [[ -n "${HOME:-}" ]]; then
+    printf '%s/.cache/larch/deny-edit-write-active' "$HOME"
+  else
+    return 1
+  fi
+}
+
+activation_is_live() {
+  local token="$1"
+  case "$token" in
+    research|bug) ;;
+    *) return 1 ;;
+  esac
+
+  local dir
+  dir=$(activation_dir) || return 1
+  [[ -d "$dir" && -r "$dir" ]] || return 1
+
+  local match
+  match=$(find "$dir" -type f -name "$token-*" -mmin -"$DENY_EDIT_WRITE_TTL_MINUTES" -print -quit 2>/dev/null) || return 1
+  [[ -n "$match" ]]
+}
+
+# Skill-scoped hooks can leak after the skill exits. Deny only while the
+# matching skill has a fresh activation sentinel. Missing, stale, or unknown
+# tokens fail open so stale tokenless registrations stay disarmed.
+if ! activation_is_live "$SKILL_TOKEN"; then
+  exit 0
+fi
 
 # Fixed deny JSON — single reason string, no runtime interpolation.
 # The jq -cn expression below and the static-literal fallback must produce

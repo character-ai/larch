@@ -23,8 +23,8 @@
 - **question**: How does the `/research` skill's best-effort read-only contract partition mechanically enforced versus prompt-enforced perimeters, what hook backs the mechanical tier, and what tools fall under the prompt-enforced tier?
 - **category**: lookup
 - **expected_provenance_count**: 2
-- **expected_keywords**: deny-edit-write.sh, /tmp, PreToolUse, best-effort, Bash, external reviewers, SECURITY.md
-- **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp`), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the SECURITY.md residual-risk framing.
+- **expected_keywords**: deny-edit-write.sh, activation sentinel, /tmp, PreToolUse, best-effort, Bash, external reviewers, SECURITY.md
+- **notes**: Lookup; should cite `scripts/deny-edit-write.sh` for the activation-gated mechanical tier (Edit/Write/NotebookEdit confined to canonical `/tmp` only while `research-*` is fresh), name Bash + external Cursor/Codex reviewers as the prompt-enforced tier, and reference the SECURITY.md residual-risk framing.
 
 ### eval-3: larch-log-batch-slugs
 - **question**: What are the 11 canonical larch-log batch slugs in `/implement`, in assembly order, and which script defines them?
@@ -121,8 +121,8 @@
 - **question**: What is the security blast-radius if `/research`'s deny-edit-write hook is bypassed, what mechanisms in the repo backstop the hook, and what residual risk is documented?
 - **category**: risk-assessment
 - **expected_provenance_count**: 2
-- **expected_keywords**: deny-edit-write.sh, allowed-tools, SECURITY.md, no mechanical fallback
-- **notes**: Risk; should identify the hook as the sole mechanical enforcement, note that `allowed-tools` declares the surface but does not confine writes, and quote the residual-risk language from SECURITY.md or the SKILL.md contract paragraph.
+- **expected_keywords**: deny-edit-write.sh, activation sentinel, allowed-tools, SECURITY.md, no mechanical fallback
+- **notes**: Risk; should identify the hook as the sole active mechanical enforcement, note that `allowed-tools` declares the surface but does not confine writes, explain that stale or tokenless registrations fail open without a fresh activation sentinel, and quote the residual-risk language from SECURITY.md or the SKILL.md contract paragraph.
 
 ### eval-17: research-structured-output-feasibility
 - **question**: Could `/research` be extended to produce a structured machine-readable output alongside the current human-readable Research Report without breaking existing consumers, and what would the migration shape look like?

@@ -8,7 +8,7 @@ hooks:
     - matcher: "Edit|Write|NotebookEdit"
       hooks:
         - type: command
-          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh"
+          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research"
           timeout: 5
 ---
 
@@ -16,7 +16,7 @@ hooks:
 
 **MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-Collaborative best-effort read-only-repo research task with a fixed-shape lane topology. The research phase runs a planner pre-pass that decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions, then four Codex-first lanes (architecture / edge cases / external comparisons / security) covering those subquestions, each with a per-lane Claude `Agent` fallback when Codex is unavailable or fails. The validation phase runs three reviewers in parallel: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor. Produces a structured research report; tracked repo files are not modified by Claude's `Edit | Write | NotebookEdit` tool surface (mechanically enforced by the skill-scoped PreToolUse hook permitting only canonical `/tmp`), while Bash and the external Cursor/Codex reviewers run with full filesystem access and are prompt-enforced only — see the Read-only-repo contract below. May invoke `/issue` via the Skill tool to file research-result issues.
+Collaborative best-effort read-only-repo research task with a fixed-shape lane topology. The research phase runs a planner pre-pass that decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions, then four Codex-first lanes (architecture / edge cases / external comparisons / security) covering those subquestions, each with a per-lane Claude `Agent` fallback when Codex is unavailable or fails. The validation phase runs three reviewers in parallel: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor. Produces a structured research report; tracked repo files are not modified by Claude's `Edit | Write | NotebookEdit` tool surface while the fresh `research-*` activation sentinel exists (mechanically enforced by the skill-scoped PreToolUse hook permitting only canonical `/tmp`), while Bash and the external Cursor/Codex reviewers run with full filesystem access and are prompt-enforced only — see the Read-only-repo contract below. May invoke `/issue` via the Skill tool to file research-result issues.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/issue`) returns, IMMEDIATELY continue with this skill's NEXT numbered step — do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message — those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `loop back`, `fall through`, `break out`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. → shared/subskill-invocation.md#anti-halt
 
@@ -49,7 +49,7 @@ The research question is described by `RESEARCH_QUESTION` (not raw `$ARGUMENTS`)
 
 **Read-only-repo contract (best-effort)**: This skill does not create branches, make commits, or modify tracked repo files via Claude's `Edit | Write | NotebookEdit` tool surface. The contract is enforced as two distinct tiers — only the first is mechanical. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` for the full residual-risk framing.
 
-- **Mechanically enforced (Claude `Edit | Write | NotebookEdit` surface)**: the skill-scoped PreToolUse hook `${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh` matches `Edit|Write|NotebookEdit` and permits the call only when the target `tool_input.file_path` (or `tool_input.notebook_path`) resolves to an absolute path under canonical `/tmp`; any other path denies. The hook is the **sole** mechanical enforcer of the `/tmp`-only policy. The hook's matcher does **not** include `Bash` or `Skill`.
+- **Mechanically enforced while active (Claude `Edit | Write | NotebookEdit` surface)**: the skill-scoped PreToolUse hook `${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research` matches `Edit|Write|NotebookEdit` and permits the call only when a fresh `research-*` activation sentinel exists and the target `tool_input.file_path` (or `tool_input.notebook_path`) resolves to an absolute path under canonical `/tmp`; any other active path outcome denies. A leaked hook registration without a fresh `research-*` sentinel allows with empty stdout. The hook is the **sole** mechanical enforcer of the `/tmp`-only policy. The hook's matcher does **not** include `Bash` or `Skill`.
 
 - **Prompt-enforced only (everything else)**:
   - **External reviewers (Cursor, Codex)** launch directly against the working tree (`cursor agent ... --workspace "$PWD"`, `codex exec --full-auto -C "$PWD"`) and have full user-level filesystem access. Their non-modification is requested in the reviewer prompt only — no mechanical guard prevents repo writes if a reviewer ignores the instruction.
@@ -99,7 +99,9 @@ Defense in depth: stdout parsing of `ISSUES_*` is the primary post-`/issue` mech
    **⚠ /research: /issue did not complete cleanly (VERIFIED=false REASON=<token>) — aborting.**
    ```
 
-5. **Fail-closed-on-any-failure intent**: when `/issue` reports `ISSUES_FAILED>=1`, the sentinel is suppressed by design and `/research` aborts at step 4. Research-result-filing semantics require all items to succeed; partial failure is operator-investigation territory.
+   Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping.
+
+5. **Fail-closed-on-any-failure intent**: when `/issue` reports `ISSUES_FAILED>=1`, the sentinel is suppressed by design and `/research` aborts at step 4. Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping. Research-result-filing semantics require all items to succeed; partial failure is operator-investigation territory.
 
 ## Progress Reporting
 
@@ -138,6 +140,26 @@ Set lane launch guards from `CODEX_BINARY_FOUND` / `CURSOR_BINARY_FOUND` or fres
 - Same logic for Cursor.
 
 **Degraded-tools gate (#3207).** After parsing Step 0 probe and binary KVs, run the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` from the session-setup parse in this Step 0 block (do not omit flags and rely on shell exports) and `--skill research`. Use the canonical interactive predicate from that shared procedure. Apply the shared contract: one-down without a prior Continue sentinel requires an operator decision, including non-interactive prompt-required routing; both-down hard-fails in every mode. The gate is not a lane-routing input; research lanes use binary-found or launcher fallback semantics.
+
+### 0a.5 — Activate read-only Write/Edit hook
+
+Create the activation sentinel only after Step 0 setup and degraded-tools gate resolution fully succeed. This must run immediately before the first `Write` / `Edit` / `NotebookEdit` need in Step 0b.
+
+```bash
+if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
+  echo "**⚠ /research: failed to activate read-only Write/Edit hook. Aborting.**"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+  exit 1
+fi
+RESEARCH_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
+RESEARCH_DENY_ACTIVE_SENTINEL="$RESEARCH_DENY_ACTIVE_DIR/research-$PPID"
+if ! mkdir -p "$RESEARCH_DENY_ACTIVE_DIR" || ! : > "$RESEARCH_DENY_ACTIVE_SENTINEL"; then
+  echo "**⚠ /research: failed to activate read-only Write/Edit hook. Aborting.**"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
+  exit 1
+fi
+printf 'RESEARCH_DENY_ACTIVE_SENTINEL=%s\n' "$RESEARCH_DENY_ACTIVE_SENTINEL"
+```
 
 ### 0b — Initialize lane-status record
 
@@ -375,7 +397,7 @@ Derive from `RESEARCH_QUESTION`: `[Research Report] <RESEARCH_QUESTION>`, trunca
 
 6. **On dedup** (`VERIFIED=true` AND `ISSUES_CREATED == 0` AND `ISSUES_DEDUPLICATED >= 1`): proceed to Step 4.
 
-7. **On failure** (`VERIFIED=false`, or `/issue` error, or `ISSUES_FAILED >= 1`): print `**⚠ 3.5: auto-issue — /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**` and proceed to Step 4.
+7. **On failure** (`VERIFIED=false`, or `/issue` error, or `ISSUES_FAILED >= 1`): remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"`, print `**⚠ 3.5: auto-issue — /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**`, and proceed to Step 4.
 
 <!-- step:4 — Cleanup and Final Warnings -->
 
@@ -396,6 +418,7 @@ The script is a no-op-safe call: when no sidecars exist, it prints a `_(no measu
 Remove the session temp directory and all files within it (unconditional):
 
 ```bash
+rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session cleanup-tmpdir --dir "$RESEARCH_TMPDIR"
 ```
 

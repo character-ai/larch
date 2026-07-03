@@ -21,6 +21,7 @@
 #  - SKILL.md surfaces only the --no-issue flag.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
+# shellcheck disable=SC2016
 
 set -euo pipefail
 
@@ -269,6 +270,29 @@ contains "$RESEARCH_MD" 'No non-substantive retry artifacts are created' '[not-s
 
 contains "$RESEARCH_MD" "Do NOT emit a \`## Research Synthesis\` header" '[synthesis gating] research-phase.md must pin orchestrator-owned synthesis header'
 contains "$RESEARCH_MD" '[lane dropped: collector NOT_SUBSTANTIVE]' '[synthesis gating] research-phase.md must pin NOT_SUBSTANTIVE dropped-lane marker'
+
+# ---------- Check 16: read-only hook activation sentinel ----------
+
+contains "$SKILL_MD" 'command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh research"' '[activation] SKILL.md frontmatter must pass research token'
+contains "$SKILL_MD" 'RESEARCH_DENY_ACTIVE_SENTINEL="$RESEARCH_DENY_ACTIVE_DIR/research-$PPID"' '[activation] SKILL.md must create research-$PPID sentinel'
+contains "$SKILL_MD" '**⚠ /research: failed to activate read-only Write/Edit hook. Aborting.**' '[activation] sentinel write failure must abort loudly'
+contains "$SKILL_MD" 'A leaked hook registration without a fresh `research-*` sentinel allows with empty stdout.' '[activation] read-only contract must document inactive fail-open behavior'
+contains "$SKILL_MD" 'any other active path outcome denies.' '[activation] read-only contract must keep active fail-closed path behavior'
+contains "$SKILL_MD" 'Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping.' '[activation] filing VERIFIED=false branch must remove sentinel'
+contains "$SKILL_MD" 'Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping. Research-result-filing semantics require all items to succeed' '[activation] filing ISSUES_FAILED branch must remove sentinel'
+contains "$SKILL_MD" 'remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"`, print `**⚠ 3.5: auto-issue — /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**`, and proceed to Step 4.' '[activation] auto-issue failure must remove sentinel'
+contains "$SKILL_MD" 'rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"' '[activation] Step 4 cleanup must remove sentinel'
+contains "$RESEARCH_MD" 'rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"' '[activation] research-phase abort branches must remove sentinel'
+
+gate_line=$(line_for "$SKILL_MD" '**Degraded-tools gate (#3207).**')
+activation_line=$(line_for "$SKILL_MD" '### 0a.5 — Activate read-only Write/Edit hook')
+write_line=$(line_for "$SKILL_MD" 'Write `$RESEARCH_TMPDIR/lane-status.txt`')
+if [[ -n "$gate_line" && -n "$activation_line" && -n "$write_line" \
+      && "$gate_line" -lt "$activation_line" && "$activation_line" -lt "$write_line" ]]; then
+  PASS=$((PASS + 1))
+else
+  fail '[activation] sentinel creation must follow degraded-tools gate and precede first Write'
+fi
 
 # ---------- Summary ----------
 

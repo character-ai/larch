@@ -56,11 +56,11 @@ Express a native GitHub blocked-by relationship between two issues using the `ad
 
 ### `/bug`
 
-**Arguments**: `<bug description>`
+**Arguments**: `[--urgent] <bug description>`
 
 **Source**: [`skills/bug/SKILL.md`](../skills/bug/SKILL.md)
 
-Investigate a user-described bug inline, compose a detailed issue body, then delegate creation to `/issue` with dedup enabled. This skill is for issue filing only: it reads the repo with `Read`/`Grep`/`Glob` and safe read-only `Bash`, never edits it, and writes scratch artifacts only under a `/tmp` `$BUG_TMPDIR`. The whole `$ARGUMENTS` string is the bug description; the skill takes no flags. If the report looks like a **security vulnerability** (or might be), it aborts before filing and points at `SECURITY.md` responsible disclosure. The composed body uses a fixed ten-heading template (Summary, Original report, Reproduction scenario, Expected, Observed, Root cause analysis, Evidence, Affected files, Suggested fix(es), Open questions) and is sanitized before write.
+Investigate a user-described bug inline, compose a detailed issue body, then delegate creation to `/issue` with dedup enabled. This skill is for issue filing only: it reads the repo with `Read`/`Grep`/`Glob` and safe read-only `Bash`, never edits it, and writes scratch artifacts only under a `/tmp` `$BUG_TMPDIR`. The `--urgent` flag changes the title prefix to `[BUG] (URGENT)`. After `$BUG_TMPDIR` exists, `/bug` writes a fresh `bug-*` activation sentinel so the `Write` hook permits only canonical `/tmp` scratch paths while active. If the report looks like a **security vulnerability** (or might be), it aborts before filing and points at `SECURITY.md` responsible disclosure. The composed body uses a fixed ten-heading template (Summary, Original report, Reproduction scenario, Expected, Observed, Root cause analysis, Evidence, Affected files, Suggested fix(es), Open questions) and is sanitized before write.
 
 ### `/cleanup`
 
@@ -202,7 +202,7 @@ Collaborative best-effort read-only research with a fixed-shape topology. The re
 
 The run produces a structured report with findings, risk assessment, difficulty estimates, and feasibility verdict.
 
-**Token telemetry**: Step 4 always renders a `## Token Spend` section before tmpdir cleanup, summarizing per-phase Claude subagent tokens. Telemetry is observability-only — there is no budget enforcement. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from the totals. When env var `LARCH_TOKEN_RATE_PER_M` is set (USD per million tokens), the report includes a `$` cost column. Tracked repo files are not modified by the Claude `Edit | Write | NotebookEdit` tool surface — scratch writes are permitted only under canonical `/tmp` (enforced mechanically by the skill-scoped `scripts/deny-edit-write.sh` PreToolUse hook). Step 3.5 auto-archives the full report as a GitHub issue on each successful run (via `/issue` single mode); `--no-issue` skips this step. `/issue` may also be invoked when the research brief calls for filing findings as issues.
+**Token telemetry**: Step 4 always renders a `## Token Spend` section before tmpdir cleanup, summarizing per-phase Claude subagent tokens. Telemetry is observability-only — there is no budget enforcement. Claude inline (orchestrator) and external lanes (Cursor/Codex) are unmeasurable and excluded from the totals. When env var `LARCH_TOKEN_RATE_PER_M` is set (USD per million tokens), the report includes a `$` cost column. Tracked repo files are not modified by the Claude `Edit | Write | NotebookEdit` tool surface while a fresh `research-*` activation sentinel exists. Active scratch writes are permitted only under canonical `/tmp` (enforced mechanically by the skill-scoped `scripts/deny-edit-write.sh research` PreToolUse hook). A leaked hook registration without a fresh sentinel allows. Step 3.5 auto-archives the full report as a GitHub issue on each successful run (via `/issue` single mode); `--no-issue` skips this step. `/issue` may also be invoked when the research brief calls for filing findings as issues.
 
 ### `/review`
 
