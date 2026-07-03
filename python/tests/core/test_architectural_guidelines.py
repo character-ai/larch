@@ -1019,6 +1019,36 @@ def test_materialize_diff_uses_upstream_for_forked_target(tmp_path: Path) -> Non
     assert "+change" in diff_text
 
 
+def test_materialize_diff_freezes_head_for_merge_base_and_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        if argv == ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD^{commit}"]:
+            return subprocess.CompletedProcess(argv, 0, "resolved-head\n", "")
+        if argv == ["git", "merge-base", "resolved-head", "origin/main"]:
+            return subprocess.CompletedProcess(argv, 0, "base-sha\n", "")
+        if argv == ["git", "diff", "base-sha..resolved-head", "--", ".", ":(exclude)larch-logs/**"]:
+            return subprocess.CompletedProcess(argv, 0, "diff body\n", "")
+        return subprocess.CompletedProcess(argv, 1, "", "unexpected command")
+
+    monkeypatch.setattr(ag.subprocess, "run", fake_run)
+
+    assert ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main") == "diff body\n"
+    assert calls == [
+        ["git", "-C", str(repo), "rev-parse", "--verify", "HEAD^{commit}"],
+        ["git", "merge-base", "resolved-head", "origin/main"],
+        ["git", "diff", "base-sha..resolved-head", "--", ".", ":(exclude)larch-logs/**"],
+    ]
+    assert "HEAD" not in calls[1]
+    assert "HEAD" not in calls[2]
+
+
 def test_staged_pin_consumable_and_invalidate(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     body = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.\n"

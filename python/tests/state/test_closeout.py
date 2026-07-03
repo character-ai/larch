@@ -19,6 +19,20 @@ def _completed(argv: list[str], rc: int = 0) -> subprocess.CompletedProcess[str]
     return subprocess.CompletedProcess(argv, rc, stdout="", stderr="")
 
 
+def _read_key_completed(argv: list[str]) -> subprocess.CompletedProcess[str] | None:
+    if "session" not in argv or "read-key" not in argv:
+        return None
+    path = Path(argv[argv.index("--file") + 1])
+    key = argv[argv.index("--key") + 1]
+    default = argv[argv.index("--default") + 1]
+    value = default
+    if path.is_file():
+        for line in path.read_text(encoding="utf-8").splitlines():
+            if line.startswith(f"{key}="):
+                value = line.split("=", 1)[1]
+    return subprocess.CompletedProcess(argv, 0, value + "\n", "")
+
+
 def _install_closeout_stub(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -233,7 +247,7 @@ def test_step_16_17_pin_exception_does_not_block_markers(
     def raising_pin(*_args: object, **_kwargs: object) -> bool:
         raise RuntimeError("pin failed")
 
-    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged", raising_pin)
+    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged_for_current_head", raising_pin)
     monkeypatch.setattr(closeout.subprocess, "run", fake_run)
 
     assert closeout.step_16_17_main([]) == 0
@@ -259,7 +273,7 @@ def test_architectural_guidelines_pin_helper_reports_skipped(
     def no_pin(*_args: object, **_kwargs: object) -> bool:
         return False
 
-    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged", no_pin)
+    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged_for_current_head", no_pin)
 
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "skipped"
 
@@ -288,13 +302,18 @@ def test_architectural_guidelines_pin_helper_refreshes_staged_assessment_on_drif
             return subprocess.CompletedProcess(argv, 0, f"{repo}\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
+    materialize_calls = 0
+
     def fake_materialize(*_args: object, **_kwargs: object) -> str:
+        nonlocal materialize_calls
+        materialize_calls += 1
         return live_diff
 
     monkeypatch.setattr(closeout, "_run", fake_run)
     monkeypatch.setattr(closeout.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
 
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "ok"
+    assert materialize_calls == 1
     assert closeout.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="current-head")
     sidecar = (tmp_path / closeout.architectural_guidelines.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
     assert f"DIFF_FINGERPRINT={closeout.architectural_guidelines.diff_fingerprint(live_diff)}" in sidecar
@@ -318,21 +337,22 @@ def test_architectural_guidelines_pin_helper_skips_post_merge_mismatched_durable
     (tmp_path / "post-merge-sentinel").write_text("MERGE_RESULT=merged\n", encoding="utf-8")
 
     def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if completed := _read_key_completed(argv):
+            return completed
         if argv[:3] == ["git", "rev-parse", "HEAD"]:
             return subprocess.CompletedProcess(argv, 0, "main-head\n", "")
         if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(argv, 0, str(Path.cwd()) + "\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    pin_calls: list[str] = []
+    pin_calls: list[tuple[str, str, str]] = []
 
     def record_pin(_tmpdir: Path, *, head_sha: str, base_ref: str, repo_root: str) -> bool:
-        del base_ref, repo_root
-        pin_calls.append(head_sha)
+        pin_calls.append((head_sha, base_ref, repo_root))
         return True
 
     monkeypatch.setattr(closeout, "_run", fake_run)
-    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged", record_pin)
+    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged_for_current_head", record_pin)
 
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "skipped"
     assert not pin_calls
@@ -352,26 +372,29 @@ def test_architectural_guidelines_pin_helper_calls_pin_without_post_merge_eviden
         },
         base_ref="origin/main",
     )
+    (tmp_path / "ship-pr-state.sh").write_text("BASE_REF=origin/main\n", encoding="utf-8")
 
     def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if completed := _read_key_completed(argv):
+            return completed
         if argv[:3] == ["git", "rev-parse", "HEAD"]:
             return subprocess.CompletedProcess(argv, 0, "main-head\n", "")
         if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(argv, 0, str(Path.cwd()) + "\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    pin_calls: list[str] = []
+    repo_root = str(Path.cwd())
+    pin_calls: list[tuple[str, str, str]] = []
 
     def record_pin(_tmpdir: Path, *, head_sha: str, base_ref: str, repo_root: str) -> bool:
-        del base_ref, repo_root
-        pin_calls.append(head_sha)
+        pin_calls.append((head_sha, base_ref, repo_root))
         return True
 
     monkeypatch.setattr(closeout, "_run", fake_run)
-    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged", record_pin)
+    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged_for_current_head", record_pin)
 
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "ok"
-    assert pin_calls == ["main-head"]
+    assert pin_calls == [("main-head", "origin/main", repo_root)]
 
 
 def test_architectural_guidelines_pin_helper_calls_pin_when_post_merge_head_matches(
@@ -389,26 +412,29 @@ def test_architectural_guidelines_pin_helper_calls_pin_when_post_merge_head_matc
         base_ref="origin/main",
     )
     (tmp_path / "post-merge-sentinel").write_text("MERGE_RESULT=merged\n", encoding="utf-8")
+    (tmp_path / "ship-pr-state.sh").write_text("BASE_REF=origin/main\n", encoding="utf-8")
 
     def fake_run(argv: list[str], **_kwargs: Any) -> subprocess.CompletedProcess[str]:
+        if completed := _read_key_completed(argv):
+            return completed
         if argv[:3] == ["git", "rev-parse", "HEAD"]:
             return subprocess.CompletedProcess(argv, 0, "main-head\n", "")
         if argv[:3] == ["git", "rev-parse", "--show-toplevel"]:
             return subprocess.CompletedProcess(argv, 0, str(Path.cwd()) + "\n", "")
         return subprocess.CompletedProcess(argv, 0, "", "")
 
-    pin_calls: list[str] = []
+    repo_root = str(Path.cwd())
+    pin_calls: list[tuple[str, str, str]] = []
 
     def record_pin(_tmpdir: Path, *, head_sha: str, base_ref: str, repo_root: str) -> bool:
-        del base_ref, repo_root
-        pin_calls.append(head_sha)
+        pin_calls.append((head_sha, base_ref, repo_root))
         return True
 
     monkeypatch.setattr(closeout, "_run", fake_run)
-    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged", record_pin)
+    monkeypatch.setattr(closeout.architectural_guidelines, "pin_note_from_staged_for_current_head", record_pin)
 
     assert closeout._pin_architectural_guidelines_note_best_effort(tmpdir=tmp_path, env={}) == "ok"
-    assert pin_calls == ["main-head"]
+    assert pin_calls == [("main-head", "origin/main", repo_root)]
 
 
 def test_step_16_17_requires_tmpdir(capsys: pytest.CaptureFixture[str]) -> None:
