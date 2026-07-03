@@ -3146,6 +3146,54 @@ def test_step5c_core_render_uses_ctx_snapshot_when_ambient_env_overrides_session
     ]
 
 
+def test_step5c_core_render_prefers_run_params_mode_over_source_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-1", REPO="owner/repo")
+    (design / "run-params.json").write_text('{"mode":"design"}\n', encoding="utf-8")
+    (design / "source-env.sh").write_text("export MODE=stale\n", encoding="utf-8")
+    seen_argv: list[list[str]] = []
+
+    def fake_publish(_argv: list[str]) -> int:
+        print(_step5c_rows(design), end="")
+        return 0
+
+    def fake_render(argv: list[str]) -> int:
+        seen_argv.append(list(argv))
+        (design / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        return 0
+
+    from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+    rc, _, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+    assert rc == 0
+    assert seen_argv == [
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "design",
+            "--design-tmpdir",
+            str(design),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "run-1",
+            "--post-publish-only",
+            "--repo",
+            "owner/repo",
+        ]
+    ]
+
+
 def test_step5c_core_requires_design_tmpdir(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     env_path = tmp_path / "source-env.sh"
     env_path.write_text(f"export CLAUDE_PLUGIN_ROOT={CLI.parent.parent}\n", encoding="utf-8")
@@ -3373,6 +3421,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     def fake_render(_argv: list[str]) -> int:
         seen_argv.append(list(_argv))
         seen_env.append(os.environ.get("FINAL_SUMMARY_PATH", ""))
+        current_summary.write_text("current rendered summary\n", encoding="utf-8")
         return 0
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel

@@ -1452,7 +1452,11 @@ def test_publish_main_delegates_to_core_usage_rc() -> None:
     assert design_publish.publish_main([]) == design_publish.publish_core([]) == 5
 
 
-def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_publish_result_env_write_failure_returns_3_with_stdout_rows(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
@@ -1463,8 +1467,23 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: P
     (design / ".design-publish-result.env").mkdir()
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_fail = os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL")
+    events: list[str] = []
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = "1"
+    def fake_proc_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
+            assert not events
+            events.append("log_publish")
+            return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    def fake_write_result_env(**_kwargs: object) -> bool:
+        assert events == ["log_publish"]
+        events.append("write_result_env")
+        return False
+
+    monkeypatch.setattr(design_publish.proc, "run", fake_proc_run)
+    monkeypatch.setattr(design_publish, "_write_result_env", fake_write_result_env)
     try:
         rc = design_publish.publish_core(
             [
@@ -1491,6 +1510,7 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: P
     assert rc == 3
     assert "PLAN_WRITE_OK=false" in out
     assert "VALIDATE_STATUS=ok" in out
+    assert events == ["log_publish", "write_result_env"]
 
 
 def test_publish_validator_defects_keep_rc4_when_result_env_write_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1574,7 +1594,9 @@ def test_publish_delegates_to_log_publish_without_inline_capture(tmp_path: Path)
     assert result.returncode == 0, result.stderr
     assert not (design / "session-transcript.jsonl").exists()
     calls = _call_args(call_log)
-    assert any(args[:2] == ["design", "log-publish"] for args in calls)
+    log_publish_calls = [args for args in calls if args[:2] == ["design", "log-publish"]]
+    assert log_publish_calls
+    assert log_publish_calls[0][log_publish_calls[0].index("--outcome") + 1] == "approved"
     assert all(args[:2] != ["run-log", "capture-transcript"] for args in calls)
     assert all(args[:2] != ["token", "claude-source"] for args in calls)
 

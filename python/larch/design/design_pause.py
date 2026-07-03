@@ -230,6 +230,8 @@ def pause_save_main(argv: Sequence[str]) -> int:
             run_id,
             "--issue",
             issue,
+            "--outcome",
+            "paused",
             *(["--repo", repo] if repo else []),
         ],
         capture_output=True,

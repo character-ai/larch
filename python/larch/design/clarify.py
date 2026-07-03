@@ -16,6 +16,7 @@ from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_lifecycle
 from larch.design import design_pause
+from larch.design.design_summary import resolve_summary_mode
 from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
@@ -837,6 +838,85 @@ def _parse_publish_ok(text: str) -> str:
     return value
 
 
+def _render_clarify_final_summary(
+    *,
+    design_tmpdir: Path,
+    env: dict[str, str],
+    issue: str,
+    outcome: str,
+) -> bool:
+    from larch.design.design_summary import (  # noqa: PLC0415
+        FinalSummaryRenderRequest,
+        render_final_summary_for_request,
+    )
+
+    return render_final_summary_for_request(
+        FinalSummaryRenderRequest(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            mode=resolve_summary_mode(design_tmpdir),
+            issue_number=issue,
+            session_id=env.get("SESSION_ID", ""),
+            repo=env.get("REPO", ""),
+            upsert_summary_comment=True,
+            stdout_log_path=design_tmpdir / f"render-final-summary.{outcome}.clarify.stdout.log",
+        )
+    )
+
+
+def _publish_clarify_log_and_summary(
+    *,
+    plugin_root: Path,
+    design_tmpdir: Path,
+    env: dict[str, str],
+    issue: str,
+    repo_args: list[str],
+    session_id: str,
+    outcome: str,
+) -> str:
+    if not session_id:
+        print("\n**⚠ /design: SESSION_ID missing; skipping design log publish**")
+        return "false"
+    publish = _run_cli(
+        plugin_root,
+        env,
+        "design",
+        "log-publish",
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--run-id",
+        session_id,
+        "--issue",
+        issue,
+        "--outcome",
+        outcome,
+        *repo_args,
+        stdout_path=design_tmpdir / "design-log-publish.stdout",
+        stderr_path=design_tmpdir / "design-log-publish.failure.log",
+    )
+    parsed_publish_ok = _parse_publish_ok(publish.stdout)
+    publish_ok = "true" if publish.returncode == 0 and parsed_publish_ok == "true" else "false"
+    if publish_ok != "true":
+        failure_exit = publish.returncode if publish.returncode != 0 else 1
+        _append_clarify_failure(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            env=env,
+            site="design Step 0b clarify publish",
+            tool="design-log-publish.sh",
+            exit_code=failure_exit,
+            output_file=design_tmpdir / "design-log-publish.failure.log",
+        )
+    if publish_ok == "true":
+        _ = _render_clarify_final_summary(
+            design_tmpdir=design_tmpdir,
+            env=env,
+            issue=issue,
+            outcome=outcome,
+        )
+    return publish_ok
+
+
 def _emit_design_kvs(rows: list[tuple[str, str]]) -> None:
     for key, value in rows:
         print(f"{key}={value}")
@@ -1081,38 +1161,6 @@ def _handle_design_clarify_publish(
 
     publish_ok = "false"
     session_id = env.get("SESSION_ID", "")
-    if session_id:
-        publish = _run_cli(
-            plugin_root,
-            env,
-            "design",
-            "log-publish",
-            "--design-tmpdir",
-            str(design_tmpdir),
-            "--run-id",
-            session_id,
-            "--issue",
-            args.issue,
-            *repo_args,
-            stdout_path=design_tmpdir / "design-log-publish.stdout",
-            stderr_path=design_tmpdir / "design-log-publish.failure.log",
-        )
-        parsed_publish_ok = _parse_publish_ok(publish.stdout)
-        if publish.returncode == 0 and parsed_publish_ok == "true":
-            publish_ok = "true"
-        else:
-            failure_exit = publish.returncode if publish.returncode != 0 else 1
-            _append_clarify_failure(
-                plugin_root=plugin_root,
-                design_tmpdir=design_tmpdir,
-                env=env,
-                site="design Step 0b clarify publish",
-                tool="design-log-publish.sh",
-                exit_code=failure_exit,
-                output_file=design_tmpdir / "design-log-publish.failure.log",
-            )
-    else:
-        print("\n**⚠ /design: SESSION_ID missing; skipping design log publish**")
 
     try:
         posted = clarify_comment_post(
@@ -1137,6 +1185,15 @@ def _handle_design_clarify_publish(
         )
     except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
         (design_tmpdir / "clarify-comment-post.stderr").write_text(_runtime_error_text(exc), encoding="utf-8")
+        publish_ok = _publish_clarify_log_and_summary(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            env=env,
+            issue=args.issue,
+            repo_args=repo_args,
+            session_id=session_id,
+            outcome="failed-clarify",
+        )
         return _publish_failure(
             design_tmpdir=design_tmpdir,
             status="comment-post-failed",
@@ -1158,11 +1215,30 @@ def _handle_design_clarify_publish(
         )
     except (ShipError, _ClarifyValidationError, _ClarifyRepoResolutionError, RuntimeError) as exc:
         (design_tmpdir / "clarify-label-remove.stderr").write_text(_runtime_error_text(exc), encoding="utf-8")
+        publish_ok = _publish_clarify_log_and_summary(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            env=env,
+            issue=args.issue,
+            repo_args=repo_args,
+            session_id=session_id,
+            outcome="failed-clarify",
+        )
         return _publish_failure(
             design_tmpdir=design_tmpdir,
             status="label-remove-failed",
             extra_rows=[("PLAN_WRITE_OK", "true"), ("PUBLISH_OK", publish_ok)],
         )
+
+    publish_ok = _publish_clarify_log_and_summary(
+        plugin_root=plugin_root,
+        design_tmpdir=design_tmpdir,
+        env=env,
+        issue=args.issue,
+        repo_args=repo_args,
+        session_id=session_id,
+        outcome="cancelled-clarify",
+    )
 
     renamed = ""
     if session_id and publish_ok == "true":

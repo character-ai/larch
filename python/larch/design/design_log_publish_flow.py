@@ -15,6 +15,7 @@ from collections.abc import Sequence
 
 from larch.core import redact
 from larch.design import design_publish
+from larch.design.design_summary import resolve_summary_mode
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -388,9 +389,40 @@ def _publish_design_logs(
         shutil.rmtree(wt_parent, ignore_errors=True)
 
 
+def _default_outcome_for_reason(reason: str) -> str:
+    return "paused" if reason == "pause" else "approved"
+
+
+def _render_final_summary_before_copy(
+    *,
+    design_tmpdir: Path,
+    outcome: str,
+    issue: str,
+    repo: str,
+    run_id: str,
+) -> bool:
+    from larch.design.design_summary import (  # noqa: PLC0415
+        FinalSummaryRenderRequest,
+        render_final_summary_for_request,
+    )
+
+    return render_final_summary_for_request(
+        FinalSummaryRenderRequest(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            mode=resolve_summary_mode(design_tmpdir),
+            issue_number=issue,
+            session_id=run_id,
+            repo=repo,
+            upsert_summary_comment=False,
+            stdout_log_path=design_tmpdir / f"render-final-summary.{outcome}.pre-publish.stdout.log",
+        )
+    )
+
+
 def log_publish_main(argv: Sequence[str]) -> int:
     args = list(argv)
-    parsed = {"--design-tmpdir": "", "--run-id": "", "--issue": "", "--repo": "", "--reason": "final"}
+    parsed = {"--design-tmpdir": "", "--run-id": "", "--issue": "", "--repo": "", "--reason": "final", "--outcome": ""}
     dry_run = False
     i = 0
     while i < len(args):
@@ -469,6 +501,16 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_NUMBER", v="")
         _emit(k="PR_URL", v="")
         return 0
+
+    outcome = parsed["--outcome"] or _default_outcome_for_reason(parsed["--reason"])
+    if not _render_final_summary_before_copy(
+        design_tmpdir=design_tmpdir,
+        outcome=outcome,
+        issue=parsed["--issue"],
+        repo=parsed["--repo"],
+        run_id=parsed["--run-id"],
+    ):
+        print("design log-publish: final-summary render failed; continuing without stale summary", file=sys.stderr)
 
     try:
         publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(

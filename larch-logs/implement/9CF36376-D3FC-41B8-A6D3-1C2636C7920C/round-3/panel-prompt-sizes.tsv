@@ -1,0 +1,11 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	3	dyn-dyn-summary-publish	specialist	cursor	dyn-dyn-summary-publish-output.txt	39245	9812		0	0
+implement Step 5	phase1	3	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	42323	10581	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	3	testing	specialist	cursor	cursor-specialist-testing-output.txt	42031	10508	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	3	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	42589	10648	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	3	testing	specialist	codex	codex-specialist-testing-output.txt	42031	10508	agents/reviewer-testing.md	5452	1363
+review Step 2	phase1	3	aggregator	aggregator	codex	aggregator-output.txt	12509	3128	agents/orchestrator-aggregator.md	4397	1100
+implement Step 5	phase1	3	voter-1	voter	codex	codex-validity-vote-output.txt	13578	3395		0	0
+implement Step 5	phase1	3	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	14335	3584		0	0
+implement Step 5	phase1	3	voter-3	voter	codex	codex-pragmatism-vote-output.txt	13605	3402		0	0
+review.fix_coder	review.fix_coder	3	implementer	implementer	codex	coder-output.log	1746	437		0	0

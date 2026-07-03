@@ -9,6 +9,7 @@ import os
 import subprocess
 import sys
 from collections.abc import Sequence
+from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
@@ -26,7 +27,7 @@ _VALID_OUTCOMES = frozenset({
     "cancelled-decompose", "cancelled-outline",
     "failed-plan-write", "failed-publish", "failed-postplan",
     "failed-clarify", "failed-judge-panel", "failed-publish-tail",
-    "publish-skipped",
+    "publish-skipped", "paused",
 })
 
 
@@ -225,6 +226,37 @@ def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
             str(record_path),
         )
 
+
+def _read_source_env_value(*, path: Path, key: str) -> str:
+    if not path.is_file() or path.is_symlink():
+        return ""
+    export_prefix = f"export {key}="
+    prefix = f"{key}="
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(export_prefix):
+            value = line[len(export_prefix):]
+        elif line.startswith(prefix):
+            value = line[len(prefix):]
+        else:
+            continue
+        return value.strip().strip('"').strip("'")
+    return ""
+
+
+def resolve_summary_mode(design_tmpdir: Path) -> str:
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file() and not run_params.is_symlink():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            parsed = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                data = cast("dict[str, object]", parsed)
+                for key in ("mode", "MODE"):
+                    value = data.get(key)
+                    if isinstance(value, str) and value:
+                        return value
+    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
+
+
 def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     status_file = design_tmpdir / "step2b-drafter-status.txt"
     if not status_file.is_file():
@@ -418,6 +450,75 @@ def _refresh_final_reports(design_tmpdir: Path) -> None:
              "--output", str(design_tmpdir / "timing-report-final.json"))
 
 
+
+@dataclass(frozen=True)
+class FinalSummaryRenderRequest:
+    """Inputs for a non-gating final-summary render wrapper."""
+
+    design_tmpdir: Path
+    outcome: str
+    mode: str
+    issue_number: str
+    session_id: str
+    repo: str
+    upsert_summary_comment: bool
+    stdout_log_path: Path
+    final_summary_path: Path | None = None
+
+
+def _append_render_warning(*, design_tmpdir: Path, message: str) -> None:
+    with contextlib.suppress(OSError):
+        with (design_tmpdir / "execution-issues.md").open("a", encoding="utf-8") as fh:
+            _ = fh.write(f"\n### Warnings\n- **design-summary**: {message}\n")
+
+
+def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool:
+    """Render an enriched final summary, returning success without raising."""
+    out_file = request.design_tmpdir / "final-summary.md"
+    cleanup_paths = {out_file}
+    if request.final_summary_path is not None:
+        with contextlib.suppress(OSError):
+            summary_resolved = request.final_summary_path.resolve()
+            tmpdir_resolved = request.design_tmpdir.resolve()
+            if summary_resolved.is_relative_to(tmpdir_resolved):
+                cleanup_paths.add(summary_resolved)
+    for cleanup_path in cleanup_paths:
+        with contextlib.suppress(OSError):
+            cleanup_path.unlink()
+    args = [
+        "--outcome",
+        request.outcome,
+        "--mode",
+        request.mode or "N/A",
+        "--design-tmpdir",
+        str(request.design_tmpdir),
+        "--issue-number",
+        request.issue_number,
+    ]
+    if request.session_id:
+        args.extend(["--session-id", request.session_id])
+    args.append("--post-publish-only")
+    if request.repo:
+        args.extend(["--repo", request.repo])
+    if not request.upsert_summary_comment:
+        args.append("--skip-summary-upsert")
+    render_rc = 1
+    try:
+        request.stdout_log_path.parent.mkdir(parents=True, exist_ok=True)
+        with request.stdout_log_path.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
+            render_rc = int(render_final_summary_main(args))
+    except BaseException as exc:
+        message = f"render_final_summary_main failed: {exc}"
+        print(f"design final-summary render: {message}", file=sys.stderr)
+        _append_render_warning(design_tmpdir=request.design_tmpdir, message=message)
+        render_rc = 1
+    if render_rc != 0:
+        for cleanup_path in cleanup_paths:
+            with contextlib.suppress(OSError):
+                cleanup_path.unlink()
+    return render_rc == 0
+
+
 def render_final_summary_main(argv: Sequence[str]) -> int:
     argv = list(argv)
     outcome = ""
@@ -429,6 +530,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     issue_number_set = False
     session_id_set = False
     phase = "post"
+    upsert_summary_comment = True
     i = 0
     while i < len(argv):
         a = argv[i]
@@ -457,6 +559,9 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
             i += 1
         elif a == "--post-publish-only":
             phase = "post"
+            i += 1
+        elif a == "--skip-summary-upsert":
+            upsert_summary_comment = False
             i += 1
         else:
             i += 1
@@ -518,8 +623,9 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
     write_ok = exit_rc == 0
+    summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 
-    if issue and issue != "0" and write_ok and out_file.is_file() and out_file.stat().st_size > 0:
+    if upsert_summary_comment and issue and issue != "0" and summary_written:
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
         ups_args: list[str] = [
             "tracking-issue", "upsert-summary",

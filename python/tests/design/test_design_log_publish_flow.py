@@ -12,6 +12,7 @@ from typing import Any
 
 import pytest
 from larch.design import design_log_publish_flow
+from larch.design import design_summary
 
 RUN_ID = "ABCDEF01-2345-6789-ABCD-EF0123456789"
 LOG_BRANCH = f"larch-logs/design-{RUN_ID}"
@@ -73,6 +74,8 @@ def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.Complete
             RUN_ID,
             "--issue",
             "33",
+            "--outcome",
+            "approved",
         ],
         cwd=repo,
         capture_output=True,
@@ -91,7 +94,7 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     result = subprocess.run(
-        [sys.executable, str(cli_py), "design", "log-publish", "--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12", "--dry-run"],
+        [sys.executable, str(cli_py), "design", "log-publish", "--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12", "--outcome", "approved", "--dry-run"],
         capture_output=True,
         text=True,
         check=False,
@@ -120,6 +123,11 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         captured["warning_step_label"] = ctx.warning_step_label
         return True
 
+    def fake_render(**kwargs: object) -> bool:
+        order.append("render")
+        captured["render_outcome"] = str(kwargs["outcome"])
+        return True
+
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
         order.append("publish")
         return (True, "77", "https://github.com/o/r/pull/77", "", "0")
@@ -127,6 +135,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
     rc = design_log_publish_flow.log_publish_main([
@@ -135,10 +144,11 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         "--issue", "33",
         "--repo", "o/r",
         "--reason", "final",
+        "--outcome", "approved",
     ])
 
     assert rc == 0
-    assert order == ["capture", "publish"]
+    assert order == ["capture", "render", "publish"]
     assert captured == {
         "design_tmpdir": str(design),
         "plugin_root": str(plugin_root),
@@ -147,6 +157,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         "repo": "o/r",
         "claude_pid": "12345",
         "warning_step_label": "5c",
+        "render_outcome": "approved",
     }
 
 
@@ -167,7 +178,9 @@ def test_log_publish_capture_failure_skips_publish(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
-    rc = design_log_publish_flow.log_publish_main(["--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33"])
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33", "--outcome", "approved"
+    ])
 
     assert rc == 0
     assert not published
@@ -184,11 +197,16 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
         assert ctx.warning_step_label == "pause"
         return True
 
+    def fake_render(**kwargs: object) -> bool:
+        reasons.append(str(kwargs["outcome"]))
+        return True
+
     def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
         reasons.append(str(kwargs["run_id"]))
         return (True, "", "", "", "0")
 
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
     rc = design_log_publish_flow.log_publish_main([
@@ -196,10 +214,11 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
         "--run-id", RUN_ID,
         "--issue", "33",
         "--reason", "pause",
+        "--outcome", "paused",
     ])
 
     assert rc == 0
-    assert reasons == [RUN_ID]
+    assert reasons == ["paused", RUN_ID]
     assert "PUBLISH_OK=true" in capsys.readouterr().out
 
 def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
@@ -230,9 +249,164 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     origin = tmp_path / "origin.git"
     ls = subprocess.run(["git", "ls-tree", "-r", "--name-only", LOG_BRANCH], cwd=origin, capture_output=True, text=True, check=False)
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
+    assert f"larch-logs/design/{RUN_ID}/final-summary.md" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/manifest.json" in ls.stdout, ls.stdout
     meta = (design / ".design-log-publish-metadata.env").read_text(encoding="utf-8")
     assert "DESIGN_LOG_PR_NUMBER=77" in meta
+
+
+def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    monkeypatch.chdir(repo)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    _ = (design / "final-summary.md").write_text("STALE-SENTINEL\n", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
+    upsert_calls: list[list[str]] = []
+    original_render = design_summary.render_final_summary_for_request
+    original_run_cli = design_summary._run_cli  # pyright: ignore[reportPrivateUsage]
+
+    def capture_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
+        captured["request"] = request
+        return original_render(request)
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("tracking-issue", "upsert-summary"):
+            upsert_calls.append(list(args))
+            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+        return original_run_cli(*args)
+
+    def fake_capture(**_kwargs: object) -> bool:
+        return True
+
+    def fake_spawn(**_kwargs: object) -> None:
+        return
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
+    monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
+
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir",
+        str(design),
+        "--run-id",
+        RUN_ID,
+        "--issue",
+        "33",
+        "--repo",
+        "o/r",
+        "--reason",
+        "final",
+        "--outcome",
+        "approved",
+    ])
+
+    assert rc == 0
+    assert captured["request"].upsert_summary_comment is False
+    assert not upsert_calls
+    origin = tmp_path / "origin.git"
+    blob = subprocess.run(
+        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert blob.returncode == 0, blob.stderr
+    assert "STALE-SENTINEL" not in blob.stdout
+    assert "## /design run" in blob.stdout
+    assert "<!-- larch:run-summary v=1 -->" in blob.stdout
+
+
+def test_log_publish_removes_stale_final_summary_when_render_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    monkeypatch.chdir(repo)
+    design = tmp_path / "design"
+    design.mkdir()
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    _ = (design / "final-summary.md").write_text("STALE-SENTINEL\n", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
+    upsert_calls: list[list[str]] = []
+    original_render = design_summary.render_final_summary_for_request
+    original_run_cli = design_summary._run_cli  # pyright: ignore[reportPrivateUsage]
+
+    def capture_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
+        captured["request"] = request
+        return original_render(request)
+
+    def fake_render_main(_argv: list[str]) -> int:
+        return 1
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("tracking-issue", "upsert-summary"):
+            upsert_calls.append(list(args))
+            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+        return original_run_cli(*args)
+
+    def fake_capture(**_kwargs: object) -> bool:
+        return True
+
+    def fake_spawn(**_kwargs: object) -> None:
+        return
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
+    monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
+
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir",
+        str(design),
+        "--run-id",
+        RUN_ID,
+        "--issue",
+        "33",
+        "--repo",
+        "o/r",
+        "--reason",
+        "final",
+        "--outcome",
+        "approved",
+    ])
+
+    assert rc == 0
+    assert captured["request"].upsert_summary_comment is False
+    assert not upsert_calls
+    origin = tmp_path / "origin.git"
+    blob = subprocess.run(
+        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert blob.returncode != 0
+    tree = subprocess.run(
+        ["git", "ls-tree", "-r", "--name-only", LOG_BRANCH],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    ).stdout
+    assert f"larch-logs/design/{RUN_ID}/final-summary.md" not in tree
+    assert not (design / "final-summary.md").exists()
 
 
 def test_log_publish_reports_and_commits_scrubbed_secret(tmp_path: Path) -> None:
