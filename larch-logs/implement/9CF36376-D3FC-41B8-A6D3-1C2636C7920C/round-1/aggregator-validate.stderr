@@ -1,0 +1,4 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add integration coverage asserting committed larch-logs/design/RUN_ID/final-summ')
+warning: fix text for slot 'dyn-dyn-summary-publish' in FINDING_7 not traceable to scoped input (first 80 chars: 'After _run_log_publish_after_capture returns merge PUBLISH_OK into kvs from publ')
+warning: fix text for slot 'dyn-dyn-summary-publish' in FINDING_10 not traceable to scoped input (first 80 chars: 'Gate the follow-up upsert on publish_ok == "true", or pass publish status into t')
+warning: fix text for slot 'dyn-dyn-summary-publish' in FINDING_11 not traceable to scoped input (first 80 chars: 'Reuse _resolve_summary_mode(design_tmpdir) (or the same helper Step 5c uses from')
