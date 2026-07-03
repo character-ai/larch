@@ -14,6 +14,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from larch.calibration import difficulty
 from larch.design import design_publish
 
 if TYPE_CHECKING:
@@ -215,6 +216,52 @@ raise SystemExit(0)
     path.chmod(path.stat().st_mode | stat.S_IXUSR)
 
 
+def _write_difficulty_recording_cli(path: Path) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        """#!/usr/bin/env python3
+import json
+import os
+import sys
+from pathlib import Path
+args = sys.argv[1:]
+call_log = os.environ.get("FAKE_CLI_CALL_LOG")
+if call_log:
+    with open(call_log, "a", encoding="utf-8") as f:
+        f.write(json.dumps(args) + "\\n")
+if args[:2] == ["plan","validate"]:
+    repo_root = ""
+    for i, arg in enumerate(args):
+        if arg == "--repo-root" and i + 1 < len(args):
+            repo_root = args[i + 1]
+    plan_path = Path(args[args.index("--plan-file") + 1])
+    plan_text = plan_path.read_text(encoding="utf-8", errors="replace")
+    record_file = os.environ.get("RECORD_FILE")
+    if record_file:
+        with open(record_file, "w", encoding="utf-8") as f:
+            f.write("REPO_ROOT=" + repo_root + "\\n")
+            f.write("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", "") + "\\n")
+            f.write("LARCH_REQUIRE_PLAN_DIFFICULTY=" + os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "") + "\\n")
+    if os.environ.get("FAKE_CLI_REQUIRE_DIFFICULTY") == "1" and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY") == "1" and "difficulty:" not in plan_text:
+        print("VALIDATE_STATUS=defects-found")
+        print("VALIDATE_DEFECT_COUNT=1")
+        print("VALIDATE_SKIPPED_COUNT=0")
+        print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
+        print("VALIDATE_LOG_FILE=/tmp/validate.log")
+        raise SystemExit(1)
+    print("VALIDATE_STATUS=ok")
+    print("VALIDATE_DEFECT_COUNT=0")
+    print("VALIDATE_SKIPPED_COUNT=0")
+    print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
+    print("VALIDATE_LOG_FILE=/tmp/validate.log")
+    raise SystemExit(0)
+raise SystemExit(0)
+""",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
 def _write_missing_script_cli(path: Path) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
@@ -405,6 +452,138 @@ def test_publish_requires_composed_plan(tmp_path: Path) -> None:
     assert result.returncode == 4
     assert "PLAN_WRITE_OK=false" in result.stdout
     assert "VALIDATE_STATUS=defects-found" in result.stdout
+
+
+def test_publish_rejects_missing_difficulty_when_validation_enforces_it(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_difficulty_recording_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndiff_lines: 1\n", encoding="utf-8")
+    call_log = tmp_path / "calls.ndjson"
+    record_file = tmp_path / "validate-invocation.env"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+    env["FAKE_CLI_REQUIRE_DIFFICULTY"] = "1"
+    env["RECORD_FILE"] = str(record_file)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 4
+    recorded = dict(line.split("=", 1) for line in record_file.read_text(encoding="utf-8").splitlines() if "=" in line)
+    assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == "1"
+    calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    assert all(call[:2] != ["named-block", "write"] for call in calls)
+
+
+def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndifficulty: HARD\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text(
+        '{"predicted_tier":"TRIVIAL","confidence":"low","rationale":"raw sidecar"}\n',
+        encoding="utf-8",
+    )
+    call_log = tmp_path / "calls.ndjson"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    sync = next(call for call in calls if call[:2] == ["difficulty", "sync-labels"])
+    assert sync[sync.index("--tier") + 1] == "MODERATE"
+    record = next(call for call in calls if call[:2] == ["difficulty", "write-record"])
+    assert record[record.index("--design-tier") + 1] == "MODERATE"
+
+
+def test_publish_rejects_invalid_raw_sidecar_before_label_or_record_writes(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    _ = (design / "composed-plan.md").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / difficulty.DESIGN_RAW_RATING_BASENAME).write_text("{invalid-json}\n", encoding="utf-8")
+    call_log = tmp_path / "calls.ndjson"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 5
+    assert not call_log.exists()
 
 
 def test_publish_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: Path) -> None:

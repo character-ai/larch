@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import contextlib
+import json
 import os
 import re
 import subprocess
@@ -103,6 +104,29 @@ def _read_review_round_count(design_tmpdir: Path) -> int:
     except OSError:
         return 0
     return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
+
+
+def _resolve_publish_difficulty_rating(*, design_tmpdir: Path, plan_text: str) -> tuple[difficulty.DifficultyRating | None, bool]:
+    raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+    raw_present = raw_path.exists() or raw_path.is_symlink()
+    if raw_present:
+        raw_rating = difficulty.read_rating_file(raw_path)
+        if raw_rating is None:
+            return None, True
+        return raw_rating, False
+    tier = difficulty.plan_difficulty(plan_text)
+    if not tier:
+        return None, False
+    try:
+        return difficulty.validate_rating_object(
+            {
+                "predicted_tier": tier,
+                "confidence": "medium",
+                "rationale": "design plan metadata",
+            }
+        ), False
+    except ValueError:
+        return None, False
 
 
 def _touch_step5b5_sentinel(design_tmpdir: Path) -> None:
@@ -696,6 +720,10 @@ def publish_core(argv: Sequence[str]) -> int:
             _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed),
             encoding="utf-8",
         )
+    plan_text = composed_plan.read_text(encoding="utf-8", errors="replace")
+    design_rating, raw_rating_invalid = _resolve_publish_difficulty_rating(design_tmpdir=design_tmpdir, plan_text=plan_text)
+    if raw_rating_invalid:
+        return 5
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")
@@ -705,6 +733,7 @@ def publish_core(argv: Sequence[str]) -> int:
             "DESIGN_TMPDIR": str(design_tmpdir),
             "LARCH_QUIET_DISABLE": "1",
             "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "LARCH_REQUIRE_PLAN_DIFFICULTY": "1",
         }
         repo_root_arg = consumer_repo_root() or plugin_root
         validate = subprocess.run(
@@ -774,8 +803,8 @@ def publish_core(argv: Sequence[str]) -> int:
         _emit_rows(kvs)
         return 1 if _write_result_env(path=result_env, rows=kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
-    design_tier = difficulty.plan_difficulty(redacted_plan.read_text(encoding="utf-8", errors="replace"))
-    if design_tier:
+    if design_rating is not None:
+        design_tier = design_rating.adjusted_tier
         sync_args = [
             sys.executable,
             str(plugin_root / "python" / "cli.py"),

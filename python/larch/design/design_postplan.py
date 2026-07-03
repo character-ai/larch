@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import sys
 from pathlib import Path
 from larch import io as larch_io
+from larch.calibration import difficulty
 from collections.abc import Sequence
 
 from larch.git.repo_roots import consumer_repo_root
@@ -58,6 +60,36 @@ def _clear_stale_or_warn(*, root: Path, design_tmpdir: Path) -> None:
     clear = _run_cli(root, "design", "dialectic-clear-stale", "--design-tmpdir", str(design_tmpdir), "--reason", "plan-rewrite")
     if clear.returncode != 0:
         print("**⚠ design-postplan: dialectic-clear-stale failed after plan rewrite; stale clarifier artifacts may linger (Gate C fingerprint binding still gates debate).**", file=sys.stderr)
+
+
+def _write_design_difficulty_sidecar(*, design_tmpdir: Path, plan_path: Path) -> None:
+    if not plan_path.is_file() or plan_path.is_symlink():
+        return
+    tier = difficulty.plan_difficulty(plan_path.read_text(encoding="utf-8", errors="replace"))
+    if not tier:
+        return
+    rating = difficulty.validate_rating_object(
+        {
+            "predicted_tier": tier,
+            "confidence": "medium",
+            "rationale": "design plan metadata",
+        }
+    )
+    raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+    larch_io.atomic_write(
+        path=raw_path,
+        text=json.dumps(
+            {
+                "predicted_tier": rating.predicted_tier,
+                "confidence": rating.confidence,
+                "rationale": rating.rationale,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        prefix=f".{raw_path.name}.",
+    )
 
 
 def _self_log_check_size_failure(root: Path, *, design_tmpdir: Path, rc: int, stdout: str, stderr: str, site: str) -> None:  # noqa: PLR0913 - cohesive self-log helper; its context fields (tmpdir, rc, stdout, stderr, site) are not worth bundling for one call site
@@ -255,6 +287,7 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
         return 1
 
     kvs["POSTPLAN_EMIT_STATUS"] = "ok"
+    _write_design_difficulty_sidecar(design_tmpdir=design_tmpdir, plan_path=plan_path)
     if plan_path.is_file() and plan_path.read_bytes() != entry_plan_hash:
         _clear_stale_or_warn(root=root, design_tmpdir=design_tmpdir)
     if not with_plan_size:
