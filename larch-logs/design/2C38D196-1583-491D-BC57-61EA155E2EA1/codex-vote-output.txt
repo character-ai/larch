@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- The lint concern is real if implemented that way, but the plan does not require a new unbaselined subprocess path, so it is not necessary for this feature.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The extra frozen-head threading is a broader cross-invocation race fix beyond the plan’s stated same-call atomicity scope, so it is not necessary for acceptance.

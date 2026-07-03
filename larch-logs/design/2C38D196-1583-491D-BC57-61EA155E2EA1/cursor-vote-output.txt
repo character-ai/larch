@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- freezing HEAD can reuse the already-baselined _current_head helper; a new direct subprocess.run is an implementation choice, not a plan necessity.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cross-invocation HEAD threading is explicitly out of scope; OOS_4 is addressed by internal materialize_implementation_diff atomicity only.

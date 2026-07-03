@@ -1,0 +1,18 @@
+# [BUG] Guideline-pin drift races persist outside the ship path (closeout re-materialization, note_fingerprint_stale fallback, non-atomic materialize_implementation_diff)
+
+## Summary
+
+PR #6060 (issue #6059) closed the three-independent-live-diff race in ship-time `_pin_and_load_guidelines_note` (`python/larch/implement/ship_guidelines.py`) by materializing the live diff once. The same class of drift race — repeated or non-atomic live-diff / merge-base computations that can observe a moving `origin/main` or HEAD — remains at other call sites and primitives:
+
+1. **Closeout re-materialization** (OOS_3, latent): the closeout/stall pin flow (`python/larch/state/closeout.py`) still uses the older pin/refresh/retry pattern with repeated live-diff computations, so concurrent drift can still drop guideline notes on stall/closeout paths. Related to prior fix #6021 but a distinct residual gap.
+2. **note_fingerprint_stale live-diff fallback** (OOS_4, latent): when the snapshot check fails, `note_fingerprint_stale` can still materialize the live diff, leaving a narrow post-pin race that can reintroduce the stale-note path.
+3. **Non-atomic materialize_implementation_diff** (OOS_6, latent): `materialize_implementation_diff` (`python/larch/core/architectural_guidelines.py`) runs `git merge-base` and `git diff` as separate subprocesses, so a moving HEAD / origin/main can expose inconsistent repo state between the two calls — even a single materialization is not internally atomic.
+
+## Provenance
+
+Surfaced as out-of-scope code-review findings (OOS_3, OOS_4, OOS_6) during `/implement` of #6059 (merged as PR #6060). Reviewer-proposed; not independently re-verified.
+
+## Suggested fix
+
+- Apply the single-snapshot approach used by PR #6060 to the remaining call sites (closeout, note_fingerprint_stale).
+- Capture a stable base/head snapshot inside `materialize_implementation_diff` so its merge-base and diff subprocess calls observe one consistent repo state.

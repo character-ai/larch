@@ -1,0 +1,5 @@
+# attributed_ballot_sha256=6bdb46c6eaae0aa6aea5eff2dd1717b8667c047d74fbe1943731b9ff9b16a7d7
+# neutral_ballot_sha256=17cc0379326e51da80758f113b9832a65473df406a0c2461ed12a82cdbc740e8
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-dyn-Git Snapshot Correctness	- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-dyn-Git Snapshot Correctness
+FINDING_2	Codex-Pragmatic, Codex-Requirements, Codex-dyn-Git Snapshot Correctness	- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements, Codex-dyn-Git Snapshot Correctness
