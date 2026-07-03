@@ -1,16 +1,15 @@
-## /implement run 8CAF456B-7F4C-46EC-9539-7D07E1F2D7D2 — stalled
+## /implement run 8CAF456B-7F4C-46EC-9539-7D07E1F2D7D2 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:44:26
-- **Cost**: 💰 TOTAL ~$12.93 — Claude $0.04, Codex-5.5 $10.09, Codex-mini $0.53, Cursor $1.60, Claude (subprocess) $0.67  |  Tokens: 15799k
+- **Cost**: 💰 TOTAL ~$13.12 — Claude $0.18, Codex-5.5 $10.09, Codex-mini $0.53, Cursor $1.60, Claude (subprocess) $0.72  |  Tokens: 15898k
 - **Issue**: #6108 — https://github.com/character-ai/larch/issues/6108
 - **PR**: #6135 — https://github.com/character-ai/larch/pull/6135
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +332/-78, larch-logs +695/-0
+- **Lines (PR diff)**: code +336/-78, larch-logs +714/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -79,4 +78,4 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
