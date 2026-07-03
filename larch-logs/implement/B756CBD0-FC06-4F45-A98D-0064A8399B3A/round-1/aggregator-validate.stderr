@@ -1,0 +1,3 @@
+warning: fix text for slot 'dyn-dyn-transcript-capture' in FINDING_1 not traceable to scoped input (first 80 chars: 'parse the snapshot, require a readable `TRANSCRIPT_PATH`, unlink the file and re')
+warning: fix text for slot 'dyn-dyn-transcript-capture' in FINDING_3 not traceable to scoped input (first 80 chars: 'Decouple transcript discovery from larch run-id presence: call token claude-sour')
+warning: fix text for slot 'dyn-dyn-transcript-capture' in FINDING_5 not traceable to scoped input (first 80 chars: 'Add a focused test that seeds a non-empty claude-source.env with a nonexistent T')
