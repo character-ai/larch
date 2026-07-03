@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:29:35
-- **Cost**: 💰 TOTAL ~$5.39 — Claude $0.50, Codex-5.5 $1.22, Codex-mini $0.84, Cursor $1.35, Claude (subprocess) $1.48  |  Tokens: 7469k
+- **Cost**: 💰 TOTAL ~$9.93 — Claude $5.04, Codex-5.5 $1.22, Codex-mini $0.84, Cursor $1.35, Claude (subprocess) $1.48  |  Tokens: 14002k
 - **Issue**: #6112 — https://github.com/character-ai/larch/issues/6112
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -68,3 +68,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): Implement parity for no-response re-ask is out of issue scope. Concern: `/implement` Step 2.3 Q/A loops use `AskUserQuestion` without an equivalent no-response re-ask rule. Operators may expect parity after this `/design`-only fix, but that parity was explicitly out of issue scope.
 - **Round 1 OOS_4** (nit): Implement run-log artifacts inflate the diff. Concern: The branch also adds implement run-log artifacts under `larch-logs/implement/CEA0DEB9-.../` alongside the two-file feature change. That is normal `/implement` output, not part of the planned diff, but it inflates the PR beyond `skills/design/SKILL.md` and `sc…
 - **Round 1 OOS_5** (nit): Rule 4–5 compression tradeoff accepted. Concern: Rule 4–5 compression removed some rationale while retaining the pinned literals and the delegated background-wait reference. That matches the plan’s closure-ratchet tradeoff; no separate finding unless runtime regressions appear.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
