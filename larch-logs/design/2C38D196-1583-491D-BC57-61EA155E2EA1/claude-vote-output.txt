@@ -1,0 +1,1 @@
+The harness hook is blocking the Read while a background wait is active. I need to end my turn and wait for the `<task-notification>` before reading the ballot.
