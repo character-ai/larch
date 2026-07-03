@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:44:26
-- **Cost**: 💰 TOTAL ~$13.00 — Claude $0.18, Codex-5.5 $10.09, Codex-mini $0.53, Cursor $1.60, Claude (subprocess) $0.60  |  Tokens: 15635k
+- **Cost**: 💰 TOTAL ~$13.02 — Claude $0.17, Codex-5.5 $10.09, Codex-mini $0.53, Cursor $1.60, Claude (subprocess) $0.63  |  Tokens: 15700k
 - **Issue**: #6108 — https://github.com/character-ai/larch/issues/6108
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -74,3 +74,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): Unknown identity keeps markers conservatively. Concern: When `cwd` or keepalive identity is unknown, collection-time filtering intentionally keeps live markers as a fail-safe, so cross-clone false positives can still occur until a session-local identity signal exists.
 - **Round 1 OOS_3** (nit): Clone-ownership helper duplication can drift. Concern: `clone_paths_same` / `marker_foreign_clone` are duplicated across the two hooks, so future edits can reintroduce inconsistent cross-clone behavior.
 - **Round 1 OOS_4** (nit): assert_deny should verify the live marker's step value. Concern: `assert_deny` checks for `STEP=` presence but not the expected step value from the live marker, so a stale constant or bogus value would still pass the metadata assertions.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
