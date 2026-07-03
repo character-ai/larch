@@ -1,6 +1,5 @@
-## /implement run 76C8012C-D7D0-4942-B9F6-EFFE73D09E37 — stalled
+## /implement run 76C8012C-D7D0-4942-B9F6-EFFE73D09E37 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 03:40:19
 - **Cost**: 💰 TOTAL ~$66.19 — Claude $0.00, Codex-5.5 $47.30, Codex-mini $3.09, Cursor $15.35, Claude (subprocess) $0.45  |  Tokens: 117228k
@@ -9,7 +8,7 @@
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +1829/-111, larch-logs +1536/-0
+- **Lines (PR diff)**: code +1833/-111, larch-logs +1555/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 3
