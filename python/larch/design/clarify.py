@@ -837,6 +837,19 @@ def _parse_publish_ok(text: str) -> str:
     return value
 
 
+def _resolve_summary_mode(design_tmpdir: Path) -> str:
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file() and not run_params.is_symlink():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            data = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for key in ("mode", "MODE"):
+                    value = data.get(key)
+                    if isinstance(value, str) and value:
+                        return value
+    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
+
+
 def _render_clarify_final_summary(
     *,
     design_tmpdir: Path,
@@ -853,7 +866,7 @@ def _render_clarify_final_summary(
         FinalSummaryRenderRequest(
             design_tmpdir=design_tmpdir,
             outcome=outcome,
-            mode=env.get("MODE", "") or "N/A",
+            mode=_resolve_summary_mode(design_tmpdir),
             issue_number=issue,
             session_id=env.get("SESSION_ID", ""),
             repo=env.get("REPO", ""),
@@ -906,12 +919,13 @@ def _publish_clarify_log_and_summary(
             exit_code=failure_exit,
             output_file=design_tmpdir / "design-log-publish.failure.log",
         )
-    _ = _render_clarify_final_summary(
-        design_tmpdir=design_tmpdir,
-        env=env,
-        issue=issue,
-        outcome=outcome,
-    )
+    if publish_ok == "true":
+        _ = _render_clarify_final_summary(
+            design_tmpdir=design_tmpdir,
+            env=env,
+            issue=issue,
+            outcome=outcome,
+        )
     return publish_ok
 
 

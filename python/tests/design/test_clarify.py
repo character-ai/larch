@@ -13,6 +13,7 @@ import pytest
 
 from larch.calibration import difficulty
 from larch.design import clarify
+from larch.design import design_summary
 from larch.core import config
 from larch.core import logging_util
 from larch.core import redact
@@ -1010,6 +1011,33 @@ def test_design_clarify_publish_happy_path(
     assert "<REDACTED-TOKEN>" not in (tmp_path / "clarify-plan.redacted.md").read_text(encoding="utf-8")
 
 
+def test_render_clarify_final_summary_uses_design_tmpdir_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "run-params.json").write_text('{"mode":"design"}\n', encoding="utf-8")
+    env = {"MODE": "stale", "SESSION_ID": "RUN1", "REPO": "owner/repo"}
+    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
+    original = design_summary.render_final_summary_for_request
+
+    def fake_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
+        captured["request"] = request
+        return True
+
+    monkeypatch.setattr(design_summary, "render_final_summary_for_request", fake_render)
+
+    assert clarify._render_clarify_final_summary(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        env=env,
+        issue="7",
+        outcome="cancelled-clarify",
+    )
+    assert captured["request"].mode == "design"
+    assert captured["request"].session_id == "RUN1"
+    assert captured["request"].upsert_summary_comment is True
+    monkeypatch.setattr(design_summary, "render_final_summary_for_request", original)
+
+
 def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -1230,3 +1258,50 @@ def test_design_clarify_publish_comment_failure_publishes_failed_summary(
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "CLARIFY_PUBLISH_STATUS=comment-post-failed\n" in result
     assert "PUBLISH_OK=true\n" in result
+
+
+def test_design_clarify_publish_failure_skips_summary_render(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner(
+        [
+            _result(stdout="PLAN_WRITE_OK=true\n"),
+            _result(stdout="STATUS=ok\n"),
+            _result(stdout=""),
+            _result(stdout="PUBLISH_OK=false\n"),
+        ]
+    )
+    summary_calls: list[str] = []
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(
+            changed=True,
+            action="remove",
+            label=clarify.LABEL_NAME,
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "_render_clarify_final_summary",
+        lambda **kwargs: summary_calls.append(str(kwargs["outcome"])) or True,
+    )
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    assert summary_calls == []
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "PUBLISH_OK=false\n" in result
+    assert "SUMMARY_OUTCOME=cancelled-clarify\n" in result

@@ -2,17 +2,60 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
+import io
+import os
 import subprocess
+import stat
 from pathlib import Path
 
 from larch.design import design_pause
+from larch.design import design_log_publish_flow
+from larch.design import design_summary
 
 # Marker delimiters mirror design_pause._PAUSE_START / _PAUSE_END (a stable wire format). Using
 # literals here keeps the test from reaching into private module members; a delimiter mismatch
 # would make _parse_pause_payload return no-pause-marker and fail these tests loudly.
 _MARKER_START = "<!-- larch:design-pause:start -->"
 _MARKER_END = "<!-- larch:design-pause:end -->"
+
+
+def _git(*argv: str, cwd: Path) -> None:
+    _ = subprocess.run(["git", *argv], cwd=cwd, check=True, capture_output=True)
+
+
+def _write_gh_stub(path: Path, *, pr_create_rc: int) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    _ = path.write_text(
+        "#!/usr/bin/env bash\n"
+        'if [ "$1" = "pr" ] && [ "$2" = "create" ]; then\n'
+        f"  if [ {pr_create_rc} -ne 0 ]; then echo 'gh: pr create failed' >&2; exit {pr_create_rc}; fi\n"
+        "  echo 'https://github.com/o/r/pull/77'\n"
+        "  exit 0\n"
+        "fi\n"
+        'if [ "$1" = "pr" ] && [ "$2" = "merge" ]; then exit 0; fi\n'
+        "exit 0\n",
+        encoding="utf-8",
+    )
+    path.chmod(path.stat().st_mode | stat.S_IXUSR)
+
+
+def _operator_repo_with_remote(tmp_path: Path) -> Path:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git("init", "-q", cwd=repo)
+    _git("checkout", "-q", "-b", "main", cwd=repo)
+    _git("config", "user.email", "t@example.com", cwd=repo)
+    _git("config", "user.name", "t", cwd=repo)
+    _ = (repo / "README.md").write_text("seed\n", encoding="utf-8")
+    _git("add", "README.md", cwd=repo)
+    _git("commit", "-q", "-m", "seed", cwd=repo)
+    origin = tmp_path / "origin.git"
+    _git("init", "-q", "--bare", str(origin), cwd=tmp_path)
+    _git("remote", "add", "origin", str(origin), cwd=repo)
+    _git("push", "-q", "-u", "origin", "main", cwd=repo)
+    return repo
 
 
 def _pause_marker_body(
@@ -145,6 +188,61 @@ def test_pause_save_writes_marker_on_publish_success(tmp_path: Path, monkeypatch
     assert publish_call[publish_call.index("--outcome") + 1] == "paused"
     assert "PAUSE_OK=true" in out
     assert (design / "pause-state.txt").is_file()
+
+
+def test_pause_save_uses_real_log_publish_path(
+    tmp_path: Path,
+    monkeypatch: object,
+    capsys: object,
+) -> None:
+    repo = _operator_repo_with_remote(tmp_path)
+    monkeypatch.chdir(repo)  # type: ignore[attr-defined]
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-1c").write_text("", encoding="utf-8")
+    _ = (design / "source-env.sh").write_text("export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8")
+    _ = (design / "artifact.txt").write_text("artifact", encoding="utf-8")
+    bin_dir = tmp_path / "bin"
+    _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+
+    upsert_calls: list[list[str]] = []
+    original_run_cli = design_summary._run_cli  # pyright: ignore[reportPrivateUsage]
+    real_run = subprocess.run
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("tracking-issue", "upsert-summary"):
+            upsert_calls.append(list(args))
+            return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+        return original_run_cli(*args)
+
+    def fake_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
+            out = io.StringIO()
+            err = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                try:
+                    subprocess.run = real_run  # type: ignore[assignment]
+                    rc = design_log_publish_flow.log_publish_main(cmd[4:])
+                finally:
+                    subprocess.run = fake_run  # type: ignore[assignment]
+            return subprocess.CompletedProcess(cmd, rc, stdout=out.getvalue(), stderr=err.getvalue())
+        return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
+
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+    monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda *, ctx: True)
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
+
+    rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])
+    out = capsys.readouterr().out  # type: ignore[attr-defined]
+
+    assert rc == 0
+    assert "PAUSE_OK=true" in out
+    assert not upsert_calls
+    assert (design / ".design-log-publish-metadata.env").is_file()
 
 
 def test_pause_save_rejects_non_allowlisted_tmpdir(capsys: object) -> None:
