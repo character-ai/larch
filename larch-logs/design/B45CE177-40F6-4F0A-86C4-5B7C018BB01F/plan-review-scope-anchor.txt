@@ -1,0 +1,104 @@
+## Summary
+
+`/design`'s final-summary render always reports `**OOS filed**: 0`, even when the run genuinely created and linked out-of-scope-observation GitHub issues. The undercount is a parser/writer format mismatch introduced in a single commit: the writer format changed but one reader was never updated to match.
+
+## Original report
+
+/design final-summary "OOS filed" count always reports 0: _oos_info() in python/larch/design/design_summary.py checks oos-issues-created.md lines for a "https://" prefix, but the writer (design_oos.py cmd_annotate, since bash-to-Python port commit 42fa25cbc) only ever writes "OOS_FILE_MAP\t<n>\t<url>" lines. The reader was never updated to match, so every /design run that files real OOS issues since that port shows OOS filed: 0 in final-summary.md even though the issues are genuinely created and linked on GitHub.
+
+## Reproduction scenario
+
+1. Run `/design <issue>` through to Step 3 plan review with at least one accepted OOS observation.
+2. Let Step 5b file it via `/larch:issue` (`NEXT_ACTION=file-issues`), then run the Step 5b annotate wrapper successfully (`FILE_DESIGN_OOS_STATUS=annotate-complete`).
+3. Confirm `$DESIGN_TMPDIR/oos-issues-created.md` contains a real mapping line, e.g.:
+   ```
+   OOS_FILE_MAP	1	https://github.com/character-ai/larch/issues/6179
+   ```
+4. Let Step 5c run `python/cli.py design render-final-summary --post-publish-only`.
+5. Observe `$DESIGN_TMPDIR/final-summary.md`'s `**OOS filed**:` line reads `0` despite the real, linked GitHub issue existing.
+
+This was reproduced live during a `/design` run on issue #6156 (OOS follow-up issue #6179 was genuinely created and blocker-linked; the design run's own final-summary still reported `OOS filed: 0`).
+
+## Expected behavior
+
+`**OOS filed**:` in `final-summary.md` should equal the number of `OOS_FILE_MAP` entries actually written to `oos-issues-created.md` by the Step 5b annotate step — i.e., it should match the real count of OOS issues created (or reused via priority-label-only paths) during the run.
+
+## Observed behavior
+
+`**OOS filed**:` always renders `0` whenever OOS filing genuinely succeeded, because the counting function silently matches zero lines against the current writer format.
+
+## Root cause analysis
+
+`_oos_info()` in `python/larch/design/design_summary.py:139-148` reads `oos-issues-created.md` and counts lines whose *stripped* content starts with the literal string `https://` (line 146):
+
+```python
+def _oos_info(design_tmpdir: Path) -> tuple[int, str]:
+    sentinel = design_tmpdir / "oos-issues-created.md"
+    if not sentinel.is_file():
+        return 0, ""
+    urls: list[str] = []
+    for raw_line in sentinel.read_text(encoding="utf-8").splitlines():
+        sline = raw_line.strip()
+        if sline.startswith("https://"):
+            urls.append(sline)
+    return len(urls), "\n".join(urls)
+```
+
+But the sole writer of that file, `cmd_annotate` in `python/larch/design/design_oos.py:826`, only ever emits three-field, tab-delimited `OOS_FILE_MAP` lines:
+
+```python
+map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
+```
+
+(`_OOS_FILE_MAP_FIELD_COUNT = 3` at line 26.) Every *other* consumer of this file inside the same module correctly keys off the `OOS_FILE_MAP\t` prefix (`design_oos.py:295`, `:547`, `:572`) — `_oos_info` is the sole outlier still expecting the legacy bare-URL-per-line format.
+
+`git show --stat 42fa25cbc` confirms both `design_oos.py` and `design_summary.py` were introduced together in that commit (`Fixes #3681: Implement issue #3681 (#4382)`, part of the bash→Python CLI port). The writer's line format was set to `OOS_FILE_MAP\t...` from the start; the reader's `https://`-prefix check appears to be carried over from an earlier bash-era format that the port never reconciled.
+
+This is a confirmed root cause, not a guess — verified directly by reading both functions and their call sites, and by confirming zero test coverage would have caught it (see Evidence).
+
+## Evidence
+
+- `python/larch/design/design_summary.py:139-148` — `_oos_info()`, the sole consumer used for the final-summary `OOS filed` count (invoked from `render_final_summary_main()`; fed into `render run-summary --oos-count`/`--oos-urls`).
+- `python/larch/design/design_oos.py:826` — `cmd_annotate`'s only write path for `oos-issues-created.md`, producing `OOS_FILE_MAP\t<n>\t<url>` lines exclusively.
+- `python/larch/design/design_oos.py:295,547,572` — three other in-module readers of the same file, all correctly matching on `OOS_FILE_MAP\t` prefix, confirming `_oos_info` is the outlier rather than the writer being wrong.
+- `git show --stat 42fa25cbc` — shows `design_oos.py` and `design_summary.py` were added together in the same porting commit, with no later commit reconciling the format mismatch.
+- `grep -rn "_oos_info" python/tests/` — zero hits; `_oos_info` has no direct unit test, which is why the mismatch was never caught mechanically.
+- Live reproduction: `/design` run on issue #6156 filed and blocker-linked real OOS issue #6179 via the standard Step 5b pipeline (`FILE_DESIGN_OOS_STATUS=annotate-complete`), and `oos-issues-created.md` contained a well-formed `OOS_FILE_MAP\t1\thttps://github.com/character-ai/larch/issues/6179` line, yet the run's own `final-summary.md` reported `**OOS filed**: 0`.
+
+## Affected files
+
+- `python/larch/design/design_summary.py` — `_oos_info()` needs to parse the `OOS_FILE_MAP\t<n>\t<url>` format (matching the other three readers in `design_oos.py`) instead of a bare `https://`-prefix line.
+- `python/tests/` (wherever `design_summary.py` unit tests live, e.g. a `test_design_summary.py`) — needs a regression test asserting `_oos_info` correctly counts real `OOS_FILE_MAP` lines, so this class of writer/reader drift is caught mechanically going forward.
+
+## Suggested fix(es)
+
+- Change `_oos_info()`'s per-line match from `sline.startswith("https://")` to `sline.startswith("OOS_FILE_MAP\t")`, split on tab, take the URL field (matching the parsing already used at `design_oos.py:547` and `:572`), and return that URL for both the count and the joined-URLs string.
+- Add a focused unit test that writes a fixture `oos-issues-created.md` with real `OOS_FILE_MAP` lines and asserts `_oos_info()` returns the correct count and URLs, so the reader/writer contract is pinned going forward.
+
+## Open questions
+
+None identified.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix `_oos_info()` in `design_summary.py` to parse the `OOS_FILE_MAP\t<n>\t<url>` lines that `cmd_annotate` actually writes, instead of the stale `https://`-prefix check.
+- Add a regression test pinning the reader/writer line-format contract so this class of drift is caught mechanically.
+
+### Non-goals
+- No changes to the writer (`cmd_annotate` in `design_oos.py`) or its three existing correct `OOS_FILE_MAP` readers.
+- No broader refactor of `oos-issues-created.md`'s sentinel format or a shared cross-module parsing helper.
+
+### Approach sketch
+- Rewrite `_oos_info()`'s per-line match to key off `OOS_FILE_MAP\t`, split on tab, and extract the URL field — mirroring the existing parsing at `design_oos.py:547` and `:572`.
+- Guard short/malformed lines the same defensive way the other readers do.
+- Add unit tests in `test_design_summary.py`: real `OOS_FILE_MAP` lines counted and joined correctly, missing file, and malformed lines ignored.
+
+### Surfaces in scope
+- `python/larch/design/design_summary.py` (`_oos_info`)
+- `python/tests/design/test_design_summary.py`
+
+### Open questions
+- None.

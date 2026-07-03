@@ -1,0 +1,65 @@
+## Approach
+
+Approach synthesis is `NO_SKETCHES`, so draft from direct repo inspection.
+
+Fix the reader only. Keep the writer and existing `design_oos.py` readers unchanged, per the approved scope.
+
+Update `_oos_info()` to:
+
+- Read `oos-issues-created.md`.
+- Match only `OOS_FILE_MAP\t` rows.
+- Split on tabs.
+- Require at least three fields.
+- Strip and collect field 3 as the URL when non-empty.
+- Ignore malformed rows.
+
+This matches `design_oos.py` parsing and keeps legacy bare-URL support out of scope.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_summary.py
+
+Change `_oos_info()` from the stale `https://` line-prefix check to the current `OOS_FILE_MAP\t<n>\t<url>` parser.
+
+Keep the function return shape unchanged: `(count, newline_joined_urls)`.
+
+### UPDATED: python/tests/design/test_design_summary.py
+
+Add focused tests near the other helper tests:
+
+- `OOS_FILE_MAP` rows count and join URLs in file order.
+- Missing `oos-issues-created.md` returns `(0, "")`.
+- Malformed rows are ignored, including short rows and blank URL fields.
+
+Use `tmp_path` fixtures and direct `_oos_info()` assertions, matching existing private-helper test style.
+
+## Edge cases
+
+- Missing sentinel file should still return zero.
+- Empty sentinel file should return zero.
+- Rows with fewer than three tab fields should not count.
+- Rows with blank URL fields should not count.
+- Non-map rows should not count.
+
+## Failure modes
+
+- If the parser accepts non-map rows, the summary may overcount stale or diagnostic text.
+- If it keeps the old bare-URL expectation, valid filed OOS issues remain undercounted.
+- If tests only cover the full render path, the bug can be hidden by renderer stubs. Pin `_oos_info()` directly.
+
+## Testing strategy
+
+Run the narrow Python test file:
+
+- `python3 -m pytest python/tests/design/test_design_summary.py -q`
+
+Also run the existing harness target that covers final-summary tests:
+
+- `make test-render-final-summary`
+- `make test-render-final-summary-bash32`
+
+difficulty: MODERATE
+diff_added: 35
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 40
