@@ -33,4 +33,5 @@ options:
 === larch-quiet-sessionstart-health.sh-94239.log ===
 === larch-quiet-ship.py-23359.log ===
 === larch-quiet-ship.py-58687.log ===
+design-log-sweep: PR #6067 skipped-not-green - required checks status pending
 === larch-quiet-tracking-issue-upsert-summary-57389.log ===
