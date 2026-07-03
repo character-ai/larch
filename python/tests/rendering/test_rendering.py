@@ -131,8 +131,10 @@ def test_generated_implementers_include_scout_sidecar(monkeypatch: pytest.Monkey
     cursor_text = rendering._implementer_text("cursor")  # pyright: ignore[reportPrivateUsage]
     assert "SCOUT_MANIFEST_PATH" in codex_text
     assert "optional best-effort" in codex_text
+    assert "TOOL_MODIFIED_HISTORY" not in codex_text
     assert "SCOUT_MANIFEST_PATH" in cursor_text
     assert "optional best-effort" in cursor_text
+    assert "cursor-modified-history" in cursor_text
 
 
 def test_topology_header_uses_python_invocation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
