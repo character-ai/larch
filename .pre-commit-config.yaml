@@ -198,9 +198,13 @@ repos:
 
       - id: pyright
         name: pyright (changed Python files)
+        # language: system so pyright resolves project + dev deps (e.g. pytest)
+        # from the ambient env, mirroring CI's python-pyright job. An isolated
+        # additional_dependencies venv can't see those imports and reports
+        # spurious reportMissingImports. Runs locally only; CI's lint job SKIPs
+        # this hook (pyright is covered by the dedicated python-pyright job).
         entry: pyright --project python/pyrightconfig.json
-        language: python
-        additional_dependencies: [pyright==1.1.409, pytest==9.0.3]
+        language: system
         files: ^python/.*\.py$
         pass_filenames: true
 
