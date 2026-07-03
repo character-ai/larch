@@ -1,0 +1,20 @@
+### FINDING_1: Acceptance gate trims are too narrow
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The acceptance-gate rewrite only authorizes renderer-owned excision, but the remaining high-value compression is in operational prose. That narrow scope could stall the PR or force edits into grep-pinned literals before the planned cap-section rewrite finishes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: `Extend acceptance-gate step 2: after renderer-owned excision, allow minimum-change trims explicitly named in edit items 3–5 plus Gate C **When**/Presentation summary tightening before any retained-literal edits; fail closed if the target is still missed.`
+
+### FINDING_2: Missing exact plan-missing warning literal
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The retained-literal list paraphrases the Gate A missing-plan warning instead of pinning the exact string. That creates a risk that compression will drop the fail-closed recovery contract even if the routing behavior stays the same.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: `Add that warning string verbatim to Required retained literals (same tier as the \`FINDING_IDS\` sentence) and to edit item 3 as non-paraphrasable text.`
+
+### FINDING_3: Step 3 cap-short-circuit contract needs explicit retention
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The rewrite points at the renderer but does not explicitly retain the Step 3 cap short-circuit contract, including enforcement on every Step 3 entry and the cap-hit breadcrumb before Step 3b/4/Gate C. That could change operator-visible routing even if rendered output remains byte-identical.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: `In edit item 1, add retained orchestration literals: Step 3 enforces the cap on every entry (initial, Gate C re-run, Gate A Ready for review) and prints the existing cap-hit breadcrumb before skipping the panel; keep SKILL.md as sole counter-writer and plan_review.py stateless for review-round-count.txt.`
