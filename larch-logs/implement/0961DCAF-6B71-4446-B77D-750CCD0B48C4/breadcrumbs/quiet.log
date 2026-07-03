@@ -30,6 +30,12 @@ ship.py: post-ensure-pr: Push
 ci_monitor: CI status query #1 in progress after 0s
 ci_monitor: CI pass after 3s -> merge
 ship.py: merge
+=== larch-quiet-ship.py-48134.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: CI pass after 4s -> merge
+ship.py: merge
 === larch-quiet-ship.py-76807.log ===
 ship.py: pr-prep: postbump/Flush+Push
 ship.py: pr-create: PR

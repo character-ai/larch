@@ -1,16 +1,15 @@
-## /implement run 0961DCAF-6B71-4446-B77D-750CCD0B48C4 — stalled
+## /implement run 0961DCAF-6B71-4446-B77D-750CCD0B48C4 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:00:44
-- **Cost**: 💰 TOTAL ~$41.36 — Claude $11.66, Codex-5.5 $20.57, Codex-mini $0.82, Cursor $8.00, Claude (subprocess) $0.31  |  Tokens: 69742k
+- **Cost**: 💰 TOTAL ~$43.75 — Claude $14.05, Codex-5.5 $20.57, Codex-mini $0.82, Cursor $8.00, Claude (subprocess) $0.31  |  Tokens: 73883k
 - **Issue**: #5976 — https://github.com/character-ai/larch/issues/5976
 - **PR**: #6084 — https://github.com/character-ai/larch/pull/6084
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +383/-80, larch-logs +719/-0
+- **Lines (PR diff)**: code +383/-80, larch-logs +720/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
