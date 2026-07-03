@@ -1209,7 +1209,7 @@
     "file": "larch/design/design_log_publish_flow.py",
     "code": "PLR0915",
     "qualified_symbol": "log_publish_main",
-    "metric": 70
+    "metric": 71
   },
   {
     "file": "larch/design/design_log_ship.py",
@@ -2655,13 +2655,13 @@
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0913",
     "qualified_symbol": "stage_and_push",
-    "metric": 9
+    "metric": 8
   },
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0915",
     "qualified_symbol": "stage_and_push",
-    "metric": 62
+    "metric": 60
   },
   {
     "file": "larch/implement/dispatch_helpers.py",
@@ -2733,7 +2733,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 169
+    "metric": 166
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -4365,7 +4365,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_derive_progress_label",
-    "metric": 8
+    "metric": 7
   },
   {
     "file": "larch/report/progress_report.py",
