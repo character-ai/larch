@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:20:57
-- **Cost**: 💰 TOTAL ~$16.59 — Claude $0.39, Codex-5.5 $11.70, Codex-mini $0.22, Cursor $4.11, Claude (subprocess) $0.17  |  Tokens: 20564k
+- **Cost**: 💰 TOTAL ~$18.81 — Claude $2.61, Codex-5.5 $11.70, Codex-mini $0.22, Cursor $4.11, Claude (subprocess) $0.17  |  Tokens: 23850k
 - **Issue**: #6062 — https://github.com/character-ai/larch/issues/6062
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): Add failure-path coverage for unresolved HEAD. Concern: The HEAD resolution failure path needs an explicit RuntimeError contract. Without regression coverage, a broken or unborn HEAD could slip through without the expected exception and later diff steps might still run.
 - **Round 1 OOS_3** (latent): Base ref can drift across repeated materializations. Concern: A separate materialization path still leaves origin/main live across calls, so the base ref can move between snapshots even though HEAD is frozen per call.
 - **Round 1 OOS_4** (latent): Stale-check fallback can rematerialize after pin. Concern: The ship pin path can still materialize twice. If the durable snapshot is missing after a successful pin, the stale check falls back to live materialization and can observe a newer HEAD between the two calls.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
