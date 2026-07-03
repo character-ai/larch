@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:14:12
-- **Cost**: 💰 TOTAL ~$11.26 — Claude $0.68, Codex-5.5 $6.91, Codex-mini $0.44, Cursor $2.95, Claude (subprocess) $0.28  |  Tokens: 15590k
+- **Cost**: 💰 TOTAL ~$25.01 — Claude $14.43, Codex-5.5 $6.91, Codex-mini $0.44, Cursor $2.95, Claude (subprocess) $0.28  |  Tokens: 30085k
 - **Issue**: #6071 — https://github.com/character-ai/larch/issues/6071
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -64,3 +64,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (nit): no-admin-fallback review-required bail still suggests `--admin`. Concern: The review-required bail text still tells the operator to merge manually with `--admin` even when `working.no_admin_fallback` is enabled, which can mislead users on the no-admin-fallback path.
 - **Round 1 OOS_2** (nit): no-admin-fallback diagnostic read lacks a ShipError regression. Concern: There is no regression that exercises `pr_merge_state` raising `ShipError` on the no-admin-fallback review-required bail path, so the operator-facing merge-state detail handling on diagnostic-read failure is not verified.
 - **Round 1 OOS_3** (nit): CI-not-ready stall/race tests still rely on `pr_review_decision`. Concern: The CI-not-ready stall/race tests still stub `pr_review_decision` to `APPROVED` even though the admin path no longer calls it, so they would not fail if that no-call invariant regressed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
