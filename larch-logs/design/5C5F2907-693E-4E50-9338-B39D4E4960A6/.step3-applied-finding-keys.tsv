@@ -1,0 +1,16 @@
+1	the prefetch window counts raw issue rows instead of title-prefixed bugs, so a single `gh issue list --limit n` call can underfill the audit or miss older bugs.
+1	git evidence and deep verification can read the wrong ref when the checkout is not exactly main.
+1	the new runtime entrypoint needs to follow the repo's package and cli import model, not a flat root module.
+1	the deep-verifier model flag has no real dispatch path, so non-sonnet choices are ignored and the public cli lies about model selection.
+1	when local grep misses a fix commit, the pr fallback still needs a merge commit to build bundles and ledger keys.
+1	the cap needs a fixed priority order and explicit overflow behavior when required candidates exceed the limit.
+1	sampled deep checks need distinct provenance and false-pass metrics so the calibration run is measurable.
+1	cached runs must not skip unfinished stages, and malformed stripping must not be cached as clean evidence.
+1	cache keys and append-only ingest need deterministic rules so duplicate or ambiguous rows do not change resume behavior.
+2	the bug corpus can still be built from open issues only, so closed [bug] fixes may never enter the audit.
+2	the `--deep-model` alias path still needs one concrete mapping that governs verifier dispatch and pricing, or the run can validate one tier while charging another.
+2	the skill still lacks an explicit stdout/argv handoff for durable run and ledger paths, so resumed stages can read stale artifacts.
+2	reporting by issue number alone can resurrect stale cached verdicts for reopened bugs or changed fix surfaces; the merge must respect the full cache key triple.
+2	`--sample k` needs to draw only from fixed triage verdicts eligible for false-pass measurement, not arbitrary or already-deep-queued rows.
+2	a substring `git log --grep` match can bind the wrong fix commit to a bug.
+2	the triage and deep agents still do not pin the ingestable jsonl fields, so the ledger cannot reliably validate or join their output.

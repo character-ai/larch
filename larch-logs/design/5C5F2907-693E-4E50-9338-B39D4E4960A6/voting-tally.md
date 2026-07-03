@@ -1,0 +1,43 @@
+# Plan Review Voting Tally
+
+## Findings
+
+| Item | YES | NO | JERR | Result |
+|---|---:|---:|---:|---|
+| FINDING_1 | 3 | 0 | 0 | accepted |
+| FINDING_2 | 3 | 0 | 0 | accepted |
+| FINDING_3 | 3 | 0 | 0 | accepted |
+| FINDING_4 | 3 | 0 | 0 | accepted |
+| FINDING_5 | 3 | 0 | 0 | accepted |
+| FINDING_6 | 3 | 0 | 0 | accepted |
+| FINDING_7 | 3 | 0 | 0 | accepted |
+| OOS_1 | 0 | 3 | 0 | rejected |
+| OOS_2 | 1 | 2 | 0 | neutral |
+| OOS_3 | 0 | 3 | 0 | rejected |
+
+## Reviewer Competition Scoreboard
+
+| Reviewer | Proposed | Accepted | Neutral | Rejected | OOS-Proposed | OOS-Accepted | OOS-Neutral | OOS-Rejected | Score |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|
+| Codex-Arch | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
+| Codex-Innovation | 1 | 1 | 0 | 0 | 0 | 0 | 0 | 0 | 2 |
+| Codex-Pragmatic | 2 | 2 | 0 | 0 | 0 | 0 | 0 | 0 | 4 |
+| Codex-Requirements | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 8 |
+| Cursor-Pragmatic | 4 | 4 | 0 | 0 | 0 | 0 | 0 | 0 | 8 |
+| Cursor-Requirements | 4 | 4 | 0 | 0 | 3 | 0 | 1 | 2 | 6 |
+
+## Voter Agreement Scoreboard
+
+| Panel | Voter | Eligible | Agree | Disagree | Missing | Agreement | Outlier |
+|---|---|---:|---:|---:|---:|---:|---|
+| design | Claude | 9 | 9 | 0 | 0 | 1.000 | false |
+| design | Codex | 9 | 9 | 0 | 0 | 1.000 | false |
+| design | Cursor | 9 | 9 | 0 | 0 | 1.000 | false |
+
+## Voter Severity Scoreboard
+
+| Panel | Voter | YES Votes | Blocker | Major | Minor | Nit | Uncertain | Missing Severity | High Rate | Calibration Score | Uncalibrated |
+|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
+| design | Claude | 7 | 0 | 7 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |
+| design | Codex | 7 | 0 | 6 | 1 | 0 | 0 | 0 | 0.857 | 1.000 | false |
+| design | Cursor | 7 | 0 | 7 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |
