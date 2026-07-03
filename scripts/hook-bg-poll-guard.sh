@@ -5,6 +5,7 @@
 set -uo pipefail
 
 [ "${LARCH_BG_POLL_GUARD_DISABLE:-}" = "1" ] && exit 0
+[ "${LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT:-}" = "1" ] && exit 0
 
 INPUT=$(cat 2>/dev/null) || exit 0
 command -v jq >/dev/null 2>&1 || exit 0

@@ -11,6 +11,7 @@ PreToolUse guard that blocks progress-observation probes (and Monitor / TaskOutp
 ## Invariants
 
 - Fails open on malformed hook input, missing `jq`, unreadable or malformed markers, telemetry write failure, and unexpected runtime errors.
+- Allows Claude subprocess tool calls when `LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1` is inherited from larch's `claude --print` launcher. This child-process boundary lets spawned Claude review, vote, and scout subprocesses read their assigned files while the parent orchestrator has a live immediate-background wait marker. Larch sets the signal only on spawned Claude children, so the parent orchestrator remains blocked by live markers unless the existing `LARCH_BG_POLL_GUARD_DISABLE=1` escape hatch is set.
 - Scopes live markers by their session tmpdir under `~/.cache/larch/sessions/` (or the allowed `${TMPDIR}` design/implement/larch parents) plus `kill -0` PID-liveness and marker age, not by `CLAUDE_PID` matching (#5684). The old `CLAUDE_PID` equality check rejected every marker in production because the hook's `PPID`/input never matched the stored value, so no probe was ever denied. The marker still records `CLAUDE_PID` as debug metadata but the hook no longer reads it.
 - The `$TMPDIR` branch of `marker_candidates` scans only `larch-*`, `claude-design-*`, and `claude-implement-*`
   prefixed dirs under `$TMPDIR` (maxdepth 2 within each), not the full TMPDIR tree. This

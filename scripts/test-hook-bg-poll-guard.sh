@@ -127,6 +127,15 @@ out=$(LARCH_BG_POLL_GUARD_DISABLE=1 run_payload "$(payload_bash "$design_tmpdir_
 assert_allow "$out" 'disable env var allows'
 
 touch "$D/plan-review/round-1/ballot.txt"
+out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=0 run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
+assert_deny "$out" 'live marker plus non-1 Claude subprocess exemption still denies Read'
+
+out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1 run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
+assert_allow "$out" 'live marker plus Claude subprocess exemption allows Read'
+
+out=$(LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1 run_payload "$(payload_monitor)")
+assert_allow "$out" 'live marker plus Claude subprocess exemption allows Monitor'
+
 out=$(run_payload "$(payload_read "$D/plan-review/round-1/ballot.txt")")
 assert_deny "$out" 'live marker plus Read under DESIGN_TMPDIR denies'
 
