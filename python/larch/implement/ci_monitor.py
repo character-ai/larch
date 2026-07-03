@@ -1196,6 +1196,25 @@ def _run_pre_push_log_refresh(callback: PrePushLogRefreshFn | None) -> bool:
         return False
 
 
+def _warn_refresh_skip_before_ci_push(*, skip: run_logs.RefreshSkip, warning_logged: bool) -> bool:
+    if skip.skipped and warning_logged:
+        reason = skip.reason or "unknown"
+        if skip.error:
+            reason = f"{reason}: {logging_util.sanitize_diagnostic_line(skip.error)}"
+        if skip.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
+            _warn_stderr(
+                f"ship-pr: run-log refresh skipped before CI-fix push: {reason} "
+                "(warning cannot be committed)"
+            )
+            return True
+        _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
+        return False
+    if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+        _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
+        return False
+    return True
+
+
 def _refresh_run_logs_before_ci_push(
     *,
     runner: Runner,
@@ -1206,36 +1225,20 @@ def _refresh_run_logs_before_ci_push(
 ) -> bool:
     if not refresh_required:
         return True
-    ok = True
     if ctx is None:
         if warning_logged:
             _warn_stderr("ship-pr: run-log refresh skipped before CI-fix push: missing run context")
-            ok = False
-    else:
-        try:
-            skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
-        except (OSError, ShipError) as exc:
-            if warning_logged:
-                detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))
-                _warn_stderr(f"ship-pr: run-log refresh failed before CI-fix push: {detail}")
-                ok = False
-        else:
-            if skip.skipped and warning_logged:
-                reason = skip.reason or "unknown"
-                if skip.error:
-                    reason = f"{reason}: {logging_util.sanitize_diagnostic_line(skip.error)}"
-                if skip.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
-                    _warn_stderr(
-                        f"ship-pr: run-log refresh skipped before CI-fix push: {reason} "
-                        "(warning cannot be committed)"
-                    )
-                else:
-                    _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
-                    ok = False
-            elif skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
-                _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
-                ok = False
-    return ok
+            return False
+        return True
+    try:
+        skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
+    except (OSError, ShipError) as exc:
+        if warning_logged:
+            detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))
+            _warn_stderr(f"ship-pr: run-log refresh failed before CI-fix push: {detail}")
+            return False
+        return True
+    return _warn_refresh_skip_before_ci_push(skip=skip, warning_logged=warning_logged)
 
 
 def _refresh_before_stage_push(
