@@ -42,6 +42,20 @@ def test_fails_record_reference(tmp_path: Path, capsys: pytest.CaptureFixture[st
     assert "skills/example/SKILL.md" in err
 
 
+def test_awk_f_file_source_does_not_treat_positional_files_as_program(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    write_skill(
+        tmp_path,
+        "skills/example/SKILL.md",
+        "```bash\nawk -f filter.awk \"$1\"\n```\n",
+    )
+
+    rc, err = run(tmp_path, capsys)
+
+    assert rc == 0, err
+
+
 def test_shell_positional_parameters_are_clean(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_skill(
         tmp_path,
@@ -78,6 +92,19 @@ def test_justified_suppression_is_clean(tmp_path: Path, capsys: pytest.CaptureFi
     assert rc == 0, err
 
 
+def test_empty_suppression_is_rejected(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_skill(
+        tmp_path,
+        "skills/example/SKILL.md",
+        "```bash\nawk '$1 == \"KEY\" {print $2}' file # lint-skill-awk-field-ref: ok\n```\n",
+    )
+
+    rc, err = run(tmp_path, capsys)
+
+    assert rc == 1
+    assert "suppression requires a justification" in err
+
+
 def test_claude_skill_tree_is_scanned(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write_skill(tmp_path, ".claude/skills/release/SKILL.md", "```bash\nawk '$1 == \"KEY\" {print $2}' file\n```\n")
 
@@ -94,3 +121,16 @@ def test_docs_and_reference_files_are_skipped(tmp_path: Path, capsys: pytest.Cap
     rc, err = run(tmp_path, capsys)
 
     assert rc == 0, err
+
+
+def test_wrapped_awk_command_is_normalized(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_skill(
+        tmp_path,
+        "skills/example/SKILL.md",
+        "```bash\nawk -F= \\\n  '$1 == \"KEY\" {print $2}' file\n```\n",
+    )
+
+    rc, err = run(tmp_path, capsys)
+
+    assert rc == 1
+    assert "skills/example/SKILL.md:2: bare awk $<digit> field reference" in err

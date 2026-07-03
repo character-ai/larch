@@ -12,8 +12,9 @@ from larch.lint.lint_common import LintError, run_file_lint
 FENCE_OPEN_RE = re.compile(r"^[ \t]{0,3}```[ \t]*(bash|sh|shell)(?:[ \t].*)?$")
 FENCE_ANY_RE = re.compile(r"^[ \t]{0,3}```")
 FIELD_REF_RE = re.compile(r"\$[0-9]+")
-SUPPRESSION = "# lint-skill-awk-field-ref: ok "
+SUPPRESSION = "# lint-skill-awk-field-ref: ok"
 BOOTSTRAP_REL = "skills/implement/SKILL.md"
+SEPARATORS = {"|", "||", "&&", ";", "&"}
 
 
 def _rel( *,path: Path, root: Path) -> str:
@@ -30,10 +31,6 @@ def iter_skill_files(root: Path) -> list[Path]:
     return sorted(files)
 
 
-def _suppressed( *,command: str, previous_line: str) -> bool:
-    return SUPPRESSION in command or SUPPRESSION in previous_line
-
-
 def _is_bootstrap_exception( *,command: str, path: Path, root: Path) -> bool:
     return (
         _rel(path=path, root=root) == BOOTSTRAP_REL
@@ -48,37 +45,47 @@ def _is_awk_token(token: str) -> bool:
     return re.search(r"(^|[/($=])awk$", clean) is not None
 
 
-def _skip_awk_options(tokens: list[str], index: int) -> str | None:
-    pos = index + 1
-    while pos < len(tokens):
-        token = tokens[pos]
-        if token in {"|", "||", "&&", ";", "&"}:
-            return None
-        if token in {"-F", "-v", "-f"}:
-            pos += 2
-            continue
-        if token.startswith(("-F", "-v", "-f")) and token != "-":
-            pos += 1
-            continue
-        if token.startswith("-"):
-            pos += 1
-            continue
-        return token
-    return None
-
-
 def _awk_programs(command: str) -> list[str]:
     try:
         tokens = shlex.split(command, posix=True)
     except ValueError:
         tokens = command.split()
     programs: list[str] = []
-    for index, token in enumerate(tokens):
+    pos = 0
+    while pos < len(tokens):
+        token = tokens[pos]
         if not _is_awk_token(token):
+            pos += 1
             continue
-        program = _skip_awk_options(tokens, index)
-        if program is not None:
-            programs.append(program)
+        pos += 1
+        source_from_file = False
+        while pos < len(tokens):
+            token = tokens[pos]
+            if token in SEPARATORS:
+                break
+            if token in {"-F", "-v"}:
+                pos += 2
+                continue
+            if token.startswith(("-F", "-v")) and token != "-":
+                pos += 1
+                continue
+            if token == "-f":
+                source_from_file = True
+                pos += 2
+                continue
+            if token.startswith("-f") and token != "-":
+                source_from_file = True
+                pos += 1
+                continue
+            if token.startswith("-"):
+                pos += 1
+                continue
+            if source_from_file:
+                pos += 1
+                continue
+            programs.append(token)
+            pos += 1
+            break
     return programs
 
 
@@ -86,9 +93,24 @@ def _command_has_awk_field_ref(command: str) -> bool:
     return any(FIELD_REF_RE.search(program) is not None for program in _awk_programs(command))
 
 
+def _suppression_reason(text: str) -> str | None:
+    marker = text.find(SUPPRESSION)
+    if marker == -1:
+        return None
+    return text[marker + len(SUPPRESSION) :].strip()
+
+
 def report_command( *,path: Path, root: Path, line_no: int, command: str, previous_line: str) -> list[str]:
-    if _suppressed(command=command, previous_line=previous_line):
-        return []
+    for text in (previous_line, command):
+        reason = _suppression_reason(text)
+        if reason is None:
+            continue
+        if reason:
+            return []
+        rel = _rel(path=path, root=root)
+        return [
+            f"{rel}:{line_no}: lint-skill-awk-field-ref suppression requires a justification"
+        ]
     if _is_bootstrap_exception(command=command, path=path, root=root):
         return []
     if not _command_has_awk_field_ref(command):
@@ -112,6 +134,13 @@ def lint_file( *,path: Path, root: Path) -> list[str]:
     logical = ""
     logical_start = 0
     logical_previous = ""
+
+    def _segment(line: str) -> str:
+        stripped = line.rstrip()
+        if stripped.endswith("\\"):
+            return stripped[:-1].rstrip()
+        return stripped
+
     for lineno, line in enumerate(lines, 1):
         if FENCE_OPEN_RE.match(line):
             in_fence = True
@@ -135,13 +164,14 @@ def lint_file( *,path: Path, root: Path) -> list[str]:
         if not in_fence:
             previous = line
             continue
+        segment = _segment(line)
         if not logical:
-            logical = line
+            logical = segment
             logical_start = lineno
             logical_previous = previous
         else:
-            logical = f"{logical} {line}"
-        if line.endswith("\\"):
+            logical = f"{logical} {segment}" if segment else logical
+        if line.rstrip().endswith("\\"):
             previous = line
             continue
         violations.extend(
