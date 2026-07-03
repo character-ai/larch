@@ -638,7 +638,6 @@ def _reset_zero_findings_tally_artifacts(design: Path) -> str:
         design / "accepted-plan-findings.md",
         design / "rejected-findings.md",
         design / "oos.md",
-        design / "oos-accepted-design.md",
     ):
         _ = artifact.write_text("", encoding="utf-8")
     tally_text = (

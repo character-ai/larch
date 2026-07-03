@@ -1667,11 +1667,124 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     assert voting.render_voter_severity_scoreboard(severity_records) in tally
 
 
+def test_tally_plan_review_accumulates_accepted_artifacts_across_rounds(tmp_path: Path) -> None:
+    round1_ballot = tmp_path / "round1-ballot.md"
+    _ = round1_ballot.write_text(
+        """### FINDING_1: Round one parser
+- **Reviewer**: Cursor-Arch
+- focus-area = correctness
+- Concern: round-one accepted parser finding.
+
+### OOS_1: Round one docs
+- **Reviewer**: Codex-OOS
+- focus-area = documentation
+- Concern: round-one accepted docs follow-up.
+""",
+        encoding="utf-8",
+    )
+    round2_ballot = tmp_path / "round2-ballot.md"
+    _ = round2_ballot.write_text(
+        """### FINDING_1: Round two rejected parser
+- **Reviewer**: Cursor-Arch
+- focus-area = correctness
+- Concern: round-two rejected parser finding.
+
+### OOS_1: Round two rejected docs
+- **Reviewer**: Codex-OOS
+- focus-area = documentation
+- Concern: round-two rejected docs follow-up.
+""",
+        encoding="utf-8",
+    )
+    v1 = tmp_path / "v1.txt"
+    v2 = tmp_path / "v2.txt"
+    v3 = tmp_path / "v3.txt"
+    for voter in (v1, v2, v3):
+        _ = voter.write_text("FINDING_1: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\n", encoding="utf-8")
+
+    design = tmp_path / "design"
+    design.mkdir()
+    round1_proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(round1_ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert round1_proc.returncode == 0, round1_proc.stderr
+    accepted_round1 = (design / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    accepted_all_round1 = (design / "accepted-plan-findings-all.md").read_text(encoding="utf-8")
+    oos_accepted_round1 = (design / "oos-accepted-design.md").read_text(encoding="utf-8")
+    assert "Round one parser" in accepted_round1
+    assert "Round one parser" in accepted_all_round1
+    assert "Round one docs" in oos_accepted_round1
+
+    for voter in (v1, v2, v3):
+        _ = voter.write_text("FINDING_1: NO SEVERITY=major\nOOS_1: NO SEVERITY=major\n", encoding="utf-8")
+    round2_proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(round2_ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert round2_proc.returncode == 0, round2_proc.stderr
+    accepted_round2 = (design / "accepted-plan-findings.md").read_text(encoding="utf-8")
+    accepted_all_round2 = (design / "accepted-plan-findings-all.md").read_text(encoding="utf-8")
+    oos_accepted_round2 = (design / "oos-accepted-design.md").read_text(encoding="utf-8")
+    rejected_round2 = (design / "rejected-findings.md").read_text(encoding="utf-8")
+    oos_round2 = (design / "oos.md").read_text(encoding="utf-8")
+    assert "Round one parser" not in accepted_round2
+    assert "Round one parser" in accepted_all_round2
+    assert "Round one docs" in oos_accepted_round2
+    assert "Round one parser" not in rejected_round2
+    assert "Round two rejected parser" in rejected_round2
+    assert "Round one docs" not in oos_round2
+    assert "Round two rejected docs" in oos_round2
+
+    for voter in (v1, v2, v3):
+        _ = voter.write_text("FINDING_1: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\n", encoding="utf-8")
+    rerun_proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(round1_ballot),
+        "--voter-files",
+        str(v1),
+        str(v2),
+        str(v3),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert rerun_proc.returncode == 0, rerun_proc.stderr
+    accepted_all_rerun = (design / "accepted-plan-findings-all.md").read_text(encoding="utf-8")
+    oos_accepted_rerun = (design / "oos-accepted-design.md").read_text(encoding="utf-8")
+    assert accepted_all_rerun.count("### FINDING_1: Round one parser") == 1
+    assert oos_accepted_rerun.count("### OOS_1: Round one docs") == 1
+
+
 def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _write_tally_ballot(ballot)
     design = tmp_path / "design-zero"
     design.mkdir()
+    prior_accepted_all = "### FINDING_9: Prior accepted\n- **Concern**: keep\n"
+    prior_oos_accepted = "### OOS_9: Prior OOS\n- **Concern**: keep\n"
+    _ = (design / "accepted-plan-findings-all.md").write_text(prior_accepted_all, encoding="utf-8")
+    _ = (design / "oos-accepted-design.md").write_text(prior_oos_accepted, encoding="utf-8")
     proc = run_cli(
         "plan-review",
         "tally",
@@ -1683,6 +1796,8 @@ def test_tally_plan_review_zero_voters_requires_main_agent(tmp_path: Path) -> No
     )
     assert "TALLY_PLAN_REVIEW_STATUS=main-agent-vote-required" in proc.stdout
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
+    assert (design / "accepted-plan-findings-all.md").read_text(encoding="utf-8") == prior_accepted_all
+    assert (design / "oos-accepted-design.md").read_text(encoding="utf-8") == prior_oos_accepted
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
     assert "fake agreement" not in tally
     assert "## Voter Agreement Scoreboard" in tally

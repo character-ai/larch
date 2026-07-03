@@ -2636,12 +2636,6 @@
   {
     "file": "larch/implement/ci_monitor.py",
     "code": "PLR0913",
-    "qualified_symbol": "monitor._base_result",
-    "metric": 6
-  },
-  {
-    "file": "larch/implement/ci_monitor.py",
-    "code": "PLR0913",
     "qualified_symbol": "poll_ci",
     "metric": 15
   },
@@ -2709,7 +2703,7 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 47
+    "metric": 46
   },
   {
     "file": "larch/implement/ship.py",
@@ -2721,7 +2715,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 50
+    "metric": 49
   },
   {
     "file": "larch/implement/ship.py",
@@ -2733,7 +2727,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 166
+    "metric": 163
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -5343,19 +5337,19 @@
     "file": "larch/review/plan_review_tally.py",
     "code": "PLR0913",
     "qualified_symbol": "_Tally._render",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/review/plan_review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "_Tally._render",
-    "metric": 57
+    "metric": 58
   },
   {
     "file": "larch/review/plan_review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "_Tally.run",
-    "metric": 58
+    "metric": 59
   },
   {
     "file": "larch/review/review_aggregate.py",

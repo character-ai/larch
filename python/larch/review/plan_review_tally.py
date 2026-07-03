@@ -662,10 +662,11 @@ class _Tally:
         sorted_ids = self._sorted_ids()
 
         accepted_plan = Path(self.design_tmpdir) / "accepted-plan-findings.md"
+        accepted_plan_all = Path(self.design_tmpdir) / "accepted-plan-findings-all.md"
         rejected_plan = Path(self.design_tmpdir) / "rejected-findings.md"
         oos_file = Path(self.design_tmpdir) / "oos.md"
         oos_accepted_local = Path(self.design_tmpdir) / "oos-accepted-design.md"
-        for artifact in (accepted_plan, rejected_plan, oos_file, oos_accepted_local):
+        for artifact in (accepted_plan, rejected_plan, oos_file):
             _ = artifact.write_text("", encoding="utf-8")
 
         active_bonus = voting.unique_finder_bonus_from_env()
@@ -683,7 +684,15 @@ class _Tally:
             logging_util.emit_kv(key="VOTING_TALLY_FILE", value=self.tally_file)
             return 0
 
-        self._render(sorted_ids=sorted_ids, accepted_plan=accepted_plan, rejected_plan=rejected_plan, oos_file=oos_file, oos_accepted_local=oos_accepted_local, active_bonus=active_bonus)
+        self._render(
+            sorted_ids=sorted_ids,
+            accepted_plan=accepted_plan,
+            accepted_plan_all=accepted_plan_all,
+            rejected_plan=rejected_plan,
+            oos_file=oos_file,
+            oos_accepted_local=oos_accepted_local,
+            active_bonus=active_bonus,
+        )
         self._write_findings_outputs(sorted_ids)
         self.status_emitted = True
         logging_util.emit_kv(key="TALLY_PLAN_REVIEW_STATUS", value="ok")
@@ -729,6 +738,7 @@ class _Tally:
         *,
         sorted_ids: list[str],
         accepted_plan: Path,
+        accepted_plan_all: Path,
         rejected_plan: Path,
         oos_file: Path,
         oos_accepted_local: Path,
@@ -817,9 +827,10 @@ class _Tally:
 
         _ = Path(self.tally_file).write_text(buf, encoding="utf-8")
         _append(path=accepted_plan, chunks=accepted_chunks)
+        _accumulate_round_accepted_all(path=accepted_plan_all, chunks=accepted_chunks)
         _append(path=rejected_plan, chunks=rejected_chunks)
         _append(path=oos_file, chunks=oos_chunks)
-        _append(path=oos_accepted_local, chunks=oos_accepted_chunks)
+        _accumulate_round_oos(path=oos_accepted_local, chunks=oos_accepted_chunks)
 
     @staticmethod
     def _scoreboard(score_rows: list[tuple[str, str, str, int, float]]) -> str:
@@ -872,6 +883,63 @@ def _append(*, path: Path, chunks: list[str]) -> None:
     if chunks:
         with path.open("a", encoding="utf-8") as handle:
             _ = handle.write("".join(chunks))
+
+
+_ARTIFACT_BLOCK_HEADING_RE = re.compile(r"(?m)^### (?:FINDING|OOS)_[0-9]+(?:\b|:).*$")
+
+
+def _read_regular_file_text(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
+def _markdown_artifact_blocks(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    if not normalized.strip():
+        return []
+    matches = list(_ARTIFACT_BLOCK_HEADING_RE.finditer(normalized))
+    if not matches:
+        return [_ensure_trailing_newline(normalized)]
+    blocks: list[str] = []
+    if normalized[: matches[0].start()].strip():
+        blocks.append(_ensure_trailing_newline(normalized[: matches[0].start()]))
+    for idx, match in enumerate(matches):
+        end = matches[idx + 1].start() if idx + 1 < len(matches) else len(normalized)
+        block = normalized[match.start():end]
+        if block.strip():
+            blocks.append(_ensure_trailing_newline(block))
+    return blocks
+
+
+def _ensure_trailing_newline(text: str) -> str:
+    return text if text.endswith("\n") else text + "\n"
+
+
+def _append_unique_artifact_blocks(*, path: Path, chunks: list[str]) -> None:
+    if not chunks:
+        return
+    existing_text = _read_regular_file_text(path)
+    seen = set(_markdown_artifact_blocks(existing_text))
+    new_blocks: list[str] = []
+    for chunk in chunks:
+        for block in _markdown_artifact_blocks(chunk):
+            if block not in seen:
+                seen.add(block)
+                new_blocks.append(block)
+    if not new_blocks:
+        return
+    separator = "\n" if existing_text and not existing_text.endswith("\n") else ""
+    with path.open("a", encoding="utf-8") as handle:
+        _ = handle.write(separator + "".join(new_blocks))
+
+
+def _accumulate_round_accepted_all(*, path: Path, chunks: list[str]) -> None:
+    _append_unique_artifact_blocks(path=path, chunks=chunks)
+
+
+def _accumulate_round_oos(*, path: Path, chunks: list[str]) -> None:
+    _append_unique_artifact_blocks(path=path, chunks=chunks)
 
 
 def main(argv: list[str]) -> int:

@@ -1516,7 +1516,7 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
 def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Stale accepted-plan-findings.md from a prior round must not survive zero-findings short-circuit (#5032)."""
+    """Round-local artifacts clear while accepted cumulative artifacts survive zero-findings short-circuit."""
     design = tmp_path
     plan_file = design / "plan.txt"
     feature_file = design / "feature.txt"
@@ -1529,7 +1529,10 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     )
     _ = (design / "rejected-findings.md").write_text("### [Plan Review] FINDING_2\n", encoding="utf-8")
     _ = (design / "oos.md").write_text("### OOS_1: stale\n", encoding="utf-8")
-    _ = (design / "oos-accepted-design.md").write_text("stale oos accepted\n", encoding="utf-8")
+    prior_oos = "### OOS_1: Accepted round 1\n- **Concern**: keep accepted OOS\n"
+    prior_accepted_all = "### FINDING_9: Accepted round 1\n- **Concern**: keep accepted finding\n"
+    _ = (design / "oos-accepted-design.md").write_text(prior_oos, encoding="utf-8")
+    _ = (design / "accepted-plan-findings-all.md").write_text(prior_accepted_all, encoding="utf-8")
     _ = (design / "voting-tally.md").write_text(
         "## Findings\n| Item | YES | NO | JERR | Result |\n| FINDING_1 | 3 | 0 | 0 | accepted |\n",
         encoding="utf-8",
@@ -1555,7 +1558,8 @@ def test_execute_round_zero_findings_clears_stale_tally_artifacts(
     assert not (design / "accepted-plan-findings.md").read_text(encoding="utf-8").strip()
     assert not (design / "rejected-findings.md").read_text(encoding="utf-8").strip()
     assert not (design / "oos.md").read_text(encoding="utf-8").strip()
-    assert not (design / "oos-accepted-design.md").read_text(encoding="utf-8").strip()
+    assert (design / "oos-accepted-design.md").read_text(encoding="utf-8") == prior_oos
+    assert (design / "accepted-plan-findings-all.md").read_text(encoding="utf-8") == prior_accepted_all
     assert "FINDING_1" not in (design / "voting-tally.md").read_text(encoding="utf-8")
     assert values.get("VOTING_TALLY_FILE") == str(design / "voting-tally.md")
 
