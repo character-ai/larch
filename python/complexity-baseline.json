@@ -6159,7 +6159,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_infra",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6195,7 +6195,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "invoke_main",
-    "metric": 16
+    "metric": 18
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6231,7 +6231,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_infra",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6261,7 +6261,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "invoke_main",
-    "metric": 13
+    "metric": 15
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6273,7 +6273,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_infra",
-    "metric": 74
+    "metric": 77
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6297,7 +6297,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "invoke_main",
-    "metric": 89
+    "metric": 93
   },
   {
     "file": "larch/state/closeout.py",

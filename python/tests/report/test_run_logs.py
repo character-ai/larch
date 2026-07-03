@@ -1458,7 +1458,7 @@ def test_larch_log_write_rebases_root_relative_log_root_and_input_file(
     session.mkdir()
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
     source = session / "token-report.json"
-    source.write_text("token report\n", encoding="utf-8")
+    _ = source.write_text("token report\n", encoding="utf-8")
 
     rc = run_logs.larch_log_write_main([
         "--log-root",
@@ -1485,7 +1485,7 @@ def test_larch_log_append_rebases_root_relative_log_root_and_record_file(
     session.mkdir()
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
     record = session / "execution-issue-record.ndjson"
-    record.write_text('{"message":"ok"}\n', encoding="utf-8")
+    _ = record.write_text('{"message":"ok"}\n', encoding="utf-8")
 
     rc = run_logs.larch_log_append_main([
         "--log-root",
