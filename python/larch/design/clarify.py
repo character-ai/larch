@@ -993,7 +993,7 @@ def _handle_design_clarify_publish(
         redacted = redact.redact_secrets_only(Path(plan_file).read_text(encoding="utf-8", errors="replace"))
     except (OSError, RuntimeError):
         return _publish_failure(design_tmpdir=design_tmpdir, status="redact-failed", summary="failed-plan-write")
-    design_rating, raw_rating_invalid = design_publish._resolve_publish_difficulty_rating(  # pyright: ignore[reportPrivateUsage]
+    design_rating, raw_rating_invalid = design_publish._resolve_publish_difficulty_rating(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
         design_tmpdir=design_tmpdir,
         plan_text=Path(plan_file).read_text(encoding="utf-8", errors="replace"),
     )
@@ -1034,51 +1034,50 @@ def _handle_design_clarify_publish(
             extra_rows=[("PLAN_WRITE_OK", "false")],
         )
 
-    if design_rating is not None:
-        sync_args = [
-            "difficulty",
-            "sync-labels",
-            "--issue",
-            args.issue,
-            "--tier",
-            design_rating.adjusted_tier,
-        ]
-        if env.get("REPO"):
-            sync_args.extend(["--repo", env["REPO"]])
-        _ = _run_cli(
-            plugin_root,
-            env,
-            *sync_args,
-            stdout_path=design_tmpdir / "clarify-difficulty-sync.stdout",
-            stderr_path=design_tmpdir / "clarify-difficulty-sync.stderr",
+    sync_args = [
+        "difficulty",
+        "sync-labels",
+        "--issue",
+        args.issue,
+        "--tier",
+        design_rating.adjusted_tier,
+    ]
+    if env.get("REPO"):
+        sync_args.extend(["--repo", env["REPO"]])
+    _ = _run_cli(
+        plugin_root,
+        env,
+        *sync_args,
+        stdout_path=design_tmpdir / "clarify-difficulty-sync.stdout",
+        stderr_path=design_tmpdir / "clarify-difficulty-sync.stderr",
+    )
+    with contextlib.suppress(OSError, ValueError):
+        record = difficulty.build_record(
+            rater="design",
+            rater_tool="claude",
+            rater_model="unknown",
+            design_rating=design_rating,
         )
-        with contextlib.suppress(OSError, ValueError):
-            record = difficulty.build_record(
-                rater="design",
-                rater_tool="claude",
-                rater_model="unknown",
-                design_rating=design_rating,
+        record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+        difficulty.write_record(record_path, record)
+        session_id_for_batch = env.get("SESSION_ID", "")
+        if session_id_for_batch:
+            _ = _run_cli(
+                plugin_root,
+                env,
+                "run-log",
+                "write",
+                "--skill",
+                "design",
+                "--run-id",
+                session_id_for_batch,
+                "--batch",
+                "difficulty-rating",
+                "--input-file",
+                str(record_path),
+                stdout_path=design_tmpdir / "clarify-difficulty-write.stdout",
+                stderr_path=design_tmpdir / "clarify-difficulty-write.stderr",
             )
-            record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
-            difficulty.write_record(record_path, record)
-            session_id_for_batch = env.get("SESSION_ID", "")
-            if session_id_for_batch:
-                _ = _run_cli(
-                    plugin_root,
-                    env,
-                    "run-log",
-                    "write",
-                    "--skill",
-                    "design",
-                    "--run-id",
-                    session_id_for_batch,
-                    "--batch",
-                    "difficulty-rating",
-                    "--input-file",
-                    str(record_path),
-                    stdout_path=design_tmpdir / "clarify-difficulty-write.stdout",
-                    stderr_path=design_tmpdir / "clarify-difficulty-write.stderr",
-                )
 
     publish_ok = "false"
     session_id = env.get("SESSION_ID", "")

@@ -92,7 +92,7 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
 def test_postplan_with_plan_size_writes_design_difficulty_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     design = tmp_path / "design"
     _postplan_fixture(design, partition_requested=False)
-    (design / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _ = (design / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
     _patch_postplan_cli(
         monkeypatch,
         tmp_path,

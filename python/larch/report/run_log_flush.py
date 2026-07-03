@@ -468,6 +468,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
         return
     if not isinstance(data, dict):
         return
+    data = cast("dict[str, object]", data)
     predicted = str(data.get("predicted_tier") or "").upper()
     confidence = str(data.get("confidence") or "").lower()
     rationale = str(data.get("rationale") or "")
@@ -479,12 +480,9 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
         )
     except ValueError:
         return
-    changed = subprocess.run(
+    changed = proc.run(
         ["git", "diff", "--name-only", "HEAD"],
         cwd=cwd,
-        text=True,
-        capture_output=True,
-        check=False,
     )
     if changed.returncode != 0:
         return
@@ -498,7 +496,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
             "changed_paths": changed_paths,
             "panel_skipped": str(data.get("panel_skipped") or ""),
             "audit_upgrade": str(data.get("audit_upgrade") or ""),
-            "escalations": tuple(str(item) for item in data.get("escalations") or ()),
+            "escalations": tuple(str(item) for item in cast("tuple[object, ...]", data.get("escalations") or ())),
         }
         if rater == "implement":
             kwargs["implement_rating"] = source_rating

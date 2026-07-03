@@ -530,7 +530,7 @@ def test_render_final_summary_persists_difficulty_record_before_render(
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setenv("SESSION_ID", "design-run-1")
     monkeypatch.setenv("ISSUE_NUMBER", "0")
-    (tmp_path / "composed-plan.md").write_text(
+    _ = (tmp_path / "composed-plan.md").write_text(
         "## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n",
         encoding="utf-8",
     )
@@ -547,7 +547,10 @@ def test_render_final_summary_persists_difficulty_record_before_render(
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
 
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
-    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", lambda **_kw: None)
+    def fake_gate(**_kw: object) -> None:
+        return None
+
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
 
     rc = design_summary.render_final_summary_main(["--outcome", "approved"])
 

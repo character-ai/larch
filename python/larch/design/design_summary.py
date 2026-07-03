@@ -212,7 +212,7 @@ def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
             )
             difficulty.write_record(record_path, record)
     with contextlib.suppress(OSError, ValueError):
-        _run_cli(
+        _ = _run_cli(
             "run-log",
             "write",
             "--skill",
