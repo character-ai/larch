@@ -33,6 +33,7 @@ larch-logs/
       codex-commit-message.txt
       codex-impl-manifest-raw.json
       plan-review-tally.json
+      difficulty-rating.json
       code-review-tally.json
       review-findings-full.jsonl
       final-summary.md
@@ -65,6 +66,7 @@ larch-logs/
       review-findings.ndjson
       review-tally.md
       review-scout-manifest.json
+      difficulty-rating.json
       review-round-summary.md
       review-findings-classification-round-<N>.tsv
       panel-prompt-sizes.tsv
@@ -305,7 +307,7 @@ outcome. Those rows intentionally keep empty `vN_*` cells until later
 main-agent adjudication; the accepted/rejected/OOS markdown artifacts are the
 authoritative operator-facing outcome for that degraded round.
 
-`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, `review-round-summary` for the human-readable round summary, and `review-findings-classification-round-N` for the forensic vote/rating TSV.
+`/review` uses the same `larch-logs/<skill>/<RUN_ID>/` layout when a run ID is provided. Review phase names are encoded in flat batch slugs, not subdirectories: `review-context` for gathered context, `review-panel-manifest` for launched slots, `review-findings` for collected finding records, `review-tally` for vote results, `review-scout-manifest` for dynamic-reviewer scout status, `difficulty-rating` for the standalone run difficulty record, `review-round-summary` for the human-readable round summary, and `review-findings-classification-round-N` for the forensic vote/rating TSV.
 
 ## manifest.json
 
@@ -420,11 +422,15 @@ See `python/compose_review.py` for the same mixed-stream contract (`python/cli.p
 
 Markdown explanation of the version bump classification: which bump type was chosen (PATCH / MINOR / MAJOR), which changed files drove the decision, and the reasoning applied. Useful for auditing unexpected version jumps on release-driven paths.
 
+### difficulty-rating.json
+
+**Mode**: replace. **Written**: every design, implement, and standalone review run records a JSON object with `schema_version: 1`, rater identity, predicted and applied tier, confidence, bounded rationale, design and implement tiers when known, floor matches, audit placeholders, escalation placeholders, and `panel_skipped` when the run intentionally skipped review. The rating is model judgment anchored by `docs/difficulty-rating.md`; deterministic floors in `docs/difficulty-floor-globs.tsv` can raise the applied tier but never lower it. Early degraded partial dirs may rely on the existing partial-run tolerance rules.
+
 ### final-summary.md
 
 **Mode**: replace. **Written**: the committed body is rendered by `python/cli.py render run-summary`; [`python/cli.py final-report write`](../skills/implement/scripts/write-final-report.md) writes `larch-logs/implement/<RUN_ID>/final-summary.md` and upserts the tracking-issue `larch:final-summary` comment for `/implement`, while `python/cli.py design render-final-summary` does the same for `/design` under `larch-logs/design/<RUN_ID>/` during the post-outcome `python/cli.py design step5c` render after plan write, diagram upsert, rename, and design-log publish have settled.
 
-Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
+Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id> — <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
 For `/implement`, public pre-vote OOS drops from `round-*/oos-dropped-before-vote.md` also surface in a bounded `## Dropped OOS candidates` section. This section is a manual filing queue for confirmed follow-up issues. Security-routed drops stay out of this public section.
 
@@ -511,17 +517,18 @@ individually. Sections:
 | `collector` | `collector-results.env` (raw text) |
 | `summary` | `review-summary.json` (JSON passthrough) |
 | `coder` | `coder.env` (KV → JSON object) |
+| `difficulty` | scout difficulty sidecar or absent placeholder |
 | `wrapper_logs.cursor` | `coder-cursor.wrapper.log` (raw text) |
 | `wrapper_logs.codex` | `coder-codex.wrapper.log` (raw text) |
 
-Absent sections are omitted. The audit scan `coder-tool` reads `round-meta.json`
+Absent sections are omitted except `difficulty`, which may carry `tier_in_effect`, `ceiling_in_effect`, empty escalation placeholders, and scout source fields when present. The audit scan `coder-tool` reads `round-meta.json`
 as the primary source (`.coder.CODER_TOOL` via jq), falling back to `coder.env`
 for rounds predating Phase 3c.
 
 **Archetype pool** (Phase 3c) — `reviewer-dyn-*.md` archetype definitions are
 no longer committed per-round. Each unique definition is written once to
 `larch-logs/shared/archetypes/<sha256-12>.md` (content-addressed, idempotent).
-Entries in `panel-manifest.ndjson` for `dyn-*` slots carry an `archetype_ref`
+Entries in `panel-manifest.ndjson` carry `vendor` and `resolved_model` for each slot. Entries for `dyn-*` slots also carry an `archetype_ref`
 field (the SHA256-12 identifier). To resolve an archetype: look up
 `archetype_ref` in `panel-manifest.ndjson`, then read
 `larch-logs/shared/archetypes/<archetype_ref>.md`. The pool grows monotonically.
@@ -568,8 +575,8 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 **Default policy (slim)**:
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
-- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
+- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`.
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.
 

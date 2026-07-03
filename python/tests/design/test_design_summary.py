@@ -510,3 +510,50 @@ def test_render_final_summary_write_failure_skips_upsert(
 
     assert rc == 1
     assert not upsert_calls
+
+
+def test_difficulty_summary_line_prefers_record(tmp_path: Path) -> None:
+    _ = (tmp_path / "difficulty-rating.json").write_text(
+        '{"predicted_tier":"MODERATE","applied_tier":"HARD","floors_applied":[{"path":"hooks/x"}],"confidence":"medium"}\n',
+        encoding="utf-8",
+    )
+
+    line = design_summary._difficulty_summary_line(tmp_path)  # pyright: ignore[reportPrivateUsage]
+
+    assert line == "predicted MODERATE; applied HARD; floor raised"
+
+
+def test_render_final_summary_persists_difficulty_record_before_render(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "design-run-1")
+    monkeypatch.setenv("ISSUE_NUMBER", "0")
+    _ = (tmp_path / "composed-plan.md").write_text(
+        "## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n",
+        encoding="utf-8",
+    )
+    calls: list[tuple[str, ...]] = []
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        calls.append(args)
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            _ = out_file.write_text(
+                "## /design run design-run-1 — approved\n\n<!-- larch:run-summary v=1 -->\n",
+                encoding="utf-8",
+            )
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    def fake_gate(**_kw: object) -> None:
+        return None
+
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", fake_gate)
+
+    rc = design_summary.render_final_summary_main(["--outcome", "approved"])
+
+    assert rc == 0
+    assert (tmp_path / "difficulty-rating.json").is_file()
+    assert any(args[:2] == ("run-log", "write") for args in calls)

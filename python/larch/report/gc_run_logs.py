@@ -17,7 +17,7 @@ from pathlib import Path
 from larch.core import logging_util
 
 SKILLS = ("design", "implement", "review")
-COMMON_KEEP = {"manifest.json", "final-summary.md", "gc-slimmed"}
+COMMON_KEEP = {"manifest.json", "final-summary.md", "difficulty-rating.json", "gc-slimmed"}
 SKILL_KEEP = {
     "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md"},
     # session-id disambiguates multiple larch-tokens-*.jsonl ledgers for report_tokens_scan.

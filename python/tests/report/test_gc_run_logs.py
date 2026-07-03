@@ -277,3 +277,11 @@ def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_pat
     result = scan(_ScanRunner(repo), skill="design", repo_override="o/r")
     assert len(result.records) == 1
     assert result.records[0].codex.total == 11
+
+
+def test_keep_file_retains_difficulty_rating() -> None:
+    keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
+
+    assert keep(filename="difficulty-rating.json", skill="implement")
+    assert keep(filename="difficulty-rating.json", skill="design")
+    assert keep(filename="difficulty-rating.json", skill="review")

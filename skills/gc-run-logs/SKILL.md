@@ -12,7 +12,7 @@ Run dirs in `larch-logs/design/`, `larch-logs/implement/`, and `larch-logs/revie
 
 **Consumer-core keep set** (preserved by slim; `--delete` removes everything):
 
-- Both skills: `manifest.json`, `final-summary.md`
+- All skills: `manifest.json`, `final-summary.md`, `difficulty-rating.json`
 - implement: `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`
 - design: `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`
 

@@ -13,6 +13,7 @@ from collections.abc import Sequence
 
 from larch import io as larch_io
 from larch.report import design_diagram_log
+from larch.calibration import difficulty
 from larch.core import proc
 from larch.report import run_logs
 from larch.design import design_step0_env
@@ -73,7 +74,7 @@ def _is_repo(value: str) -> bool:
     return bool(re.fullmatch(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+", value))
 
 
-_PROVENANCE_META_KEYS = ("review_status", "rounds_completed")
+_PROVENANCE_META_KEYS = ("review_status", "rounds_completed", "difficulty")
 _OPTIONAL_TRAILER_RE = re.compile(
     r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
 )
@@ -102,6 +103,29 @@ def _read_review_round_count(design_tmpdir: Path) -> int:
     except OSError:
         return 0
     return int(raw, 10) if re.fullmatch(r"[0-9]+", raw) else 0
+
+
+def _resolve_publish_difficulty_rating(*, design_tmpdir: Path, plan_text: str) -> tuple[difficulty.DifficultyRating | None, bool]:
+    raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+    raw_present = raw_path.exists() or raw_path.is_symlink()
+    if raw_present:
+        raw_rating = difficulty.read_rating_file(raw_path)
+        if raw_rating is None:
+            return None, True
+        return raw_rating, False
+    tier = difficulty.plan_difficulty(plan_text)
+    if not tier:
+        return None, False
+    try:
+        return difficulty.validate_rating_object(
+            {
+                "predicted_tier": tier,
+                "confidence": "medium",
+                "rationale": "design plan metadata",
+            }
+        ), False
+    except ValueError:
+        return None, False
 
 
 def _touch_step5b5_sentinel(design_tmpdir: Path) -> None:
@@ -274,10 +298,13 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
         if re.fullmatch(r"diff_lines: \d+", lines[idx].rstrip("\n")):
             diff_idx = idx
             break
+    existing_difficulty = difficulty.plan_difficulty(text)
     provenance = [
         f"review_status: {review_status}\n",
         f"rounds_completed: {rounds_completed}\n",
     ]
+    if existing_difficulty:
+        provenance.append(f"difficulty: {existing_difficulty}\n")
     if diff_idx < 0:
         trailer_start = len(lines)
         idx = len(lines) - 1
@@ -684,10 +711,17 @@ def publish_core(argv: Sequence[str]) -> int:
 
     if review_status or rounds_completed:
         original = composed_plan.read_text(encoding="utf-8", errors="replace")
-        _ = composed_plan.write_text(
-            _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed),
-            encoding="utf-8",
-        )
+        original = _splice_plan_provenance(text=original, review_status=review_status, rounds_completed=rounds_completed)
+        _ = composed_plan.write_text(original, encoding="utf-8")
+    plan_text = composed_plan.read_text(encoding="utf-8", errors="replace")
+    design_rating, raw_rating_invalid = _resolve_publish_difficulty_rating(design_tmpdir=design_tmpdir, plan_text=plan_text)
+    if raw_rating_invalid:
+        return 5
+    if design_rating is not None:
+        rewritten = difficulty.rewrite_plan_difficulty(plan_text, design_rating.adjusted_tier)
+        if rewritten != plan_text:
+            _ = composed_plan.write_text(rewritten, encoding="utf-8")
+            plan_text = rewritten
 
     if skip_validate:
         kvs[1] = ("VALIDATE_STATUS", "skipped")
@@ -697,6 +731,7 @@ def publish_core(argv: Sequence[str]) -> int:
             "DESIGN_TMPDIR": str(design_tmpdir),
             "LARCH_QUIET_DISABLE": "1",
             "CLAUDE_PLUGIN_ROOT": str(plugin_root),
+            "LARCH_REQUIRE_PLAN_DIFFICULTY": "1",
         }
         repo_root_arg = consumer_repo_root() or plugin_root
         validate = subprocess.run(
@@ -766,6 +801,48 @@ def publish_core(argv: Sequence[str]) -> int:
         _emit_rows(kvs)
         return 1 if _write_result_env(path=result_env, rows=kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
+    if design_rating is not None:
+        design_tier = design_rating.adjusted_tier
+        sync_args = [
+            sys.executable,
+            str(plugin_root / "python" / "cli.py"),
+            "difficulty",
+            "sync-labels",
+            "--issue",
+            parsed["--issue"],
+            "--tier",
+            design_tier,
+        ]
+        if parsed["--repo"]:
+            sync_args.extend(["--repo", parsed["--repo"]])
+        _ = subprocess.run(sync_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        raw_rating = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+        record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+        record_args = [
+            sys.executable, str(plugin_root / "python" / "cli.py"), "difficulty", "write-record",
+            "--output", str(record_path), "--rater", "design", "--rater-tool", "claude",
+            "--rater-model", "unknown", "--design-tier", design_tier, "--fallback-tier", design_tier,
+            "--fallback-rationale", "design plan metadata",
+        ]
+        if raw_rating.is_file() and not raw_rating.is_symlink():
+            record_args.extend(["--raw-rating-file", str(raw_rating), "--design-raw-rating-file", str(raw_rating)])
+        record = subprocess.run(record_args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        if record.returncode == 0 and record_path.is_file():
+            run_id = os.environ.get("RUN_ID", "")
+            run_id_path = design_tmpdir / "run-id.txt"
+            if not run_id and run_id_path.is_file():
+                run_id = run_id_path.read_text(encoding="utf-8", errors="replace").strip()
+            if run_id:
+                _ = subprocess.run(
+                    [
+                        sys.executable, str(plugin_root / "python" / "cli.py"), "run-log", "write",
+                        "--skill", "design", "--run-id", run_id, "--batch", "difficulty-rating",
+                        "--input-file", str(record_path),
+                    ],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    check=False,
+                )
 
     # Upsert the architecture diagram into the shared larch:diagrams comment.
     # Step 5c consumes post-approval artifacts written by Step 5b.5. It clears
@@ -794,7 +871,7 @@ def publish_core(argv: Sequence[str]) -> int:
             ),
         )
     if run_upsert:
-        upsert = subprocess.run(
+        upsert = proc.run(
             [
                 sys.executable,
                 str(plugin_root / "python" / "cli.py"),
@@ -802,8 +879,6 @@ def publish_core(argv: Sequence[str]) -> int:
                 "upsert",
                 *upsert_args,
             ],
-            capture_output=True,
-            text=True,
             check=False,
         )
         upsert_stderr_file = design_tmpdir / "diagrams-architecture-upsert.stderr"
@@ -818,7 +893,7 @@ def publish_core(argv: Sequence[str]) -> int:
         if upsert_kv.get("ARCHITECTURE_SOURCE"):
             kvs.append(("ARCHITECTURE_SOURCE", upsert_kv["ARCHITECTURE_SOURCE"]))
         if upsert_status == "failed" or upsert.returncode != 0:
-            _ = subprocess.run(
+            _ = proc.run(
                 [
                     sys.executable,
                     str(plugin_root / "python" / "cli.py"),
@@ -838,8 +913,6 @@ def publish_core(argv: Sequence[str]) -> int:
                     str(upsert_stderr_file),
                     "--redact",
                 ],
-                capture_output=True,
-                text=True,
                 check=False,
             )
 

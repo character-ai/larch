@@ -15,7 +15,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import logging_util
+from larch.calibration import difficulty
 from larch.core import redact
 from larch.issue import issue_wire
 from larch.implement.dispatch_helpers import (
@@ -284,6 +286,72 @@ def _explicit_plan_scope_paths(plan_text: str) -> list[str]:
     return issue_wire.extract_scope_paths(plan_text=plan_text, use_fallback=False, include_optional=False)
 
 
+def _read_design_difficulty_prior(tmpdir: Path) -> str:
+    prior = tmpdir / "difficulty-prior.env"
+    return larch_io.read_kv(path=prior, key="DESIGN_DIFFICULTY", default="", first_match=True, on_error_default=True)
+
+
+def _step2_panel_skipped(tmpdir: Path) -> str:
+    requested = larch_io.read_kv(path=tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED", default="false", first_match=True, on_error_default=True)
+    return "self-review" if requested == "true" else ""
+
+
+def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, object], changed_paths: set[str] | None) -> None:
+    rating = manifest.get("difficulty")
+    if not isinstance(rating, dict):
+        return
+    raw = st.tmpdir / "implement-difficulty-rating.raw.json"
+    paths = st.tmpdir / "difficulty-changed-paths.txt"
+    out = st.tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    _write_text_atomic(path=raw, text=json.dumps(rating, separators=(",", ":")) + "\n")
+    if changed_paths is not None:
+        _write_text_atomic(path=paths, text="".join(f"{path}\n" for path in sorted(changed_paths)))
+    args = [
+        "difficulty",
+        "write-record",
+        "--output",
+        str(out),
+        "--rater",
+        "implement",
+        "--rater-tool",
+        st.tool_tag,
+        "--rater-model",
+        "unknown",
+        "--raw-rating-file",
+        str(raw),
+        "--implement-raw-rating-file",
+        str(raw),
+        "--fallback-tier",
+        "MODERATE",
+        "--fallback-rationale",
+        "dispatcher fallback rating",
+    ]
+    prior = _read_design_difficulty_prior(st.tmpdir)
+    if difficulty.tier_valid(prior):
+        args.extend(["--design-tier", prior])
+    if paths.is_file():
+        args.extend(["--changed-paths-file", str(paths)])
+    skipped = _step2_panel_skipped(st.tmpdir)
+    if skipped:
+        args.extend(["--panel-skipped", skipped])
+    result = _invoke_cli(args, cwd=st.repo_root)
+    if result.returncode == 0 and out.is_file():
+        _invoke_cli([
+            "run-log",
+            "write",
+            "--log-root",
+            str(st.tmpdir / "larch-logs"),
+            "--skill",
+            "implement",
+            "--run-id",
+            larch_io.read_kv(path=st.tmpdir / "parent-issue.md", key="RUN_ID", default="", first_match=True, on_error_default=True),
+            "--batch",
+            "difficulty-rating",
+            "--input-file",
+            str(out),
+        ], cwd=st.repo_root)
+
+
 def _plan_coverage_uncovered_paths(*, st: DispatchState, touched: set[str] | None) -> list[str] | None:
     if touched is None:
         return None
@@ -524,6 +592,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
             missing = sorted(p for p in touched if p and p not in declared)
             if missing:
                 _append_warning(st=st, text=f"- **Step 7a.1 — {len(missing)} working-tree path(s) not declared in manifest files_touched/tests_added_or_modified (may include pre-existing dirty files). First 5**: " + ", ".join(missing[:5]))
+        _write_step2_difficulty_record(st=st, manifest=raw_obj, changed_paths=touched)
         uncovered = _plan_coverage_uncovered_paths(st=st, touched=touched)
         if uncovered:
             uncovered_plan_path_count = len(uncovered)

@@ -2920,3 +2920,38 @@ def test_render_phase_detail_best_effort_timeout(monkeypatch) -> None:  # type: 
         assert progress_report._render_phase_detail_best_effort(Path("/missing"), skill="implement") == ""
     finally:
         release.set()
+
+
+def test_write_implement_round_meta_records_difficulty(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    (round_dir / "review-tally.env").write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\nEXONERATED_COUNT=0\n", encoding="utf-8")
+    (round_dir / "panel-manifest.ndjson").write_text(
+        json.dumps({"slot": "dyn-risk", "tool": "codex", "output": "out.txt", "vendor": "codex", "resolved_model": "gpt"}) + "\n",
+        encoding="utf-8",
+    )
+    (round_dir / "scout-difficulty-rating.raw.json").write_text(
+        json.dumps({"predicted_tier": "TRIVIAL", "confidence": "low", "rationale": "unclear small diff"}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert progress_report.write_implement_round_meta(round_dir) == 0
+    data = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+
+    assert data["difficulty"]["tier_in_effect"] == "MODERATE"
+    assert data["difficulty"]["scout"]["confidence"] == "low"
+
+
+def test_materialize_design_panel_manifest_keeps_model_fields(tmp_path: Path) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (tmp_path / "plan-review-slots.ndjson").write_text(
+        json.dumps({"slot": "arch", "tool": "cursor", "output": "arch.txt", "vendor": "cursor", "resolved_model": "cursor-model"}) + "\n",
+        encoding="utf-8",
+    )
+
+    assert progress_report._materialize_design_panel_manifest(round_dir) == 1
+    row = json.loads((round_dir / "panel-manifest.ndjson").read_text(encoding="utf-8"))
+
+    assert row["vendor"] == "cursor"
+    assert row["resolved_model"] == "cursor-model"

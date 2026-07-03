@@ -1,0 +1,7 @@
+warning: fix text for slot 'dyn-dyn-difficulty-records' in FINDING_3 not traceable to scoped input (first 80 chars: 'Read prior and changed paths from tmpdir sidecars via session read-key or explic')
+warning: fix text for slot 'dyn-dyn-difficulty-records' in FINDING_3 not traceable to scoped input (first 80 chars: 'Use the same Python/run-log write path as external Step 2 and pass changed paths')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_4 not traceable to scoped input (first 80 chars: 'Validate an existing raw sidecar explicitly and fail before label or record writ')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_6 not traceable to scoped input (first 80 chars: 'Mirror design_publish difficulty tail after successful clarify plan-block write.')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_6 not traceable to scoped input (first 80 chars: 'Refresh the existing record during flush, recompute final path floors, and rewri')
+warning: fix text for slot 'dyn-dyn-difficulty-records' in FINDING_6 not traceable to scoped input (first 80 chars: 'Mirror the same publish-side difficulty path used in `design_publish.py` into th')
+warning: fix text for slot 'dyn-dyn-difficulty-records' in FINDING_6 not traceable to scoped input (first 80 chars: 'Write a fallback design difficulty-rating.json from plan metadata on terminal fl')

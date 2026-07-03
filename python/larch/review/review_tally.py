@@ -1257,7 +1257,7 @@ def log_phase(argv: list[str]) -> int:
         return int(exc.code) if isinstance(exc.code, int) else 2
     if not Path(args.payload_file).is_file():
         return _error("log-phase: --payload-file must name a file")
-    if not re.fullmatch(r"review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|review-round-summary|panel-prompt-sizes|review-findings-classification-round-[1-5]", args.batch):
+    if not re.fullmatch(r"review-context|review-panel-manifest|review-findings|review-tally|review-scout-manifest|difficulty-rating|review-round-summary|panel-prompt-sizes|review-findings-classification-round-[1-5]", args.batch):
         return _error(f"log-phase: unregistered review batch: {args.batch}")
     base = [sys.executable, str(_PLUGIN_ROOT / "python" / "cli.py"), "run-log"]
     if args.action == "write":

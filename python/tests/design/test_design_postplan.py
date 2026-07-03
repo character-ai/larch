@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import stat
 import subprocess
@@ -11,6 +12,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.calibration import difficulty
 from larch.design import design_postplan, design_step5c
 
 
@@ -85,6 +87,25 @@ def test_postplan_with_plan_size_returns_defect_code(tmp_path: Path) -> None:
     result_env = (design / ".design-postplan-emit-result.env").read_text(encoding="utf-8")
     assert "VALIDATE_STATUS=defects-found" in result_env
     assert "STEP2B5_NEXT_ACTION=under-threshold" in result_env
+
+
+def test_postplan_with_plan_size_writes_design_difficulty_sidecar(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design"
+    _postplan_fixture(design, partition_requested=False)
+    _ = (design / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    _patch_postplan_cli(
+        monkeypatch,
+        tmp_path,
+        check_size_rc=0,
+        check_size_stdout="PLAN_SIZE_STATUS=ok\nSIZE_TRIGGER_FIRED=false\nDRIFT_TRIGGER_FIRED=false\nPLAN_LINES=10\nDIFF_LINES=12\n",
+    )
+
+    rc = design_postplan.postplan_emit_main(["--design-tmpdir", str(design), "--with-plan-size"])
+
+    assert rc == 0
+    raw = json.loads((design / difficulty.DESIGN_RAW_RATING_BASENAME).read_text(encoding="utf-8"))
+    assert raw["predicted_tier"] == difficulty.MODERATE
+    assert raw["confidence"] == "medium"
 
 
 def _completed(args: Sequence[str], *, rc: int = 0, stdout: str = "", stderr: str = "") -> subprocess.CompletedProcess[str]:
@@ -308,6 +329,7 @@ if args[:2] == ["plan", "validate"]:
     with open(os.environ["RECORD_FILE"], "w", encoding="utf-8") as fh:
         print("REPO_ROOT=" + repo_root, file=fh)
         print("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", ""), file=fh)
+        print("LARCH_REQUIRE_PLAN_DIFFICULTY=" + os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", ""), file=fh)
     print("VALIDATE_STATUS=ok")
     print("VALIDATE_DEFECT_COUNT=0")
     raise SystemExit(0)
@@ -352,3 +374,5 @@ def test_postplan_passes_consumer_repo_root_and_preserves_plugin_root(tmp_path: 
     )
     assert Path(recorded["REPO_ROOT"]).resolve() == consumer.resolve()
     assert Path(recorded["CLAUDE_PLUGIN_ROOT"]).resolve() == plugin_root.resolve()
+    # Postplan does not require difficulty; enforcement is scoped to the publish path.
+    assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == ""

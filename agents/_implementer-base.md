@@ -81,6 +81,7 @@ Read this template once now and write the manifest in this exact shape. Do not i
     "Cover the helper with an offline harness"
   ],
   "commit_message": "Implement example helper flow\n\nAdd the helper, wire it into the skill, and cover it with the offline harness.",
+  "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "Adds a helper, skill wiring, and harness coverage."},
   "todos_left": [],
   "oos_observations": [],
   "bail_reason": "",
@@ -111,6 +112,10 @@ jq -e '
      (.files_touched | type == "array" and length > 0) and
      (.files_touched | all(. | type == "object" and (.path | type == "string"))) and
      (.summary_bullets | type == "array" and length >= 1 and length <= 5) and
+     (.difficulty | type == "object") and
+     (.difficulty.predicted_tier == "TRIVIAL" or .difficulty.predicted_tier == "MODERATE" or .difficulty.predicted_tier == "HARD") and
+     (.difficulty.confidence == "low" or .difficulty.confidence == "medium" or .difficulty.confidence == "high") and
+     (.difficulty.rationale | type == "string" and length > 0 and length <= 500) and
      (.tests_added_or_modified | type == "array") and
      (.todos_left | type == "array") and
      (.oos_observations | type == "array")
@@ -186,7 +191,8 @@ Before you write `<MANIFEST_PATH>`, verify:
 
 - [ ] `schema_version == "1"`.
 - [ ] `status` is one of `complete`, `needs_qa`, `bailed`.
-- [ ] If `status=complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` has 1–5 entries. The working tree carries your edits (the dispatcher will commit them).
+- [ ] If `status=complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` has 1–5 entries, and `difficulty` self-rating is present. The working tree carries your edits (the dispatcher will commit them).
+- [ ] Rate difficulty against this rubric: TRIVIAL = localized low-risk edits; MODERATE = multi-file or workflow-affecting integration risk; HARD = cross-cutting lifecycle, security-sensitive, concurrency, CI/merge, or prompt-contract changes. Low confidence bumps the recorded tier by one level, capped at HARD.
 - [ ] If `status=needs_qa`: `needs_qa.questions` non-empty AND `qa-pending.json` written with the same questions.
 - [ ] If `status=bailed`: `bail_reason` non-empty (use a stable token from `codex-manifest-schema.md` when one fits; otherwise a short free-form string). `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only; do not emit it yourself.
 - [ ] Every path in `files_touched[].path` and `tests_added_or_modified` is repo-relative, normalized, NOT under a submodule.

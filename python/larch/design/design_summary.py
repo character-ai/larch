@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import subprocess
@@ -11,6 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import cast
 
+from larch.calibration import difficulty
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
@@ -162,6 +164,67 @@ def _plan_review_line(design_tmpdir: Path) -> str:
     return status
 
 
+
+def _difficulty_summary_line(design_tmpdir: Path) -> str:
+    record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if record_path.is_file() and not record_path.is_symlink():
+        try:
+            data: object = json.loads(record_path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            data = None
+        if isinstance(data, dict):
+            return difficulty.difficulty_line(cast("dict[str, object]", data))
+    raw_rating = difficulty.read_rating_file(design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME)
+    if raw_rating is not None:
+        return f"predicted {raw_rating.adjusted_tier}; applied {raw_rating.adjusted_tier}"
+    plan_path = design_tmpdir / "plan.txt"
+    if plan_path.is_file() and not plan_path.is_symlink():
+        tier = difficulty.plan_difficulty(plan_path.read_text(encoding="utf-8", errors="replace"))
+        if tier:
+            return f"predicted {tier}; applied {tier}"
+    return ""
+
+
+def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
+    if not run_id or run_id == "unknown":
+        return
+    record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if not (record_path.is_file() and not record_path.is_symlink()):
+        raw_rating = difficulty.read_rating_file(design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME)
+        if raw_rating is None:
+            for candidate in (design_tmpdir / "composed-plan.md", design_tmpdir / "plan.txt"):
+                if not candidate.is_file() or candidate.is_symlink():
+                    continue
+                tier = difficulty.plan_difficulty(candidate.read_text(encoding="utf-8", errors="replace"))
+                if tier:
+                    raw_rating = difficulty.validate_rating_object(
+                        {"predicted_tier": tier, "confidence": "medium", "rationale": "design plan metadata"}
+                    )
+                    break
+        if raw_rating is None:
+            return
+        with contextlib.suppress(OSError, ValueError):
+            record = difficulty.build_record(
+                rater="design",
+                rater_tool="claude",
+                rater_model="unknown",
+                design_rating=raw_rating,
+            )
+            difficulty.write_record(record_path, record)
+    with contextlib.suppress(OSError, ValueError):
+        _ = _run_cli(
+            "run-log",
+            "write",
+            "--skill",
+            "design",
+            "--run-id",
+            run_id,
+            "--batch",
+            "difficulty-rating",
+            "--input-file",
+            str(record_path),
+        )
+
 def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     status_file = design_tmpdir / "step2b-drafter-status.txt"
     if not status_file.is_file():
@@ -250,6 +313,7 @@ def invoke_render(
     warnings: int,
     plan_review_line: str,
     dynamic_archetypes_line: str,
+    difficulty_line: str,
     run_logs_path: str,
     cost_args: list[str],
 ) -> int:
@@ -271,6 +335,7 @@ def invoke_render(
         "--pr-number", "0",
         "--pr-url", "N/A",
         "--plan-review-line", plan_review_line,
+        "--difficulty-line", difficulty_line,
         "--dynamic-archetypes-line", dynamic_archetypes_line,
         "--code-review-line", "N/A",
         "--oos-count", str(oos_count),
@@ -418,6 +483,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     if issue and issue != "0" and repo and "/" in repo:
         issue_url = f"https://github.com/{repo}/issues/{issue}"
 
+    _persist_difficulty_record(design_tmpdir, run_id=run_id)
     _refresh_final_reports(design_tmpdir)
     buckets = _read_token_report(design_tmpdir)
     cost_args = _build_cost_args(buckets)
@@ -430,10 +496,11 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     exec_issues, warnings = exec_issue_detail.count_load_result(load_result)
     plan_review_line = _plan_review_line(design_tmpdir)
     dynamic_archetypes_line = _dynamic_archetypes_line(design_tmpdir)
+    difficulty_line = _difficulty_summary_line(design_tmpdir)
 
     rc = invoke_render(
         design_tmpdir=design_tmpdir, outcome=outcome, mode_str=mode_str, run_id=run_id, duration=duration, issue=issue, issue_url=issue_url,
-        oos_count=oos_count, oos_urls=oos_urls, exec_issues=exec_issues, warnings=warnings, plan_review_line=plan_review_line, dynamic_archetypes_line=dynamic_archetypes_line, run_logs_path=run_logs_path, cost_args=cost_args,
+        oos_count=oos_count, oos_urls=oos_urls, exec_issues=exec_issues, warnings=warnings, plan_review_line=plan_review_line, dynamic_archetypes_line=dynamic_archetypes_line, difficulty_line=difficulty_line, run_logs_path=run_logs_path, cost_args=cost_args,
     )
 
     if rc != 0 or not out_file.is_file() or out_file.stat().st_size == 0:

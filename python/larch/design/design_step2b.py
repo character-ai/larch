@@ -16,6 +16,7 @@ from pathlib import Path
 from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
+from larch.calibration import difficulty
 from larch.core import config, external_defaults
 from larch.core.ctx import Ctx
 from larch.design import design_postplan
@@ -401,14 +402,15 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
         "You may use only side-effect-free repository discovery. Do not write repository files, design tmpdir files, or any other files. Return only the sentinel-delimited response requested below.",
         "",
         "Drafting requirements to follow:",
+        difficulty.render_rubric(),
         "- Prefer minimum necessary change: avoid scope creep, unnecessary complexity, and additions not required for correctness.",
         "- Read approach-synthesis.txt: if it is exactly NO_SKETCHES, draft from direct codebase/doc inspection without fabricating planning-panel agreement.",
         "- Read discussion-round1.md when present for scope boundaries and strict constraints.",
         "- Read design-outline.md only when non-empty and .outline-approved exists; treat Goals, Non-goals, and Surfaces as binding scope.",
         "- Read brainstorm.md when present as additive ideation context for plan drafting.",
         "- Use a Files to modify/create section with per-file headings exactly one path each: ### NEW:, ### UPDATED:, ### REWRITTEN:, or ### MAY_UPDATE: (at least one ASCII space after ### before the keyword). Use ### MAY_UPDATE: for conditional work such as prose saying only change if a condition is met. ### NEW:, ### UPDATED:, and ### REWRITTEN: are firm coverage commitments.",
-        "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
-        "- The final plan body must end with a whole-line diff_lines: <N> trailer.",
+        "- Include Approach, Edge cases, Failure modes when non-trivial, Testing strategy, a whole-line difficulty: <TRIVIAL|MODERATE|HARD> metadata line before optional diff_added/diff_deleted/mechanical_churn trailers, and final diff_lines: <N>. mechanical_churn accepts only true or false; never write a number there.",
+        "- The final plan body must place difficulty: <TRIVIAL|MODERATE|HARD> before any optional size trailers and end with a whole-line diff_lines: <N> trailer.",
         "- Optionally write a dialectic candidates block after the plan and before the scout block only when the plan contains a genuine bistable fork that deserves Gate C clarification.",
         "- A dialectic candidate requires two concrete approaches and a material, non-obvious tradeoff. Do not classify scope questions, naming/style choices, or internal implementation preferences as dialectic candidates.",
         "- Cap dialectic candidates at the top 1-2 decisions. Use JSON with decisions[] entries containing id, title, option_a, option_b, tradeoff, drafter_pick (option_a or option_b), and why_this_matters.",
@@ -431,7 +433,7 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
             "LARCH_SUMMARY_END",
             "[/optional]",
             "LARCH_PLAN_BEGIN",
-            "Full implementation plan body ending with diff_lines: <N>.",
+            "Full implementation plan body including difficulty: <TRIVIAL|MODERATE|HARD> before final diff_lines: <N>.",
             "LARCH_PLAN_END",
             "[optional genuine bistable forks only]",
             "LARCH_DIALECTIC_BEGIN",

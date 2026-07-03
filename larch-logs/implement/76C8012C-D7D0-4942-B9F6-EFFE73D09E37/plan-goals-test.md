@@ -1,0 +1,557 @@
+## Goal
+Implement issue #5990: [IMPLEMENTING] difficulty-tiers: rating capture and difficulty run-log schema.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement this as instrumentation only.
+
+- Add one shared difficulty module for validation, tier ordering, low-confidence bumping, floor matching, record assembly, and JSON writes.
+- Keep model judgment as the source of ratings. Python only validates, combines, floors, and records.
+- Use one run-level `difficulty-rating.json` per run dir.
+- Preserve panel behavior. `applied_tier` is logged only.
+- Read the design prior from the plan metadata in `/implement` Step 0.
+- Let floors raise only. Never let floors lower a model tier.
+- Keep nested `/review` from overwriting the owning `/implement` run file.
+
+## Files to modify/create
+
+### NEW: python/larch/calibration/difficulty.py
+
+Create the shared core and CLI entrypoints.
+
+- Define `TRIVIAL`, `MODERATE`, `HARD` as the only tiers.
+- Define confidence values, with low confidence bumping one tier.
+- Define `DifficultyRating`, `DifficultyRecord`, and floor result dataclasses.
+- Load the committed floor manifest.
+- Match changed paths with reviewable glob rows only.
+- Compute:
+  - `design_tier`
+  - `implement_tier`
+  - `predicted_tier`
+  - `applied_tier`
+  - `override_source`
+  - `floors_applied`
+  - `audit_upgrade`
+  - `escalations`
+  - `panel_skipped`
+- Bound rationale length and strip control characters.
+- Write canonical JSON with `schema_version: 1`.
+- Add CLI helpers for:
+  - validating a raw rating object
+  - extracting plan metadata
+  - writing a run-level record
+  - writing review-round difficulty metadata when a scout rating exists
+  - syncing difficulty labels for `/design`
+  - rendering the shared tier rubric and run-log-sourced examples for injection into rater prompts
+- Pin one design raw-rating sidecar path (mirroring `scout-coder-manifest.raw.json`) reused by design and review writers.
+- Derive the wire `difficulty:` tier and label from the post-confidence-bump design tier so the prior survives a single-token write.
+
+### NEW: docs/difficulty-rating.md
+
+Document the schema, rubric, and seeded examples.
+
+- Define each tier in concise terms.
+- State that the rating is model judgment, not a computed complexity score.
+- Include three concise worked examples per tier. Source each from committed run-log evidence and cite its run-id. Note the refresh path from calibration misses.
+- Explain low-confidence bumping.
+- Explain floors and the companion tiered-panels non-goal.
+- Define the `difficulty-rating.json` fields.
+
+### NEW: docs/difficulty-floor-globs.tsv
+
+Add the deterministic floor manifest.
+
+- Use columns such as `glob`, `floor`, `reason`.
+- Seed MODERATE floor globs for:
+  - `hooks/**`
+  - secret/redaction handling paths
+  - ship/merge drivers
+  - session-env writers
+  - CI workflows
+- Keep this as the only mechanical floor source.
+
+### UPDATED: python/larch/cli.py
+
+Register the new difficulty verbs.
+
+- Add a small `difficulty` command family that points at `larch.calibration.difficulty`.
+- Keep all writes behind explicit verbs so skills and Python callers do not duplicate JSON assembly.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Register `difficulty-rating`.
+
+- Add batch slug `difficulty-rating` with `.json`, replace mode, and `json-object` sanitizer.
+- Keep redaction and existing batch validation behavior unchanged.
+
+### UPDATED: docs/run-logs-required-files.tsv
+
+Add `difficulty-rating.json`.
+
+- Use an `always` condition for implement runs.
+- Document that degraded early partial dirs may follow existing partial-run tolerance rules.
+
+### UPDATED: python/larch/report/gc_run_logs.py
+
+Preserve `difficulty-rating.json`.
+
+- Add it to `COMMON_KEEP`.
+- Keep the existing delete behavior unchanged.
+
+### UPDATED: skills/gc-run-logs/SKILL.md
+
+Update the consumer-core keep-set prose.
+
+- Add `difficulty-rating.json` to the preserved common files.
+
+### UPDATED: docs/run-logs.md
+
+Document the new schema and projections.
+
+- Add a `difficulty-rating.json` batch section.
+- Update final-summary description for the `- **Difficulty**:` bullet.
+- Update retention keep-set text.
+- Update `round-meta.json` and `panel-manifest.ndjson` sections for difficulty, vendor, and resolved model fields.
+
+### UPDATED: docs/issue-anchored-plan.md
+
+Extend the plan-block metadata convention.
+
+- Add `difficulty: <TIER>` beside `review_status:` and `rounds_completed:`.
+- State it appears before final `diff_lines: <N>`.
+- Document the `difficulty:<tier>` label.
+- State `/implement` reads the field as a prior, not as panel-routing input.
+
+### UPDATED: python/larch/design/design_step2b.py
+
+Require plan-time difficulty capture.
+
+- Update the drafter prompt to require a whole-line `difficulty: <TIER>` metadata line before `diff_lines`.
+- Ask for a bounded rationale in the plan prose or nearby rating note, but keep the machine field single-token.
+- Write a design raw-rating sidecar with `predicted_tier`, `confidence`, and bounded `rationale`; the wire field stays single-token `difficulty: <TIER>`.
+- Inject the shared tier rubric and examples into the drafter rating prompt.
+- Ensure postplan parsing and structural checks tolerate the new metadata line.
+- Keep scout and dialectic behavior unchanged.
+
+### UPDATED: skills/design/SKILL.md
+
+Require plan-time difficulty in inline drafting.
+
+- Require the same whole-line `difficulty: <TIER>` metadata (before optional size trailers and final `diff_lines`) in the Step 2b inline drafting contract, mirroring the `design_step2b.py` drafter requirement.
+- Write the same raw rating sidecar as the drafter path (`predicted_tier`, `confidence`, `rationale`) before publication or terminal summary consume it.
+- Inject the shared rubric into the inline rating step.
+
+### UPDATED: python/larch/design/plan_quality.py
+
+Accept and preserve the difficulty metadata trailer.
+
+- Treat `difficulty: TRIVIAL|MODERATE|HARD` as part of the contiguous metadata block before `diff_lines`.
+- Reject malformed difficulty values when validating a plan.
+- Fail closed when `difficulty:` is absent on non-recovery design paths, not only when malformed.
+- Keep `diff_lines` as the final line.
+
+### UPDATED: python/larch/design/design_step5c.py
+
+Preserve difficulty during final plan composition and repair.
+
+- Include difficulty in trailer recovery and canonical trailer handling.
+- Keep optional size trailers and review provenance ordering stable.
+
+### UPDATED: python/larch/design/clarify.py
+
+Sync difficulty on the clarify publish path.
+
+- Validate or preserve difficulty metadata before the `named-block write`.
+- Sync the difficulty label only after a successful plan write.
+- Write the run-level `difficulty-rating.json` from the structured rating source.
+
+### UPDATED: python/larch/design/design_publish.py
+
+Publish the design rating.
+
+- Add `difficulty` to the provenance metadata keys.
+- Insert or preserve the line with `review_status` and `rounds_completed`.
+- Explicitly preserve the validated `difficulty: <TIER>` line when `_splice_plan_provenance` rebuilds the trailer, or fail publication before writing a plan that dropped it.
+- Derive the wire tier and label from the post-bump design tier read from the pinned sidecar; fall back to the wire tier only when the sidecar is absent.
+- After a successful plan-block write, sync labels:
+  - remove old `difficulty:trivial`, `difficulty:moderate`, `difficulty:hard`
+  - create/add the current label
+- Write the design run’s `difficulty-rating.json` using the shared difficulty CLI.
+- Do not label or write a successful rating record if plan publication failed.
+
+### UPDATED: python/larch/design/design_summary.py
+
+Render design difficulty in final summaries.
+
+- Read `difficulty-rating.json` when present.
+- Prefer the pinned design raw-rating sidecar as the record source; fall back to wire tier only when the sidecar is absent.
+- Pass a compact difficulty string to the shared run-summary renderer.
+- Keep fallback summary behavior safe when the file is absent.
+- On terminal design outcomes that flush run logs (summary or log-publish) without a Step 5c publish, write `difficulty-rating.json` from captured plan metadata; keep label sync gated on successful plan write.
+
+### UPDATED: python/larch/git/pr_body.py
+
+Add a generic summary bullet.
+
+- Add optional `difficulty_line` support to `render_run_summary`.
+- Render `- **Difficulty**: ...` when supplied.
+- Add CLI flag support for `--difficulty-line`.
+
+### UPDATED: python/larch/implement/preflight.py
+
+Read the design prior.
+
+- Add `difficulty: ` to allowed plan metadata.
+- Add `DESIGN_DIFFICULTY` to `SUCCESS_ENVELOPE_KEYS` with explicit empty-when-missing validation.
+- Fail closed on non-force preflight when `difficulty:` is present but not `TRIVIAL|MODERATE|HARD`; treat absent difficulty as a missing prior.
+- `--force` may warn and continue on invalid difficulty. Missing plan metadata never blocks `--force`.
+
+### UPDATED: python/larch/state/bootstrap.py
+
+Persist the design prior and seed the implement record.
+
+- Read `DESIGN_DIFFICULTY` from the preflight tmpdir or the extracted plan.
+- Add `difficulty:` to `_PLAN_PROVENANCE_PREFIXES` and capture the tier into `difficulty-prior.env` before `_strip_plan_provenance_headers` runs.
+- Persist it in an implement tmpdir sidecar such as `difficulty-prior.env`.
+- Strip the metadata from `plan.txt` only after capturing the prior.
+- Write an initial `difficulty-rating.json` after run-log init so early bails still have a record.
+- Let later Step 2 refresh the record with implement rating and actual floor inputs.
+
+### UPDATED: python/larch/implement/dispatch_manifest.py
+
+Validate implementer self-ratings.
+
+- Extend the manifest sanitizer to accept a `difficulty` object with `predicted_tier`, `confidence`, and `rationale`.
+- Bound and sanitize rationale.
+- Keep scout manifest validation separate.
+- Require a validated `difficulty` object on the normal `status=complete` path in `_complete_schema_valid`.
+- Reserve low-confidence MODERATE synthesis for named recovery/fallback paths that cannot re-prompt; do not accept a complete manifest that simply omits the field.
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+Write or refresh implement difficulty after Step 2.
+
+- On external `complete`, read the implementer manifest difficulty.
+- Apply the design prior and floors.
+- Write the run-level `difficulty-rating.json`.
+- Include `panel_skipped=self-review` when run flags request self-review.
+- On mechanical bails before an implementer rating exists, keep the Step 0 seeded record.
+
+### UPDATED: skills/implement/SKILL.md
+
+Add the Claude-coder capture path.
+
+- For main-agent implementation paths, require the main agent to write a raw difficulty rating sidecar before Step 3, rating against the injected shared rubric.
+- Call the shared difficulty CLI after the rating sidecar and coder scout normalization.
+- For `--self-review`, keep review panel skipping unchanged and record `panel_skipped=self-review`.
+- Do not use difficulty to change Step 5 routing.
+
+### UPDATED: skills/implement/references/codex-manifest-schema.md
+
+Document the manifest rating field.
+
+- Add the `difficulty` object to the schema.
+- State Codex and Cursor must self-rate every invocation.
+- Define confidence and rationale bounds.
+- Update validation/edit-in-sync guidance.
+
+### UPDATED: agents/_implementer-base.md
+
+Add implementer self-rating instructions.
+
+- Add the manifest `difficulty` object to the inline JSON template.
+- Add self-validation checks for tier, confidence, and bounded rationale.
+- Embed a concise excerpt of the shared tier rubric and examples so the implementer self-rates against the same anchor.
+- Keep the scout sidecar schema unchanged.
+
+### UPDATED: agents/codex-implementer.md
+
+Regenerate from `agents/_implementer-base.md`.
+
+### UPDATED: agents/cursor-implementer.md
+
+Regenerate from `agents/_implementer-base.md` (launcher parity with codex-implementer.md).
+
+### UPDATED: python/larch/design/plan_scout.py
+
+Capture review scout difficulty without breaking archetype filtering.
+
+- Extend dynamic scout prompt output to allow a top-level `difficulty` object.
+- Inject the shared tier rubric and examples into the scout rating prompt.
+- Validate that object with the shared difficulty helper.
+- Write a separate sidecar for difficulty.
+- Strip or ignore the difficulty field before writing normalized archetype manifests.
+- Keep existing `{"archetypes":[]}` compatibility.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+Add vendor/model attribution and scout difficulty plumbing.
+
+- Include vendor and resolved model fields in every `panel-manifest.ndjson` row.
+- Include the same fields for dynamic Cursor/Codex twins.
+- When the scout emits difficulty, write a round-local sidecar and expose its path/status in the core env.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+Attribute vendor and model for /design plan-review rows.
+
+- Apply the same vendor and resolved-model attribution to static, generic, and dynamic plan-review `panel-manifest.ndjson` rows, matching the code-review panel manifest.
+
+### UPDATED: python/larch/review/review_core_body.py
+
+Thread difficulty fields through review core.
+
+- Parse the dispatch difficulty KVs.
+- Include them in round rows used by `round-meta.json`.
+- Keep reviewer launch and voting behavior unchanged.
+
+### UPDATED: python/larch/review/round_runner.py
+
+Preserve nested review difficulty metadata.
+
+- Pass scout difficulty fields into round metadata.
+- Do not write run-level `difficulty-rating.json` for nested `/implement` Step 5 review ownership.
+- Keep standalone `/review` behavior separate.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Allow the new review log batch.
+
+- Add `difficulty-rating` to the `review log-phase` whitelist.
+- Keep the payload sanitizer as JSON object.
+
+### UPDATED: skills/review/SKILL.md
+
+Write standalone review run difficulty.
+
+- After the review loop, write `difficulty-rating.json` for standalone `/review` when `RUN_ID` is set.
+- Prefer scout difficulty when present.
+- Fall back to an inline main-agent rating sidecar when no scout ran.
+- Feed the gathered changed-path list into the shared difficulty CLI so review diff floors raise `applied_tier`.
+- Log the rating with `review log-phase --batch difficulty-rating`.
+- Do not change panel size or routing.
+
+### UPDATED: skills/review/references/heavy-worker.md
+
+Mirror review difficulty handling for subagent mode.
+
+- Return scout difficulty metadata to the parent.
+- Ensure standalone parent logging still writes the run-level record.
+
+### UPDATED: python/larch/report/progress_report.py
+
+Extend round metadata.
+
+- Add a `difficulty` section to `round-meta.json` with:
+  - `tier_in_effect`
+  - `ceiling_in_effect`
+  - escalation placeholders
+  - scout rating source fields when present
+- Leave escalation fields empty or null in this issue.
+- In `_materialize_design_panel_manifest`, pass through vendor and resolved-model fields from `plan-review-slots.ndjson` so the committed `panel-manifest.ndjson` keeps attribution.
+- Preserve existing tally and canonical count fields.
+
+### UPDATED: python/larch/report/final_report.py
+
+Render implement difficulty.
+
+- Read run-level `difficulty-rating.json`.
+- Build the final-summary difficulty bullet.
+- Include predicted, applied, floor/audit note, and panel-skipped note when present.
+
+### UPDATED: python/larch/report/run_logs.py
+
+Ensure round and batch copying keeps difficulty artifacts.
+
+- Include `difficulty-rating.json` in direct run-log writes where needed.
+- Ensure round-local scout difficulty sidecars are either consolidated into `round-meta.json` or excluded if redundant.
+- Preserve existing redaction and duplicate-basename guards.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Refresh difficulty during flushes.
+
+- Ensure pre-ship and final flushes do not drop the rating file.
+- Recompute floors from the final changed-path set during pre-ship/final flush, preserving model ratings and only raising `applied_tier` / `floors_applied`.
+- Do not rewrite post-merge logs in violation of existing post-merge rules.
+
+### UPDATED: python/tests/calibration/test_difficulty.py
+
+Cover the new core.
+
+- Valid tiers and invalid tiers.
+- Low-confidence bump.
+- Severe-of design and implement ratings.
+- Floors raise only.
+- Rationale bounding.
+- JSON schema shape.
+- Label name formatting.
+
+### UPDATED: python/tests/design/test_design_publish.py
+
+Cover design metadata and labels.
+
+- `difficulty:` is inserted/preserved with review provenance, including across `_splice_plan_provenance`.
+- Old difficulty labels are removed and the current one is added.
+- Plan-block failure does not label.
+- Malformed difficulty fails plan validation.
+- A terminal outcome without Step 5c publish still emits `difficulty-rating.json`.
+- A low-confidence design rating publishes as the post-bump tier and label.
+
+### UPDATED: python/tests/design/test_plan_quality.py
+
+Cover trailer validation.
+
+- Valid difficulty metadata before `diff_lines`.
+- Invalid tiers rejected.
+- Absent difficulty on non-recovery design paths fails closed.
+- `diff_lines` remains final.
+
+### UPDATED: python/tests/design/test_design_summary.py
+
+Cover design final summary difficulty.
+
+### UPDATED: python/tests/implement/test_preflight.py
+
+Cover prior extraction.
+
+- Valid difficulty is emitted in `DESIGN_DIFFICULTY`.
+- Invalid difficulty fails closed on non-force; `--force` warns and continues.
+- Absent difficulty yields an empty prior without blocking.
+- Existing review metadata checks still work.
+
+### UPDATED: python/tests/state/test_bootstrap.py
+
+Cover Step 0 prior persistence and initial record seeding.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Cover external implementer manifest rating.
+
+- Complete manifest with rating writes record.
+- Missing rating on recovery path degrades without blocking salvage.
+- Self-review flag sets `panel_skipped`.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+Cover scout difficulty and panel manifest attribution.
+
+- Static and dynamic rows include vendor/model fields.
+- Scout difficulty is sidecarred and threaded to core env.
+- Review diff floors raise `applied_tier` when changed paths hit floor globs.
+- No panel routing changes occur.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+
+Cover plan-review row vendor/model attribution for static, generic, and dynamic slots.
+Assert the materialized round-dir `panel-manifest.ndjson` keeps vendor/model after `write_design_round_meta`.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+Cover `difficulty-rating` review log batch acceptance.
+
+### UPDATED: python/tests/report/test_progress_report.py
+
+Cover `round-meta.json` difficulty section.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+Cover final-summary difficulty bullet.
+
+### UPDATED: python/tests/report/test_gc_run_logs.py
+
+Cover retention of `difficulty-rating.json`.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Cover batch registration and committed file presence.
+
+### MAY_UPDATE: SECURITY.md
+
+Update only if implementation changes security-relevant behavior beyond matching floor globs for secret/redaction paths. If floors only classify paths and do not change secret handling, leave unchanged.
+
+## Edge cases
+
+- Missing design prior: write a record with no `design_tier`, then use implement rating plus floors.
+- Low-confidence HARD: stays HARD.
+- Low-confidence missing rating fallback: use MODERATE unless a floor raises to HARD.
+- Multiple difficulty labels: remove all known `difficulty:*` labels before adding the current one.
+- `--self-review`: keep panel skipped, but still write the rating.
+- Nested `/review`: write round metadata only. Do not overwrite `/implement` run-level `difficulty-rating.json`.
+- Docs-only or generated-only review scout skip: write a fallback standalone review rating when `/review` owns the run.
+- Plan rewrites after Gate B: preserve or recompute `difficulty:` in the trailer block.
+- Provenance splice/strip: preserve `difficulty:` when `_splice_plan_provenance` rebuilds the trailer, and capture the prior before `_strip_plan_provenance_headers` strips it.
+- Non-force preflight with invalid `difficulty:`: fail closed; `--force` warns and continues.
+- Design terminal outcome without Step 5c publish: still emit `difficulty-rating.json` from captured plan metadata.
+- Clarify publish: validate or preserve difficulty and sync the label only after a successful plan write.
+- Post-Step-2 edits that add floor paths: pre-ship/final flush recomputes floors and only raises `applied_tier`.
+- Force fallback with no plan block: do not block; seed from available implement rating or fallback.
+
+## Failure modes
+
+- Invalid rating JSON: fail closed for design publication and external implementer normal completion; degrade only for documented recovery paths.
+- Missing or invalid difficulty on a normal `status=complete` implement manifest: reject; do not accept a complete run without a validated self-rating.
+- Label sync failure after plan write: surface a warning and keep the plan write successful, matching existing best-effort label behavior.
+- Floor manifest malformed: fail validation in tests and make runtime return a clear error before writing a misleading record.
+- Run-log batch write failure: keep existing run-log warning behavior and do not change workflow routing.
+- Vendor/model resolution absent: write `unknown`, not an empty or fabricated model.
+
+## Testing strategy
+
+Run focused Python tests first:
+
+```bash
+python3 -m pytest \
+  python/tests/calibration/test_difficulty.py \
+  python/tests/design/test_design_publish.py \
+  python/tests/design/test_plan_quality.py \
+  python/tests/design/test_design_summary.py \
+  python/tests/implement/test_preflight.py \
+  python/tests/state/test_bootstrap.py \
+  python/tests/implement/test_implement_dispatch.py \
+  python/tests/review/test_review_pipeline.py \
+  python/tests/review/test_plan_review_panel.py \
+  python/tests/review/test_review_tally.py \
+  python/tests/report/test_progress_report.py \
+  python/tests/report/test_final_report.py \
+  python/tests/report/test_gc_run_logs.py \
+  python/tests/report/test_run_logs.py
+python3 python/cli.py checks run-relevant
+python3 python/cli.py generate check
+```
+
+Run relevant checks after the focused tests, and regenerate implementer prompts if they changed.
+
+## Acceptance
+
+Run focused Python tests first:
+
+```bash
+python3 -m pytest \
+  python/tests/calibration/test_difficulty.py \
+  python/tests/design/test_design_publish.py \
+  python/tests/design/test_plan_quality.py \
+  python/tests/design/test_design_summary.py \
+  python/tests/implement/test_preflight.py \
+  python/tests/state/test_bootstrap.py \
+  python/tests/implement/test_implement_dispatch.py \
+  python/tests/review/test_review_pipeline.py \
+  python/tests/review/test_plan_review_panel.py \
+  python/tests/review/test_review_tally.py \
+  python/tests/report/test_progress_report.py \
+  python/tests/report/test_final_report.py \
+  python/tests/report/test_gc_run_logs.py \
+  python/tests/report/test_run_logs.py
+python3 python/cli.py checks run-relevant
+python3 python/cli.py generate check
+```
+
+Run relevant checks after the focused tests, and regenerate implementer prompts if they changed.
+
+diff_lines: 2200
+
+## Test plan
+(no test plan section in plan-file)

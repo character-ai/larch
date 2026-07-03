@@ -24,6 +24,7 @@
   "tests_added_or_modified": ["<repo-relative path>", ...],
   "summary_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
   "commit_message": "<subject line>\n\n<optional body paragraphs>",
+  "difficulty": {"predicted_tier": "TRIVIAL|MODERATE|HARD", "confidence": "low|medium|high", "rationale": "bounded rationale"},
   "todos_left": ["<actionable todo>", ...],
   "oos_observations": [
     {"title": "<short title>", "description": "<full description>", "phase": "implement"}
@@ -45,6 +46,7 @@
 | `tests_added_or_modified` (array of strings) | required (may be empty) | optional | optional |
 | `summary_bullets` (array of strings, length 1–5) | required | optional | optional |
 | `commit_message` (string) | required, non-empty | optional | optional |
+| `difficulty` (object with `predicted_tier`, `confidence`, `rationale`) | required | optional | optional |
 | `todos_left` (array of strings) | required (may be empty) | optional | optional |
 | `oos_observations` (array of `{title, description, phase}`) | required (may be empty) | optional | optional |
 | `bail_reason` (string) | absent or empty | absent or empty | required, non-empty |
@@ -59,7 +61,8 @@ Optional fields MAY be present in the non-`complete` statuses but are not requir
 1. `schema_version == "1"`. Future schema bumps will add new accepted values.
 2. `status` is one of the three enum literals above. No other value is accepted.
 3. Per-status required keys per the table; the dispatcher rejects (`STATUS=bailed reason=manifest-schema-invalid`) any manifest that fails this check.
-4. **Path normalization** (applied to every `path` in `files_touched` and every entry in `tests_added_or_modified`): the path MUST be repo-relative. Reject if it contains `..` or starts with `/`. NUL bytes are rejected implicitly: bash variables cannot hold a NUL, so the dispatcher's `read -r` over the jq output terminates the field at any NUL in upstream JSON, and the iterator never sees a path-with-NUL. Also reject any path equal to OR under a submodule root (per `git submodule status --recursive`). Symlink-aware containment (rejecting paths that resolve outside the repo via a symlink chain) is **not** mechanically enforced today — external implementers are trusted not to commit symlink-escape paths under the same trust model documented in `SECURITY.md`.
+4. `difficulty.predicted_tier` is one of `TRIVIAL`, `MODERATE`, or `HARD`; `confidence` is one of `low`, `medium`, or `high`; `rationale` must be non-empty after control-character stripping and is capped by the dispatcher. Codex and Cursor self-rate every `complete` invocation against the shared rubric in `python/cli.py difficulty render-rubric`.
+5. **Path normalization** (applied to every `path` in `files_touched` and every entry in `tests_added_or_modified`): the path MUST be repo-relative. Reject if it contains `..` or starts with `/`. NUL bytes are rejected implicitly: bash variables cannot hold a NUL, so the dispatcher's `read -r` over the jq output terminates the field at any NUL in upstream JSON, and the iterator never sees a path-with-NUL. Also reject any path equal to OR under a submodule root (per `git submodule status --recursive`). Symlink-aware containment (rejecting paths that resolve outside the repo via a symlink chain) is **not** mechanically enforced today — external implementers are trusted not to commit symlink-escape paths under the same trust model documented in `SECURITY.md`.
 6. **Sanitization** (applied AFTER schema validation, BEFORE the canonical manifest is written to `$IMPLEMENT_TMPDIR/manifest.json`): `summary_bullets[*]`, `commit_message`, `oos_observations[*].title`, `oos_observations[*].description`, and `todos_left[*]` are piped through `python/cli.py redact secrets`, which redacts the secrets family (API keys, tokens, OAuth, JWT, passwords, certificates) → `<REDACTED-TOKEN>`. Internal hostnames/URLs and PII redaction are NOT mechanically applied by the dispatcher — external implementers are instructed to pre-redact those patterns before manifest emission, and downstream consumers (`/issue` outbound shell scrubber, `python3 python/cli.py tracking-issue`) provide a second-line backstop for the secrets family only. Operators handling internal-URL- or PII-rich content should review the manifest before allowing PR / issue / release notes publication. `bail_reason` is NOT piped through `redact secrets`; it is sanitized only for KV-grammar safety (whitespace and control characters collapsed; capped at ~200 chars) so the bail token cannot break the orchestrator's KV stdout parser. `needs_qa.questions[*].text` is NOT mechanically sanitized — the orchestrator surfaces questions verbatim via `AskUserQuestion`; external implementers are instructed to phrase questions without sensitive content.
 
 ## Atomic write rule
@@ -107,6 +110,7 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
     "Cover helper with offline harness"
   ],
   "commit_message": "Add foo-helper.sh and wire it into /foo Step 3\n\nReplaces the inline awk block previously inlined in SKILL.md.",
+  "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "Adds a helper and skill wiring with harness coverage."},
   "todos_left": [],
   "oos_observations": [],
   "bail_reason": "",

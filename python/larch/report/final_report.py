@@ -27,6 +27,7 @@ from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
 from larch.state import stall_recovery
 from larch.report import tokens
+from larch.calibration import difficulty
 
 _OOS_FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 
@@ -85,6 +86,17 @@ def _first_round_scout_manifest(implement_tmpdir: Path) -> Path | None:
 
 def _self_review_requested(implement_tmpdir: Path) -> bool:
     return _read_kv(path=implement_tmpdir / "run-flags.sh", key="SELF_REVIEW_REQUESTED") == "true"
+
+
+def _difficulty_summary_line(run_dir: Path) -> str:
+    record = run_dir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if not record.is_file():
+        return ""
+    try:
+        data: object = json.loads(record.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    return difficulty.difficulty_line(cast("dict[str, object]", data)) if isinstance(data, dict) else ""
 
 
 def _dynamic_archetypes_line(implement_tmpdir: Path) -> str:
@@ -808,6 +820,7 @@ def write_final_report(
         pr_number=pr_number,
         pr_url=pr_url,
         plan_review_line=derived["plan_review_line"],
+        difficulty_line=_difficulty_summary_line(run_dir),
         dynamic_archetypes_line=_dynamic_archetypes_line(implement_tmpdir),
         code_review_line=derived["code_review_line"],
         code_added=derived["code_added"],

@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from larch.calibration import difficulty
 from larch.design import clarify
 from larch.core import config
 from larch.core import logging_util
@@ -933,7 +934,7 @@ def _seed_publish(tmp_path: Path, *, request_id: str = "2", session_id: str = "R
     _write_source_env(source_env, tmp_path, session_id=session_id, repo="owner/repo")
     plan = tmp_path / "clarify-plan.md"
     response = tmp_path / "clarify-response.md"
-    plan.write_text("## Plan\n\nDo it.\n", encoding="utf-8")
+    plan.write_text("## Plan\n\nDo it.\n\ndifficulty: MODERATE\n", encoding="utf-8")
     response.write_text("Response.\n", encoding="utf-8")
     (tmp_path / ".design-clarify-request.env").write_text(
         "\n".join(
@@ -961,6 +962,8 @@ def test_design_clarify_publish_happy_path(
     runner = DesignRunner(
         [
             _result(stdout="PLAN_WRITE_OK=true\n"),
+            _result(stdout="STATUS=ok\n"),
+            _result(stdout=""),
             _result(stdout="PUBLISH_OK=true\n"),
             _result(stdout="RENAMED=true\n"),
         ]
@@ -996,13 +999,58 @@ def test_design_clarify_publish_happy_path(
     assert "<REDACTED-TOKEN>" not in (tmp_path / "clarify-plan.redacted.md").read_text(encoding="utf-8")
 
 
+def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    (tmp_path / "clarify-plan.md").write_text(
+        "## Plan\n\nDo it.\n\ndifficulty: HARD\n",
+        encoding="utf-8",
+    )
+    runner = DesignRunner(
+        [
+            _result(stdout="PLAN_WRITE_OK=true\n"),
+            _result(stdout="STATUS=ok\n"),
+            _result(stdout=""),
+            _result(stdout="PUBLISH_OK=true\n"),
+            _result(stdout="RENAMED=true\n"),
+        ]
+    )
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(
+            posted=True,
+            comment_id="123",
+            comment_url="url",
+            marker="marker",
+        ),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(
+            changed=True,
+            action="remove",
+            label=clarify.LABEL_NAME,
+        ),
+    )
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    assert (tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME).is_file()
+    assert any(call[2:4] == ["difficulty", "sync-labels"] for call in runner.calls)
+    assert any(call[2:4] == ["run-log", "write"] for call in runner.calls)
+
+
 def test_design_clarify_publish_empty_session_warns_and_skips_publish(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     source_env = _seed_publish(tmp_path, session_id="")
-    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n"), _result(stdout="STATUS=ok\n")])
     monkeypatch.setattr(clarify, "proc", runner)
 
     def ok_comment_post(*_args: object, **_kwargs: object) -> clarify.ClarifyCommentResult:
@@ -1066,7 +1114,12 @@ def test_design_clarify_publish_failure_paths(
     ).read_text(encoding="utf-8")
 
     source_env = _seed_publish(tmp_path)
-    runner = DesignRunner([_result(stdout=""), _result(rc=9, stderr="publish failed\n"), _result(stdout="")])
+    runner = DesignRunner([
+        _result(stdout=""),
+        _result(stdout="STATUS=ok\n"),
+        _result(stdout=""),
+        _result(rc=9, stderr="publish failed\n"),
+    ])
     monkeypatch.setattr(clarify, "proc", runner)
     monkeypatch.setattr(
         clarify,
@@ -1092,7 +1145,7 @@ def test_design_clarify_publish_failure_paths(
     assert any(call[2:4] == ["run-log", "append-failure"] for call in runner.calls)
 
     source_env = _seed_publish(tmp_path, session_id="")
-    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n"), _result(stdout="STATUS=ok\n")])
     monkeypatch.setattr(clarify, "proc", runner)
 
     def fail_comment_post(*_args: object, **_kwargs: object) -> clarify.ClarifyCommentResult:
@@ -1106,7 +1159,7 @@ def test_design_clarify_publish_failure_paths(
     assert "SUMMARY_OUTCOME=failed-clarify\n" in result
 
     source_env = _seed_publish(tmp_path, session_id="")
-    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n")])
+    runner = DesignRunner([_result(stdout="PLAN_WRITE_OK=true\n"), _result(stdout="STATUS=ok\n")])
     monkeypatch.setattr(clarify, "proc", runner)
     monkeypatch.setattr(
         clarify,

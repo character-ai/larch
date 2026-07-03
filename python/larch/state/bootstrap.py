@@ -22,6 +22,7 @@ from larch.state import dirty_tree
 from larch.core import external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
+from larch.calibration import difficulty
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
@@ -47,6 +48,7 @@ ROUTING_KEYS: tuple[str, ...] = (
     "BRANCH_ACTION",
     "SELF_REVIEW_REQUESTED",
     "SELF_IMPLEMENT_REQUESTED",
+    "DESIGN_DIFFICULTY",
     "DEGRADED",
     "BOTH_DOWN",
     "CODEX_STATE",
@@ -550,6 +552,70 @@ def _tracking_bail(*, st: BootstrapState, detail: str, result: subprocess.Comple
             (Path(st.implement_tmpdir) / "tracking-init-failed.stderr.log").write_text(text, encoding="utf-8")
 
 
+def _difficulty_prior_from_preflight(st: BootstrapState) -> str:
+    if not st.opts.preflight_tmpdir:
+        return ""
+    plan = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"
+    if not plan.is_file():
+        return ""
+    try:
+        return difficulty.plan_difficulty(plan.read_text(encoding="utf-8", errors="replace"))
+    except OSError:
+        return ""
+
+
+def _persist_difficulty_prior(st: BootstrapState, tier: str) -> None:
+    if not st.implement_tmpdir:
+        return
+    path = Path(st.implement_tmpdir) / "difficulty-prior.env"
+    value = tier if difficulty.tier_valid(tier) else ""
+    text = f"DESIGN_DIFFICULTY={value}\n"
+    with contextlib.suppress(OSError):
+        _atomic_text(path=path, text=text)
+
+
+def _write_initial_difficulty_record(st: BootstrapState, tier: str) -> None:
+    if not st.implement_tmpdir or not _valid_run_id(st.run_id):
+        return
+    tmpdir = Path(st.implement_tmpdir)
+    out = tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    args = [
+        "difficulty",
+        "write-record",
+        "--output",
+        str(out),
+        "--rater",
+        "fallback",
+        "--rater-tool",
+        "bootstrap",
+        "--rater-model",
+        "unknown",
+        "--fallback-tier",
+        "MODERATE",
+        "--fallback-rationale",
+        "initial record seeded before implement rating",
+    ]
+    if difficulty.tier_valid(tier):
+        args.extend(["--design-tier", tier])
+    result = _cli(*args)
+    if result.returncode != 0 or not out.is_file():
+        return
+    _cli(
+        "run-log",
+        "write",
+        "--log-root",
+        str(tmpdir / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        st.run_id,
+        "--batch",
+        "difficulty-rating",
+        "--input-file",
+        str(out),
+    )
+
+
 def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) -> bool:
     if not _valid_issue(st.issue_number_resolved):
         _tracking_bail(st=st, detail="invalid issue number")
@@ -569,6 +635,9 @@ def _perform_tracking_side_effects(st: BootstrapState, *, write_sentinel: bool) 
         return False
     # Emit plan-review tally (stub or preflight candidate) before later Step 0
     # bailouts can skip _phase_plan; _phase_plan overwrites when a real tally exists.
+    prior = _difficulty_prior_from_preflight(st)
+    _persist_difficulty_prior(st, prior)
+    _write_initial_difficulty_record(st, prior)
     _publish_plan_review_tally(st)
     if not _persist_run_flags(st):
         return False
@@ -691,7 +760,7 @@ def _append_force_bypass(st: BootstrapState) -> bool:
     return True
 
 
-_PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:")
+_PLAN_PROVENANCE_PREFIXES = ("review_status:", "rounds_completed:", "difficulty:")
 _OPTIONAL_PLAN_SIZE_TRAILER_RE = re.compile(
     r"^(diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+)$"
 )
@@ -748,8 +817,11 @@ def _phase_plan(st: BootstrapState) -> None:
             st.emit_tmp_step_failed("force-bypass-log")
         plan_src = Path(st.opts.preflight_tmpdir) / "plan-from-issue.txt"
         try:
+            plan_text = plan_src.read_text(encoding="utf-8", errors="replace")
+            prior = difficulty.plan_difficulty(plan_text)
+            _persist_difficulty_prior(st, prior)
             Path(st.plan_file).write_text(
-                _strip_plan_provenance_headers(plan_src.read_text(encoding="utf-8", errors="replace")),
+                _strip_plan_provenance_headers(plan_text),
                 encoding="utf-8",
             )
         except OSError as exc:
