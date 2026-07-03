@@ -30,7 +30,7 @@ Read before composing or refining:
 
 Ground the outline in those inputs. Do not add unsupported goals, scope, files, or approaches. Use present guidelines while composing Goals, Non-goals, and Approach, not only during later deviation checks.
 
-Read `skills/design/references/readability-style.md` before composing the outline.
+**MANDATORY — READ ENTIRE FILE before composing the outline: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Outline schema
 

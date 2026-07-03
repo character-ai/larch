@@ -511,10 +511,10 @@ not_contains "$SKILL_MD" 'design_diagram_log.write_bounded_diagram_failure_log' 
 contains "$FINALIZE_STEP5_MD" 'Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitizes the candidate before publish.' 'Step 5c must own diagram sanitize before publish'
 contains "$SKILL_MD" 'architecture diagram content is issue-only via `larch:diagrams`' 'SKILL verbosity must not authorize architecture diagram chat emission'
 contains "$SKILL_MD" 'Continue to Step 5b.5 IMMEDIATELY' 'Step 5b must continue to Step 5b.5 before Step 5c'
-contains "$FINALIZE_STEP5_MD" 'read `skills/design/references/readability-style.md` once at Step 5 entry before diagram or final plan prose composition' 'finalize-step5 must require one Step 5 readability load'
+contains "$FINALIZE_STEP5_MD" '**MANDATORY — READ ENTIRE FILE before Step 5 diagram, final plan, summary, or Gate C prose composition: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**' 'finalize-step5 must require one Step 5 readability load'
 _readability_step5_count=$(grep -Fc 'readability-style.md' "$FINALIZE_STEP5_MD" || true)
 [ "$_readability_step5_count" -eq 1 ] || fail "finalize-step5 must reference readability-style.md once, found $_readability_step5_count"
-not_contains "$SKILL_MD" 'readability-style.md`.**' 'SKILL must not retain inline orchestrator readability anchors after move'
+contains "$SKILL_MD" '**MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**' 'SKILL must restore the Step 2b readability anchor'
 contains "$SKILL_MD" 'Parse `NEXT_ACTION=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`' 'Step 5b prose must branch on NEXT_ACTION'
 contains "$SKILL_MD" '`unknown-oos-status`' 'Step 5b must special-case unknown-oos-status on non-zero prepare rc'
 contains "$SKILL_MD" 'stop for repair' 'Step 5b must stop for repair on unknown OOS status'

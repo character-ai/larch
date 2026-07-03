@@ -1,10 +1,10 @@
 [
   {
-    "closure_content_estimated_tokens": 55479,
-    "closure_estimated_tokens": 55646,
-    "closure_lines": 1852,
-    "conditional_content_estimated_tokens": 10317,
-    "conditional_estimated_tokens": 10363,
+    "closure_content_estimated_tokens": 56397,
+    "closure_estimated_tokens": 56573,
+    "closure_lines": 1942,
+    "conditional_content_estimated_tokens": 10349,
+    "conditional_estimated_tokens": 10396,
     "conditional_files": [
       "skills/design/references/brainstorm.md",
       "skills/design/references/settle-rc-dispatch.md",
@@ -17,6 +17,7 @@
       "skills/design/SKILL.md",
       "skills/design/references/flags.md",
       "skills/design/scripts/step-name-registry.tsv",
+      "skills/shared/readability-style.md",
       "skills/shared/session-setup-output.md",
       "skills/shared/external-reviewers.md",
       "skills/shared/design-background-wait.md",
@@ -27,16 +28,16 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25188,
-    "skill_md_estimated_tokens": 25243,
+    "skill_md_content_estimated_tokens": 25199,
+    "skill_md_estimated_tokens": 25254,
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 37010,
-    "closure_estimated_tokens": 37115,
-    "closure_lines": 1131,
-    "conditional_content_estimated_tokens": 19305,
-    "conditional_estimated_tokens": 19350,
+    "closure_content_estimated_tokens": 37954,
+    "closure_estimated_tokens": 38068,
+    "closure_lines": 1223,
+    "conditional_content_estimated_tokens": 19395,
+    "conditional_estimated_tokens": 19440,
     "conditional_files": [
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
@@ -49,9 +50,10 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 529,
+    "conditional_lines": 533,
     "files": [
       "skills/implement/SKILL.md",
+      "skills/shared/readability-style.md",
       "skills/shared/final-summary-emit.md",
       "skills/implement/scripts/step-name-registry.tsv",
       "skills/implement/references/preflight-plan-audit.md",
@@ -60,9 +62,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 29039,
-    "skill_md_estimated_tokens": 29117,
-    "skill_md_lines": 796
+    "skill_md_content_estimated_tokens": 29093,
+    "skill_md_estimated_tokens": 29171,
+    "skill_md_lines": 800
   },
   {
     "closure_content_estimated_tokens": 43945,
@@ -95,9 +97,9 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 9037,
-    "closure_estimated_tokens": 9062,
-    "closure_lines": 312,
+    "closure_content_estimated_tokens": 9960,
+    "closure_estimated_tokens": 9994,
+    "closure_lines": 402,
     "conditional_content_estimated_tokens": 3322,
     "conditional_estimated_tokens": 3333,
     "conditional_files": [
@@ -107,14 +109,15 @@
     "conditional_lines": 144,
     "files": [
       "skills/review/SKILL.md",
+      "skills/shared/readability-style.md",
       "skills/review/scripts/step-name-registry.tsv",
       "skills/shared/session-setup-output.md",
       "skills/shared/external-reviewers.md",
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 5495,
-    "skill_md_estimated_tokens": 5505,
-    "skill_md_lines": 122
+    "skill_md_content_estimated_tokens": 5528,
+    "skill_md_estimated_tokens": 5538,
+    "skill_md_lines": 124
   }
 ]

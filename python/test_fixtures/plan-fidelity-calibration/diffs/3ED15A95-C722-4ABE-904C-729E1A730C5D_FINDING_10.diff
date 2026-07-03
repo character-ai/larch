@@ -3337,8 +3337,8 @@ index 108eaf0ca..42dc6cf4a 100644
  
  ## Style preamble expansion
  
--Before launching each external slot (Cursor framing, Codex scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
-+Before launching each external slot (framing, scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
+-Before launching each external slot (Cursor framing, Codex scope) and before composing the always-Claude pragmatic slot, read `skills/shared/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
++Before launching each external slot (framing, scope) and before composing the always-Claude pragmatic slot, read `skills/shared/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
  
  ---
  

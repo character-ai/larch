@@ -6,6 +6,8 @@ allowed-tools: Bash, Read
 
 # voter-calibration
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Analyze **voter agreement**, **YES-vote severity spread**, **severity calibration score**, and chronic outlier voters from committed larch run logs.
 
 The analyzer measures agreement and severity calibration only. It reports voter-side calibration standing. It does **not** use realized outcomes, issue fate, or reverts. It does **not** affect reviewer/proposer points, spawning, thresholds, token allocation, or live panel verdicts.

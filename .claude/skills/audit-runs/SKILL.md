@@ -6,6 +6,8 @@ allowed-tools: Bash, Read
 
 # audit-runs
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+
 Audit recently-merged larch run logs for the selected skill (`--skill=design|implement`) for anomalies. The current implement registry covers EXON/OOS/missing-file/NS-retry/self-deploying checks; the current design registry is intentionally narrower and ships cache-freshness plus guideline-assessment coverage. Always file a chain-of-history audit-report issue; record bug-issue candidates as proposals at scan time and act on them only after explicit user direction in chat.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.

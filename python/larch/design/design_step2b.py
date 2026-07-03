@@ -420,7 +420,7 @@ def _compose_drafter_prompt(*, design_tmpdir: Path, plugin_root: Path) -> None:
         "",
         "Readability style (trusted):",
     ]
-    readability = plugin_root / "skills" / "design" / "references" / "readability-style.md"
+    readability = plugin_root / "skills" / "shared" / "readability-style.md"
     if readability.is_file():
         lines.append(readability.read_text(encoding="utf-8", errors="replace").rstrip("\n"))
     lines.extend(

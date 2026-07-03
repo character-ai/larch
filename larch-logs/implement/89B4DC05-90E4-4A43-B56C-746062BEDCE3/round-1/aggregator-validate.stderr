@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a test that omits `--readability-style-file` and asserts shared readability ')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_9 not traceable to scoped input (first 80 chars: 'Add a manifest row with empty path or variant and assert exit 2 with the new err')

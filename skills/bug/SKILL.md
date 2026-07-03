@@ -14,6 +14,8 @@ hooks:
 
 # Bug Skill
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Investigate a user-described bug inline, compose a detailed issue body, then delegate creation to `/issue` with dedup enabled. This skill is for issue filing only. It never edits the repository.
 
 **Anti-halt continuation reminder.** After every child `Skill` tool call (e.g., `/issue`) returns, IMMEDIATELY continue with this skill's NEXT numbered step - do NOT end the turn on the child's cleanup output, and do NOT write a summary, handoff, status recap, or "returning to parent" message - those are halts in disguise. The rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `bail`, `skip to Step N`). A normal sequential `proceed to Step N+1` instruction is the default continuation this rule reinforces, NOT an exception. → shared/subskill-invocation.md#anti-halt

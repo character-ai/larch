@@ -1,10 +1,41 @@
 # path	variant	expected_count	prompt_kind	step_markers
-skills/design/SKILL.md	orchestrator-inline	0		
-skills/design/references/design-outline.md	orchestrator-inline	0		
+__metadata__	metadata-min-count	42		
+skills/design/SKILL.md	orchestrator-inline	2		2b
+skills/design/references/design-outline.md	orchestrator-inline	1		
 skills/design/references/brainstorm.md	orchestrator-inline	1		
 skills/design/references/approval-gates.md	orchestrator-inline	1		
 skills/design/references/discussion-rounds.md	orchestrator-inline	1		
 skills/design/references/settle-rc-dispatch.md	orchestrator-inline	0		
-skills/design/references/finalize-step5.md	orchestrator-inline	0
+skills/design/references/finalize-step5.md	orchestrator-inline	1		
 skills/design/references/brainstorm-prompts.md	external-prompt	3	standard	
 skills/design/references/plan-review.md	external-prompt	1	plan-review	
+skills/alias/SKILL.md	orchestrator-inline	1		
+skills/block-issue/SKILL.md	orchestrator-inline	1		
+skills/bug/SKILL.md	orchestrator-inline	1		
+skills/cleanup/SKILL.md	orchestrator-inline	1		
+skills/deps/SKILL.md	orchestrator-inline	1		
+skills/fluff-analysis/SKILL.md	orchestrator-inline	1		
+skills/gc-run-logs/SKILL.md	orchestrator-inline	1		
+skills/im/SKILL.md	orchestrator-inline	1		
+skills/implement/SKILL.md	orchestrator-inline	2		
+skills/issue/SKILL.md	orchestrator-inline	1		
+skills/pause/SKILL.md	orchestrator-inline	1		
+skills/rejected-analysis/SKILL.md	orchestrator-inline	1		
+skills/report-tokens/SKILL.md	orchestrator-inline	1		
+skills/research/SKILL.md	orchestrator-inline	1		
+skills/review/SKILL.md	orchestrator-inline	1		
+skills/review-and-fix/SKILL.md	orchestrator-inline	1		
+skills/set-up-forked-open-source-repo/SKILL.md	orchestrator-inline	1		
+skills/status/SKILL.md	orchestrator-inline	1		
+skills/upgrade-larch/SKILL.md	orchestrator-inline	1		
+skills/voter-calibration/SKILL.md	orchestrator-inline	1		
+skills/implement/references/execution-issues-tracking.md	orchestrator-inline	1		
+skills/implement/references/stall-recovery.md	orchestrator-inline	1		
+skills/implement/scripts/write-final-report.md	orchestrator-inline	1		
+.claude/skills/agnix-fix/SKILL.md	orchestrator-inline	1		
+.claude/skills/analyze-issues/SKILL.md	orchestrator-inline	1		
+.claude/skills/audit-runs/SKILL.md	orchestrator-inline	1		
+.claude/skills/combine-issues/SKILL.md	orchestrator-inline	1		
+.claude/skills/larch-size/SKILL.md	orchestrator-inline	1		
+.claude/skills/rebalance-tests/SKILL.md	orchestrator-inline	1		
+.claude/skills/release/SKILL.md	orchestrator-inline	1		

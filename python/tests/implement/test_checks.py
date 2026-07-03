@@ -3429,8 +3429,14 @@ def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
     assert "test-render-cost-line-callsites" in targets
 
 
+def test_direct_targets_design_step2b_routes_to_structure_and_drafter(tmp_path: Path) -> None:
+    targets = _direct_targets_for(("python/larch/design/design_step2b.py",), tmp_path)
+    assert "test-design-step2b-drafter" in targets
+    assert "test-design-structure" in targets
+
+
 def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Path) -> None:
-    lifecycle_targets = _direct_targets_for(("python/design_lifecycle.py",), tmp_path)
+    lifecycle_targets = _direct_targets_for(("python/larch/design/design_lifecycle.py",), tmp_path)
     assert "test-design-step0-init" in lifecycle_targets
     assert "test-design-step1d5" in lifecycle_targets
     assert "test-design-stage-terminal-state" in lifecycle_targets
@@ -3445,8 +3451,8 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
     ("path", "target"),
     [
         ("python/design_argv.py", "test-parse-design-argv"),
-        ("python/design_lifecycle.py", "test-design-driver"),
-        ("python/design_lifecycle.py", "test-design-step0-init"),
+        ("python/larch/design/design_lifecycle.py", "test-design-driver"),
+        ("python/larch/design/design_lifecycle.py", "test-design-step0-init"),
         ("python/design_log_publish_flow.py", "test-design-log-publish"),
         ("python/design_log_ship.py", "test-design-log-ship"),
         ("python/design_oos.py", "test-file-design-oos"),
@@ -3461,12 +3467,23 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
         ("python/larch/review/plan_review_panel.py", "test-plan-review-panel"),
         ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-review-panel"),
         ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-voters"),
-        ("python/rendering.py", "test-dispatch-plan-review-panel"),
-        ("python/rendering.py", "test-dispatch-plan-voters"),
+        ("python/larch/rendering/rendering.py", "test-dispatch-plan-review-panel"),
+        ("python/larch/rendering/rendering.py", "test-dispatch-plan-voters"),
         ("python/test_design_log_ship.py", "test-design-log-ship"),
     ],
 )
 def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str, target: str) -> None:
+    assert target in _direct_targets_for((path,), tmp_path)
+
+
+@pytest.mark.parametrize(
+    ("path", "target"),
+    [
+        ("scripts/lint-readability-preamble.tsv", "test-design-structure"),
+        ("scripts/lint-readability-preamble.tsv", "test-brainstorm-prompts"),
+    ],
+)
+def test_direct_targets_readability_manifest_routes_to_structure(tmp_path: Path, path: str, target: str) -> None:
     assert target in _direct_targets_for((path,), tmp_path)
 
 
@@ -3494,6 +3511,8 @@ def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str,
                 "test-step3-orchestrator-fence",
                 "test-references-headers",
                 "test-implement-anti-polling-rule",
+                "test-lint-readability-preamble",
+                "test-brainstorm-prompts",
             },
         ),
         ("skills/shared/design-background-wait.md", {"test-implement-anti-polling-rule"}),
@@ -3505,6 +3524,9 @@ def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str,
                 "test-render-cost-line-callsites",
                 "test-references-headers",
                 "test-implement-anti-polling-rule",
+                "test-lint-readability-preamble",
+                "test-design-structure",
+                "test-brainstorm-prompts",
             },
         ),
         ("python/larch/review/review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
@@ -3532,7 +3554,9 @@ def test_direct_targets_chronic_surface_full_union_sets(
 ) -> None:
     # These are full union expectations, not one-row spot checks. The design and
     # implement SKILL paths combine their structure rows, the skills/* references
-    # header row, and the anti-polling row. The design SKILL also inherits the
+    # header row, the anti-polling row, and the readability-preamble rule targets
+    # (test-lint-readability-preamble, test-design-structure, test-brainstorm-prompts)
+    # that the skills/*/SKILL.md glob routes to. The design SKILL also inherits the
     # Step 3 MAV fence targets. Top-level python/*.py paths inherit py-lint and
     # py-test when the toolchain probes are stubbed available.
     targets = set(_direct_targets_with_toolchain((path,), tmp_path, monkeypatch))

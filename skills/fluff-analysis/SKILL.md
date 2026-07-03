@@ -6,6 +6,8 @@ allowed-tools: Bash, Read
 
 # fluff-analysis
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Characterize review **fluff** — suggestions that are *not accepted* (rejected or deferred to Out-of-Scope) or *accepted-but-low-value* — from committed larch run logs in the current repository. The analyzer scans `larch-logs/design/*/` and `larch-logs/implement/*/`, normalizes every review finding (outcome, reviewer/voter severity, semantic tags), and prints a markdown report plus recommendations for tightening the reviewer self-filter and judge (voter) instructions.
 
 This is the standing tool behind the kind of analysis filed as a `[Analysis Report]` issue: re-run it as the corpus grows to track whether necessity-gate changes (see `skills/shared/review-acceptance-rubric.md`) move acceptance and findings-per-run.

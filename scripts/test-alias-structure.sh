@@ -16,7 +16,8 @@
 #  (E) E_COLLISION error string interpolates $TARGET_DIR (not a literal
 #      `.claude/skills/<alias-name>/`).
 #  (F) Step 3 /implement recipe references $TARGET_DIR for both mkdir and
-#      redirect path (no `mkdir -p .claude/skills/<alias-name>` and no
+#      redirect path, and threads $TARGET_DIR into alias generate via
+#      --target-dir (no `mkdir -p .claude/skills/<alias-name>` and no
 #      `> ".claude/skills/<alias-name>/SKILL.md"`).
 #  (G) Step 3 announce line interpolates $TARGET_DIR.
 #  (H) Step 4 sentinel-file uses "$TARGET_DIR/SKILL.md" and does NOT contain
@@ -73,8 +74,10 @@ grep -q 'E_COLLISION.*\$TARGET_DIR' "$SKILL_MD" \
 # (F) Step 3 /implement recipe uses $TARGET_DIR for mkdir and redirect.
 grep -q 'mkdir -p "\$TARGET_DIR"' "$SKILL_MD" \
   || fail "(F.1) expected 'mkdir -p \"\$TARGET_DIR\"' in Step 3 recipe"
+grep -q -- '--target-dir "\$TARGET_DIR"' "$SKILL_MD" \
+  || fail "(F.2) expected '--target-dir \"\$TARGET_DIR\"' in Step 3 recipe"
 grep -q '> "\$TARGET_DIR/SKILL.md"' "$SKILL_MD" \
-  || fail "(F.2) expected redirect '> \"\$TARGET_DIR/SKILL.md\"' in Step 3 recipe"
+  || fail "(F.3) expected redirect '> \"\$TARGET_DIR/SKILL.md\"' in Step 3 recipe"
 # Negative: old hardcoded recipe paths.
 if grep -q 'mkdir -p \.claude/skills/<alias-name>$' "$SKILL_MD" \
    || grep -q '> "\.claude/skills/<alias-name>/SKILL\.md"' "$SKILL_MD"; then

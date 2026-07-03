@@ -7,6 +7,8 @@ allowed-tools: Bash, Skill
 
 # Alias Skill
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 This skill follows the Process pattern: numbered steps, checkpointed delegation, fail-closed verification.
 
 Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement` for the full pipeline (implementation, code review, PR), then verifies the artifact landed on disk.
@@ -149,6 +151,7 @@ Generate the alias skill by running:
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias generate \
     --name "<alias-name>" \
     --target "<target-skill>" \
+    --target-dir "$TARGET_DIR" \
     --flags "<preset-flags>" \
     --version "$(jq -r .version "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json")" \
     > "$TARGET_DIR/SKILL.md"
