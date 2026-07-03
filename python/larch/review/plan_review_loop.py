@@ -783,7 +783,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         reason = "explicit-approve"
     cap = effective_authorized_cap(tmpdir)
     panel_tier = ""
-    if high_new >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD and review_count < plan_review_round_cap("HARD"):
+    if high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD and high_new > 0 and review_count < plan_review_round_cap("HARD"):
         cont = True
         resolution = resolve_plan_review_tier(tmpdir)
         from larch.calibration import difficulty  # noqa: PLC0415

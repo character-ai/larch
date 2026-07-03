@@ -496,7 +496,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
             "changed_paths": changed_paths,
             "panel_skipped": str(data.get("panel_skipped") or ""),
             "audit_upgrade": str(data.get("audit_upgrade") or ""),
-            "escalations": tuple(str(item) for item in cast("tuple[object, ...]", data.get("escalations") or ())),
+            "escalations": tuple(data.get("escalations") or ()),  # preserve structured escalation objects
         }
         if rater == "implement":
             kwargs["implement_rating"] = source_rating
@@ -505,6 +505,21 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
         else:
             kwargs["design_rating"] = source_rating
         refreshed = difficulty.build_record(**kwargs)  # type: ignore[arg-type]
+        refreshed = difficulty._merge_existing_record_fields(  # pyright: ignore[reportPrivateUsage]
+            refreshed,
+            data,
+            argparse.Namespace(
+                override_source="",
+                audit_upgrade="",
+                escalation=None,
+                round_cap="",
+                codex_model_role="",
+                audit_evaluated="",
+                escalated_round="",
+                override_tier="",
+                panel_tier="",
+            ),
+        )
         difficulty.write_record(record_path, refreshed)
         _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="difficulty-rating", input_file=str(record_path))
 

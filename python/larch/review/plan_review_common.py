@@ -80,7 +80,55 @@ def _run_params_difficulty(design_tmpdir: Path) -> str:
     return difficulty.normalize_tier(cast("dict[str, object]", data).get("difficulty_override"))
 
 
+def _seed_plan_review_difficulty_record(design_tmpdir: Path) -> None:
+    record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if record_path.is_symlink():
+        return
+    existing = difficulty._load_record_data(record_path)  # pyright: ignore[reportPrivateUsage]
+    if existing and difficulty._record_resolution_is_persisted(existing):  # pyright: ignore[reportPrivateUsage]
+        return
+    raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+    raw_rating = difficulty.read_rating_file(raw_path)
+    if raw_rating is None:
+        if raw_path.exists() or raw_path.is_symlink():
+            return
+        plan_path = design_tmpdir / "plan.txt"
+        if not plan_path.is_file() or plan_path.is_symlink():
+            return
+        tier = difficulty.plan_difficulty(plan_path.read_text(encoding="utf-8", errors="replace"))
+        if not tier:
+            return
+        raw_rating = difficulty.validate_rating_object(
+            {
+                "predicted_tier": tier,
+                "confidence": "medium",
+                "rationale": "design plan metadata",
+            }
+        )
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=raw_rating,
+    )
+    if existing:
+        blank_args = argparse.Namespace(
+            override_source="",
+            audit_upgrade="",
+            escalation=None,
+            round_cap="",
+            codex_model_role="",
+            audit_evaluated="",
+            escalated_round="",
+            override_tier="",
+            panel_tier="",
+        )
+        record = difficulty._merge_existing_record_fields(record, existing, blank_args)  # pyright: ignore[reportPrivateUsage]
+    difficulty.write_record(record_path, record)
+
+
 def resolve_plan_review_tier(design_tmpdir: Path, *, round_num: int | None = None) -> difficulty.TierResolution:
+    _seed_plan_review_difficulty_record(design_tmpdir)
     record = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     return difficulty.resolve_panel_tier(record, override=_run_params_difficulty(design_tmpdir), round_num=round_num)
 
@@ -91,7 +139,7 @@ def design_escalation_authorized(design_tmpdir: Path) -> bool:
             continue
         values = _read_kv_file(path)
         reason = values.get("PLAN_REVIEW_CONTINUE_REASON", "")
-        if reason in {"escalated-high-accepted", "high-accepted", "non-nit-accepted", "structural-or-large-change", "degraded-panel"}:
+        if reason in {"escalated-high-accepted", "non-nit-accepted", "structural-or-large-change", "degraded-panel"}:
             return True
     data_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     if data_path.is_file() and not data_path.is_symlink():

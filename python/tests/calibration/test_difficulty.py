@@ -171,3 +171,54 @@ def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
     assert data["panel_tier"] == "HARD"
     assert data["round_cap"] == 3
     assert data["escalations"] == existing["escalations"]
+
+
+def test_write_record_merge_recomputes_unresolved_bootstrap_tiers(tmp_path: Path) -> None:
+    out = tmp_path / "difficulty-rating.json"
+    existing = difficulty.build_record(
+        rater="implement",
+        rater_tool="bootstrap",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "bootstrap"}
+        ),
+    )
+    difficulty.write_record(out, existing)
+
+    rc = difficulty.write_record_main([
+        "--output",
+        str(out),
+        "--rater",
+        "fallback",
+        "--fallback-tier",
+        "HARD",
+        "--fallback-rationale",
+        "new",
+    ])
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert rc == 0
+    assert data["applied_tier"] == difficulty.HARD
+    assert data["panel_tier"] == difficulty.HARD
+    assert data["override_source"] == "none"
+
+
+def test_resolve_panel_tier_audits_existing_unresolved_record(tmp_path: Path) -> None:
+    out = tmp_path / "difficulty-rating.json"
+    existing = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "bootstrap"}
+        ),
+    )
+    difficulty.write_record(out, existing)
+
+    resolved = difficulty.resolve_panel_tier(out, rng=1)
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert resolved.audit_evaluated is True
+    assert resolved.panel_tier == difficulty.HARD
+    assert data["audit_evaluated"] is True
+    assert data["panel_tier"] == difficulty.HARD

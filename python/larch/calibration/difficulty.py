@@ -363,6 +363,14 @@ def _record_escalations_for_round(data: dict[str, object], round_num: int | None
     return tuple(result)
 
 
+def _record_resolution_is_persisted(data: dict[str, object]) -> bool:
+    if data.get("override_source") == "operator":
+        return True
+    if data.get("audit_evaluated") is not None or data.get("audit_upgrade") is not None:
+        return True
+    return bool(_record_escalations_for_round(data))
+
+
 def _write_record_data(path: Path, data: dict[str, object]) -> None:
     larch_io.atomic_write(path=path, text=json.dumps(data, indent=2, sort_keys=True) + "\n", prefix=f".{path.name}.")
 
@@ -398,10 +406,11 @@ def resolve_panel_tier(
     override_tier = normalize_tier(override)
     existing = _resolution_from_data(data, round_num=round_num)
     if existing is not None:
-        has_escalations = bool(_record_escalations_for_round(data))
-        resolved_once = data.get("audit_evaluated") is not None or data.get("audit_upgrade") is not None
+        resolved_once = data.get("audit_evaluated") is not None or data.get("audit_upgrade") is not None or bool(_record_escalations_for_round(data))
         existing_operator_override = data.get("override_source") == "operator"
-        if not override_tier or not audit_enabled or has_escalations or (resolved_once and existing_operator_override):
+        if resolved_once and (not override_tier or existing_operator_override):
+            return existing
+        if existing_operator_override and not override_tier:
             return existing
     override_source = "operator" if override_tier else str(data.get("override_source") or "none")
     starting = override_tier or resolve_applied_tier(data, override="", fallback_tier=MODERATE)
@@ -723,6 +732,7 @@ def _merge_existing_record_fields(record: DifficultyRecord, existing: dict[str, 
     if not existing:
         return record
     data = asdict(record)
+    resolution_persisted = _record_resolution_is_persisted(existing)
     preserve = (
         "override_source",
         "audit_upgrade",
@@ -749,20 +759,25 @@ def _merge_existing_record_fields(record: DifficultyRecord, existing: dict[str, 
     }
     if explicit_args.override_tier or explicit_args.panel_tier:
         explicit.update({"applied_tier", "panel_tier"})
+    resolution_keys = {
+        "override_source",
+        "audit_upgrade",
+        "escalations",
+        "applied_tier",
+        "panel_tier",
+        "round_cap",
+        "codex_model_role",
+        "audit_evaluated",
+        "escalated_round",
+    }
     for key in preserve:
         if key in explicit:
             continue
-        if key == "override_source" and existing.get(key) == "operator":
-            data[key] = "operator"
+        if key in resolution_keys and not resolution_persisted:
             continue
         value = existing.get(key)
         if value not in (None, "", []):
             data[key] = value
-    if data.get("override_source") == "operator":
-        # Floor logic must not replace an operator override on refresh.
-        existing_applied = normalize_tier(existing.get("applied_tier"))
-        if existing_applied and not explicit_args.override_tier:
-            data["applied_tier"] = existing_applied
     return DifficultyRecord(**data)
 
 
