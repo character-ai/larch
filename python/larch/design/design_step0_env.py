@@ -371,13 +371,13 @@ def _run_parse_argv(*, public_argv: Sequence[str], plugin_root: Path) -> tuple[i
         out_path = Path(out.name)
     try:
         proc = subprocess.run(
-            [sys.executable, str(plugin_root / "python" / "cli.py"), "design", "parse-argv", "--output", str(out_path), *public_argv],
+            [sys.executable, str(plugin_root / "python" / "cli.py"), "design", "parse-flags", "--output", str(out_path), *public_argv],
             stdout=subprocess.DEVNULL,
             stderr=subprocess.PIPE,
             text=True,
             check=False,
         )
-        data = load_bash_quoted_env(path=out_path, allow_keys=[*PARSED_ENV_KEYS, "VALIDATION_ERROR"])
+        data = load_bash_quoted_env(path=out_path, allow_keys=[*PARSED_ENV_KEYS, "VALIDATION_ERROR", "ERROR_MESSAGE"])
         return proc.returncode, data, proc.stderr
     finally:
         with contextlib.suppress(FileNotFoundError):
@@ -390,21 +390,24 @@ def _validate_parse_result(*, rc: int, data: dict[str, str], stderr_text: str) -
         print("**⚠ /design: skill loader did not expand public argv words; aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
     validation_error = data.get("VALIDATION_ERROR", "")
+    error_message = data.get("ERROR_MESSAGE", "")
     if rc == PARSE_VALIDATION_RC:
-        if validation_error:
+        if error_message:
+            print(error_message, file=sys.stderr)
+        elif validation_error:
             print(f"**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** {validation_error}", file=sys.stderr)
         else:
             print("**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
     if rc == 0:
         if validation_error:
-            print(f"**⚠ /design: design parse-argv reported VALIDATION_ERROR but exited {rc}; aborting before session setup.**", file=sys.stderr)
+            print(f"**⚠ /design: design parse-flags reported VALIDATION_ERROR but exited {rc}; aborting before session setup.**", file=sys.stderr)
             raise SystemExit(1)
     else:
-        print(f"**⚠ /design: design parse-argv failed (exit {rc}); aborting before session setup.**", file=sys.stderr)
+        print(f"**⚠ /design: design parse-flags failed (exit {rc}); aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
     if data.get("POSITIONAL_KIND", "") not in {"issue", "verbal", "none"}:
-        print("**⚠ /design: design parse-argv emitted invalid POSITIONAL_KIND; aborting before session setup.**", file=sys.stderr)
+        print("**⚠ /design: design parse-flags emitted invalid POSITIONAL_KIND; aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
 
 

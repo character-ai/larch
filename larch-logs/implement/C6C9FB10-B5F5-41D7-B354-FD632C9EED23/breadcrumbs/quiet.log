@@ -1,0 +1,28 @@
+=== larch-quiet-cli.py-22695.log ===
+=== larch-quiet-cli.py-2861.log ===
+=== larch-quiet-read-session-env-key.sh-25229.log ===
+=== larch-quiet-read-session-env-key.sh-25271.log ===
+=== larch-quiet-read-session-env-key.sh-25294.log ===
+=== larch-quiet-read-session-env-key.sh-73640.log ===
+=== larch-quiet-sessionstart-health.sh-27281.log ===
+=== larch-quiet-ship.py-40712.log ===
+ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 3s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 13s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 27s
+ci_monitor: poll 3/180 pending after 30s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 40s
+ci_monitor: poll 4/180 pending after 44s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 54s
+ci_monitor: poll 5/180 pending after 58s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 68s
+ci_monitor: poll 6/180 pending after 71s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 81s
+ci_monitor: poll 7/180 pending after 84s; sleeping 10s
+ci_monitor: CI status query #8 in progress after 94s
+ci_monitor: CI pass after 97s -> rebase
+ship.py: rebase: Flush+Push

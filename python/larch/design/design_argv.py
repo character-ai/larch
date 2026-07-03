@@ -32,13 +32,18 @@ def _write_output(
         return False
 
 
+def _validation_error_message(token: str) -> str:
+    return f"**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** {token}"
+
+
 def _emit_validation_error(*, token: str, output_path: str) -> int:
     if "\n" in token or "\r" in token:
         token = "newline-in-value"
-    fields = {"VALIDATION_ERROR": token}
+    fields = {"VALIDATION_ERROR": token, "ERROR_MESSAGE": _validation_error_message(token)}
     if output_path:
         _write_output(output_path=output_path, fields=fields)  # pyright: ignore[reportUnusedCallResult]
     print(f"VALIDATION_ERROR={token}")
+    print(f"ERROR_MESSAGE={fields['ERROR_MESSAGE']}")
     return 3
 
 
@@ -317,7 +322,7 @@ def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
     return 0
 
 
-def parse_argv_main(argv: Sequence[str]) -> int:
+def parse_flags_main(argv: Sequence[str]) -> int:
     output_path, argv = _strip_leading_output(list(argv))
 
     # Hidden --output is internal-only; reject any public appearance after stripping.

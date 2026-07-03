@@ -1,17 +1,17 @@
 # Flag Reference
-**Consumer**: `/design` argument parsing, loaded before Step 0 by the MANDATORY directive next to the compact flag table in `SKILL.md`.
+**Consumer**: conditional background prose for `/design` flags and adjacent non-argv notes.
 
-**Contract**: normative `/design` flag allowlist: validation, dispatch, persistence.
+**Contract**: background reference for `/design` flag effects, dispatch, persistence, plan-size thresholds, review env vars, and legacy notes. Python owns public argv validation.
 
-**When to load**: once at invocation start, before Step 0. Do NOT load mid-flow; parsing is one shot, sticky.
+**When to load**: only when a `/design` flow needs background detail beyond `SKILL.md`'s compact flag table. Do not load at invocation start just to parse flags.
 
-**Binding convention**: `SKILL.md`'s compact flag table is a non-normative index. This file is authoritative for validation and dispatch.
+**Binding convention**: `python/cli.py design parse-flags` owns validation and positional binding. `SKILL.md`'s compact flag table is the user-facing index.
 
 ---
 
 ## Public `/design` flags
 
-Step 0-pre validation and positional classification use `skills/design/scripts/python/cli.py design parse-argv`; this is normative.
+Step 0-pre validation and positional classification use `python/cli.py design parse-flags`.
 
 - `--no-dedup`: forward to `/larch:issue` on verbal-create path. Default `false`.
 - `--run-id <ID>`: stable run id. Default empty.

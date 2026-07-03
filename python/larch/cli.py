@@ -224,7 +224,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("upgrade-larch", "release-step7-root"): ("larch.core.upgrade_larch", "release_step7_root_main"),
     ("upgrade-larch", "sparse-dirs"): ("larch.core.upgrade_larch", "sparse_dirs_main"),
     ("forked-repo", "setup"): ("larch.core.forked_repo", "setup_main"),
-    ("design", "parse-argv"): ("larch.design.design_argv", "parse_argv_main"),
+    ("design", "parse-flags"): ("larch.design.design_argv", "parse_flags_main"),
     ("design", "step0-parse"): ("larch.design.design_lifecycle", "step0_parse_main"),
     ("design", "step0-session"): ("larch.design.design_lifecycle", "step0_session_main"),
     ("design", "step0-route"): ("larch.design.design_lifecycle", "step0_route_main"),
@@ -563,7 +563,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
 # Shared with test_cli.py so the registry-membership test does not re-enumerate
 # the same keys (issue #4480 duplicate-code consolidation).
 _DESIGN_LIFECYCLE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
-    ("design", "parse-argv"),
+    ("design", "parse-flags"),
     ("design", "step0-parse"),
     ("design", "step0-session"),
     ("design", "step0-route"),

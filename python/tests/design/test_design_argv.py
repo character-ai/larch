@@ -14,7 +14,7 @@ CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 def _run_parse(*args: str) -> subprocess.CompletedProcess[str]:
     return subprocess.run(
-        [sys.executable, str(CLI), "design", "parse-argv", *args],
+        [sys.executable, str(CLI), "design", "parse-flags", *args],
         capture_output=True,
         text=True,
         check=False,
@@ -31,7 +31,7 @@ def _stdout_kvs(stdout: str) -> dict[str, str]:
     return kvs
 
 
-def test_design_parse_argv_cli_stdout_uses_legacy_uppercase_kvs() -> None:
+def test_design_parse_flags_cli_stdout_uses_legacy_uppercase_kvs() -> None:
     result = _run_parse("--brainstorm", "123")
     assert result.returncode == 0
     kvs = _stdout_kvs(result.stdout)
@@ -42,7 +42,7 @@ def test_design_parse_argv_cli_stdout_uses_legacy_uppercase_kvs() -> None:
     assert "brainstorm_requested=" not in result.stdout
 
 
-def test_design_parse_argv_cli_writes_sourceable_output(tmp_path: Path) -> None:
+def test_design_parse_flags_cli_writes_sourceable_output(tmp_path: Path) -> None:
     output = tmp_path / "argv.env"
     result = _run_parse("--output", str(output), "--brainstorm", "123")
     assert result.returncode == 0
@@ -72,11 +72,12 @@ def test_design_parse_argv_cli_writes_sourceable_output(tmp_path: Path) -> None:
         (("foo\n=true",), "newline-in-value"),
     ],
 )
-def test_design_parse_argv_cli_rejections(args: tuple[str, ...], error_token: str) -> None:
+def test_design_parse_flags_cli_rejections(args: tuple[str, ...], error_token: str) -> None:
     result = _run_parse(*args)
     assert result.returncode == 3
     kvs = _stdout_kvs(result.stdout)
     assert kvs["VALIDATION_ERROR"] == error_token
+    assert kvs["ERROR_MESSAGE"] == f"**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** {error_token}"
     assert "PARTITION_REQUESTED" not in kvs
 
 
@@ -87,7 +88,7 @@ def test_design_parse_argv_cli_rejections(args: tuple[str, ...], error_token: st
         ("3249", "--output", "public-path"),
     ],
 )
-def test_design_parse_argv_cli_rejects_public_output_flag(
+def test_design_parse_flags_cli_rejects_public_output_flag(
     tmp_path: Path,
     args: tuple[str, ...],
 ) -> None:
@@ -96,12 +97,14 @@ def test_design_parse_argv_cli_rejects_public_output_flag(
     assert result.returncode == 3
     kvs = _stdout_kvs(result.stdout)
     assert kvs["VALIDATION_ERROR"] == "--output"
+    assert kvs["ERROR_MESSAGE"] == "**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** --output"
     text = output.read_text(encoding="utf-8")
     assert "VALIDATION_ERROR='--output'" in text
+    assert "ERROR_MESSAGE='**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** --output'" in text
     assert "partition_requested=" not in text
 
 
-def test_design_parse_argv_cli_metacharacters_preserved_with_output(tmp_path: Path) -> None:
+def test_design_parse_flags_cli_metacharacters_preserved_with_output(tmp_path: Path) -> None:
     output = tmp_path / "argv.env"
     result = _run_parse("--output", str(output), "Strunk & White $x")
     assert result.returncode == 0
@@ -126,7 +129,7 @@ def test_design_parse_argv_cli_metacharacters_preserved_with_output(tmp_path: Pa
         ),
     ],
 )
-def test_design_parse_argv_cli_honors_flags_after_issue(
+def test_design_parse_flags_cli_honors_flags_after_issue(
     args: tuple[str, ...],
     expected: dict[str, str],
 ) -> None:
@@ -139,7 +142,7 @@ def test_design_parse_argv_cli_honors_flags_after_issue(
         assert kvs[key] == val
 
 
-def test_design_parse_argv_cli_ignores_extra_nonflag_token_after_issue() -> None:
+def test_design_parse_flags_cli_ignores_extra_nonflag_token_after_issue() -> None:
     result = _run_parse("123", "456")
     assert result.returncode == 0
     kvs = _stdout_kvs(result.stdout)
@@ -147,10 +150,20 @@ def test_design_parse_argv_cli_ignores_extra_nonflag_token_after_issue() -> None
     assert kvs["POSITIONAL_VALUE"] == "123"
 
 
-def test_design_parse_argv_cli_verbal_tail_keeps_flag_like_tokens_literal() -> None:
+def test_design_parse_flags_cli_verbal_tail_keeps_flag_like_tokens_literal() -> None:
     result = _run_parse("feature", "--no-dedup")
     assert result.returncode == 0
     kvs = _stdout_kvs(result.stdout)
     assert kvs["POSITIONAL_KIND"] == "verbal"
     assert kvs["POSITIONAL_VALUE"] == "feature --no-dedup"
     assert kvs["NO_DEDUP_REQUESTED"] == "false"
+
+
+def test_design_parse_argv_cli_is_not_registered() -> None:
+    result = subprocess.run(
+        [sys.executable, str(CLI), "design", "parse-argv", "--brainstorm", "123"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 2
