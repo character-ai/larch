@@ -243,12 +243,13 @@ def _read_source_env_value(*, path: Path, key: str) -> str:
     return ""
 
 
-def _resolve_summary_mode(design_tmpdir: Path) -> str:
+def resolve_summary_mode(design_tmpdir: Path) -> str:
     run_params = design_tmpdir / "run-params.json"
     if run_params.is_file() and not run_params.is_symlink():
         with contextlib.suppress(OSError, json.JSONDecodeError):
-            data = json.loads(run_params.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
+            parsed = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(parsed, dict):
+                data = cast(dict[str, object], parsed)
                 for key in ("mode", "MODE"):
                     value = data.get(key)
                     if isinstance(value, str) and value:

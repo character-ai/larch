@@ -15,7 +15,7 @@ from collections.abc import Sequence
 
 from larch.core import redact
 from larch.design import design_publish
-from larch.design.design_summary import _resolve_summary_mode
+from larch.design.design_summary import resolve_summary_mode
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -410,7 +410,7 @@ def _render_final_summary_before_copy(
         FinalSummaryRenderRequest(
             design_tmpdir=design_tmpdir,
             outcome=outcome,
-            mode=_resolve_summary_mode(design_tmpdir),
+            mode=resolve_summary_mode(design_tmpdir),
             issue_number=issue,
             session_id=run_id,
             repo=repo,

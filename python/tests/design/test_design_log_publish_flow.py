@@ -283,9 +283,15 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
             return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
         return original_run_cli(*args)
 
+    def fake_capture(**_kwargs: object) -> bool:
+        return True
+
+    def fake_spawn(**_kwargs: object) -> None:
+        return
+
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
     monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
 
@@ -352,9 +358,15 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
             return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
         return original_run_cli(*args)
 
+    def fake_capture(**_kwargs: object) -> bool:
+        return True
+
+    def fake_spawn(**_kwargs: object) -> None:
+        return
+
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
-    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", fake_spawn)
     monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]

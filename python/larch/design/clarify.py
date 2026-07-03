@@ -16,7 +16,7 @@ from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_lifecycle
 from larch.design import design_pause
-from larch.design.design_summary import _resolve_summary_mode
+from larch.design.design_summary import resolve_summary_mode
 from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
@@ -854,7 +854,7 @@ def _render_clarify_final_summary(
         FinalSummaryRenderRequest(
             design_tmpdir=design_tmpdir,
             outcome=outcome,
-            mode=_resolve_summary_mode(design_tmpdir),
+            mode=resolve_summary_mode(design_tmpdir),
             issue_number=issue,
             session_id=env.get("SESSION_ID", ""),
             repo=env.get("REPO", ""),

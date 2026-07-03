@@ -1719,7 +1719,7 @@
     "file": "larch/design/design_summary.py",
     "code": "PLR0915",
     "qualified_symbol": "render_final_summary_main",
-    "metric": 94
+    "metric": 95
   },
   {
     "file": "larch/design/design_terminal.py",
