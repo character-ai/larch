@@ -1,0 +1,78 @@
+## Summary
+
+Issue #5991 (tiered panels, 2/2/3 ceilings, escalation, 1:30 audits) merged from a stalled /implement run (5624E8A3, PR #6122). Step 7a flagged 9 plan-listed paths untouched before the dispatcher commit; review-fix rounds back-filled three, and three more were satisfied at the callers per the plan's own conditional language. Three planned test-coverage items never landed anywhere and remain gaps at HEAD `44cc1e1fb`. The runtime behavior itself shipped and is verified working; this issue is test coverage only.
+
+## Gap 1 — test-implement-review-token-propagation.sh has no difficulty coverage
+
+Plan text for `skills/implement/scripts/test-implement-review-token-propagation.sh`: "Update argv parsing to allow `--difficulty`; assert tier→`--panel` mapping and `PANEL_SHAPE` propagation stay compatible."
+
+Current state: the harness contains zero `difficulty` references. The runtime mapping it should pin exists and works: `difficulty.threshold_panel_for_tier` (TRIVIAL→`simple`, MODERATE/HARD→`hard`) is consumed at `review_core_body.py:805,935,1194`, `round_runner.py:244`, and `review_dispatch_panel.py:518`, and `review dispatch-panel` emits `PANEL_SHAPE` / `PANEL_TIER` / `PANEL_ROUND_CAP` KVs.
+
+Wanted: harness cases asserting `--difficulty` is accepted by the step-5 wrapper surface, the tier→`--panel` token mapping holds, and `PANEL_SHAPE` propagation stays compatible.
+
+## Gap 2 — test-step3-review-cap.sh lacks the tier-cap and escalation cases
+
+Plan text for `skills/design/scripts/test-step3-review-cap.sh`: "Update the cap harness for tier cap 2/2/3: keep existing cap-entry behavior; add a HARD round-3-reachable case; add a design escalation-trigger case; add a Gate-C authorized-cap case (no round 3 without recorded escalation)."
+
+Current state: the harness covers the legacy cap-entry, cap-reached, and hard-cap-blocks-round-3 shapes but has no tier-aware cases (zero `difficulty`/`tier`/escalation references). The Python side partially covers the logic: `python/tests/review/test_plan_review.py` pins `resolve_plan_review_tier` seeding and `effective_authorized_cap` (round 3 requires a recorded escalation via `plan_review_common.design_escalation_authorized`, `plan_review_common.py:136-157`). The bash-harness cases from the plan are still absent:
+
+- HARD round-3-reachable (cap 3 honored when an escalation is recorded).
+- design escalation-trigger (round-total >=2 high-severity in-scope accepted findings escalates the not-HARD panel directly to HARD, `plan_review_loop.py:791-792`).
+- Gate-C authorized-cap (no round 3 without recorded escalation).
+
+## Gap 3 — design panel per-tier model-role and pair-shape checks are thin
+
+Plan text targeted `skills/design/scripts/test-dispatch-plan-review-panel.sh`: "Add static checks for model roles and pair shape by tier (design always pairs; HARD Codex role `default`)." That path was stale at plan time — the harness was deleted long ago and the Makefile target `test-dispatch-plan-review-panel` (Makefile:646) now runs `python3 -m pytest python/tests/review/test_plan_review_panel.py -q -k 'panel_dispatch and not usage'`. PR #6122 touched that pytest file by only 2 lines, so the per-tier assertions never landed in the successor surface either.
+
+Wanted, in `python/tests/review/test_plan_review_panel.py` (mirroring the code-review-side tests `test_dispatch_panel_trivial_uses_codex_singles_and_tier_kvs` and `test_dispatch_panel_hard_uses_pairs_and_default_codex_role` in `python/tests/review/test_review_pipeline.py:4437,4468`):
+
+- design panels always dispatch Codex+Cursor pairs at every tier (never singles).
+- TRIVIAL and MODERATE collapse to the same panel with Codex `model_role=review` and ceiling 2.
+- HARD flips the Codex half to `model_role=default` with ceiling 3.
+- escalated rounds pass `prune_round_num=0` (`plan_review_panel.py:523`).
+
+## Non-gaps (for the record)
+
+Of the 9 paths Step 7a flagged for the 5624E8A3 run, these need no action:
+
+- `python/larch/report/progress_report.py`, `python/larch/report/run_log_flush.py`, `python/tests/review/test_plan_review.py` — back-filled by the run's own review-fix rounds; present in the merged PR #6122 diff.
+- `python/larch/review/review_threshold.py` — the plan required no behavior change; the tier→`--panel` mapping lives at the callers as designed.
+- `python/larch/report/final_report.py`, `python/larch/git/pr_body.py` — the plan's conditional intent ("show audit/escalation details when present, reusing `difficulty.difficulty_line`") is satisfied because both already consume `difficulty_line`, and PR #6122 enriched `difficulty_line` itself (`calibration/difficulty.py:657`) with audit, override, and escalation segments.
+
+## Acceptance
+
+- The two bash harnesses gain the plan-listed cases and pass under `make test-implement-review-token-propagation` and `make test-step3-review-cap`.
+- `test_plan_review_panel.py` pins design pair-shape and per-tier Codex model role, and passes under `make test-dispatch-plan-review-panel`.
+- No runtime behavior changes; every changed line is test or harness code.
+
+## Context
+
+Follow-up of umbrella #5993 (difficulty-tiers); completes the test surface promised in child #5991's plan. This issue blocks #5993. No file overlap with #6169 (the Step 5 flush regression), which touches `python/larch/review/review_and_fix.py` and `python/tests/review/test_review_and_fix.py`.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Land the three test-coverage gaps promised in #5991's plan: `--difficulty` propagation, tier-cap/escalation cap cases, and design-panel per-tier shape checks.
+- Pin the already-shipped difficulty-tier runtime (TRIVIAL/MODERATE ceiling 2, HARD ceiling 3; tier→panel mapping; escalation-gated round 3) against regression.
+- Make `make test-implement-review-token-propagation`, `make test-step3-review-cap`, and `make test-dispatch-plan-review-panel` cover the plan-listed cases.
+
+### Non-goals
+- No runtime behavior changes — every changed line is test/harness code.
+- No action on the 6 "non-gap" paths (already back-filled by review-fix rounds or satisfied at callers).
+- No new test files; no recreation of the deleted `test-dispatch-plan-review-panel.sh` — extend the three existing successor surfaces in place.
+
+### Approach sketch
+- Gap 1: in the bash harness, add difficulty cases invoking `review-and-fix step5 --difficulty <TIER>` against the existing review-core stub, asserting captured `REVIEW_CORE_ARGV` carries `--panel simple` (TRIVIAL) / `--panel hard` (MODERATE, HARD) and `PANEL_SHAPE` stays compatible.
+- Gap 2: in the cap bash harness, add HARD round-3-reachable, escalation-trigger, and Gate-C authorized-cap cases reusing the existing `plan-review run` driver + loop-stub pattern; seed tier/escalation state the way the runtime records it.
+- Gap 3: in `test_plan_review_panel.py`, add per-tier `panel-dispatch` cases mirroring code-review-side `test_review_pipeline.py` tests — always Codex+Cursor pairs, TRIVIAL/MODERATE→codex `model_role=review` + ceiling 2, HARD→codex `model_role=default` + ceiling 3, escalated round→`prune_round_num=0`.
+
+### Surfaces in scope
+- `skills/implement/scripts/test-implement-review-token-propagation.sh`
+- `skills/design/scripts/test-step3-review-cap.sh`
+- `python/tests/review/test_plan_review_panel.py`
+- Read-only anchors: `difficulty.threshold_panel_for_tier`, `plan_review_common.design_escalation_authorized`, `plan_review_loop.py`, `plan_review_panel.py`, and the `test_review_pipeline.py` mirror tests.
+
+### Open questions
+- Exact seam for passing tier/difficulty into `review-and-fix step5` and `panel-dispatch`, and how the cap harness records an escalation — resolved during drafting by reading the runtime + mirror tests. If any assertion cannot pass without a runtime edit, the assertion is wrong (test-only constraint), not the runtime.
