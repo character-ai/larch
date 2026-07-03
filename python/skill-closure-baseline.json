@@ -36,8 +36,8 @@
     "closure_content_estimated_tokens": 38291,
     "closure_estimated_tokens": 38405,
     "closure_lines": 1223,
-    "conditional_content_estimated_tokens": 19401,
-    "conditional_estimated_tokens": 19445,
+    "conditional_content_estimated_tokens": 19396,
+    "conditional_estimated_tokens": 19440,
     "conditional_files": [
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
