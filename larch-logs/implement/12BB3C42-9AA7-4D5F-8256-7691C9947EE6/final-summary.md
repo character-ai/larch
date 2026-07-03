@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:31:53
-- **Cost**: 💰 TOTAL ~$11.11 — Claude $0.86, Codex-5.5 $4.63, Codex-mini $2.25, Cursor $3.01, Claude (subprocess) $0.36  |  Tokens: 26632k
+- **Cost**: 💰 TOTAL ~$15.24 — Claude $4.99, Codex-5.5 $4.63, Codex-mini $2.25, Cursor $3.01, Claude (subprocess) $0.36  |  Tokens: 33964k
 - **Issue**: #6170 — https://github.com/character-ai/larch/issues/6170
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -68,3 +68,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): escalated prune fixture lacks a negative control. Concern: The round-3 escalated prune case does not pair the positive path with a same-fixture `--escalated-round false` control, so the bypass proof is narrower than it could be.
 - **Round 1 OOS_4** (nit): continuation escalation bash case is weaker than pytest. Concern: The bash continuation-elevation check overlaps the Python continuation coverage but asserts fewer fields, so it is a weaker hardening signal rather than a distinct regression guard.
 - **Round 1 OOS_5** (nit): round argument propagation is not asserted. Concern: The implement review-token propagation harness records the round argument, but no case checks that the wrapper actually forwards a non-default round number.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
