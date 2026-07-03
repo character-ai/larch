@@ -89,7 +89,7 @@ Print: `> **🔶 /design 0: setup**`
 ### 0-pre — Public argv validation (before session setup)
 
 **When**: immediately before Step 0a. No `session setup`, `DESIGN_TMPDIR`, or Final summary block on this path.
-Do not run a separate `python/cli.py design parse-flags` fence. Step 0a's `design step0-session` wrapper runs Step 0-pre before `session setup`: it renders shell-quoted `<PUBLIC_ARGV_WORDS>`, keeps verbal tails positional, and aborts on parse failure. Debug raw parser without wrapper `--`; raw `--` stops flag parsing.
+Do not run a separate `python/cli.py design parse-flags` fence. Step 0a's `design step0-session` wrapper runs Step 0-pre before `session setup`: it renders shell-quoted `<PUBLIC_ARGV_WORDS>`, keeps verbal tails positional, and aborts on parse failure. For manual debugging, invoke the raw parser with no leading `--`; a leading `--` stops flag parsing and forces the rest into verbal text.
 On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`.
 
 ### 0a — Reviewer session (`DESIGN_TMPDIR`)
