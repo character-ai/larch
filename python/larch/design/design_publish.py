@@ -28,6 +28,7 @@ class _TranscriptCaptureContext:
     issue: str
     repo: str
     claude_pid: str
+    warning_step_label: str
 
 
 def _emit_rows(rows: list[tuple[str, str]]) -> None:
@@ -337,15 +338,15 @@ def _splice_plan_provenance(*, text: str, review_status: str, rounds_completed: 
 
 
 
-def _append_transcript_warning(*, design_tmpdir: Path, status: str, message: str) -> None:
+def _append_transcript_warning(*, design_tmpdir: Path, warning_step_label: str, status: str, message: str) -> None:
     run_logs.append_execution_issue(
         log_file=design_tmpdir / "execution-issues.md",
         category="Warnings",
-        entry=f"design Step 5c session-transcript {status}: {message}",
+        entry=f"design Step {warning_step_label} session-transcript {status}: {message}",
     )
 
 
-def _remove_root_transcript(design_tmpdir: Path) -> bool:
+def _remove_root_transcript(*, design_tmpdir: Path, warning_step_label: str) -> bool:
     root_transcript = design_tmpdir / "session-transcript.jsonl"
     try:
         if root_transcript.exists() or root_transcript.is_symlink():
@@ -353,6 +354,7 @@ def _remove_root_transcript(design_tmpdir: Path) -> bool:
     except OSError as exc:
         _append_transcript_warning(
             design_tmpdir=design_tmpdir,
+            warning_step_label=warning_step_label,
             status="stale-root-removal-failed",
             message=f"could not remove stale root transcript before publish: {exc}",
         )
@@ -379,7 +381,14 @@ def _reuse_cached_claude_source_snapshot(*, snapshot: Path, session_id: str) -> 
     return None
 
 
-def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, snapshot: Path, session_id: str) -> Path | None:
+def _fetch_claude_source_snapshot(
+    *,
+    design_tmpdir: Path,
+    plugin_root: Path,
+    snapshot: Path,
+    session_id: str,
+    warning_step_label: str,
+) -> Path | None:
     result = proc.run(
         [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "claude-source"],
         env={**os.environ, "LARCH_TOKEN_SESSION_ID": session_id},
@@ -387,6 +396,7 @@ def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, sna
     if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
         _append_transcript_warning(
             design_tmpdir=design_tmpdir,
+            warning_step_label=warning_step_label,
             status="snapshot-skipped",
             message="Claude source snapshot materialization failed; transcript capture skipped.",
         )
@@ -396,6 +406,7 @@ def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, sna
     if snapshot_uuid != session_id:
         _append_transcript_warning(
             design_tmpdir=design_tmpdir,
+            warning_step_label=warning_step_label,
             status="snapshot-skipped",
             message=(
                 "Claude source snapshot SESSION_UUID disagrees with publish --session-id; "
@@ -408,6 +419,7 @@ def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, sna
     except OSError as exc:
         _append_transcript_warning(
             design_tmpdir=design_tmpdir,
+            warning_step_label=warning_step_label,
             status="snapshot-write-failed",
             message=f"Claude source snapshot write failed; transcript capture skipped: {exc}",
         )
@@ -415,7 +427,13 @@ def _fetch_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, sna
     return snapshot
 
 
-def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Path, session_id: str) -> Path | None:
+def _materialize_claude_source_snapshot(
+    *,
+    design_tmpdir: Path,
+    plugin_root: Path,
+    session_id: str,
+    warning_step_label: str,
+) -> Path | None:
     snapshot = design_tmpdir / "claude-source.env"
     cached = _reuse_cached_claude_source_snapshot(snapshot=snapshot, session_id=session_id)
     if cached is not None:
@@ -423,11 +441,18 @@ def _materialize_claude_source_snapshot(*, design_tmpdir: Path, plugin_root: Pat
     if not session_id:
         _append_transcript_warning(
             design_tmpdir=design_tmpdir,
+            warning_step_label=warning_step_label,
             status="snapshot-skipped",
             message="SESSION_ID was absent from source-env.sh; transcript capture skipped.",
         )
         return None
-    return _fetch_claude_source_snapshot(design_tmpdir=design_tmpdir, plugin_root=plugin_root, snapshot=snapshot, session_id=session_id)
+    return _fetch_claude_source_snapshot(
+        design_tmpdir=design_tmpdir,
+        plugin_root=plugin_root,
+        snapshot=snapshot,
+        session_id=session_id,
+        warning_step_label=warning_step_label,
+    )
 
 
 def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Path, snapshot: Path, session_id: str) -> bool:
@@ -457,6 +482,7 @@ def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Pa
         return True
     _append_transcript_warning(
         design_tmpdir=ctx.design_tmpdir,
+        warning_step_label=ctx.warning_step_label,
         status="source-env-refresh-failed",
         message="could not persist LARCH_CLAUDE_SOURCE_FILE; continuing with transcript capture.",
     )
@@ -469,7 +495,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
     Returns False only for publish-blocking hygiene failures. Capture skip statuses
     leave the root transcript absent and return True so log publish can continue.
     """
-    if not _remove_root_transcript(ctx.design_tmpdir):
+    if not _remove_root_transcript(design_tmpdir=ctx.design_tmpdir, warning_step_label=ctx.warning_step_label):
         return False
     source_env = ctx.design_tmpdir / "source-env.sh"
     source_data = design_step0_env._load_source_env(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
@@ -480,6 +506,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
     if source_session_id and source_session_id != ctx.session_id:
         _append_transcript_warning(
             design_tmpdir=ctx.design_tmpdir,
+            warning_step_label=ctx.warning_step_label,
             status="session-id-drift",
             message=(
                 "source-env.sh SESSION_ID disagrees with publish --session-id; "
@@ -492,6 +519,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
         design_tmpdir=ctx.design_tmpdir,
         plugin_root=ctx.plugin_root,
         session_id=canonical_session_id,
+        warning_step_label=ctx.warning_step_label,
     )
     if snapshot is None:
         return True
@@ -521,7 +549,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
             "--execution-issues-log",
             str(ctx.design_tmpdir / "execution-issues.md"),
             "--warning-step-label",
-            "5c",
+            ctx.warning_step_label,
         ],
     )
     status = ""
@@ -542,6 +570,7 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
             root_transcript.unlink(missing_ok=True)
         _append_transcript_warning(
             design_tmpdir=ctx.design_tmpdir,
+            warning_step_label=ctx.warning_step_label,
             status="hoist-failed",
             message=f"capture succeeded but transcript hoist failed: {exc}",
         )
@@ -946,6 +975,7 @@ def publish_core(argv: Sequence[str]) -> int:
                 issue=parsed["--issue"],
                 repo=parsed["--repo"],
                 claude_pid=parsed["--claude-pid"],
+                warning_step_label="5c",
             ),
             kvs=kvs,
             result_env=result_env,

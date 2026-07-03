@@ -117,6 +117,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         captured["issue"] = ctx.issue
         captured["repo"] = ctx.repo
         captured["claude_pid"] = ctx.claude_pid
+        captured["warning_step_label"] = ctx.warning_step_label
         return True
 
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
@@ -145,6 +146,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         "issue": "33",
         "repo": "o/r",
         "claude_pid": "12345",
+        "warning_step_label": "5c",
     }
 
 
@@ -179,6 +181,7 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
 
     def fake_capture(*, ctx: Any) -> bool:
         assert ctx.session_id == RUN_ID
+        assert ctx.warning_step_label == "pause"
         return True
 
     def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
