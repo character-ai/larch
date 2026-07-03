@@ -2,7 +2,7 @@
 name: im
 description: "Use when implementing a feature with auto-merge. Shortcut for /implement --merge."
 argument-hint: "<arguments>"
-allowed-tools: Skill
+allowed-tools: Skill, Read
 ---
 
 **MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**

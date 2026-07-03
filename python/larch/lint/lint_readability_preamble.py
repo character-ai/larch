@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import re
 import sys
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,6 +16,7 @@ MANIFEST_COLUMN_COUNT = 5
 COUNTED_VARIANTS = {"orchestrator-inline", "external-prompt"}
 METADATA_FLOOR_VARIANT = "metadata-min-count"
 SKILL_EXEMPT_VARIANT = "skill-exempt"
+MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY\s+[—-]\s+READ\s+ENTIRE\s+FILE", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -83,6 +85,14 @@ def _orchestrator_anchor(rel_path: str) -> str:
     return f"`{_style_path_for_row(rel_path)}`.**"
 
 
+def _orchestrator_style_re(*, rel_path: str) -> re.Pattern[str]:
+    style_path = re.escape(_style_path_for_row(rel_path))
+    return re.compile(
+        rf"^\*\*{MANDATORY_DIRECTIVE_RE.pattern}.*`{style_path}`\.\*\*$",
+        re.IGNORECASE,
+    )
+
+
 def check_step_placement(*, text: str, rel_path: str, step_markers: str) -> bool:
     ok = True
     lines = text.splitlines()
@@ -141,8 +151,8 @@ def _count_exact(*, text: str, needle: str) -> int:
 
 
 def _count_orchestrator_directives(*, text: str, rel_path: str) -> int:
-    anchor = _orchestrator_anchor(rel_path)
-    return sum(1 for line in text.splitlines() if anchor in line)
+    style_re = _orchestrator_style_re(rel_path=rel_path)
+    return sum(1 for line in text.splitlines() if style_re.search(line))
 
 
 def _check_external_prompt(*, row: ManifestRow, text: str) -> bool:
@@ -202,8 +212,8 @@ def _check_skill_path_form(*, root: Path, exemptions: set[str]) -> bool:
             continue
         expected = _style_path_for_row(rel)
         forbidden = PUBLIC_STYLE_PATH if expected == DEV_STYLE_PATH else DEV_STYLE_PATH
-        anchor = _orchestrator_anchor(rel)
-        if anchor not in text:
+        style_re = _orchestrator_style_re(rel_path=rel)
+        if not any(style_re.search(line) for line in text.splitlines()):
             print(f"{rel}: missing per-skill readability directive for {expected}", file=sys.stderr)
             ok = False
         if forbidden in text:

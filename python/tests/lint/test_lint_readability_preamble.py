@@ -129,6 +129,14 @@ def test_bare_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: p
     assert "skills/foo/SKILL.md: missing per-skill readability directive" in err
 
 
+def test_backticked_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "skills/foo/SKILL.md", f"See `{PUBLIC_PATH}` for the style rules.\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "skills/foo/SKILL.md: missing per-skill readability directive" in err
+
+
 def test_non_mandatory_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
     write(tmp_path / ".claude/skills/foo/SKILL.md", f"Read {DEV_PATH} before writing prose.\n")
