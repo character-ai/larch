@@ -81,8 +81,9 @@ marker_step_completed() {
   # value has already written its terminal completion sentinel. Used to release
   # the poll guard when a <task-notification> arrives in the same turn as the
   # launch ack and the bg process has not yet run its EXIT-trap marker cleanup
-  # (#4431, #4450). Race-free: each step writes its sentinel before the task
-  # process exits on terminal paths, and exits before the notification fires.
+  # (#4431, #4450). Sentinel release is the intended fast path after a
+  # notification; callers still need bounded foreground probes for transient
+  # mismatches where the notification arrives before the sentinel is visible.
   # Covers design-step3-review, design-step4-tail, design-step5c,
   # design-step-final-summary, implement-step3-checks, implement-step5-review,
   # implement-step5-resume, implement-step5-self-review, implement-step6-checks,
@@ -149,8 +150,9 @@ marker_step_completed() {
 # Denying a probe is safe: completion is detected by marker release once the sentinel
 # is present (the live-marker scan releases the guard at marker_step_completed), not
 # by the probe, so a clamped probe never blocks completion detection. The count is
-# keyed per sentinel basename so Step 3 (step-3-terminal) and Step 5c
-# (step-5c-terminal) waits in one tmpdir cannot contaminate each other, and it clears
+# keyed per sentinel basename so Step 3 (step-3-terminal), Step 5c
+# (step-5c-terminal), and implement Step 5 (step-5-terminal) waits in one tmpdir
+# cannot contaminate each other, and it clears
 # when the sentinel becomes present.
 PROBE_CLAMP_THRESHOLD="${LARCH_BG_POLL_GUARD_PROBE_THRESHOLD:-2}"
 case "$PROBE_CLAMP_THRESHOLD" in ''|*[!0-9]*) PROBE_CLAMP_THRESHOLD=2 ;; esac
@@ -210,9 +212,9 @@ probe_sentinel_name() {
   # foreground probe. Returns non-zero when no known sentinel is present.
   local cmd="$1" normalized name
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
-  name=$(printf '%s' "$normalized" | sed -E 's#.*/\.completed/(step-3-terminal|step-4|step-5c-terminal|step-final-summary).*#\1#')
+  name=$(printf '%s' "$normalized" | sed -E 's#.*/\.completed/(step-3-terminal|step-4|step-5c-terminal|step-5-terminal|step-final-summary).*#\1#')
   case "$name" in
-    step-3-terminal|step-4|step-5c-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
+    step-3-terminal|step-4|step-5c-terminal|step-5-terminal|step-final-summary) printf '%s' "$name"; return 0 ;;
   esac
   # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in candidate Bash commands.
   if printf '%s' "$normalized" | grep -Eq '(\$IMPLEMENT_TMPDIR|\$\{IMPLEMENT_TMPDIR\})/\.step-8-ship-handoff\.rc'; then
@@ -281,6 +283,42 @@ probe_target_live_dir_step8() {
   printf '%s' "$sole_step8_dir"
 }
 
+probe_target_live_dir_implement_step35() {
+  # Resolve the live tmpdir for the narrow /implement Step 3/5 terminal-sentinel
+  # probe. The probed sentinel basename selects the matching implement marker
+  # step, so Step 3 probes never bind to Step 5 markers and vice versa.
+  local cmd="$1" normalized assigned_tmpdir assigned_canon dir step name expected_step match_count=0 sole_match_dir=""
+  name=$(probe_sentinel_name "$cmd") || return 1
+  case "$name" in
+    step-3-terminal) expected_step="implement-step3-checks" ;;
+    step-5-terminal) expected_step="implement-step5-review" ;;
+    *) return 1 ;;
+  esac
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  if printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
+    assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^IMPLEMENT_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
+    assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
+    while IFS='|' read -r dir step || [ -n "$dir" ]; do
+      [ -n "$dir" ] || continue
+      if [ "$step" = "$expected_step" ] && [ "$assigned_canon" = "$dir" ]; then
+        printf '%s' "$dir"
+        return 0
+      fi
+    done <"$live_markers_file"
+    return 1
+  fi
+  while IFS='|' read -r dir step || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    if [ "$step" = "$expected_step" ]; then
+      match_count=$((match_count + 1))
+      sole_match_dir="$dir"
+    fi
+  done <"$live_markers_file"
+  [ "$match_count" -eq 1 ] || return 1
+  printf '%s' "$sole_match_dir"
+}
+
 terminal_sentinel_allowed_for_live_step() {
   local dir="$1" name="$2" live_dir live_step expected=""
   while IFS='|' read -r live_dir live_step || [ -n "$live_dir" ]; do
@@ -296,6 +334,26 @@ terminal_sentinel_allowed_for_live_step() {
     [ "$name" = "$expected" ] && return 0
   done <"$live_markers_file"
   return 1
+}
+
+bash_is_implement_terminal_sentinel_foreground_probe() {
+  local cmd="$1" normalized dir probe_target_re test_re sentinel_name sentinel_abs
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  bash_is_control_loop "$normalized" && return 1
+  printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])sleep([^[:alnum:]_]|$)' && return 1
+  case "$normalized" in *'&&'*|*'||'*|*tasks/*.output*|*.step-8-ship-handoff.*) return 1 ;; esac
+  # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in candidate Bash commands.
+  probe_target_re='(\$IMPLEMENT_TMPDIR/\.completed/(step-3-terminal|step-5-terminal)|\$\{IMPLEMENT_TMPDIR\}/\.completed/(step-3-terminal|step-5-terminal))'
+  test_re='^(IMPLEMENT_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$'
+  printf '%s' "$normalized" | grep -Eq "$test_re" || return 1
+  dir=$(probe_target_live_dir_implement_step35 "$normalized") || return 1
+  sentinel_name=$(probe_sentinel_name "$normalized") || return 1
+  sentinel_abs="$dir/.completed/$sentinel_name"
+  if [ -L "$sentinel_abs" ]; then
+    return 1
+  fi
+  return 0
 }
 
 bash_is_step8_handoff_foreground_probe() {
@@ -361,6 +419,28 @@ terminal_sentinel_probe_clamp() {
   name=$(probe_sentinel_name "$cmd") || exit 0
   dir=$(probe_target_live_dir "$cmd") || exit 0
   if [ -e "$dir/.completed/$name" ] && [ ! -L "$dir/.completed/$name" ]; then
+    rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+    sentinel_present=1
+  else
+    counter=$(probe_counter_file "$dir" "$name")
+    cnt=$(probe_counter_bump "$counter")
+    if [ "$cnt" -gt "$PROBE_CLAMP_THRESHOLD" ]; then
+      over_threshold=1
+    fi
+  fi
+  if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
+    json_deny_probe
+  fi
+  exit 0
+}
+
+implement_terminal_sentinel_probe_clamp() {
+  # Entered only after bash_is_implement_terminal_sentinel_foreground_probe matched.
+  # Reuses the per-sentinel clamp for the narrow Step 3/5 post-denial recovery path.
+  local cmd="$1" name dir counter cnt sentinel_present=0 over_threshold=0
+  name=$(probe_sentinel_name "$cmd") || exit 0
+  dir=$(probe_target_live_dir_implement_step35 "$cmd") || exit 0
+  if [ -f "$dir/.completed/$name" ] && [ ! -L "$dir/.completed/$name" ]; then
     rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
     sentinel_present=1
   else
@@ -594,7 +674,7 @@ bash_is_terminal_sentinel_foreground_probe() {
 bash_attempts_terminal_sentinel_mutation() {
   local cmd="$1"
   case "$cmd" in
-    *step-3-terminal*|*step-4*|*step-5c-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*|*step-8-ship-handoff.rc*) ;;
+    *step-3-terminal*|*step-4*|*step-5c-terminal*|*step-5-terminal*|*step-final-summary*|*step3-terminal-persisted-this-run*|*step-8-ship-handoff.rc*) ;;
     *) return 1 ;;
   esac
   printf '%s' "$cmd" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 0
@@ -670,8 +750,9 @@ bash_has_probe_target() {
   # "$DESIGN_TMPDIR" literally, which is how virtually every /implement and
   # /design Bash fence is written. They now require
   # bash_probe_target_dir_plausible evidence that the reference actually
-  # correlates to this dir. *"$dir"* and the tasks/output-file pattern stay
-  # unconditional: they are already dir-specific.
+  # correlates to this dir. *"$dir"* stays unconditional because it is already
+  # dir-specific; tasks/*.output is also clone-gated because it is not tied to
+  # the marker tmpdir path text.
   local cmd="$1" dir="$2" cwd_canon="$3"
   local design_tmpdir_ref="\$DESIGN_TMPDIR"
   local design_tmpdir_braced="\${DESIGN_TMPDIR}"
@@ -680,10 +761,10 @@ bash_has_probe_target() {
   local implement_tmpdir_ref="\$IMPLEMENT_TMPDIR"
   local implement_tmpdir_braced="\${IMPLEMENT_TMPDIR}"
   case "$cmd" in
-    *"$dir"*|*tasks/*.output*) return 0 ;;
+    *"$dir"*) return 0 ;;
   esac
   case "$cmd" in
-    *"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*)
+    *tasks/*.output*|*"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*)
       bash_probe_target_dir_plausible "$dir" "$cwd_canon" && return 0
       ;;
   esac
@@ -809,6 +890,9 @@ if bash_is_step3_recovery_waiter "$cmd"; then
 fi
 if bash_is_terminal_sentinel_foreground_probe "$cmd"; then
   terminal_sentinel_probe_clamp "$cmd"
+fi
+if bash_is_implement_terminal_sentinel_foreground_probe "$cmd"; then
+  implement_terminal_sentinel_probe_clamp "$cmd"
 fi
 if bash_is_step8_handoff_foreground_probe "$cmd"; then
   step8_handoff_probe_clamp "$cmd"
