@@ -3450,7 +3450,7 @@ def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Pat
 @pytest.mark.parametrize(
     ("path", "target"),
     [
-        ("python/design_argv.py", "test-parse-design-argv"),
+        ("python/larch/design/design_argv.py", "test-parse-design-argv"),
         ("python/larch/design/design_lifecycle.py", "test-design-driver"),
         ("python/larch/design/design_lifecycle.py", "test-design-step0-init"),
         ("python/design_log_publish_flow.py", "test-design-log-publish"),

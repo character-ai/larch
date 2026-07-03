@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 56755,
-    "closure_estimated_tokens": 56931,
-    "closure_lines": 1953,
+    "closure_content_estimated_tokens": 54194,
+    "closure_estimated_tokens": 54362,
+    "closure_lines": 1862,
     "conditional_content_estimated_tokens": 10349,
     "conditional_estimated_tokens": 10396,
     "conditional_files": [
@@ -15,7 +15,6 @@
     "conditional_lines": 494,
     "files": [
       "skills/design/SKILL.md",
-      "skills/design/references/flags.md",
       "skills/design/scripts/step-name-registry.tsv",
       "skills/shared/readability-style.md",
       "skills/shared/session-setup-output.md",
@@ -28,9 +27,9 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25225,
-    "skill_md_estimated_tokens": 25279,
-    "skill_md_lines": 699
+    "skill_md_content_estimated_tokens": 25213,
+    "skill_md_estimated_tokens": 25268,
+    "skill_md_lines": 698
   },
   {
     "closure_content_estimated_tokens": 38474,
