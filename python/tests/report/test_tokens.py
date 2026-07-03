@@ -172,6 +172,62 @@ def test_token_claude_source_accepts_complete_snapshot(tmp_path: Path) -> None:
     assert out["SESSION_UUID"] == "session-uuid"
 
 
+def test_find_latest_claude_transcript_uses_ambient_claude_sid(tmp_path: Path) -> None:
+    sid = "claude-session-1"
+    transcript = tmp_path / f"{sid}.jsonl"
+    _ = transcript.write_text('{"type":"user"}\n', encoding="utf-8")
+
+    latest, requested_sid = tokens._find_latest_claude_transcript(  # pyright: ignore[reportPrivateUsage]
+        project_dir=tmp_path,
+        env_map={"CLAUDE_CODE_SESSION_ID": sid},
+    )
+
+    assert latest == transcript
+    assert requested_sid == sid
+
+
+def test_find_latest_claude_transcript_sid_miss_fails_closed(tmp_path: Path) -> None:
+    _ = (tmp_path / "newer.jsonl").write_text('{"type":"user"}\n', encoding="utf-8")
+
+    latest, requested_sid = tokens._find_latest_claude_transcript(  # pyright: ignore[reportPrivateUsage]
+        project_dir=tmp_path,
+        env_map={"CLAUDE_CODE_SESSION_ID": "missing-sid"},
+    )
+
+    assert latest is None
+    assert requested_sid == "missing-sid"
+
+
+def test_find_latest_claude_transcript_without_sid_uses_newest(tmp_path: Path) -> None:
+    old = tmp_path / "old.jsonl"
+    new = tmp_path / "new.jsonl"
+    _ = old.write_text('{"type":"user"}\n', encoding="utf-8")
+    _ = new.write_text('{"type":"user"}\n', encoding="utf-8")
+    os.utime(old, (1, 1))
+    os.utime(new, (2, 2))
+
+    latest, requested_sid = tokens._find_latest_claude_transcript(  # pyright: ignore[reportPrivateUsage]
+        project_dir=tmp_path,
+        env_map={},
+    )
+
+    assert latest == new
+    assert requested_sid == ""
+
+
+def test_find_latest_claude_transcript_ignores_legacy_token_session_id(tmp_path: Path) -> None:
+    newest = tmp_path / "real-claude-session.jsonl"
+    _ = newest.write_text('{"type":"user"}\n', encoding="utf-8")
+
+    latest, requested_sid = tokens._find_latest_claude_transcript(  # pyright: ignore[reportPrivateUsage]
+        project_dir=tmp_path,
+        env_map={"LARCH_TOKEN_SESSION_ID": "larch-run-id"},
+    )
+
+    assert latest == newest
+    assert requested_sid == ""
+
+
 def test_replace_block_ignores_prose_marker_mentions(tmp_path: Path) -> None:
     target = tmp_path / "body.md"
     _ = target.write_text(

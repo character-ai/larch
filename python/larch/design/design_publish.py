@@ -362,17 +362,23 @@ def _remove_root_transcript(*, design_tmpdir: Path, warning_step_label: str) -> 
     return True
 
 
-def _snapshot_session_uuid(snapshot: Path) -> str:
+def _snapshot_has_transcript_source(snapshot: Path) -> bool:
     try:
-        return _parse_kv(snapshot.read_text(encoding="utf-8", errors="replace")).get("SESSION_UUID", "")
+        data = _parse_kv(snapshot.read_text(encoding="utf-8", errors="replace"))
     except OSError:
-        return ""
+        return False
+    if not (data.get("TRANSCRIPT_PATH") and data.get("SESSION_DIR") and data.get("SESSION_UUID")):
+        return False
+    try:
+        return Path(data["TRANSCRIPT_PATH"]).is_file()
+    except OSError:
+        return False
 
 
-def _reuse_cached_claude_source_snapshot(*, snapshot: Path, session_id: str) -> Path | None:
+def _reuse_cached_claude_source_snapshot(*, snapshot: Path) -> Path | None:
     try:
         if snapshot.is_file() and snapshot.stat().st_size > 0:
-            if _snapshot_session_uuid(snapshot) == session_id:
+            if _snapshot_has_transcript_source(snapshot):
                 return snapshot
             with contextlib.suppress(OSError):
                 snapshot.unlink()
@@ -386,12 +392,10 @@ def _fetch_claude_source_snapshot(
     design_tmpdir: Path,
     plugin_root: Path,
     snapshot: Path,
-    session_id: str,
     warning_step_label: str,
 ) -> Path | None:
     result = proc.run(
         [sys.executable, str(plugin_root / "python" / "cli.py"), "token", "claude-source"],
-        env={**os.environ, "LARCH_TOKEN_SESSION_ID": session_id},
     )
     if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
         _append_transcript_warning(
@@ -399,19 +403,6 @@ def _fetch_claude_source_snapshot(
             warning_step_label=warning_step_label,
             status="snapshot-skipped",
             message="Claude source snapshot materialization failed; transcript capture skipped.",
-        )
-        return None
-    snapshot_data = _parse_kv(result.stdout)
-    snapshot_uuid = snapshot_data.get("SESSION_UUID", "")
-    if snapshot_uuid != session_id:
-        _append_transcript_warning(
-            design_tmpdir=design_tmpdir,
-            warning_step_label=warning_step_label,
-            status="snapshot-skipped",
-            message=(
-                "Claude source snapshot SESSION_UUID disagrees with publish --session-id; "
-                "transcript capture skipped."
-            ),
         )
         return None
     try:
@@ -435,7 +426,7 @@ def _materialize_claude_source_snapshot(
     warning_step_label: str,
 ) -> Path | None:
     snapshot = design_tmpdir / "claude-source.env"
-    cached = _reuse_cached_claude_source_snapshot(snapshot=snapshot, session_id=session_id)
+    cached = _reuse_cached_claude_source_snapshot(snapshot=snapshot)
     if cached is not None:
         return cached
     if not session_id:
@@ -450,7 +441,6 @@ def _materialize_claude_source_snapshot(
         design_tmpdir=design_tmpdir,
         plugin_root=plugin_root,
         snapshot=snapshot,
-        session_id=session_id,
         warning_step_label=warning_step_label,
     )
 

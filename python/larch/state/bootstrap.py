@@ -350,8 +350,7 @@ def _write_claude_source_snapshot(st: BootstrapState) -> None:
     target = Path(st.implement_tmpdir) / "claude-source.env"
     if target.is_file() and target.stat().st_size > 0:
         return
-    env = {**os.environ, "LARCH_TOKEN_SESSION_ID": st.session_id}
-    result = _cli("token", "claude-source", env=env)
+    result = _cli("token", "claude-source")
     if result.returncode != 0 or "TRANSCRIPT_PATH=" not in result.stdout:
         return
     _atomic_text(path=target, text=result.stdout)

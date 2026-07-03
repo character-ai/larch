@@ -84,6 +84,31 @@ def test_write_base_session_env_preserves_claude_source_and_dynamic_keys(tmp_pat
     assert "--auto-mode" in write_env
 
 
+def test_write_claude_source_snapshot_does_not_inject_larch_session_id(tmp_path, monkeypatch) -> None:
+    calls: list[tuple[tuple[str, ...], object]] = []
+
+    def fake_cli(*args: str, env=None):
+        calls.append((args, env))
+        return subprocess.CompletedProcess(
+            ["cli", *args],
+            0,
+            "TRANSCRIPT_PATH=/tmp/transcript.jsonl\nSESSION_DIR=/tmp/session\nSESSION_UUID=claude-session\n",
+            "",
+        )
+
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="infra"),
+        implement_tmpdir=str(tmp_path),
+        session_id="larch-run-id",
+    )
+
+    bootstrap._write_claude_source_snapshot(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert calls == [(("token", "claude-source"), None)]
+    assert (tmp_path / "claude-source.env").is_file()
+
+
 def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> None:
     assert bootstrap._write_larch_run_sh(str(tmp_path))  # pyright: ignore[reportPrivateUsage]
     launcher = tmp_path / "larch-run.sh"

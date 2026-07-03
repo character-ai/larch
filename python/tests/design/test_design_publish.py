@@ -61,7 +61,7 @@ if args[:2] == ["token","claude-source"]:
     session_dir = os.environ.get("FAKE_CLI_SESSION_DIR", "/tmp")
     print("TRANSCRIPT_PATH=" + transcript)
     print("SESSION_DIR=" + session_dir)
-    print("SESSION_UUID=" + os.environ.get("LARCH_TOKEN_SESSION_ID", "RUN1"))
+    print("SESSION_UUID=" + os.environ.get("FAKE_CLI_SESSION_UUID", "RUN1"))
     raise SystemExit(0)
 if args[:2] == ["session","write-design-env"]:
     output = args[args.index("--output") + 1]
@@ -170,7 +170,7 @@ if args[:2] == ["token","claude-source"]:
     session_dir = os.environ.get("FAKE_CLI_SESSION_DIR", "/tmp")
     print("TRANSCRIPT_PATH=" + transcript)
     print("SESSION_DIR=" + session_dir)
-    print("SESSION_UUID=" + os.environ.get("LARCH_TOKEN_SESSION_ID", "RUN1"))
+    print("SESSION_UUID=" + os.environ.get("FAKE_CLI_SESSION_UUID", "RUN1"))
     raise SystemExit(0)
 if args[:2] == ["session","write-design-env"]:
     output = args[args.index("--output") + 1]
@@ -1677,6 +1677,29 @@ def test_capture_design_transcript_persists_source_and_hoists(tmp_path: Path, ca
     assert capture_args[capture_args.index("--source-file") + 1] == str(design / "claude-source.env")
     assert capture_args[capture_args.index("--warning-step-label") + 1] == "5c"
     assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
+
+
+def test_capture_design_transcript_accepts_distinct_claude_session_uuid(tmp_path: Path) -> None:
+    ok, design, call_log = _capture_case(tmp_path, {"FAKE_CLI_SESSION_UUID": "claude-session-uuid"})
+
+    assert ok
+    assert (design / "session-transcript.jsonl").is_file()
+    assert any(args[:2] == ["run-log", "capture-transcript"] for args in _call_args(call_log))
+    warning_log = design / "execution-issues.md"
+    if warning_log.exists():
+        assert "snapshot-skipped" not in warning_log.read_text(encoding="utf-8")
+
+
+def test_cached_claude_source_snapshot_reuse_does_not_require_session_dir(tmp_path: Path) -> None:
+    transcript = tmp_path / "claude-session.jsonl"
+    transcript.write_text('{"type":"user"}\n', encoding="utf-8")
+    snapshot = tmp_path / "claude-source.env"
+    snapshot.write_text(
+        f"TRANSCRIPT_PATH={transcript}\nSESSION_DIR={tmp_path / 'nonexistent-session-dir'}\nSESSION_UUID=claude-session\n",
+        encoding="utf-8",
+    )
+
+    assert design_publish._reuse_cached_claude_source_snapshot(snapshot=snapshot) == snapshot  # pyright: ignore[reportPrivateUsage]
 
 
 def test_capture_removes_stale_root_transcript_before_capture(tmp_path: Path) -> None:
