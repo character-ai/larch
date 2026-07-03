@@ -1,16 +1,15 @@
-## /implement run 01410F91-0654-43A5-9389-740A96396CF1 — stalled
+## /implement run 01410F91-0654-43A5-9389-740A96396CF1 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:10:15
-- **Cost**: 💰 TOTAL ~$25.79 — Claude $0.02, Codex-5.5 $18.93, Codex-mini $0.97, Cursor $3.61, Claude (subprocess) $2.26  |  Tokens: 40338k
+- **Cost**: 💰 TOTAL ~$26.00 — Claude $0.17, Codex-5.5 $18.93, Codex-mini $0.97, Cursor $3.61, Claude (subprocess) $2.32  |  Tokens: 40468k
 - **Issue**: #6141 — https://github.com/character-ai/larch/issues/6141
 - **PR**: #6171 — https://github.com/character-ai/larch/pull/6171
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +456/-133, larch-logs +729/-0
+- **Lines (PR diff)**: code +460/-137, larch-logs +748/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -73,4 +72,6 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md.
+
+Deviation — G-IO-1 (route larch wire-file reads through `larch.io` helpers instead of re-implementing KEY=value parsing): the new `_read_keepalive_clone_path(tmpdir: Path) -> str` helper is hand-rolled independently in `python/larch/design/design_core.py`, `python/larch/implement/dispatch_commit_route.py`, and `python/larch/implement/step_7a.py`, each re-implementing `.larch-keepalive` KEY=value parsing rather than either (a) calling `larch.io.read_kv(path=..., key="CLONE_PATH", reject_symlink=True)`, which already exists with caller-selected policy flags for exactly this case, or (b) reusing the existing, more robust `_read_keepalive_clone_path` in `python/larch/agents/_run_external.py` (already imported by `larch.agents.agents`; no import-cycle barrier applies, since `design_core.py` and other `implement/` modules already import from `larch.agents` elsewhere in the codebase). This produces four independent implementations of the same lookup that can silently drift apart over time — the same class of risk the plan's own item 3 (a structural byte-identity test) explicitly guards against for the analogous Bash-side duplication, but leaves unaddressed on the Python side.
