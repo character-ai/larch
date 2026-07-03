@@ -1,0 +1,1 @@
+1	even after collection-time clone filtering, the downstream basename-only plausibility gate can still let retained same-clone probes and clamps through, especially for repo subdirectories.

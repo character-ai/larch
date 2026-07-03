@@ -1,0 +1,41 @@
+### FINDING_1: Keepalive ownership must follow the repo checkout
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: Keepalive-backed same-clone markers can be misclassified as foreign when hook input is rooted at the session tmpdir, and the planned regressions need to mirror the production repo-checkout cwd contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Before CLONE_PATH comparison, return not-foreign when cwd_canon equals the marker dir or is under it (same rule bash_probe_target_dir_plausible already uses via cwd_canon = dir). Document this edge case and add a regression where keepalive CLONE_PATH is the repo but hook cwd is the marker tmpdir.
+  - From Cursor-Arch: In planned sections 2, 4, and 5, require same-clone payloads to set cwd to the matching repo checkout whenever .larch-keepalive is present; reserve tmpdir cwd for unknown-identity fail-safe cases only.
+  - From Cursor-Innovation: Document the production contract in the test plan (mirror the existing #5925 comment at lines 859-864): when `.larch-keepalive` is present, set payload `cwd` to the owning repo clone path equal to `CLONE_PATH` (or a subdirectory of it). Keep no-keepalive cases on tmpdir cwd only for fail-safe coverage. Add an explicit regression that a keepalive-backed same-clone marker with repo cwd still denies Monitor while the same marker with tmpdir cwd is filtered out and allows.
+
+### FINDING_2: Marker-file reads need an explicit pre-deny exemption
+- **Reviewer(s)**: Cursor-Arch, Cursor-dyn-Hook Scope Risk
+- **Severity**: important
+- **Concern**: Marker-file self-diagnosis needs a dedicated early exemption, and the tests need to exercise repo-cwd marker reads, or same-clone reads can still be denied in production.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After parsing cmd and strict-wrapper checks, run a dedicated bash_is_marker_diagnosis_read helper and exit 0 before bash_is_step3_recovery_waiter, probe clamps, and the bash_has_probe_target deny loop. Reject &&, ||, ;, tasks/*.output, .completed/*, plan-review/, and redirection/mutation shapes in the same command.
+  - From Cursor-dyn-Hook Scope Risk: In plan test item 3 (and `scripts/test-hook-bg-poll-guard.md`), add a case with cwd at a fake repo clone (same pattern as the #5925 block) and commands `cat "$DESIGN_TMPDIR/.bg-wait-active"` / `cat "$IMPLEMENT_TMPDIR/.bg-wait-active"` (plus braced forms). State in item 5 that the Bash helper classifies path tokens by basename `.bg-wait-active`, not a bare relative filename only
+
+### FINDING_3: Basename plausibility must not override clone ownership
+- **Reviewer(s)**: Codex-Innovation, Codex-dyn-Hook Scope Risk
+- **Severity**: important
+- **Concern**: Even after collection-time clone filtering, the downstream basename-only plausibility gate can still let retained same-clone probes and clamps through, especially for repo subdirectories.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Collection-time filtering leaves the old basename plausibility gate on same-clone paths. Scenario: The plan says subdirectory cwd is same-clone and same-clone Monitor, TaskOutput, tasks output, and bare tmpdir probes must still deny. With cwd=/repo/docs and marker CLONE_PATH=/repo, collection keeps the marker, but bash_probe_target_dir_plausible still derives cwd_tag=docs and lets those same-clone probes through.
+  - From Codex-Innovation: After foreign markers are filtered at collection time, remove the old plausibility gate from post-collection deny decisions or replace it with the .larch-keepalive CLONE_PATH comparison that treats repo subdirectories as same clone.
+  - From Codex-dyn-Hook Scope Risk: Collection-time filtering leaves the old basename-only plausibility gate on retained same-clone markers. Scenario: A same-clone wait with cwd in a repo subdirectory passes clone_paths_same during collection, but later Monitor, TaskOutput, tasks/*.output, or bare $IMPLEMENT_TMPDIR checks can still allow because bash_probe_target_dir_plausible compares only the cwd basename to the marker tag.
+  - From Codex-dyn-Hook Scope Risk: Update the plan to replace or bypass the downstream basename heuristic for retained markers. Use the .larch-keepalive same-clone result consistently after collection, and add a subdirectory-cwd same-clone regression for one gated task-output or Monitor path.
+
+### FINDING_4: Step 3 waiter coverage is missing for foreign clones
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned tests cover other branches, but they do not pin the exact foreign-clone Step 3 waiter path, so that early-deny branch could regress without coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add one foreign-clone exact Step 3 recovery-waiter allow regression near the #5925/#6080 block, using auto marker discovery and asserting no foreign denial counter changes.
+  - From Codex-Requirements: Add a foreign-clone live-marker regression for the exact Step 3 waiter command from a different clone cwd that asserts allow and no foreign denial counter, while retaining the existing same-clone waiter-denies coverage.
+
+### FINDING_5: Deny reasons need pinned version breadcrumbs
+- **Reviewer(s)**: Codex-dyn-Hook Scope Risk
+- **Severity**: important
+- **Concern**: Deny reasons should expose the exact pinned plugin version so sessions running older hook roots can be diagnosed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Hook Scope Risk: Add one harness case with a fake CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json version and assert the deny reason contains that exact version.
