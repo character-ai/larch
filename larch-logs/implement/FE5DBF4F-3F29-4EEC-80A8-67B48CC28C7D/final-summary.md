@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:33:52
-- **Cost**: 💰 TOTAL ~$11.20 — Claude $0.89, Codex-5.5 $7.47, Codex-mini $0.25, Cursor $2.20, Claude (subprocess) $0.39  |  Tokens: 13984k
+- **Cost**: 💰 TOTAL ~$14.63 — Claude $4.32, Codex-5.5 $7.47, Codex-mini $0.25, Cursor $2.20, Claude (subprocess) $0.39  |  Tokens: 18376k
 - **Issue**: #6070 — https://github.com/character-ai/larch/issues/6070
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -64,3 +64,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): Drafter subprocess still bypasses the exemption path. Concern: `launch_claude_drafter` still spawns `claude --print` via bare `subprocess.run` without the exemption env. It is unlikely to overlap the current bg-wait timeline, but it is the same collateral-denial class if that timing ever changes.
 - **Round 1 OOS_3** (latent): Operator-shell export can bypass the guard. Concern: Exporting `LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1` in the operator shell bypasses the guard for the top-level orchestrator process too, because the hook exits before marker scans.
 - **Round 1 OOS_4** (nit): Exact-value contract is not pinned for junk exports. Concern: The plan's exact-`1` contract is still not regression-locked for junk or empty values, so a future truthiness check could slip through.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
