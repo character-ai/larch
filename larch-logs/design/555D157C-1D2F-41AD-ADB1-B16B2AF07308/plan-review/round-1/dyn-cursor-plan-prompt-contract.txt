@@ -1,0 +1,11 @@
+Reviewing the plan against the codebase contracts it must preserve.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	agents/_implementer-base.md:47,136,197; python/larch/rendering/_rendering_generators.py:310-312	The byte-stable list omits `_implementer_text()` replace/regex hooks in the shared base.	Codex generation does `re.sub(r"^2\. \*\*NEVER `git add`.*$", ...)` on guard 2 and `.replace("TOOL_COMMIT_STDERR", ...)` / `.replace(". `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only; do not emit it yourself.", ".")`. Cursor globally replaces `TOOL_MODIFIED_HISTORY` and `TOOL_COMMIT_STDERR`. Wrapping guard 2 across lines, rewording the checklist sentence, or dropping those literals lets cursor-only guard 2 prose leak into `agents/codex-implementer.md`, or leaves unreplaced `TOOL_COMMIT_STDERR` while the dispatcher writes `${tool_tag}-commit-stderr.txt` per `python/larch/implement/dispatch_step2.py:603`. `generate --check` can still pass after a full regen.	Add explicit byte-stable hooks to Approach step 3 / `### UPDATED: agents/_implementer-base.md`: guard 2 stays one line matching `^2\. \*\*NEVER `git add``; keep literal `TOOL_COMMIT_STDERR`; keep the checklist sentence `` `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only; do not emit it yourself. `` verbatim. After regen, verify codex guard 2 has no Cursor-only sandbox wording.
+
+### 1. [correctness] `agents/_implementer-base.md:47,136,197`; `python/larch/rendering/_rendering_generators.py:310-312`
+
+**Concern:** The plan’s byte-stable inventory covers JSON/jq blocks, status strings, bail tokens, and the PLR0911 pin, but not the substring/line-shape contracts that `_implementer_text()` applies when building Codex/Cursor prompts.
+
+**Scenario:** Prose compression that reflows hard guard 2, rephrases the manifest-checklist `TOOL_MODIFIED_HISTORY` line, or renames the `TOOL_COMMIT_STDERR` placeholder will not fail manifest/jq harnesses, yet regenerated `agents/codex-implementer.md` can retain cursor-biased guard 2 text or wrong commit-stderr filenames relative to the dispatcher’s `${tool_tag}-commit-stderr.txt` contract.
+
+**Suggested revision:** Extend the plan’s immutable-surface list with those generator hooks and a post-regen codex guard-2 sanity check (no Cursor-only sandbox prose).

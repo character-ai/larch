@@ -1,0 +1,12 @@
+# md-to-py-XI: prose-compress implementer agent prompts (_implementer-base, codex-implementer, cursor-implementer)
+
+**Context.** `agents/_implementer-base.md` (about 21.6KB), `agents/codex-implementer.md` (about 23.5KB), and `agents/cursor-implementer.md` (about 24.0KB) are the Step 2 implementer system prompts. Step 2 accounts for about 9.1B lifetime tokens (#5962). Never compressed in rounds V-X.
+
+**Scope.** Density pass preserving the manifest schema contract (`codex-manifest-schema.md` references), dispatcher commit semantics, and all KV and output grammars verbatim. Target roughly 15%.
+
+**Acceptance.**
+
+- Token reduction on the ratcheted panel tier.
+- Implement and launcher harnesses pass under `make py-test`; a smoke /implement dispatch behaves normally.
+
+Part of md-to-py-XI (round X: #5885).

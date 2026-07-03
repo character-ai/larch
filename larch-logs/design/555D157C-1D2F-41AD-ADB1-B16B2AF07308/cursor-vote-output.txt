@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- test_generated_implementers_include_scout_sidecar already fails if the substring is removed, so explicit plan pinning is not necessary for acceptance
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- a shortfall on the ~15% token target is an acceptance metric gap, not a functional defect worth a tracked issue

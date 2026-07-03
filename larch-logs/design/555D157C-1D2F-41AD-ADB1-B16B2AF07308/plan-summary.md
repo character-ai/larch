@@ -1,0 +1,1 @@
+Compress the Step 2 implementer prompts by tightening shared and kind-specific prose, regenerate the two generated agent prompts, and ratchet the panel-tier closure baseline. Preserve all schemas, grammars, code fences, headings, and generator behavior.
