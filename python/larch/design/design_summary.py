@@ -622,8 +622,9 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     exit_rc = _write_enriched_post_publish_summary(design_tmpdir=design_tmpdir, out_file=out_file, load_result=load_result)
     write_ok = exit_rc == 0
+    summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 
-    if upsert_summary_comment and issue and issue != "0" and write_ok and out_file.is_file() and out_file.stat().st_size > 0:
+    if upsert_summary_comment and issue and issue != "0" and summary_written:
         marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
         ups_args: list[str] = [
             "tracking-issue", "upsert-summary",
