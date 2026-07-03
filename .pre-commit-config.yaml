@@ -613,6 +613,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-skill-awk-field-refs
+        name: lint SKILL.md awk field references
+        entry: python3 python/cli.py lint skill-awk-field-refs
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: lint-bare-grep-probe
         name: lint bare top-level grep in orchestrator markdown fences
         entry: bash scripts/lint-bare-grep-probe.sh

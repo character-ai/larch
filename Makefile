@@ -26,7 +26,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: test-review-design-step3-loop
 .PHONY: test-read-result-env test-parse-design-argv
 .PHONY: lint-readability-preamble test-lint-readability-preamble
-.PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-skill-description-length
+.PHONY: lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length test-lint-renderer-substitution-safety test-lint-skill-md-flag-signature test-lint-skill-awk-field-refs test-lint-skill-description-length
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: lint-tier1a-size test-lint-tier1a-size
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
@@ -34,7 +34,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -164,6 +164,9 @@ lint-renderer-substitution-safety:
 
 lint-skill-md-flag-signature:
 	python3 python/cli.py lint skill-md-flag-signature
+
+lint-skill-awk-field-refs:
+	python3 python/cli.py lint skill-awk-field-refs
 
 lint-skill-description-length:
 	python3 python/cli.py lint skill-description-length
@@ -604,6 +607,9 @@ test-lint-readability-preamble:
 
 test-lint-skill-md-flag-signature:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_md_flag_signature.py -q
+
+test-lint-skill-awk-field-refs:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_awk_field_refs.py -q
 
 test-lint-skill-description-length:
 	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_skill_description_length.py -q

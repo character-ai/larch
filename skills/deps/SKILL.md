@@ -59,9 +59,9 @@ DEPS_TMPDIR=$(mktemp -d "/tmp/claude-deps-${CLONE_TAG}-XXXXXX")
 RESOLVE_ARGS=()
 [[ -n "$REPO_ARG" ]] && RESOLVE_ARGS+=(--repo "$REPO_ARG")
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" deps resolve-repo "${RESOLVE_ARGS[@]}" > "$DEPS_TMPDIR/resolve.env"
-REPO=$(awk -F= '$1 == "REPO" {print substr($0, index($0, "=") + 1)}' "$DEPS_TMPDIR/resolve.env")
-ORIGIN_MATCHES=$(awk -F= '$1 == "ORIGIN_MATCHES" {print $2}' "$DEPS_TMPDIR/resolve.env")
-ORIGIN_SLUG=$(awk -F= '$1 == "ORIGIN_SLUG" {print substr($0, index($0, "=") + 1)}' "$DEPS_TMPDIR/resolve.env")
+REPO=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key REPO)
+ORIGIN_MATCHES=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_MATCHES)
+ORIGIN_SLUG=$(python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file "$DEPS_TMPDIR/resolve.env" --key ORIGIN_SLUG)
 [[ -n "$REPO" ]] || { echo "**ERROR: could not resolve repository.**" >&2; exit 1; }
 
 REGULAR_REFRESH_ALLOWED=true
