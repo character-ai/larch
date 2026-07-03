@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:00:44
-- **Cost**: 💰 TOTAL ~$30.45 — Claude $0.75, Codex-5.5 $20.57, Codex-mini $0.82, Cursor $8.00, Claude (subprocess) $0.31  |  Tokens: 52063k
+- **Cost**: 💰 TOTAL ~$33.60 — Claude $3.90, Codex-5.5 $20.57, Codex-mini $0.82, Cursor $8.00, Claude (subprocess) $0.31  |  Tokens: 57517k
 - **Issue**: #5976 — https://github.com/character-ai/larch/issues/5976
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -71,3 +71,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): Add a review Step 4 regression harness. Concern: Standalone review transcript capture lacks a dedicated offline harness or Python regression test, so future Step 4 changes could break the nested guard, source binding, or commit ordering without CI coverage.
 - **Round 1 OOS_4** (nit): Heatmap TSV consumers may need compatibility notes for the new sections. Concern: The heatmap TSV now includes extra `# transcript_coverage` and `# reference_heatmap` sections. Downstream parsers that still expect the legacy header shape could break.
 - **Round 1 OOS_5** (nit): Step 18 and teardown both flush execution issues. Concern: Step 18 finalize and `finalize.teardown` both run `execution-issues flush-safety-net`, which duplicates work on terminal runs even though the flush is append-only.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
