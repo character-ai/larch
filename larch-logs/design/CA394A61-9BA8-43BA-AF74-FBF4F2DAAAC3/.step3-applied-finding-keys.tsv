@@ -1,0 +1,2 @@
+1	`checks-digest-sizes.tsv` is not in the gc keep set, so age-based slimming will delete historical telemetry before enough samples accumulate to compute the measurement.
+1	planned parser rejects the negative saved_* rows the plan says must be preserved, so genuine negative savings disappear and the report can never show true negative totals.

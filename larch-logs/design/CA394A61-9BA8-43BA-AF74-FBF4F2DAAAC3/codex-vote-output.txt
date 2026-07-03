@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Duplicate of the review-row gap concern; even if real, it is not necessity-gated for this scope.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- Duplicate of the go/no-go ambiguity concern; the feature can still ship without this extra specificity.
+FINDING_3: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- Speculative root-resolution risk; the command can follow existing repo-root patterns, so this is not yet a necessity-gated defect.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The registry/docs/tests are extra sync surface and not required for the measurement feature to work.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Same scope-reduction concern as above; legitimate but not necessary for delivery.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Reusing the locked-append helper would be cleaner, but this is not a feature blocker.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Duplicate of the unused-registry scope-reduction concern; no new material evidence.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Duplicate of the same unused-registry concern and still not necessity-gated.

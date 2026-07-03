@@ -1,0 +1,47 @@
+Reviewing the plan against existing checks-digest and telemetry patterns in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/review/SKILL.md:66-77; python/larch/implement/checks_run_relevant.py:1018-1037	Review checks failures will not accrue checks-digest telemetry under the proposed skip rules	Standalone /review runs checks at Step 3e with REVIEW_TMPDIR before Step 4 creates larch-logs/review/<RUN_ID>/; plan edge cases skip when no run-log tree exists or resolution is ambiguous, so review rows never land in committed TSV despite acceptance requiring review accrual	[SCOPE-REDUCTION] Drop review skill surfaces from this change and measure implement-only (organic failures already have larch-logs/implement/<RUN_ID>/ after Step 0); or lazily mkdir a single review run dir before append without storing log/digest text
+1	in_scope	important	correctness	python/larch/implement/checks_run_relevant.py:136-164; plan:checks_run_relevant.py	Plan lists implement and review destinations but does not specify skill-subdir selection from canonical_tmp	Writer must choose larch-logs/implement vs larch-logs/review from tmpdir prefix (claude-implement- vs claude-review-); omitting this risks wrong attribution or silent skips when both trees exist	Derive skill from validate_tmpdir basename prefix and glob only that skill's single child run directory before append
+1	in_scope	latent	security	python/larch/report/tokens.py:468-469; plan:checks_run_relevant.py	Telemetry stderr warnings may echo exception text including absolute paths if panel-style handlers are copied verbatim	Locked-append failures print write skipped: {exc}; paths can reach stderr/terminal even when TSV stays count-only	Catch telemetry failures with a fixed checks-digest telemetry: write skipped breadcrumb and no path or exception body in stderr
+
+## Findings
+
+### 1. [correctness] Review path will not accrue telemetry
+
+The plan targets both `larch-logs/implement/<RUN_ID>/checks-digest-sizes.tsv` and `larch-logs/review/<RUN_ID>/checks-digest-sizes.tsv`, and acceptance requires review accrual. Standalone `/review` runs `checks run-relevant` at Step 3e (`skills/review/SKILL.md` around lines 66–68) before Step 4 establishes `review_log_root` and writes batches (lines 77–79). Implement gets `run-log init` at Step 0 (`python/larch/state/bootstrap.py` around line 652); review does not.
+
+Plan edge cases say to skip when no run-log directory exists or when resolution is ambiguous. During normal review, checks failures at Step 3e therefore skip telemetry every time. Implement-only failures can still accrue after bootstrap.
+
+**Suggested revision:** Minimum-change fix is `[SCOPE-REDUCTION]`: drop review surfaces from this PR and measure implement-only, which matches the issue’s organic-failure source. If review must stay, create or resolve exactly one `larch-logs/review/<RUN_ID>/` before append (counts only), without waiting for Step 4 batch writes.
+
+### 2. [correctness] Skill subdirectory selection is unspecified
+
+`checks_run_relevant.py` validates tmpdir prefixes `claude-implement-` and `claude-review-` (lines 147–148) but has no `larch-logs` logic today. The plan names both implement and review paths without saying how the writer picks the skill segment under `canonical_tmp/larch-logs/`.
+
+Without an explicit rule, a naive glob of `larch-logs/*/*` can mis-attribute rows or skip when multiple children exist.
+
+**Suggested revision:** Map tmpdir basename prefix to `implement` or `review`, then require exactly one non-symlink child directory under that skill path (same uniqueness contract as the plan’s skip rules).
+
+### 3. [latent / security] Stderr on telemetry failure may leak paths
+
+The plan copies `panel-prompt-sizes.tsv` best-effort style. `append_panel_prompt_size` prints `write skipped: {exc}` on failure (`python/larch/report/tokens.py` lines 468–469). A copied handler could put absolute paths on stderr even when the TSV stays count-only.
+
+This does not put log, digest, prompt, or command text into committed TSV or aggregator output. It is a secondary stderr leak, not a committed-report reconstruction path.
+
+**Suggested revision:** Use a bounded, content-free stderr warning for checks-digest telemetry failures.
+
+---
+
+## Assessment (leak / minimum-change)
+
+**Writer contract:** The plan’s field list (`site`, `attempt`, byte/token counts, `digest_truncated`) matches a content-free design. Existing digest assembly stores redacted `first_error` / `first_location` in the digest file only (`python/larch/implement/checks_run_relevant.py` lines 834–840, 1018–1037), not in the proposed TSV.
+
+**Best-effort:** Skipping on missing/ambiguous run dirs, catching telemetry exceptions without altering `ChecksResult` / `DIGEST_FILE`, and flock-append with skip-on-lock-failure align with the panel pattern (`python/larch/report/tokens.py` lines 380–469).
+
+**Committed reports:** `measure_checks_digest_savings()` as specified scans TSVs, skips symlinks (panel precedent at `python/tests/report/test_tokens.py` lines 1299–1314), and emits aggregates only. Counts alone cannot reconstruct raw failure lines. Commit-time `_scrub_run_tree` (`python/larch/report/run_log_commit.py` lines 159–186) adds a secondary secret scrub on copied trees.
+
+**Minimum-change note:** The non-functional review path adds surface area without delivering acceptance. Implement-only telemetry is sufficient for the issue’s go/no-go measurement and matches where organic checks failures will occur first.
+
+## [OUT_OF_SCOPE]
+
+**Aggregator identifier validation on read:** Rejecting `site`/`attempt` rows that fail `^[A-Za-z0-9._-]+$` (or similar) would harden against malformed committed TSVs. Writer-side constraints and planned tests are enough for the feature’s own execution path; this is optional defense in depth, not required for correctness of the writer contract.

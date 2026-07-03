@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- implement-only organic failures satisfy issue acceptance; review Step 3e gap is plan overspec fixable by narrowing done criteria without extra init/buffer code
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan emits both byte and token aggregates but never pins which signed total drives recommendation, so the same committed rows can yield conflicting go/no-go outcomes
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- mirroring measure_panel_cost’s __file__-based _repo_root() scans the plugin checkout, not the git workspace where committed larch-logs live, so real samples can be missed
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- unused batch registry is redundant sync surface but not required for telemetry accrual, aggregation, or the acceptance criteria
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4; registry/docs/tests add maintenance cost without blocking the measurement feature
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- inline flock copy is a latent maintainability nit with no feature-path correctness or data-loss trigger
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- real duplicate-schema concern but fails backlog materiality; duplicate of prior-round OOS registry rows
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same unused-registry observation as OOS_2/FINDING_4; no concrete harm warranting a tracked issue

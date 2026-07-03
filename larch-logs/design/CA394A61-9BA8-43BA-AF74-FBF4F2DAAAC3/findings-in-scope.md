@@ -1,0 +1,41 @@
+### FINDING_1: Standalone `/review` failures never accrue digest rows
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Standalone `/review` runs execute checks at Step 3e before the review run-log tree exists, and the skip-on-missing-unique-run-dir path prevents committed `checks-digest-sizes.tsv` rows. As a result, review failures cannot contribute to the five-sample gate or the realized measurement.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a minimum-change review path in checks_run_relevant.py: when canonical_tmp is a claude-review-* session and a valid RUN_ID is available from session env, call run-log init (or equivalent single-run-dir creation) for skill review before locked TSV append instead of requiring a pre-existing tree. Alternatively defer one count-only row to a pending file under relevant-checks and merge it during review Step 4 before run-log commit; document the chosen path in docs/run-logs.md.
+  - From Cursor-Pragmatic: In `checks_run_relevant.py`, when skill is inferable from `site` (e.g. `review-step3e`) and `RUN_ID` is slug-valid, create `canonical_tmp/larch-logs/review/<RUN_ID>/` if absent and append there; keep skip-only for ambiguous multi-run-dir cases, not for "not yet initialized"
+  - From Cursor-Requirements: Either narrow done criteria to implement-only (minimum change if five implement samples suffice) or add a minimal review path: e.g. slug-valid `run-log init` before Step 3e, or buffer counts under `$REVIEW_TMPDIR` and append once the review run tree exists at Step 4
+
+### FINDING_2: Go/no-go recommendation metric is undefined
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The aggregator emits both `saved_bytes` and `saved_tokens`, but the plan never specifies which aggregate drives `recommendation=go-design-validator-extension`. Mixed-sign rows or divergent byte/token estimates can therefore produce different go/no-go decisions from the same committed data.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pin one rule in tokens.py and docs/run-logs.md, for example recommendation from sum(saved_tokens) with saved_bytes reported alongside, and add an aggregator test where byte and token totals disagree so the chosen metric is enforced.
+  - From Cursor-Innovation: Pin one field (recommendation=go only when sum(saved_tokens)>0, else no-go), document it in docs/run-logs.md, and test the tie case explicitly
+  - From Cursor-Pragmatic: Define one rule in measure_checks_digest_savings(), docs, and tests: e.g. go iff sum(saved_tokens) > 0 across valid rows; report byte totals for diagnostics only
+  - From Cursor-Requirements: Pin the recommendation to sum(saved_tokens) > 0 (with sum(saved_tokens) <= 0 as no-go), document that rule in measure_checks_digest_savings() and docs/run-logs.md, and add an aggregator test that fails if bytes-positive/token-negative rows recommend go
+
+### FINDING_3: Measurement scanner may read the wrong repo root
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The new measurement command risks resolving `larch-logs` relative to the plugin checkout instead of the current consumer git repository, which would miss committed `checks-digest-sizes.tsv` rows and report insufficient data even when real data exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Specify that measure_checks_digest_savings resolves the current git repository root, matching report-tokens scan behavior, before scanning larch-logs; do not use the module __file__ root for this measurement.
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/report/run_log_batch.py
+- **Concern**: [SCOPE-REDUCTION] Append-mode batch registry has no producer. Scenario: Omit run_log_batch.py, docs/run-log-batches.md, and test_run_logs.py registry work unless the telemetry writer calls run-log append. The plan writes checks-digest-sizes.tsv via direct locked append in checks_run_relevant.py, so the batch entry is a second schema declaration with no runtime consumer and must stay synchronized manually.
+- **Proposed resolution**: Drop the checks-digest-sizes batch registration and related docs/tests from this change, or switch the writer to run-log append --batch checks-digest-sizes and delete the direct locked-TSV path.
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/report/run_log_batch.py:43-81
+- **Concern**: [SCOPE-REDUCTION] checks-digest-sizes run-log batch registry has no runtime consumer. Scenario: Telemetry is written by direct locked TSV append in checks_run_relevant; run-log commit copies the whole run tree, so the append-mode batch entry plus registry/docs/tests add sync surface with no behavioral gain
+- **Proposed resolution**: Omit run_log_batch.py, test_run_logs.py, and docs/run-log-batches.md changes unless a run-log append producer is added in the same PR
