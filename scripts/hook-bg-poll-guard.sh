@@ -853,7 +853,7 @@ EOF_TOKENS
   esac
   for token in "${tokens[@]:1}"; do
     case "$token" in
-      -*|--*) continue ;;
+      -*) continue ;;
     esac
     non_option_count=$((non_option_count + 1))
     case "$(basename "$token" 2>/dev/null)" in
