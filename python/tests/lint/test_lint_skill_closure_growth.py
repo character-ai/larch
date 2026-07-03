@@ -124,6 +124,56 @@ def test_conditional_references_are_reported_by_text_rules(tmp_path: Path) -> No
     )
 
 
+def test_background_reference_is_reported_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design="root\nSee `references/flags.md` only for background.\n",
+    )
+    write(tmp_path, "skills/design/references/flags.md", "flags\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == ("skills/design/references/flags.md",)
+
+
+def test_background_table_row_without_when_is_forced_conditional(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "| `--partition` | `false` | Route directly to split path "
+            "(persisted in `run-params.json`; see `references/flags.md` only for background) |\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/flags.md", "flags\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == ("skills/design/references/flags.md",)
+
+
+def test_background_reference_collects_multiple_paths(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "See `references/flags.md` and `references/brainstorm.md` only for background.\n"
+        ),
+    )
+    write(tmp_path, "skills/design/references/flags.md", "flags\n")
+    write(tmp_path, "skills/design/references/brainstorm.md", "brainstorm\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == (
+        "skills/design/references/flags.md",
+        "skills/design/references/brainstorm.md",
+    )
+
+
 def test_branch_only_routing_table_rows_are_excluded(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
@@ -500,6 +550,76 @@ def test_skill_filter_ignores_other_skill_growth(tmp_path: Path, capsys: pytest.
     assert scg.main(["--root", str(tmp_path), "--skill", "design"]) == 0, capsys.readouterr().err
     assert scg.main(["--root", str(tmp_path)]) == 1
     assert "implement:" in capsys.readouterr().err
+
+
+def test_baseline_tracked_file_may_move_from_eager_to_conditional(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    write(
+        tmp_path,
+        "skills/design/SKILL.md",
+        "root\nSee `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` only for background.\n",
+    )
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "design"]) == 0, capsys.readouterr().err
+
+
+def test_review_baseline_tracked_file_may_move_from_eager_to_conditional(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture_project(tmp_path)
+    write(
+        tmp_path,
+        "skills/review/SKILL.md",
+        (
+            "Review root with enough padding for a later conditional demotion\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+        ),
+    )
+    _ = write_baseline_from_live(tmp_path)
+    write(
+        tmp_path,
+        "skills/review/SKILL.md",
+        (
+            "Review root\n"
+            "If needed, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+        ),
+    )
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "review"]) == 0, capsys.readouterr().err
+
+
+def test_baseline_tracked_file_removed_from_both_tiers_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    write(tmp_path, "skills/design/SKILL.md", "root\n")
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "design"]) == 1
+
+    err = capsys.readouterr().err
+    assert "design: baseline-tracked file dropped skills/design/references/flags.md" in err
+
+
+def test_skill_filter_scopes_baseline_tracked_file_drops(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    fixture_project(tmp_path)
+    _ = write_baseline_from_live(tmp_path)
+    write(tmp_path, "skills/implement/SKILL.md", "root\n")
+
+    assert scg.main(["--root", str(tmp_path), "--skill", "design"]) == 0, capsys.readouterr().err
+    assert scg.main(["--root", str(tmp_path), "--skill", "implement"]) == 1
+    assert "implement: baseline-tracked file dropped" in capsys.readouterr().err
 
 
 def test_unknown_skill_filter_exits_tool_failure(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -942,10 +1062,12 @@ def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() 
     assert "skills/design/references/validator-failure.md" not in result.files
     assert "skills/design/references/settle-rc-dispatch.md" not in result.files
     assert "skills/design/references/step2b5-rc-handling.md" not in result.files
+    assert "skills/design/references/flags.md" not in result.files
     assert "skills/design/references/decompose-panel.md" in result.conditional_files
     assert "skills/design/references/validator-failure.md" in result.conditional_files
     assert "skills/design/references/settle-rc-dispatch.md" in result.conditional_files
     assert "skills/design/references/step2b5-rc-handling.md" in result.conditional_files
+    assert "skills/design/references/flags.md" in result.conditional_files
 
 
 def test_real_implement_scan_includes_named_eager_gaps() -> None:
