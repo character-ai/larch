@@ -244,7 +244,6 @@ Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects a
 
 Compatibility grep note: `design-step35-settle.sh` calls `design-step2b-postplan.sh --site gate-b` internally through the launcher mapping to `python/cli.py design step2b-postplan --site gate-b`.
 
-
 ### Gate C tier cap
 
 Gate C uses the effective authorized plan-review cap, not just the raw tier ceiling. Round 3 is offered only when escalation or substantiality has been recorded; a HARD-rated run with two non-substantial rounds does not surface another review option.

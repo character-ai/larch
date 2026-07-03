@@ -1,5 +1,4 @@
 # Review Agents
-
 Larch uses a single unified Claude reviewer archetype — **Code Reviewer** — that provides combined coverage during plan review and code review. The archetype walks the explicit focus areas listed below and tags each finding with its focus area, so comprehensive coverage is preserved in one prompt.
 
 ## The Code Reviewer Archetype
@@ -104,7 +103,6 @@ Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the dur
 ## Migration from legacy agent slugs
 
 The previous two archetypes `general-reviewer` and `deep-analysis-reviewer` have been replaced by the single unified `code-reviewer`. Consumers that invoked those older agent slugs directly (via `--agents` or subagent_type references in downstream docs/scripts) must switch to `larch:code-reviewer`.
-
 
 ## Difficulty-tiered panels
 

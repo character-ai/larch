@@ -14,7 +14,7 @@ Design an implementation plan and review it with the mechanical plan-review pane
 |------|---------|---------|
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
-| `--difficulty <TRIVIAL|MODERATE|HARD>` | empty | Sets the starting plan-review tier, beats rating and floors, and logs `override_source=operator`; the 1:30 audit can still upgrade a below-HARD run and logs both fields. |
+| `--difficulty <TRIVIAL\|MODERATE\|HARD>` | empty | Sets the starting plan-review tier, beats rating and floors, and logs `override_source=operator`; the 1:30 audit can still upgrade a below-HARD run and logs both fields. |
 | `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
 | `--skip-approve` / `-s` | `false` | Auto-approve Step 1d.7 outline-approval and Step 4b Gate C final-plan without an `AskUserQuestion`; does not skip any other prompt (see `references/flags.md`; persisted as `skip_approve_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |

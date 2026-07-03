@@ -1,5 +1,4 @@
 # Workflow Lifecycle
-
 How skills compose to form the end-to-end development workflow in Larch.
 
 ## Skill Orchestration Hierarchy
@@ -128,7 +127,6 @@ During post-phase final summary, `/design` runs a one-issue report gate before f
 Hard-fail paths stage terminal state before abort when safe. Step 0b clarify hard halts stage `failed-clarify`. Step 3 `postplan-failed` stages state in the script, then prompt-side orchestration runs final-summary routing so KV stdout stays clean. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and routes through Split-path final-summary orchestration.
 
 Ordinary Step 3 panel degradation continues the run. It may become escalation-success evidence only after an approved outcome. Successful runs without escalation do not file. Operator-action skips are audited in chat and run logs but do not file.
-
 
 ### Difficulty-tiered review loops
 

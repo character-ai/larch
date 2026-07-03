@@ -155,7 +155,7 @@ Use this macro after Step 3 emits `STATUS=fail` or a folded composite emits `NEX
 | `--force` / `-f` | `false` | Skip the item 4 plan-adequacy audit entirely (no `AUDIT=refuse` result exists to downgrade). Downgrade the three remaining fail-closed Preflight gates — missing plan, malformed plan, and `missing-designed-prefix` — to warn-and-proceed; warn loudly on each triggered bypass. Keeps the helper-side plan-block fallback. Does not affect coder selection. |
 | `--self-review` | `false` | Skip the external review panel; main agent performs a thorough inline self-review at Step 5 instead |
 | `--self-implement` | `false` | Force `coder=claude` (main agent implements directly; external implementers are skipped), independent of `--force`. |
-| `--difficulty <TRIVIAL|MODERATE|HARD>` | empty | Set the starting Step 5 review tier. The override beats rating and floors, logs `override_source=operator`, and the 1:30 audit can still upgrade a below-HARD run while preserving both fields. |
+| `--difficulty <TRIVIAL\|MODERATE\|HARD>` | empty | Set the starting Step 5 review tier. The override beats rating and floors, logs `override_source=operator`, and the 1:30 audit can still upgrade a below-HARD run while preserving both fields. |
 | `--coder` | unset | Pin external implementer to claude, codex, or cursor when set; otherwise availability waterfall. Ignored when `--self-implement` is active (always forces claude). |
 | `--run-id <ID>` | empty | Optional stable run id |
 

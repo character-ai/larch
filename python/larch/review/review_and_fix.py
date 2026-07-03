@@ -17,6 +17,7 @@ from typing import Literal, cast
 from collections.abc import Generator
 
 from larch.agents import agents
+from larch.core import config
 from larch.core import external_defaults
 from larch.calibration import difficulty
 from larch import io as larch_io
@@ -261,7 +262,7 @@ def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str
     _emit_kv(key="CODER_STATUS", value=coder_status)
     _emit_kv(key="FILES_CHANGED_HINT", value=files_hint)
     _emit_kv(key="EFFECTIVE_ROUND_CAP", value=effective_cap)
-    record = Path(os.environ.get("IMPLEMENT_TMPDIR", "")) / difficulty.DIFFICULTY_RECORD_BASENAME
+    record = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / difficulty.DIFFICULTY_RECORD_BASENAME
     if record.is_file():
         try:
             import json  # noqa: PLC0415
