@@ -215,6 +215,18 @@ def test_pause_save_uses_real_log_publish_path(
             return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
         return original_run_cli(*args)
 
+    def fake_render_main(argv: list[str]) -> int:
+        design_tmpdir = Path(argv[argv.index("--design-tmpdir") + 1])
+        session_id = argv[argv.index("--session-id") + 1] if "--session-id" in argv else "RUN1"
+        outcome = argv[argv.index("--outcome") + 1]
+        _ = (design_tmpdir / "final-summary.md").write_text(
+            f"## /design run {session_id} — {outcome}\n\n"
+            f"- **Outcome**: {outcome}\n"
+            "<!-- larch:run-summary v=1 -->\n",
+            encoding="utf-8",
+        )
+        return 0
+
     def fake_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
         if len(cmd) >= 4 and cmd[2:4] == ["design", "log-publish"]:
             out = io.StringIO()
@@ -233,6 +245,7 @@ def test_pause_save_uses_real_log_publish_path(
     monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda *, ctx: True)
     monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(design_pause.subprocess, "run", fake_run)  # type: ignore[attr-defined]
 
@@ -243,6 +256,18 @@ def test_pause_save_uses_real_log_publish_path(
     assert "PAUSE_OK=true" in out
     assert not upsert_calls
     assert (design / ".design-log-publish-metadata.env").is_file()
+    blob = subprocess.run(
+        ["git", "show", "larch-logs/design-RUN1:larch-logs/design/RUN1/final-summary.md"],
+        cwd=tmp_path / "origin.git",
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert blob.returncode == 0, blob.stderr
+    summary_body = blob.stdout or (design / "final-summary.md").read_text(encoding="utf-8")
+    assert "## /design run" in summary_body
+    assert "<!-- larch:run-summary v=1 -->" in summary_body
+    assert "## /design run RUN1 — paused" in summary_body
 
 
 def test_pause_save_rejects_non_allowlisted_tmpdir(capsys: object) -> None:

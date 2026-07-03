@@ -16,6 +16,7 @@ from collections.abc import Sequence
 
 from larch.core import redact
 from larch.design import design_publish
+from larch.design.design_summary import _resolve_summary_mode
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -387,37 +388,6 @@ def _publish_design_logs(
         if branch_created and not keep_branch_for_recovery:
             _ = _run(["git", "branch", "-D", branch], cwd=repo_root)
         shutil.rmtree(wt_parent, ignore_errors=True)
-
-
-def _read_source_env_value(*, path: Path, key: str) -> str:
-    if not path.is_file() or path.is_symlink():
-        return ""
-    prefix = f"{key}="
-    export_prefix = f"export {key}="
-    with contextlib.suppress(OSError):
-        for raw_line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            line = raw_line.strip()
-            if line.startswith(export_prefix):
-                value = line[len(export_prefix):]
-            elif line.startswith(prefix):
-                value = line[len(prefix):]
-            else:
-                continue
-            return value.strip().strip('"').strip("'")
-    return ""
-
-
-def _resolve_summary_mode(design_tmpdir: Path) -> str:
-    run_params = design_tmpdir / "run-params.json"
-    if run_params.is_file() and not run_params.is_symlink():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            data = json.loads(run_params.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                for key in ("mode", "MODE"):
-                    value = data.get(key)
-                    if isinstance(value, str) and value:
-                        return value
-    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
 
 
 def _default_outcome_for_reason(reason: str) -> str:

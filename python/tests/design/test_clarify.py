@@ -1038,6 +1038,30 @@ def test_render_clarify_final_summary_uses_design_tmpdir_mode(
     monkeypatch.setattr(design_summary, "render_final_summary_for_request", original)
 
 
+def test_render_clarify_final_summary_falls_back_to_source_env_mode(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    (tmp_path / "source-env.sh").write_text("export MODE=design\n", encoding="utf-8")
+    env = {"SESSION_ID": "RUN1", "REPO": "owner/repo"}
+    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
+
+    def fake_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
+        captured["request"] = request
+        return True
+
+    monkeypatch.setattr(design_summary, "render_final_summary_for_request", fake_render)
+
+    assert clarify._render_clarify_final_summary(  # pyright: ignore[reportPrivateUsage]
+        design_tmpdir=tmp_path,
+        env=env,
+        issue="7",
+        outcome="cancelled-clarify",
+    )
+    assert captured["request"].mode == "design"
+    assert captured["request"].session_id == "RUN1"
+
+
 def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

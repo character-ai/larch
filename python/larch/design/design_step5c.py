@@ -48,6 +48,7 @@ from larch.design.design_terminal import (
     read_result_env_main,
     stage_terminal_state_core,
 )
+from larch.design.design_summary import _resolve_summary_mode
 from larch.design import plan_quality
 
 def step2b5_main(argv: Sequence[str]) -> int:
@@ -182,7 +183,7 @@ def _step5c_render_final_summary(
         FinalSummaryRenderRequest(
             design_tmpdir=design_tmpdir,
             outcome=outcome,
-            mode=ctx.str_value(key=config.ENV_MODE, default="N/A") or "N/A",
+            mode=_resolve_summary_mode(design_tmpdir),
             issue_number=ctx.issue_number,
             session_id=ctx.session_id,
             repo=ctx.repo,

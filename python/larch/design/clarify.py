@@ -16,6 +16,7 @@ from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_lifecycle
 from larch.design import design_pause
+from larch.design.design_summary import _resolve_summary_mode
 from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
@@ -835,19 +836,6 @@ def _parse_publish_ok(text: str) -> str:
         if line.startswith("PUBLISH_OK="):
             value = line.split("=", 1)[1]
     return value
-
-
-def _resolve_summary_mode(design_tmpdir: Path) -> str:
-    run_params = design_tmpdir / "run-params.json"
-    if run_params.is_file() and not run_params.is_symlink():
-        with contextlib.suppress(OSError, json.JSONDecodeError):
-            data = json.loads(run_params.read_text(encoding="utf-8"))
-            if isinstance(data, dict):
-                for key in ("mode", "MODE"):
-                    value = data.get(key)
-                    if isinstance(value, str) and value:
-                        return value
-    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
 
 
 def _render_clarify_final_summary(

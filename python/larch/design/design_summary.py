@@ -226,6 +226,36 @@ def _persist_difficulty_record(design_tmpdir: Path, *, run_id: str) -> None:
             str(record_path),
         )
 
+
+def _read_source_env_value(*, path: Path, key: str) -> str:
+    if not path.is_file() or path.is_symlink():
+        return ""
+    export_prefix = f"export {key}="
+    prefix = f"{key}="
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.startswith(export_prefix):
+            value = line[len(export_prefix):]
+        elif line.startswith(prefix):
+            value = line[len(prefix):]
+        else:
+            continue
+        return value.strip().strip('"').strip("'")
+    return ""
+
+
+def _resolve_summary_mode(design_tmpdir: Path) -> str:
+    run_params = design_tmpdir / "run-params.json"
+    if run_params.is_file() and not run_params.is_symlink():
+        with contextlib.suppress(OSError, json.JSONDecodeError):
+            data = json.loads(run_params.read_text(encoding="utf-8"))
+            if isinstance(data, dict):
+                for key in ("mode", "MODE"):
+                    value = data.get(key)
+                    if isinstance(value, str) and value:
+                        return value
+    return _read_source_env_value(path=design_tmpdir / "source-env.sh", key="MODE") or "N/A"
+
+
 def _dynamic_archetypes_line(design_tmpdir: Path) -> str:
     status_file = design_tmpdir / "step2b-drafter-status.txt"
     if not status_file.is_file():
