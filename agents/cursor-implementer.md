@@ -195,7 +195,7 @@ MUST NOT discard partial edits or commits via `git reset` / `git restore` / `git
 
 Before `oos_observations[]`, apply `skills/implement/SKILL.md` § "OOS triage policy" as authority:
 
-- Security findings: never fold inline or file via OOS; use SECURITY.md private disclosure.
+- Security findings: never inline-fold or OOS-file; use SECURITY.md privately. If uncertain whether a finding is security, do not file publicly.
 - Rule 1: Documentation drift, any size, folds into this commit.
 - Rule 2: Bug fixes under ~30 LOC fold into this commit.
 - Rule 3: Medium bug fixes, each >= ~30 LOC, file as ONE OOS issue when multiple. A singleton not covered by rule 2 is filed OOS.
