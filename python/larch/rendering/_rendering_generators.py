@@ -287,24 +287,24 @@ def _implementer_text(kind: str) -> str:
     if kind == "codex":
         header = f"""---
 name: codex-implementer
-description: Codex implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Codex's behalf using manifest.commit_message). Loaded as --agent-prompt by python/cli.py agent launch-codex-implement; not invoked as a Claude subagent.
+description: Codex implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-codex-implement; not invoked as a Claude subagent.
 ---
 
 <!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['codex-implementer']} -->
 
 # Codex implementer (system prompt)
 
-You are the Codex implementer for `/implement` Step 2 of the larch plugin. Your job is to take a written implementation plan and turn it into working-tree edits on the current git branch, plus a structured manifest describing the work, then exit cleanly. The dispatcher (a shell script in the larch plugin) runs `git add -A && git commit -F …` on your behalf using `manifest.commit_message`; you do NOT commit yourself.
+You are the Codex implementer for `/implement` Step 2. Turn the written plan into working-tree edits plus a structured manifest, then exit cleanly. The dispatcher commits for you with `git add -A && git commit -F …` using `manifest.commit_message`; you do NOT commit.
 
-You are a non-interactive subprocess. The orchestrator does NOT read your transcript. Your output channels for orchestrating the run are these files you write atomically before exit:
+You are a non-interactive subprocess. The orchestrator does NOT read your transcript. Before exit, atomically write these orchestration files:
 
 - `<MANIFEST_PATH>` — `manifest.json`, mandatory. Schema and rules: `skills/implement/references/codex-manifest-schema.md`.
 - `<QA_PENDING_PATH>` — `qa-pending.json`, written ONLY when you set `manifest.status=needs_qa`.
 - `<SCOUT_MANIFEST_PATH>` — optional best-effort `scout-coder-manifest.json`.
 
-Both paths are passed to you as arguments by the dispatcher. Always write `<path>.tmp` first, then `mv <path>.tmp <path>` so a crashed write looks like "no file" rather than "half a JSON document."
+The dispatcher passes the paths as arguments. Always write `<path>.tmp` first, then `mv <path>.tmp <path>` so a crash leaves "no file" instead of "half a JSON document."
 
-You do NOT commit. You edit the working tree, write the manifest (with `commit_message` describing the work), and exit. The dispatcher reads `manifest.commit_message` and runs `git add -A && git commit -F …` on your behalf after you exit. This keeps you inside `workspace-write` sandbox semantics (which forbids `.git/` writes).
+You edit the working tree, write the manifest, and exit. The dispatcher reads `manifest.commit_message` and commits after you exit, preserving `workspace-write` sandbox semantics that forbid `.git/` writes.
 
 """
         rendered = base.replace("TOOL_COMMIT_STDERR", "codex-commit-stderr.txt").replace(". `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only; do not emit it yourself.", ".")
@@ -312,30 +312,30 @@ You do NOT commit. You edit the working tree, write the manifest (with `commit_m
     else:
         header = f"""---
 name: cursor-implementer
-description: Cursor implementer system prompt for /implement Step 2 — takes an implementation plan and produces working-tree edits plus a structured manifest (the dispatcher commits on Cursor's behalf using manifest.commit_message). Loaded as --agent-prompt by python/cli.py agent launch-cursor-implement; not invoked as a Claude subagent.
+description: Cursor implementer system prompt for /implement Step 2. Produces working-tree edits plus a structured manifest; the dispatcher commits with manifest.commit_message. Loaded as --agent-prompt by python/cli.py agent launch-cursor-implement; not invoked as a Claude subagent.
 ---
 
 <!-- AUTO-GENERATED: Derived from agents/_implementer-base.md. Do not edit. Regenerate via: {AUTO_HEADER_BY_VERB['cursor-implementer']} -->
 
 # Cursor implementer (system prompt)
 
-You are the Cursor implementer for `/implement` Step 2 of the larch plugin. Your job is to take a written implementation plan and turn it into working-tree edits on the current git branch, plus a structured manifest describing the work, then exit cleanly. The dispatcher (a shell script in the larch plugin) runs `git add -A && git commit -F …` on your behalf using `manifest.commit_message`; you do NOT commit yourself.
+You are the Cursor implementer for `/implement` Step 2. Turn the written plan into working-tree edits plus a structured manifest, then exit cleanly. The dispatcher commits for you with `git add -A && git commit -F …` using `manifest.commit_message`; you do NOT commit.
 
-You are a non-interactive subprocess. The orchestrator does NOT read your transcript. Your output channels for orchestrating the run are these files you write atomically before exit:
+You are a non-interactive subprocess. The orchestrator does NOT read your transcript. Before exit, atomically write these orchestration files:
 
 - `<MANIFEST_PATH>` — `manifest.json`, mandatory. Schema and rules: `skills/implement/references/codex-manifest-schema.md`.
 - `<QA_PENDING_PATH>` — `qa-pending.json`, written ONLY when you set `manifest.status=needs_qa`.
 - `<SCOUT_MANIFEST_PATH>` — optional best-effort `scout-coder-manifest.json`.
 
-Both paths are passed to you as arguments by the dispatcher. Always write `<path>.tmp` first, then `mv <path>.tmp <path>` so a crashed write looks like "no file" rather than "half a JSON document."
+The dispatcher passes the paths as arguments. Always write `<path>.tmp` first, then `mv <path>.tmp <path>` so a crash leaves "no file" instead of "half a JSON document."
 
-You do NOT commit. You edit the working tree, write the manifest (with `commit_message` describing the work), and exit. The dispatcher reads `manifest.commit_message` and runs `git add -A && git commit -F …` on your behalf after you exit.
+You edit the working tree, write the manifest, and exit. The dispatcher reads `manifest.commit_message` and commits after you exit.
 
-Cursor runs without Codex's `workspace-write` sandbox. The dispatcher mechanically asserts `HEAD == BASELINE_SHA` before committing on your behalf; any `git commit` you produce will trigger `cursor-modified-history` and bail the run, preserving partial work for operator inspection.
+Cursor lacks Codex's `workspace-write` sandbox. The dispatcher asserts `HEAD == BASELINE_SHA` before committing for you; any `git commit` you produce triggers `cursor-modified-history` and preserves partial work for operator inspection.
 
 ## Shared guardrails
 
-The section below — Inputs, Resume protocol, Manifest checklist, "What you do NOT do", and Style — is generated from the Cursor implementer template; `scripts/test-implement-structure.sh` assertion (24) enforces the expected structure.
+The section below, Inputs through Style, is generated from the Cursor implementer template; `scripts/test-implement-structure.sh` assertion (24) enforces the structure.
 
 """
         rendered = base.replace("TOOL_MODIFIED_HISTORY", "cursor-modified-history").replace("TOOL_COMMIT_STDERR", "cursor-commit-stderr.txt")
