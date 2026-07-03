@@ -300,9 +300,9 @@ set -e
 Parse `CLEANUP_SUCCESS`, `CURRENT_BRANCH`, and `BRANCH_DELETED` from `cleanup_out`:
 
 ```bash
-cleanup_success=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="CLEANUP_SUCCESS"{print $2; exit}')
-current_branch=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="CURRENT_BRANCH"{print $2; exit}')
-branch_deleted=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="BRANCH_DELETED"{print $2; exit}')
+cleanup_success=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key CLEANUP_SUCCESS --match first)
+current_branch=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key CURRENT_BRANCH --match first)
+branch_deleted=$(printf '%s\n' "$cleanup_out" | python3 python/cli.py kv get --key BRANCH_DELETED --match first)
 
 if [ "$cleanup_rc" -ne 0 ] || [ -z "$cleanup_success" ] || [ -z "$current_branch" ] || [ -z "$branch_deleted" ]; then
   cleanup_success=false
@@ -327,9 +327,9 @@ else
 PREPARE_DIR="$(dirname "$PR_LIST_FILE")"
 STEP7_STATE="$PREPARE_DIR/release-step7.env"
 if [ -f "$STEP7_STATE" ]; then
-  CONE_RECONCILED=$(awk -F= '$1=="CONE_RECONCILED"{print $2; exit}' "$STEP7_STATE")
-  NEW_VERSION_INSTALLED=$(awk -F= '$1=="NEW_VERSION_INSTALLED"{print $2; exit}' "$STEP7_STATE")
-  RESTART_REQUIRED=$(awk -F= '$1=="RESTART_REQUIRED"{print $2; exit}' "$STEP7_STATE")
+  CONE_RECONCILED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key CONE_RECONCILED --match first)
+  NEW_VERSION_INSTALLED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key NEW_VERSION_INSTALLED --match first)
+  RESTART_REQUIRED=$(python3 python/cli.py kv get --file "$STEP7_STATE" --key RESTART_REQUIRED --match first)
   CONE_RECONCILED=${CONE_RECONCILED:-false}
   NEW_VERSION_INSTALLED=${NEW_VERSION_INSTALLED:-false}
   RESTART_REQUIRED=${RESTART_REQUIRED:-false}

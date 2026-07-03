@@ -69,6 +69,11 @@ import sys
 if sys.argv[1:3] == ["gh", "resolve-repo"]:
     print("owner/repo")
     raise SystemExit(0)
+if sys.argv[1:3] == ["kv", "get"]:
+    key = sys.argv[sys.argv.index("--key") + 1]
+    matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]
+    print(matches[-1] if "--match" in sys.argv and sys.argv[sys.argv.index("--match") + 1] == "last" and matches else matches[0] if matches else "")
+    raise SystemExit(0)
 print("PAUSE_OK=true")
 print("STEP=2b")
 print("RUN_ID=RUNPAUSE3")
@@ -97,6 +102,11 @@ cat >"$PLUGIN4/python/cli.py" <<'EOF_SAVE4'
 import sys
 if sys.argv[1:3] == ["gh", "resolve-repo"]:
     print("owner/repo")
+    raise SystemExit(0)
+if sys.argv[1:3] == ["kv", "get"]:
+    key = sys.argv[sys.argv.index("--key") + 1]
+    matches = [line.split("=", 1)[1] for line in sys.stdin.read().splitlines() if line.startswith(f"{key}=")]
+    print(matches[-1] if "--match" in sys.argv and sys.argv[sys.argv.index("--match") + 1] == "last" and matches else matches[0] if matches else "")
     raise SystemExit(0)
 print("PAUSE_OK=false")
 print("ERROR=publish-and-recovery-failed")
