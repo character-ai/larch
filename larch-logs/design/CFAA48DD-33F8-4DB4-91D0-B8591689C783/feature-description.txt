@@ -1,0 +1,91 @@
+# Restore dyslexia-optimized readability style across all larch skills
+
+Restore dyslexia-optimized readability style across all larch skills
+
+## Motivation
+
+**Goal**: every larch-generated human-facing text must read well for a dyslexic reader: short sentences, simple words, bullets, brevity. We treat this as the quality bar for all audiences, not only dyslexic readers. It must not distort grammar (no Caveman-style compression).
+
+**Scope**: ALL larch skills' user-facing prose. /design and /implement are the biggest offenders today, but the fix must cover the whole catalog (/research, /review, /bug, /analyze-issues, /audit-runs, and the rest) plus repo-level chat style.
+
+This bar shipped and worked for /design:
+
+- 2026-05-27, issue #2828 (PR #3051): added `skills/design/references/readability-style.md`. It defines the style axes (Strunk & White, dyslexia-friendly, brevity, no em dashes, hedge vs direct), a precision contract for byte-stable surfaces, and a precedence order. It added the readability-preamble lint plus `scripts/lint-readability-preamble.tsv`.
+- 2026-06-10, issue #3934 (PR #3941): added the AGENTS.md `## Output Style` section: 12 explicit style bullets for all human-facing prose.
+
+Since mid-June 2026 the output turned wordy and complex again. Investigation on 2026-07-03 found the guidance was dismantled in stages, mostly as side effects of token-cost work. /implement and the other skills never had the guidance at all.
+
+## What happened (evidence)
+
+Bold orchestrator-inline anchors (the `MANDATORY — READ ENTIRE FILE` directives pointing at `readability-style.md`) went from 10 sites to 3:
+
+- 2026-05-28 (#3091, PR #3144): lint manifest created. `skills/design/SKILL.md` pinned at 4 anchors (steps 2b, 3b, 4, 5) plus 6 reference files.
+- 2026-06-12 (#4019, PR #4091): sketch and dialectic rows deleted; 4 style sites gone.
+- 2026-06-20 (#4892 / PR #4931 and #4916 / PR #4955): SKILL.md 4 to 3; step markers trimmed to `2b,5`.
+- 2026-06-24 (#5273, PR #5344): change summary says "downgrade always-needed readability loads". SKILL.md 3 to 2; `design-outline.md` 1 to 0; `settle-rc-dispatch.md` 1 to 0.
+- 2026-06-24 (#5282, PR #5380): SKILL.md 2 to 0; anchors moved into `finalize-step5.md` (2).
+- 2026-06-27 (#5561): `finalize-step5.md` 2 to 0.
+- 2026-06-29 (#5785, PR #5832): the Tier-1a size ratchet collapsed the 12 AGENTS.md style bullets into one dense paragraph. Lost: "When unsure how short to go: go shorter", the hedging rule, the named Strunk & White line, and the em-dash rule.
+- 2026-06-29 (#5843, PR #5848): restored only the em-dash rule.
+
+Today only `brainstorm.md`, `approval-gates.md`, and `discussion-rounds.md` keep bold anchors. Plan drafting (Step 2b) and Step 5 final composition rely on soft one-line "Read readability-style.md" prose instead.
+
+The enforcement machinery flipped polarity:
+
+- `scripts/lint-readability-preamble.tsv` now pins `skills/design/SKILL.md`, `design-outline.md`, `finalize-step5.md`, and `settle-rc-dispatch.md` at expected_count 0. Restoring an anchor fails lint.
+- `scripts/test-design-structure.sh` asserts SKILL.md must NOT contain an inline readability anchor.
+
+Beyond /design, no skill is wired:
+
+- Zero readability references under `skills/implement/` or any other skill.
+- /implement chat prose depends only on Tier-1a AGENTS.md (weakened above). The AGENTS.md Scope bullet exempts "skill output templates" wholesale, so templated skill output escapes the style rules entirely.
+- The rejected-findings template ("Track Rejected Code Review Findings" in `skills/implement/SKILL.md`) mandates "Do NOT use a terse one-liner" with no readability counterweight (present since v1.0.0). Detail is right; unbounded wordiness is not.
+
+Secondary defect: the surviving /design anchors use bare repo-relative paths (`skills/design/references/readability-style.md`) instead of `${CLAUDE_PLUGIN_ROOT}/...`. `.claude/rules/skill-runtime-root-paths.md` requires the plugin-root form in public skills. Consumer-repo installs likely cannot resolve the bare path. (Inference; not yet verified in a live consumer install.)
+
+Causality note: "fewer forced style reads at composition time produce wordier prose" is inference. But the timing matches the observed regression exactly, and the #5273 summary states the downgrade explicitly.
+
+## Proposed fix
+
+1. **Promote the authority to shared scope.**
+   - Move the file to `skills/shared/readability-style.md`.
+   - Rewrite its Consumer line: all larch skills' user-facing prose (chat narration, plans, summaries, gate prose, findings presentation, issue and PR bodies).
+   - Repoint every referrer: /design SKILL.md and references, `python/larch/design/design_step2b.py`, the default path in `python/larch/rendering/rendering.py`, the lint manifest, tests, and fixtures. No shims.
+   - Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md` in all skill prose directives.
+
+2. **Restore the /design anchors at composition sites.**
+   - Bold MANDATORY anchors again at: Step 2b plan drafting (SKILL.md), `design-outline.md`, and `finalize-step5.md` (final plan, final summary, Gate C prose).
+   - Raise the TSV expected counts; drop the SKILL.md anchor prohibition from `scripts/test-design-structure.sh`.
+   - `settle-rc-dispatch.md` may stay at 0 only if it truly composes no user-facing prose.
+
+3. **Wire every skill, default-on.**
+   - /implement: one anchor at skill entry covering all run chat prose, plus anchors at the free-prose surfaces (execution-issues and OOS description drafting in `execution-issues-tracking.md`, Step 5 findings presentation, stall and bail explanations).
+   - Reword "Do NOT use a terse one-liner" to: detailed but readable; short sentences, simple words, bullets; detail means content, not length.
+   - All other prose-producing skills (/research, /review, /bug, /issue, /analyze-issues, /audit-runs, /fluff-analysis, /rejected-analysis, /combine-issues, /deps, /report-tokens, /voter-calibration, and the rest): add one readability directive at skill entry or at the main prose-composition step.
+   - Lint default: every `skills/*/SKILL.md` must carry at least one readability directive. Machine-only skills opt OUT via an explicit exempt list in the manifest. New skills fail lint until wired or consciously exempted.
+
+4. **Re-strengthen AGENTS.md within the tier1a-size ratchet.**
+   - Keep Scope and Precedence.
+   - Replace the condensed style paragraph with a pointer to the shared readability file as the single source of truth, plus the few chat-only rules (confirm or correct up front; stop early).
+   - Restore "When unsure how short to go: go shorter" in the shared file.
+   - Narrow the machine-parsed exemption: only structural tokens and grammar are exempt. Prose inside templated output still follows the style.
+
+5. **Anti-erosion guard.**
+   - Add a floor to the readability-preamble lint: the sum of manifest expected_count values must stay at or above a committed floor constant.
+   - Add the every-skill coverage check with the exempt list from item 3.
+   - Lowering the floor or exempting a skill requires an explicit diff line. Future token-cost refactors then surface the trade-off to the operator instead of eroding coverage silently.
+
+## Trade-offs
+
+- The June downgrades saved tokens on purpose (#5273). Restoring anchors re-adds a few forced reads of a ~90-line file per run. That cost is small against total run cost. Accept it.
+- Style axes and precedence stay exactly as defined in `readability-style.md` today. No grammar distortion.
+- AGENTS.md must stay under the tier1a-size budget; the pointer approach keeps it there.
+- Machine-parsed surfaces stay byte-stable per the existing precision contract; `KEY=value` grammars, plan grammar, vote tables, and manifests are untouched.
+
+## Acceptance criteria
+
+- Readability-preamble lint passes with restored /design counts, new rows for /implement and the other skills, the exempt list, and the floor assertion.
+- Every `skills/*/SKILL.md` carries a readability directive or an explicit exemption.
+- All readability directives in public skills use `${CLAUDE_PLUGIN_ROOT}` paths.
+- AGENTS.md Output Style points at the shared file; the tier1a-size lint passes.
+- `scripts/test-design-structure.sh` and the other structural harnesses are updated and green.

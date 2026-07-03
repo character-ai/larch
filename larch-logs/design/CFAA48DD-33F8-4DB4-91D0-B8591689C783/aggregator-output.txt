@@ -1,0 +1,22 @@
+### FINDING_1: Step 2b anchor needs placement lint
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The TSV restore for `skills/design/SKILL.md` raises the count, but without `step_markers=2b` lint can still miss whether the restored MANDATORY anchor is actually inside the Step 2b body.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Set the SKILL.md row to `expected_count=1` with `step_markers=2b`, and place the restored MANDATORY anchor inside the Step 2b body.
+  - From Cursor-Requirements: Set the SKILL.md row to `expected_count=1` with `step_markers=2b` when restoring the Step 2b MANDATORY anchor.
+
+### FINDING_2: Pin readability router to concrete trigger paths
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The `checks_run_relevant.py` update is named but not tied to specific trigger paths, so edits to the cited readability and structure files can still skip the intended test coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add one `_DIRECT_TARGET_RULES` tuple listing those paths (plus `scripts/test-design-structure.sh` when touched) and map them to the readability/structural tests named in Testing strategy.
+
+### FINDING_3: Repoint public design references to shared readability path
+- **Reviewer(s)**: Cursor-Arch, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The public `/design` reference updates still leave some counted MANDATORY anchors on the deleted design-scoped readability path, so the move to the shared file can remain only partially repointed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In each listed reference `### UPDATED`, require repoint to `` `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.** `` in every MANDATORY anchor, not just a shared file move.
+  - From Cursor-Requirements: Add the same repoint bullet as approval-gates: update the MANDATORY line to `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md` with the counted `.**` suffix.
