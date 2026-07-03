@@ -105,6 +105,26 @@ def test_operator_override_beats_floors_and_audit_can_upgrade(tmp_path: Path) ->
     assert data["audit_upgrade"] == "true"
 
 
+def test_resolve_panel_tier_recomputes_on_new_override_after_persisted_override(tmp_path: Path) -> None:
+    out = tmp_path / "difficulty-rating.json"
+    record = difficulty.build_record(
+        rater="implement",
+        implement_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "TRIVIAL", "confidence": "high", "rationale": "bootstrap"}
+        ),
+        override_tier="TRIVIAL",
+    )
+    difficulty.write_record(out, record)
+
+    resolved = difficulty.resolve_panel_tier(out, override="HARD", rng=1)
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert resolved.panel_tier == difficulty.HARD
+    assert resolved.codex_model_role == difficulty.codex_review_model_role(difficulty.HARD)
+    assert data["panel_tier"] == difficulty.HARD
+    assert data["codex_model_role"] == difficulty.codex_review_model_role(difficulty.HARD)
+
+
 def test_tier_helpers_and_escalation_round_specific(tmp_path: Path) -> None:
     assert difficulty.tier_ceiling(difficulty.TRIVIAL) == 2
     assert difficulty.tier_ceiling(difficulty.MODERATE) == 2

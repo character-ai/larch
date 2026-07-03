@@ -2938,6 +2938,25 @@ def test_design_escalation_authorized_rejects_bare_high_accepted(tmp_path: Path)
     assert plan_review_common.effective_authorized_cap(tmp_path, tier=difficulty.HARD) == 2
 
 
+@pytest.mark.parametrize("reason", ["non-nit-accepted", "structural-or-large-change", "degraded-panel"])
+def test_design_escalation_authorized_rejects_generic_continuation_reasons(tmp_path: Path, reason: str) -> None:
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "HARD", "confidence": "high", "rationale": "seed"}
+        ),
+    )
+    difficulty.write_record(tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        f"PLAN_REVIEW_CONTINUE_REASON={reason}\n",
+        encoding="utf-8",
+    )
+
+    assert not plan_review_common.design_escalation_authorized(tmp_path)
+
+
 def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: Path) -> None:
     # Degraded-panel continuation must not bypass cross-round dedup (#4808).
     findings = _high_finding_block(

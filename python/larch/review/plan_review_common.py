@@ -139,7 +139,7 @@ def design_escalation_authorized(design_tmpdir: Path) -> bool:
             continue
         values = _read_kv_file(path)
         reason = values.get("PLAN_REVIEW_CONTINUE_REASON", "")
-        if reason in {"escalated-high-accepted", "non-nit-accepted", "structural-or-large-change", "degraded-panel"}:
+        if reason in {"escalated-high-accepted"}:
             return True
     data_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     if data_path.is_file() and not data_path.is_symlink():

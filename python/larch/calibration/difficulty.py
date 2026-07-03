@@ -407,10 +407,7 @@ def resolve_panel_tier(
     existing = _resolution_from_data(data, round_num=round_num)
     if existing is not None:
         resolved_once = data.get("audit_evaluated") is not None or data.get("audit_upgrade") is not None or bool(_record_escalations_for_round(data))
-        existing_operator_override = data.get("override_source") == "operator"
-        if resolved_once and (not override_tier or existing_operator_override):
-            return existing
-        if existing_operator_override and not override_tier:
+        if resolved_once and not override_tier:
             return existing
     override_source = "operator" if override_tier else str(data.get("override_source") or "none")
     starting = override_tier or resolve_applied_tier(data, override="", fallback_tier=MODERATE)

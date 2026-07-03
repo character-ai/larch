@@ -520,11 +520,11 @@ individually. Sections:
 | `collector` | `collector-results.env` (raw text) |
 | `summary` | `review-summary.json` (JSON passthrough) |
 | `coder` | `coder.env` (KV → JSON object) |
-| `difficulty` | scout difficulty sidecar or absent placeholder |
+| `difficulty` | scout difficulty sidecar, persisted difficulty record, or absent placeholder |
 | `wrapper_logs.cursor` | `coder-cursor.wrapper.log` (raw text) |
 | `wrapper_logs.codex` | `coder-codex.wrapper.log` (raw text) |
 
-Absent sections are omitted except `difficulty`, which may carry `tier_in_effect`, `ceiling_in_effect`, empty escalation placeholders, and scout source fields when present. The audit scan `coder-tool` reads `round-meta.json`
+Absent sections are omitted except `difficulty`, which may carry `tier_in_effect`, `ceiling_in_effect`, `applied_tier`, `panel_tier`, `round_cap`, `codex_model_role`, `override_source`, `audit_evaluated`, `audit_upgrade`, `escalations`, empty escalation placeholders, and scout source fields when present. The audit scan `coder-tool` reads `round-meta.json`
 as the primary source (`.coder.CODER_TOOL` via jq), falling back to `coder.env`
 for rounds predating Phase 3c.
 

@@ -2990,6 +2990,34 @@ def test_write_implement_round_meta_records_difficulty(tmp_path: Path) -> None:
         json.dumps({"slot": "dyn-risk", "tool": "codex", "output": "out.txt", "vendor": "codex", "resolved_model": "gpt"}) + "\n",
         encoding="utf-8",
     )
+    (round_dir / "difficulty-rating.json").write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "rater": "review",
+                "rater_tool": "claude",
+                "rater_model": "gpt",
+                "predicted_tier": "MODERATE",
+                "confidence": "high",
+                "rationale": "persisted review record",
+                "design_tier": None,
+                "implement_tier": None,
+                "applied_tier": "HARD",
+                "override_source": "operator",
+                "floors_applied": [],
+                "audit_upgrade": "true",
+                "escalations": [{"round": 2, "from_tier": "MODERATE", "to_tier": "HARD", "trigger": "escalated-high-accepted"}],
+                "panel_skipped": None,
+                "panel_tier": "HARD",
+                "round_cap": 3,
+                "codex_model_role": "default",
+                "audit_evaluated": True,
+                "escalated_round": True,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
     (round_dir / "scout-difficulty-rating.raw.json").write_text(
         json.dumps({"predicted_tier": "TRIVIAL", "confidence": "low", "rationale": "unclear small diff"}) + "\n",
         encoding="utf-8",
@@ -2998,7 +3026,14 @@ def test_write_implement_round_meta_records_difficulty(tmp_path: Path) -> None:
     assert progress_report.write_implement_round_meta(round_dir) == 0
     data = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
 
-    assert data["difficulty"]["tier_in_effect"] == "MODERATE"
+    assert data["difficulty"]["tier_in_effect"] == "HARD"
+    assert data["difficulty"]["ceiling_in_effect"] == 3
+    assert data["difficulty"]["override_source"] == "operator"
+    assert data["difficulty"]["audit_upgrade"] == "true"
+    assert data["difficulty"]["codex_model_role"] == "default"
+    assert data["difficulty"]["panel_tier"] == "HARD"
+    assert data["difficulty"]["round_cap"] == 3
+    assert data["difficulty"]["escalations"]
     assert data["difficulty"]["scout"]["confidence"] == "low"
 
 

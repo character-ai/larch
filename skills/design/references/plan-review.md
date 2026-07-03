@@ -32,7 +32,7 @@ Static slugs and labels align with `python/larch/core/config.py` `design.plan_re
 
 Each slug fans out to Cursor and Codex rows when that vendor is present. Do not duplicate rendered prompt bodies here.
 
-Use **Dispatch** and **Panel pruning** for the round matrix: round 1 full paired static panel; round 2 pruned backup using round-1 productivity only; no generic Codex replacement row; `--no-fallback` always for reviewer rows.
+Use **Dispatch** and **Panel pruning** for the round matrix: round 1 full paired static panel; later non-escalated rounds prune using prior-round productivity under the active tier cap (2/2/3); no generic Codex replacement row; `--no-fallback` always for reviewer rows.
 
 ---
 
@@ -58,7 +58,7 @@ Normal `/design` Step 3 calls `design-step3-review.sh` once with `run_in_backgro
 
 `design-step3-review.sh` owns Step 3 `record-escalation` for `main-agent-vote-required`, `main-agent-apply-required`, `postplan-operator-required`, and panel degradation statuses. Prompt-side orchestration must not call `record-escalation` for them. The wrapper emits state KVs only; no final-summary prose on KV stdout.
 
-Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, `panel-init-failed`, and `main-agent-vote-required`; the loop maps cap to `STEP3_REVIEW_LOOP_STATUS=cap-hit` before Step 3b. `panel-init-failed` means no reviewer round launched and is terminal before Gate C.
+Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-panel`, `tally-error`, `degraded-empty-collector`, `panel-failed`, `panel-init-failed`, and `main-agent-vote-required`; the loop maps the active tier cap (2/2/3) to `STEP3_REVIEW_LOOP_STATUS=cap-hit` before Step 3b. `panel-init-failed` means no reviewer round launched and is terminal before Gate C.
 
 - **Panel pruning**: round 1 uses the unpruned manifest; round 2 filters `plan-review-slots.ndjson` through `review reviewer-prune` using round-1 ledger data only, preserving `plan-review-slots.pre-prune.ndjson` when rows are removed. `PANEL_PRUNED_EMPTY=true` means no reviewers launched, the round is complete/non-degraded, and no ledger rows are recorded. Prune-to-empty is convergence (#5255): the loop completes immediately (reason `converged-pruned-empty`). Terminal `zero-findings-degraded-panel` still records round provenance so the reviewed plan publishes.
 - **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero findings with a degraded non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
@@ -73,7 +73,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 
 ## Claude Code Reviewer Subagent archetype (both-absent floor)
 
-Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then a round-2 backup panel pruned on round-1 productivity; optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains `launch-claude-review.sh` subprocess scope.
+Claude is NOT a primary plan reviewer. The external panel is default: present vendors per archetype in round 1, then later non-escalated rounds prune on prior-round productivity under the active tier cap (2/2/3); optional dynamic `dyn-*` pairs appear only when scouting succeeds. Under `--no-fallback` there is **no per-slot Claude pad** when one external fails, and no generic Codex replacement row. Voter 1 remains `launch-claude-review.sh` subprocess scope.
 
 **Voter 1** (Claude) in the 3-voter panel is **not** an Agent-tool subagent: `python/plan_review.py` drives `python/cli.py plan-review voter-dispatch`, which launches Voter 1 through `python/cli.py agent launch-claude-review` (`--role voter`, `--timing-task-kind claude-plan-voter`). The prompt and rubric match the historical Agent-tool contract, but execution is subprocess-scoped like other `launch-claude-review.sh` lanes.
 
