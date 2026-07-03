@@ -312,13 +312,13 @@ def _rng_roll(rng: object, denominator: int) -> int:
         return rng
     if callable(rng):
         value = rng()
-        return int(value)
+        return int(cast("int", value))
     randrange = getattr(rng, "randrange", None)
     if callable(randrange):
-        return int(randrange(1, denominator + 1))
+        return int(cast("int", randrange(1, denominator + 1)))
     randint = getattr(rng, "randint", None)
     if callable(randint):
-        return int(randint(1, denominator))
+        return int(cast("int", randint(1, denominator)))
     return denominator
 
 
@@ -346,12 +346,14 @@ def _record_escalations_for_round(data: dict[str, object], round_num: int | None
     raw = data.get("escalations")
     if not isinstance(raw, list):
         return ()
+    items = cast("list[object]", raw)
     if round_num is None:
-        return tuple(raw)
+        return tuple(items)
     result: list[object] = []
-    for item in raw:
-        if not isinstance(item, dict):
+    for raw_item in items:
+        if not isinstance(raw_item, dict):
             continue
+        item = cast("dict[str, object]", raw_item)
         try:
             item_round = int(str(item.get("round") or 0) or 0)
         except ValueError:
@@ -370,9 +372,11 @@ def _resolution_from_data(data: dict[str, object], *, round_num: int | None = No
     if not panel_tier:
         return None
     round_escalations = _record_escalations_for_round(data, round_num) if round_num is not None else ()
+    raw_round_cap = data.get("round_cap")
+    round_cap = raw_round_cap if isinstance(raw_round_cap, int) else tier_ceiling(panel_tier)
     return TierResolution(
         panel_tier=panel_tier,
-        round_cap=int(data.get("round_cap") or tier_ceiling(panel_tier)),
+        round_cap=round_cap,
         codex_model_role=str(data.get("codex_model_role") or codex_review_model_role(panel_tier)),
         audit_evaluated=bool(data.get("audit_evaluated")),
         audit_upgrade=str(data.get("audit_upgrade") or "").lower() == "true" or data.get("audit_upgrade") is True,
@@ -423,7 +427,7 @@ def resolve_panel_tier(
         escalations=_record_escalations_for_round(data),
     )
     if not data:
-        data = {
+        data = cast("dict[str, object]", {
             "schema_version": SCHEMA_VERSION,
             "rater": "fallback",
             "rater_tool": "unknown",
@@ -436,7 +440,7 @@ def resolve_panel_tier(
             "floors_applied": [],
             "panel_skipped": None,
             "escalations": [],
-        }
+        })
     data.update(
         {
             "applied_tier": panel_tier,
@@ -456,7 +460,7 @@ def resolve_panel_tier(
 def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier: str, trigger: str) -> None:
     data = _load_record_data(record_path)
     if not data:
-        data = {
+        data = cast("dict[str, object]", {
             "schema_version": SCHEMA_VERSION,
             "rater": "fallback",
             "rater_tool": "unknown",
@@ -470,10 +474,9 @@ def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier
             "override_source": "none",
             "audit_upgrade": None,
             "panel_skipped": None,
-        }
-    escalations = data.get("escalations")
-    if not isinstance(escalations, list):
-        escalations = []
+        })
+    raw_escalations = data.get("escalations")
+    escalations = cast("list[object]", raw_escalations) if isinstance(raw_escalations, list) else []
     entry = {
         "round": round_num,
         "from_tier": normalize_tier(from_tier, MODERATE),
@@ -661,8 +664,9 @@ def difficulty_line(record: DifficultyRecord | dict[str, object]) -> str:
     escalations = data.get("escalations")
     if isinstance(escalations, list) and escalations:
         rendered: list[str] = []
-        for item in escalations:
-            if isinstance(item, dict):
+        for raw_item in cast("list[object]", escalations):
+            if isinstance(raw_item, dict):
+                item = cast("dict[str, object]", raw_item)
                 from_tier = item.get("from_tier", "?")
                 to_tier = item.get("to_tier", "?")
                 round_num = item.get("round", "?")
@@ -670,7 +674,7 @@ def difficulty_line(record: DifficultyRecord | dict[str, object]) -> str:
                 suffix = f" {trigger}" if trigger else ""
                 rendered.append(f"r{round_num} {from_tier}->{to_tier}{suffix}")
             else:
-                rendered.append(str(item))
+                rendered.append(str(raw_item))
         parts.append("escalated " + ", ".join(rendered))
     skipped = data.get("panel_skipped")
     if skipped:

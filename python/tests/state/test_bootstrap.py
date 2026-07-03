@@ -594,6 +594,7 @@ def test_invoke_persists_ship_seed_input_flags(tmp_path, monkeypatch) -> None:
         "NO_ADMIN_FALLBACK": "true",
         "NO_LOGS_COMMIT": "true",
         "DEFERRED": "true",
+        "DIFFICULTY_OVERRIDE": "",
     }
 
 

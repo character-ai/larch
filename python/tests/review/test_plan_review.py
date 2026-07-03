@@ -13,6 +13,7 @@ from typing import cast
 
 from larch.core import logging_util
 from larch.review import plan_review
+from larch.review import plan_review_common
 from larch.review import plan_review_loop
 from larch.review import plan_review_normalize
 from larch.review import plan_review_round
@@ -47,7 +48,7 @@ def test_new_process_group_calls_setsid(tmp_path: Path, monkeypatch: pytest.Monk
     _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
     review_cap_env = tmp_path / ".step3-review-cap.env"
     _ = review_cap_env.write_text("LOOP_STATUS=cap-reached\nTALLY_PLAN_REVIEW_STATUS=skipped-cap-reached\n", encoding="utf-8")
-    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review_common.ROUND_CAP}\n", encoding="utf-8")
     result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path), "--new-process-group"])
     assert result == 0
     assert len(calls) == 1
@@ -59,7 +60,7 @@ def test_new_process_group_absent_does_not_call_setsid(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(plan_review.os, "setsid", forbidden_setsid)  # type: ignore[arg-type]
     _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
-    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review_common.ROUND_CAP}\n", encoding="utf-8")
     result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path)])
     assert result == 0
 
@@ -2775,9 +2776,11 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc1.returncode == 0, proc1.stderr
     assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc1.stdout
+    # Both findings are high-severity and new -> round-total escalates to HARD.
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc1.stdout
 
-    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop.
+    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop,
+    # even though escalation raised the cap to HARD's 3 rounds.
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     proc2 = run_cli(
         "plan-review",
@@ -2790,7 +2793,7 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
     # Totals stay reported for backward compatibility.

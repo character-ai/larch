@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from larch import io as larch_io
 from larch.calibration import difficulty
@@ -70,11 +72,12 @@ def _run_params_difficulty(design_tmpdir: Path) -> str:
     if not path.is_file() or path.is_symlink():
         return ""
     try:
-        import json  # noqa: PLC0415
         data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
     except (OSError, json.JSONDecodeError):
         return ""
-    return difficulty.normalize_tier(data.get("difficulty_override")) if isinstance(data, dict) else ""
+    if not isinstance(data, dict):
+        return ""
+    return difficulty.normalize_tier(cast("dict[str, object]", data).get("difficulty_override"))
 
 
 def resolve_plan_review_tier(design_tmpdir: Path, *, round_num: int | None = None) -> difficulty.TierResolution:
@@ -93,11 +96,10 @@ def design_escalation_authorized(design_tmpdir: Path) -> bool:
     data_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
     if data_path.is_file() and not data_path.is_symlink():
         try:
-            import json  # noqa: PLC0415
             data = json.loads(data_path.read_text(encoding="utf-8", errors="replace"))
         except (OSError, json.JSONDecodeError):
             data = {}
-        if isinstance(data, dict) and data.get("escalations"):
+        if isinstance(data, dict) and cast("dict[str, object]", data).get("escalations"):
             return True
     return False
 

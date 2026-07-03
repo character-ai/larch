@@ -2078,12 +2078,12 @@ def _filter_prune_round(tmp_path: Path, manifest: Path, ledger: Path, round_num:
     )
 
 
-def test_reviewer_prune_window_evaluated_round_two_only() -> None:
+def test_reviewer_prune_window_evaluated_round_two_and_onward() -> None:
     assert review_pipeline.prune_window_evaluated(1) == "false"
     assert review_pipeline.prune_window_evaluated(2) == "true"
-    assert review_pipeline.prune_window_evaluated(3) == "false"
-    assert review_pipeline.prune_window_evaluated(4) == "false"
-    assert review_pipeline.prune_window_evaluated(5) == "false"
+    assert review_pipeline.prune_window_evaluated(3) == "true"
+    assert review_pipeline.prune_window_evaluated(4) == "true"
+    assert review_pipeline.prune_window_evaluated(5) == "true"
 
 
 def test_reviewer_prune_filter_round_one_never_prunes(tmp_path: Path) -> None:

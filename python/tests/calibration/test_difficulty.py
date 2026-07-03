@@ -155,7 +155,7 @@ def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
         "audit_evaluated": True,
         "escalated_round": True,
     }
-    out.write_text(json.dumps(existing), encoding="utf-8")
+    _ = out.write_text(json.dumps(existing), encoding="utf-8")
 
     rc = difficulty.write_record_main([
         "--output", str(out),

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import re
 import sys
@@ -265,14 +266,15 @@ def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str
     record = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / difficulty.DIFFICULTY_RECORD_BASENAME
     if record.is_file():
         try:
-            import json  # noqa: PLC0415
             data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
         except (OSError, json.JSONDecodeError):
             data = {}
-        if isinstance(data, dict) and data.get("panel_tier"):
-            _emit_kv(key="PANEL_TIER", value=data.get("panel_tier"))
-        if isinstance(data, dict) and data.get("audit_upgrade") is not None:
-            _emit_kv(key="AUDIT_UPGRADE", value=str(data.get("audit_upgrade")).lower() == "true" or data.get("audit_upgrade") is True)
+        if isinstance(data, dict):
+            record_data = cast("dict[str, object]", data)
+            if record_data.get("panel_tier"):
+                _emit_kv(key="PANEL_TIER", value=record_data.get("panel_tier"))
+            if record_data.get("audit_upgrade") is not None:
+                _emit_kv(key="AUDIT_UPGRADE", value=str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True)
 
 
 def _build_step5_parser() -> argparse.ArgumentParser:

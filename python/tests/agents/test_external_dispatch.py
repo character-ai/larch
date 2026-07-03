@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 from larch.agents import agent_voters
 from larch.agents import agent_waterfall
 from larch.agents import agents
+from larch.calibration import difficulty
 from larch.state import bootstrap
 from larch.implement import checks
 from larch.implement import checks_lint_fix as _clf
@@ -354,7 +355,7 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     monkeypatch.setattr(review_pipeline.external_defaults, "panel_dispatch_policy", fake_panel_policy)
 
     manifest = tmp_path / "manifest.ndjson"
-    review_pipeline._append_static_specialist_rows(manifest=manifest, review_tmpdir=tmp_path, codex_slots_available=False)
+    review_pipeline._append_static_specialist_rows(manifest=manifest, review_tmpdir=tmp_path, codex_slots_available=False, cursor_slots_available=True, tier=difficulty.MODERATE)
     review_pipeline._append_round_generic_codex_row(manifest=manifest, review_tmpdir=tmp_path, round_num=4, codex_slots_available=True)
 
     rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
