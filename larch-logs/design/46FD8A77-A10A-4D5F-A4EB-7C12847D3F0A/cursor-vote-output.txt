@@ -1,0 +1,11 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- shared cache risk is real but TTL plus token scoping already bound cross-session harm; documenting or narrowing is not necessary for the leak fix
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- confusing deny copy is real but byte-identical messaging is intentional and not a functional regression on the leak fix
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- docs/linting.md drift is real but optional operator prose outside the plan's mandated surfaces
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate branding concern with no new materiality beyond OOS_1
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- same lint-catalog doc gap as OOS_2 and not required to stop the cross-skill deny leak

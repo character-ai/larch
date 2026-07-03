@@ -1,0 +1,21 @@
+### FINDING_1: Missing sentinel cleanup in filing-abort paths
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The `/research` "Filing findings as issues" abort branches can fire after the activation sentinel exists but before cleanup runs, leaving a stale hook armed until TTL and blocking unrelated skills.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add activation-sentinel removal (and prefer cleanup-tmpdir when appropriate) to the Filing findings VERIFIED=false and ISSUES_FAILED>=1 abort prose; pin in scripts/test-research-structure.sh alongside the research-phase abort pins.
+  - From Cursor-Pragmatic: Add explicit sentinel-removal steps to both filing abort branches in `skills/research/SKILL.md`, and extend `scripts/test-research-structure.sh` / `.md` with pins mirroring the bug Step 6 failure sentinel-removal checks
+
+### FINDING_2: Shared activation directory can cross-session-couple hooks
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: A shared user-level activation directory can let a sentinel from one Claude session arm a leaked hook in another session, so unrelated sessions can block each other.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Document as an explicit residual risk in SECURITY.md and deny-edit-write.md, or narrow the directory (for example only sentinels under the active session tmpdir tree) if a hook-readable session anchor exists without PPID matching.
+
+### FINDING_3: Tokenless hook invocation matches any fresh sentinel
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Tokenless `deny-edit-write.sh` invocations can activate on any fresh consumer sentinel, so a leaked registration can start denying unrelated skills.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Make tokenless invocation fail-open (treat as inactive) instead of matching any fresh sentinel; rely on frontmatter token args plus structural pins for correct wiring, accepting that mis-wired consumers without a token stay unguarded

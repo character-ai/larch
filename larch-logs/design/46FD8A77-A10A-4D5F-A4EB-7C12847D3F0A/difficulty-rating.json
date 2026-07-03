@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": false,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "medium",
+  "design_tier": "HARD",
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": null,
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "design",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "design plan metadata",
+  "round_cap": 3,
+  "schema_version": 1
+}
