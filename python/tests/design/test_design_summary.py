@@ -38,6 +38,40 @@ def test_issue_counts_missing_file(tmp_path: Path) -> None:
     assert design_summary._issue_counts(tmp_path) == (0, 0)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_oos_info_counts_file_map_rows(tmp_path: Path) -> None:
+    sentinel = tmp_path / "oos-issues-created.md"
+    _ = sentinel.write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/example/repo/issues/1\n"
+        "https://github.com/example/repo/issues/legacy\n"
+        "OOS_FILE_MAP\t2\thttps://github.com/example/repo/issues/2  \n",
+        encoding="utf-8",
+    )
+    assert design_summary._oos_info(tmp_path) == (  # pyright: ignore[reportPrivateUsage]
+        2,
+        "https://github.com/example/repo/issues/1\nhttps://github.com/example/repo/issues/2",
+    )
+
+
+def test_oos_info_missing_file(tmp_path: Path) -> None:
+    assert design_summary._oos_info(tmp_path) == (0, "")  # pyright: ignore[reportPrivateUsage]
+
+
+def test_oos_info_ignores_malformed_rows(tmp_path: Path) -> None:
+    sentinel = tmp_path / "oos-issues-created.md"
+    _ = sentinel.write_text(
+        "\n"
+        "OOS_FILE_MAP\t1\n"
+        "OOS_FILE_MAP\t2\t   \n"
+        "OOS_FILE_MAP\t3\thttps://github.com/example/repo/issues/3\n"
+        "diagnostic OOS_FILE_MAP\t4\thttps://github.com/example/repo/issues/4\n",
+        encoding="utf-8",
+    )
+    assert design_summary._oos_info(tmp_path) == (  # pyright: ignore[reportPrivateUsage]
+        1,
+        "https://github.com/example/repo/issues/3",
+    )
+
+
 def test_issue_counts_fence_plain_and_boundary_parity(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text(
