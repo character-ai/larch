@@ -14,6 +14,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, cast
 
+from larch.core import config
 from larch.core import redact
 from larch.calibration import difficulty
 from larch.issue import file_oos
@@ -244,7 +245,7 @@ def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--input", required=True)
     parser.add_argument("--producer", choices=("external", "main-agent"), default="external")
     args = parser.parse_args(argv)
-    raw_tmpdir = args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
         print("implement normalize-coder-scout: --tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
         return 2

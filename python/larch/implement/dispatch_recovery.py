@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch.core import config
 from larch.core import logging_util
 from larch.implement.dispatch_helpers import (
     RecoveryParse,
@@ -130,7 +131,7 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-file", required=True)
     args = parser.parse_args(argv)
     repo_root = Path(args.repo_root)
-    raw_tmpdir = args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
         _err("implement recovery-paths: --tmpdir is required or IMPLEMENT_TMPDIR must be set")
         return 2

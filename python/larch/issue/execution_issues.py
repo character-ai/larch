@@ -15,6 +15,7 @@ import tempfile
 from contextlib import suppress
 from pathlib import Path
 from larch import io as larch_io
+from larch.core import config
 
 VALIDATION_FAILED_RC = 2
 
@@ -319,7 +320,7 @@ def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
         emit_kv(key="REFRESHED", value="false")
         emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
-    raw_tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
         emit_kv(key="REFRESHED", value="false")
         emit_kv(key="ERROR", value="--implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
