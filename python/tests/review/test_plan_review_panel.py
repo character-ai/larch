@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
@@ -94,6 +95,84 @@ printf 'ALL_OUTPUT_FILES_PATH=%s\\n' "${WATERFALL_STUB_PATHS_OUT:-$_outpath}"
     )
     stub.chmod(0o755)
     return stub
+
+
+def _dispatch_design_panel_for_tier(
+    tmp_path: Path,
+    tier: str,
+    *,
+    round_num: int = 1,
+    prune_round_num: int | None = None,
+    escalated_round: bool = False,
+) -> tuple[subprocess.CompletedProcess[str], Path, list[dict[str, object]], list[str]]:
+    suffix = f"{tier.lower()}-round-{round_num}"
+    if escalated_round:
+        suffix += "-escalated"
+    design = tmp_path / f"design-{suffix}"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    args_out = design / "waterfall.args"
+    stub = _write_waterfall_stub(tmp_path)
+    args = [
+        "plan-review",
+        "panel-dispatch",
+        "--design-tmpdir",
+        str(design),
+        "--round-num",
+        str(round_num),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--timeout",
+        "60",
+        "--tier",
+        tier,
+        "--escalated-round",
+        "true" if escalated_round else "false",
+    ]
+    if prune_round_num is not None:
+        args.extend(["--prune-round-num", str(prune_round_num)])
+    proc = run_cli(
+        *args,
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "DISPATCH_PLAN_REVIEW_WATERFALL_SH": str(stub),
+            "WATERFALL_STUB_LOG": str(design / "wf.log"),
+            "WATERFALL_STUB_PATHS_OUT": str(design / "paths.out"),
+            "WATERFALL_STUB_ARGS_OUT": str(args_out),
+        },
+    )
+    rows = _manifest_rows(design / "plan-review-slots.ndjson") if (design / "plan-review-slots.ndjson").is_file() else []
+    waterfall_args = args_out.read_text(encoding="utf-8").split() if args_out.is_file() else []
+    return proc, design, rows, waterfall_args
+
+
+def _assert_design_pair_shape(rows: list[dict[str, object]], *, codex_role: str) -> None:
+    assert len(rows) == 8
+    by_focus: dict[str, set[str]] = {}
+    for row in rows:
+        focus = str(row.get("focus_area") or "")
+        tool = str(row.get("tool") or "")
+        by_focus.setdefault(focus, set()).add(tool)
+    assert by_focus == {
+        "arch": {"codex", "cursor"},
+        "innovation": {"codex", "cursor"},
+        "pragmatic": {"codex", "cursor"},
+        "requirements": {"codex", "cursor"},
+    }
+    codex_rows = [row for row in rows if row.get("tool") == "codex"]
+    cursor_rows = [row for row in rows if row.get("tool") == "cursor"]
+    assert len(codex_rows) == 4
+    assert len(cursor_rows) == 4
+    assert all(row.get("model_role") == codex_role for row in codex_rows)
+    assert all(row.get("slot") != "codex-plan-generic" for row in rows)
 
 
 def _write_python3_agent_stub(tmp_path: Path) -> Path:
@@ -228,6 +307,27 @@ def test_panel_dispatch_static_slot_matrix(tmp_path: Path) -> None:
     assert str(design / "plan-review" / "round-1") in wf_args
     static_prompt = (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8")
     assert "verify the current plan does not already include the proposed fix" in static_prompt
+
+
+def test_panel_dispatch_trivial_uses_pairs_and_review_codex_role(tmp_path: Path) -> None:
+    proc, _design, rows, waterfall_args = _dispatch_design_panel_for_tier(tmp_path, "TRIVIAL")
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    _assert_design_pair_shape(rows, codex_role="review")
+    assert _argval(waterfall_args, "--model-role") == "review"
+
+
+def test_panel_dispatch_moderate_uses_pairs_and_review_codex_role(tmp_path: Path) -> None:
+    proc, _design, rows, waterfall_args = _dispatch_design_panel_for_tier(tmp_path, "MODERATE")
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    _assert_design_pair_shape(rows, codex_role="review")
+    assert _argval(waterfall_args, "--model-role") == "review"
+
+
+def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
+    proc, _design, rows, waterfall_args = _dispatch_design_panel_for_tier(tmp_path, "HARD")
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    _assert_design_pair_shape(rows, codex_role="default")
+    assert _argval(waterfall_args, "--model-role") == "default"
 
 
 def test_panel_dispatch_omits_generic_codex_all_rounds(tmp_path: Path) -> None:
@@ -919,6 +1019,71 @@ def test_panel_dispatch_prunes_round_two_empty_panel(tmp_path: Path) -> None:
     assert "PANEL_PRUNED_EMPTY=true" in proc.stdout
     assert (design / "plan-review-slots.pre-prune.ndjson").is_file()
     assert not (design / "plan-review-slots.ndjson").read_text(encoding="utf-8").strip()
+
+
+def test_panel_dispatch_hard_escalated_round_bypasses_prune(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "design-hard-escalated-prune"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(json.dumps({"archetypes": []}), encoding="utf-8")
+    rows = [
+        ("cursor", "cursor-plan-arch"),
+        ("codex", "codex-plan-arch"),
+        ("cursor", "cursor-plan-innovation"),
+        ("codex", "codex-plan-innovation"),
+        ("cursor", "cursor-plan-pragmatic"),
+        ("codex", "codex-plan-pragmatic"),
+        ("cursor", "cursor-plan-requirements"),
+        ("codex", "codex-plan-requirements"),
+    ]
+    ledger_lines = ["round\ttool\tslot\tlabel\taccepted_count\trejected_count\ttotal_count"]
+    ledger_lines.extend(f"2\t{tool}\t{slot}\t{slot}\t0\t0\t0" for tool, slot in rows)
+    _ = (design / "reviewer-prune-ledger.tsv").write_text("\n".join(ledger_lines) + "\n", encoding="utf-8")
+    stub = _write_waterfall_stub(tmp_path)
+    seen_prune_rounds: list[int] = []
+    original_filter = plan_review_panel._filter_pruned  # pyright: ignore[reportPrivateUsage]
+
+    def _record_filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tuple[Path, dict[str, str]]:
+        seen_prune_rounds.append(prune_round_num)
+        return original_filter(design=design, manifest=manifest, prune_round_num=prune_round_num)
+
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    monkeypatch.setenv("DISPATCH_PLAN_REVIEW_WATERFALL_SH", str(stub))
+    monkeypatch.setenv("WATERFALL_STUB_LOG", str(design / "wf.log"))
+    monkeypatch.setenv("WATERFALL_STUB_PATHS_OUT", str(design / "paths.out"))
+    monkeypatch.setattr(plan_review_panel, "_filter_pruned", _record_filter_pruned)
+    rc = plan_review_panel.dispatch_panel([
+        "--design-tmpdir",
+        str(design),
+        "--round-num",
+        "3",
+        "--prune-round-num",
+        "3",
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--plan-file",
+        str(design / "plan.txt"),
+        "--feature-file",
+        str(design / "feature-description.txt"),
+        "--tier",
+        "HARD",
+        "--escalated-round",
+        "true",
+    ])
+
+    stdout = capsys.readouterr().out
+    assert rc == 0
+    assert seen_prune_rounds == [0]
+    assert _manifest_rows(design / "plan-review-slots.ndjson")
+    assert "PANEL_PRUNED_EMPTY=false" in stdout
+    assert not (design / "plan-review-slots.pre-prune.ndjson").exists()
 
 
 def test_voter_dispatch_absent_externals_falls_back_to_claude(tmp_path: Path) -> None:

@@ -82,6 +82,42 @@ EOF
     printf '%s\n' "$stub"
 }
 
+write_difficulty_record() {
+    local dir="$1" tier="$2" escalations_json="$3"
+    PYTHONPATH="$ROOT/python" python3 - "$dir" "$tier" "$escalations_json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+from larch.calibration import difficulty
+
+dest = Path(sys.argv[1])
+tier = difficulty.normalize_tier(sys.argv[2], difficulty.MODERATE)
+escalations = tuple(json.loads(sys.argv[3]))
+rating = difficulty.validate_rating_object(
+    {
+        "predicted_tier": tier,
+        "confidence": "medium",
+        "rationale": "test difficulty seed",
+    }
+)
+record = difficulty.build_record(
+    rater="test",
+    rater_tool="harness",
+    rater_model="stub",
+    design_rating=rating,
+    panel_tier=tier,
+    round_cap=difficulty.tier_ceiling(tier),
+    codex_model_role=difficulty.codex_review_model_role(tier),
+    audit_evaluated=False,
+    audit_upgrade=False,
+    escalations=escalations,
+    escalated_round=bool(escalations),
+)
+difficulty.write_record(dest / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+PY
+}
+
 run_driver() {
     local design_tmpdir="$1" stub="$2"
     env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$ROOT" \
@@ -187,6 +223,30 @@ run_driver "$D5" "$stub" >/dev/null
 driver_out=$(run_driver "$D5" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 
+echo "=== HARD round 3 reachable with recorded escalation ==="
+D6="$TMPROOT/hard-round-3-reachable"
+write_common_inputs "$D6"
+printf '2\n' >"$D6/review-round-count.txt"
+write_difficulty_record "$D6" HARD '[{"round":3,"from_tier":"MODERATE","to_tier":"HARD","trigger":"escalated-high-accepted"}]'
+stub="$(write_loop_stub "$D6" "round_num=''; while [[ \$# -gt 0 ]]; do case \"\$1\" in --round-num) round_num=\"\${2:?}\"; shift 2 ;; *) shift ;; esac; done; printf '%s\n' \"\$round_num\" >\"$D6/launched-round.txt\"; [[ \"\$round_num\" == '3' ]] || exit 98; mkdir -p \"$D6/plan-review/round-\$round_num\"; printf 'launched\n' >\"$D6/plan-review/round-\$round_num/launched.txt\"; printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' \"\$round_num\"")"
+driver_out=$(run_driver "$D6" "$stub")
+[[ "$(cat "$D6/launched-round.txt")" == "3" ]] || fail 'HARD escalation should dispatch round 3'
+[[ "$(cat "$D6/review-round-count.txt")" == "3" ]] || fail 'HARD escalation should consume round 3'
+[[ -f "$D6/plan-review/round-3/launched.txt" ]] || fail 'HARD escalation should leave round-3 launch artifact'
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' && fail 'HARD escalation should not stop at cap before launching round 3'
+
+echo "=== Gate-C authorized cap blocks HARD round 3 without escalation ==="
+DGATE="$TMPROOT/gate-c-authorized-cap"
+write_common_inputs "$DGATE"
+printf '2\n' >"$DGATE/review-round-count.txt"
+write_difficulty_record "$DGATE" HARD '[]'
+stub="$(write_loop_stub "$DGATE" "printf 'launched\n' >\"$DGATE/round-3-should-not-launch.txt\"; exit 97")"
+driver_out=$(run_driver "$DGATE" "$stub")
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'Gate-C cap should stop at round 2 without escalation'
+[[ "$(cat "$DGATE/review-round-count.txt")" == "2" ]] || fail 'Gate-C cap should leave counter at 2'
+[[ ! -e "$DGATE/round-3-should-not-launch.txt" ]] || fail 'Gate-C cap should not launch round 3'
+[[ ! -e "$DGATE/plan-review/round-3" ]] || fail 'Gate-C cap should not create round-3 artifacts'
+
 run_continuation() {
     local design_tmpdir="$1" approve="$2"
     CLAUDE_PLUGIN_ROOT="$ROOT" python3 "$CLI" plan-review continuation --design-tmpdir "$design_tmpdir" --approve-requested "$approve"
@@ -272,6 +332,46 @@ cont_out=$(run_continuation "$DBLOCK" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured blocking should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured blocking reason missing'
 printf '%s\n' "$cont_out" | grep -q '^HIGH_ACCEPTED_COUNT=1$' || fail 'structured blocking should count as high'
+
+echo "=== continuation helper escalates two new high findings to HARD ==="
+DESC="$TMPROOT/continuation-escalates-high"
+write_common_inputs "$DESC"
+printf '2\n' >"$DESC/review-round-count.txt"
+write_difficulty_record "$DESC" MODERATE '[]'
+cat >"$DESC/.step3-review-result.env" <<'EOF'
+LOOP_STATUS=complete
+TALLY_PLAN_REVIEW_STATUS=ok
+DEGRADED_PANEL=0
+EOF
+cat >"$DESC/accepted-plan-findings.md" <<'EOF'
+### FINDING_1: Important structured one
+- **Severity**: important
+- **Concern**: first new issue
+
+### FINDING_2: Blocking structured two
+- **Severity**: blocking
+- **Concern**: second new issue
+EOF
+cont_out=$(run_continuation "$DESC" false)
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'two new high findings should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted$' || fail 'two new high findings should escalate'
+printf '%s\n' "$cont_out" | grep -q '^REVIEW_ROUND_CAP=3$' || fail 'escalation should raise cap to 3'
+printf '%s\n' "$cont_out" | grep -q '^PANEL_TIER=HARD$' || fail 'escalation should set panel tier HARD'
+if ! PYTHONPATH="$ROOT/python" python3 - "$DESC/difficulty-rating.json" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
+escalations = data.get("escalations")
+if not isinstance(escalations, list) or not escalations:
+    raise SystemExit(1)
+if data.get("panel_tier") != "HARD" or data.get("round_cap") != 3:
+    raise SystemExit(1)
+PY
+then
+    fail 'escalation should append difficulty record entry'
+fi
 
 echo "=== continuation helper stops on small clean round ==="
 DSMALL="$TMPROOT/continuation-small-clean"

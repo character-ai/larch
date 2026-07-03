@@ -92,17 +92,30 @@ printf '\n' >> "$CORE_CAPTURE_FILE"
 out=""
 session_env=""
 round="1"
+panel=""
+tier=""
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --output-dir) out="$2"; shift 2 ;;
         --session-env-path) session_env="$2"; shift 2 ;;
         --round-num) round="$2"; shift 2 ;;
-        --mode|--diff-file|--plan-file|--feature-file|--run-id|--commit-count|--dynamic-archetypes|--codex-available|--cursor-available) shift 2 ;;
+        --panel) panel="$2"; shift 2 ;;
+        --tier) tier="$2"; shift 2 ;;
+        --mode|--diff-file|--plan-file|--feature-file|--run-id|--commit-count|--dynamic-archetypes|--codex-available|--cursor-available|--escalated-round|--prune-ledger|--site) shift 2 ;;
         *) shift; [[ $# -gt 0 && "$1" != --* ]] && shift || true ;;
     esac
 done
+case "$tier" in
+    TRIVIAL) panel_shape="singles"; effective_cap="2" ;;
+    MODERATE) panel_shape="pairs"; effective_cap="2" ;;
+    HARD) panel_shape="pairs"; effective_cap="3" ;;
+    *) panel_shape="unknown"; effective_cap="0" ;;
+esac
 mkdir -p "$out"
 printf 'SESSION_ENV_PATH=%s\n' "$session_env" >> "$CORE_CAPTURE_FILE"
+printf 'PANEL_ARG=%s\n' "$panel" >> "$CORE_CAPTURE_FILE"
+printf 'TIER_ARG=%s\n' "$tier" >> "$CORE_CAPTURE_FILE"
+printf 'ROUND_ARG=%s\n' "$round" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_TOKEN_SESSION_ID=%s\n' "${LARCH_TOKEN_SESSION_ID:-}" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_CLAUDE_SOURCE_FILE=%s\n' "${LARCH_CLAUDE_SOURCE_FILE:-}" >> "$CORE_CAPTURE_FILE"
 printf 'LARCH_TIMING_LEDGER=%s\n' "${LARCH_TIMING_LEDGER:-}" >> "$CORE_CAPTURE_FILE"
@@ -111,7 +124,7 @@ printf 'LARCH_TIMING_LEDGER=%s\n' "${LARCH_TIMING_LEDGER:-}" >> "$CORE_CAPTURE_F
 : > "$out/oos-accepted-review.md"
 printf '# Review Round %s\n' "$round" > "$out/review-round-summary.md"
 printf '{"schema_version":1,"rounds_completed":%s,"accepted_count":0,"rejected_count":0}\n' "$round" > "$out/review-summary.json"
-printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=simple\n' "$round" "$out" "$out"
+printf 'REVIEW_CORE_STATUS=zero-findings\nROUND_NUM=%s\nACCEPTED_COUNT=0\nREJECTED_COUNT=0\nACCEPTED_FINDINGS_FILE=%s/accepted-findings.md\nREJECTED_FINDINGS_FILE=%s/rejected-findings.md\nPANEL_MODE=normal\nPANEL_SHAPE=%s\nPANEL_TIER=%s\nEFFECTIVE_ROUND_CAP=%s\n' "$round" "$out" "$out" "$panel_shape" "$tier" "$effective_cap"
 EOF_CORE
 chmod +x "$CORE_STUB"
 
@@ -171,5 +184,74 @@ grep -Fq "LARCH_CLAUDE_SOURCE_FILE=$TMP/claude-source.env" "$CORE_CAPTURE" \
     || fail "review-core subprocess did not inherit parent Claude source file"
 grep -Fq "LARCH_TIMING_LEDGER=$TIMING_LEDGER" "$CORE_CAPTURE" \
     || fail "review-core subprocess did not inherit parent timing ledger"
+grep -Fq "PANEL_TIER=MODERATE" "$IMPLEMENT_TMPDIR/round-1/review-core.env" \
+    || fail "default review-core env did not carry PANEL_TIER=MODERATE"
+grep -Fq "PANEL_SHAPE=pairs" "$IMPLEMENT_TMPDIR/round-1/review-core.env" \
+    || fail "default review-core env did not carry MODERATE pair shape"
+grep -Fq "EFFECTIVE_ROUND_CAP=2" "$IMPLEMENT_TMPDIR/round-1/review-core.env" \
+    || fail "default review-core env did not carry MODERATE cap"
+
+run_difficulty_case() {
+    local tier="$1" expected_panel="$2" expected_shape="$3" expected_cap="$4"
+    local lower
+    lower="$(printf '%s' "$tier" | tr '[:upper:]' '[:lower:]')"
+    local case_tmp="$TMP/claude-implement-difficulty-$lower"
+    local capture="$TMP/review-core-capture-$lower.env"
+    mkdir -p "$case_tmp"
+    cp "$REVIEW_ENV" "$case_tmp/session-env.sh"
+    printf 'RUN_ID=token-test-run-%s\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n' "$lower" >> "$case_tmp/session-env.sh"
+    printf 'plan\n' > "$case_tmp/plan.txt"
+    printf 'feature\n' > "$case_tmp/feature-description.txt"
+    : > "$capture"
+    set +e
+    CORE_CAPTURE_FILE="$capture" \
+        LARCH_TOKEN_SESSION_ID="$token_session_id" \
+        LARCH_CLAUDE_SOURCE_FILE="$claude_source_file" \
+        LARCH_TIMING_LEDGER="$timing_ledger" \
+        LARCH_TEST_REVIEW_CORE_OVERRIDE=1 \
+        REVIEW_AND_FIX_REVIEW_CORE_SH="$CORE_STUB" \
+        "${REVIEW_AND_FIX[@]}" \
+            --implement-tmpdir "$case_tmp" \
+            --mode single \
+            --round-num 1 \
+            --session-env-path "$case_tmp/session-env.sh" \
+            --codex-available false \
+            --cursor-available false \
+            --difficulty "$tier" >/dev/null 2>"$case_tmp/review-and-fix.err"
+    local rc=$?
+    set -e
+    [[ "$rc" -eq 0 ]] || {
+        echo "review-and-fix --difficulty $tier rc=$rc" >&2
+        cat "$case_tmp/review-and-fix.err" >&2 || true
+        cat "$case_tmp/round-1/review-core.env" >&2 || true
+        cat "$capture" >&2 || true
+        fail "review-and-fix --difficulty $tier exited $rc"
+    }
+
+    local case_argv_line
+    case_argv_line=$(grep '^REVIEW_CORE_ARGV' "$capture" || true)
+    case "$case_argv_line" in
+        *"--panel"*"${expected_panel}"*) ;;
+        *) fail "difficulty $tier did not pass --panel $expected_panel to review-core" ;;
+    esac
+    case "$case_argv_line" in
+        *"--tier"*"${tier}"*) ;;
+        *) fail "difficulty $tier did not pass --tier $tier to review-core" ;;
+    esac
+    grep -Fq "PANEL_ARG=$expected_panel" "$capture" \
+        || fail "difficulty $tier capture missed PANEL_ARG=$expected_panel"
+    grep -Fq "TIER_ARG=$tier" "$capture" \
+        || fail "difficulty $tier capture missed TIER_ARG=$tier"
+    grep -Fq "PANEL_SHAPE=$expected_shape" "$case_tmp/round-1/review-core.env" \
+        || fail "difficulty $tier review-core.env missed PANEL_SHAPE=$expected_shape"
+    grep -Fq "PANEL_TIER=$tier" "$case_tmp/round-1/review-core.env" \
+        || fail "difficulty $tier review-core.env missed PANEL_TIER=$tier"
+    grep -Fq "EFFECTIVE_ROUND_CAP=$expected_cap" "$case_tmp/round-1/review-core.env" \
+        || fail "difficulty $tier review-core.env missed EFFECTIVE_ROUND_CAP=$expected_cap"
+}
+
+run_difficulty_case TRIVIAL simple singles 2
+run_difficulty_case MODERATE hard pairs 2
+run_difficulty_case HARD hard pairs 3
 
 echo "PASS: test-implement-review-token-propagation.sh"
