@@ -1,0 +1,38 @@
+## Summary
+
+The #6059 fix (PR #6060) added a happy-path ship test but coverage gaps remain:
+
+1. **Ship-level failure/drift cases** (OOS_2, nit): the new ship test (`test_pin_and_load_guidelines_note_reuses_one_live_diff` in `python/tests/implement/test_ship.py`) proves the happy path but does not cover empty fingerprints, write failures, or moving-repo structural cases (a fixture that advances `origin/main` between the mocked calls). This is issue #6059 Open-question #3.
+2. **Direct helper unit coverage** (OOS_7, nit): there are no direct unit tests for `pin_note_from_staged_for_current_head` or `_pin_note_from_live_diff` (`python/larch/core/architectural_guidelines.py`); regressions there are only indirectly exercised through the ship harness.
+
+## Provenance
+
+Surfaced as out-of-scope code-review findings (OOS_2, OOS_7) during `/implement` of #6059 (merged as PR #6060). Reviewer-proposed; not independently re-verified.
+
+## Suggested fix
+
+- Add direct unit tests for `pin_note_from_staged_for_current_head` and `_pin_note_from_live_diff`.
+- Add structural tests that exercise a genuinely mutating fake repo across pin attempts, plus empty-fingerprint and write-failure paths.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add direct unit tests for `pin_note_from_staged_for_current_head` and `_pin_note_from_live_diff` in `python/larch/core/architectural_guidelines.py`.
+- Add ship-level structural/failure/drift tests to `python/tests/implement/test_ship.py`: empty fingerprints, write failures, and a genuinely mutating fake repo across pin attempts.
+
+### Non-goals
+- No production code changes to `architectural_guidelines.py` or `ship.py`.
+- No new shared test helpers or fixture modules beyond what the two target test files already use.
+
+### Approach sketch
+- Extend `python/tests/core/test_architectural_guidelines.py` (existing home for direct helper coverage) with new test functions for the two target helpers, reusing its `_repo`/`_git` fixtures and `ag.write_staged_assessment` setup pattern.
+- Extend the `test_pin_and_load_guidelines_note_*` family in `python/tests/implement/test_ship.py` with: an empty-`DIFF_FINGERPRINT` case, a write-failure case, and a real-git-repo case that advances `origin/main` (via `git update-ref`) between two separate pin attempts.
+- Match each file's existing monkeypatch/fixture conventions; no new abstractions.
+
+### Surfaces in scope
+- `python/tests/core/test_architectural_guidelines.py`
+- `python/tests/implement/test_ship.py`
+
+### Open questions
+- None.

@@ -1,0 +1,120 @@
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection. The approved outline is present and binding.
+
+Add tests only. Do not change `python/larch/core/architectural_guidelines.py`, `python/larch/implement/ship.py`, or `python/larch/implement/ship_guidelines.py`.
+
+Both target test files already carry file-level Pyright suppression for private-member access: `python/tests/implement/test_ship.py` line 1 has `# pyright: reportUnknownLambdaType=false, reportUnknownArgumentType=false, reportPrivateUsage=false, reportUnusedCallResult=false`; `python/tests/core/test_architectural_guidelines.py` has a trailing `# pyright: reportPrivateUsage=false`. No new suppression comment is needed for the new direct calls to `pin_note_from_staged_for_current_head` or `_pin_note_from_live_diff`; confirm the existing directives still cover them rather than adding a redundant one.
+
+`materialize_implementation_diff(repo_root: Path, *, base_remote: str, base_ref: str) -> str` takes `base_remote` and `base_ref` as keyword-only arguments. Any mock-call assertion in the new tests must match that shape, e.g. `mock.assert_called_once_with(repo_root, base_remote="origin", base_ref="main")`, not a single positional `"origin/main"` token.
+
+## Files to modify/create
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+Add direct helper tests near the existing staged, refresh, and note pin tests.
+
+Cover `pin_note_from_staged_for_current_head`:
+
+- Valid staged note plus `repo_root` and `base_ref`:
+  - monkeypatch `ag.materialize_implementation_diff` to return a live diff.
+  - assert the helper returns `True`.
+  - assert the materializer is called once via `mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")` (keyword-only args, not a single `origin/main` token).
+  - assert `MATERIALIZED_DIFF` and `STAGED_ASSESSMENT_ENV` use the live diff fingerprint.
+  - assert the durable note is consumable for the new `head_sha`.
+- Empty `DIFF_FINGERPRINT` via the live-materialization branch:
+  - write a staged assessment with `repo_root` and `base_ref` set so the call takes the `repo_root`+`resolved_base` branch (not the simpler staged-fallback branch with no `repo_root`).
+  - overwrite only the sidecar fingerprint to empty.
+  - provide a live diff through the monkeypatch so materialization succeeds but the stored fingerprint is empty.
+  - assert the materializer is called once via `mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")`, proving the live branch actually ran rather than a staged fallback.
+  - assert the helper returns `False`.
+  - assert no durable note becomes consumable.
+
+Cover `_pin_note_from_live_diff` directly:
+
+- Success:
+  - write staged artifacts with a stale snapshot.
+  - call `_pin_note_from_live_diff` with a live diff tuple.
+  - assert it returns `True`.
+  - assert staged metadata, materialized diff, and durable note metadata all reflect the live fingerprint and target head.
+- Write failure:
+  - monkeypatch `ag.write_implement_note` to raise `OSError`.
+  - call `_pin_note_from_live_diff`.
+  - assert it returns `False`.
+  - assert no consumable durable note exists.
+
+Keep the tests local to this file. Reuse `_repo`, `_git`, and `ag.write_staged_assessment`.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Extend the existing `test_pin_and_load_guidelines_note_*` group.
+
+Add empty-fingerprint ship behavior:
+
+- Write staged artifacts with `repo_root` set (minimal repo dir is enough) so the call reaches the live-materialization branch, not just the staged fallback.
+- Set `DIFF_FINGERPRINT=` by editing the sidecar after `write_staged_assessment`.
+- Monkeypatch `materialize_implementation_diff` (mandatory, not optional) to return a non-empty diff, so materialization succeeds while the stored fingerprint stays empty.
+- Call `_pin_and_load_guidelines_note`.
+- Assert the monkeypatch was called once with `(repo_root, base_remote="origin", base_ref="main")`, proving the live-materialization path ran rather than the `live_diff is None` fallback.
+- Assert it returns the redacted dropped-note message.
+- Assert the durable note is not consumable.
+- Assert `execution-issues.md` records the pin skip or validation failure.
+
+Add write-failure ship behavior:
+
+- Write a valid staged assessment.
+- Monkeypatch `ship.architectural_guidelines.write_implement_note` to raise `OSError`.
+- Assert it returns the dropped-note message.
+- Assert no consumable note exists.
+- Assert the execution issue warning is present.
+
+Add a real-git moving-base structural test:
+
+- Inside the test, create a minimal git repo with `subprocess.run`.
+- Configure user name and email.
+- Commit a base file on `main`.
+- Add `origin` and set `refs/remotes/origin/main` to the base commit.
+- Commit an implementation change on `HEAD`.
+- Materialize the non-empty diff with the real `ship.architectural_guidelines.materialize_implementation_diff`.
+- Write a staged assessment from that diff.
+- Call `_pin_and_load_guidelines_note` with `repo_root`.
+- Assert the note is returned and the materialized diff is non-empty.
+- Advance `refs/remotes/origin/main` to `HEAD` with `git update-ref`.
+- Rewrite a staged assessment that still carries the old non-empty diff fingerprint.
+- Call `_pin_and_load_guidelines_note` again with the same `repo_root`.
+- Assert the note is still returned after live refresh.
+- Assert `MATERIALIZED_DIFF` is now empty and the durable metadata fingerprint matches `diff_fingerprint("")`.
+
+Use an inner `git(*args)` helper inside this one test, or a tiny file-local helper if repetition becomes noisy. Do not add a shared fixture module.
+
+## Edge cases
+
+- Empty `DIFF_FINGERPRINT` must fail closed before live refresh writes a note, specifically on the `repo_root`+live-materialization branch, not only the simpler staged-fallback branch.
+- `OSError` from durable note writing must not surface an unsafe note.
+- A moved `origin/main` must be tested through real git state, not only a mock sequence.
+- Existing drop-notice behavior must stay intact.
+- Mock-call assertions against `materialize_implementation_diff` must use its actual keyword-only signature.
+
+## Failure modes
+
+- A broad monkeypatch can hide the wrong failing write path. Patch `write_implement_note` only for the durable-write failure case.
+- The real-git test can be brittle if the remote tracking ref is not set explicitly. Use `git update-ref refs/remotes/origin/main <sha>` in both base states.
+- The second moving-base attempt must rewrite staged artifacts before calling ship, so it exercises a fresh pin attempt rather than a previously consumable durable note.
+- A mock assertion written against the wrong call shape (positional `origin/main` instead of keyword `base_remote`/`base_ref`) would pass today but silently stop catching a future signature regression.
+
+## Testing strategy
+
+Run targeted tests first, then both changed files fully, then lint checks if local tools are installed:
+
+```bash
+python3 -m pytest python/tests/core/test_architectural_guidelines.py python/tests/implement/test_ship.py -k "pin_note_from_staged_for_current_head or pin_note_from_live_diff or pin_and_load_guidelines_note"
+python3 -m pytest python/tests/core/test_architectural_guidelines.py python/tests/implement/test_ship.py
+python3 -m ruff check python/tests/core/test_architectural_guidelines.py python/tests/implement/test_ship.py
+python3 -m pylint python/tests/core/test_architectural_guidelines.py python/tests/implement/test_ship.py
+python3 -m pyright python/tests/core/test_architectural_guidelines.py python/tests/implement/test_ship.py
+```
+
+diff_added: 170
+diff_deleted: 0
+mechanical_churn: false
+diff_lines: 170
