@@ -1,0 +1,1 @@
+Rename `/release` auto-confirm flag from `--approve`/`-a` to `--skip-approve`/`-s` across the private release skill and docs. Preserve Step 4 behavior, reject old tokens, and keep the zero-PR prompt safety.

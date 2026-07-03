@@ -1,0 +1,30 @@
+# Rename --approve/-a argument of /release skill to match --skip-approve/-s of /design
+
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Rename `/release`'s `--approve`/`-a` flag to `--skip-approve`/`-s`, matching `/design`'s flag naming.
+- Keep the existing skip-confirm behavior identical: only bypasses the Step 4 `AskUserQuestion` when `PR_COUNT>0`.
+- Keep the skill file, `docs/skills.md`, and `README.md` in sync after the rename.
+
+### Non-goals
+- No change to the empty-window (`PR_COUNT=0`) default-to-Cancel safety net.
+- No backward-compat alias for the old `--approve`/`-a` tokens (this repo avoids shims; `/design` itself rejects its old `--approve` flag rather than aliasing it).
+- No changes to `/design`'s own flags or behavior.
+
+### Approach sketch
+- `.claude/skills/release/SKILL.md`: rename the flag in the frontmatter `argument-hint`, the Flags table, the Step 1 parse case arm, and the Step 4 prose; rename the internal shell variable `approve` to `skip_approve` for naming clarity (same semantics, no CLI-facing effect).
+- `docs/skills.md`: update the `/release` Arguments line and the prose sentence describing `--approve`.
+- `README.md`: update the `/release` feature-matrix Arguments cell.
+- No Python/CI changes: flag parsing lives entirely in the skill prompt text, not in `python/cli.py` or tests.
+
+### Surfaces in scope
+- `.claude/skills/release/SKILL.md`
+- `docs/skills.md`
+- `README.md`
+
+### Open questions
+- None.

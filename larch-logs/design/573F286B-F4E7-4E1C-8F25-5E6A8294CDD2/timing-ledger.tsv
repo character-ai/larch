@@ -1,0 +1,19 @@
+v1	mark	1783060347	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1783060399	implement	-	codex	codex-plan-draft	1783060348	1783060399	51	step2b-codex-raw.29609.txt	0	complete
+v1	mark	1783060480	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783060581	implement	-	codex	codex-phase1-codex-plan-requirements	1783060491	1783060581	90	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783060586	implement	-	codex	codex-phase1-dyn-codex-plan-release-flow-guard	1783060491	1783060586	95	dyn-codex-plan-release-flow-guard.txt	0	complete
+v1	vendor	1783060601	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783060491	1783060601	110	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783060608	implement	-	codex	codex-phase1-codex-plan-innovation	1783060491	1783060608	117	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783060636	implement	-	codex	codex-phase1-codex-plan-arch	1783060491	1783060636	145	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783060686	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783060491	1783060686	195	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783060699	implement	-	cursor	cursor-phase1-dyn-cursor-plan-release-flow-guard	1783060491	1783060699	208	dyn-cursor-plan-release-flow-guard.txt	0	complete
+v1	vendor	1783060702	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783060491	1783060702	211	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783060710	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783060491	1783060710	219	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783060713	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783060491	1783060712	221	cursor-plan-arch-output.txt	0	complete
+v1	round	1783060714	design	design Step 3 — plan review	1	1783060490	1783060714	224	0	0	-	1
+v1	mark	1783060765	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783060771	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1783060771	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1783060842	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783060848	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-
