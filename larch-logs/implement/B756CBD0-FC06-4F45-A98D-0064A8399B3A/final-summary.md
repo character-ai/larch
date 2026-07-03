@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:23:59
-- **Cost**: 💰 TOTAL ~$8.24 — Claude $1.04, Codex-5.5 $3.17, Codex-mini $1.38, Cursor $2.22, Claude (subprocess) $0.43  |  Tokens: 15838k
+- **Cost**: 💰 TOTAL ~$10.06 — Claude $2.86, Codex-5.5 $3.17, Codex-mini $1.38, Cursor $2.22, Claude (subprocess) $0.43  |  Tokens: 19332k
 - **Issue**: #6154 — https://github.com/character-ai/larch/issues/6154
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (latent): Invalid session IDs should fail closed. Concern: Invalid session IDs are still ignored in favor of newest-jsonl selection, which can choose the wrong transcript when the sid format is unexpected.
 - **Round 1 OOS_6** (nit): Update the transcript-session docs before operators misconfigure them. Concern: The `make test-token-claude-source` docs still omit `CLAUDE_CODE_SESSION_ID` and the retirement of `LARCH_TOKEN_SESSION_ID`, which can mislead operators.
 - **Round 1 OOS_7** (nit): Add explicit `LARCH_CLAUDE_SESSION_ID` precedence testing. Concern: There is still no explicit test for `LARCH_CLAUDE_SESSION_ID` precedence when both override keys are set, so the plan contract remains only partially pinned.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
