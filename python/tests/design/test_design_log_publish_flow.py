@@ -284,7 +284,7 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
         return original_run_cli(*args)
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda *, ctx: True)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
     monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
     monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
@@ -353,7 +353,7 @@ def test_log_publish_removes_stale_final_summary_when_render_fails(
         return original_run_cli(*args)
 
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda *, ctx: True)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
     monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
     monkeypatch.setattr(design_summary, "render_final_summary_for_request", capture_render)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)

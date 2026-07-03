@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import contextlib
 import fnmatch
-import json
 import os
 import re
 import shutil

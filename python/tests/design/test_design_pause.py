@@ -243,7 +243,7 @@ def test_pause_save_uses_real_log_publish_path(
     monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
     monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
-    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda *, ctx: True)
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", lambda **_kwargs: True)
     monkeypatch.setattr(design_log_publish_flow, "_spawn_detached_admin_merge", lambda **_kwargs: None)
     monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render_main)
     monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)  # pyright: ignore[reportPrivateUsage]
