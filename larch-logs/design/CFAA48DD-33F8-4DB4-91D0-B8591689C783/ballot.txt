@@ -1,0 +1,90 @@
+### FINDING_1: Step 2b anchor needs placement lint
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The TSV restore for `skills/design/SKILL.md` raises the count, but without `step_markers=2b` lint can still miss whether the restored MANDATORY anchor is actually inside the Step 2b body.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Set the SKILL.md row to `expected_count=1` with `step_markers=2b`, and place the restored MANDATORY anchor inside the Step 2b body.
+  - From Cursor-Requirements: Set the SKILL.md row to `expected_count=1` with `step_markers=2b` when restoring the Step 2b MANDATORY anchor.
+
+### FINDING_2: Pin readability router to concrete trigger paths
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The `checks_run_relevant.py` update is named but not tied to specific trigger paths, so edits to the cited readability and structure files can still skip the intended test coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add one `_DIRECT_TARGET_RULES` tuple listing those paths (plus `scripts/test-design-structure.sh` when touched) and map them to the readability/structural tests named in Testing strategy.
+
+### FINDING_3: Repoint public design references to shared readability path
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The public `/design` reference updates still leave some counted MANDATORY anchors on the deleted design-scoped readability path, so the move to the shared file can remain only partially repointed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In each listed reference `### UPDATED`, require repoint to `` `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.** `` in every MANDATORY anchor, not just a shared file move.
+  - From Cursor-Requirements: Add the same repoint bullet as approval-gates: update the MANDATORY line to `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md` with the counted `.**` suffix.
+
+### FINDING_4:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/SKILL.md:72-72
+- **Concern**: [SCOPE-REDUCTION] The plan restores a Step 2b anchor but does not explicitly retire the global soft read at line 72.. Scenario: After restore, `SKILL.md` can load readability guidance twice: always at line 72 and again at Step 2b line 315. That repeats the #5273 token-cost surface the issue is undoing without improving coverage.
+- **Proposed resolution**: State in `skills/design/SKILL.md` UPDATED: remove the global soft read at line 72 once the Step 2b MANDATORY anchor exists; keep only composition-site loads.
+
+### FINDING_5:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/lint-readability-preamble.tsv:1
+- **Concern**: [SCOPE-REDUCTION] The plan adds both per-skill manifest rows and a dynamic `SKILL.md` walk with exemptions.. Scenario: Every new skill then needs a TSV row plus satisfying the walker, doubling maintenance and inflating the committed floor without adding enforcement the walker does not already provide.
+- **Proposed resolution**: Use the dynamic walk plus exemption rows for `skills/*/SKILL.md` coverage; keep per-file TSV rows only for counted orchestrator-inline and external-prompt sites.
+
+### FINDING_6:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: skills/design/SKILL.md:72-315
+- **Concern**: [SCOPE-REDUCTION] Plan restores a Step 2b MANDATORY anchor but leaves the global soft read (line 72) and in-step soft read (line 315).. Scenario: That reintroduces duplicate loads and extra token cost that #5273 removed; two soft reads plus one MANDATORY load the same file three times per run.
+- **Proposed resolution**: Remove or replace the soft reads when adding the Step 2b counted MANDATORY anchor; keep one load at the composition site only.
+
+### FINDING_7:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: scripts/lint-readability-preamble.tsv
+- **Concern**: [SCOPE-REDUCTION] Plan adds both a dynamic every-`SKILL.md` walk with exemptions and per-skill manifest rows for all public/dev skills.. Scenario: Issue acceptance needs the walk plus floor metadata, not duplicate per-skill `orchestrator-inline` rows; dual enforcement inflates the floor sum and doubles maintenance on every new skill.
+- **Proposed resolution**: Limit new TSV rows to real composition references (`design-outline`, `finalize-step5`, implement reference files); let the SKILL.md walk plus exemption rows enforce catalog coverage.
+
+### FINDING_8:
+- **Reviewer(s)**: anonymous
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: skills/design/scripts/test-brainstorm-prompts.sh
+- **Concern**: [SCOPE-REDUCTION] Firm UPDATE to test-brainstorm-prompts.sh/.md is not required for correctness.. Scenario: The harness only checks `<READABILITY_STYLE>` token lines and brainstorm.md path pins, not the readability file location, so the firm file adds churn without new enforcement.
+- **Proposed resolution**: Drop the firm UPDATE or downgrade to MAY_UPDATE only if a new shared-path assertion is actually added.
+
+### OOS_1: [OUT_OF_SCOPE] Self-review composes rejected-finding and OOS prose with no local readability anchor.
+- **Description**: [OUT_OF_SCOPE] Self-review composes rejected-finding and OOS prose with no local readability anchor.. Scenario: The `--self-review` and `self-review-required` paths draft user-facing finding text here, but the plan wires only `execution-issues-tracking.md` and `stall-recovery.md` for /implement locals.
+- **Reviewer**: anonymous
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/implement/references/self-review.md:18-28
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Alias generation still emits redirect-only SKILL bodies without readability directives.
+- **Description**: [OUT_OF_SCOPE] Alias generation still emits redirect-only SKILL bodies without readability directives.. Scenario: Generated aliases like `skills/im/SKILL.md` only forward to `/implement`; adding a readability load there buys little because they compose almost no prose.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/core/alias_skill.py:42-58
+- **Phase**: design
+
+
+
+### OOS_3: [OUT_OF_SCOPE] Firm UPDATE to `test-brainstorm-prompts.sh` adds churn without new enforcement.
+- **Description**: [OUT_OF_SCOPE] Firm UPDATE to `test-brainstorm-prompts.sh` adds churn without new enforcement.. Scenario: The harness checks `<READABILITY_STYLE>` token lines and `brainstorm.md` path pins only; it never asserts a readability file path, so repointing the shared file cannot fail this test.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: skills/design/scripts/test-brainstorm-prompts.sh:16-43
+- **Phase**: design

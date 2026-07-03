@@ -1,0 +1,11 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- placement lint is extra enforcement, not required to ship the readability restoration.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate loads are a token-cost optimization issue, not a necessity gate for the feature.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- replacing the planned per-skill rows with only a walk is a scope reduction, not required for acceptance.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- removing the soft reads is a cleanup choice, not a blocker for restoring the mandatory anchor.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the extra row model is redundant, but the feature still ships with the planned coverage checks.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is optional harness churn, not a necessary correctness fix.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate out-of-scope concern; self-review is not a required acceptance item in this plan.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redirect-only alias skills are not necessary for this feature's required prose coverage.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate harness churn; not necessary for the readability feature.

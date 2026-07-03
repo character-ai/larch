@@ -1,0 +1,12 @@
+Reading the ballot and verifying findings against the plan and repo.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of rejected round-1 FINDING_6; optional CI routing does not clear a necessity gate
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate soft loads waste tokens but the feature still ships; not incomplete or broken
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- dual walk plus rows is maintenance overhead, not a correctness defect
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- same duplicate-load concern as FINDING_4; not a necessity gate
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of FINDING_5; acceptance criteria require the walk
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- harness asserts tokens only; firm repoint UPDATE adds churn without new enforcement
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- style-only self-review prose gap; fails OOS impact floor
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- plan already wires im; alias-generator follow-up is speculative maintenance
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- duplicate of FINDING_8; test does not pin readability file path
