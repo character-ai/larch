@@ -1,0 +1,1 @@
+Fix transcript discovery by separating Claude session UUID lookup from larch run-id token ledger keys. Use ambient `CLAUDE_CODE_SESSION_ID` plus the existing explicit override, remove run-id masquerading at design and implement snapshot calls, update standalone review prose, and add resolver regression tests.

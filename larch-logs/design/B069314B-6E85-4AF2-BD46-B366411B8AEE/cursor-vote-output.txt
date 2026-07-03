@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan marks design_publish SESSION_UUID mismatch coverage MAY_UPDATE optional; acceptance only mandates tokens.py sid resolution regression.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Zero-capture root cause is run-id sid override; session-id drift early-return only affects resumed tmpdirs with mismatched source-env, not the core plumbing fix.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false

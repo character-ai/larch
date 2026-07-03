@@ -1,0 +1,17 @@
+# md-to-py-XII: repair session-transcript capture; zero transcripts committed since 2026-07-01
+
+**Context.** #5976 wired transcript capture at the design publish choke point, the implement Step 18 safety net, and review Step 4. The code is live and regression-free on main. The outcome failed: zero `session-transcript.jsonl` files were committed for any skill after the merge, across 55+ runs. Every post-merge design run logs `snapshot-skipped: Claude source snapshot materialization failed`. That message is the `python/larch/design/design_publish.py:396` branch: `token claude-source` exits non-zero or returns no `TRANSCRIPT_PATH=`. The resolver `_find_latest_claude_transcript` (`python/larch/report/tokens.py:1257`) requires `<sid>.jsonl` to exist when `LARCH_CLAUDE_SESSION_ID` or `LARCH_TOKEN_SESSION_ID` is set. It falls back to the newest jsonl only when no sid is requested. Design publish passes its `--session-id` (a larch run-id, not a Claude session UUID) as `LARCH_TOKEN_SESSION_ID` (`design_publish.py:394`), so the lookup hard-fails every run. Only 1 of 655 design run dirs ever captured a transcript. Implement capture also cliffed: 20 transcripts/day (06-30), 5 (07-01), 0 since, while run volume held. The Step 7a and Step 18 guards skip silently when `LARCH_CLAUDE_SOURCE_FILE` is empty. The reference heatmap (#5871, #5976) stays at zero coverage until this is fixed.
+
+**Scope.**
+
+- Fix the session-id plumbing: pass the real Claude session UUID where known, or request the documented newest-jsonl fallback explicitly.
+- Root-cause the implement cliff around 2026-07-01 (what stopped `claude-source` materialization repo-wide) and fix it, or document the environmental cause.
+- Keep the v3 no-backfill policy; do not rewrite committed logs.
+
+**Acceptance.**
+
+- New committed runs of /design, /implement, and standalone /review each contain `session-transcript.jsonl`.
+- `token measure-references-heatmap` shows nonzero `transcript_runs_observed` for all three skills.
+- A regression test pins sid-hit, sid-miss, and no-sid fallback resolution.
+
+Part of md-to-py-XII (round XI: #5986). Repairs the #5976 outcome. Hard enabler for the heatmap demotion child.
