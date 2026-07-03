@@ -5597,7 +5597,7 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
         order.append("pin")
         return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
 
-    def fake_compose(**kwargs: object) -> str:
+    def fake_compose(**kwargs: object) -> str:  # noqa: ARG001  # pylint: disable=unused-argument
         order.append("compose")
         return "body"
 

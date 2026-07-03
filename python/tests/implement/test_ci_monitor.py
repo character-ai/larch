@@ -1930,7 +1930,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         (FailedJob(name="python-lint", conclusion="failure"),),
     )
     ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
-    run_logs.init_run(ctx)
+    _ = run_logs.init_run(ctx)
     _seed_warning_flush_inputs(tmp_path, warning="architectural-guidelines warning")
 
     def noop(*_args: object, **_kwargs: object) -> None:
@@ -1941,6 +1941,9 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         **_kwargs: object,
     ) -> CommandResult:
         return _cr(("git", "commit"))
+
+    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+        return True
 
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
     monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
@@ -1964,7 +1967,7 @@ def test_stage_and_push_warning_refresh_commits_before_ci_fix_push(
         return ci_monitor.git.ForcePushResult(pushed=True, status="ok")
 
     monkeypatch.setattr(ci_monitor.git, "force_push_recovery", fake_force_push_recovery)
-    monkeypatch.setattr(ci_monitor, "verify_job_locally", lambda *_a, **_k: True)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
 
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
@@ -2003,9 +2006,15 @@ def test_stage_and_push_warning_refresh_no_logs_commit_allows_push(
     def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
         return ci_monitor.run_logs.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_NO_LOGS_COMMIT)
 
+    def fake_force_push_recovery(*_args: object, **_kwargs: object) -> ci_monitor.git.ForcePushResult:
+        return ci_monitor.git.ForcePushResult(pushed=True, status="ok")
+
+    def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+        return True
+
     monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
-    monkeypatch.setattr(ci_monitor.git, "force_push_recovery", lambda *_a, **_k: ci_monitor.git.ForcePushResult(pushed=True, status="ok"))
-    monkeypatch.setattr(ci_monitor, "verify_job_locally", lambda *_a, **_k: True)
+    monkeypatch.setattr(ci_monitor.git, "force_push_recovery", fake_force_push_recovery)
+    monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
     runner = RecordingRunner(responses)
     pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
         runner,

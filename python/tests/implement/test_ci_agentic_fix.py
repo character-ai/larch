@@ -818,6 +818,12 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
             )
             return True
 
+        def fake_commit_run(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+        def fake_run_log_flush_noop(*_args: object, **_kwargs: object) -> None:
+            return None
+
         monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
         monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
         monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
@@ -838,21 +844,17 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
         monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
         monkeypatch.setattr(ci_agentic_fix.ship_guidelines, "_invalidate_guidelines_note", fake_invalidate)
-        monkeypatch.setattr(
-            run_log_flush,
-            "_commit_run",
-            lambda *_args, **_kwargs: proc.CommandResult(("git", "commit"), 0, "", "", 0.01),
-        )
-        monkeypatch.setattr(run_log_flush, "_write_final_report", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", lambda *_args, **_kwargs: None)
-        monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit_run)
+        monkeypatch.setattr(run_log_flush, "_write_final_report", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "capture_session_transcript", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_render_ledger_reports", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", fake_run_log_flush_noop)
         monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
-        monkeypatch.setattr(run_logs, "_commit_run", lambda *_args, **_kwargs: proc.CommandResult(("git", "commit"), 0, "", "", 0.01))
+        monkeypatch.setattr(run_logs, "_commit_run", fake_commit_run)
 
         status, _detail, _attempted, paths, pending, _next_run, _log_text = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
             RecordingRunner(),
