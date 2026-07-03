@@ -220,7 +220,7 @@ run_finalize() {
             --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
             --run-id "$RUN_ID" \
             --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" >/dev/null 2>&1 || true
-        if [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ]; then
+        if [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && [ ! -f "$IMPLEMENT_TMPDIR/.completed/step-7a-terminal" ]; then
             set +e
             capture_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript \
                 --source-file "$LARCH_CLAUDE_SOURCE_FILE" \

@@ -1760,7 +1760,15 @@ def _skill_run_dirs(repo: Path) -> dict[str, list[Path]]:
     for skill_dir in sorted(root.iterdir()):
         if skill_dir.is_symlink() or not skill_dir.is_dir():
             continue
-        runs = run_log_corpus.run_dirs(skill_dir)
+        runs = list(run_log_corpus.run_dirs(skill_dir))
+        if skill_dir.name == "review":
+            seen = {path.resolve() for path in runs}
+            for path in run_log_corpus.review_transcript_dirs(skill_dir):
+                resolved = path.resolve()
+                if resolved not in seen:
+                    runs.append(path)
+                    seen.add(resolved)
+            runs.sort(key=lambda path: path.name)
         if runs:
             by_skill[skill_dir.name] = runs
     return by_skill

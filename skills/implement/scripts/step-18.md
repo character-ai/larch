@@ -84,6 +84,7 @@ python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript --source-
 Both safety nets are best effort and append-only.
 The transcript capture uses `--defer-commit true`; publishing paths decide whether staged logs are committed.
 Step 7a remains the primary green-path transcript and execution-issues capture point.
+Step 18 runs transcript capture only when `.completed/step-7a-terminal` is absent, so green-path runs do not recapture after Step 7a.
 Step 18 covers bail and stall paths that reach finalization before Step 7a.
 Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
 The compare reads use guarded `session read-key` defaults, so malformed or unreadable state files do not abort teardown under `set -e`.

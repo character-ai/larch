@@ -1098,7 +1098,8 @@ def test_measure_references_heatmap_reports_review_transcript_coverage(tmp_path:
     design1 = _write_valid_run(tmp_path, skill="design", run_id="run1")
     _write_transcript(design1, [])
     _ = _write_valid_run(tmp_path, skill="design", run_id="run2", issue=2)
-    review = _write_valid_run(tmp_path, skill="review", run_id="run3", issue=3)
+    review = tmp_path / "larch-logs" / "review" / "run3"
+    review.mkdir(parents=True)
     _write_transcript(review, [])
 
     out = tokens.measure_references_heatmap()
