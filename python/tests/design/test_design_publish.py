@@ -1477,7 +1477,7 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(
             return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
         return subprocess.CompletedProcess(cmd, 0, stdout="", stderr="")
 
-    def fake_write_result_env(*, _path: Path, _rows: list[tuple[str, str]]) -> bool:
+    def fake_write_result_env(**_kwargs: object) -> bool:
         assert events == ["log_publish"]
         events.append("write_result_env")
         return False
