@@ -249,7 +249,7 @@ def resolve_summary_mode(design_tmpdir: Path) -> str:
         with contextlib.suppress(OSError, json.JSONDecodeError):
             parsed = json.loads(run_params.read_text(encoding="utf-8"))
             if isinstance(parsed, dict):
-                data = cast(dict[str, object], parsed)
+                data = cast("dict[str, object]", parsed)
                 for key in ("mode", "MODE"):
                     value = data.get(key)
                     if isinstance(value, str) and value:
