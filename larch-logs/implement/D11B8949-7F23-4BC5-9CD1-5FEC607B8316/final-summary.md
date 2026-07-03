@@ -1,14 +1,16 @@
-## /implement run D11B8949-7F23-4BC5-9CD1-5FEC607B8316 — shipping
+## /implement run D11B8949-7F23-4BC5-9CD1-5FEC607B8316 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:17:12
 - **Cost**: 💰 TOTAL ~$11.24 — Claude $4.64, Codex-5.5 $2.24, Codex-mini $1.00, Cursor $3.14, Claude (subprocess) $0.22  |  Tokens: 17040k
 - **Issue**: #6116 — https://github.com/character-ai/larch/issues/6116
+- **PR**: #6142 — https://github.com/character-ai/larch/pull/6142
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +193/-7, larch-logs +542/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
