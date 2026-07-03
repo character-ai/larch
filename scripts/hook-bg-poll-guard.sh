@@ -361,7 +361,7 @@ bash_is_implement_terminal_sentinel_foreground_probe() {
 }
 
 bash_is_step8_handoff_foreground_probe() {
-  local cmd="$1" normalized dir probe_target_re test_re pointer_test_re
+  local cmd="$1" normalized dir probe_target_re test_re
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
   bash_is_control_loop "$normalized" && return 1
