@@ -1,0 +1,1 @@
+Plan: extend the skill-closure classifier for `see ... only for background` references, add a baseline-tracked-file disappearance check, audit gated skills, refresh tests, and regenerate the closure baseline.

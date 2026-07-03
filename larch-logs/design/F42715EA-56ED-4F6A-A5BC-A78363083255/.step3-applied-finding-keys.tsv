@@ -1,0 +1,1 @@
+1	`force_conditional` is introduced on `directivematch`, but `_paths_for_directive_match` still decides conditional status only from `conditional_section` and `_line_is_conditional(...)`. that leaves background-only `see ... only for background` table rows classified as eager and can push `flags.md` out of `conditional_files`.

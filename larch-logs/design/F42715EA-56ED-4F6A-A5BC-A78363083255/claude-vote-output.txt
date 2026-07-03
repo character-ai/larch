@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- panel-tier is the only skill with a new-file check and its `scan_panel_tier` always sets `conditional_files=()`; gated skills get only the union-based dropped-file check which already accepts tier moves
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- tier moves require baseline regen (`--write`), which is the established workflow and already mandated by the plan; after regen `closure_lines` in baseline matches live and no growth violation fires
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already mandates a test for background classification; specifying the exact fixture shape to prevent a false-green is a test-quality refinement, not a plan-mandated deliverable; the underlying wiring concern is captured in FINDING_1
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redundant subset of OOS_1; filing OOS_1 covers dialectic-clarifier.md
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- redundant subset of OOS_1; filing OOS_1 covers step2b-drafter-failsafe.md
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs enhancement not mandated by the plan; lint error message already guides contributors; doesn't clear materiality gate
