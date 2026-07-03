@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"978c3c9da69e2f4ec9cea154917a4152d25d78ffdab650e13bb7cb4ff986d7f3","body":"- **Step 5**: self-review mode: main-agent inline review complete\n\nStep 5 self-review tally emission failed; final report may fall back to Code review: N/A.\n"}
