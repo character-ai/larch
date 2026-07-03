@@ -1,0 +1,1 @@
+Fix the ship merge loop so admin-fallback-enabled `--merge` runs wait on pending CI instead of bailing as review-required. Preserve `--no-admin-fallback` review bails and make their merge-state detail truthful.

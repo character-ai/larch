@@ -1,0 +1,81 @@
+# [BUG] ship-pr bails to review-required while CI pending, skipping admin-merge fallback
+
+## Summary
+
+The `/implement` ship-pr CI+merge loop bails to an `operator-bail` / `review-required` handoff while GitHub CI is still **pending** on the PR, instead of waiting for CI to finish and then letting the `--admin` merge fallback bypass a required-review branch-protection rule. On a `--merge` run (admin fallback enabled) whose PR is gated by a required review, if the driver evaluates the merge before all checks complete (`mergeStateStatus=UNKNOWN`), it converts the transient "CI not ready" state into a terminal review-required bail and never attempts `gh pr merge --admin`. The run stalls at merge even though it would merge cleanly once CI goes green.
+
+## Original report
+
+Filed from a live `/implement --merge 5990` run (run ID `76C8012C-D7D0-4942-B9F6-EFFE73D09E37`, issue #5990, PR #6064). After a CI-fix push started a fresh CI run, the Step 8+ ship driver exited 3 and `ship route-exit` emitted `NEXT_ACTION=operator-bail`, `NEEDS_USER_REASON=review-required`, with detail: `PR requires approving review (mergeStateStatus=BLOCKED): approve the PR or merge manually with --admin. Original: CI checks are not all passing.`
+
+At that moment `gh pr view` showed `mergeStateStatus=UNKNOWN` with 26 checks passed, 12 pending, 0 failing. About a minute later CI finished fully green (40 pass) and the PR became `mergeStateStatus=BLOCKED, mergeable=MERGEABLE, reviewDecision=REVIEW_REQUIRED` — blocked only by the required review, with CI green. The `--admin` merge machinery has worked on prior runs; here it never fired, and the operator ultimately merged manually.
+
+Run log: <https://github.com/character-ai/larch/tree/main/larch-logs/implement/76C8012C-D7D0-4942-B9F6-EFFE73D09E37>
+
+## Reproduction scenario
+
+1. Run `/implement --merge <issue>` with admin fallback enabled (do NOT pass `--no-admin-fallback`) against a repo whose branch protection requires an approving review.
+2. Arrange for the ship driver to reach the Step 12 CI+merge loop while at least one required check is still running, so `gh pr view --json mergeStateStatus` returns `UNKNOWN` (e.g. a fresh push from a CI-fix that restarts the full check suite).
+3. Observe: `merge_pr` returns `MERGE_RESULT_CI_NOT_READY`, then `ship.py` converts it to `MERGE_RESULT_REVIEW_REQUIRED` and bails to `operator-bail` — without waiting for CI to settle or attempting `gh pr merge --admin`.
+
+Timing-dependent: if CI is already green (`mergeStateStatus` determinable) when the loop evaluates the merge, `_attempt_merge` runs and admin-merges normally, so the bug does not reproduce. That is why it "worked before."
+
+Not reproduced via an automated test — there is no existing coverage for this combination (see Suggested fix(es)).
+
+## Expected behavior
+
+On a `--merge` run with admin fallback enabled, a `CI_NOT_READY` (pending-CI, `mergeStateStatus=UNKNOWN`) result should cause the loop to **wait and re-loop for CI** — the same behavior it already applies to non-review PRs — regardless of `reviewDecision`. Once CI settles and `mergeStateStatus` is determinable (`BLOCKED` due to review, checks green), `_attempt_merge`'s `gh pr merge --admin` fallback should bypass the required review and merge.
+
+## Observed behavior
+
+When `reviewDecision == "REVIEW_REQUIRED"`, the loop treats a transient pending-CI (`CI_NOT_READY`) result as a terminal review-required condition and bails to `operator-bail` immediately, before CI completes and before any admin-merge attempt. The `mergeStateStatus=BLOCKED` string in the bail detail is hardcoded and misleading — the actual state was `UNKNOWN` (CI pending).
+
+## Root cause analysis
+
+An asymmetry in `ship.py`'s `CI_NOT_READY` handling, combined with the ordering in `merge.py`:
+
+1. `python/larch/git/merge.py` `merge_pr` reads `mergeStateStatus`. While CI is running, GitHub returns `UNKNOWN`. After `MERGE_PR_INITIAL_UNKNOWN_RETRIES` short retries, if still `UNKNOWN`, it returns `MERGE_RESULT_CI_NOT_READY` / `"CI checks are not all passing"` (merge.py:116-121) — **before** reaching `_attempt_merge` (merge.py:155), which is the only place the `gh pr merge --admin` fallback lives (merge.py:549-558).
+
+2. In `python/larch/implement/ship.py` (lines 747-762), on `MERGE_RESULT_CI_NOT_READY` the loop reads `reviewDecision`:
+   - `REVIEW_REQUIRED` → immediately rewrites the result to `MERGE_RESULT_REVIEW_REQUIRED` (terminal → operator-bail).
+   - otherwise → calls `_handle_merge_ci_not_ready(...)` and `continue`s, i.e. **waits and re-loops for CI.**
+
+Because `_attempt_merge` (and therefore the admin-merge fallback) is only reached once `mergeStateStatus` is not `UNKNOWN`, and because the review-required branch short-circuits before any wait, a required-review PR whose CI is still pending never gets an admin-merge attempt. The early bail is only correct when admin fallback is disabled (`--no-admin-fallback`), where the required review genuinely blocks merge; with admin fallback enabled the review is bypassable, so the bail is premature.
+
+Prior history of this code path (all resolved / DONE):
+- **#3956** introduced the ship.py `CI_NOT_READY` → `reviewDecision` check, with the stated intent that a `--merge` run should **admin-retry** on `REVIEW_REQUIRED`. Its own code-flow diagram shows the `ci_not_ready` branch routing `REVIEW_REQUIRED → rewrite → review-required terminal`, i.e. the branch this bug fingers. The admin-retry only actually fires inside `_attempt_merge`, which is unreachable while CI is pending.
+- **#4256** later extended the sibling `_maybe_review_required` in `merge.py` with a merge-conflict-signal carve-out (`_has_merge_conflict_signal`, merge.py:500-504) so conflicts are not misclassified as review-required.
+- **#3891** added the general "wait-and-check for in-progress CI instead of bailing" loop.
+
+The gap: #3891's wait-and-check does not cover the `CI_NOT_READY` + `REVIEW_REQUIRED` branch (it bails terminally), and #3956's admin-retry only engages once `mergeStateStatus` is determinable — so a required-review PR whose CI is still pending is bailed before either safety net engages.
+
+## Evidence
+
+- `python/larch/git/merge.py:116-121` — `merge_pr` returns `MERGE_RESULT_CI_NOT_READY` with `error="CI checks are not all passing"` when `mergeStateStatus` stays `UNKNOWN` after `MERGE_PR_INITIAL_UNKNOWN_RETRIES`.
+- `python/larch/git/merge.py:155` — `_attempt_merge(...)` runs only after the UNKNOWN guard, i.e. only when `mergeStateStatus` is determinable.
+- `python/larch/git/merge.py:549-558` — the `gh pr merge --admin` fallback lives inside `_attempt_merge`; success returns `MERGE_RESULT_ADMIN_MERGED`.
+- `python/larch/git/merge.py:487-516` (`_maybe_review_required`) — only produces `REVIEW_REQUIRED` after an admin-merge attempt has already failed (`MERGE_RESULT_ADMIN_FAILED` / `POLICY_DENIED`), confirming the sanctioned review-required path is post-admin-attempt.
+- `python/larch/implement/ship.py:747-762` — the `CI_NOT_READY` branch converts to `REVIEW_REQUIRED` when `reviewDecision == "REVIEW_REQUIRED"`, hardcoding `mergeStateStatus=BLOCKED` in the detail; the `else` branch (763-778) waits via `_handle_merge_ci_not_ready` + `continue`.
+- Runtime observation: bail detail `Original: CI checks are not all passing` while `gh pr view` reported `mergeStateStatus=UNKNOWN`, 26 pass / 12 pending / 0 fail; ~1 min later 40 pass, `mergeStateStatus=BLOCKED, mergeable=MERGEABLE, reviewDecision=REVIEW_REQUIRED`.
+
+## Affected files
+
+- `python/larch/implement/ship.py` (~747-762) — the review-required short-circuit on `CI_NOT_READY`; primary fix site.
+- `python/larch/git/merge.py` (~94-121, 155, 487-577) — the `mergeStateStatus=UNKNOWN` → `CI_NOT_READY` ordering and the admin-merge fallback; context for why admin-merge is unreachable while CI is pending.
+- `python/tests/implement/test_ship.py` — regression coverage (currently missing for this combination).
+
+## Suggested fix(es)
+
+Primary: in `ship.py`'s `CI_NOT_READY` branch (747-762), gate the immediate `REVIEW_REQUIRED` conversion on `working.no_admin_fallback`. When admin fallback is enabled (the default `--merge` case), route `CI_NOT_READY` through `_handle_merge_ci_not_ready(...)` + `continue` **regardless** of `reviewDecision`, so the loop waits for CI to settle; once `mergeStateStatus` is determinable, `_attempt_merge`'s `--admin` fallback merges. Keep the instant review-required bail only when `no_admin_fallback` is set.
+
+Secondary considerations:
+- Fix the misleading hardcoded `mergeStateStatus=BLOCKED` in the bail detail; report the actual observed state (e.g. `UNKNOWN`) so the message is accurate.
+- Consider whether `MERGE_PR_INITIAL_UNKNOWN_RETRIES` should be larger, or whether the loop should re-check `reviewDecision`/`mergeStateStatus` only after CI is confirmed complete, to reduce transient-UNKNOWN churn.
+
+Regression test: add a `test_ship.py` case with `no_admin_fallback=False`, `merge_pr` returning `MERGE_RESULT_CI_NOT_READY`, and `pr_review_decision` returning `REVIEW_REQUIRED`; assert the loop re-loops / waits (does not emit `NEEDS_USER_REVIEW_REQUIRED`). Existing coverage: `CI_NOT_READY` waits at ~`test_ship.py:3456-3618`; `REVIEW_REQUIRED` from a direct merge result at ~793-826 — neither exercises the pending-CI + review-required + admin-fallback combination.
+
+## Open questions
+
+- Was the early review-required bail on `CI_NOT_READY` intentional for the `no_admin_fallback` case only, or a general guard that overlooked the admin-fallback path? This confirms whether gating on `no_admin_fallback` is the complete fix.
+- Should the loop cap total CI-wait iterations for a review-required + admin-fallback PR to avoid waiting on a genuinely stuck CI, or is the existing `ci_not_ready_guard` / `SHIP_MERGE_CI_NOT_READY_STALL_THRESHOLD` sufficient once this branch re-loops?
+- Should the fix align with #3956's stated intent (admin-retry on `REVIEW_REQUIRED` for `--merge` runs) rather than the current terminal bail, and does re-looping on `CI_NOT_READY` regardless of `reviewDecision` risk regressing #3956's original spurious-retry stall? The `ci_not_ready_guard` cap should bound that, but confirm against #3956's regression test.

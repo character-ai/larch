@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- real alternate UNKNOWN→ERROR stall path, but plan non-goals exclude merge.py and the reproduced bug used CI_NOT_READY, which the ship.py fix addresses.
