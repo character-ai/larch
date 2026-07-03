@@ -825,7 +825,7 @@ PY
 }
 
 bash_is_marker_only_diagnosis() {
-  local cmd="$1" normalized verb token non_option_count=0 marker_count=0 marker_token=""
+  local cmd="$1" normalized verb token non_option_count=0 marker_count=0 marker_token="" joined
   local -a tokens=()
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
@@ -833,12 +833,6 @@ bash_is_marker_only_diagnosis() {
     *.bg-wait-active*) ;;
     *) return 1 ;;
   esac
-  case "$normalized" in
-    *tasks/*.output*|*.completed/*|*.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*.step-8-ship-handoff.*) return 1 ;;
-    *';'*|*'&&'*|*'||'*|*'|'*|*'`'*) return 1 ;;
-  esac
-  printf '%s' "$normalized" | grep -Fq "\$(" && return 1
-  printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install|rm|truncate)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 1
   tokens_text=$(bash_split_shell_command "$normalized") || return 1
   while IFS= read -r token || [ -n "$token" ]; do
     tokens+=("$token")
@@ -846,6 +840,16 @@ bash_is_marker_only_diagnosis() {
 $tokens_text
 EOF_TOKENS
   [ "${#tokens[@]}" -gt 0 ] || return 1
+  # Reject on the comment-stripped, dequoted token text: a disallowed
+  # reference inside a trailing shell comment is inert in real bash and
+  # must not trigger a false deny.
+  joined="${tokens[*]}"
+  case "$joined" in
+    *tasks/*.output*|*.completed/*|*.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*.step-8-ship-handoff.*) return 1 ;;
+    *';'*|*'&&'*|*'||'*|*'|'*|*'`'*) return 1 ;;
+  esac
+  printf '%s' "$joined" | grep -Fq "\$(" && return 1
+  printf '%s' "$joined" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install|rm|truncate)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 1
   verb="${tokens[0]}"
   case "$verb" in
     cat|stat|ls|wc|head|sed|awk) ;;
