@@ -1,0 +1,17 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_upgrade": null,
+  "confidence": "medium",
+  "design_tier": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Changes workflow-affecting merge-loop routing and adds regression tests for admin and no-admin paths.",
+  "schema_version": 1
+}
