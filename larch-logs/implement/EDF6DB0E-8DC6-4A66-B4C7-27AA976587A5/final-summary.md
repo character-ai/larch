@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:20:15
-- **Cost**: 💰 TOTAL ~$7.56 — Claude $0.72, Codex-5.5 $3.24, Codex-mini $0.95, Cursor $2.34, Claude (subprocess) $0.31  |  Tokens: 15198k
+- **Cost**: 💰 TOTAL ~$11.16 — Claude $4.32, Codex-5.5 $3.24, Codex-mini $0.95, Cursor $2.34, Claude (subprocess) $0.31  |  Tokens: 20109k
 - **Issue**: #6169 — https://github.com/character-ai/larch/issues/6169
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_6** (nit): Cap-hit flush-failure coverage is missing. Concern: Flush-failure containment is exercised only for `complete`, not `cap-hit`, so a cap-hit-specific regression in the failure handler would be uncovered.
 - **Round 1 OOS_7** (latent): Resume-past-cap flush metadata may be stale. Concern: `mav-resume-past-cap` still flushes with `rounds_completed=0` and `result=None`, which can make run-root tally metadata incomplete on resume-past-cap runs.
 - **Round 1 OOS_8** (nit): flush False returns still stay silent. Concern: `flush_review_batches` returning `False` still produces no warning, so soft compose/skip failures can continue to yield silent `N/A` final-report lines.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
