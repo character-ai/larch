@@ -1,0 +1,17 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_upgrade": null,
+  "confidence": "medium",
+  "design_tier": "MODERATE",
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": null,
+  "override_source": "none",
+  "panel_skipped": null,
+  "predicted_tier": "MODERATE",
+  "rater": "design",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "design plan metadata",
+  "schema_version": 1
+}
