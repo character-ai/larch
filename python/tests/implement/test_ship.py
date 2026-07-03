@@ -3521,6 +3521,116 @@ def test_merge_retry_results_consume_iteration_budget(
     assert "ITERATION=50\n" in state_file.read_text(encoding="utf-8")
 
 
+def test_admin_fallback_ci_not_ready_ignores_review_required_until_ci_settles(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+    merge_results = [
+        config.MERGE_RESULT_CI_NOT_READY,
+        config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
+    ]
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    def merge_pr(*_args: object, **_kwargs: object) -> object:
+        return type("MR", (), {"result": merge_results.pop(0), "error": "CI checks are not all passing"})()
+
+    def review_decision(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("reviewDecision must not route CI_NOT_READY while admin fallback is enabled")
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
+    monkeypatch.setattr(ship.gh, "pr_review_decision", review_decision)
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_checks_not_ready_detail",
+        lambda *_a, **_k: "blocking checks: lint=pending",
+    )
+    monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
+
+    result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert result.needs_user_reason != config.NEEDS_USER_REVIEW_REQUIRED
+    assert not merge_results
+
+
+def test_no_admin_fallback_ci_not_ready_review_required_reports_observed_state(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\n"
+        "DRAFT=false\nNO_ADMIN_FALLBACK=true\n",
+        encoding="utf-8",
+    )
+    _open_pr_merge_loop_stubs(monkeypatch)
+
+    def monitor(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "merge",
+                "goto_rebase": False,
+                "did_fixing": False,
+                "transient_rerun_attempted": False,
+                "failed_run_id": None,
+            },
+        )()
+
+    def merge_pr(*_args: object, **_kwargs: object) -> object:
+        return type(
+            "MR",
+            (),
+            {"result": config.MERGE_RESULT_CI_NOT_READY, "error": "CI checks are not all passing"},
+        )()
+
+    def checks_not_ready_detail(*_args: object, **_kwargs: object) -> str:
+        raise AssertionError("review-required CI_NOT_READY should not enter the CI wait handler")
+
+    monkeypatch.setattr(ship.ci_monitor, "monitor", monitor)
+    monkeypatch.setattr(ship.merge, "merge_pr", merge_pr)
+    monkeypatch.setattr(ship.gh, "pr_review_decision", lambda *_a, **_k: "REVIEW_REQUIRED")
+    monkeypatch.setattr(
+        ship.gh,
+        "pr_merge_state",
+        lambda *_a, **_k: ship.gh.MergeState(merge_state_status="UNKNOWN", head_ref_oid="h0"),
+    )
+    monkeypatch.setattr(ship.gh, "pr_checks_not_ready_detail", checks_not_ready_detail)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), no_admin_fallback=True),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_REVIEW_REQUIRED
+    assert "mergeStateStatus=UNKNOWN" in (result.detail or "")
+    assert "mergeStateStatus=BLOCKED" not in (result.detail or "")
+
+
 def test_repeated_ci_not_ready_stalls_with_check_detail(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

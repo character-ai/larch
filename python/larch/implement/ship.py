@@ -360,6 +360,60 @@ def _merge_pr_after_log_reconciliation(
     return merge.merge_pr(runner=runner, ctx=working, cwd=repo_root, post_flush=False)
 
 
+def _review_required_merge_state_detail(
+    *,
+    runner: Runner,
+    working: RunContext,
+    repo_root: str,
+) -> str:
+    if working.pr_number is None:
+        return ""
+    try:
+        merge_state = gh.pr_merge_state(
+            runner,
+            working.pr_number,
+            repo=working.repo,
+            cwd=repo_root,
+        ).merge_state_status.strip()
+    except ShipError:
+        return ""
+    if not merge_state:
+        return ""
+    return f" (mergeStateStatus={merge_state})"
+
+
+def _ci_not_ready_review_required_result(
+    *,
+    runner: Runner,
+    working: RunContext,
+    repo_root: str,
+    original_error: str,
+) -> merge.MergeResult | None:
+    if not working.no_admin_fallback:
+        return None
+    review_decision = gh.pr_review_decision(
+        runner,
+        working.pr_number or 0,
+        repo=working.repo,
+        cwd=repo_root,
+    )
+    if review_decision != "REVIEW_REQUIRED":
+        return None
+    merge_state_detail = _review_required_merge_state_detail(
+        runner=runner,
+        working=working,
+        repo_root=repo_root,
+    )
+    return merge.MergeResult(
+        result=config.MERGE_RESULT_REVIEW_REQUIRED,
+        error=(
+            f"PR requires approving review{merge_state_detail}: "
+            f"approve the PR or merge manually with --admin. "
+            f"Original: {original_error}"
+        ),
+    )
+
+
 def _resume_done_result(
     *,
     runner: Runner,
@@ -816,21 +870,14 @@ def run_ship(
                 return merged_or_terminal
             merged = merged_or_terminal
             if merged.result == config.MERGE_RESULT_CI_NOT_READY:
-                review_decision = gh.pr_review_decision(
-                    runner,
-                    working.pr_number or 0,
-                    repo=working.repo,
-                    cwd=repo_root,
+                review_required_result = _ci_not_ready_review_required_result(
+                    runner=runner,
+                    working=working,
+                    repo_root=repo_root,
+                    original_error=merged.error,
                 )
-                if review_decision == "REVIEW_REQUIRED":
-                    merged = merge.MergeResult(
-                        result=config.MERGE_RESULT_REVIEW_REQUIRED,
-                        error=(
-                            f"PR requires approving review (mergeStateStatus=BLOCKED): "
-                            f"approve the PR or merge manually with --admin. "
-                            f"Original: {merged.error}"
-                        ),
-                    )
+                if review_required_result is not None:
+                    merged = review_required_result
                 else:
                     iteration, ci_not_ready_stall = _handle_merge_ci_not_ready(
                         runner=runner,
