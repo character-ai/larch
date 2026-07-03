@@ -1,0 +1,40 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: agents/_implementer-base.md:171
+- **Concern**: panel-tier counts the restored clause three times; the plan's example wording likely exceeds the issue +40 token acceptance cap. Scenario: lint_skill_closure_growth estimates tokens as (len+3)//4 per file; panel-tier includes agents/_implementer-base.md, agents/codex-implementer.md, and agents/cursor-implementer.md, each of which will gain the appended text. The example clause " If uncertain whether a finding is security, do not file publicly." is 65 characters (~17 tokens) per file, for ~51 total closure tokens, above the binding +40 acceptance limit even though the plan's failure modes mention overrun risk generically
+- **Proposed resolution**: In Approach, either shorten the example clause (e.g. " If unsure about security, do not file publicly." ~36 tokens total) or add an explicit pre-commit check: run python3 python/cli.py skill-closure report --skill panel-tier and require closure_estimated_tokens delta <= 40 before python3 python/cli.py lint skill-closure-growth --write ### 1. [correctness] `agents/_implementer-base.md:171` — panel-tier triple-count vs +40 acceptance cap The plan is otherwise minimal and well-scoped: edit the source base, regenerate derived implementer prompts, refresh the panel-tier baseline, and skip `SECURITY.md` unless behavior changes. Regeneration order and `generate check` coverage match repo conventions. The one gap is quantitative. `scan_panel_tier` sums tokens across `_implementer-base.md`, `codex-implementer.md`, and `cursor-implementer.md` (`python/larch/lint/lint_skill_closure_growth.py:543-571`). The proposed example sentence adds the same ~17 estimated tokens to each file (~51 total), which exceeds the issue's +40 token acceptance criterion. The plan notes overrun as a failure mode and asks for a post-hoc diff check, but the example wording in Approach is likely too long on the first attempt. Shorten the clause or treat the +40 check as a hard gate before baseline write.
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: agents/_implementer-base.md:171
+- **Concern**: Example caution and grep string likely break the +40 panel-tier token acceptance cap. Scenario: panel-tier closure sums every agents/*.md file (python/larch/lint/lint_skill_closure_growth.py scan_panel_tier), so the same clause is counted in _implementer-base.md, codex-implementer.md, and cursor-implementer.md. The plan's example/grep string "If uncertain whether a finding is security, do not file publicly." adds ~60 characters per file; at (len+3)//4 that is ~15 estimated tokens each (~45 total), above the issue's +40 limit. Testing step 1 pins that exact long string while step 4 only inspects the baseline afterward.
+- **Proposed resolution**: Pick one shorter canonical clause before implementation (e.g. " If unsure it's security, do not file publicly." ~36 tokens total) and make Approach, the bullet edit, and the grep check use the same final text; add one sentence in Approach that panel-tier triple-counts base plus both generated implementer prompts when sizing the clause.
+
+
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: agents/_implementer-base.md:171
+- **Concern**: Proposed caution wording likely exceeds the issue +40 panel-tier token acceptance cap. Scenario: The plan pins grep to the 67-character clause and step 4 requires panel-tier delta ≤ +40. `panel-tier` closure sums every `agents/*.md` file (`python/larch/lint/lint_skill_closure_growth.py` `scan_panel_tier`). `_implementer-base.md` is a separate source row, and regenerated `codex-implementer.md` / `cursor-implementer.md` embed the full base, so one appended clause is counted three times. At `(len+3)//4` tokens per file, the example text adds ~17 tokens per file (~51 total), above the +40 acceptance bound even though `lint skill-closure-growth --write` would still pass after baseline regen.
+- **Proposed resolution**: Use an equivalently terse clause that keeps total delta ≤ +40 (for example ` If unsure it is security, do not file publicly.` is ~36 tokens across the three files), or explicitly record a waiver in the issue if the longer original line is required. Update the grep check to match the chosen final wording. ## Findings ### 1. [risk-integration] `agents/_implementer-base.md:171` — Panel-tier token budget The plan is otherwise well scoped: one source edit, regenerate derivatives, regenerate baseline, optional `SECURITY.md` skip. That matches the issue and avoids scope creep. The problem is an internal mismatch between acceptance and wording. The issue caps `panel-tier` growth at +40 tokens. The plan’s example sentence is long enough that, once it appears in `_implementer-base.md` plus both generated implementer prompts, the closure linter’s per-file token estimate likely lands around +51 total. That does not break CI by itself. Baseline regen would still satisfy `lint skill-closure-growth`. It does break the issue’s stated acceptance check in plan step 4. **Suggested revision:** Pick a shorter equivalent clause before implementation, or document a deliberate waiver. Align the grep verification string with the final text.
+
+
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: agents/_implementer-base.md:171
+- **Concern**: pinned example caution likely exceeds +40 panel-tier token acceptance. Scenario: The plan’s example clause (`. If uncertain whether a finding is security, do not file publicly.`) appends ~65 characters to the security bullet. `scan_panel_tier` sums `closure_estimated_tokens` across `_implementer-base.md`, `codex-implementer.md`, and `cursor-implementer.md` ((len+3)//4 per file in `python/larch/lint/lint_skill_closure_growth.py`), so the same text lands in all three files (~16–17 estimated tokens each, ~48–51 total). That exceeds the issue acceptance cap of +40 tokens. Failure modes warn about length but testing step 1 greps the long example verbatim, which conflicts with the issue’s “equivalently terse form” escape hatch.
+- **Proposed resolution**: Pin one final appended clause in `### UPDATED: agents/_implementer-base.md` (not “for example”) that preserves uncertain-security → no public filing, verify `closure_estimated_tokens` delta ≤40 before baseline write (e.g. `. If unsure it is security, do not file publicly.` ≈36 tokens across three files), and align testing step 1 `grep -F` to that exact pinned string.
+
+
+

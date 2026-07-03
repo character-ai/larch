@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the plan already guards this via testing steps 3-4 (lint skill-closure-growth --skill panel-tier then inspect git diff) and the failure mode is explicitly listed; requesting pinned wording is "more prescriptive/robust" guidance, not a correctness defect on the execution path

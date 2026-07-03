@@ -1,0 +1,43 @@
+**Context.** The #5980 compression removed the line "If uncertain whether a finding is security, do not file publicly" from `agents/_implementer-base.md`; the cut propagated to the generated `agents/codex-implementer.md` and `agents/cursor-implementer.md`. The review panel judged it ancillary and filed no OOS. The line is security-adjacent routing guidance and should be restored, or its removal recorded as a deliberate waiver.
+
+**Scope.**
+
+- Restore the line, or an equivalently terse form, in `agents/_implementer-base.md`.
+- Regenerate derivatives via `python3 python/cli.py generate codex-implementer` and `generate cursor-implementer`.
+- Check `SECURITY.md` per AGENTS.md if the wording changes security-relevant behavior.
+
+**Acceptance.**
+
+- The caution appears in all three prompts; `generate check` exits 0.
+- Panel-tier baseline delta stays at or under +40 tokens.
+
+Part of md-to-py-XII (round XI: #5986). Small, independent.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Restore the dropped security-triage caution ("when unsure, don't file publicly") into `agents/_implementer-base.md`, in a terse form matching the post-#5980 compressed style.
+- Regenerate `agents/codex-implementer.md` and `agents/cursor-implementer.md` so the caution appears in all three prompts.
+- Keep `generate check` green and the panel-tier token-closure baseline delta at or under +40 tokens.
+
+### Non-goals
+- No other prose from the #5980 compression pass gets revisited.
+- No changes to other `agents/*.md` reviewer files.
+- No new SECURITY.md behavior. This restores existing intended guidance, not new behavior.
+
+### Approach sketch
+- Edit the security-findings bullet in the "OOS triage gate before manifest" section of `agents/_implementer-base.md`; append a short uncertain-case clause.
+- Run `generate codex-implementer` and `generate cursor-implementer` to propagate the wording into both derivatives.
+- Regenerate `python/skill-closure-baseline.json` (`lint skill-closure-growth --write`) since panel-tier token counts grow; verify the delta stays at or under +40 tokens.
+- Confirm SECURITY.md already documents the underlying behavior; no edit needed there.
+
+### Surfaces in scope
+- `agents/_implementer-base.md`
+- `agents/codex-implementer.md` (generated)
+- `agents/cursor-implementer.md` (generated)
+- `python/skill-closure-baseline.json` (regenerated)
+
+### Open questions
+- None.
