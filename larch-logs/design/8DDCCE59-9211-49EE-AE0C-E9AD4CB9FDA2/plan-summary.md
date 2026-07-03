@@ -1,0 +1,1 @@
+Implement tiered reviewer panels with a shared difficulty resolver, then wire it into /implement Step 5, /review, and /design plan review. Preserve existing aggregation, voting, pruning, and fix-coder procedures. Add override, audit, escalation, and HARD round-3 coverage without adding the #5992 analyzer.

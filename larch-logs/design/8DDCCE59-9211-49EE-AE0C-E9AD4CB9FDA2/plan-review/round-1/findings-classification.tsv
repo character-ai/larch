@@ -1,0 +1,32 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	major	excellent	false	Cursor	important	oos
+FINDING_2	Cursor-Arch	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	important	oos
+FINDING_3	Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_4	Cursor-Arch	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_5	Cursor-Arch, Cursor-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_6	Codex-Arch	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_7	Codex-Arch	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_8	Cursor-Innovation, Codex-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_9	Cursor-Innovation, Codex-Pragmatic	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_10	Cursor-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_11	Cursor-Pragmatic, Cursor-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_12	Cursor-Pragmatic, Cursor-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_13	Cursor-Pragmatic, Cursor-dyn-Tier State Auditor, Codex-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_14	Cursor-Pragmatic, Cursor-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_15	Cursor-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	blocker	excellent	false	Cursor	blocking	in_scope
+FINDING_16	Cursor-Requirements	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	important	in_scope
+FINDING_17	Cursor-dyn-Tier State Auditor, Codex-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_18	Codex-dyn-Tier State Auditor	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	important	in_scope
+FINDING_19	Codex-Arch	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_20	Cursor-Innovation	neutral							NO	partially-true	minor	adequate	false	Codex	YES	true	minor	excellent	false	Cursor	important	in_scope
+FINDING_21	Codex-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_22	Codex-Innovation	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_23	Codex-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+FINDING_24	Codex-Requirements	accepted							YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	important	in_scope
+OOS_1	Cursor-Arch	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_2	Cursor-Arch	accepted							YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	latent	oos
+OOS_3	Cursor-Arch	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_4	Cursor-Pragmatic	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	latent	oos
+OOS_5	Cursor-Requirements	rejected							NO	partially-true	minor	adequate	false	Codex	NO	partially-true	nit	adequate	false	Cursor	latent	oos
+OOS_6	Cursor-dyn-Tier State Auditor	rejected							NO	partially-true	minor	adequate	false	Codex	NO	partially-true	minor	weak	false	Cursor	latent	oos
+OOS_7	Cursor-dyn-Tier State Auditor	rejected							NO	partially-true	minor	adequate	false	Codex	NO	true	minor	adequate	false	Cursor	latent	oos

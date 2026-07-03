@@ -1,0 +1,26 @@
+# attributed_ballot_sha256=aad744aee19567ad557a2b848308eeee91b5ae5db358f7a82996caf0d1486dfa
+# neutral_ballot_sha256=ea79f05a204b75f6e07886777a506d01dd1805823138e996d0f0897bdb77442f
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Innovation, Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+FINDING_2	Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements
+FINDING_3	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements	- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+FINDING_4	Cursor-Innovation, Cursor-Requirements	- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+FINDING_5	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_6	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_7	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_8	Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements	- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements
+FINDING_9	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+FINDING_10	Codex-Pragmatic, Codex-Requirements	- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+FINDING_11	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+FINDING_12	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_13	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_14	Codex-Innovation	- **Reviewer(s)**: Codex-Innovation
+FINDING_15	Codex-Innovation	- **Reviewer(s)**: Codex-Innovation
+FINDING_16	Codex-Innovation	- **Reviewer(s)**: Codex-Innovation
+FINDING_17	Cursor-Pragmatic	- **Reviewer(s)**: Cursor-Pragmatic
+FINDING_18	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+FINDING_19	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+FINDING_20	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+FINDING_21	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+FINDING_22	Codex-Requirements	- **Reviewer(s)**: Codex-Requirements
+OOS_1	Cursor-Requirements	- **Reviewer**: Cursor-Requirements
