@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 03:01:38
-- **Cost**: 💰 TOTAL ~$51.32 — Claude $0.13, Codex-5.5 $41.08, Codex-mini $2.33, Cursor $7.50, Claude (subprocess) $0.28  |  Tokens: 82158k
+- **Cost**: 💰 TOTAL ~$51.36 — Claude $0.13, Codex-5.5 $41.08, Codex-mini $2.33, Cursor $7.50, Claude (subprocess) $0.32  |  Tokens: 82221k
 - **Issue**: #6061 — https://github.com/character-ai/larch/issues/6061
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -103,3 +103,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_1** (important): Warning-triggered refresh failure hard-resets and can lose the warning. Concern: On the normal CI-fix path, a warning-triggered refresh failure can return `pending=False`, so `_run_cycle` hard-resets to `baseline_head` and a later retry can skip flushing the warning that is still sitting in tmpdir. That leaves the warning only in tmpdir a…
 - **Round 2 OOS_2** (latent): Normal CI-fix push path still lacks an ndjson integration test. Concern: The only real flush+ndjson coverage is on the pending-rebase force-push seam. The normal commit-and-push path is still covered by a mocked ordering test, so a regression there could slip through.
 - **Round 2 OOS_3** (latent): Resume PR-create path still lacks a real-flush regression test. Concern: The open-PR resume path skips the postbump flush, so only the pin-triggered seam protects late warnings, but the current resume test does not prove that seam writes `execution-issues.ndjson`.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
