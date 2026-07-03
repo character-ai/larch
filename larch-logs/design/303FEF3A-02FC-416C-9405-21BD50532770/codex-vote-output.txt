@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- OOS non-goal; the deps argv bracing change is outside the approved fix scope.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- OOS non-goal; the bootstrap $0 exception was explicitly left out of the plan.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS nit; the extra --cr-strip modes are not necessary for this feature.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS scope reduction; the prevention lint is optional relative to the core kv-get migration.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS latent scope reduction; the extra CR-strip surface is optional and unneeded here.
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- reference-lint expansion is below the materiality bar for this plan.

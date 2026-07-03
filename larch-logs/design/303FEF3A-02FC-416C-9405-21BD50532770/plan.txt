@@ -1,0 +1,158 @@
+## Approach
+
+- Add one Python CLI helper for prompt-side `KEY=value` extraction.
+- Route it through `larch.io.kv_value` and `larch.io.read_kv`.
+- Replace only the 13 approved `awk -F=` KV-parsing call sites:
+  - 6 in `.claude/skills/release/SKILL.md`.
+  - 4 in `skills/pause/SKILL.md`.
+  - 3 in `skills/deps/SKILL.md`.
+- Preserve duplicate-key behavior:
+  - release: first match.
+  - pause: last match.
+  - deps: first match is acceptable because `deps resolve-repo` emits one row per key.
+- Add a static lint for bare awk `$<digit>` field references inside `SKILL.md` shell fences.
+- Keep shell positional parameters like `case "$1"` out of lint scope.
+- Keep the `$0` bootstrap-recovery awk idiom as a documented lint exception. Do not convert it through `python/cli.py`, because that path is circular before `CLAUDE_PLUGIN_ROOT` is known.
+
+## Files to modify/create
+
+### NEW: python/larch/core/kv_cli.py
+
+- Add `kv get`.
+- Interface:
+  - `--key KEY`, required.
+  - `--file PATH`, optional. Read stdin when omitted.
+  - `--match first|last`, default `first`.
+  - `--default VALUE`, default empty.
+  - `--cr-strip none|suffix|rstrip|strip`, default `none`.
+- Use `larch.io.read_kv(..., first_match=...)` for file input.
+- Use `larch.io.kv_value(..., first_match=...)` for stdin input.
+- Print the value to stdout with a trailing newline.
+- Return exit 2 for invalid args.
+- Return exit 0 for missing keys, emitting the default.
+
+### UPDATED: python/larch/cli.py
+
+- Register `("kv", "get")` to `larch.core.kv_cli.get_main`.
+- Register `("lint", "skill-awk-field-refs")` to `larch.lint.lint_skill_awk_field_refs.main` so the Makefile target, pre-commit hook, and docs row all resolve to a real subcommand instead of an unknown-command error.
+- Add `("kv", "get")` to `_MACHINE_STDOUT_KEYS` so inherited quiet mode cannot pollute command substitution stdout.
+
+### UPDATED: python/tests/core/test_kv_cli.py
+
+- Cover stdin first-match and last-match behavior.
+- Cover file input.
+- Cover values containing `=`.
+- Cover missing key default behavior.
+- Cover invalid `--match`.
+- Cover no `--file` stdin path without filesystem writes beyond pytest tmp paths.
+
+### UPDATED: python/tests/test_cli.py
+
+- Add a focused registry assertion for `("kv", "get")`.
+- Add an explicit assertion that `("kv", "get")` is present in `_MACHINE_STDOUT_KEYS`, so a quiet-mode regression on this command fails this test directly instead of only surfacing as a downstream command-substitution corruption.
+- Keep the existing all-registry importability test as the broad backstop.
+
+### UPDATED: .claude/skills/release/SKILL.md
+
+- Replace Step 8 cleanup parsing with `python3 python/cli.py kv get`.
+- Replace Step 8 restart-state parsing from `release-step7.env` with `python3 python/cli.py kv get --file`.
+- Use `--match first`.
+- Keep the current fallback defaults when cleanup output is missing keys.
+- Keep dev-only relative invocation style.
+
+### UPDATED: skills/pause/SKILL.md
+
+- Replace the four `pause_out` `awk -F=` pipelines with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get`.
+- Use `--match last` to preserve the old `tail -1` behavior.
+- Use the `${CLAUDE_PLUGIN_ROOT}/python/cli.py` public-skill path convention.
+- Do not change pause-save semantics.
+
+### UPDATED: skills/pause/scripts/test-pause-skill.sh
+
+- Update the stub plugin `python/cli.py` fixtures to recognize `kv get`.
+- Assert the success and failure cases still parse `PAUSE_OK`, `STEP`, `RUN_ID`, and `ERROR`.
+- Keep the harness extracting the live Bash fence from `skills/pause/SKILL.md`.
+
+### UPDATED: skills/deps/SKILL.md
+
+- Replace the three `resolve.env` `awk -F=` assignments with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" kv get --file`.
+- Keep the existing `REPO` empty check and `ORIGIN_MATCHES` branch behavior.
+- Do not change shell argv parsing for `--repo` or `--pair-cap`.
+
+### NEW: python/larch/lint/lint_skill_awk_field_refs.py
+
+- Scan `skills/*/SKILL.md` and `.claude/skills/*/SKILL.md`.
+- Parse fenced `bash`, `sh`, and `shell` blocks.
+- Flag awk command lines whose awk program contains bare `$0`, `$1`, `$2`, etc.
+- Ignore non-awk shell positional parameters.
+- Support `# lint-skill-awk-field-ref: ok <reason>` suppression.
+- Add an exact narrow exemption for the known `LARCH_CLAUDE_PLUGIN_ROOT` bootstrap-recovery awk idiom in `skills/implement/SKILL.md`.
+- Report `path:line: bare awk $<digit> field reference in SKILL.md fence; move parsing behind python/cli.py or add a justified suppression`.
+
+### NEW: python/tests/lint/test_lint_skill_awk_field_refs.py
+
+- Cover a failing inline `awk -F= '$1=="KEY"{print $2}'` fixture.
+- Cover `$0` record reference detection.
+- Cover non-awk `case "$1"` and `"$2"` shell argv usage as clean.
+- Cover the bootstrap exemption.
+- Cover justified suppression.
+- Cover `.claude/skills/*/SKILL.md` scanning.
+- Cover out-of-scope docs or reference files if the lint intentionally skips them.
+
+### UPDATED: Makefile
+
+- Add `lint-skill-awk-field-ref` or `lint-skill-awk-field-refs`.
+- Add a matching `test-lint-skill-awk-field-refs` pytest wrapper.
+- Add the lint target to `make lint`.
+- Add the target name to `.PHONY`.
+
+### UPDATED: .pre-commit-config.yaml
+
+- Add a local hook for the new lint.
+- Use `entry: python3 python/cli.py lint skill-awk-field-refs`.
+- Use `pass_filenames: false`.
+- Set `always_run: true` if matching the nearby SKILL.md prompt lints.
+
+### UPDATED: docs/linting.md
+
+- Add one row documenting the new lint:
+  - scope: public and dev-only `SKILL.md` shell fences.
+  - rule: no bare awk `$<digit>` field references in prompt-side snippets.
+  - rationale: prompt rendering may strip `$1`/`$2`; move KV parsing behind `python/cli.py`.
+  - suppression: only with a reason, and only for unavoidable bootstrap cases.
+
+## Edge cases
+
+- Values may contain `=`. The helper must return everything after the first `KEY=` prefix.
+- Empty values remain empty unless a call passes `--default`.
+- Missing keys should not fail the release or pause fallback paths.
+- `pause` must keep last-match behavior.
+- `release` must keep first-match behavior.
+- `deps` must not start sourcing or evaling `resolve.env`.
+- The lint must not flag shell argument parsing such as `case "$1" in`.
+
+## Failure modes
+
+- If `kv get` is not in `_MACHINE_STDOUT_KEYS`, quiet-mode banners can corrupt command substitutions. Add it there.
+- If the pause test stub does not implement `kv get`, the harness can fail for the wrong reason. Update the stub.
+- If the lint flags the bootstrap `$0` line without an exemption, `make lint` will fail on an approved non-goal.
+- If the lint only greps `$1`, it may miss `$0` or `$3`. Match `$[0-9]+`.
+- If the helper changes duplicate-key behavior, pause can regress. Test `--match last`.
+
+## Testing strategy
+
+- Run targeted Python tests:
+  - `python3 -m pytest python/tests/core/test_kv_cli.py python/tests/lint/test_lint_skill_awk_field_refs.py python/tests/test_cli.py -q`
+- Run the pause harness:
+  - `make test-pause-skill`
+- Run new lint directly:
+  - `python3 python/cli.py lint skill-awk-field-refs`
+- Run local relevant checks if dependencies are available:
+  - `python3 python/cli.py checks run-relevant`
+- For full confidence before merge:
+  - `make lint`
+  - `make py-test`
+
+confidence: high
+difficulty: MODERATE
+diff_lines: 430

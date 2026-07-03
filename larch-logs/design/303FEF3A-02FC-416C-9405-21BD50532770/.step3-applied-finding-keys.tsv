@@ -1,0 +1,2 @@
+1	the plan routes `lint skill-awk-field-refs` through makefile, pre-commit, and docs, but the cli registry still only adds `("kv", "get")`. that leaves the new lint command as an unknown subcommand, so the guard never runs.
+1	the planned `python/tests/test_cli.py` update looks like a generic registry assertion only. without an explicit `_machine_stdout_keys` check, a `kv get` quiet-mode regression can still ship even if the dispatcher wiring is correct.

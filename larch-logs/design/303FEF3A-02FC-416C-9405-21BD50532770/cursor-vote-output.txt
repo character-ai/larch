@@ -1,0 +1,10 @@
+Reading the ballot and verifying findings against the plan and repo.
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- approved non-goals exclude deps shell argv dispatch; bracing is a valid follow-up, not required for the 13-site kv migration.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=true -- bootstrap $0 recovery is an explicit documented non-goal and unconfirmed on the main deliverable path.
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- static lint is an explicit approved goal (G-Enf-1), not deferrable scope creep.
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

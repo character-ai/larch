@@ -1,0 +1,103 @@
+# [BUG] Skill Markdown rendering strips bare $1/$2 awk tokens from inline code,…
+
+## Summary
+
+While running `/release -a`, six inline `awk` one-liners in `.claude/skills/release/SKILL.md` Step 8 that parse `KEY=value` output (e.g. `awk -F= '$1=="CLEANUP_SUCCESS"{print $2; exit}'`) appeared in the assistant's rendered context with the bare `$1` and `$2` tokens stripped (rendering as `awk -F= '=="CLEANUP_SUCCESS"{print ; exit}'`). The on-disk source file is byte-correct at those lines. Executing the corrupted form threw an `awk` syntax error; the run self-recovered by reading the target state file directly instead of trusting the parse. The user reports this is the second occurrence of the same class of failure within the last hour; only this occurrence could be directly verified from repo state.
+
+## Original report
+
+root cause of "The awk snippet in the skill (awk -F= '=="KEY"{print ; exit}') is missing a $1 field reference ..." bug, which I see happening for the second time in last hour, which is annoying, even though it self-recovers
+
+## Reproduction scenario
+
+1. Invoke a skill whose `SKILL.md` contains an inline `awk -F= '$1=="KEY"{print $2; ...}'` KV-parsing one-liner (observed with `.claude/skills/release/SKILL.md` Step 8; same pattern present in `skills/pause/SKILL.md` and `skills/deps/SKILL.md`).
+2. Compare the skill content as rendered into the assistant's context at the start of that turn against `git show HEAD:<path>` for the same file.
+3. Observed this run: the rendered copy had `$1` and `$2` removed from six call sites; `git show` / `grep` against the working tree confirmed the committed file was correct at those exact lines.
+
+Could not force a clean re-reproduction: `/release` is a mutating, side-effectful skill (creates branches, PRs, tags, GitHub Releases), so re-running it solely to test determinism was not appropriate. A safer repro path would exercise a read-only skill that contains the same inline-awk pattern (e.g. `/larch:pause`, or `/larch:deps` in dry-run) and diff its rendered content against disk.
+
+## Expected behavior
+
+The literal bytes of an invoked `SKILL.md` (and other Tier 1a/1b/1c prompt content) should render into the assistant's context unchanged, including bare `$1`, `$2` (and likely `$0`, `$3`, ...) tokens inside fenced shell/awk code blocks.
+
+## Observed behavior
+
+Six occurrences in `.claude/skills/release/SKILL.md` Step 8 had `$1` and `$2` removed from the copy shown in the assistant's context:
+
+Rendered (corrupted), all six call sites:
+```
+awk -F= '=="CLEANUP_SUCCESS"{print ; exit}'
+awk -F= '=="CURRENT_BRANCH"{print ; exit}'
+awk -F= '=="BRANCH_DELETED"{print ; exit}'
+awk -F= '=="CONE_RECONCILED"{print ; exit}'
+awk -F= '=="NEW_VERSION_INSTALLED"{print ; exit}'
+awk -F= '=="RESTART_REQUIRED"{print ; exit}'
+```
+
+On-disk source (confirmed via `grep -n "awk -F=" .claude/skills/release/SKILL.md`), lines 290-292 and 317-319:
+```
+cleanup_success=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="CLEANUP_SUCCESS"{print $2; exit}')
+current_branch=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="CURRENT_BRANCH"{print $2; exit}')
+branch_deleted=$(printf '%s\n' "$cleanup_out" | awk -F= '$1=="BRANCH_DELETED"{print $2; exit}')
+...
+CONE_RECONCILED=$(awk -F= '$1=="CONE_RECONCILED"{print $2; exit}' "$STEP7_STATE")
+NEW_VERSION_INSTALLED=$(awk -F= '$1=="NEW_VERSION_INSTALLED"{print $2; exit}' "$STEP7_STATE")
+RESTART_REQUIRED=$(awk -F= '$1=="RESTART_REQUIRED"{print $2; exit}' "$STEP7_STATE")
+```
+
+Executing the corrupted restart-state snippet produced (repeated for each of the 3 assignments):
+```
+awk: syntax error at source line 1
+ context is
+	 >>> == <<<
+awk: bailing out at source line 1
+```
+
+The assignments then defaulted to empty/`false` via the surrounding `${VAR:-false}` fallback, silently under-reporting `RESTART_REQUIRED` and `NEW_VERSION_INSTALLED` until caught by reading the state file directly instead of trusting the parse.
+
+## Root cause analysis
+
+Uncertain; evidence points to a cause external to this repository's own code, but this could not be fully confirmed from within the repo.
+
+Ruled out as larch-owned causes:
+- `hooks/hooks.json` has no hook matcher for the `Skill` tool, and no generic content-transform hook. Registered matchers are `Edit`, `Write`, `Read|Bash|Monitor|TaskOutput` (PreToolUse); `Read|Bash` (PostToolUse); unmatched (Stop); `startup|resume|clear|compact` (SessionStart); unmatched (UserPromptSubmit). None of these intercept or rewrite Skill-content payloads.
+- No larch Python module was found that rewrites `SKILL.md` content before it reaches the assistant. `python/larch/lint/lint_skill_closure_growth.py` (backing `python3 python/cli.py skill-closure report` / `lint skill-closure-growth`) only measures line/token counts for a size ratchet; it reads files for metrics and never re-emits transformed content for consumption.
+- Searched for the renderer referenced by `BASH_AUTHORING.md`'s "Renderer Substitution Safety" section (the `<FEATURE_DESCRIPTION>` `%%`/`##` split-pattern renderer); found no implementing code, only two unrelated `{FEATURE_DESCRIPTION}` Python-`.format()`-style prompt-template markers in `skills/design/references/plan-review.md` and `skills/shared/reviewer-templates.md`, neither of which touches `SKILL.md` files or `$`-prefixed tokens.
+- `.claude/skills/release/SKILL.md` is documented as dev-only and loaded straight from the repo working tree (not the installed plugin cache), and the working-tree file is confirmed byte-correct at the affected lines.
+
+This narrows the likely fault location to whatever mechanism (outside this repository, presumably the Claude Code CLI's own Skill/slash-command content-loading pipeline) reads a Markdown skill file and injects it into the assistant's context. The specific pattern (only bare `$1`/`$2`, i.e. `$` followed by one-or-more digits with no letter, is stripped; adjacent named variables like `$NEW_VERSION`, `$STEP7_STATE`, `$cleanup_out` in the very same code fences render intact) is consistent with a template/placeholder-interpolation step that treats bare `$<digits>` tokens as unbound positional placeholders and substitutes empty string for them, but this is inference, not a confirmed mechanism.
+
+## Evidence
+
+- `grep -n "awk -F=" .claude/skills/release/SKILL.md` returned correct `$1=="..."{print $2; exit}` source at lines 290-292 and 317-319 (quoted above).
+- Verbatim corrupted text as it appeared in the assistant's context this session for the same six call sites (quoted above).
+- Executing the corrupted restart-state snippet produced `awk: syntax error at source line 1 ... context is >>> == <<<` (3 times, once per assignment).
+- `hooks/hooks.json` contents reviewed in full; no hook targets the `Skill` tool or performs content rewriting.
+- `python/larch/lint/lint_skill_closure_growth.py` reviewed in full; read-only size/token measurement, no content transformation or re-emission.
+- Five other in-repo files carry the same at-risk pattern (bare `$0`/`$1`/`$2` inside inline `SKILL.md`/reference-doc code fences), none independently confirmed corrupted this session:
+  - `skills/pause/SKILL.md:55-58` — four `awk -F= '$1=="..."{print $2}'` KV-parsing call sites.
+  - `skills/deps/SKILL.md:62-64` — three `awk -F= '$1 == "..."'` KV-parsing call sites, plus (separately) genuine `$1`/`$2`/`$#` shell positional-parameter flag dispatch at lines 35-47 (`case "$1" in`, `REPO_ARG="$2"`) — the same character class, but a more severe consequence if stripped, since it would silently break `/deps` argument dispatch rather than just output parsing.
+  - `skills/implement/SKILL.md:244`, `skills/implement/references/bootstrap-recovery.md:35`, `skills/implement/references/extracted-script-registry.md:39` — identical `awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{...}'` bootstrap-recovery fallback for resolving `CLAUDE_PLUGIN_ROOT`, using bare `$0`.
+- This session's `SessionStart` hook preflight context reported "a prior /implement run for #6061 stalled at step merge." `skills/implement/SKILL.md`'s bootstrap-recovery `CLAUDE_PLUGIN_ROOT` fallback (line 244, above) uses the same at-risk `$0` awk idiom, which is a plausible but unconfirmed connection: no committed run-log artifact for that stalled run was found in `larch-logs/` to confirm or rule out the same cause (a stalled run likely never reaches the run-log commit step, so absence of an artifact is not informative either way).
+- Awk snippets using the identical `awk -F=` KV idiom inside standalone committed `.sh` files (e.g. `skills/implement/scripts/step-18.sh`, `skills/design/scripts/design-step3-mav.sh`, `skills/implement/scripts/post-tracking-issue.sh`, and others — 24 total `awk -F=` call sites repo-wide) are executed as files (`bash path/to/script.sh`), not retyped from rendered Markdown context by the assistant, so they are not exposed to this failure mode.
+
+## Affected files
+
+- `.claude/skills/release/SKILL.md` (confirmed corrupted this session, lines 290-292 and 317-319)
+- `skills/pause/SKILL.md:55-58` (same pattern, unconfirmed whether triggered)
+- `skills/deps/SKILL.md:35-47,62-64` (same pattern, unconfirmed whether triggered; broader blast radius since it includes live flag dispatch, not just output parsing)
+- `skills/implement/SKILL.md:244`, `skills/implement/references/bootstrap-recovery.md:35`, `skills/implement/references/extracted-script-registry.md:39` (`$0` variant, unconfirmed whether triggered; plausible link to the separately-reported `/implement` stall at step merge for #6061)
+
+## Suggested fix(es)
+
+- If the rendering pipeline genuinely lives outside this repository (in Claude Code CLI's own Skill/slash-command content loading), no larch-side code change can fix the root cause directly; recommend confirming ownership and, if external, reporting upstream.
+- Larch-side mitigation regardless of upstream ownership: move these KV-parsing one-liners out of inline `SKILL.md` code fences and into a committed helper (e.g. a small `python3 python/cli.py` verb, consistent with this repo's Python-first-scripts convention in `.claude/rules/python-first-scripts.md`) that the assistant *invokes* rather than *retypes from its own rendered context*. This would remove the exposure for the six call sites in `.claude/skills/release/SKILL.md` Step 8 and the similar call sites in `skills/pause/SKILL.md` and `skills/deps/SKILL.md`, and de-duplicate logic currently repeated across files.
+- Add a targeted static lint (alongside the existing `lint-bare-grep-probe.sh` / `lint-awk-multibyte-regex.sh` family) that flags bare `$0`/`$1`/`$2`-style awk field/record references inside inline `SKILL.md` code fences, to catch new instances of this pattern and nudge authors toward the helper-script approach above.
+- No concrete fix identified yet for the `skills/implement/SKILL.md:244` bootstrap-recovery `$0` case specifically beyond the same helper-script extraction, since that logic runs precisely when `CLAUDE_PLUGIN_ROOT` is otherwise unavailable (early bootstrap), so any fix must not itself depend on `CLAUDE_PLUGIN_ROOT` being set.
+
+## Open questions
+
+- Is the Skill-content rendering pipeline owned by Claude Code CLI (external to this repo) or by some larch-side mechanism not surfaced by this investigation? This determines whether the real fix belongs here or upstream.
+- Is the stripping specific to `$1`/`$2`/`$0`, or does it affect any bare `$<digits>` token (e.g. `$3`+) or other punctuation-adjacent `$`-sequences? Only `$1`, `$2`, and (by pattern match only, unconfirmed by direct execution) `$0` were checked in this pass.
+- Is the corruption deterministic (every render of an affected file) or intermittent? This pass observed it once, confirmed; the user reports a second occurrence within the last hour that could not be independently verified from repo or run-log state.
+- Did the `/implement` stall on #6061 at step merge (flagged by this session's `SessionStart` hook) actually share this root cause, or is it unrelated? No committed artifact was available to confirm either way.

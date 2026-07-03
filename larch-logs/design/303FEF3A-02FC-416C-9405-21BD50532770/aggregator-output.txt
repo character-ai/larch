@@ -1,0 +1,33 @@
+### FINDING_1: Bare deps positional parameters remain unbraced
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: important
+- **Concern**: The `/deps` parser still carries bare `$1` and `$2` shell positional references in the planned change. If the same renderer-stripping failure hits this path, `/deps --repo` or `/deps --pair-cap` can fail before the new `kv get` parsing runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Make the minimum edit in Step 0 by replacing bare positional expansions with braced forms such as `case "${1}" in`, `"${2}"`, and the unknown-argument diagnostic `${1}`. Keep argv parsing semantics unchanged.
+  - From Codex-Requirements: Include a minimal deps parser edit that changes the prompt-side shell positional references to braced forms such as `${1}` and `${2}` while preserving the existing parsing behavior
+
+### FINDING_2: New lint verb is wired nowhere in the CLI dispatcher
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-Prompt Kv Parser Guard
+- **Severity**: important
+- **Concern**: The plan routes `lint skill-awk-field-refs` through Makefile, pre-commit, and docs, but the CLI registry still only adds `("kv", "get")`. That leaves the new lint command as an unknown subcommand, so the guard never runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `("lint", "skill-awk-field-refs")` → `larch.lint.lint_skill_awk_field_refs.main` in `_REGISTRY`; mirror other SKILL.md lints in `test_cli.py` if desired
+  - From Cursor-Pragmatic: Add `### UPDATED: python/larch/cli.py` row: register `("lint", "skill-awk-field-refs")` to `larch.lint.lint_skill_awk_field_refs.main` (mirror `lint skill-md-flag-signature`).
+  - From Cursor-Requirements: In `### UPDATED: python/larch/cli.py`, register `("lint", "skill-awk-field-refs")` to `larch.lint.lint_skill_awk_field_refs.main` beside the existing `("lint", "skill-md-flag-signature")` entry (and keep the planned `("kv", "get")` / `_MACHINE_STDOUT_KEYS` work).
+  - From Codex-Requirements: Add `("lint", "skill-awk-field-refs")` to `_REGISTRY` pointing at `larch.lint.lint_skill_awk_field_refs.main` and add a focused registry test for that lint command
+  - From Codex-dyn-Prompt Kv Parser Guard: Add ("lint", "skill-awk-field-refs") to _REGISTRY next to the existing lint verbs and include it in the focused CLI registry assertion.
+
+### FINDING_3: Bootstrap recovery still depends on bare `$0`
+- **Reviewer(s)**: Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan leaves the prompt-loaded bootstrap awk `$0` idiom as an exception. If rendering strips `$0` on this path, the fallback cannot recover `CLAUDE_PLUGIN_ROOT` from `session-env.sh`, so `/implement` recovery can still fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Replace the three awk snippets with a shell-only prefix read, e.g. read `session-env.sh` line by line and set `CLAUDE_PLUGIN_ROOT` from `LARCH_CLAUDE_PLUGIN_ROOT=*` using parameter expansion; then remove the exception.
+  - From Codex-Pragmatic: Replace the bootstrap awk with a prompt-safe shell or sed parser that uses no bare `$<digit>` tokens, update the two reference copies to match, and remove the planned lint exception for this line
+
+### FINDING_4: CLI test coverage misses the `_MACHINE_STDOUT_KEYS` guard
+- **Reviewer(s)**: Cursor-dyn-Prompt Kv Parser Guard
+- **Severity**: important
+- **Concern**: The planned `python/tests/test_cli.py` update looks like a generic registry assertion only. Without an explicit `_MACHINE_STDOUT_KEYS` check, a `kv get` quiet-mode regression can still ship even if the dispatcher wiring is correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-dyn-Prompt Kv Parser Guard: Mirror python/tests/design/test_design_step_log.py:14-16: assert registry target and ("kv", "get") in cli._MACHINE_STDOUT_KEYS; add ["kv", "get"] to test_machine_stdout_entrypoints_disable_inherited_quiet cases **1. risk-integration — `python/tests/test_cli.py:186-224`** The plan correctly routes all 13 approved awk KV sites (`.claude/skills/release/SKILL.md:303-305,330-332`; `skills/pause/SKILL.md:55-58`; `skills/deps/SKILL.md:62-64`) through `kv get` with the right match policy (`--match first` for release/deps, `--match last` for pause). That aligns with `larch.io.kv_value` / `read_kv` last-match semantics in `python/larch/io.py:95-165`. The quiet-mode contract is specified in the plan's `python/larch/cli.py` update (`_MACHINE_STDOUT_KEYS`), but the planned `python/tests/test_cli.py` work only mentions a vague "registry assertion." Without an explicit `_MACHINE_STDOUT_KEYS` test (pattern at `python/tests/design/test_design_step_log.py:14-16`), this regression is easy to ship. **Plan fidelity otherwise looks sound** - **Match semantics**: First/last mapping matches current `exit` vs `tail -1` behavior; deps `substr(..., index($0,"=")+1)` is equivalent to returning everything after `KEY=` for `REPO` / `ORIGIN_SLUG`. - **Lint scope**: Scanning `skills/*/SKILL.md` and `.claude/skills/*/SKILL.md`, awk-only detection, `case "$1"` carve-out, and the `skills/implement/SKILL.md:244` bootstrap exemption match the issue scope. - **Pause harness**: `skills/pause/scripts/test-pause-skill.sh` stub updates are called out; stubs must return value-only stdout for `kv get`, not `KEY=value` lines. - **Quiet mode**: `_MACHINE_STDOUT_KEYS` plus `cli.main()`'s `LARCH_QUIET_DISABLE=1` gate (`python/larch/cli.py:811-812`) is the right mechanism; it just needs the explicit test called out above.
