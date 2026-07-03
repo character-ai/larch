@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:15:45
-- **Cost**: 💰 TOTAL ~$5.69 — Claude $0.71, Codex-5.5 $1.78, Codex-mini $1.20, Cursor $1.70, Claude (subprocess) $0.30  |  Tokens: 11755k
+- **Cost**: 💰 TOTAL ~$7.81 — Claude $2.83, Codex-5.5 $1.78, Codex-mini $1.20, Cursor $1.70, Claude (subprocess) $0.30  |  Tokens: 16171k
 - **Issue**: #6163 — https://github.com/character-ai/larch/issues/6163
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -62,3 +62,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Submodule path normalization is behavior-preserving. Concern: The `submodule_paths` cleanup deduplicates with a sorted set and still filters empty paths; the surrounding matching logic is unchanged, so the remaining risk is mostly around incidental ordering expectations.
 - **Round 1 OOS_2** (nit): Harness prompt-surface additions are documented. Concern: The harness now exposes four Python prompt surfaces, and the doc fix matches the Makefile; the instruction reordering is an explicit, documented trade-off rather than an active defect, so the main risk is future drift.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
