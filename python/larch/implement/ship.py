@@ -92,10 +92,7 @@ from larch.implement.ship_result import (
     _write_terminal_finalize_if_terminal,
     emit_result,
 )
-from larch.implement.ship_guidelines import (
-    _invalidate_guidelines_note,
-    _pin_and_load_guidelines_note,
-)
+from larch.implement.ship_guidelines import _pin_and_load_guidelines_note
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
     _pr_title,
@@ -844,9 +841,6 @@ def run_ship(
                         return rebase_phase.terminal
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
-                if monitor.did_fixing:
-                    _ = _invalidate_guidelines_note(working.tmpdir)
-                    fix_attempts += 1
                 if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1
                 _write_ship_state(

@@ -53,6 +53,26 @@ def _invalidate_guidelines_note(implement_tmpdir: str) -> bool:
     return warning_logged
 
 
+def _pin_or_invalidate_guidelines_note(
+    *,
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | None = None,
+) -> bool:
+    if not implement_tmpdir:
+        return False
+    tmpdir = Path(implement_tmpdir)
+    if head_sha and architectural_guidelines.pin_note_from_staged_for_current_head(
+        tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    ):
+        return False
+    return _invalidate_guidelines_note(implement_tmpdir)
+
+
 def _read_persisted_guidelines_drop_notice(tmpdir: Path) -> str:
     return architectural_guidelines.read_dropped_note_notice(tmpdir).strip()
 

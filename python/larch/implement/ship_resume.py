@@ -545,6 +545,6 @@ def _monitor_persisted_counters(
     return (
         iteration,
         rebase_count + (1 if monitor_ok and monitor.goto_rebase else 0),
-        fix_attempts + (1 if monitor.did_fixing else 0),
+        fix_attempts,
         transient_retries + (1 if monitor.transient_rerun_attempted else 0),
     )
