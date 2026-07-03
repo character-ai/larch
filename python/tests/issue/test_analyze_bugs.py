@@ -103,7 +103,7 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
 def test_ledger_ingest_rejects_duplicate_and_unknown_verdict(tmp_path: Path) -> None:
     run_dir = tmp_path / "run"
     run_dir.mkdir()
-    manifest = {
+    manifest: dict[str, object] = {
         "schema_version": "1",
         "repo": "o/r",
         "issues": [

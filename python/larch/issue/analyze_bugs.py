@@ -26,7 +26,7 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from larch.core import config, proc
-from larch.core.proc import CommandResult, Runner
+from larch.core.proc import Runner
 from larch.issue.issue_wire import strip_named_block
 from larch.report.report_tokens_cost import rate_row
 
@@ -148,10 +148,6 @@ class AnalyzeBugsError(RuntimeError):
 
 def _runner() -> Runner:
     return proc.ProcRunner()
-
-
-def _result_ok(result: CommandResult) -> bool:
-    return result.returncode == 0
 
 
 def _fail(message: str) -> int:
