@@ -47,6 +47,16 @@ read_session_key() {
     fi
 }
 
+read_run_flag_key() {
+    local key=$1 default_value=$2 file
+    file="${IMPLEMENT_TMPDIR:-}/run-flags.sh"
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
 rehydrate_larch_triplet() {
     LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
     LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
@@ -136,4 +146,17 @@ if [ "$READY" = true ] || [ "${STEP5_HANDOFF_READY_TO_COMMIT:-false}" = true ]; 
 fi
 printf '%s
 ' 'progress: type p (or progress) at any time'
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5   --implement-tmpdir "$IMPLEMENT_TMPDIR"   --mode loop   --starting-round "$((FINAL_ROUND_NUM + 1))"
+difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
+case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
+if [ -n "$difficulty_override" ]; then
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --mode loop \
+    --starting-round "$((FINAL_ROUND_NUM + 1))" \
+    --difficulty "$difficulty_override"
+else
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --mode loop \
+    --starting-round "$((FINAL_ROUND_NUM + 1))"
+fi

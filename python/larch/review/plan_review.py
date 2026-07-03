@@ -35,7 +35,6 @@ from larch.review.plan_review_common import (
     POSTPLAN_RC_OPERATOR,
     POSTPLAN_RC_PAUSE,
     POSTPLAN_RC_PLAN_SIZE_WARN,
-    ROUND_CAP,
     _REPO_ROOT,
     _STEP3_ROUND_CARRY_KEYS,
     _count_accepted,
@@ -52,6 +51,7 @@ from larch.review.plan_review_common import (
     _validate_tmpdir_arg,
     _write_atomic,
     _write_count,
+    effective_authorized_cap,
 )
 from larch.review.plan_review_findings import _already_addressed_keys_in_rejected  # noqa: F401  # pylint: disable=unused-import
 from larch.review.plan_review_findings import _finding_dedup_key  # noqa: F401  # pylint: disable=unused-import
@@ -364,7 +364,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
         phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
         if not phase:
             review_count = _read_count(tmpdir)
-            if review_count >= ROUND_CAP:
+            authorized_cap = effective_authorized_cap(tmpdir)
+            if review_count >= authorized_cap:
                 values = {"TALLY_PLAN_REVIEW_STATUS": "skipped-cap-reached", "LOOP_STATUS": "cap-reached"}
                 phase_driver_write_result_env(
                     path=tmpdir / ".step3-review-cap.env",

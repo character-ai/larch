@@ -1,5 +1,4 @@
 # Workflow Lifecycle
-
 How skills compose to form the end-to-end development workflow in Larch.
 
 ## Skill Orchestration Hierarchy
@@ -101,7 +100,7 @@ Certain steps in the workflow depend on configuration prerequisites and are skip
 
 - **CI monitoring** — Requires repository identification. When unavailable, CI monitoring is skipped.
 - **Version bump / release notes** — Not part of `/implement` after Phase 1 (#3364). Use the `/release` skill (Phase 3) when the repo defines versioning; legacy `/release` under `.claude/skills/` remains available for manual or release-driven bumps but is not invoked from the `/implement` ship path.
-- **External reviewers (Cursor, Codex)**: Voter, coder, and `/research` research/validation lanes still use waterfall or Claude backfill where documented in [agents.md](agents.md), [review-agents.md](review-agents.md). In `/review`, `/implement` Step 5, and `/design` plan-review **reviewer** panels dispatch with `--no-fallback`: missing or failed vendor rows drop instead of cross-vendor or Claude reviewer backfill; round 2 prunes on round-1 productivity and may converge prune-to-empty under the fixed round cap of 2. Code-review voters are separate: when both external tools are unavailable, the code-review voter panel falls back to a single Claude floor voter rather than keeping its three-voter shape (see [review-agents.md](review-agents.md)).
+- **External reviewers (Cursor, Codex)**: Voter, coder, and `/research` research/validation lanes still use waterfall or Claude backfill where documented in [agents.md](agents.md), [review-agents.md](review-agents.md). In `/review`, `/implement` Step 5, and `/design` plan-review **reviewer** panels dispatch with `--no-fallback`: missing or failed vendor rows drop instead of cross-vendor or Claude reviewer backfill; round 2 prunes on round-1 productivity and may converge prune-to-empty under the active tier cap (2/2/3). Code-review voters are separate: when both external tools are unavailable, the code-review voter panel falls back to a single Claude floor voter rather than keeping its three-voter shape (see [review-agents.md](review-agents.md)).
 ## CI-fix push sequencing
 
 When the active Step 8+ driver (`python/cli.py ship pr` delegating to `python/ship.py`) commits a CI-fix locally, it checks staleness via `python/cli.py ci behind-count` (shared with `python/cli.py ci status`) before pushing. If the branch is behind `origin/main` (or `upstream/main` on forked targets), it reuses `run_rebase_rebump` with deferred push, re-verifies failed jobs and lint on the rebased tree, then pushes with `python/cli.py push force` (force-with-lease). When already current, it uses plain `python/cli.py push branch`. The next `ci-wait` poll should see `BEHIND_COUNT=0`, so the separate `ACTION=rebase` path remains a no-op fallback rather than a second rebase.
@@ -128,3 +127,7 @@ During post-phase final summary, `/design` runs a one-issue report gate before f
 Hard-fail paths stage terminal state before abort when safe. Step 0b clarify hard halts stage `failed-clarify`. Step 3 `postplan-failed` stages state in the script, then prompt-side orchestration runs final-summary routing so KV stdout stays clean. Step 2b.5 decompose-panel retry exhaustion is terminal `failed-judge-panel` and routes through Split-path final-summary orchestration.
 
 Ordinary Step 3 panel degradation continues the run. It may become escalation-success evidence only after an approved outcome. Successful runs without escalation do not file. Operator-action skips are audited in chat and run logs but do not file.
+
+### Difficulty-tiered review loops
+
+Design, review, and implement review loops resolve a starting difficulty tier, apply the 1:30 audit for below-HARD runs, and use tier caps 2/2/3. Substantial code-review rounds escalate one tier at a time; substantial design-review rounds escalate directly to HARD.

@@ -50,6 +50,7 @@ class _DesignArgvParsed:
     skip_approve_requested: bool
     no_dedup_requested: bool
     run_id: str
+    difficulty: str
     positional_kind: str
     positional_value: str
 
@@ -62,6 +63,7 @@ class _ArgvParseState:
     skip_approve_requested: bool = False
     no_dedup_requested: bool = False
     run_id: str = ""
+    difficulty: str = ""
     positional_args: list[str] = field(default_factory=list[str])
     positional_kind: str = "none"
     positional_value: str = ""
@@ -86,6 +88,7 @@ _KNOWN_PUBLIC_FLAG_TOKENS = frozenset(
         *_SIMPLE_FLAG_ATTRS.keys(),
         *_ONCE_FLAG_TOKENS.keys(),
         "--run-id",
+        "--difficulty",
         "--hard",
     }
 )
@@ -109,6 +112,29 @@ def _set_flag_once(
         return _emit_validation_error(token=token, output_path=output_path)
     setattr(state, attr, True)
     return None
+
+
+def _parse_value_flag(
+    *,
+    argv: list[str],
+    index: int,
+    state: _ArgvParseState,
+    output_path: str,
+) -> tuple[int, int | None]:
+    token = argv[index]
+    if index + 1 >= len(argv):
+        return index + 1, _emit_validation_error(token=token, output_path=output_path)
+    value = argv[index + 1]
+    if token == "--run-id":
+        if value.startswith("-") or value in _KNOWN_PUBLIC_FLAG_TOKENS:
+            return index + 1, _emit_validation_error(token=value, output_path=output_path)
+        state.run_id = value
+        return index + 2, None
+    difficulty = value.upper()
+    if difficulty not in {"TRIVIAL", "MODERATE", "HARD"}:
+        return index + 1, _emit_validation_error(token=value, output_path=output_path)
+    state.difficulty = difficulty
+    return index + 2, None
 
 
 def _apply_double_dash(*, state: _ArgvParseState, rest: list[str]) -> None:
@@ -144,16 +170,8 @@ def _parse_flag_token(
     if once is not None:
         attr, err_token = once
         error_rc = _set_flag_once(state=state, attr=attr, token=err_token, output_path=output_path)
-    elif token == "--run-id":
-        if index + 1 >= len(argv):
-            error_rc = _emit_validation_error(token="--run-id", output_path=output_path)
-        else:
-            value = argv[index + 1]
-            if value.startswith("-") or value in _KNOWN_PUBLIC_FLAG_TOKENS:
-                error_rc = _emit_validation_error(token=value, output_path=output_path)
-            else:
-                state.run_id = value
-                next_index = index + 2
+    elif token in {"--run-id", "--difficulty"}:
+        next_index, error_rc = _parse_value_flag(argv=argv, index=index, state=state, output_path=output_path)
     elif token == "--hard":
         error_rc = _emit_validation_error(token="--hard", output_path=output_path)
     elif token.startswith("-"):
@@ -259,6 +277,7 @@ def _parse_design_flags(*, argv: list[str], output_path: str) -> tuple[_DesignAr
             skip_approve_requested=state.skip_approve_requested,
             no_dedup_requested=state.no_dedup_requested,
             run_id=state.run_id,
+            difficulty=state.difficulty,
             positional_kind=state.positional_kind,
             positional_value=state.positional_value,
         ),
@@ -274,6 +293,7 @@ def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
         "skip_approve_requested": str(parsed.skip_approve_requested).lower(),
         "no_dedup_requested": str(parsed.no_dedup_requested).lower(),
         "run_id": parsed.run_id,
+        "difficulty": parsed.difficulty,
         "POSITIONAL_KIND": parsed.positional_kind,
         "POSITIONAL_VALUE": parsed.positional_value,
     }
@@ -284,6 +304,7 @@ def _emit_success(*, output_path: str, parsed: _DesignArgvParsed) -> int:
         "SKIP_APPROVE_REQUESTED": str(parsed.skip_approve_requested).lower(),
         "NO_DEDUP_REQUESTED": str(parsed.no_dedup_requested).lower(),
         "RUN_ID": parsed.run_id,
+        "DIFFICULTY": parsed.difficulty,
         "POSITIONAL_KIND": parsed.positional_kind,
         "POSITIONAL_VALUE": parsed.positional_value,
     }

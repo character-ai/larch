@@ -1683,24 +1683,57 @@ def _read_simple_env(path: Path) -> dict[str, str]:
 def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
     raw = round_dir / difficulty.SCOUT_RAW_RATING_BASENAME
     rating = difficulty.read_rating_file(raw)
-    if rating is None:
+    record = _read_json_object(round_dir / difficulty.DIFFICULTY_RECORD_BASENAME)
+    if not isinstance(record, dict):
+        record = {}
+    if rating is None and not record:
         return {
             "tier_in_effect": None,
             "ceiling_in_effect": None,
             "escalations": [],
             "scout": {"status": "absent"},
         }
-    return {
-        "tier_in_effect": rating.adjusted_tier,
-        "ceiling_in_effect": rating.adjusted_tier,
+    object_data: dict[str, object] = {
+        "tier_in_effect": None,
+        "ceiling_in_effect": None,
         "escalations": [],
-        "scout": {
-            "status": "ok",
-            "predicted_tier": rating.predicted_tier,
-            "confidence": rating.confidence,
-            "source": str(raw),
-        },
+        "scout": {"status": "absent"},
     }
+    if rating is not None:
+        object_data.update(
+            {
+                "tier_in_effect": rating.adjusted_tier,
+                "ceiling_in_effect": rating.adjusted_tier,
+                "scout": {
+                    "status": "ok",
+                    "predicted_tier": rating.predicted_tier,
+                    "confidence": rating.confidence,
+                    "source": str(raw),
+                },
+            }
+        )
+    if record:
+        panel_tier = str(record.get("panel_tier") or record.get("applied_tier") or object_data.get("tier_in_effect") or "")
+        round_cap = record.get("round_cap")
+        if not isinstance(round_cap, int):
+            round_cap = difficulty.tier_ceiling(panel_tier) if panel_tier else None
+        escalations = record.get("escalations")
+        object_data.update(
+            {
+                "tier_in_effect": panel_tier or object_data.get("tier_in_effect"),
+                "ceiling_in_effect": round_cap if round_cap is not None else object_data.get("ceiling_in_effect"),
+                "applied_tier": str(record.get("applied_tier") or ""),
+                "panel_tier": str(record.get("panel_tier") or ""),
+                "round_cap": round_cap,
+                "codex_model_role": str(record.get("codex_model_role") or ""),
+                "override_source": str(record.get("override_source") or ""),
+                "audit_evaluated": record.get("audit_evaluated"),
+                "audit_upgrade": str(record.get("audit_upgrade") or "") or None,
+                "escalated_round": record.get("escalated_round"),
+                "escalations": escalations if isinstance(escalations, list) else object_data.get("escalations", []),
+            }
+        )
+    return object_data
 
 def _round_meta_object(
     *, counts: tuple[int, int, int, int, int, int],
@@ -1921,3 +1954,4 @@ def report_main(argv: list[str]) -> int:
     if report:
         print(report)
     return 0
+# pyright: reportUnnecessaryIsInstance=false, reportUnknownArgumentType=false

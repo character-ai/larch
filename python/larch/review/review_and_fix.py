@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import json
 import os
 import re
 import sys
@@ -17,7 +18,9 @@ from typing import Literal, cast
 from collections.abc import Generator
 
 from larch.agents import agents
+from larch.core import config
 from larch.core import external_defaults
+from larch.calibration import difficulty
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
@@ -260,6 +263,18 @@ def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str
     _emit_kv(key="CODER_STATUS", value=coder_status)
     _emit_kv(key="FILES_CHANGED_HINT", value=files_hint)
     _emit_kv(key="EFFECTIVE_ROUND_CAP", value=effective_cap)
+    record = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / difficulty.DIFFICULTY_RECORD_BASENAME
+    if record.is_file():
+        try:
+            data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        if isinstance(data, dict):
+            record_data = cast("dict[str, object]", data)
+            if record_data.get("panel_tier"):
+                _emit_kv(key="PANEL_TIER", value=record_data.get("panel_tier"))
+            if record_data.get("audit_upgrade") is not None:
+                _emit_kv(key="AUDIT_UPGRADE", value=str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True)
 
 
 def _build_step5_parser() -> argparse.ArgumentParser:
@@ -276,6 +291,8 @@ def _build_step5_parser() -> argparse.ArgumentParser:
     parser.add_argument("--feature-file", default="")
     parser.add_argument("--run-id", default="")
     parser.add_argument("--round-cap", default="2")
+    parser.add_argument("--difficulty", default="")
+    parser.add_argument("--audit-roll", default="")
     parser.add_argument("--diff-file", default="")
     parser.add_argument("--commit-count", default="0")
     parser.add_argument("--dynamic-archetypes", default="")
@@ -329,6 +346,11 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
         args.cursor_available = "true" if _cursor_available() else "false"
     if args.no_dynamic_archetypes:
         args.dynamic_archetypes = "0"
+    if args.difficulty:
+        normalized = difficulty.normalize_tier(args.difficulty)
+        if not normalized:
+            raise ValueError("--difficulty must be TRIVIAL, MODERATE, or HARD")
+        args.difficulty = normalized
     if args.mode != "mav-apply" and not args.pre_scouted_manifest:
         marker = implement_tmpdir / "step2-external-scout-eligible.txt"
         status_file = implement_tmpdir / "step2-scout-coder-status.env"
@@ -340,6 +362,43 @@ def _preflight_step5(args: argparse.Namespace) -> tuple[Path, int]:
         args.pre_scouted_manifest = ""
     _dynamic_archetypes(args=args, implement_tmpdir=implement_tmpdir)
     return implement_tmpdir, starting_round
+
+
+def _resolve_step5_tier(args: argparse.Namespace, *, implement_tmpdir: Path, starting_round: int) -> difficulty.TierResolution:
+    record = implement_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    audit_roll = args.audit_roll
+    rng: object = None
+    if audit_roll:
+        rng = int(audit_roll)
+    resolution = difficulty.resolve_panel_tier(
+        record,
+        override=args.difficulty,
+        rng=rng,
+        audit_enabled=starting_round <= 1,
+        round_num=starting_round,
+    )
+    args.panel_tier = resolution.panel_tier
+    args.round_cap = str(resolution.round_cap)
+    args.escalated_round = "true" if resolution.escalated_round else "false"
+    return resolution
+
+
+def _escalation_trigger_for_result(result: RoundResult) -> str:
+    if result.skipped_finding_count and result.coder.input_count > 0:
+        skip_ratio = result.skipped_finding_count / result.coder.input_count
+        if skip_ratio >= _skip_ratio_threshold():
+            return "bulk-skip"
+    high_n = _high_severity_count(result.accepted_file)
+    if high_n >= 2:
+        return "high-severity"
+    pre_head_file = pre_coder_snapshot_dir(result.round_dir) / "pre-coder-head.txt"
+    post_head_file = result.round_dir / "post-coder-head.txt"
+    structural = _structural_loc(pre_head_file=pre_head_file, post_head_file=post_head_file)
+    if structural >= 100:
+        return "structural-loc"
+    if result.coder.input_count >= 8:
+        return "finding-count"
+    return ""
 
 
 def _persist_round_start(*, implement_tmpdir: Path, round_num: int, start_s: int) -> None:
@@ -494,7 +553,8 @@ def step5(argv: list[str] | None = None) -> int:
     try:
         try:
             implement_tmpdir, starting_round = _preflight_step5(args)
-            round_cap = _positive_int(value=str(args.round_cap), label="--round-cap")
+            resolution = _resolve_step5_tier(args, implement_tmpdir=implement_tmpdir, starting_round=starting_round)
+            round_cap = resolution.round_cap
         except ValueError as exc:
             _err(f"review-and-fix step5: {exc}")
             if loop_mode:
@@ -614,6 +674,34 @@ def step5(argv: list[str] | None = None) -> int:
             elif result.status in {"classifier-failed", "tally-flush-failed"}:
                 terminal_status, stall_tracking, stall_reason = "stall", True, result.status
             elif result.status == "fix-applied":
+                trigger = _escalation_trigger_for_result(result)
+                if trigger and difficulty.normalize_tier(getattr(args, "panel_tier", ""), difficulty.MODERATE) != difficulty.HARD:
+                    from_tier = difficulty.normalize_tier(getattr(args, "panel_tier", ""), difficulty.MODERATE)
+                    to_tier = difficulty.next_tier(from_tier)
+                    difficulty.append_escalation(
+                        implement_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME,
+                        round_num + 1,
+                        from_tier,
+                        to_tier,
+                        trigger,
+                    )
+                    args.panel_tier = to_tier
+                    round_cap = difficulty.tier_ceiling(to_tier)
+                    args.round_cap = str(round_cap)
+                    args.escalated_round = "true"
+                    _emit_kv(key="ESCALATED_FROM", value=from_tier)
+                    _emit_kv(key="ESCALATED_TO", value=to_tier)
+                    _emit_kv(key="ESCALATION_TRIGGER", value=trigger)
+                    _record_step5_round_timing(
+                        implement_tmpdir=implement_tmpdir,
+                        round_num=round_num,
+                        start_s=start_s,
+                        end_s=int(time.time()),
+                        result=result,
+                    )
+                    round_num += 1
+                    continue
+                args.escalated_round = "false"
                 try:
                     gate_status, gate_reason, gate_continue = _step5_post_round_gates(
                         result=result,

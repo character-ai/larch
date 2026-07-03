@@ -20,6 +20,7 @@ from typing import cast
 
 from larch.review import findings_ledger
 from larch.core import external_defaults
+from larch.calibration import difficulty
 from larch.agents._launch_failure import resolve_model_args
 from larch.review import review_pipeline
 from larch.review import voting
@@ -83,14 +84,17 @@ def _static_slot_rows(
     cursor_present: str,
     plan_file: str,
     feature_file: str,
+    tier: str = difficulty.MODERATE,
 ) -> list[dict[str, object]]:
-    _ = (round_num, cursor_present)
+    _ = round_num
     rows: list[dict[str, object]] = []
     codex_slots = codex_present == "true"
     cli = [sys.executable, str(_plugin_root() / "python" / "cli.py"), "render", "plan-review"]
     static_slots = [slot for slot in external_defaults.slot_defaults("design.plan_review_panel") if slot.archetype != "generic"]
     for slot in static_slots:
         if slot.tool == "codex" and not codex_slots:
+            continue
+        if slot.tool == "cursor" and cursor_present != "true":
             continue
         archetype = slot.archetype
         prompt_path = design / f"render-plan-{slot.tool}-{archetype}.prompt"
@@ -119,9 +123,10 @@ def _static_slot_rows(
         row = _slot_row(
             tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt,
         )
-        if slot.model_role:
-            row["model_role"] = slot.model_role
-            row["resolved_model"] = _resolved_model_for_row(slot.tool, slot.model_role)
+        if slot.tool == "codex":
+            role = difficulty.codex_review_model_role(tier)
+            row["model_role"] = role
+            row["resolved_model"] = _resolved_model_for_row(slot.tool, role)
         rows.append(row)
     generic = _generic_plan_codex_row(
         design=design,
@@ -129,6 +134,7 @@ def _static_slot_rows(
         round_num=round_num,
         plan_file=plan_file,
         feature_file=feature_file,
+        tier=tier,
     )
     if generic:
         rows.append(generic)
@@ -142,6 +148,7 @@ def _generic_plan_codex_row(
     round_num: int,
     plan_file: str,
     feature_file: str,
+    tier: str = difficulty.MODERATE,
 ) -> dict[str, object] | None:
     policy = external_defaults.panel_dispatch_policy("design.plan_review_panel")
     if not policy or round_num not in policy.generic_codex_rounds:
@@ -184,8 +191,9 @@ def _generic_plan_codex_row(
         prompt_file=prompt_path,
         prompt=proc.stdout if proc.returncode == 0 else "",
     )
-    row["model_role"] = slot.model_role
-    row["resolved_model"] = _resolved_model_for_row(slot.tool, slot.model_role)
+    role = difficulty.codex_review_model_role(tier)
+    row["model_role"] = role
+    row["resolved_model"] = _resolved_model_for_row(slot.tool, role)
     return row
 
 def _resolved_model_for_row(tool: str, model_role: str = "") -> str:
@@ -291,6 +299,7 @@ def _dynamic_slot_rows(
     dynamic: list[tuple[str, str, str, str]],
     plan_file: str,
     feature_file: str,
+    tier: str = difficulty.MODERATE,
 ) -> tuple[list[dict[str, object]], list[tuple[str, str, int]]]:
     # Route dynamic scout slots through the same `render plan-review` scaffold as static
     # slots (#4841). Before the fix the raw scout prompt_body was the entire prompt, so
@@ -334,8 +343,9 @@ def _dynamic_slot_rows(
                 _append_dynamic_render_warning(design=design, slot=slot, tool=tool, return_code=proc.returncode, diagnostics=proc.stderr or proc.stdout or "")
         row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered)
         if tool == "codex":
-            row["model_role"] = "default"
-            row["resolved_model"] = _resolved_model_for_row(tool, "default")
+            role = difficulty.codex_review_model_role(tier)
+            row["model_role"] = role
+            row["resolved_model"] = _resolved_model_for_row(tool, role)
         rows.append(row)
     return rows, failures
 
@@ -463,6 +473,16 @@ def _filter_pruned(*, design: Path, manifest: Path, prune_round_num: int) -> tup
     out.replace(manifest)  # pyright: ignore[reportUnusedCallResult]
     return manifest, kv
 
+
+def _validated_tier_args(*, parser: argparse.ArgumentParser, tier: str, escalated_round: str) -> str:
+    normalized = difficulty.normalize_tier(tier)
+    if not normalized:
+        parser.error("--tier must be TRIVIAL, MODERATE, or HARD")
+    if escalated_round not in {"true", "false"}:
+        parser.error("--escalated-round must be true or false")
+    return normalized
+
+
 def dispatch_panel(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review panel-dispatch")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -473,8 +493,11 @@ def dispatch_panel(argv: Sequence[str]) -> int:
     parser.add_argument("--plan-file", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--feature-file", required=True)  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--timeout", default="600")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--tier", default="MODERATE")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--escalated-round", default="false")  # pyright: ignore[reportUnusedCallResult]
     ns = parser.parse_args(list(argv))
     design = _validate_tmpdir(parser=parser, value=ns.design_tmpdir)
+    tier = _validated_tier_args(parser=parser, tier=ns.tier, escalated_round=ns.escalated_round)
     round_dir = design / "plan-review" / f"round-{ns.round_num}"
     round_dir.mkdir(parents=True, exist_ok=True)
     rows: list[dict[str, object]] = _static_slot_rows(
@@ -484,6 +507,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         cursor_present=ns.cursor_present,
         plan_file=ns.plan_file,
         feature_file=ns.feature_file,
+        tier=tier,
     )
     static_count = len(rows)
     dynamic = _load_dynamic_rows(design)
@@ -491,11 +515,13 @@ def dispatch_panel(argv: Sequence[str]) -> int:
         design=design, round_dir=round_dir, dynamic=dynamic,
         plan_file=ns.plan_file,
         feature_file=ns.feature_file,
+        tier=tier,
     )
     rows.extend(dynamic_rows)
     manifest = design / "plan-review-slots.ndjson"
     _write_manifest(rows=rows, path=manifest)
-    manifest, prune_kv = _filter_pruned(design=design, manifest=manifest, prune_round_num=ns.prune_round_num or ns.round_num)
+    prune_round_num = 0 if ns.escalated_round == "true" else (ns.prune_round_num or ns.round_num)
+    manifest, prune_kv = _filter_pruned(design=design, manifest=manifest, prune_round_num=prune_round_num)
     dynamic_warning = _dynamic_render_panel_warning(dynamic_failures)
     if prune_kv.get("PANEL_PRUNED_EMPTY") == "true":
         if dynamic_warning:
@@ -540,7 +566,7 @@ def dispatch_panel(argv: Sequence[str]) -> int:
             "--site",
             "design Step 3",
             "--model-role",
-            "review",
+            difficulty.codex_review_model_role(tier),
             "--no-fallback",
         ],
         cwd=str(_REPO_ROOT),

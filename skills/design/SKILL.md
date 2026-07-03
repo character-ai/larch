@@ -1,19 +1,20 @@
 ---
 name: design
 description: "Use when authoring or vetting an issue-anchored GitHub implementation plan. Runs direct drafting, plan review, clarify loop, and issue-body plan markers."
-argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] <issue-N | feature description>"
+argument-hint: "[-p|--partition] [--brainstorm] [--per-round-approval] [--skip-approve|-s] [--no-dedup] [--run-id <ID>] [--difficulty <TRIVIAL|MODERATE|HARD>] <issue-N | feature description>"
 allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task, WebFetch, WebSearch
 ---
 
 # Design Skill
 
 Design an implementation plan and review it with the mechanical plan-review panel. `skills/design/references/plan-review.md` owns topology, slots, rounds, adjudication, and voting. Flow: Step 2a sentinel prep is folded into the Step 2b drafter wrapper, Step 2b drafts from direct codebase inspection, Step 3 runs review, Step 5b files accepted non-security OOS via `/larch:issue`, and Step 5c writes `larch:plan` with `python/cli.py named-block write --marker plan`. No design manifest export.
-**Flags**: Step **0-pre** is authoritative: `python/cli.py design parse-argv` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` plus flag KVs. Do not re-parse `$ARGUMENTS` later. Public argv allows only `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, and `--run-id`. Boolean flags default to `false`; any other leading public `--` flag, including removed `--hard`, hard-errors before Step 0 and is never positional text.
+**Flags**: Step **0-pre** is authoritative: `python/cli.py design parse-argv` emits `POSITIONAL_KIND` / `POSITIONAL_VALUE` plus flag KVs. Do not re-parse `$ARGUMENTS` later. Public argv allows only `-p`, `--partition`, `--brainstorm`, `--per-round-approval`, `--skip-approve`, `-s`, `--no-dedup`, `--run-id`, and `--difficulty`. Boolean flags default to `false`; any other leading public `--` flag, including removed `--hard`, hard-errors before Step 0 and is never positional text.
 
 | Flag | Default | Purpose |
 |------|---------|---------|
 | `-p` / `--partition` | `false` | Route directly to the Step 2b.5 Split-path / decomposition panel on every plan write when no hard threshold tripped (see `references/flags.md`; persisted as `partition_requested` in `run-params.json`) |
 | `--brainstorm` | `false` | Request Step **1d.5** brainstorm ideation before Step 1d.7 outline-approval (Gate A re-entry only post-plan) (see `references/flags.md` and `references/brainstorm.md`; persisted as `brainstorm_requested` in `run-params.json`) |
+| `--difficulty <TRIVIAL\|MODERATE\|HARD>` | empty | Sets the starting plan-review tier, beats rating and floors, and logs `override_source=operator`; the 1:30 audit can still upgrade a below-HARD run and logs both fields. |
 | `--per-round-approval` | `false` | Restore the explicit per-round Gate B apply prompt (Apply all / Go through each / Switch to discussion mode); default auto-applies accepted in-scope findings (see `references/flags.md`; persisted as `approve_requested` in `run-params.json`) |
 | `--skip-approve` / `-s` | `false` | Auto-approve Step 1d.7 outline-approval and Step 4b Gate C final-plan without an `AskUserQuestion`; does not skip any other prompt (see `references/flags.md`; persisted as `skip_approve_requested` in `run-params.json`) |
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
@@ -319,7 +320,7 @@ Produce a plan that includes:
 - **Edge cases**: Note important input/boundary conditions and how they'll be handled.
 - **Failure modes** (for non-trivial changes): The 3 most likely architectural/systemic failure paths, earliest warning signals, and simplest mitigations. May be omitted for purely cosmetic or documentation-only changes.
 - **Testing strategy**: What tests will be added or modified.
-- **Difficulty rating**: Before final trailers, rate the plan with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" difficulty render-rubric` as the anchor. Write `$DESIGN_TMPDIR/design-difficulty-rating.raw.json` with `predicted_tier`, `confidence`, and bounded `rationale`, then add a whole-line `difficulty: <TRIVIAL|MODERATE|HARD>` metadata line using the post-confidence-bump tier. This field is a prior for logging only.
+- **Difficulty rating**: Before final trailers, rate the plan with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" difficulty render-rubric` as the anchor. Write `$DESIGN_TMPDIR/design-difficulty-rating.raw.json` with `predicted_tier`, `confidence`, and bounded `rationale`, then add a whole-line `difficulty: <TRIVIAL|MODERATE|HARD>` metadata line using the post-confidence-bump tier. This field is a prior for tiered plan review: TRIVIAL/MODERATE cap at 2 with Codex review-role plus Cursor pairs, HARD caps at 3 with the Codex default role plus Cursor pairs.
 - **Diff size estimate**: Append final `diff_lines: <N>` to `$DESIGN_TMPDIR/plan.txt`. Metadata lines immediately above it: required `difficulty: <TRIVIAL|MODERATE|HARD>`, then optional `diff_added: <N>`, `diff_deleted: <N>`, `mechanical_churn: true|false`. Emit `diff_added:` for deletion-heavy relief; emit `mechanical_churn: true` for trivial mechanical churn, and SHOULD include `diff_added:` so the advisory keys on additions. `diff_lines` stays informational for `/implement`; omit none of these grammar rules when used.
 
 Write the plan to `$DESIGN_TMPDIR/plan.txt` with basename exactly `plan.txt`. Print the plan to the user under a `## Implementation Plan` header so reviewers can see it. The plan is an intermediate deliverable. After Step **2b.5** below completes, continue to Step 3 (Plan Review). Do NOT halt, summarize, or treat the plan as the end of the design.

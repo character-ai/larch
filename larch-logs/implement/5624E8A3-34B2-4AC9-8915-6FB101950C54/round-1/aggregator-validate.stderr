@@ -1,0 +1,6 @@
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Use round-total `high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD` for escalati')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Use `high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD` for escalation; keep `hi')
+warning: fix text for slot 'dyn-dyn-tier-resume' in FINDING_3 not traceable to scoped input (first 80 chars: 'Route refresh through write_record_main / _merge_existing_record_fields, pass es')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_8 not traceable to scoped input (first 80 chars: 'Extend harness with HARD tier fixtures escalation sidecars and authorized-cap al')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_11 not traceable to scoped input (first 80 chars: 'Add parse-argv accept/reject tests and step0/router persistence tests for `diffi')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_15 not traceable to scoped input (first 80 chars: 'Add stub run with `--difficulty TRIVIAL` asserting `--panel simple` in `REVIEW_C')

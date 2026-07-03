@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import contextlib
 import csv
+import json
 import io
 import os
 import stat
@@ -11,8 +12,10 @@ import tempfile
 from pathlib import Path
 from typing import cast
 
+from larch.calibration import difficulty
 from larch.core import logging_util
 from larch.review import plan_review
+from larch.review import plan_review_common
 from larch.review import plan_review_loop
 from larch.review import plan_review_normalize
 from larch.review import plan_review_round
@@ -47,7 +50,7 @@ def test_new_process_group_calls_setsid(tmp_path: Path, monkeypatch: pytest.Monk
     _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
     review_cap_env = tmp_path / ".step3-review-cap.env"
     _ = review_cap_env.write_text("LOOP_STATUS=cap-reached\nTALLY_PLAN_REVIEW_STATUS=skipped-cap-reached\n", encoding="utf-8")
-    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review_common.ROUND_CAP}\n", encoding="utf-8")
     result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path), "--new-process-group"])
     assert result == 0
     assert len(calls) == 1
@@ -59,7 +62,7 @@ def test_new_process_group_absent_does_not_call_setsid(tmp_path: Path, monkeypat
 
     monkeypatch.setattr(plan_review.os, "setsid", forbidden_setsid)  # type: ignore[arg-type]
     _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
-    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review.ROUND_CAP}\n", encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text(f"{plan_review_common.ROUND_CAP}\n", encoding="utf-8")
     result = plan_review.run_step3_review(["--design-tmpdir", str(tmp_path)])
     assert result == 0
 
@@ -2775,9 +2778,11 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc1.returncode == 0, proc1.stderr
     assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc1.stdout
+    # Both findings are high-severity and new -> round-total escalates to HARD.
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc1.stdout
 
-    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop.
+    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop,
+    # even though escalation raised the cap to HARD's 3 rounds.
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     proc2 = run_cli(
         "plan-review",
@@ -2790,11 +2795,57 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
     # Totals stay reported for backward compatibility.
     assert "HIGH_ACCEPTED_COUNT=2" in proc2.stdout
+
+
+def test_continuation_escalates_on_cumulative_highs_with_one_new_finding(tmp_path: Path) -> None:
+    finding1 = _high_finding_block(
+        1,
+        severity="important",
+        location="a.py:1",
+        concern="alpha. Scenario: x.",
+    )
+    finding2 = _high_finding_block(
+        2,
+        severity="blocking",
+        location="b.py:2",
+        concern="beta. Scenario: y.",
+    )
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(finding1, encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc1 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc1.returncode == 0, proc1.stderr
+    assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc1.stdout
+
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(finding1 + finding2, encoding="utf-8")
+    _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
+    proc2 = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc2.returncode == 0, proc2.stderr
+    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc2.stdout
+    assert "REVIEW_ROUND_CAP=3" in proc2.stdout
+    assert "HIGH_ACCEPTED_COUNT=2" in proc2.stdout
+    assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
 
 
 def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> None:
@@ -2819,10 +2870,91 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
         "plan-review", "continuation", "--design-tmpdir", str(tmp_path),
         "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
     )
-    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc2.stdout
+    assert "REVIEW_ROUND_CAP=3" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
+
+
+def test_resolve_plan_review_tier_seeds_plan_metadata_hard(tmp_path: Path) -> None:
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "bootstrap"}
+        ),
+    )
+    difficulty.write_record(tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+    _ = (tmp_path / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: HARD\ndiff_lines: 1\n", encoding="utf-8")
+
+    resolution = plan_review_common.resolve_plan_review_tier(tmp_path)
+    data = json.loads((tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME).read_text(encoding="utf-8"))
+
+    assert resolution.panel_tier == difficulty.HARD
+    assert data["panel_tier"] == difficulty.HARD
+
+
+def test_resolve_plan_review_tier_seeds_raw_sidecar_hard(tmp_path: Path) -> None:
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "bootstrap"}
+        ),
+    )
+    difficulty.write_record(tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+    _ = (tmp_path / difficulty.DESIGN_RAW_RATING_BASENAME).write_text(
+        '{"predicted_tier":"HARD","confidence":"high","rationale":"raw"}\n',
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "plan.txt").write_text("## Plan\nbody\n\ndifficulty: TRIVIAL\ndiff_lines: 1\n", encoding="utf-8")
+
+    resolution = plan_review_common.resolve_plan_review_tier(tmp_path)
+    data = json.loads((tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME).read_text(encoding="utf-8"))
+
+    assert resolution.panel_tier == difficulty.HARD
+    assert data["panel_tier"] == difficulty.HARD
+
+
+def test_design_escalation_authorized_rejects_bare_high_accepted(tmp_path: Path) -> None:
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "HARD", "confidence": "high", "rationale": "seed"}
+        ),
+    )
+    difficulty.write_record(tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        "PLAN_REVIEW_CONTINUE_REASON=high-accepted\n",
+        encoding="utf-8",
+    )
+
+    assert not plan_review_common.design_escalation_authorized(tmp_path)
+    assert plan_review_common.effective_authorized_cap(tmp_path, tier=difficulty.HARD) == 2
+
+
+@pytest.mark.parametrize("reason", ["non-nit-accepted", "structural-or-large-change", "degraded-panel"])
+def test_design_escalation_authorized_rejects_generic_continuation_reasons(tmp_path: Path, reason: str) -> None:
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=difficulty.validate_rating_object(
+            {"predicted_tier": "HARD", "confidence": "high", "rationale": "seed"}
+        ),
+    )
+    difficulty.write_record(tmp_path / difficulty.DIFFICULTY_RECORD_BASENAME, record)
+    _ = (tmp_path / ".step3-review-result.env").write_text(
+        f"PLAN_REVIEW_CONTINUE_REASON={reason}\n",
+        encoding="utf-8",
+    )
+
+    assert not plan_review_common.design_escalation_authorized(tmp_path)
 
 
 def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: Path) -> None:

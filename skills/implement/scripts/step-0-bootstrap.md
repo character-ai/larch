@@ -2,7 +2,7 @@
 
 Step 0 initial/resume bootstrap wrapper around `python/cli.py bootstrap invoke`. In fork mode, captures `python/cli.py admission fork-env` metadata into `CALLER_ENV_PATH`, `UPSTREAM_REPO`, and sibling fork variables before invoking bootstrap. Emits the parsed routing envelope and the progress prompt on initial bootstrap; resume uses `--preserve-coder` parsing.
 
-The wrapper delegates the continue-tail (degraded-tools gate + checkpoint `1.r`) to `bootstrap invoke`. It forwards an explicit `--non-interactive true|false` computed from the canonical `/implement` non-interactive predicate (not `LARCH_SKILL_NON_INTERACTIVE` alone). Degraded explanation blocks emitted by Python on stderr remain operator-visible while stdout stays parseable.
+The wrapper delegates the continue-tail (degraded-tools gate + checkpoint `1.r`) to `bootstrap invoke`. It forwards an explicit `--non-interactive true|false` computed from the canonical `/implement` non-interactive predicate (not `LARCH_SKILL_NON_INTERACTIVE` alone). It also forwards an optional `--difficulty TRIVIAL|MODERATE|HARD` override into bootstrap run flags. Degraded explanation blocks emitted by Python on stderr remain operator-visible while stdout stays parseable.
 
 ## Caller
 

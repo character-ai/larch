@@ -301,6 +301,8 @@ def _step0_init_driver_cmd(*, plugin_root: Path, design_tmpdir: Path, env: Mappi
         env.get("approve_requested", "false"),
         "--skip-approve-requested",
         env.get("skip_approve_requested", "false"),
+        "--difficulty",
+        env.get("difficulty", ""),
     )
     if env.get("REPO"):
         cmd.extend(["--repo", env["REPO"]])
@@ -476,6 +478,8 @@ def step0_route_main(argv: Sequence[str]) -> int:
             env.get("approve_requested", "false"),
             "--skip-approve-requested",
             env.get("skip_approve_requested", "false"),
+            "--difficulty",
+            env.get("difficulty", ""),
         )
         if env.get("REPO"):
             route_cmd.extend(["--repo", env["REPO"]])

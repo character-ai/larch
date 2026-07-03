@@ -31,6 +31,16 @@ read_session_key() {
     fi
 }
 
+read_run_flag_key() {
+    local key=$1 default_value=$2 file
+    file="${IMPLEMENT_TMPDIR:-}/run-flags.sh"
+    if [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$file" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session read-key --file "$file" --key "$key" --default "$default_value" 2>/dev/null || printf '%s\n' "$default_value"
+    else
+        printf '%s\n' "$default_value"
+    fi
+}
+
 rehydrate_plugin_root
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
 dynamic_archetypes_cap=""
@@ -44,8 +54,9 @@ fi
 case "$dynamic_archetypes_cap" in [0-1]) ;; *) printf 'ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: %s
 ' "$dynamic_archetypes_cap" >&2; exit 2 ;; esac
 export LARCH_DYNAMIC_ARCHETYPES_MAX="$dynamic_archetypes_cap"
-round_cap=2
-printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to %s rounds; round 1 full paired reviewer panel; round 2 pruned on round-1 productivity; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$round_cap" "$dynamic_archetypes_cap"
+difficulty_override=$(read_run_flag_key DIFFICULTY_OVERRIDE "")
+case "$difficulty_override" in ""|TRIVIAL|MODERATE|HARD) ;; *) difficulty_override="" ;; esac
+printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, tier cap 2/2/3; escalated rounds skip pruning; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap=%s**\n' "$dynamic_archetypes_cap"
 
 # Write bg-wait marker so hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress
 # probes during the review wait. Fail-open: a write failure must not abort the review.
@@ -63,5 +74,10 @@ _step5_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
 printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\n' \
   "$$" "$_step5_claude_pid" "$_step5_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
-  --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
+if [ -n "$difficulty_override" ]; then
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1 --difficulty "$difficulty_override"
+else
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" review-and-fix step5 \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" --mode loop --starting-round 1
+fi

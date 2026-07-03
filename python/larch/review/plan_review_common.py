@@ -3,17 +3,21 @@
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import re
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import cast
 
 from larch import io as larch_io
+from larch.calibration import difficulty
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 ROUND_CAP = 2
+ROUND_THREE_AUTHORIZATION_CAP = 2
 STRUCTURAL_DIFF_LINE_THRESHOLD = 500
 STRUCTURAL_PLAN_LINE_THRESHOLD = 120
 NON_NIT_CONTINUE_THRESHOLD = 5
@@ -57,6 +61,100 @@ POSTPLAN_EMIT_KEYS = {
     "BASELINE_DIFF_LINES",
 }
 OPTIONAL_TRAILER_KEYS = {"diff_added", "diff_deleted", "mechanical_churn"}
+
+
+def plan_review_round_cap(tier: str = "") -> int:
+    return difficulty.tier_ceiling(difficulty.normalize_tier(tier, difficulty.MODERATE))
+
+
+def _run_params_difficulty(design_tmpdir: Path) -> str:
+    path = design_tmpdir / "run-params.json"
+    if not path.is_file() or path.is_symlink():
+        return ""
+    try:
+        data = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return ""
+    if not isinstance(data, dict):
+        return ""
+    return difficulty.normalize_tier(cast("dict[str, object]", data).get("difficulty_override"))
+
+
+def _seed_plan_review_difficulty_record(design_tmpdir: Path) -> None:
+    record_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if record_path.is_symlink():
+        return
+    existing = difficulty._load_record_data(record_path)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    if existing and difficulty._record_resolution_is_persisted(existing):  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        return
+    raw_path = design_tmpdir / difficulty.DESIGN_RAW_RATING_BASENAME
+    raw_rating = difficulty.read_rating_file(raw_path)
+    if raw_rating is None:
+        if raw_path.exists() or raw_path.is_symlink():
+            return
+        plan_path = design_tmpdir / "plan.txt"
+        if not plan_path.is_file() or plan_path.is_symlink():
+            return
+        tier = difficulty.plan_difficulty(plan_path.read_text(encoding="utf-8", errors="replace"))
+        if not tier:
+            return
+        raw_rating = difficulty.validate_rating_object(
+            {
+                "predicted_tier": tier,
+                "confidence": "medium",
+                "rationale": "design plan metadata",
+            }
+        )
+    record = difficulty.build_record(
+        rater="design",
+        rater_tool="claude",
+        rater_model="unknown",
+        design_rating=raw_rating,
+    )
+    if existing:
+        blank_args = argparse.Namespace(
+            override_source="",
+            audit_upgrade="",
+            escalation=None,
+            round_cap="",
+            codex_model_role="",
+            audit_evaluated="",
+            escalated_round="",
+            override_tier="",
+            panel_tier="",
+        )
+        record = difficulty._merge_existing_record_fields(record, existing, blank_args)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    difficulty.write_record(record_path, record)
+
+
+def resolve_plan_review_tier(design_tmpdir: Path, *, round_num: int | None = None) -> difficulty.TierResolution:
+    _seed_plan_review_difficulty_record(design_tmpdir)
+    record = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    return difficulty.resolve_panel_tier(record, override=_run_params_difficulty(design_tmpdir), round_num=round_num)
+
+
+def design_escalation_authorized(design_tmpdir: Path) -> bool:
+    for path in (design_tmpdir / "plan-review-continuation.env", design_tmpdir / ".step3-review-result.env"):
+        if not path.is_file() or path.is_symlink():
+            continue
+        values = _read_kv_file(path)
+        reason = values.get("PLAN_REVIEW_CONTINUE_REASON", "")
+        if reason == "escalated-high-accepted":
+            return True
+    data_path = design_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if data_path.is_file() and not data_path.is_symlink():
+        try:
+            data = json.loads(data_path.read_text(encoding="utf-8", errors="replace"))
+        except (OSError, json.JSONDecodeError):
+            data = {}
+        if isinstance(data, dict) and cast("dict[str, object]", data).get("escalations"):
+            return True
+    return False
+
+
+def effective_authorized_cap(design_tmpdir: Path, tier: str = "") -> int:
+    raw_cap = plan_review_round_cap(tier or resolve_plan_review_tier(design_tmpdir).panel_tier)
+    return raw_cap if raw_cap > ROUND_THREE_AUTHORIZATION_CAP and design_escalation_authorized(design_tmpdir) else min(raw_cap, ROUND_THREE_AUTHORIZATION_CAP)
 
 
 class PlanReviewError(RuntimeError):

@@ -3890,3 +3890,57 @@ def test_run_round_dynamic_straggler_warn_count_reaches_count_load_result(
 
     load_result = exec_issue_detail.load_issue_detail_groups(impl, run_dir=None)
     assert exec_issue_detail.count_load_result(load_result) == (0, 1)
+
+
+@MARK_STEP5
+def test_step5_escalates_before_lower_tier_cap(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    calls: list[int] = []
+
+    def fake_run_round(args: argparse.Namespace, *, suppress_emit: bool) -> review_and_fix.RoundResult:
+        round_num = int(args.round_num)
+        calls.append(round_num)
+        if round_num == 1:
+            result = _fix_applied_round_result(impl, round_num=1)
+            result.accepted_file.write_text(
+                "### FINDING_1: **Important** one\n\n### FINDING_2: **Important** two\n",
+                encoding="utf-8",
+            )
+            return result
+        round_dir = impl / f"round-{round_num}"
+        round_dir.mkdir(parents=True, exist_ok=True)
+        return review_and_fix.RoundResult(
+            0,
+            "complete",
+            "zero-findings",
+            round_num,
+            0,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            round_dir / "accepted-findings.md",
+            round_dir / "rejected-findings.md",
+            round_dir,
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(0, status="skipped"),
+        )
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_run_round)
+
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--difficulty", "TRIVIAL", "--audit-roll", "30"])
+    out = capsys.readouterr().out
+
+    assert rc == 0
+    assert calls == [1, 2]
+    assert "ESCALATED_FROM=TRIVIAL" in out
+    assert "ESCALATED_TO=MODERATE" in out
+    assert "STEP5_REVIEW_STATUS=complete" in out
+    data = json.loads((impl / "difficulty-rating.json").read_text(encoding="utf-8"))
+    assert data["applied_tier"] == "MODERATE"
+    assert data["escalations"][0]["round"] == 2
