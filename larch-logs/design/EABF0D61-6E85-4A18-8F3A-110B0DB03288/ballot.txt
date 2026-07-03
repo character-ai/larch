@@ -1,0 +1,9 @@
+### FINDING_1: Security clause wording may exceed panel-tier token cap
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The restored security-triage clause is long enough that, once replicated across `_implementer-base.md`, `codex-implementer.md`, and `cursor-implementer.md`, panel-tier closure growth is likely to exceed the issue’s +40 token acceptance cap.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In Approach, either shorten the example clause (e.g. " If unsure about security, do not file publicly." ~36 tokens total) or add an explicit pre-commit check: run python3 python/cli.py skill-closure report --skill panel-tier and require closure_estimated_tokens delta <= 40 before python3 python/cli.py lint skill-closure-growth --write
+  - From Cursor-Innovation: Pick one shorter canonical clause before implementation (e.g. " If unsure it's security, do not file publicly." ~36 tokens total) and make Approach, the bullet edit, and the grep check use the same final text; add one sentence in Approach that panel-tier triple-counts base plus both generated implementer prompts when sizing the clause.
+  - From Cursor-Pragmatic: Use an equivalently terse clause that keeps total delta ≤ +40 (for example ` If unsure it is security, do not file publicly.` is ~36 tokens across the three files), or explicitly record a waiver in the issue if the longer original line is required. Update the grep check to match the chosen final wording.
+  - From Cursor-Requirements: Pin one final appended clause in `### UPDATED: agents/_implementer-base.md` (not “for example”) that preserves uncertain-security → no public filing, verify `closure_estimated_tokens` delta ≤40 before baseline write (e.g. `. If unsure it is security, do not file publicly.` ≈36 tokens across three files), and align testing step 1 `grep -F` to that exact pinned string.

@@ -1,0 +1,16 @@
+# md-to-py-XII: restore the security-triage caution line dropped from implementer prompts
+
+**Context.** The #5980 compression removed the line "If uncertain whether a finding is security, do not file publicly" from `agents/_implementer-base.md`; the cut propagated to the generated `agents/codex-implementer.md` and `agents/cursor-implementer.md`. The review panel judged it ancillary and filed no OOS. The line is security-adjacent routing guidance and should be restored, or its removal recorded as a deliberate waiver.
+
+**Scope.**
+
+- Restore the line, or an equivalently terse form, in `agents/_implementer-base.md`.
+- Regenerate derivatives via `python3 python/cli.py generate codex-implementer` and `generate cursor-implementer`.
+- Check `SECURITY.md` per AGENTS.md if the wording changes security-relevant behavior.
+
+**Acceptance.**
+
+- The caution appears in all three prompts; `generate check` exits 0.
+- Panel-tier baseline delta stays at or under +40 tokens.
+
+Part of md-to-py-XII (round XI: #5986). Small, independent.

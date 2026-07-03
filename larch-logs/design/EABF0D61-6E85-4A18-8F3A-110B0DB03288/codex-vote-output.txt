@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- plan can choose a shorter clause and the +40 cap is already an acceptance criterion, so this is speculative rather than a necessity defect
