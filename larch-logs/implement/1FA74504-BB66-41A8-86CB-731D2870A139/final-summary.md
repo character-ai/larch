@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:12:41
-- **Cost**: 💰 TOTAL ~$23.93 — Claude $1.22, Codex-5.5 $12.28, Codex-mini $2.90, Cursor $6.15, Claude (subprocess) $1.38  |  Tokens: 43472k
+- **Cost**: 💰 TOTAL ~$23.07 — Claude $0.36, Codex-5.5 $12.28, Codex-mini $2.90, Cursor $6.15, Claude (subprocess) $1.38  |  Tokens: 43194k
 - **Issue**: #5992 — https://github.com/character-ai/larch/issues/5992
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -10,7 +10,7 @@
 - **Code review**: N/A
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
-- **Exec issues**: 0
+- **Exec issues**: 2
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/1FA74504-BB66-41A8-86CB-731D2870A139/`
 - **Main agent model**: claude-fable-5
@@ -18,6 +18,12 @@
 - **Larch version**: 52.3.0
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (2):
+  1. ## Warnings
+  2. Architectural guidelines — G-Py-4 minor deviation: `_row_in_scope` in `python/larch/calibration/difficulty_calibration.py` wraps `voting.classification_row_is_oos` in a broad `except Exception` fal...
+Warnings (0):
 
 ## Review Phase Detail
 
@@ -101,3 +107,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_2** (latent): Audit-delta tests need floors_applied coverage. Concern: Audit-delta test coverage still misses the case where `floors_applied` raises the pre-audit tier, so floor-raised peer matching could regress without a failing fixture.
 - **Round 2 OOS_3** (important): Report renderers need smoke assertions. Concern: Report renderers do not have enough smoke assertions, so dropping a `render_report()` section could ship without CI failure.
 - **Additional candidates**: 2 omitted by the final-summary cap.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
