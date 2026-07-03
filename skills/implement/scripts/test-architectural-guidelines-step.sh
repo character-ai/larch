@@ -55,7 +55,7 @@ contains "$PRESENT_REF" '# Architectural Guidelines Present Path' 'present refer
 contains "$PRESENT_REF" '**When to load**: MANDATORY only after prepare stdout shows `ARCHITECTURAL_GUIDELINES_STATUS=present` with `ARCHITECTURAL_GUIDELINES_DIFF_STATUS=ok`.' 'present reference load predicate'
 contains "$PRESENT_REF" 'Compare the parsed guideline entries and materialized diff using prompt-side judgment, then persist an orchestrator-authored assessment.' 'present reference assessment judgment'
 contains "$PRESENT_REF" 'The assessment body must be either `Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.` or a short deviation list with rationale.' 'present reference assessment body'
-contains "$PRESENT_REF" '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"' 'present reference write-staged fence'
+contains "$PRESENT_REF" '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh architectural-guideline-assessment-draft.md' 'present reference write-staged fence'
 contains "$PRESENT_REF" 'When the note indicates deviations, also append it under `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md`.' 'present reference deviation warnings'
 contains "$PRESENT_REF" 'Do not call `architectural-guidelines pin-note-from-staged` in Phase A.' 'present reference no durable pin'
 contains "$PRESENT_REF" 'Continue to Step 8 only after the present-plus-ok assessment and staged persistence complete successfully.' 'present reference step 8 continuation'
