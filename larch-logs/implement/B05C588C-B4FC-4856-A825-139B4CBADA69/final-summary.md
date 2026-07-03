@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:55:44
-- **Cost**: 💰 TOTAL ~$20.73 — Claude $0.54, Codex-5.5 $15.46, Codex-mini $0.78, Cursor $2.29, Claude (subprocess) $1.66  |  Tokens: 26907k
+- **Cost**: 💰 TOTAL ~$27.10 — Claude $6.91, Codex-5.5 $15.46, Codex-mini $0.78, Cursor $2.29, Claude (subprocess) $1.66  |  Tokens: 34639k
 - **Issue**: #6095 — https://github.com/character-ai/larch/issues/6095
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -90,3 +90,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_7** (latent): reference snippets remain outside the lint scope. Concern: The lint only scans skill prompts, not `references/*.md`, so bootstrap snippets in implement references can still keep the old awk idiom.
 - **Round 1 OOS_8** (latent): implement keeps the bootstrap awk exemption. Concern: The documented lint exemption leaves the bootstrap `$0` awk one-liner in a frequently loaded skill path.
 - **Round 1 OOS_9** (nit): release/deps migrations lack an integration harness. Concern: The release Step 8 and deps `resolve.env` migrations do not have a bash or CLI harness yet, so wiring mistakes are not caught automatically.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
