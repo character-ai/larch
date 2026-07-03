@@ -1,0 +1,140 @@
+## Approach
+
+Keep the change test-only.
+
+Do not edit runtime code. If a new assertion only passes after a runtime edit, revise the assertion. The shipped behavior is the source of truth.
+
+Cover the three gaps in place:
+
+1. Step 5 difficulty propagation in the existing implement harness.
+2. Step 3 tier cap and escalation coverage in the existing design cap harness.
+3. Design panel tier shape and model-role coverage in the existing pytest successor.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/scripts/test-implement-review-token-propagation.sh
+
+Extend the existing review-core stub section.
+
+Planned edits:
+
+- Keep the current token and timing propagation checks.
+- Add a small helper that runs `python3 python/cli.py review-and-fix step5` with `--difficulty <TIER>`.
+- Use a fresh per-case `IMPLEMENT_TMPDIR` for each tier case (or delete `difficulty-rating.json` and the prior capture file between cases) so a `--difficulty` run cannot leak `difficulty-rating.json` into a later case. Run the existing default MODERATE assertion before any override cases, or keep it on its own tmpdir.
+- Teach the review-core stub to parse and record from argv:
+  - `--panel` (threshold token: `simple` for TRIVIAL, `hard` for MODERATE/HARD, per `difficulty.threshold_panel_for_tier`)
+  - `--tier`
+  - `--round-num`
+- Teach the stub to emit tier-derived KVs on its own review-core stdout — which the runtime persists to `$IMPLEMENT_TMPDIR/round-1/review-core.env` via `review_core_capture` (`round_runner.py`) — NOT on the step-5 wrapper stdout:
+  - `PANEL_SHAPE=<singles|pairs>` derived from `--tier` per `difficulty.panel_shape_for_tier` (TRIVIAL→`singles`, MODERATE/HARD→`pairs`). This is a DISTINCT concept from the `--panel simple|hard` threshold token; do not conflate the two, and do not echo `simple`/`hard` into `PANEL_SHAPE`.
+  - `PANEL_TIER=<captured tier>`
+  - `EFFECTIVE_ROUND_CAP=<tier ceiling>` — the cap KV the shipped review-core path emits (`review_core_body.py`). Do NOT assert `PANEL_ROUND_CAP`, which is `review dispatch-panel` stdout only and never appears on the step-5 review-core path.
+- Add cases (assert the threshold token from the argv capture, and the tier-derived KVs from `review-core.env`, as SEPARATE checks):
+  - `--difficulty TRIVIAL` is accepted; `CORE_CAPTURE` argv carries `--panel simple` (and `--tier TRIVIAL`); `$IMPLEMENT_TMPDIR/round-1/review-core.env` has `PANEL_SHAPE=singles`.
+  - `--difficulty MODERATE` is accepted; argv carries `--panel hard`; `review-core.env` has `PANEL_SHAPE=pairs`.
+  - `--difficulty HARD` is accepted; argv carries `--panel hard`; `review-core.env` has `PANEL_SHAPE=pairs`.
+  - Assert `PANEL_SHAPE` / `EFFECTIVE_ROUND_CAP` in `$IMPLEMENT_TMPDIR/round-1/review-core.env` (or the stub's `CORE_CAPTURE` of review-core stdout), never from `review-and-fix step5` / `step-5-review.sh` wrapper stdout: `_emit_round_kvs` (`round_runner.py`) omits `PANEL_SHAPE`/`PANEL_TIER`/cap KVs, so a wrapper-stdout assertion would fail even when propagation works correctly.
+- Preserve the existing default MODERATE coverage if it still adds signal.
+
+Avoid asserting a code-review panel shape from the threshold token alone. Assert the `--panel` threshold-token mapping (from argv) separately from the tier-derived propagated KVs (`PANEL_SHAPE`/`EFFECTIVE_ROUND_CAP` from `review-core.env`).
+
+### UPDATED: skills/design/scripts/test-step3-review-cap.sh
+
+Add tier-aware cases near the existing cap cases.
+
+
+- Add a helper to write a RESOLUTION-PERSISTED `difficulty-rating.json` under a design tmpdir. A hand-rolled record carrying only `panel_tier` is NOT persisted (`difficulty._record_resolution_is_persisted`), so `plan-review run` → `resolve_plan_review_tier` re-runs the 1:30 audit (when `resolved_once` is false) and can clobber the seeded MODERATE/HARD tier before the cap / Gate-C checks.
+  - Build the record via `larch.calibration.difficulty.build_record` + `write_record`, OR write JSON that includes the persistence markers (`audit_evaluated`, `audit_upgrade`, a non-empty `escalations` array, or `override_source=operator`) so `_record_resolution_is_persisted` is true before `run_driver`.
+  - Include `applied_tier`, `panel_tier`, tier ceiling / `round_cap`, `codex_model_role`, and `escalations`.
+- Add `HARD round 3 reachable`:
+  - Set `review-round-count.txt` to `2`.
+  - Seed a persisted HARD difficulty record with at least one escalation entry (the escalation entry itself also satisfies resolution-persistence).
+  - Prove round 3 actually launched with a REQUIRED positive observable: a fail-closed loop stub that records the dispatched `--round-num` and asserts it saw `3`. This stub capture is the primary proof.
+  - Treat `review-round-count.txt == 3` and a `plan-review/round-3` artifact as OPTIONAL secondary checks only, not sufficient alone: other non-cap paths can advance the counter without dispatching round 3. Keep `LOOP_STATUS != cap-reached` only as a further secondary guard.
+- Add `Gate-C authorized cap`:
+  - Set `review-round-count.txt` to `2` (the tier-2 cap boundary where round 3 launches only if authorized).
+  - Seed an explicit, persisted HARD record (`panel_tier`/`applied_tier` = HARD) with an EMPTY `escalations` array and `audit_evaluated=false` / `audit_upgrade=false`, so it cannot re-audit, re-resolve, or clobber the seed before the cap check, and does not fall back to the generic D5 cap-reached smoke.
+  - Use a stub that would fail if launched.
+  - Assert `LOOP_STATUS=cap-reached` and no round-3 launch artifact appears (cap stays 2 because no escalation is recorded).
+- Add `design escalation trigger`:
+  - Use `plan-review continuation`.
+  - Seed `review-round-count.txt` at `2`.
+  - Write two new accepted in-scope high-severity findings, for example structured `important` or `blocking`.
+  - Start from a persisted non-HARD tier.
+  - Assert:
+    - `PLAN_REVIEW_CONTINUE=true`
+    - `PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted`
+    - `REVIEW_ROUND_CAP=3`
+    - `PANEL_TIER=HARD`
+    - `difficulty-rating.json` contains an escalation entry.
+
+Keep the existing legacy cap-entry, cap-reached, panel-failed, tally-error, and continuation cases.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+
+Add focused pytest coverage for design panel tier behavior.
+
+
+- Name EVERY new test `test_panel_dispatch_<tier>_...` — include the substring `panel_dispatch` in the function name and avoid `usage`. The `make test-dispatch-plan-review-panel` target runs `pytest ... -k 'panel_dispatch and not usage'` (Makefile:646), so a test named otherwise is silently filtered out while the target still reports PASS. The escalated-round pruning test must also carry `panel_dispatch` in its name.
+- Add a helper that dispatches `plan-review panel-dispatch` with:
+  - both Codex and Cursor present
+  - empty dynamic scout manifest
+  - the existing waterfall stub
+  - a supplied `--tier`
+  - optional `--round-num` and `--escalated-round`
+- Parse `plan-review-slots.ndjson` with the existing `_manifest_rows`.
+- Add assertions for each tier:
+  - TRIVIAL includes Codex and Cursor rows, not Codex singles.
+  - MODERATE includes the same Codex and Cursor pair shape.
+  - HARD includes the same pair shape.
+  - Each focus area has one Codex row and one Cursor row.
+  - TRIVIAL and MODERATE Codex rows use `model_role=review`.
+  - HARD Codex rows use `model_role=default`.
+  - TRIVIAL and MODERATE stdout or waterfall args show role `review`.
+  - HARD stdout or waterfall args show role `default`.
+- Add an escalated-round pruning check that PROVES the `prune_round_num=0` early-exit, not just that dispatch ran:
+  - Seed a prune ledger that WOULD empty a round-3 panel if pruning ran (all prior-round rows marked unproductive).
+  - Dispatch with `--round-num 3 --prune-round-num 3 --escalated-round true`.
+  - Prove the short-circuit on the DESIGN `panel-dispatch` surface: assert a non-empty `plan-review-slots.ndjson` (panel not emptied), `PANEL_PRUNED_EMPTY=false` on stdout, and no `plan-review-slots.pre-prune.ndjson`. Do NOT assert `PRUNED_COUNT=0`: that KV is not emitted by `plan-review panel-dispatch` (it lives only in the `_filter_pruned` return / code-review surface), so requiring it would fail a correct design run or pressure an out-of-scope runtime change.
+  - Optionally also monkeypatch `_filter_pruned` to assert it received `prune_round_num=0`. Prefer the narrow monkeypatch if file-ledger setup would be brittle.
+
+Mirror the intent of the code-review-side tests in `python/tests/review/test_review_pipeline.py`, but do not copy code wholesale if the design dispatch surface differs.
+
+## Edge cases
+
+- Codex absent design-panel behavior already has coverage. Do not widen this issue unless the new helper reuses that path accidentally.
+- Round 3 requires both HARD cap and recorded escalation authorization. A HARD tier alone must still stop at 2.
+- Escalation-trigger findings must be new. Avoid stale applied-finding ledgers in the test tmpdir.
+- Bash stubs must fail closed when a supposedly blocked round launches.
+- Seeded difficulty records must be resolution-persisted; otherwise `resolve_plan_review_tier` re-audits and clobbers the seed before the assertion runs.
+
+## Failure modes
+
+- A stub that emits fixed `PANEL_SHAPE` can mask a propagation bug. Derive the emitted value from parsed inputs (the captured `--tier`) or use a unique sentinel per case; keep `PANEL_SHAPE` (`singles`/`pairs`) distinct from the `--panel` threshold token (`simple`/`hard`).
+- Asserting `PANEL_SHAPE`/cap KVs on step-5 wrapper stdout gives a false failure: those KVs live only in `review-core.env`. Assert against the capture path, not the wrapper.
+- A non-persisted difficulty seed is silently re-resolved by the driver, so a "HARD" cap test can pass for the wrong reason. Persist the record (`build_record`/`write_record` or persistence markers) before `run_driver`.
+- Reusing one tmpdir across tier cases can leak difficulty records or counters.
+- Asserting exact full argv order can be brittle. Assert stable flag/value pairs.
+- If any added test needs production changes, stop and correct the test plan.
+
+## Testing strategy
+
+Run the required targets:
+
+```bash
+make test-implement-review-token-propagation
+make test-step3-review-cap
+make test-dispatch-plan-review-panel
+```
+
+Naming contract for Gap 3: `make test-dispatch-plan-review-panel` runs `pytest python/tests/review/test_plan_review_panel.py -q -k 'panel_dispatch and not usage'` (Makefile:646). Every new tier/role/escalated-pruning test MUST be named `test_panel_dispatch_*` (and must not contain `usage`) or it is silently filtered out and the target still passes green.
+
+If one target fails, rerun only that target after fixing the relevant test harness.
+
+## Difficulty rationale
+
+MODERATE with high confidence. The work is test-only, but it spans bash harnesses, pytest, review-loop state, and tier/escalation contracts.
+
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 210

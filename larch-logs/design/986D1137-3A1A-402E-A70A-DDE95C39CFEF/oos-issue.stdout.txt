@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6188
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6188
+ISSUE_1_ID=4806453399
+ISSUE_1_TITLE=[OOS] Gap 1 names the step-5 bash wrapper; the plan only exercises review-and-fix step5 --difficulty
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
