@@ -1,0 +1,15 @@
+# md-to-py-XII: per-section scaffold/payload instrumentation for generated slot prompts
+
+**Context.** #5974's realized measurement shows generated prompt bodies dominate the panel tier. Design plan-review generated prompts: 9.77M bytes, 2.44M realized tokens, 390 dispatches across 31 runs, 12.6 loads per run. Implement specialists carry roughly 6x more generated-prompt bytes than agent-file bytes (reviewer-edge-cases: 3.74M prompt vs 0.61M agent). Voters: 2.57M bytes (design) plus 1.39M (implement). Aggregators: about 0.9M each side. Round XI compressed the agent-file layer only; the builder-generated scaffolding has never had a density pass. Generated prompts mix irreducible payload (plan text, diff, issue body) with fixed instruction scaffold. Without a scaffold/payload split, a density pass cannot be measured honestly.
+
+**Scope.**
+
+- Extend the per-slot instrumentation (`PanelPromptSizeRow` in `python/larch/report/tokens.py` plus the builders in `python/larch/rendering/rendering.py`, `plan_review_panel.py`, `review_dispatch_panel.py`) to record scaffold bytes and payload bytes per rendered prompt.
+- Extend `token measure-panel-cost` to rank sources by realized scaffold bytes.
+
+**Acceptance.**
+
+- Committed `panel-prompt-sizes.tsv` rows carry scaffold and payload columns for every slot kind.
+- `measure-panel-cost` ranks by scaffold bytes; `docs/run-logs.md` documents the columns.
+
+Part of md-to-py-XII (round XI: #5986). Hard enabler for the three density children, the same posture #5975 held in round XI.

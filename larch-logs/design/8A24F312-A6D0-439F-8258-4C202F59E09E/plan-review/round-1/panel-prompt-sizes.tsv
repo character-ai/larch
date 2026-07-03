@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	28158	7040		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15867	3967		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	28262	7066		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15809	3953		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	28145	7037		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15854	3964		0	0
+design Step 3	phase1	1	dyn-codex-plan-telemetry-contract	plan-review	codex	dyn-codex-plan-telemetry-contract.txt	16177	4045		0	0
+design Step 3	phase1	1	dyn-cursor-plan-telemetry-contract	plan-review	cursor	dyn-cursor-plan-telemetry-contract.txt	28468	7117		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	28100	7025		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15971	3993		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	26171	6543	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	13769	3443		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	13769	3443		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	13769	3443		0	0

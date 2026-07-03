@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6176
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6176
+ISSUE_1_ID=4806162177
+ISSUE_1_TITLE=[OOS] Specialist payload accounting omits inlined competition notice
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
