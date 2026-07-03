@@ -1,0 +1,1 @@
+Plan: clone-filter live `.bg-wait-active` markers at collection time, allow narrow marker-file diagnosis reads, enrich deny reasons with marker metadata and hook version, and add focused cross-clone regressions plus docs.

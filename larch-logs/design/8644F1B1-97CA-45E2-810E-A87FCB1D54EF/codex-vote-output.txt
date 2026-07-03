@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- production contract is already repo-cwd or fail-open on unknown identity; this is a test-fixture mismatch, not a missing feature requirement.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- marker-read exemption is already in the plan; the extra ordering and fixture detail is implementation guidance, not a necessity-gated gap.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already exercises the waiter class; this exact branch-specific regression test is useful but not required to ship the feature.
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- version breadcrumbs are already required by the plan; this extra harness case is verification polish, not a missing requirement.
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- narrowing the diagnosis verbs is a hardening tweak, not necessary for the cross-clone fix.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dropping sed and awk is safer, but the plan already intentionally scopes marker diagnosis broadly.
+FINDING_8: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- this is additional hardening beyond the plan's required one-shot marker read allowance.
