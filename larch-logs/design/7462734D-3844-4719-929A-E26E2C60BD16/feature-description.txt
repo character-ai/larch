@@ -1,0 +1,16 @@
+# md-to-py-XII: bank the #5983 savings; excise rendered gate copy from approval-gates.md
+
+**Context.** #5983 delivered the mechanism: `design render-gate` emits byte-identical Gate A/B/C copy, wired at `skills/design/references/approval-gates.md` lines 29, 85, and 197, with tests. The cost goal failed: the file shrank 1 byte (35,319 to 35,318) and design eager closure rose 4 tokens; the baseline was raised to pass lint. The added renderer-invocation and parsing-contract prose offset the moved copy. The file is 35,605 bytes on current main.
+
+**Scope.**
+
+- Remove gate copy that `design render-gate` now owns; keep `python/larch/design/design_gate_render.py` as the single source of truth.
+- Compress the renderer-contract and per-gate instruction prose.
+- No gate-semantics change; rendered strings stay byte-identical.
+
+**Acceptance.**
+
+- Design eager closure drops measurably (ballpark 1k tokens or better) with no baseline raise in the same PR.
+- `scripts/test-design-structure.sh`, gate render tests, and `skills/design/scripts/test-gate-b-apply-mode.sh` stay green.
+
+Part of md-to-py-XII (round XI: #5986). Completes the #5983 acceptance criterion that round XI missed.
