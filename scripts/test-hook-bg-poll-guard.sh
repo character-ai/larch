@@ -77,6 +77,11 @@ TIMEOUT_S=$timeout
 EOF_MARKER
 }
 
+write_keepalive() {
+  local dir="$1" clone_path="$2"
+  printf 'CLONE_PATH=%s\n' "$clone_path" >"$dir/.larch-keepalive"
+}
+
 assert_allow() {
   local out="$1" label="$2"
   if [ -z "$out" ]; then
@@ -87,15 +92,26 @@ assert_allow() {
 }
 
 assert_deny() {
-  local out="$1" label="$2"
+  local out="$1" label="$2" reason
   if printf '%s' "$out" | jq -e '.hookSpecificOutput.hookEventName == "PreToolUse" and .hookSpecificOutput.permissionDecision == "deny"' >/dev/null 2>&1; then
     pass "$label"
   else
     fail "$label (expected deny JSON, got: $out)"
+    return
   fi
-  if printf '%s' "$out" | grep -Fq "$D"; then
-    fail "$label deny reason must not echo raw tmpdir path"
-  fi
+  reason=$(printf '%s' "$out" | jq -r '.hookSpecificOutput.permissionDecisionReason // ""' 2>/dev/null || printf '')
+  case "$reason" in
+    *.bg-wait-active*) ;;
+    *) fail "$label deny reason must include the triggering .bg-wait-active marker" ;;
+  esac
+  case "$reason" in
+    *STEP=*) ;;
+    *) fail "$label deny reason must include marker STEP metadata" ;;
+  esac
+  case "$reason" in
+    *hook_version=*) ;;
+    *) fail "$label deny reason must include hook_version metadata" ;;
+  esac
 }
 
 reset_probe_counters() {
@@ -860,33 +876,86 @@ out=$(run_payload "$(payload_bash "$ordinary_step4_probe" "$D")")
 assert_deny "$out" 'Step 4 foreground probe with appended read denies'
 rm -f "$D/.completed/step-4" "$D"/bg-poll-guard-probe-denials.*.count "$MARKER"
 
-# #5925: cross-session false-positive regression. A live marker belonging to
-# an unrelated repo clone must not deny a bare $IMPLEMENT_TMPDIR/$DESIGN_TMPDIR
-# reference issued from a DIFFERENT clone's cwd — the realistic shape, since
-# real /implement and /design Bash fences run with cwd at the repo checkout,
-# never at the session tmpdir itself — while a marker whose embedded clone tag
-# matches this cwd's basename must still deny (own-session protection).
+# #5925/#6080/#6108: cross-session false-positive regression. A live marker
+# belonging to an unrelated repo clone must not deny a bare
+# $IMPLEMENT_TMPDIR/$DESIGN_TMPDIR reference, direct foreign marker-dir reads,
+# Monitor/TaskOutput, waiter, task-output, or probe-clamp paths issued from a
+# DIFFERENT clone's cwd. A marker whose identity matches this cwd must still
+# deny, including when the cwd is a subdirectory of the repo root.
 CWD_OWN="$TMP/larch-owner-clone"
-mkdir -p "$CWD_OWN"
+CWD_OWN_SUB="$CWD_OWN/sub/dir"
+CWD_FOREIGN="$TMP/larch-foreign-clone"
+mkdir -p "$CWD_OWN_SUB" "$CWD_FOREIGN"
 D_OWN="$SESSIONS/claude-implement-larch-owner-clone-abcd1234"
 D_UNRELATED="$SESSIONS/claude-design-larch-other-clone-zzzz9999"
-mkdir -p "$D_OWN/.completed" "$D_UNRELATED/.completed"
+mkdir -p "$D_OWN/.completed" "$D_OWN/plan-review" "$D_UNRELATED/.completed" "$D_UNRELATED/plan-review"
+: >"$D_OWN/plan-review/ballot.txt"
+: >"$D_UNRELATED/plan-review/ballot.txt"
 MARKER_OWN="$D_OWN/.bg-wait-active"
 MARKER_UNRELATED="$D_UNRELATED/.bg-wait-active"
+write_keepalive "$D_OWN" "$CWD_OWN"
+write_keepalive "$D_UNRELATED" "$CWD_FOREIGN"
 implement_probe_bare='ls "$IMPLEMENT_TMPDIR"'
+foreign_dir_probe="ls \"$D_UNRELATED\""
+foreign_waiter='until [ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]; do sleep 30; done'
+probe_clamp_foreign='[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ] && echo DONE || echo WAIT'
 
+rm -f "$D_UNRELATED/bg-poll-guard-denials.count" "$D_UNRELATED"/bg-poll-guard-probe-denials.*.count
 write_marker_at "$MARKER_UNRELATED" $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_OWN")")
 assert_allow "$out" '#5925: unrelated-clone live marker does not deny bare IMPLEMENT_TMPDIR reference from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_bash "$foreign_dir_probe" "$CWD_OWN")")
+assert_allow "$out" '#6108: known-foreign live marker does not deny Bash containing the foreign marker dir path'
+out=$(run_payload_auto_markers "$(payload_read "$D_UNRELATED/plan-review/ballot.txt" "$CWD_OWN")")
+assert_allow "$out" '#6108: known-foreign live marker does not deny Read under the foreign marker dir'
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny Monitor from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny TaskOutput from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
+assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny own tasks/*.output Read from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN")")
+assert_allow "$out" '#6080: unrelated-clone live marker does not deny own tasks/*.output Bash read from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_bash "$foreign_waiter" "$CWD_OWN")")
+assert_allow "$out" '#6108: known-foreign live marker does not deny the Step 3 recovery waiter shape'
+out=$(run_payload_auto_markers "$(payload_bash "$probe_clamp_foreign" "$CWD_OWN")")
+assert_allow "$out" '#6108: known-foreign sole live marker does not bind foreground probe clamp'
+if [ ! -e "$D_UNRELATED/bg-poll-guard-denials.count" ]; then
+  pass '#6108: known-foreign live marker receives no denial telemetry from another clone'
+else
+  fail '#6108: known-foreign live marker must not receive denial telemetry from another clone'
+fi
+if [ ! -e "$D_UNRELATED/bg-poll-guard-probe-denials.step-3-terminal.count" ]; then
+  pass '#6108: known-foreign sole live marker receives no probe-clamp telemetry from another clone'
+else
+  fail '#6108: known-foreign sole live marker must not receive probe-clamp telemetry from another clone'
+fi
 rm -f "$MARKER_UNRELATED"
 
 write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_OWN")")
 assert_deny "$out" '#5925: same-clone live marker still denies bare IMPLEMENT_TMPDIR reference from its own repo cwd'
+out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN_SUB")")
+assert_deny "$out" '#6108: same-clone keepalive still denies Monitor from a repo subdirectory cwd'
+out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN_SUB")")
+assert_deny "$out" '#6108: same-clone keepalive still denies TaskOutput from a repo subdirectory cwd'
+out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN_SUB")")
+assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Read from a repo subdirectory cwd'
+out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN_SUB")")
+assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Bash from a repo subdirectory cwd'
+out=$(run_payload_auto_markers "$(payload_read "$D_OWN/plan-review/ballot.txt" "$CWD_OWN")")
+assert_deny "$out" '#6108: same-clone Read under live marker dir still denies'
+out=$(run_payload_auto_markers "$(payload_read "$MARKER_OWN" "$CWD_OWN")")
+assert_allow "$out" '#6108: same-clone Read of .bg-wait-active diagnosis marker allows'
+out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\"" "$CWD_OWN")")
+assert_allow "$out" '#6108: same-clone simple Bash read of .bg-wait-active diagnosis marker allows'
+out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\" && cat tasks/foo.output" "$CWD_OWN")")
+assert_deny "$out" '#6108: mixed marker diagnosis plus progress artifact still denies'
 rm -f "$MARKER_OWN"
 
-# Hyphenated clone tags must still correlate correctly: the tag segment may
-# itself contain "-", so parsing must not split naively on every hyphen.
+# Hyphenated clone tags must still correlate correctly when keepalive identity is
+# unavailable: the tag segment may itself contain "-", so parsing must not split
+# naively on every hyphen.
 CWD_HYPHEN="$TMP/my-repo-clone"
 mkdir -p "$CWD_HYPHEN"
 D_HYPHEN="$SESSIONS/claude-implement-my-repo-clone-wxyz7890"
@@ -894,7 +963,7 @@ mkdir -p "$D_HYPHEN/.completed"
 MARKER_HYPHEN="$D_HYPHEN/.bg-wait-active"
 write_marker_at "$MARKER_HYPHEN" $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload_auto_markers "$(payload_bash "$implement_probe_bare" "$CWD_HYPHEN")")
-assert_deny "$out" '#5925: hyphenated clone tag still correlates and denies from its own repo cwd'
+assert_deny "$out" '#5925: hyphenated clone tag fallback still correlates and denies from its own repo cwd'
 rm -f "$MARKER_HYPHEN"
 
 # The DESIGN_TMPDIR shape (not just IMPLEMENT_TMPDIR) must still deny from its
@@ -904,47 +973,20 @@ mkdir -p "$CWD_DESIGN_OWN"
 D_DESIGN_OWN="$SESSIONS/claude-design-larch-design-clone-mnop4567"
 mkdir -p "$D_DESIGN_OWN/.completed"
 MARKER_DESIGN_OWN="$D_DESIGN_OWN/.bg-wait-active"
+write_keepalive "$D_DESIGN_OWN" "$CWD_DESIGN_OWN"
 write_marker_at "$MARKER_DESIGN_OWN" $$ "$(date +%s)" 21600 design-step3-review
 out=$(run_payload_auto_markers "$(payload_bash "$design_tmpdir_ls" "$CWD_DESIGN_OWN")")
 assert_deny "$out" '#5925: same-clone live design marker denies bare DESIGN_TMPDIR reference from its own repo cwd'
 rm -f "$MARKER_DESIGN_OWN"
 
-# Missing/empty cwd cannot establish plausibility for the bare-reference
-# match (no cwd-equals-dir signal, no clone tag to compare), so it fails
-# open rather than denying — consistent with this hook's documented
-# fail-open-on-uncertain-input posture.
+# Missing/empty cwd cannot establish plausibility for the bare-reference match
+# (no cwd-equals-dir signal, no clone tag to compare), so it fails open rather
+# than denying — consistent with this hook's documented fail-open-on-uncertain
+# input posture.
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 out=$(printf '%s' "$(jq -cn --arg cmd "$implement_probe_bare" '{tool_name:"Bash",tool_input:{command:$cmd},cwd:""}')" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 assert_allow "$out" '#5925: empty cwd cannot establish plausibility, bare IMPLEMENT_TMPDIR reference allows'
 rm -f "$MARKER"
-
-# #5925 follow-up (cross-clone Monitor/TaskOutput + task-output Read): the
-# unconditional Monitor/TaskOutput deny and the ungated path_is_task_output Read
-# match denied a session's OWN just-completed bg task output whenever ANY other
-# clone had a live wait, stalling parallel runs. Both are now clone-scoped like the
-# Bash-probe paths: a foreign clone's live marker no longer blocks this session,
-# while the owning clone's live marker still does.
-write_marker_at "$MARKER_UNRELATED" $$ "$(date +%s)" 21600 design-step3-review
-out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
-assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny Monitor from a different clone cwd'
-out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
-assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny TaskOutput from a different clone cwd'
-out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
-assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny own tasks/*.output Read from a different clone cwd'
-out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN")")
-assert_allow "$out" '#6080: unrelated-clone live marker does not deny own tasks/*.output Bash read from a different clone cwd'
-rm -f "$MARKER_UNRELATED"
-
-write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
-out=$(run_payload_auto_markers "$(payload_monitor "$CWD_OWN")")
-assert_deny "$out" '#5925 follow-up: same-clone live marker still denies Monitor from its own repo cwd'
-out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
-assert_deny "$out" '#5925 follow-up: same-clone live marker still denies TaskOutput from its own repo cwd'
-out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
-assert_deny "$out" '#5925 follow-up: same-clone live marker still denies own tasks/*.output Read from its own repo cwd'
-out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN")")
-assert_deny "$out" '#6080: same-clone live marker still denies own tasks/*.output Bash read from its own repo cwd'
-rm -f "$MARKER_OWN"
 
 # No marker: Monitor and TaskOutput are allowed.
 rm -f "$MARKER"

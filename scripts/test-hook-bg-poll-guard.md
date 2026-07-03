@@ -18,8 +18,11 @@ Offline regression harness for `scripts/hook-bg-poll-guard.sh`.
 - Pins the Step 5c release split: `.completed/step-5c` does not release the marker, and `.completed/step-5c-terminal` does.
 - Covers marker denial, terminal-sentinel release, and symlink-sentinel refusal for `design-step4-tail`, `implement-step5-resume`, `implement-step5-self-review`, `implement-step6-checks`, and `implement-step7a`; those implement steps do not gain the Step 3/5 foreground-probe carve-out.
 - Pins the Step 4 foreground probe carve-out for `.completed/step-4`, including repeated-probe clamp behavior and denial of non-Step-4 terminal probes while the Step 4 tail marker is live.
-- Covers the #5925/#6080 cross-session fix: a live marker belonging to an unrelated repo clone (different embedded clone tag) does not deny a bare `$IMPLEMENT_TMPDIR`/`$DESIGN_TMPDIR` reference or Bash/Read `tasks/*.output` read from a different clone's cwd, a marker whose embedded clone tag matches the probing cwd's basename still denies (including hyphenated clone tags and both the `IMPLEMENT_TMPDIR` and `DESIGN_TMPDIR` shapes), and an empty/missing `cwd` fails open rather than denying.
-- Uses a temporary marker path supplied through `LARCH_BG_POLL_GUARD_MARKER`; it does not depend on a real Claude Code session.
+- Covers the #5925/#6080/#6108 cross-session fix: collection-time `.larch-keepalive` `CLONE_PATH` filtering drops known-foreign markers before Bash, Read, Monitor, TaskOutput, waiter, and foreground-probe clamp paths can deny. Foreign markers receive no denial or probe-clamp telemetry, while same-clone keepalive markers still deny from repo-root and repo-subdirectory cwds.
+- Pins the fallback clone-tag heuristic when keepalive identity is unavailable, including hyphenated clone tags and both the `IMPLEMENT_TMPDIR` and `DESIGN_TMPDIR` shapes, and keeps empty/missing `cwd` fail-open behavior for bare tmpdir-variable references.
+- Verifies `.bg-wait-active` diagnosis reads are allowed through both `Read` and simple Bash, while mixed marker-plus-progress-artifact commands still deny.
+- Verifies every deny reason is valid JSON and includes `.bg-wait-active`, `STEP=...`, and `hook_version=...` metadata.
+- Uses temporary marker paths supplied through both `LARCH_BG_POLL_GUARD_MARKER` and automatic session discovery; it does not depend on a real Claude Code session.
 
 ## Harness
 
