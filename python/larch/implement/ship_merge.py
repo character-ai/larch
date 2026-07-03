@@ -21,7 +21,6 @@ from larch.report import run_logs
 from larch.implement.ship_state import _write_ship_state, _breadcrumb
 from larch.implement.ship_result import ShipResult
 from larch.implement.ship_pr import _write_terminal_state, _publish_post_pr_terminal_snapshot
-from larch.implement.ship_guidelines import _invalidate_guidelines_note
 from larch.implement.ship_guidelines import _pin_or_invalidate_guidelines_note
 
 if TYPE_CHECKING:
@@ -219,15 +218,13 @@ def _ship_rebase_phase(
         raise
     rebase_count += 1
     head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
-    if result.rebased:
-        _ = _invalidate_guidelines_note(working.tmpdir)
-    else:
-        _ = _pin_or_invalidate_guidelines_note(
-            implement_tmpdir=working.tmpdir,
-            head_sha=head_sha,
-            base_ref=f"{base_remote}/{base_ref}",
-            repo_root=cwd,
-        )
+    _ = result.rebased
+    _ = _pin_or_invalidate_guidelines_note(
+        implement_tmpdir=working.tmpdir,
+        head_sha=head_sha,
+        base_ref=f"{base_remote}/{base_ref}",
+        repo_root=cwd,
+    )
     return ShipRebasePhaseResult(rebase_count)
 
 
@@ -260,15 +257,13 @@ def _ship_phase14_rebase(
         phase14_flag.unlink(missing_ok=True)
         rebase_count += 1
         head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
-        if result.rebased:
-            _ = _invalidate_guidelines_note(working.tmpdir)
-        else:
-            _ = _pin_or_invalidate_guidelines_note(
-                implement_tmpdir=working.tmpdir,
-                head_sha=head_sha,
-                base_ref=f"{base_remote}/{base_ref}",
-                repo_root=cwd,
-            )
+        _ = result.rebased
+        _ = _pin_or_invalidate_guidelines_note(
+            implement_tmpdir=working.tmpdir,
+            head_sha=head_sha,
+            base_ref=f"{base_remote}/{base_ref}",
+            repo_root=cwd,
+        )
         _write_ship_state(
             working,
             phase="ci-initial",

@@ -62,6 +62,17 @@ def _pin_guidelines_note_text(
     return note
 
 
+def _successful_rebase_result(*, rebased: bool = False) -> ship.rebase.RebaseResult:
+    return ship.rebase.RebaseResult(
+        outcome=Outcome.OK,
+        rebased=rebased,
+        pushed=True,
+        new_version=None,
+        attempts=1,
+        detail="",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     real_flush = ship.run_logs.flush_logs_pre
@@ -207,7 +218,7 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
     assert _read_state(state)["PHASE"] == "rebase"
 
 
-def test_ship_rebase_phase_rebased_invalidates_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "ship-pr-state.sh"
     ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
 
@@ -236,14 +247,14 @@ def test_ship_rebase_phase_rebased_invalidates_guidelines_note(tmp_path: Path, m
             detail="",
         )
 
-    invalidate_calls: list[str] = []
+    pin_calls: list[dict[str, object]] = []
 
-    def fake_invalidate(implement_tmpdir: str) -> bool:
-        invalidate_calls.append(implement_tmpdir)
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
         return False
 
-    def fail_pin_or_invalidate(**_kwargs: object) -> bool:
-        raise AssertionError("pin helper should not be called after a rebased rebase")
+    def fail_invalidate(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalidate helper should not be called after a clean rebase")
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
@@ -251,12 +262,12 @@ def test_ship_rebase_phase_rebased_invalidates_guidelines_note(tmp_path: Path, m
     monkeypatch.setitem(
         ship._ship_rebase_phase.__globals__,
         "_invalidate_guidelines_note",
-        fake_invalidate,
+        fail_invalidate,
     )
     monkeypatch.setitem(
         ship._ship_rebase_phase.__globals__,
         "_pin_or_invalidate_guidelines_note",
-        fail_pin_or_invalidate,
+        fake_pin_or_invalidate,
     )
 
     result = ship._ship_rebase_phase(
@@ -274,7 +285,14 @@ def test_ship_rebase_phase_rebased_invalidates_guidelines_note(tmp_path: Path, m
 
     assert result.terminal is None
     assert result.rebase_count == 5
-    assert invalidate_calls == [str(tmp_path)]
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "post-rebase-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
     assert _read_state(state)["PHASE"] == "rebase"
 
 
@@ -358,7 +376,7 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
     assert data["LAST_MONITORED_HEAD"] == "abc123"
 
 
-def test_ship_phase14_rebase_rebased_invalidates_guidelines_note(
+def test_ship_phase14_rebase_rebased_retains_guidelines_note(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -395,26 +413,26 @@ def test_ship_phase14_rebase_rebased_invalidates_guidelines_note(
             detail="",
         )
 
-    invalidate_calls: list[str] = []
+    pin_calls: list[dict[str, object]] = []
 
-    def fake_invalidate(implement_tmpdir: str) -> bool:
-        invalidate_calls.append(implement_tmpdir)
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
         return False
 
-    def fail_pin_or_invalidate(**_kwargs: object) -> bool:
-        raise AssertionError("pin helper should not be called after a rebased rebase")
+    def fail_invalidate(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalidate helper should not be called after a clean rebase")
 
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "phase14-head")
     monkeypatch.setitem(
         ship._ship_phase14_rebase.__globals__,
         "_invalidate_guidelines_note",
-        fake_invalidate,
+        fail_invalidate,
     )
     monkeypatch.setitem(
         ship._ship_phase14_rebase.__globals__,
         "_pin_or_invalidate_guidelines_note",
-        fail_pin_or_invalidate,
+        fake_pin_or_invalidate,
     )
 
     new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
@@ -433,7 +451,14 @@ def test_ship_phase14_rebase_rebased_invalidates_guidelines_note(
 
     data = _read_state(state)
     assert new_count == 2
-    assert invalidate_calls == [str(tmp_path)]
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "phase14-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
@@ -528,7 +553,7 @@ def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
         "merge_pr",
         lambda *_a, **_k: type("MR", (), {"result": merge_results.pop(0), "error": ""})(),
     )
-    monkeypatch.setattr(ship.rebase, "rebase_and_push", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", lambda *_a, **_k: _successful_rebase_result())
     monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -2361,8 +2386,9 @@ def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
     _open_pr_merge_loop_stubs(monkeypatch)
     rebase_calls: list[bool] = []
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         rebase_calls.append(True)
+        return _successful_rebase_result()
 
     monitor_calls: list[bool] = []
 
@@ -2566,8 +2592,9 @@ def test_pre_push_handoff_without_flag_recreates_flag_and_resumes(
     _open_pr_merge_loop_stubs(monkeypatch)
     rebase_calls: list[bool] = []
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         rebase_calls.append(True)
+        return _successful_rebase_result()
 
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
     monkeypatch.setattr(
@@ -3997,8 +4024,9 @@ def test_main_advanced_merge_result_rebases_before_retry(
         )(),
     )
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         order.append("rebase")
+        return _successful_rebase_result()
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
         result = merge_results.pop(0)
