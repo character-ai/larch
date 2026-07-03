@@ -1,7 +1,7 @@
 ---
 name: release
 description: "Use when cutting a larch release: collect merged PRs, classify semver bump, open and merge the version PR, tag, publish GitHub Release, and promote Latest."
-argument-hint: "[--dry-run] [--approve|-a] [--bump major|minor|patch] [--repo OWNER/REPO]"
+argument-hint: "[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]"
 allowed-tools: AskUserQuestion, Bash, Skill
 disable-model-invocation: true
 ---
@@ -17,7 +17,7 @@ Parse from `$ARGUMENTS` before any Bash helper runs. All boolean flags default t
 | Flag | Purpose |
 |------|---------|
 | `--dry-run` | Compute and preview only; exit before any write (no branch, PR, merge, tag, Release, promote, or `/upgrade-larch`) |
-| `--approve`, `-a` | Skip Step 4 approval only when `PR_COUNT>0`, acting as Confirm |
+| `--skip-approve`, `-s` | Skip Step 4 approval only when `PR_COUNT>0`, acting as Confirm |
 | `--bump major\|minor\|patch` | Override the aggregate bump type from `release prepare` |
 | `--repo OWNER/REPO` | Hub repo for `gh` (default: `python/cli.py gh resolve-repo`, falling back to `character-ai/larch`) |
 
@@ -40,14 +40,23 @@ On failure, print a clear operator-visible error and stop.
 
 ```bash
 dry_run=false
-approve=false
+skip_approve=false
+retired_flag=false
 for _release_arg in $ARGUMENTS; do
   case "$_release_arg" in
     --dry-run) dry_run=true ;;
-    --approve|-a) approve=true ;;
+    --skip-approve|-s) skip_approve=true ;;
+    --approve|-a)
+      printf '%s\n' "**❌ /release: --approve and -a are retired. Use --skip-approve or -s.**" >&2
+      retired_flag=true
+      ;;
   esac
 done
 unset _release_arg
+if [ "$retired_flag" = "true" ]; then
+  exit 2
+fi
+unset retired_flag
 if [ "$dry_run" != "true" ]; then
   set +e
   sync_out=$(git fetch origin main --quiet 2>&1)
@@ -129,11 +138,15 @@ cp "$REDACTED_NOTES_FILE" "$RECOVERY_NOTES_FILE"
 
 ## Step 4 — Operator confirm
 
-On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larch`).
+Branch in this order:
 
-If `approve=true` and `PR_COUNT>0`, skip `AskUserQuestion` and proceed as if the operator selected **Confirm**. If `PR_COUNT=0`, do not let `--approve` auto-confirm. Show the prompt and preserve the default-to-Cancel safety behavior unless the operator explicitly chooses Confirm.
+1. On **`--dry-run`**: print the preview and **exit** (no writes, no `/upgrade-larch`).
+2. If `skip_approve=true` and `PR_COUNT>0`, skip `AskUserQuestion` and proceed as if the operator selected **Confirm**.
+3. Otherwise, fire `AskUserQuestion`, including when `PR_COUNT=0` with `--skip-approve`.
 
-Unless `--dry-run`, and unless `approve=true` with `PR_COUNT>0`: `AskUserQuestion` with `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a preview from `"$REDACTED_NOTES_FILE"`:
+When `PR_COUNT=0`, do not let `--skip-approve` auto-confirm. Show the prompt and preserve the default-to-Cancel safety behavior unless the operator explicitly chooses Confirm.
+
+The `AskUserQuestion` includes `NEW_VERSION`, `BUMP_TYPE`, `PR_COUNT`, and a preview from `"$REDACTED_NOTES_FILE"`:
 
 - **Confirm**
 - **Change bump (major/minor/patch)** — re-run prepare with the chosen override, then re-confirm

@@ -1,0 +1,17 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_upgrade": null,
+  "confidence": "high",
+  "design_tier": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Touches a dev skill parser plus public docs while preserving confirmation safety semantics and retired-flag behavior.",
+  "schema_version": 1
+}

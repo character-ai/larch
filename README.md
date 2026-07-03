@@ -221,7 +221,7 @@ Dev-only: not shipped with the plugin; runnable only inside the larch source tre
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#release"><code>/release</code></a></td>
-      <td><code>[--dry-run] [--approve|-a] [--bump major|minor|patch] [--repo OWNER/REPO]</code></td>
+      <td><code>[--dry-run] [--skip-approve|-s] [--bump major|minor|patch] [--repo OWNER/REPO]</code></td>
     </tr>
     <tr><td colspan="2">Operator-run release cut (model cannot auto-invoke): gather merged PRs since the last Latest release, generate notes, decide the semver bump, open and merge the <code>plugin.json</code> bump PR, tag and create the GitHub Release, promote to Latest, then run <code>/upgrade-larch</code>.</td></tr>
   </tbody>
