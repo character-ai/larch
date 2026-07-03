@@ -159,6 +159,15 @@ def test_design_parse_flags_cli_verbal_tail_keeps_flag_like_tokens_literal() -> 
     assert kvs["NO_DEDUP_REQUESTED"] == "false"
 
 
+def test_design_parse_flags_cli_leading_double_dash_keeps_flags_literal() -> None:
+    result = _run_parse("--", "-s", "123")
+    assert result.returncode == 0
+    kvs = _stdout_kvs(result.stdout)
+    assert kvs["POSITIONAL_KIND"] == "verbal"
+    assert kvs["POSITIONAL_VALUE"] == "-s 123"
+    assert kvs["SKIP_APPROVE_REQUESTED"] == "false"
+
+
 def test_design_parse_argv_cli_is_not_registered() -> None:
     result = subprocess.run(
         [sys.executable, str(CLI), "design", "parse-argv", "--brainstorm", "123"],
