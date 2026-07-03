@@ -1,14 +1,16 @@
-## /implement run 44AAC654-D79D-442D-B42D-FB04A09ADEAD — shipping
+## /implement run 44AAC654-D79D-442D-B42D-FB04A09ADEAD — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:32:15
 - **Cost**: 💰 TOTAL ~$21.21 — Claude $4.42, Codex-5.5 $12.71, Codex-mini $0.59, Cursor $2.29, Claude (subprocess) $1.20  |  Tokens: 29987k
 - **Issue**: #6175 — https://github.com/character-ai/larch/issues/6175
+- **PR**: #6208 — https://github.com/character-ai/larch/pull/6208
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +671/-108, larch-logs +740/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
