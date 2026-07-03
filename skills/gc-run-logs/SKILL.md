@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # gc-run-logs
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Age-based retention policy for committed larch run-log directories.
 
 Run dirs in `larch-logs/design/`, `larch-logs/implement/`, and `larch-logs/review/` whose run date is older than the threshold are either **slimmed** (round-level forensic files removed, consumer-core keep set preserved) or **deleted** (entire dir removed; content remains in git history).

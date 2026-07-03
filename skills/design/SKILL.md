@@ -69,7 +69,7 @@ Before invoking `/design`, internalize these questions; they guide drafting, rev
 ## Anti-patterns
 
 Consolidated NEVER rules collected from the procedural steps below. Each rule states the WHY so edits can respect the original constraint. Inline step-local mentions remain where they carry load-bearing context.
-Read `skills/design/references/readability-style.md` as the single source of style truth before composing user-facing `/design` prose.
+**MANDATORY — READ ENTIRE FILE before composing user-facing `/design` prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 1. **NEVER bypass folded Step 2a sentinel prep**. **Why:** Step 2b requires the sentinel artifacts before drafting. **How to apply:** the Step 2b drafter wrapper always runs folded Step 2a prep and writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, the empty legacy placeholder `dialectic-resolutions.md`, and `.completed/step-2a` before proceeding to plan drafting.
 
@@ -312,7 +312,7 @@ Read `$DESIGN_TMPDIR/design-outline.md` only when non-empty and `.outline-approv
 Read non-empty `$DESIGN_TMPDIR/brainstorm.md`; treat it as additive ideation only when it does not conflict with Round 1 refusals.
 Call `python/cli.py architectural-guidelines read` or the in-process helper. If `present`, fold parsed aspirational goals from helper output only; if `absent` or `invalid`, omit guidelines.
 Produce a plan that includes:
-Read `skills/design/references/readability-style.md` before drafting the implementation plan.
+**MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 - **Files to modify/create**: Use one section with per-file headings. Each heading names exactly one path and starts with `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:`; use `### MAY_UPDATE:` for conditional scope. At least one ASCII space must follow `###`; extra space before `:` is tolerated. Concatenated forms like `###NEW:` are not scout / plan-size headings.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.

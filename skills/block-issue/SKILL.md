@@ -7,6 +7,8 @@ allowed-tools: Bash
 
 # block-issue
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Express a native GitHub blocking relationship: issue ISSUE_A is blocked by issue ISSUE_B.
 
 ## Arguments

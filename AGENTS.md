@@ -45,14 +45,12 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 
 ## Output Style
 
-**Scope.** Applies only to human-facing prose: chat answers, PR descriptions, issue bodies, design notes, summaries, README, and docs prose.
+**Source of truth.** Use `skills/shared/readability-style.md` for user-facing prose across larch skills, docs, chat answers, PR descriptions, issue bodies, design notes, and summaries.
 
-- Explicit output formats take precedence. Do not apply these rules to machine-parsed surfaces: skill output templates, `KEY=value` stdout grammars, manifests, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` and `diff_lines:`), vote tables, structured findings, commit-message conventions.
-- Code and comments keep surrounding style.
-- Applies to new prose only. Do not restyle existing text. Every changed line traces to the task.
-- Precedence: explicit format contracts, exact meaning, then these style rules.
-
-**Style rules.** Lead with the answer. Keep one idea per short sentence. Prefer bullets. **Bold** scan keys. Use short headers when helpful. In chat, confirm or correct up front. Stop early. Never use em dashes. Use periods, commas, colons, or semicolons instead. Avoid walls of prose, over-hedging, and passive filler. Use concrete nouns and verbs.
+- Explicit output formats take precedence. Preserve machine-parsed structure: `KEY=value` stdout grammars, manifest JSON, plan grammar (`### NEW:` / `### UPDATED:` / `### REWRITTEN:` / `### MAY_UPDATE:` and `diff_lines:`), vote-table columns, and commit-message conventions.
+- Prose inside templates still follows the shared style when the template emits user-facing text.
+- Code and comments keep surrounding style. Applies to new prose only. Every changed line traces to the task.
+- In chat, confirm or correct up front. Stop early.
 
 ## Conventions
 

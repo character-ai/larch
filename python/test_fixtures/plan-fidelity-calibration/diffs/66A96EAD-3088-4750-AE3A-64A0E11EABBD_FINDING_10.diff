@@ -323,7 +323,7 @@ index 3d185bccb..e84889b54 100644
          "",
          "Readability style (trusted):",
      ]
-     readability = plugin_root / "skills" / "design" / "references" / "readability-style.md"
+     readability = plugin_root / "skills" / "shared" / "readability-style.md"
      if readability.is_file():
          lines.append(readability.read_text(encoding="utf-8", errors="replace").rstrip("\n"))
      lines.extend(
@@ -2098,7 +2098,7 @@ index dba9cb29d..93b5432c6 100644
  
  Produce a plan that includes:
  
- **MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `skills/design/references/readability-style.md`.**
+ **MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `skills/shared/readability-style.md`.**
  
  - **Files to modify/create**: Under a single **Files to modify/create** (or equivalent) section, use **per-file subsections** with headings exactly one path each: `### NEW:` for new files, `### UPDATED:` for modified files, `### REWRITTEN:` for files rewritten in place, and `### MAY_UPDATE:` for optional file scope. Conditional sections should use `### MAY_UPDATE:` instead of `### UPDATED:`. Each heading names **exactly one** file path (backticked path token); the description follows on subsequent lines. Heading parsing requires **at least one ASCII whitespace after `###` before the keyword**, and tolerates extra whitespace before `:` (per the scout regex in `python/cli.py scout plan-archetypes` and `python/cli.py plan check-size`). Concatenated forms such as `###NEW:` are **not** headings for scout / plan-size counts.
  - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.

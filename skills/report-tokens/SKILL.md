@@ -6,6 +6,8 @@ allowed-tools: Bash, Read
 
 # Report Tokens
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Analyze token costs from committed larch run logs for the selected skill (`--skill=design|implement`) in the current git repository. The CLI delegates to `${CLAUDE_PLUGIN_ROOT}/python/larch/report/report_tokens_cli.py`, which scans `larch-logs/<skill>/*/`, reads the skill-specific token report JSON files, prices each run through `python/larch/report/report_tokens_cost.py`, prints a markdown analysis, writes a durable NDJSON cache snapshot, optionally generates plots, and optionally posts a GitHub `[Implement Analysis Report]` or `[Design Analysis Report]` issue.
 
 For `--skill=implement`, reports carry no workflow dimension and graph/per-day trend output aggregates all runs into one `All runs` series/table set. For `--skill=design`, one aggregate report is generated. The filed issue intentionally omits raw per-issue JSON and actual-spend reconciliation unless `LARCH_REPORT_TOKENS_POST_ACTUAL_SPEND=1` is set.

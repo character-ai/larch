@@ -187,7 +187,7 @@ If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.m
 
 ```markdown
 ### [Plan Review] <Reviewer Name>
-**Finding**: <thorough description of the finding — include what aspect of the plan the reviewer questioned, the specific concern raised, and what revision they suggested. Must be detailed enough to serve as an actionable TODO item if later prioritized. Do NOT use a terse one-liner — a reader who has never seen the original review must be able to understand the concern and act on it.>
+**Finding**: <actionable description of the finding — include what aspect of the plan the reviewer questioned, the specific concern raised, and what revision they suggested. Use short sentences and bullets when helpful. Detail means enough content for a reader who never saw the original review to understand and act on the concern, not extra length.>
 **Reason not implemented**: <complete justification for why this finding was not accepted — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current plan is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
 ```
 

@@ -7,6 +7,8 @@ allowed-tools: Bash, Skill
 
 # Alias Skill
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 This skill follows the Process pattern: numbered steps, checkpointed delegation, fail-closed verification.
 
 Create an alias skill that forwards to an existing larch skill with preset flags. Delegates to `/implement` for the full pipeline (implementation, code review, PR), then verifies the artifact landed on disk.

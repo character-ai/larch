@@ -7,6 +7,8 @@ allowed-tools: Bash
 
 # Set Up Forked Open Source Repo
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Configure the current git checkout for contributing through a personal fork:
 `origin` becomes the fork, `upstream` becomes the canonical repository,
 upstream pushes are disabled, and `main` tracks `origin/main`.

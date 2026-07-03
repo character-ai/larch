@@ -6,6 +6,8 @@
 
 **When to load**: MANDATORY immediately before applying OOS triage policy, the `Pre-existing Code Issues` dual-write gate, or filing OOS GitHub issues. Do not load outside those call sites.
 
+**MANDATORY — READ ENTIRE FILE before composing execution issue descriptions, OOS descriptions, or manual filing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 ## Follow-up Work Principle
 
 Durable, actionable follow-up identified during design / implementation / review is tracked through one of three paths, selected by the OOS triage policy below: (a) folded inline into the current PR's commits (no separate GitHub issue), (b) auto-filed via Step 9a.1 as an OOS GitHub issue, or (c) manually filed via `/issue`. The committed `larch-logs/implement/<RUN_ID>/execution-issues.ndjson` batch is the durable store for execution content for paths (b) and (c). Path (a)'s audit trail is the union of the commit message, the relevant `execution-issues.md` category entry (`Pre-existing Code Issues` for main-agent-discovered defects per the dual-write rule below; `Warnings` for Step 5.5 inline-triage breadcrumbs and for external `oos_observations[]` materialization breadcrumbs — `python/cli.py oos materialize-manifest` runs at Step 2 complete and again at ship pre-trigger, not by prompt-side manifest parsing at Step 9a.1), and — when `$ISSUE_NUMBER` is set — the terminal summary comment which points readers at the committed run log. Filing-path details:

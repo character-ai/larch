@@ -464,6 +464,7 @@ _DIRECT_TARGET_RULES: Final[tuple[tuple[tuple[str, ...], tuple[str, ...], bool, 
     (("skills/implement/SKILL.md",), ("test-implement-structure", "test-render-cost-line-callsites"), False, False),
     (("skills/*/SKILL.md", "skills/*/references/*.md"), ("test-references-headers",), False, False),
     (("scripts/lint-readability-preamble.tsv", "scripts/lint-readability-preamble.tsv.md"), ("test-lint-readability-preamble",), False, False),
+    (("python/larch/lint/lint_readability_preamble.py", "python/tests/lint/test_lint_readability_preamble.py", "skills/shared/readability-style.md", "skills/*/SKILL.md", ".claude/skills/*/SKILL.md"), ("test-lint-readability-preamble", "test-design-structure", "test-brainstorm-prompts"), False, False),
     (
         (
             "python/larch/lint/lint_bg_wait_coverage.py",

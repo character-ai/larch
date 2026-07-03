@@ -4,6 +4,8 @@ description: "Use when upgrading the larch plugin to the latest stable version. 
 allowed-tools: Bash
 ---
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Upgrade the larch plugin to the latest stable version. This skill is for the standard sparse GitHub install (`claude plugin marketplace add character-ai/larch --sparse .claude-plugin agents docs hooks python scripts skills`). Contributors using a local checkout (`claude --plugin-dir .` or `claude plugin marketplace add .`) should `git pull` instead.
 
 ## Flags

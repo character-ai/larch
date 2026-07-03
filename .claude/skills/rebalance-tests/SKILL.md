@@ -6,6 +6,8 @@ allowed-tools: Bash, Read, Write
 
 # /rebalance-tests
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+
 **Dev-only operator skill** (`.claude/skills/` — not exported by the plugin).
 
 Automates the procedure documented in `docs/linting.md §Refreshing harness shard balance`

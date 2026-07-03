@@ -1,6 +1,6 @@
 # Discussion Rounds Reference
 
-**MANDATORY — READ ENTIRE FILE before composing Step 1c clarifying questions, Step 1d discussion-round writes, or the post-plan Round 2 sub-round body: `skills/design/references/readability-style.md`.**
+**MANDATORY — READ ENTIRE FILE before composing Step 1c clarifying questions, Step 1d discussion-round writes, or the post-plan Round 2 sub-round body: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 **Consumer**: `/design` Steps 1c, 1d, and the Step 1e Gate A post-plan discussion body reached from Gate B(c) / Gate C(b).
 

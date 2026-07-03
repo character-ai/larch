@@ -7,6 +7,8 @@ allowed-tools: AskUserQuestion, Bash, Read, Edit, Write, Grep, Glob, Agent, Task
 
 # Implement Skill
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 End-to-end: fetch the vetted `larch:plan`, materialize artifacts, implement, validate, commit, review, ship the PR, monitor CI, and clean up. With `--merge`: also run CI+rebase+merge, delete the local branch, verify main, and have the active Step 8+ driver flush `run-log manifest` to `status=done` plus `python/cli.py final-report write` before exit. The tmpdir/tracking summary may reflect `MERGE_RESULT` without any post-merge `git commit` (NEVER #16). Step 18 still owns teardown, token/timing refresh, and terminal safety nets.
 
 **Protocol Execution Directive.** You are the `/implement` orchestrator. After flag parsing and mutual-exclusion checks, your FIRST external actions MUST be: (1) when `forked_target=true`, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" admission fork-env` once and parse `UPSTREAM_REPO` plus sibling fork KV lines from stdout; (2) run exactly one `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" implement preflight` call as the sole mechanical surface for Preflight items 1-3, passing `--repo "$UPSTREAM_REPO"` when forked; (3) after prompt-side Preflight judgment, run Step 0 unchanged through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode initial`. Prompt-side judgment starts only after helper exit `0`. Item 4 is the main-agent plan-adequacy audit when `force_requested=false`; force skips it and proceeds to item 6. Item 6 remains the semantic materiality judgment after `AUDIT=pass` or force skip. When `forked_target=true` and `UPSTREAM_REPO` is already set from (1), **do not** re-run `python/cli.py admission fork-env`; reuse the fork metadata to avoid a second bootstrap tmpdir.
@@ -524,12 +526,14 @@ Note: `review-and-fix CLI` runs `flush_review_batches` after each successful `_i
 
 ### Track Rejected Code Review Findings
 
+**MANDATORY — READ ENTIRE FILE before composing rejected finding text or reasons not implemented: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 `review-and-fix CLI` copies rejected in-scope findings from the latest round to `$IMPLEMENT_TMPDIR/rejected-findings.md`. When coder output marks `SKIPPED:` or the round fails, reviewers can still reject findings; log them there for Step 16 instead of reprinting full findings inline.
 
 ```markdown
 ### [Code Review] <Reviewer Name>
-**Finding**: <thorough description of the finding — include the specific file(s) and line(s) affected, what the reviewer identified as the issue, and what change they suggested. Must be detailed enough to serve as an actionable TODO item if later prioritized. Do NOT use a terse one-liner — a reader who has never seen the original review must be able to understand the issue and act on it.>
-**Reason not implemented**: <complete justification for why this finding was not addressed — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current code is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
+**Finding**: <actionable description of the finding — include the specific file(s) and line(s) affected, what the reviewer identified as the issue, and what change they suggested. Use short sentences and bullets when helpful. Detail means enough content for a reader who never saw the original review to understand and act on the issue, not extra length.>
+**Reason not implemented**: <clear justification for why this finding was not addressed — include the specific technical reasoning, relevant project conventions or design decisions, and why the current code is acceptable despite the finding. Preserve important details, but keep sentences short.>
 ```
 
 <!-- step:6 — Relevant Checks (second pass) -->

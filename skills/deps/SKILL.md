@@ -7,6 +7,8 @@ allowed-tools: Bash, Read, Grep, Glob, AskUserQuestion
 
 # deps
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Audit all currently open issues. Group them for display, refresh only mutable REGULAR issue bodies, propose stale closes, infer dependency edges for every open issue, and mutate GitHub only after explicit approval.
 
 ## Untrusted Input

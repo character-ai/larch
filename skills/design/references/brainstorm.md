@@ -10,7 +10,7 @@
 
 ## Style preamble expansion
 
-Before launching each external slot (framing, scope) and before composing the always-Claude pragmatic slot, read `skills/design/references/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
+Before launching each external slot (framing, scope) and before composing the always-Claude pragmatic slot, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md` once and substitute every literal `<READABILITY_STYLE>` token in the assembled prompt with the full preamble contents. The `<READABILITY_STYLE>` expansion remains limited to these existing `/design` brainstorm prompt surfaces. The pragmatic slot is parent-session, but it receives the same substitution so all three slots see identical style guidance.
 
 ---
 
@@ -129,7 +129,7 @@ If the env file contains `RECOVERY_REQUIRED=true`, run the non-skippable operato
 
 ---
 
-**MANDATORY — READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `skills/design/references/readability-style.md`.**
+**MANDATORY — READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Synthesis → `brainstorm.md`
 

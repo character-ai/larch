@@ -6,6 +6,8 @@ allowed-tools: Bash
 
 # /larch-size
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+
 Report larch repository line counts and run-log sizes.
 
 This is a **dev-only** operator skill (`.claude/skills/`). It is NOT shipped with the plugin.

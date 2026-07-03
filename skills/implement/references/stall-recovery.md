@@ -6,6 +6,8 @@
 
 **When to load**: MANDATORY before executing Step 18a active-stall recovery when `STALL_RECOVERY_REQUIRED=true`. Load before changing active-stall recovery report composition, escalation recording, or normalized outcome handling.
 
+**MANDATORY — READ ENTIRE FILE before composing terminal stall reports, fallback print text, or root-cause prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 ## Canonical artifacts
 
 Use these `$IMPLEMENT_TMPDIR` paths for `/implement`:

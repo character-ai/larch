@@ -8,6 +8,8 @@ disable-model-invocation: true
 
 # Release
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+
 Operator-run release cut for `character-ai/larch`. This dev-only skill lives under `.claude/skills/release/` and is not exported in the plugin package. All runtime script paths use `$PWD/.claude/skills/release/scripts/...` from the larch repo root.
 
 ## Flags

@@ -7,6 +7,8 @@ allowed-tools: AskUserQuestion, Bash, Read, Grep, Glob
 
 # Review And Fix Skill
 
+**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+
 Apply accepted findings produced by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review core`.
 
 When invoked as a Skill from `/review`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix apply-findings` runs against the accepted findings file and dispatches Codex, then Cursor, then the write-capable Claude review-fix launcher to apply voted-in suggestions directly to the working tree. In `/implement` orchestrator mode, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review-and-fix step5` runs `review core` first, then dispatches the coder only when in-scope accepted findings remain.
