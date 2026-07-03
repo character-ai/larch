@@ -1,0 +1,5 @@
+1	the planned direct tests call a private helper, but `reportprivateusage` is still an error. without a suppression, pyright can fail even if the tests themselves pass.
+1	the success-case test must assert the real `materialize_implementation_diff` signature. the code splits `origin/main` into keyword-only `base_remote` and `base_ref`, so a single positional `origin/main` assertion would be wrong or meaningless.
+1	the empty-fingerprint case needs to exercise the `repo_root` live-materialization path. if the test only hits the staged fallback, it will not catch regressions in the guard that runs after `_materialize_live_diff`.
+2	the ship-level empty-fingerprint coverage does not prove the fail-closed live-materialization path. if `materialize_implementation_diff` is left optional, the test can fall back through the `live_diff is none` path and miss the branch where a live diff exists but `diff_fingerprint` is empty.
+2	the direct helper test only checks the final boolean and durable-note outcome, which is also consistent with the staged fallback. it should prove that the live-materialization branch actually ran before the empty-fingerprint skip was exercised.

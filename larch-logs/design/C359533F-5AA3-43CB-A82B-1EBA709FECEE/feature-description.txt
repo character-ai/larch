@@ -1,0 +1,17 @@
+# [BUG] Guideline-pin helpers lack direct unit tests and drift/failure structural coverage
+
+## Summary
+
+The #6059 fix (PR #6060) added a happy-path ship test but coverage gaps remain:
+
+1. **Ship-level failure/drift cases** (OOS_2, nit): the new ship test (`test_pin_and_load_guidelines_note_reuses_one_live_diff` in `python/tests/implement/test_ship.py`) proves the happy path but does not cover empty fingerprints, write failures, or moving-repo structural cases (a fixture that advances `origin/main` between the mocked calls). This is issue #6059 Open-question #3.
+2. **Direct helper unit coverage** (OOS_7, nit): there are no direct unit tests for `pin_note_from_staged_for_current_head` or `_pin_note_from_live_diff` (`python/larch/core/architectural_guidelines.py`); regressions there are only indirectly exercised through the ship harness.
+
+## Provenance
+
+Surfaced as out-of-scope code-review findings (OOS_2, OOS_7) during `/implement` of #6059 (merged as PR #6060). Reviewer-proposed; not independently re-verified.
+
+## Suggested fix
+
+- Add direct unit tests for `pin_note_from_staged_for_current_head` and `_pin_note_from_live_diff`.
+- Add structural tests that exercise a genuinely mutating fake repo across pin attempts, plus empty-fingerprint and write-failure paths.
