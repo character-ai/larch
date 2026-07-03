@@ -632,6 +632,75 @@ def test_render_report_overrides_stale_deep_and_writes_follow_up(tmp_path: Path)
     assert "#1: NOT_FIXED" in follow_up
 
 
+def test_render_report_surfaces_deep_verdict_after_mechanical_needs_deep(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    body = run_dir / "issue-1-body.md"
+    bundle = run_dir / "issue-1-bundle.md"
+    _ = body.write_text("body\n", encoding="utf-8")
+    _ = bundle.write_text("bundle\n", encoding="utf-8")
+    cache_key = "cache-1"
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "1",
+            "repo": "o/r",
+            "run_id": "run-1",
+            "run_dir": str(run_dir),
+            "evidence_ref": "origin/main",
+            "bugs_requested": 1,
+            "bugs_selected": 1,
+            "generated_at": 1,
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "triage_batch_paths": [],
+            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+            "issues": [
+                {
+                    "issue_number": 1,
+                    "title": "[BUG] deep verified",
+                    "state": "CLOSED",
+                    "state_reason": "COMPLETED",
+                    "url": "https://github.com/o/r/issues/1",
+                    "body_path": str(body),
+                    "bundle_path": str(bundle),
+                    "fix_sha": "sha1",
+                    "fix_source": "git-log",
+                    "touched_files": [],
+                    "later_history_hash": "later-1",
+                    "mechanical_verdict": "NEEDS_DEEP",
+                    "mechanical_reason": "no exact Fixes reference",
+                    "cache_key": cache_key,
+                    "sampled": False,
+                }
+            ],
+        },
+    )
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps(
+            {
+                "cache_key": cache_key,
+                "issue": 1,
+                "fix_sha": "sha1",
+                "later_history_hash": "later-1",
+                "deep_verdict": "CONFIRMED_FIXED",
+                "deep_reason": "deep verifier found the fix",
+                "stages_complete": ["deep"],
+                "sampled": False,
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    report = analyze_bugs.render_report(manifest_path=run_dir / "manifest.json", ledger_path=ledger, run_dir=run_dir)
+
+    assert "| Confirmed or likely fixed | 1 |" in report
+    assert "| Needs deep | 0 |" in report
+    assert "| [#1](https://github.com/o/r/issues/1) | sha1 | CONFIRMED_FIXED | deep verifier found the fix |  |" in report
+    assert "no exact Fixes reference" not in report
+
+
 def test_cli_dispatches_analyze_bugs_help() -> None:
     result = run_cli("analyze-bugs", "prefetch", "--help")
 

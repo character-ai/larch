@@ -1149,7 +1149,7 @@ def ledger_main(argv: list[str]) -> int:
 
 
 def _final_verdict(bundle: BundleRecord, record: LedgerRecord | None) -> tuple[str, str, tuple[str, ...], bool]:
-    if bundle.mechanical_verdict:
+    if bundle.mechanical_verdict and bundle.mechanical_verdict != "NEEDS_DEEP":
         return bundle.mechanical_verdict, bundle.mechanical_reason, (), False
     if record and record.deep_verdict:
         return record.deep_verdict, record.deep_reason, (), record.sampled
