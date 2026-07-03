@@ -1,14 +1,16 @@
-## /implement run B756CBD0-FC06-4F45-A98D-0064A8399B3A — shipping
+## /implement run B756CBD0-FC06-4F45-A98D-0064A8399B3A — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:23:59
 - **Cost**: 💰 TOTAL ~$10.06 — Claude $2.86, Codex-5.5 $3.17, Codex-mini $1.38, Cursor $2.22, Claude (subprocess) $0.43  |  Tokens: 19332k
 - **Issue**: #6154 — https://github.com/character-ai/larch/issues/6154
+- **PR**: #6197 — https://github.com/character-ai/larch/pull/6197
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +133/-36, larch-logs +616/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
