@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:03:27
-- **Cost**: 💰 TOTAL ~$7.59 — Claude $0.76, Codex-5.5 $5.42, Codex-mini $0.27, Cursor $0.82, Claude (subprocess) $0.32  |  Tokens: 8449k
+- **Cost**: 💰 TOTAL ~$12.25 — Claude $5.42, Codex-5.5 $5.42, Codex-mini $0.27, Cursor $0.82, Claude (subprocess) $0.32  |  Tokens: 13399k
 - **Issue**: #6063 — https://github.com/character-ai/larch/issues/6063
 - **Plan review**: N/A
 - **Dynamic archetypes**: skipped-test-only
@@ -58,3 +58,7 @@ codex/validity-vote      │                                                 █
 These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.
 
 - **Round 1 OOS_1** (nit): Empty-fingerprint live-materialization ordering is overconstrained. Concern: The empty-fingerprint path is still pinned to live diff materialization before invalid staged metadata is rejected, and the helper currently skips the live pinning branch when `DIFF_FINGERPRINT` is falsy. That makes a safer fail-fast metadata check incompatib…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
