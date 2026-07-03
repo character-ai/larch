@@ -10,7 +10,6 @@ from __future__ import annotations
 import argparse
 import contextlib
 import csv
-import fcntl
 import os
 import re
 import sys
@@ -25,6 +24,12 @@ from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.report.tokens import (
+    CHECKS_DIGEST_SIZE_BASENAME,
+    _CHECKS_DIGEST_SIZE_FIELDS,  # pyright: ignore[reportPrivateUsage]
+    _estimate_tokens_for_bytes,  # pyright: ignore[reportPrivateUsage]
+    _locked_tsv_append,  # pyright: ignore[reportPrivateUsage]
+)
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
@@ -43,18 +48,6 @@ _CHECKS_FAILURE_DIGEST_LOCATION_RE: Final = re.compile(
 )
 _CHECKS_FAILURE_DIGEST_PRECOMMIT_RE: Final = re.compile(r"^(.+?)(?:\.{2,}|\s{2,})Failed\b")
 _CHECKS_FAILURE_DIGEST_DIRECT_RE: Final = re.compile(r"^=== Running direct relevant make target\(s\): (.+) ===$")
-CHECKS_DIGEST_SIZE_BASENAME: Final = "checks-digest-sizes.tsv"
-_CHECKS_DIGEST_SIZE_FIELDS: Final = (
-    "site",
-    "attempt",
-    "redacted_bytes",
-    "digest_bytes",
-    "redacted_tokens",
-    "digest_tokens",
-    "saved_bytes",
-    "saved_tokens",
-    "digest_truncated",
-)
 
 
 def plugin_scripts_dir() -> Path:
@@ -350,10 +343,6 @@ def _write_log(*, log_fd: int, text: str) -> None:
     _ = os.write(log_fd, text.encode("utf-8", errors="replace"))
 
 
-def _estimated_tokens_for_bytes(byte_count: int) -> int:
-    return (max(0, byte_count) + 3) // 4
-
-
 @dataclass(frozen=True)
 class _ChecksDigestSizeRow:
     site: str
@@ -401,40 +390,19 @@ def _checks_digest_run_artifact(canonical_tmp: Path) -> Path | None:
     return candidates[0] if len(candidates) == 1 else None
 
 
-def _locked_tsv_append(path: Path, row: _ChecksDigestSizeRow) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    if path.is_symlink():
-        raise OSError(f"refusing symlink TSV: {path}")
-    if path.exists() and not path.is_file():
-        raise OSError(f"refusing non-file TSV: {path}")
-    deadline = time.monotonic() + 5.0
-    with path.open("a+", encoding="utf-8", newline="") as handle:
-        while True:
-            try:
-                fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
-                break
-            except BlockingIOError:
-                if time.monotonic() >= deadline:
-                    print(
-                        f"checks digest telemetry: WARNING: flock lock acquisition failed; skipping append for {path}",
-                        file=sys.stderr,
-                    )
-                    return
-                time.sleep(0.05)
-        try:
-            _ = handle.seek(0, os.SEEK_END)
-            _write_checks_digest_size_tsv(handle=handle, row=row, needs_header=handle.tell() == 0)
-        finally:
-            fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
-    with contextlib.suppress(OSError):
-        path.chmod(0o600)
+def _write_checks_digest_size_row(path: Path, row: _ChecksDigestSizeRow) -> None:
+    def _write(handle: TextIO, needs_header: object) -> None:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        if needs_header:
+            writer.writerow(_CHECKS_DIGEST_SIZE_FIELDS)
+        writer.writerow(row.as_tsv_row())
+
+    _locked_tsv_append(path, _write)
 
 
-def _write_checks_digest_size_tsv(*, handle: TextIO, row: _ChecksDigestSizeRow, needs_header: bool) -> None:
-    writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-    if needs_header:
-        writer.writerow(_CHECKS_DIGEST_SIZE_FIELDS)
-    writer.writerow(row.as_tsv_row())
+def _digest_header_truncated(digest: str) -> bool:
+    lines = digest.splitlines()
+    return len(lines) > 2 and lines[2] == "digest_truncated=true"  # noqa: PLR2004
 
 
 def _record_checks_digest_size_telemetry(
@@ -453,8 +421,8 @@ def _record_checks_digest_size_telemetry(
             return
         redacted_bytes = len(redacted_text.encode("utf-8"))
         digest_bytes = len(digest.encode("utf-8"))
-        redacted_tokens = _estimated_tokens_for_bytes(redacted_bytes)
-        digest_tokens = _estimated_tokens_for_bytes(digest_bytes)
+        redacted_tokens = _estimate_tokens_for_bytes(redacted_bytes)
+        digest_tokens = _estimate_tokens_for_bytes(digest_bytes)
         row = _ChecksDigestSizeRow(
             site=site,
             attempt=attempt,
@@ -464,9 +432,9 @@ def _record_checks_digest_size_telemetry(
             digest_tokens=digest_tokens,
             saved_bytes=redacted_bytes - digest_bytes,
             saved_tokens=redacted_tokens - digest_tokens,
-            digest_truncated="digest_truncated=true" in digest.splitlines(),
+            digest_truncated=_digest_header_truncated(digest),
         )
-        _locked_tsv_append(artifact, row)
+        _write_checks_digest_size_row(artifact, row)
     except Exception as exc:  # best-effort telemetry must not alter checks flow
         print(f"checks digest telemetry: write skipped: {exc}", file=sys.stderr)
 
