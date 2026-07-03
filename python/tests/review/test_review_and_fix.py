@@ -74,6 +74,37 @@ def _fix_applied_round_result(impl: Path, *, round_num: int = 1) -> review_and_f
     )
 
 
+def _step5_round_result(
+    impl: Path,
+    *,
+    status: str,
+    rc: int = 0,
+    round_num: int = 1,
+) -> review_and_fix.RoundResult:
+    round_dir = impl / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    return review_and_fix.RoundResult(
+        rc,
+        status,
+        "ok",
+        round_num,
+        3,
+        2,
+        1,
+        4,
+        5,
+        6,
+        7,
+        8,
+        round_dir / "accepted-findings.md",
+        round_dir / "rejected-findings.md",
+        round_dir,
+        impl / "review-and-fix-summary.json",
+        impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, status="applied", input_count=3),
+    )
+
+
 def test_review_core_capture_captures_stdout_emit_and_restores_env(tmp_path, monkeypatch):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", "old")
@@ -2215,6 +2246,112 @@ def test_step5_loop_complete_returns_zero_despite_round_rc(tmp_path, monkeypatch
     out = capsys.readouterr().out
     assert rc == 0
     assert "STEP5_REVIEW_STATUS=complete" in out
+
+
+@MARK_STEP5
+@pytest.mark.parametrize(
+    ("round_status", "gate_status", "expected_status"),
+    [
+        ("complete", "", "complete"),
+        ("fix-applied", "cap-hit", "cap-hit"),
+    ],
+)
+def test_step5_terminal_flushes_review_batches_with_counts(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    round_status: str,
+    gate_status: str,
+    expected_status: str,
+):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    flush_calls: list[dict[str, object]] = []
+    events: list[str] = []
+    original_emit = review_and_fix._emit_step5_envelope
+
+    def fake_flush(**kwargs):
+        events.append("flush")
+        flush_calls.append(kwargs)
+        return True
+
+    def fake_emit(**kwargs):
+        events.append("envelope")
+        original_emit(**kwargs)
+
+    monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
+    if gate_status:
+        monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", lambda **_kw: (gate_status, "", False))
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", fake_flush)
+    monkeypatch.setattr(review_and_fix, "_emit_step5_envelope", fake_emit)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "1",
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert f"STEP5_REVIEW_STATUS={expected_status}" in out
+    assert events == ["flush", "envelope"]
+    assert len(flush_calls) == 1
+    call = flush_calls[0]
+    assert call["run_id"] == "run-1"
+    assert call["rounds"] == 1
+    assert call["_accepted"] == 5
+    assert call["_rejected"] == 6
+    assert call["exonerated"] == 7
+    assert call["_neutral"] == 8
+
+
+@MARK_STEP5
+@pytest.mark.parametrize("append_raises", [False, True])
+def test_step5_complete_flush_warning_preserves_success(
+    tmp_path,
+    monkeypatch,
+    capsys,
+    append_raises: bool,
+):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fail_flush(**_kwargs):
+        raise RuntimeError("flush boom")
+
+    def fail_append(**_kwargs):
+        raise OSError("append boom")
+
+    monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status="complete"))
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", fail_flush)
+    if append_raises:
+        monkeypatch.setattr(review_and_fix.run_logs, "append_execution_issue", fail_append)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir", str(impl),
+        "--mode", "loop",
+        "--starting-round", "1",
+        "--round-cap", "1",
+        "--run-id", "run-1",
+        "--codex-available", "false",
+        "--cursor-available", "false",
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in captured.out
+    assert "code-review batch flush failed: flush boom" in captured.err
+    if not append_raises:
+        issues = (impl / "execution-issues.md").read_text(encoding="utf-8")
+        assert "### Warnings" in issues
+        assert "code-review` flush failed" in issues
+        assert "flush boom" in issues
 
 
 @MARK_CONVERGENCE

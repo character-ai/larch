@@ -683,7 +683,7 @@ def _derive_final_report_fields(
         ship=ship,
     )
     plan_line = _read_kv(path=ship, key="PLAN_REVIEW_LINE") or _derive_review_line(run_dir=run_dir, filename="plan-review-tally.json")
-    code_line = _read_kv(path=ship, key="CODE_REVIEW_LINE") or _derive_review_line(run_dir=run_dir, filename="code-review-tally.json")
+    code_line = _derive_review_line(run_dir=run_dir, filename="code-review-tally.json")
     oos_count = _read_kv(path=ship, key="OOS_COUNT") or _derive_oos_fields(run_dir)[0]
     oos_urls = _read_kv(path=ship, key="OOS_URLS") or _derive_oos_fields(run_dir)[1]
     return {

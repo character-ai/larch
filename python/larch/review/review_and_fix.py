@@ -522,7 +522,7 @@ def _record_step5_round_timing_before_gates(
 
 
 def _flush_review_batches_for_result(*, implement_tmpdir: Path, run_id: str, rounds_completed: int, result: RoundResult | None) -> None:
-    with contextlib.suppress(Exception):
+    try:
         flush_review_batches(
             impl_tmpdir=implement_tmpdir,
             run_id=run_id,
@@ -532,6 +532,45 @@ def _flush_review_batches_for_result(*, implement_tmpdir: Path, run_id: str, rou
             exonerated=result.total_exonerated_count if result else 0,
             _neutral=result.total_neutral_count if result else 0,
         )
+    except Exception as exc:  # observability only: do not change terminal Step 5 status
+        _err(f"⚠ review-and-fix: code-review batch flush failed: {exc}")
+        entry = (
+            "\n## Larch-log batch — `code-review` flush failed\n\n"
+            f"Step 5 could not flush code-review run-log batches: `{exc}`\n"
+        )
+        with contextlib.suppress(OSError):
+            run_logs.append_execution_issue(
+                log_file=implement_tmpdir / "execution-issues.md",
+                category="Warnings",
+                entry=entry,
+            )
+
+
+def _finish_step5_terminal_success(*,
+    terminal_status: str,
+    args: argparse.Namespace,
+    implement_tmpdir: Path,
+    rounds_completed: int,
+    result: RoundResult,
+) -> int:
+    _flush_review_batches_for_result(
+        implement_tmpdir=implement_tmpdir,
+        run_id=args.run_id,
+        rounds_completed=rounds_completed,
+        result=result,
+    )
+    _emit_step5_envelope(
+        status="cap-hit" if terminal_status == "cap-hit" else "complete",
+        stall_tracking=False,
+        stall_reason="",
+        rounds_completed=rounds_completed,
+        final_round=result.round_num,
+        final_irf=result.status,
+        coder_status=result.coder.status,
+        files_hint=result.coder.commit_sha,
+        effective_cap=int(str(args.round_cap)),
+    )
+    return 0
 
 
 # --- public entry points ---
@@ -732,11 +771,7 @@ def step5(argv: list[str] | None = None) -> int:
                 _emit_step5_envelope(status="stall", stall_tracking=stall_tracking, stall_reason=stall_reason, rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
                 _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=result)
                 return result.rc or 2
-            if terminal_status == "cap-hit":
-                _emit_step5_envelope(status="cap-hit", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
-                return 0
-            _emit_step5_envelope(status="complete", stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
-            return 0
+            return _finish_step5_terminal_success(terminal_status=terminal_status, args=args, implement_tmpdir=implement_tmpdir, rounds_completed=rounds_completed, result=result)
     except Exception as exc:
         _err(f"review-and-fix step5: {exc}")
         if loop_mode:
