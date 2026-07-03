@@ -1,0 +1,2 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Plan already requires exact "1" in the hook and documents non-1 deny behavior; a 0/junk harness case is useful regression insurance but not necessary to deliver the fix.

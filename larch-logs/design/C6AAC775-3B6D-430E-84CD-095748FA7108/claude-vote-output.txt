@@ -1,0 +1,3 @@
+I cannot read the ballot at `<TMPDIR>/ballot.txt` — the `hook-bg-poll-guard.sh` hook is denying my `Read` tool calls with "An immediate-background wait is active." Both attempts were blocked.
+
+This is the exact bug described in the scope anchor (issue #6061): a voter subprocess is being denied by the guard because a live `.bg-wait-active` marker exists for the orchestrator's own background wait, even though the marker belongs to a different logical actor. I cannot produce vote lines without the ballot content.

@@ -1,0 +1,89 @@
+# [BUG] /design plan-review Claude voter subprocesses falsely marked NOT_SUBSTANTIVE by…
+
+## Summary
+
+`/design` (and likely `/implement`) plan-review/code-review voter subprocesses can get falsely marked `NOT_SUBSTANTIVE`, degrading the panel (e.g. "Degraded plan-review panel: 2/3 effective judges"), because `scripts/hook-bg-poll-guard.sh` denies the voter subprocess's own `Read`/`Bash` tool calls whenever the orchestrator's own immediate-background wait marker happens to be live. The hook's liveness check is not scoped to the calling process/session — a documented tradeoff from issue #5684 — so it cannot distinguish "the orchestrator polling during its own background wait" (the case it is meant to block) from "an unrelated Claude subprocess (reviewer/voter/implementer) that happens to share the same repo and hooks configuration."
+
+## Original report
+
+Surfaced during manual root-cause analysis of a completed `/design` run (issue #6061, run `F37028B8-64BD-4BB2-96DB-44ADEB6B87B0`). Both plan-review rounds printed `**⚠ Degraded plan-review panel: 2/3 effective judges produced substantive vote output.**`; the Claude voter (Voter 1) was excluded both times. Asked to root-cause why.
+
+## Reproduction scenario
+
+1. Run `/design` (or `/implement`) so that Step 3 (or the equivalent code-review round) launches in the background (`run_in_background: true`), which arms a `.bg-wait-active` marker under the session tmpdir per `skills/shared/design-background-wait.md`.
+2. While that marker is live, the plan-review/code-review loop dispatches the Claude voter as a separate `claude --print` subprocess (`python/cli.py agent launch-claude-review` → `python/larch/agents/_claude_runner.py`).
+3. The voter subprocess attempts to `Read` its own ballot file (or otherwise use a guarded tool).
+4. `scripts/hook-bg-poll-guard.sh` fires as a PreToolUse hook for that Read call, finds the orchestrator's live `.bg-wait-active` marker, and denies the call — even though the marker belongs to a different logical session (the orchestrator's own background wait, not the voter's).
+5. The voter narrates the denial instead of producing `FINDING_N:`/`OOS_N:` vote lines, tripping the parse-rate check and degrading the panel.
+
+Concretely reproduced in run `F37028B8-64BD-4BB2-96DB-44ADEB6B87B0` (design of issue #6061), both rounds. Run log (published, merged): `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/` on `main`, landed via merged PR https://github.com/character-ai/larch/pull/6067.
+
+## Expected behavior
+
+The Claude voter subprocess should be able to read its own ballot file and produce a real vote regardless of whether the orchestrator that dispatched it happens to be mid an unrelated immediate-background wait. `hook-bg-poll-guard.sh` should deny tool calls only when they originate from the specific session that owns the live `.bg-wait-active` marker, not from any Claude process that happens to share the same repo/cwd/hooks configuration.
+
+## Observed behavior
+
+Both plan-review rounds of run `F37028B8-64BD-4BB2-96DB-44ADEB6B87B0` produced a degraded panel warning. The Claude voter's actual captured output (not a real vote) was:
+
+- Round 1 (from `execution-issues.md`'s parse-rate-check diagnostic, `judge_error_count=12/12`, 100% JUDGE_ERROR): "I'm unable to read the ballot file at `<TMPDIR>/ballot.txt` — the system is blocking all file reads with the message: 'An immediate-backg[round wait is active...]'"
+- Round 2 (from `claude-vote-output.txt` and `claude-vote-output-parse-rate-diag.txt`, `judge_error_count=4/4`, 100% JUDGE_ERROR): "The system indicates an active background wait. I'll end this turn and wait for the task notification before proceeding with the ballot review."
+
+Neither output contains a single parseable `FINDING_N:`/`OOS_N:` vote line.
+
+## Root cause analysis
+
+Verified by direct code reading (line numbers current as of `main` at investigation time; re-check before implementing, since the code may have moved):
+
+- `python/larch/review/voting.py:1113-1193` `check_voter_parse_rate` marks a voter's output `NOT_SUBSTANTIVE` when `judge_error_count / total_ballot_items >= _judge_error_parse_threshold()` (default `0.8`, `voting.py:1094-1110`). Both rounds hit 100% `JUDGE_ERROR` because the voter's output contained no parseable vote lines at all.
+- `python/larch/review/voting.py:1270-1281` `effective_judges()` excludes any voter with `parse_rate_status == "NOT_SUBSTANTIVE"` from the effective-judge count.
+- `python/larch/review/voting.py:1290-1302` `degraded_warning_main` emits the "Degraded plan-review panel: N/M effective judges" warning once `effective < expected`.
+- The mechanism that produced the voter's narrated "background wait" response: `scripts/hook-bg-poll-guard.sh` is a PreToolUse hook (file comment at line 2: "deny /design progress polling while an immediate-background wrapper is active") that denies `Read`/`Bash`/`Monitor`/`TaskOutput` tool calls whenever a live `.bg-wait-active` marker is found anywhere under `~/.cache/larch/sessions/**` or `$TMPDIR/{larch-,claude-design-,claude-implement-}*` (`marker_candidates()`, `hook-bg-poll-guard.sh:48-71`).
+- Critically, per the hook's own code comment at `hook-bg-poll-guard.sh:385-390` (referencing issue #5684): "liveness is NOT scoped by CLAUDE_PID. In production the hook's PPID and input never match the marker's stored CLAUDE_PID (hook input carries no claude_pid, LARCH_BG_POLL_GUARD_SESSION_PID is unset outside tests), so the old equality check rejected every marker and the guard never fired... The marker's CLAUDE_PID field is retained as debug metadata only." Liveness now relies only on the marker-owning bash PID being alive (`kill -0`) and its age being within `TIMEOUT_S + 60s` grace (`marker_is_live()`, `hook-bg-poll-guard.sh:378-417`) — there is no check that the calling tool-use's own session matches the marker's owning session.
+- The `/design` orchestrator for this run was itself mid an immediate-background wait (Step 3 running via `run_in_background: true`, per `skills/design/SKILL.md`'s Step 3 contract) at the exact moment each Claude voter subprocess was dispatched (`python/cli.py agent launch-claude-review` → `claude --print`, `python/larch/agents/_claude_runner.py:366-384`). That subprocess is launched via `subprocess.Popen` inside `_run_claude_with_stdin` (`_claude_runner.py:138-163`) with no `env=` override (full environment inheritance from whatever process invoked it) and `cwd=str(Path.cwd())` (the same repo as the orchestrator).
+- Because the voter subprocess is itself a `claude --print` invocation sharing the same repo/hooks configuration and cwd as the orchestrator, the same `hook-bg-poll-guard.sh` fired for the voter's own Read call against its ballot file, found the orchestrator's live `.bg-wait-active` marker (which belongs to a completely different logical session/purpose), and denied the Read exactly per `json_deny`/`json_deny_probe` (`hook-bg-poll-guard.sh:419-424`). The voter narrated the denial instead of voting.
+- Net effect: any `/design` (or `/implement`) run where a reviewer/voter/implementer subprocess is dispatched from inside an immediate-background Bash fence is at risk of this same collateral-damage denial, degrading review/vote quality nondeterministically. This appears to be a previously-unidentified side effect of the #5684 fix, which solved "guard never fires for the orchestrator" but introduced "guard fires for unrelated Claude subprocesses sharing the same repo/hooks config."
+
+**Distinct from issue #5925 (already fixed via PR #5934) — important disambiguation.** #5925 fixed a *different* false-positive path in the same hook: `bash_has_probe_target()`'s generic Bash-command loop matched a candidate command against bare, unexpanded `$DESIGN_TMPDIR`/`$IMPLEMENT_TMPDIR`/`$SESSION_TMPDIR` substrings regardless of which live marker directory was being evaluated, so a marker from an unrelated **repo clone** (e.g. `larch5`) could deny commands in a completely different clone (e.g. `larch4`). The fix added `bash_probe_target_dir_plausible(dir, cwd_canon)`, which treats a match as plausible only when `cwd_canon == dir` or the marker's "clone tag" (parsed from the session-dir basename) matches the calling command's cwd-derived clone tag — this scopes the Bash-command generic-loop path to same-clone commands only. This fix does **not** cover this bug's scenario: my finding is about the **Read** tool path, which (per the hook's own code-flow) uses a separate `path_under_dir(read_abs, dir)` check that does not consult `cwd` or any clone tag at all. The Claude voter's ballot file is genuinely nested under the *same* `$DESIGN_TMPDIR` the live marker also lives in (same repo clone, same `/design` session) — so the clone-tag plausibility check would trivially "match" even if it were consulted, since it is the exact same clone. The actual problem is that the Read is coming from a *different logical actor* (a spawned voter subprocess) that is legitimately reading a path under that session's tmpdir as its assigned task, not the orchestrator polling — a distinction #5925's clone-scoping fix has no way to express.
+
+## Evidence
+
+- `python/larch/review/voting.py:1094-1110` — `_judge_error_parse_threshold` (default 0.8).
+- `python/larch/review/voting.py:1113-1193` — `check_voter_parse_rate`, the NOT_SUBSTANTIVE classifier.
+- `python/larch/review/voting.py:1270-1281` — `effective_judges`.
+- `python/larch/review/voting.py:1290-1302` — `degraded_warning_main`.
+- `scripts/hook-bg-poll-guard.sh:2` — hook purpose comment.
+- `scripts/hook-bg-poll-guard.sh:48-71` — `marker_candidates`, the global (not session-scoped) marker search.
+- `scripts/hook-bg-poll-guard.sh:378-417` — `marker_is_live`, including the `#5684` comment explicitly disclaiming CLAUDE_PID scoping.
+- `scripts/hook-bg-poll-guard.sh:419-424` — `json_deny`, the denial JSON emitted to the tool caller.
+- `python/larch/agents/_claude_runner.py:366-384` — `cmd = ["claude", "--print", ...]` construction for the voter subprocess launch.
+- `python/larch/agents/_claude_runner.py:138-163` — `_run_claude_with_stdin`, the `subprocess.Popen` call with no `env=` override and `cwd=cwd` (same repo).
+- Published run log `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/claude-vote-output.txt` — actual captured voter output (round 2 snapshot; path is overwritten each round).
+- Published run log `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/claude-vote-output-parse-rate-diag.txt` — parse-rate diagnostic for the round-2 snapshot.
+- Published run log `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/execution-issues.md` — records both rounds' parse-rate-check warnings, including round 1's distinct wording ("the system is blocking all file reads").
+
+## Affected files
+
+- `scripts/hook-bg-poll-guard.sh` — owns the PreToolUse denial logic; specifically the `Read` branch's `path_under_dir(read_abs, dir)` check (see code-flow diagram on #5925), which is the primary fix surface for this bug and is distinct from the Bash generic-loop path #5925/PR #5934 already scoped by clone tag.
+- `python/larch/agents/_claude_runner.py` — owns the voter/reviewer subprocess launch (`_run_claude_with_stdin`, `launch_claude_review_main`); relevant if the fix is an opt-out signal set at launch time.
+- `python/larch/review/voting.py` — owns the parse-rate/effective-judges/degraded-panel logic that surfaces the symptom; not itself buggy, but the visible signal of the underlying hook problem.
+
+## Suggested fix(es)
+
+Informational only; the fix is delicate for two independent reasons:
+(a) the hook previously *did* try strict `CLAUDE_PID` matching and that was the original #5684 bug (the guard never fired at all, since the hook input carries no reliable `claude_pid`), and
+(b) #5925/PR #5934 already added clone-tag plausibility scoping to the Bash generic-loop path, which this bug's Read-path scenario sits outside of (same clone, different logical actor).
+
+Whatever fix is chosen must still let the guard fire for the orchestrator's own tool calls during its own background wait, while correctly exempting subprocess reviewers/voters/implementers spawned via `claude --print` from an unrelated (or even same-session) orchestrator's marker.
+
+Possible directions:
+1. Have the subprocess-launching code paths (`python/larch/agents/_claude_runner.py` and the Codex/Cursor equivalents) set an explicit environment variable or marker file (e.g. `LARCH_SUBPROCESS_REVIEWER=1`) on the spawned `claude --print` process, and have the hook check for and unconditionally allow tool calls when that marker/env var is present — this only requires the launcher to self-identify, not the hook to reverse-engineer session identity.
+2. Investigate whether the hook's JSON input (or some other available signal, e.g. a distinct `cwd` subpath, transcript path, or session id passed to `--print` invocations) reliably differs between the orchestrator and a spawned subprocess in a way the hook could check without reintroducing the #5684 failure mode.
+3. Consider whether `.bg-wait-active` markers should be written to a subprocess-inaccessible location, or whether the marker should be process-tree-scoped (e.g. keyed by a session id that the launcher explicitly threads through and that the hook can verify), rather than relying purely on `kill -0` PID liveness plus age.
+4. Apply the same spirit as #5925's fix (a plausibility check before denying) to the `Read` branch specifically — but note that a clone-tag-style check alone is insufficient here, since the offending Read is same-clone; the plausibility signal needs to distinguish *which process* is doing the reading, not just *where*.
+
+## Open questions
+
+- How many other `/design`/`/implement` runs have silently produced degraded panels or degraded votes from this same collateral denial? This may be worth a retrospective scan of committed run logs (`larch-logs/design/**/execution-issues.md`, `larch-logs/implement/**/execution-issues.md`) for the same "voter parse-rate check" + "background wait" signature, to gauge blast radius before prioritizing a fix.
+- Does the same collateral-denial risk affect Codex/Cursor voter and reviewer subprocesses, or is `hook-bg-poll-guard.sh` scoped (via tool name or launch mechanism) to only affect Claude-based subprocesses? The hook currently gates on `tool_name` (`Read`/`Bash`/`Monitor`/`TaskOutput`), which suggests any Claude-based subprocess using those tools is equally at risk, but Codex/Cursor subprocesses may not go through the same hook pipeline at all (worth confirming during implementation).
+- Is there a sibling report already tracking the Read-path gap specifically? #5925's comment thread cross-links a sibling issue (#5927, for `hook-no-progress-guard.sh`'s analogous cross-session bug) and suggests a shared parent issue for "scope larch hook marker discovery to the owning session/repo" — worth checking whether that broader umbrella already exists or should be created, and whether this bug should be filed as a child of it instead of standalone.

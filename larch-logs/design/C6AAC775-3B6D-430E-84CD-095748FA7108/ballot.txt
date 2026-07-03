@@ -1,0 +1,7 @@
+### FINDING_1:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: security
+- **Location**: scripts/test-hook-bg-poll-guard.sh:125-151
+- **Concern**: Subprocess exemption exact-value contract lacks a negative test. Scenario: The plan tests absent env denies and value 1 allows, but not LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=0 or junk. An implementation that checks non-empty instead of exact 1 would let an inherited non-child env bypass normal immediate-background polling, defeating the preserved guard purpose.
+- **Proposed resolution**: Add one hook harness case with a live marker and Read or Bash probe where LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT is 0 or junk and assert deny; keep the existing absent-env deny and value-1 allow cases.
