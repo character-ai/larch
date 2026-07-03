@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:35:41
-- **Cost**: 💰 TOTAL ~$13.38 — Claude $0.97, Codex-5.5 $8.88, Codex-mini $0.51, Cursor $2.64, Claude (subprocess) $0.38  |  Tokens: 17945k
+- **Cost**: 💰 TOTAL ~$12.59 — Claude $0.16, Codex-5.5 $8.88, Codex-mini $0.51, Cursor $2.64, Claude (subprocess) $0.40  |  Tokens: 17871k
 - **Issue**: #6068 — https://github.com/character-ai/larch/issues/6068
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -11,13 +11,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/52B8591D-5111-4451-8C6E-B214CB9CCD6A/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.2.5
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a (architectural-guidelines): Consulted ARCHITECTURAL_GUIDELINES.md; one minor deviation identified — G-Cfg-1 (define every wire-literal once in `config.py`, aggregate rather than re-list): `...
 
 ## Review Phase Detail
 
@@ -67,3 +72,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (latent): Gate B apply can still be dropped under the cap. Concern: Under the row cap, `gate-b-apply` is still not reserved, so heavy panels can truncate it and bring back the unlabeled tail.
 - **Round 1 OOS_6** (latent): TimingLedger append can fail silently on lock timeout. Concern: `TimingLedger._append` can skip appends on lock timeout with only a warning, so Gate B timing can be lost silently under contention.
 - **Round 1 OOS_7** (nit): Timing vendor column constants are duplicated. Concern: `TIMING_VENDOR_COLS` duplicates the vendor column constant from `progress_report`, so future layout changes could drift between modules.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
