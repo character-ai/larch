@@ -1,0 +1,9 @@
+slot=1
+voter_tool=claude
+judge_error_count=9
+total_findings=9
+total_ballot_items=9
+voter_file=<TMPDIR>/claude-vote-output.txt
+voter_sha256=775f138d6122340a3fd91515f55625a55a489039ed5c91ddc2c96a162028000d
+--- first 200 bytes of voter output ---
+I cannot read the ballot file — the harness is blocking all reads due to an active immediate-background wait. Ending the turn to wait for the `<task-notification>` before proceeding.
