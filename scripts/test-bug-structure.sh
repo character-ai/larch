@@ -11,6 +11,8 @@
 #  (E) Step 5 invokes /issue with --title-prefix.
 #  (F) Both [BUG] and [BUG] (URGENT) prefixes are present.
 #  (G) The skill still says not to pass --no-dedup.
+#  (H) The Write hook passes the bug token and the activation sentinel is
+#      created and removed on success, security abort, and issue failure.
 #
 # Exit 0 on pass, exit 1 on any assertion failure.
 # shellcheck disable=SC2016
@@ -50,5 +52,29 @@ grep -Fq '[BUG] (URGENT)' "$SKILL_MD" \
 
 grep -Fq 'Do not include `--no-dedup`.' "$SKILL_MD" \
   || fail "(G) skill must still say not to pass --no-dedup"
+
+grep -Fq 'matcher: "Write"' "$SKILL_MD" \
+  || fail "(H.1) Write hook matcher must remain present"
+
+grep -Fq 'command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh bug"' "$SKILL_MD" \
+  || fail "(H.2) Write hook command must pass the bug token"
+
+grep -Fq 'BUG_DENY_ACTIVE_SENTINEL="$BUG_DENY_ACTIVE_DIR/bug-$PPID"' "$SKILL_MD" \
+  || fail "(H.3) Step 2 must create bug-$PPID activation sentinel"
+
+grep -Fq '**⚠ /bug: failed to activate Write hook. Aborting.**' "$SKILL_MD" \
+  || fail "(H.4) sentinel write failure must abort loudly"
+
+grep -Fq 'Remove `"$BUG_DENY_ACTIVE_SENTINEL"` and `$BUG_TMPDIR` if they exist, then stop.' "$SKILL_MD" \
+  || fail "(H.5) Step 3 security abort must remove sentinel with BUG_TMPDIR"
+
+grep -Fq 'Remove `"$BUG_DENY_ACTIVE_SENTINEL"` and `$BUG_TMPDIR`, then stop.' "$SKILL_MD" \
+  || fail "(H.6) Step 5 security abort must remove sentinel with BUG_TMPDIR"
+
+grep -Fq 'remove `"$BUG_DENY_ACTIVE_SENTINEL"`, surface the failure and parsed counters when available, stop without claiming that an issue was filed, and **do not run Step 7**. Leave `$BUG_TMPDIR` in place for debugging.' "$SKILL_MD" \
+  || fail "(H.7) Step 6 failure must remove sentinel while leaving BUG_TMPDIR"
+
+grep -Fq 'rm -f "$BUG_DENY_ACTIVE_SENTINEL"' "$SKILL_MD" \
+  || fail "(H.8) Step 7 cleanup must remove sentinel"
 
 echo "test-bug-structure.sh: all assertions passed"

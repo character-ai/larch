@@ -39,6 +39,15 @@ the `/research` skill under the simplified fixed-shape topology
     non-substantive retry artifacts.
 15. `research-phase.md` pins synthesis-header ownership and the
     `[lane dropped: collector NOT_SUBSTANTIVE]` exclusion marker.
+16. `SKILL.md` frontmatter passes the `research` token to
+    `scripts/deny-edit-write.sh`.
+17. `SKILL.md` creates `research-$PPID` only after the degraded-tools gate and
+    before the first `Write` need.
+18. `SKILL.md` aborts loudly when activation fails.
+19. `SKILL.md` and `research-phase.md` remove
+    `"$RESEARCH_DENY_ACTIVE_SENTINEL"` on cleanup and controlled abort paths.
+20. `SKILL.md` distinguishes inactive fail-open activation from active
+    fail-closed path enforcement.
 
 ## Wiring
 
@@ -49,6 +58,6 @@ the `/research` skill under the simplified fixed-shape topology
 ## Edit-in-sync rules
 
 When editing `skills/research/SKILL.md` (MANDATORY directives, flag surface,
-or unknown-flag-guard recovery hint) or any of the four reference files
-(header triplet, angle prompts, reviewer wrappers), update this harness if a
-pinned literal moves.
+unknown-flag-guard recovery hint, or activation sentinel lifecycle) or any of
+the four reference files (header triplet, angle prompts, reviewer wrappers, or
+abort cleanup), update this harness if a pinned literal moves.

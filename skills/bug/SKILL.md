@@ -8,7 +8,7 @@ hooks:
     - matcher: "Write"
       hooks:
         - type: command
-          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh"
+          command: "${CLAUDE_PLUGIN_ROOT}/scripts/deny-edit-write.sh bug"
           timeout: 5
 ---
 
@@ -30,6 +30,7 @@ Investigate a user-described bug inline, compose a detailed issue body, then del
 - Never pass `--no-dedup` to `/issue`.
 - Use only `Read`, `Grep`, `Glob`, and safe read-only `Bash` discovery for investigation.
 - Use `Write` only for files under `$BUG_TMPDIR`.
+- The `Write` hook is active only after Step 2 writes a fresh `bug-*` activation sentinel.
 - Do not use `Edit`, `NotebookEdit`, external agents, or repo-writing Bash commands.
 - If root cause is uncertain, say so in the issue body and list the evidence and next steps.
 
@@ -66,7 +67,25 @@ printf 'BUG_TMPDIR=%s\n' "$BUG_TMPDIR"
 
 Parse the Bash output for `BUG_TMPDIR=<path>` and bind that path for all later steps. Bash tool calls do not preserve shell variables across fences; retain the parsed value mentally (mirror `/research` Step 0 parsing of `SESSION_TMPDIR`).
 
-All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the skill-scoped `Write` hook on the allowed side of its canonical `/tmp` policy.
+Activate the `Write` hook after `$BUG_TMPDIR` exists and before the first `Write`:
+
+```bash
+if [[ -z "${XDG_CACHE_HOME:-}" && -z "${HOME:-}" ]]; then
+  echo "**⚠ /bug: failed to activate Write hook. Aborting.**"
+  rm -rf "$BUG_TMPDIR"
+  exit 1
+fi
+BUG_DENY_ACTIVE_DIR="${XDG_CACHE_HOME:-${HOME}/.cache}/larch/deny-edit-write-active"
+BUG_DENY_ACTIVE_SENTINEL="$BUG_DENY_ACTIVE_DIR/bug-$PPID"
+if ! mkdir -p "$BUG_DENY_ACTIVE_DIR" || ! : > "$BUG_DENY_ACTIVE_SENTINEL"; then
+  echo "**⚠ /bug: failed to activate Write hook. Aborting.**"
+  rm -rf "$BUG_TMPDIR"
+  exit 1
+fi
+printf 'BUG_DENY_ACTIVE_SENTINEL=%s\n' "$BUG_DENY_ACTIVE_SENTINEL"
+```
+
+All scratch files and the `/issue` sentinel file must stay under `$BUG_TMPDIR`. This placement keeps the active skill-scoped `Write` hook on the allowed side of its canonical `/tmp` policy.
 
 <!-- step:3 - Investigate -->
 ## Step 3 - Investigate
@@ -80,7 +99,7 @@ Investigate the report inline. Prefer direct reads and targeted search:
 
 Do not edit the repo. Do not run mutating commands. If running a reproduction would be expensive, destructive, or dependent on unavailable services, describe the best reproduction scenario instead of forcing it.
 
-If investigation reveals a security vulnerability rather than ordinary functional breakage, abort before Step 4 using the same security message and `SECURITY.md` guidance from Step 1. Remove `$BUG_TMPDIR` if it exists, then stop.
+If investigation reveals a security vulnerability rather than ordinary functional breakage, abort before Step 4 using the same security message and `SECURITY.md` guidance from Step 1. Remove `"$BUG_DENY_ACTIVE_SENTINEL"` and `$BUG_TMPDIR` if they exist, then stop.
 
 <!-- step:4 - Compose issue body -->
 ## Step 4 - Compose issue body
@@ -142,7 +161,7 @@ The body should give `/design` enough context to produce a good implementation p
 **⚠ /bug: this report appears to describe a security vulnerability. Do not file a public GitHub issue. Report it responsibly per SECURITY.md (email disclosure). Aborting before /issue.**
 ```
 
-Remove `$BUG_TMPDIR`, then stop. Do not run Steps 6 or 7. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
+Remove `"$BUG_DENY_ACTIVE_SENTINEL"` and `$BUG_TMPDIR`, then stop. Do not run Steps 6 or 7. See `${CLAUDE_PLUGIN_ROOT}/SECURITY.md` § Reporting a Vulnerability.
 
 Derive a concise, descriptive issue title from the original bug report, not from `$BUG_TMPDIR/bug-issue-body.md`. If the derived title is empty or whitespace-only after trimming, use `Bug report`. If the title starts with `-`, prefix `Bug:` followed by a space so `/issue` does not parse it as a flag.
 
@@ -183,7 +202,7 @@ Success requires both of these conditions:
 
 A created issue and a deduplicated issue are both successful outcomes. Prefer `ISSUE_1_URL` for the final report. Fall back to `ISSUE_1_DUPLICATE_OF_URL`.
 
-If `/issue` fails, if `ISSUES_FAILED` is nonzero, if `VERIFIED` is not `true`, or if neither `ISSUE_1_URL` nor `ISSUE_1_DUPLICATE_OF_URL` is present: surface the failure and parsed counters when available, stop without claiming that an issue was filed, and **do not run Step 7**. Leave `$BUG_TMPDIR` in place for debugging.
+If `/issue` fails, if `ISSUES_FAILED` is nonzero, if `VERIFIED` is not `true`, or if neither `ISSUE_1_URL` nor `ISSUE_1_DUPLICATE_OF_URL` is present: remove `"$BUG_DENY_ACTIVE_SENTINEL"`, surface the failure and parsed counters when available, stop without claiming that an issue was filed, and **do not run Step 7**. Leave `$BUG_TMPDIR` in place for debugging.
 
 > **Continue to Step 7 IMMEDIATELY** only when Step 6 bound `ISSUE_1_URL` or `ISSUE_1_DUPLICATE_OF_URL` and both success conditions hold. → shared/subskill-invocation.md#step-boundary
 
@@ -195,6 +214,7 @@ If `/issue` fails, if `ISSUES_FAILED` is nonzero, if `VERIFIED` is not `true`, o
 Remove the scratch directory:
 
 ```bash
+rm -f "$BUG_DENY_ACTIVE_SENTINEL"
 rm -rf "$BUG_TMPDIR"
 ```
 

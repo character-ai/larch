@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "medium",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Touches hook lifecycle, skill prompt contracts, security docs, and regression harnesses for cross-skill activation behavior.",
+  "round_cap": 3,
+  "schema_version": 1
+}
