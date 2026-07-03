@@ -1570,15 +1570,42 @@ def test_write_and_clear_implement_env_pointer(tmp_path: Path, monkeypatch: pyte
     )
 
     pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-12345.sh"
+    runner = home / ".cache" / "larch" / "sessions" / "implement-run-12345.sh"
     assert rc == 0
     assert pointer.read_text(encoding="utf-8") == (
         f"IMPLEMENT_TMPDIR={impl}\nREPO_CWD={cwd}\nSKILL_KIND=implement\n"
+    )
+    assert runner.is_file()
+    assert os.access(runner, os.X_OK)
+
+    larch_run = impl / "larch-run.sh"
+    larch_run.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        'printf "tmp=%s\\nargc=%s\\narg1=%s\\narg2=%s\\n" "$IMPLEMENT_TMPDIR" "$#" "$1" "$2" > "$IMPLEMENT_TMPDIR/runner.out"\n',
+        encoding="utf-8",
+    )
+    larch_run.chmod(0o755)
+    env = os.environ.copy()
+    env.pop("IMPLEMENT_TMPDIR", None)
+    invoked = subprocess.run(
+        [str(runner), "alpha", "two words"],
+        text=True,
+        capture_output=True,
+        env=env,
+        check=False,
+    )
+
+    assert invoked.returncode == 0, invoked.stderr
+    assert (impl / "runner.out").read_text(encoding="utf-8") == (
+        f"tmp={impl}\nargc=2\narg1=alpha\narg2=two words\n"
     )
 
     clear_rc = session_env.clear_implement_pointer_main(["--claude-pid", "12345"])
 
     assert clear_rc == 0
     assert not pointer.exists()
+    assert runner.exists()
 
 
 def test_write_implement_env_rejects_bad_pid(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

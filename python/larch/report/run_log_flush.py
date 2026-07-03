@@ -93,7 +93,7 @@ def _render_ledger_reports(*, runner: Runner, ctx: RunContext, log_root: Path) -
             _write_report_json(path=token_path, data=rendered)
     if token_path.is_file():
         with suppress(Exception):
-            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="token-report", input_file=token_path)
+            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="token-report", input_file=str(token_path))
     with suppress(Exception):
         ledger = timing.resolve_timing_ledger_path(env=env)
         if ledger is not None:
@@ -101,7 +101,7 @@ def _render_ledger_reports(*, runner: Runner, ctx: RunContext, log_root: Path) -
             _write_report_json(path=timing_path, data=data)
     if timing_path.is_file():
         with suppress(Exception):
-            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="timing-report", input_file=timing_path)
+            _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="timing-report", input_file=str(timing_path))
 
 
 def _should_flush_execution_issues(
@@ -352,7 +352,7 @@ def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path) -> None:
             skill="implement",
             run_id=run_id,
             batch="ship-route-exit-handoff",
-            input_file=handoff,
+            input_file=str(handoff),
         )
 
 
@@ -506,7 +506,7 @@ def _refresh_difficulty_record(*, ctx: RunContext, log_root: Path, cwd: str | No
             kwargs["design_rating"] = source_rating
         refreshed = difficulty.build_record(**kwargs)  # type: ignore[arg-type]
         difficulty.write_record(record_path, refreshed)
-        _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="difficulty-rating", input_file=record_path)
+        _write_batch(log_root=log_root, skill="implement", run_id=run_id, batch="difficulty-rating", input_file=str(record_path))
 
 
 def _reconcile_stalled_summary_backstop(*, ctx: RunContext, strict_final_report: bool) -> None:
@@ -879,7 +879,7 @@ def capture_transcript_main(argv: list[str]) -> int:
                 status="render-empty",
                 message="session-transcript renderer produced an empty file; transcript was not committed.",
             )
-        _write_batch(log_root=log_root, skill=args.skill, run_id=args.run_id, batch="session-transcript", input_file=rendered)
+        _write_batch(log_root=log_root, skill=args.skill, run_id=args.run_id, batch="session-transcript", input_file=str(rendered))
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         return _capture_transcript_emit(
             issues_log=issues_log,

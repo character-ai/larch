@@ -175,8 +175,8 @@ After Step 0 bootstrap, invoke through the session launcher so plugin-root rehyd
 Usage:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "Implement feature" [files...]
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement commit --message "Recover implementation" --pathspec-from-file paths.nul --pathspec-file-nul
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement commit --message "Implement feature" [files...]
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement commit --message "Recover implementation" --pathspec-from-file paths.nul --pathspec-file-nul
 ```
 
 When `--pathspec-from-file` is present, positional file args are ignored and the wrapper passes `--only --pathspec-from-file <PATH>` through to `cli.py git commit`. Add `--pathspec-file-nul` for NUL-delimited path lists. This mode is used by malformed-manifest recovery so pre-existing staged content is not swept into the synthesized implementation commit.

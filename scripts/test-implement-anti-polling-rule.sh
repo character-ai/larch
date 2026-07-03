@@ -405,7 +405,7 @@ check "$ORCH_NEVER_MD" \
     'When the sentinel is present, retry the just-denied output read once.'
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER pins /implement Step 8 rc-probe recovery" \
-    'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
+    'For `/implement` Step 8, run one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_absent "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER removes empty-notification-only qualifier" \
     'only after an empty `<task-notification>`'
@@ -445,7 +445,7 @@ check "$IMPL_MD" \
     'Before the `<task-notification>`, make no progress probes.'
 check "$IMPL_MD" \
     "SKILL.md NEVER list pins implement Step 8 rc probe" \
-    'Step 8 uses one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
+    'Step 8 uses one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_context "$IMPL_MD" \
     "SKILL.md NEVER #8 pins Step 3 and Step 5 same-step probe trigger" \
     "$IMPL_NEVER8_ANCHOR" \

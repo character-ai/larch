@@ -260,7 +260,11 @@ probe_target_live_dir_step8() {
   local cmd="$1" normalized assigned_tmpdir assigned_canon dir step step8_count=0 sole_step8_dir=""
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
-  if printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
+  # shellcheck disable=SC2016 # Match the exact documented pointer-reader command.
+  step8_pointer_prefix='IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null);'
+  if printf '%s' "$normalized" | grep -Fq "$step8_pointer_prefix"; then
+    :
+  elif printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
     assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^IMPLEMENT_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
     assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
     while IFS='|' read -r dir step || [ -n "$dir" ]; do
@@ -366,7 +370,16 @@ bash_is_step8_handoff_foreground_probe() {
   # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in the candidate Bash command.
   probe_target_re='(\$IMPLEMENT_TMPDIR/\.step-8-ship-handoff\.rc|\$\{IMPLEMENT_TMPDIR\}/\.step-8-ship-handoff\.rc)'
   test_re='^(IMPLEMENT_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$'
-  printf '%s' "$normalized" | grep -Eq "$test_re" || return 1
+  # shellcheck disable=SC2016 # Match the exact documented pointer-reader command.
+  pointer_test_prefix='IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null);'
+  if printf '%s' "$normalized" | grep -Eq "$test_re"; then
+    :
+  elif printf '%s' "$normalized" | grep -Fq "$pointer_test_prefix"; then
+    pointer_tail=${normalized#"$pointer_test_prefix"}
+    printf '%s' "$pointer_tail" | grep -Eq '^[[:space:]]*test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$' || return 1
+  else
+    return 1
+  fi
   dir=$(probe_target_live_dir_step8 "$normalized") || return 1
   [ ! -L "$dir/.step-8-ship-handoff.rc" ] || return 1
   return 0

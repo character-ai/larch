@@ -1450,6 +1450,60 @@ def test_commit_run_publishes_breadcrumbs_without_breadcrumbs_dir(
     assert "ship breadcrumb" in quiet_text
 
 
+def test_larch_log_write_rebases_root_relative_log_root_and_input_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    source = session / "token-report.json"
+    _ = source.write_text("token report\n", encoding="utf-8")
+
+    rc = run_logs.larch_log_write_main([
+        "--log-root",
+        "/larch-logs",
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--batch",
+        "token-report",
+        "--input-file",
+        "/token-report.json",
+    ])
+
+    assert rc == 0
+    assert (session / "larch-logs" / "implement" / "run-abc" / "token-report.json").read_text(encoding="utf-8") == "token report\n"
+
+
+def test_larch_log_append_rebases_root_relative_log_root_and_record_file(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    session = tmp_path / "session"
+    session.mkdir()
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(session))
+    record = session / "execution-issue-record.ndjson"
+    _ = record.write_text('{"message":"ok"}\n', encoding="utf-8")
+
+    rc = run_logs.larch_log_append_main([
+        "--log-root",
+        "/larch-logs",
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-abc",
+        "--batch",
+        "execution-issues",
+        "--record-file",
+        "/execution-issue-record.ndjson",
+    ])
+
+    assert rc == 0
+    assert (session / "larch-logs" / "implement" / "run-abc" / "execution-issues.ndjson").read_text(encoding="utf-8") == '{"message":"ok"}\n'
+
+
 def test_larch_log_flush_warns_when_stage_fails(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

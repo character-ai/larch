@@ -16,6 +16,7 @@ import sys
 from pathlib import Path
 
 from larch import io as larch_io
+from larch.core import config
 from larch.core import logging_util
 from larch.calibration import difficulty
 from larch.core import redact
@@ -63,11 +64,15 @@ from larch.implement.dispatch_manifest import (
 def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement run-dispatch")
-    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--coder", required=True)
     parser.add_argument("--answers", default="")
     args = parser.parse_args(argv)
-    tmp_arg = Path(args.implement_tmpdir)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        _err("implement run-dispatch: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
+        return 2
+    tmp_arg = Path(raw_tmpdir)
     if not tmp_arg.is_dir():
         _err(f"implement run-dispatch: --implement-tmpdir not a directory: {tmp_arg}")
         return 2

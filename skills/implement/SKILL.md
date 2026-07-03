@@ -45,7 +45,7 @@ Each rule states WHY; per-site reminders reference by anchor name.
 
 7. **NEVER bail mid-run on orchestrator-judgment "scope" or "capacity" concerns without a mechanical justification.** **Why**: `/implement` is designed for long autonomous runs. Subjective remaining-work judgments are NOT valid bail reasons. The only sanctioned non-error halt paths between Step 2 and Step 18 are: (a) Step 12d under documented judgment conditions; (b) explicit user halt in a fresh interactive turn; (c) hard tool failure. **How to apply**: follow the next explicit control-flow directive unless a sanctioned halt path applies. **Post-merge sub-clause (highest-stakes halt boundary)**: the `✅ 12: CI+merge loop status=complete outcome=merged pr=<N> elapsed=<elapsed>` line at Step 12b, and the analogous `✅ 12: CI+merge loop status=complete outcome=force-merged-externally pr=<N> elapsed=<elapsed>` line at Step 12a's `already_merged` branch, is the most halt-prone point. The run is not done: Steps 14, 15, 16, 17, and 18 still must run. Ending the turn, posting a recap, or writing a handoff between that breadcrumb and Step 14's first action violates NEVER #7. `pr_closed=true` and `DONE_RENAME_APPLIED=true` are PRE-conditions for Steps 14-18, not POST-conditions of a finished run.
 
-8. **NEVER call `ScheduleWakeup` anywhere in the `/implement` orchestrator.** **Why:** improvised wakeups re-fire as `/loop` input and can extend turns past Step 18. **How to apply:** do not call `ScheduleWakeup` at any step. Do not spawn a Monitor or a Bash polling loop (`for`/`while`/`until` + `sleep`) to watch another `run_in_background` job finish. For long helpers (>= 30 s; e.g., `run-step-checks.sh`, `review-and-fix step5`, `python/cli.py implement step-7a`, `step-8-ship.sh`), use immediate-background Bash and wait for one `<task-notification>`. See `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step2-dispatch.md` for the normal wait contract. **NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator.** Hook `scripts/hook-bg-poll-guard.sh` denies Monitor and TaskOutput during active bg-waits for `/implement` markers (`implement-step3-checks`, `implement-step5-review`, `implement-step8-ship`) and release sentinels (`.completed/step-3-terminal`, `.completed/step-5-terminal`, `.step-8-ship-handoff.rc`). Before the `<task-notification>`, make no progress probes. On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting. End the turn, and do not use `ps`, Monitor, TaskOutput, task-output reads, or background recovery waiters. If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step's genuine completion notification, run one foreground non-sleeping same-step sentinel probe only: `test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"` for `implement-step3-checks`, or `test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"` for `implement-step5-review`. The braced forms `test -f "${IMPLEMENT_TMPDIR}/.completed/step-3-terminal"` and `test -f "${IMPLEMENT_TMPDIR}/.completed/step-5-terminal"` are equivalent, and a single leading `IMPLEMENT_TMPDIR=<absolute-path>;` prefix is allowed when the variable is unexported. When the same-step sentinel is present, retry the just-denied output read once. When it is absent after a genuine completion notification, do not wait for another notification; treat it as a tool/hook inconsistency and route through that step's existing failure or stall handling. Step 8 uses one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time, hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent. If the Step 8 rc is absent, the notification is premature; end the turn. If present, continue to `route-exit` in the same turn. NEVER launch a background recovery waiter (`until [ -f … ]; do sleep 60; done`). Do NOT fall back to Monitor. Do NOT spawn multiple Monitor calls watching logs or PID exits.
+8. **NEVER call `ScheduleWakeup` anywhere in the `/implement` orchestrator.** **Why:** improvised wakeups re-fire as `/loop` input and can extend turns past Step 18. **How to apply:** do not call `ScheduleWakeup` at any step. Do not spawn a Monitor or a Bash polling loop (`for`/`while`/`until` + `sleep`) to watch another `run_in_background` job finish. For long helpers (>= 30 s; e.g., `run-step-checks.sh`, `review-and-fix step5`, `python/cli.py implement step-7a`, `step-8-ship.sh`), use immediate-background Bash and wait for one `<task-notification>`. See `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step2-dispatch.md` for the normal wait contract. **NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator.** Hook `scripts/hook-bg-poll-guard.sh` denies Monitor and TaskOutput during active bg-waits for `/implement` markers (`implement-step3-checks`, `implement-step5-review`, `implement-step8-ship`) and release sentinels (`.completed/step-3-terminal`, `.completed/step-5-terminal`, `.step-8-ship-handoff.rc`). Before the `<task-notification>`, make no progress probes. On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting. End the turn, and do not use `ps`, Monitor, TaskOutput, task-output reads, or background recovery waiters. If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step's genuine completion notification, run one foreground non-sleeping same-step sentinel probe only: `test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"` for `implement-step3-checks`, or `test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"` for `implement-step5-review`. The braced forms `test -f "${IMPLEMENT_TMPDIR}/.completed/step-3-terminal"` and `test -f "${IMPLEMENT_TMPDIR}/.completed/step-5-terminal"` are equivalent, and a single leading `IMPLEMENT_TMPDIR=<absolute-path>;` prefix is allowed when the variable is unexported. When the same-step sentinel is present, retry the just-denied output read once. When it is absent after a genuine completion notification, do not wait for another notification; treat it as a tool/hook inconsistency and route through that step's existing failure or stall handling. Step 8 uses one foreground non-sleeping `IMPLEMENT_TMPDIR=$(awk 'BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time, hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent. If the Step 8 rc is absent, the notification is premature; end the turn. If present, continue to `route-exit` in the same turn. NEVER launch a background recovery waiter (`until [ -f … ]; do sleep 60; done`). Do NOT fall back to Monitor. Do NOT spawn multiple Monitor calls watching logs or PID exits.
 
 9. **NEVER branch Step 2 on `STATUS` before completing §2.1.5 envelope validation.** **Why**: the dispatcher emits `ORCHESTRATOR_EDIT_AUTHORITY=allowed|forbidden`, with `allowed` iff `STATUS=claude_fallback`; any illegal pairing or malformed envelope lets the main agent mutate the tree while an external implementer owns commits (issue #1058). **How to apply**: after parsing §2.1 KV stdout, always run all §2.1.5 checks before §2.2 branches on `STATUS`. On failure, synthesize `orchestrator-envelope-invalid`; do not enter Step 3 or consume `MANIFEST`.
 
@@ -98,17 +98,17 @@ Wrapper-contract catalog lives in `${CLAUDE_PLUGIN_ROOT}/skills/implement/refere
 
 ## Bash block prelude
 
-The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 emits `$IMPLEMENT_TMPDIR/larch-run.sh`; every post-Step-0 Bash fence that calls a plugin script MUST delegate through that launcher:
+The Claude Code Bash tool does NOT preserve shell state between calls. Step 0 emits `$IMPLEMENT_TMPDIR/larch-run.sh` and the PID-keyed stable launcher, using the top-level Bash-tool `$PPID` captured by the Step 0 fence. Every post-Step-0 Bash fence that calls a plugin script MUST delegate through that stable launcher:
 
 ```text
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script-path> ...
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" <relative-script-path> ...
 ```
 
-Post-Step-0 fences have exactly one nonblank, noncomment physical line. Do not source `plugin-root.env` inline, use continuations, or add inline shell logic. Put foreground markers, anti-halt reminders, and rationale in prose outside fences. Each fence is a thin launcher invocation.
+Post-Step-0 fences have exactly one nonblank, noncomment physical line. Do not source `plugin-root.env` inline, source session pointers, export variables, use continuations, or add inline shell logic. The `LARCH_CLAUDE_PID="$PPID"` prefix on the Step 0 fence is a plain environment-variable-prefix assignment, not post-Step-0 shell logic. Put foreground markers, anti-halt reminders, and rationale in prose outside fences. Each fence is a thin launcher invocation.
 
 Pre-bootstrap fences keep their existing shapes. Step 0 initial bootstrap may keep the source guard plus the one-line `LARCH_CLAUDE_PLUGIN_ROOT=` awk fallback from `$IMPLEMENT_TMPDIR/session-env.sh`. The single Preflight helper fence may keep its inline `preflight_args` assembly. Do not generalize those old shapes to post-Step-0 fences.
 
-Sourcing full `session-env.sh` remains forbidden because it imports the whole namespace and can shadow caller state. `python/bootstrap.py` emits the minimal launcher only after Step 0 `session write-env` succeeds; all later script argv assembly belongs inside wrappers.
+Sourcing full `session-env.sh` remains forbidden because it imports the whole namespace and can shadow caller state. `python/bootstrap.py` emits the tmpdir-local launcher only after Step 0 `session write-env` succeeds, then `session write-implement-env` writes the PID-keyed stable launcher. All later script argv assembly belongs inside wrappers.
 
 ## Verbosity Control
 
@@ -246,7 +246,7 @@ export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
 # Foreground required
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial --issue-number "$TARGET_ISSUE_NUMBER" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --force-requested "${force_requested:-false}" --self-review-requested "${self_review:-false}" --self-implement-requested "${self_implement:-false}" --forked-target "${forked_target:-false}" --merge-requested "${merge:-false}" --draft-requested "${draft:-false}" --no-admin-fallback "${no_admin_fallback:-false}" --no-logs-commit "${no_logs_commit:-false}" --upstream-repo "${UPSTREAM_REPO:-}" --run-id "${RUN_ID:-}" --caller-env "${CALLER_ENV_PATH:-}" --session-env "${SESSION_ENV_PATH:-}" --coder "${coder:-}"
+LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial --issue-number "$TARGET_ISSUE_NUMBER" --preflight-tmpdir "$PREFLIGHT_TMPDIR" --force-requested "${force_requested:-false}" --self-review-requested "${self_review:-false}" --self-implement-requested "${self_implement:-false}" --forked-target "${forked_target:-false}" --merge-requested "${merge:-false}" --draft-requested "${draft:-false}" --no-admin-fallback "${no_admin_fallback:-false}" --no-logs-commit "${no_logs_commit:-false}" --upstream-repo "${UPSTREAM_REPO:-}" --run-id "${RUN_ID:-}" --caller-env "${CALLER_ENV_PATH:-}" --session-env "${SESSION_ENV_PATH:-}" --coder "${coder:-}"
 ```
 
 Parse the current routing envelope from wrapper stdout. `$IMPLEMENT_TMPDIR/bootstrap-routing.env` is a durable helper cache; do not source it prompt-side as the current result. On `--mode resume`, `python/cli.py bootstrap invoke` preserves prior non-empty `coder` / `coder_fallback` values in cache and stdout if the resume tail does not rerun implementer selection. `python/bootstrap.py` is the bootstrap behavior contract; `step-0-bootstrap.sh` is the wrapper contract. Offline harnesses: `skills/implement/scripts/test-python/bootstrap.py` (+ `python/test_bootstrap.py`) and `skills/implement/scripts/test-python/cli.py bootstrap invoke` (+ `python/test_bootstrap.py`). On wrapper exit `0`, require `BOOTSTRAP_NEXT` in `step2|dirty-recovery|degraded-prompt|rebase-routing|cleanup`; if `BOOTSTRAP_NEXT` is absent or any other value, treat the bootstrap envelope as malformed and abort with exit `2` without legacy inference. Routing after parsing:
@@ -309,7 +309,7 @@ Regression coverage for this dispatcher surface lives in `python/test_implement_
 **2.1 — First dispatch invocation**:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --coder "$coder"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --coder "$coder"
 ```
 
 **Do NOT poll or print sidecar output while dispatching.** Invoke `python/cli.py implement run-dispatch` through the foreground `larch-run.sh` fence. It synchronously invokes `python/cli.py implement step2-dispatch`; while it runs, do NOT read sidecar logs or print intermediate output. Polling floods the terminal. Parse stdout as KV only after the dispatcher exits.
@@ -340,7 +340,7 @@ If any check fails, synthesize an orchestrator-local bail: set `STATUS=bailed`, 
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
 ```
 
 From the combined wrapper stdout capture, first token-scan all `PHANTOM_*` KVs per **Phantom Untracked Probe** (advisory), regardless of wrapper exit code. Optionally bind `BRANCH=` and `COMMIT_SHA=` for degraded display persistence. Then parse exactly one `POST_DISPATCH_NEXT=continue|bail`. Missing, duplicated, malformed, or `bail` output prints `**⚠ /implement Step 2: post-dispatch branch mismatch (expected $BRANCH_NAME).**`, appends a sanitized `main-branch-post-dispatch` warning via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-entry`, sets `FINAL_BAIL_REASON=main-branch-post-dispatch`, `IMPLEMENT_BAIL_REASON=main-branch-post-dispatch`, `STALL_STEP=2`, `PHASE=implementation`, `STALL_TRACKING=true`, and bails to Step 12d without Step 3. `BAIL_REASON=main-branch-post-dispatch` is required. Missing `COMMIT_SHA=` is not failure. Otherwise proceed to Step 3. Steps 4 / 9a / 9a.1 read this manifest; the orchestrator does not reconstruct changes with `git diff`. The probe runs only inside `skills/implement/scripts/step-2-post-dispatch.sh` on external `STATUS=complete`, after dispatcher commit; do not run it on `STATUS=claude_fallback`.
@@ -388,7 +388,7 @@ Main-agent implementation is not complete until the difficulty rating is recorde
 **Pinned normalization fence (required, nonblocking)**: immediately after main-agent implementation and before Step 3, run exactly this one-line launcher fence:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer main-agent
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement normalize-coder-scout --tmpdir "$IMPLEMENT_TMPDIR" --input "$IMPLEMENT_TMPDIR/scout-coder-manifest.raw.json" --producer main-agent
 ```
 
 If `scout-coder-manifest.raw.json` is absent, still run the helper with that expected path so it writes `missing-or-invalid` and an empty manifest. Invalid manifest output is nonblocking but loud. This fence is mandatory on every main-agent path, including `--force`, explicit `--coder claude`, and both-tools-unavailable fallback. External `STATUS=complete` is unchanged; the dispatcher normalizes after a complete manifest.
@@ -396,7 +396,7 @@ If `scout-coder-manifest.raw.json` is absent, still run the helper with that exp
 After main-agent implementation and `normalize-coder-scout`, write redacted Step 4 commit text to `$IMPLEMENT_TMPDIR/implementation-commit-message.txt`. Derive `$IMPLEMENT_TMPDIR/implementation-commit-paths.nul` from a fresh postlaunch capture with:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement recovery-paths --repo-root "$REPO_ROOT" --tmpdir "$IMPLEMENT_TMPDIR" --capture-postlaunch --prelaunch-porcelain "$IMPLEMENT_TMPDIR/step2-prelaunch-porcelain.nul" --postlaunch-porcelain "$IMPLEMENT_TMPDIR/step2-postlaunch-porcelain.nul" --prelaunch-digests "$IMPLEMENT_TMPDIR/step2-prelaunch-content-digests.txt" --out-file "$IMPLEMENT_TMPDIR/implementation-commit-paths.nul"
 ```
 
 Before re-launching the checks-repair composite after repair edits, refresh the postlaunch porcelain, pathspec, and commit message.
@@ -418,7 +418,7 @@ After each `AskUserQuestion` return (Codex Q/A loop, Claude-fallback opportunist
 1. Compose an NDJSON record with `phase="implement"`, `step="2"`, `category="Q/A"`, and a sanitized markdown `body`.
 2. Append it with:
    ```bash
-   bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
+   "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py run-log append --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --batch execution-issues --record-file "$IMPLEMENT_TMPDIR/execution-issue-record.ndjson"
    ```
 3. On `LOG_WRITTEN=false` with `ERROR=`, log `Step 2 — Q/A larch-log append failed: $ERROR` to `Warnings` and continue. Non-fatal.
 
@@ -437,7 +437,7 @@ Print: `> **🔶 /implement 3: checks (1)**`
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
 ```
 
 <!-- step:4 — First Commit (implementation) -->
@@ -472,7 +472,7 @@ Nested review token-context propagation through `review-and-fix CLI` is pinned b
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-review.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-5-review.sh
 ```
 
 Wait for `<task-notification>` before parsing loop stdout or reading Step 5 result files. If the wrapper exits non-zero and stdout lacks `STEP5_REVIEW_STATUS`, treat it as Step 5 preflight failure: log to `Warnings`, set `STALL_TRACKING=true`, `STALL_STEP=5`, and skip to Step 18. Do not fall through to status parsing or Step 6; without `STEP5_REVIEW_STATUS`, NEVER #4 is unsatisfied.
@@ -501,14 +501,14 @@ Branch on `STEP5_REVIEW_STATUS` (only when present — preflight failures withou
 > **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`. On checks pass, apply the composite stdout parsing slice and full resume envelope contract below. On `NEXT_ACTION=main-agent-edit`, delegate through the macro/reference. Terminal `NEXT_ACTION=stall` from the repair loop is a routing summary only: do not skip to Step 18 here. First run the main-agent handoff terminal-stall timing capture and durable bail, then skip to Step 18. Do **not** re-invoke the Step 5 loop wrapper.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
 ```
 
 <!-- # intentionally non-stable: step-5-resume.sh captures wall-clock time for round duration -->
 Before leaving the main-agent handoff terminal-stall path, record timing exactly once through `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-5-resume.sh`. If checks/lint end in terminal stall, invoke the wrapper with `--final-round-num "$FINAL_ROUND_NUM" --record-only`, set `STALL_TRACKING=true` defensively, run **Durable Bail to Step 18 Macro** with pinned `STALL_STEP=5`, skip to Step 18, and do not continue to the composite resume success path or Step 6/16:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-5-resume.sh --final-round-num "$FINAL_ROUND_NUM" --record-only
 ```
 
 After `checks-step5-resume` returns, capture full composite Bash stdout. Whitespace-token-scan only the first physical line for checks keys: `FAILURE_REASON`, `RELEVANT_CHECKS_OK`, `RELEVANT_CHECKS_SKIPPED`, `STATUS`, `EXIT_CODE`, and `PHASE`. Key-scan the full composite stdout for `DIGEST_FILE` and `REDACTED_LOG_FILE` so folded failure keys are not lost behind leading output. Parse exactly one line-anchored composite `NEXT_ACTION=` anywhere in the capture for `checks-failed` only. Ignore leading-line `NEXT_ACTION` tokens for resume authorization.
@@ -547,7 +547,7 @@ The Step 6 composite writes `.review-boundary-passed` at entry after Cross-Skill
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-6-entry.sh --forked-target "${forked_target:-false}"
 ```
 
 Wait for `<task-notification>` before parsing composite stdout.
@@ -576,7 +576,7 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1800000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-7a --implement-tmpdir "$IMPLEMENT_TMPDIR" --issue-number "${ISSUE_NUMBER:-}" --run-id "$RUN_ID" --no-logs-commit "${no_logs_commit:-false}" --forked-target "${forked_target:-false}"
 ```
 
 Treat `python/cli.py implement step-7a` relay stdout as one KV stream. Scan `REBASE_OUTCOME` only for stream ordering, then read `CHECKPOINT_NEXT=continue|load-routing` and final KV tail for diagram/log status. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. Route `load-routing` via the **Rebase Checkpoint Macro** using `<step-prefix>=7a.r` and `<short-name>=pre-ship`.
@@ -594,7 +594,7 @@ Consult `ARCHITECTURAL_GUIDELINES.md` only through the Python helper. Treat pars
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-prepare.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-architectural-guidelines-prepare.sh
 ```
 
 Capture the prepare fence exit code and stdout together. Apply this exit-code routing before any `ARCHITECTURAL_GUIDELINES_STATUS` branching:
@@ -629,19 +629,19 @@ On each retry (CI failure, merge conflict, rebase), the active Python driver ref
 
 Steps 8-14 are driven by the **Python ship driver wrapper** inside `step-8-ship.sh`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ship pr`, delegates Python 3.11 checks to `step-8-python-guard.sh`, rehydrates state, runs advisory phantom probes, and writes the durable handoff sidecars for notification routing.
 
-Run `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver` before reading the Step 8+ matrix.
+Run `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver` before reading the Step 8+ matrix.
 **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.
 
-**Post-ship durable handoff.** When `<task-notification>` fires for `step-8-ship.sh`, first run exactly one foreground non-sleeping probe: `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"`. **If absent**, the notification is premature; end the turn immediately. **If present** but `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent, treat it as setup failure per the matrix. Otherwise, read the rc/json handoff and continue to `route-exit` in the same turn. Do not poll, sleep, use Monitor, or inspect process state. The handoff is durable across turn breaks; after an unexpected turn end, resume by reading it before any Step 8+ branch action.
+**Post-ship durable handoff.** When `<task-notification>` fires for `step-8-ship.sh`, first resolve `IMPLEMENT_TMPDIR` from `$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh`, then run exactly one foreground non-sleeping probe: `IMPLEMENT_TMPDIR=$(awk 'BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"`. **If absent**, the notification is premature; end the turn immediately. **If present** but `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json` is absent, treat it as setup failure per the matrix. Otherwise, read the rc/json handoff and continue to `route-exit` in the same turn. Do not poll, sleep, use Monitor, or inspect process state. The handoff is durable across turn breaks; after an unexpected turn end, resume by reading it before any Step 8+ branch action.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR" --json-file "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship route-exit --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 **Pre-driver predicate** (evaluate before choosing fences; read `$IMPLEMENT_TMPDIR/ship-pr-state.sh` when present): state file absent/empty, or `PHASE=checks` and `PR_NUMBER` is empty/absent. Seeded-but-no-PR state is still pre-driver. Run `ship pre-driver` only for this prompt-side predicate.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver
 ```
 
 **Seeder authority.** `python/cli.py ship seed-initial-state` owns the canonical initial state contract; `step-8-seed-initial.sh` is the only shell argv-assembly wrapper.
@@ -656,7 +656,7 @@ Branch on pre-driver `NEXT_ACTION`:
 
 Invoke `step-8-ship.sh` in immediate-background mode.
 
-Before every same-turn Step 8+ `step-8-ship.sh` background launch, run one separate foreground Bash call to clear stale handoff sidecars: `rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" 2>/dev/null || true`.
+Before every same-turn Step 8+ `step-8-ship.sh` background launch, run one separate foreground Bash call to clear stale handoff sidecars: `IMPLEMENT_TMPDIR=$(awk 'BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); rm -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc" "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.json" 2>/dev/null || true`.
 
 This prevents prior reship/ci-fix rc/json from satisfying the notification probe before wrapper cleanup. Keep the clear outside the launcher fence. Apply it to initial ship, reship, ci-fix, conflict-resolution Phase 4, stall-recovery `step8-shippr`, `ship-pr-exit-matrix.md` re-entries, and every other Step 8+ relaunch. Wrapper entry cleanup remains defense in depth.
 
@@ -669,7 +669,7 @@ This prevents prior reship/ci-fix rc/json from satisfying the notification probe
 Invoke:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-ship.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-ship.sh
 ```
 
 Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
@@ -688,7 +688,7 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 **OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
 ```
 
 - **`NEXT_ACTION=reship`**: run the foreground stale-handoff clear, then re-invoke ship with the same `RESUME_PHASE` carve-out. Do not sleep.
@@ -697,7 +697,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-oos-checkp
 When `ship-pr-exit-matrix.md` requires tracking metadata projection refresh, run this fence; skip it when `ISSUE_NUMBER` is empty or `0`.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py execution-issues refresh --implement-tmpdir "$IMPLEMENT_TMPDIR" --best-effort
 ```
 
 > **Continue to Step 15.** The active Python ship driver owns this transition after postmerge cleanup.
@@ -755,7 +755,7 @@ Step 18a runs first on every Step 18 entry, before teardown. Per recover-then-re
 Bind `STEP17_EMITTED_FOR_STEP18` before the composite fence because the no-stall green path finalizes inside it. Use `true` when `$IMPLEMENT_TMPDIR/.step17-emitted` exists or the Step 17 marker body was already emitted to top chat this run; otherwise use `false`.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
 ```
 
 Always retain captured composite stdout. Parse line-anchored `NEXT_ACTION`, `STALL_RECOVERY_REQUIRED`, four `STALL_TRACKING_*` KVs, Step 18b markers, status KVs, and teardown tail KVs from it even when rc is non-zero. Missing `NEXT_ACTION` is Tool Failure. On `NEXT_ACTION=finalize-done` with non-zero rc, still extract markers, print missing-marker warning when required, and relay teardown KVs from captured stdout; do not treat it as silent success.
@@ -781,7 +781,7 @@ Repeat any external reviewer warnings from earlier from Step 5 review or runtime
 Use the standalone finalize fence only on the stall-recovery breakout path.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
 ```
 
 On the green path (`NEXT_ACTION=finalize-done`), parse captured composite stdout only. On stall-recovery, parse standalone finalize stdout only. Follow `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` marker-first profile. Binding: markers `---LARCH-SUMMARY-FINAL-BEGIN---` / `---LARCH-SUMMARY-FINAL-END---`; source captured foreground `python/cli.py implement step-18-gate-finalize` Bash wrapper stdout on green path, or captured foreground `step-18.sh --phase finalize` Bash wrapper stdout on breakout; not `<task-notification>` output; in-context-only `true`; Read fallback `forbidden`; sidecar follow-on `forbidden`. When `EMIT_BODY=true`, `WFR_RC=0`, and markers are absent or invalid, print `**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**` on green path or `**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**` on breakout. Do not Read `summary-final.md` on the Step 18 path because teardown may have removed the tmpdir. Do not write `$IMPLEMENT_TMPDIR/.step17-emitted` after finalize returns. The wrapper writes `.step17-emitted` before Step 18b when `--step17-emitted true`, and touches it before teardown when it emits markers.

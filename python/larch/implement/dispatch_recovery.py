@@ -11,6 +11,7 @@ import sys
 from dataclasses import dataclass
 from pathlib import Path
 
+from larch.core import config
 from larch.core import logging_util
 from larch.implement.dispatch_helpers import (
     RecoveryParse,
@@ -31,6 +32,19 @@ class RecoveryPorcelainInputs:
     prelaunch_porcelain: Path
     postlaunch_porcelain: Path
     prelaunch_digests: Path
+
+
+def _resolve_tmpdir_path(*, tmpdir: Path, raw: str, default_relpath: str) -> Path:
+    if not raw:
+        return tmpdir / default_relpath
+    candidate = Path(raw)
+    if candidate.is_absolute():
+        try:
+            candidate.relative_to(tmpdir)
+            return candidate
+        except ValueError:
+            return tmpdir / Path(*candidate.parts[1:])
+    return tmpdir / candidate
 
 
 def _load_digest_map(path: Path) -> dict[str, str]:
@@ -122,15 +136,19 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement recovery-paths")
     parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--tmpdir", required=True)
+    parser.add_argument("--tmpdir", default="")
     parser.add_argument("--capture-postlaunch", action="store_true")
-    parser.add_argument("--prelaunch-porcelain", required=True)
-    parser.add_argument("--postlaunch-porcelain", required=True)
-    parser.add_argument("--prelaunch-digests", required=True)
-    parser.add_argument("--out-file", required=True)
+    parser.add_argument("--prelaunch-porcelain", default="")
+    parser.add_argument("--postlaunch-porcelain", default="")
+    parser.add_argument("--prelaunch-digests", default="")
+    parser.add_argument("--out-file", default="")
     args = parser.parse_args(argv)
     repo_root = Path(args.repo_root)
-    tmpdir = Path(args.tmpdir)
+    raw_tmpdir = args.tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        _err("implement recovery-paths: --tmpdir is required or IMPLEMENT_TMPDIR must be set")
+        return 2
+    tmpdir = Path(raw_tmpdir)
     if args.capture_postlaunch:
         rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
         if rc != 0:
@@ -139,11 +157,11 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
         repo_root=repo_root,
         tmpdir=tmpdir,
         porcelain=RecoveryPorcelainInputs(
-            prelaunch_porcelain=Path(args.prelaunch_porcelain),
-            postlaunch_porcelain=Path(args.postlaunch_porcelain),
-            prelaunch_digests=Path(args.prelaunch_digests),
+            prelaunch_porcelain=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.prelaunch_porcelain, default_relpath="step2-prelaunch-porcelain.nul"),
+            postlaunch_porcelain=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.postlaunch_porcelain, default_relpath="step2-postlaunch-porcelain.nul"),
+            prelaunch_digests=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.prelaunch_digests, default_relpath="step2-prelaunch-content-digests.txt"),
         ),
-        out_file=Path(args.out_file),
+        out_file=_resolve_tmpdir_path(tmpdir=tmpdir, raw=args.out_file, default_relpath="step2-recovery-paths.nul"),
     )
     return 0 if ok else 1
 

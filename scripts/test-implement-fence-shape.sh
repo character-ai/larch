@@ -32,7 +32,7 @@ saw_py_launcher = False
 
 CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/plugin-root.env" ] && . "$IMPLEMENT_TMPDIR/plugin-root.env"'
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
-LAUNCHER_PREFIX = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
+LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
 EXPECTED_NEW = 20
 
@@ -101,8 +101,12 @@ def validate_old(start, end, body, commands, cmd, kind):
         errors.append(f'fence {start}-{end}: old-shape {kind} must remain guard-only without awk fallback')
     if kind == 'step-0-initial' and '--mode initial' not in cmd:
         errors.append(f'fence {start}-{end}: Step 0 initial old-shape target missing --mode initial')
+    if kind == 'step-0-initial' and 'LARCH_CLAUDE_PID="$PPID" ' not in cmd:
+        errors.append(f'fence {start}-{end}: Step 0 initial old-shape target missing LARCH_CLAUDE_PID prefix')
     if kind == 'dirty-tree-resume' and '--mode resume' not in cmd:
         errors.append(f'fence {start}-{end}: dirty-tree resume old-shape target missing --mode resume')
+    if kind == 'dirty-tree-resume' and 'LARCH_CLAUDE_PID="$PPID" ' not in cmd:
+        errors.append(f'fence {start}-{end}: dirty-tree resume old-shape target missing LARCH_CLAUDE_PID prefix')
     if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', cmd):
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {cmd}')
 
@@ -154,19 +158,19 @@ def validate_new(start, end, body):
     except ValueError as exc:
         errors.append(f'fence {start}-{end}: new-shape command is not shell-parseable: {exc}: {stripped}')
         return
-    if len(tokens) < 3:
+    if len(tokens) < 2:
         errors.append(f'fence {start}-{end}: new-shape launcher call missing script target: {stripped}')
         return
-    if tokens[0] != 'bash' or tokens[1] != '$IMPLEMENT_TMPDIR/larch-run.sh':
-        errors.append(f'fence {start}-{end}: launcher path must be exactly "$IMPLEMENT_TMPDIR/larch-run.sh": {stripped}')
-    target = tokens[2]
+    if tokens[0] != '$HOME/.cache/larch/sessions/implement-run-$PPID.sh':
+        errors.append(f'fence {start}-{end}: launcher path must be exactly "$HOME/.cache/larch/sessions/implement-run-$PPID.sh": {stripped}')
+    target = tokens[1]
     if target.startswith('/') or '..' in target:
         errors.append(f'fence {start}-{end}: launcher target must be repo-relative without ..: {target}')
     if not (target.endswith('.sh') or target.endswith('.py')):
         errors.append(f'fence {start}-{end}: launcher target must be a .sh or .py path: {target}')
     if target.endswith('.py'):
         saw_py_launcher = True
-    best_effort_timing = stripped == 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true'
+    best_effort_timing = stripped == '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true'
     if re.search(r'(^|[\s;])(\|\||&&|;|\bif\s|\bwhile\s|\buntil\s|\bcase\s)', stripped) and not best_effort_timing:
         errors.append(f'fence {start}-{end}: inline shell control logic is not allowed: {stripped}')
     if re.search(r'/(?:token-ledger|timing-ledger|token-report|timing-report)\.sh\b', stripped):
@@ -206,6 +210,10 @@ for (_, end_a, _), (start_b, _, _) in zip(fences, fences[1:]):
 if old_count != EXPECTED_OLD or new_count != EXPECTED_NEW:
     errors.append(f'expected old={EXPECTED_OLD} new={EXPECTED_NEW} bash fences, found old={old_count} new={new_count}')
 
+resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()
+if 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume' not in resume_text:
+    errors.append('bootstrap-recovery resume fence must prefix step-0-bootstrap.sh with LARCH_CLAUDE_PID="$PPID"')
+
 if saw_py_launcher:
     bootstrap = Path('python/larch/state/bootstrap.py').read_text()
     required = 'trap _larch_cleanup_active_leg EXIT INT TERM'
@@ -238,7 +246,7 @@ import sys
 import tempfile
 
 sys.path.insert(0, str(Path("python").resolve()))
-from larch.state import bootstrap  # noqa: E402
+from larch.state import bootstrap, session_env  # noqa: E402
 
 
 def fail(message: str) -> None:
@@ -270,7 +278,7 @@ def extract_root_awk_program(text: str) -> str:
 
 
 with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
-    root = Path(tmp)
+    root = Path(tmp).resolve()
     impl = root / "impl"
     fake_plugin = root / "plugin"
     (fake_plugin / "scripts").mkdir(parents=True)
@@ -306,6 +314,33 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
     if "PY_EXECUTABLE=" not in py.stdout:
         fail(".py launcher did not prove Python execution")
 
+    home = root / "home"
+    home.mkdir()
+    prior_home = os.environ.get("HOME", "")
+    os.environ["HOME"] = str(home)
+    try:
+        rc = session_env.write_implement_env_main(
+            ["--claude-pid", "12345", "--implement-tmpdir", str(impl), "--cwd", str(root)]
+        )
+    finally:
+        if prior_home:
+            os.environ["HOME"] = prior_home
+        else:
+            os.environ.pop("HOME", None)
+    if rc != 0:
+        fail("failed to write implement-run launcher")
+    stable_runner = home / ".cache" / "larch" / "sessions" / "implement-run-12345.sh"
+    stable_env = {"PATH": os.environ.get("PATH", ""), "TMPDIR": os.environ.get("TMPDIR", "/tmp"), "HOME": str(home)}
+    stable = subprocess.run(
+        [str(stable_runner), "scripts/echo-argv.sh", "stable", "runner arg"],
+        text=True,
+        capture_output=True,
+        check=False,
+        env=stable_env,
+    )
+    if stable.returncode != 0 or "SH_ARGV=stable|runner arg" not in stable.stdout:
+        fail(f"implement-run launcher failed without IMPLEMENT_TMPDIR: rc={stable.returncode} stdout={stable.stdout!r} stderr={stable.stderr!r}")
+
     for label, target in (("absolute", "/tmp/not-allowed.sh"), ("traversal", "../not-allowed.sh"), ("unsupported", "scripts/not-supported.txt")):
         result = run_launcher(launcher, target)
         if result.returncode != 2:
@@ -318,7 +353,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-launcher-test.") as tmp:
 
 
 with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tmp:
-    root = Path(tmp)
+    root = Path(tmp).resolve()
     impl = root / "impl"
     impl.mkdir()
     session_env = impl / "session-env.sh"
@@ -387,6 +422,7 @@ with tempfile.TemporaryDirectory(prefix="larch-run-partial-upgrade-test.") as tm
         os.environ.clear()
         os.environ.update(original_env)
         os.environ["IMPLEMENT_TMPDIR"] = str(impl)
+        os.environ["LARCH_CLAUDE_PID"] = "12345"
         bootstrap._run = fake_run
         bootstrap._cli = fake_cli
         bootstrap.dirty_tree.checkpoint = lambda: ["STATUS=clean"]

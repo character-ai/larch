@@ -727,8 +727,12 @@ out=$(run_payload "$(payload_bash "$step8_ordinary_probe")")
 assert_deny "$out" 'live implement-step8-ship marker plus ordinary IMPLEMENT_TMPDIR probe denies'
 step8_rc_probe='test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 step8_rc_probe_braced='test -f "${IMPLEMENT_TMPDIR}/.step-8-ship-handoff.rc"'
+step8_rc_probe_pointer='IMPLEMENT_TMPDIR=$(awk '\''BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); exit}'\'' "$HOME/.cache/larch/sessions/current-implement-env-$PPID.sh" 2>/dev/null); test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"'
 out=$(run_payload "$(payload_bash "$step8_rc_probe_braced" "$D")")
 assert_allow "$out" 'Step 8 handoff rc braced probe allows while rc absent'
+rm -f "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
+out=$(run_payload "$(payload_bash "$step8_rc_probe_pointer" "$D")")
+assert_allow "$out" 'Step 8 handoff rc pointer-resolved probe allows while rc absent'
 rm -f "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count"
 out=$(run_payload "$(payload_bash "$step8_rc_probe" "$D")")
 assert_allow "$out" 'Step 8 handoff rc probe allows while rc absent, first attempt'

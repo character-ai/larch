@@ -189,6 +189,18 @@ esac
     return True
 
 
+def _resolve_resume_implement_tmpdir(*, claude_pid: str) -> str:
+    if not re.fullmatch(r"[1-9][0-9]{0,6}", claude_pid):
+        return ""
+    pointer = Path.home() / ".cache" / "larch" / "sessions" / f"current-implement-env-{claude_pid}.sh"
+    if not pointer.is_file() or pointer.is_symlink():
+        return ""
+    tmpdir = _read_simple_kv(path=pointer, key="IMPLEMENT_TMPDIR")
+    if not tmpdir or not Path(tmpdir).is_absolute():
+        return ""
+    return tmpdir
+
+
 def _read_key(*, path: Path, key: str, default: str = "") -> str:
     result = _cli("session", "read-key", "--file", str(path), "--key", key, "--default", default)
     return result.stdout.strip() if result.returncode == 0 else default
@@ -463,6 +475,9 @@ def _phase_infra(st: BootstrapState) -> None:
                     output_file=diag,
                     status_label="failed",
                 )
+            st.emit_step_failed("write-implement-env")
+    elif st.implement_tmpdir and not pid:
+        st.emit_step_failed("write-implement-env")
     st.codex_available = "true" if st.codex_binary_found == "true" else "false"
     st.cursor_available = "true" if st.cursor_binary_found == "true" else "false"
     _err(f"→ step0: infra ready (tmpdir={st.implement_tmpdir} session={st.session_id})")
@@ -1749,6 +1764,10 @@ def invoke_main(argv: list[str]) -> int:
     upstream = args.upstream_repo or env.get("UPSTREAM_REPO", "")
     run_id = args.run_id or env.get("RUN_ID", "")
     implement_tmpdir_env = env.get("IMPLEMENT_TMPDIR", "")
+    if args.mode == "resume" and not implement_tmpdir_env:
+        implement_tmpdir_env = _resolve_resume_implement_tmpdir(claude_pid=env.get("LARCH_CLAUDE_PID", ""))
+        if implement_tmpdir_env:
+            env["IMPLEMENT_TMPDIR"] = implement_tmpdir_env
     seed_file = Path(implement_tmpdir_env) / "ship-seed-input.env" if implement_tmpdir_env else Path()
     resume_seed = args.mode == "resume"
     merge_requested = (

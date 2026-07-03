@@ -98,6 +98,30 @@ def test_write_larch_run_sh_dispatches_shell_and_python_targets(tmp_path) -> Non
     assert "/*|*..*)" in text
 
 
+def test_invoke_main_resume_recovers_implement_tmpdir_from_pointer(tmp_path, monkeypatch) -> None:
+    home = tmp_path / "home"
+    pointer = home / ".cache" / "larch" / "sessions" / "current-implement-env-123.sh"
+    pointer.parent.mkdir(parents=True)
+    pointer.write_text("IMPLEMENT_TMPDIR=/tmp/impl\n", encoding="utf-8")
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "123")
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    seen: dict[str, object] = {}
+
+    def fake_run_bootstrap(opts):
+        seen["resume_plan_tail"] = opts.resume_plan_tail
+        print("IMPLEMENT_TMPDIR=/tmp/impl\n")
+        return 0
+
+    monkeypatch.setattr(bootstrap, "run_bootstrap", fake_run_bootstrap)
+
+    rc = bootstrap.invoke_main(["--mode", "resume"])
+
+    assert rc == 0
+    assert seen["resume_plan_tail"] is True
+    assert os.environ["IMPLEMENT_TMPDIR"] == "/tmp/impl"
+
+
 def test_tracking_adoption_empty_run_id_stalls_without_side_effects(tmp_path, monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
 
@@ -1055,7 +1079,7 @@ def test_tracking_rename_failure_warns_and_continues(tmp_path, monkeypatch) -> N
     assert "rename failed" in (tmp_path / "tracking-rename-warning.stderr.log").read_text(encoding="utf-8")
 
 
-def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkeypatch) -> None:
+def test_write_implement_env_failure_is_fatal(tmp_path, monkeypatch) -> None:
     calls: list[tuple[str, ...]] = []
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
 
@@ -1084,10 +1108,49 @@ def test_write_implement_env_failure_logs_warning_and_continues(tmp_path, monkey
     monkeypatch.setattr(bootstrap, "_run", fake_run)
     monkeypatch.setattr(bootstrap, "_cli", fake_cli)
     st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra"))
-    bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+    with pytest.raises(bootstrap.BootstrapExit) as exc_info:
+        bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+    assert exc_info.value.code == 2
     assert st.implement_tmpdir == str(tmp_path)
     assert "pointer failed" in (tmp_path / "write-implement-env-warning.log").read_text(encoding="utf-8")
     assert any(call[:2] == ("run-log", "append-failure") for call in calls)
+
+
+def test_write_implement_env_missing_pid_is_fatal_without_write_attempt(tmp_path, monkeypatch) -> None:
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.delenv("LARCH_CLAUDE_PID", raising=False)
+
+    def fake_run(argv, *, env=None, cwd=None):
+        _ = env, cwd
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    def fake_cli(*args: str, env=None):
+        _ = env
+        calls.append(args)
+        if args[:3] == ("pr", "create-branch", "--check"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "CURRENT_BRANCH=feature\nIS_MAIN=false\nIS_USER_BRANCH=true\nUSER_PREFIX=user\n", "")
+        if args[:2] == ("session", "entry-gate"):
+            return subprocess.CompletedProcess(["cli", *args], 0, "ENTRY_GATE=user-branch\nSKIP_BRANCH_CHECK=true\n", "")
+        if args[:2] == ("session", "setup"):
+            return subprocess.CompletedProcess(
+                ["cli", *args],
+                0,
+                f"SESSION_TMPDIR={tmp_path}\nSESSION_ID=R1\nREPO=owner/repo\nREPO_UNAVAILABLE=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\n",
+                "",
+            )
+        if args[:2] == ("session", "write-implement-env"):
+            raise AssertionError("write-implement-env should not run without LARCH_CLAUDE_PID")
+        return subprocess.CompletedProcess(["cli", *args], 0, "", "")
+
+    monkeypatch.setattr(bootstrap, "_run", fake_run)
+    monkeypatch.setattr(bootstrap, "_cli", fake_cli)
+    st = bootstrap.BootstrapState(bootstrap.BootstrapOptions(up_to_phase="infra"))
+
+    with pytest.raises(bootstrap.BootstrapExit) as exc_info:
+        bootstrap._phase_infra(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert exc_info.value.code == 2
+    assert not any(call[:2] == ("session", "write-implement-env") for call in calls)
 
 
 def _continue_data(tmp_path: Path, **overrides: str) -> dict[str, str]:

@@ -115,6 +115,28 @@ def test_refresh_execution_issues_skips_when_issue_not_set(
     assert "REASON=issue-not-set" in out
 
 
+def test_refresh_execution_issues_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    seen: dict[str, object] = {}
+
+    def fake_refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = False) -> tuple[int, bool, str]:
+        seen["implement_tmpdir"] = implement_tmpdir
+        seen["best_effort"] = best_effort
+        return 0, True, ""
+
+    monkeypatch.setattr(execution_issues, "refresh_execution_issues", fake_refresh_execution_issues)
+
+    rc = execution_issues.refresh_execution_issues_main(["--implement-tmpdir", "", "--best-effort"])
+
+    assert rc == 0
+    assert seen == {"implement_tmpdir": tmp_path, "best_effort": True}
+    assert "REFRESHED=true" in capsys.readouterr().out
+
+
 def test_flush_execution_issues_main_emits_kv_contract(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

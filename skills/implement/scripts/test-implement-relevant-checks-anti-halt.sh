@@ -70,9 +70,9 @@ BEGIN {
 function is_invocation_site(line) {
     # Match concrete launcher invocations: Step 6 uses the unified wrapper;
     # the other active sites use composite Python verbs.
-    return line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-commit-route/ \
-        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" python\/cli\.py implement checks-step5-resume/ \
-        || line ~ /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/step-6-entry\.sh/
+    return line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" python\/cli\.py implement checks-commit-route/ \
+        || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" python\/cli\.py implement checks-step5-resume/ \
+        || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-6-entry\.sh/
 }
 
 {

@@ -14,6 +14,7 @@ import time
 from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
+from larch.core import config
 from larch.core import redact
 from larch import io as larch_io
 from larch.errors import ShipError
@@ -90,6 +91,29 @@ def _batch_mode(slug: str) -> str:
 
 def _batch_sanitizer(slug: str) -> str:
     return _LARCH_LOG_BATCHES[slug].sanitizer
+
+
+def _implement_tmpdir() -> Path | None:
+    raw = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    return Path(raw) if raw else None
+
+
+def _rebase_under_tmpdir(raw: str, *, default_leaf: str | None = None) -> Path:
+    tmpdir = _implement_tmpdir()
+    if not raw:
+        if tmpdir is not None and default_leaf is not None:
+            return tmpdir / default_leaf
+        return Path(raw)
+    candidate = Path(raw)
+    if tmpdir is not None:
+        if candidate.is_absolute():
+            try:
+                candidate.relative_to(tmpdir)
+                return candidate
+            except ValueError:
+                return tmpdir / Path(*candidate.parts[1:])
+        return tmpdir / candidate
+    return candidate
 
 
 def _batch_list() -> tuple[str, ...]:
@@ -218,9 +242,20 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
 
 def _resolve_log_root(log_root: str | None = None) -> Path:
     raw = log_root or os.environ.get("LARCH_LOG_ROOT", "")
+    tmpdir = _implement_tmpdir()
     if not raw:
+        if tmpdir is not None:
+            return tmpdir / "larch-logs"
         raise ValueError("--log-root is required (or export LARCH_LOG_ROOT for test isolation)")
     path = Path(raw)
+    if tmpdir is not None:
+        if path.is_absolute():
+            try:
+                path.relative_to(tmpdir)
+                return path
+            except ValueError:
+                return tmpdir / Path(*path.parts[1:])
+        return tmpdir / path
     if not path.is_absolute():
         raise ValueError(f"--log-root must be an absolute path: {raw}")
     return path
@@ -270,14 +305,14 @@ def _write_batch(
     skill: str,
     run_id: str,
     batch: str,
-    input_file: Path,
+    input_file: str,
 ) -> tuple[Path, bool, bool]:
     if batch not in _LARCH_LOG_BATCHES:
         raise ValueError(f"unknown batch: {batch}")
     if _batch_mode(batch) != "replace":
         raise ValueError(f"batch {batch} is append-only; use append")
     cap = 8192 if batch == "codex-impl-transcript" else None
-    tmp = _redact_to_temp(input_file, cap_bytes=cap)
+    tmp = _redact_to_temp(_rebase_under_tmpdir(input_file), cap_bytes=cap)
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
@@ -294,13 +329,13 @@ def _append_batch(
     skill: str,
     run_id: str,
     batch: str,
-    record_file: Path,
+    record_file: str,
 ) -> tuple[Path, bool, bool]:
     if batch not in _LARCH_LOG_BATCHES:
         raise ValueError(f"unknown batch: {batch}")
     if _batch_mode(batch) != "append":
         raise ValueError(f"batch {batch} is replace-only; use write")
-    tmp = _redact_to_temp(record_file)
+    tmp = _redact_to_temp(_rebase_under_tmpdir(record_file))
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)

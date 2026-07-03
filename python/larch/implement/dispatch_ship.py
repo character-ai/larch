@@ -339,21 +339,26 @@ def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
 
 def ship_route_exit_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py ship route-exit")
-    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--json-file", default="")
     parser.add_argument("--exit-code-file", default="")
     parser.add_argument("--exit-code", type=int)
     args = parser.parse_args(argv)
-    implement_tmpdir = Path(args.implement_tmpdir)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        print("ship route-exit: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
     handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
     json_file = Path(args.json_file) if args.json_file else implement_tmpdir / ".step-8-ship-handoff.json"
     exit_code_file = implement_tmpdir / ".step-8-ship-handoff.rc"
     exit_code, error = _read_ship_route_exit_code(args=args, default_file=exit_code_file)
-    if error or exit_code is None:
-        return _ship_route_exit_fail(message=error or "missing exit code", handoff=handoff)
-    payload, error = _read_ship_route_json(json_file)
-    if error or payload is None:
-        return _ship_route_exit_fail(message=error or "missing json", handoff=handoff)
+    payload = None
+    if not error and exit_code is not None:
+        payload, error = _read_ship_route_json(json_file)
+    if error or exit_code is None or payload is None:
+        message = error or ("missing exit code" if exit_code is None else "missing json")
+        return _ship_route_exit_fail(message=message, handoff=handoff)
     action, error = _classify_ship_route_exit(exit_code=exit_code, payload=payload)
     if error:
         return _ship_route_exit_fail(message=error, handoff=handoff)

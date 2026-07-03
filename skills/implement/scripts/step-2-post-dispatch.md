@@ -7,7 +7,7 @@ Step 2 post-dispatch wrapper. Runs the phantom untracked probe, emits the checke
 `skills/implement/SKILL.md` invokes this wrapper only on the `/implement` Step 2.2 `STATUS=complete` external-implementer path via:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"
 ```
 
 `--expected-branch` is required by the Python parser. `claude_fallback` must not call it.

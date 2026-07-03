@@ -100,11 +100,15 @@ def _normalize_outcome_for_step18(implement_tmpdir: Path, *, memory_layer: str, 
 
 def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement step-18-gate-finalize")
-    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--stall-tracking-memory", default="")
     parser.add_argument("--step17-emitted", choices=("true", "false"), default="false")
     args = parser.parse_args(argv)
-    implement_tmpdir = Path(args.implement_tmpdir)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        print("implement step-18-gate-finalize: --implement-tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        return 2
+    implement_tmpdir = Path(raw_tmpdir)
     os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
     plugin_root = _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)

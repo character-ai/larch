@@ -48,6 +48,46 @@ def test_step7a_main_rejects_unknown_flags(capsys: pytest.CaptureFixture[str]) -
     assert "STEP_7A_BAIL_REASON=argv" in out
 
 
+def test_step7a_main_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    seen: dict[str, object] = {}
+
+    def fake_run_step7a(
+        implement_tmpdir: Path,
+        *,
+        issue_number: str = "",
+        run_id: str = "",
+        no_logs_commit: bool = False,
+        forked_target: bool = False,
+        base_remote: str = "origin",
+        base_ref: str = "main",
+    ) -> int:
+        seen.update(
+            {
+                "implement_tmpdir": implement_tmpdir,
+                "issue_number": issue_number,
+                "run_id": run_id,
+                "no_logs_commit": no_logs_commit,
+                "forked_target": forked_target,
+                "base_remote": base_remote,
+                "base_ref": base_ref,
+            }
+        )
+        return 0
+
+    monkeypatch.setattr(step_7a, "run_step7a", fake_run_step7a)
+
+    rc = step_7a.main(["--implement-tmpdir", "", "--issue-number", "7", "--run-id", "run-7"])
+
+    assert rc == 0
+    assert seen["implement_tmpdir"] == tmp_path
+    assert seen["issue_number"] == "7"
+    assert seen["run_id"] == "run-7"
+
+
 def test_step7a_skips_diagram_for_small_non_runtime_change(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 

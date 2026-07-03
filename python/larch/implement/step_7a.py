@@ -16,6 +16,7 @@ from larch import io as larch_io
 
 from larch.issue import execution_issues
 from larch.git import pr_body
+from larch.core import config
 from larch.core import run_context
 from larch.report import run_logs
 
@@ -416,7 +417,8 @@ def main(argv: list[str] | None = None) -> int:
         emit(key="STEP_7A_BAIL_REASON", value="argv")
         emit(key="REBASE_OUTCOME", value="skipped")
         return 2
-    if not args.implement_tmpdir:
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
         emit(key="DIAGRAM_STATUS", value="failed")
         emit(key="DIAGRAM_REASON", value="")
         emit(key="DIAGRAM_PATH", value="")
@@ -426,7 +428,7 @@ def main(argv: list[str] | None = None) -> int:
         emit(key="REBASE_OUTCOME", value="skipped")
         return 2
     return run_step7a(
-        Path(args.implement_tmpdir),
+        Path(raw_tmpdir),
         issue_number=args.issue_number,
         run_id=args.run_id,
         no_logs_commit=args.no_logs_commit == "true",
