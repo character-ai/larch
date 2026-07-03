@@ -3136,9 +3136,11 @@ def test_persist_ship_seed_context_refreshes_blank_manifest_path(tmp_path: Path)
 
 
 def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
+    repo: Path,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
+    _ = repo
     impl = _session(tmp_path)
     manifest = impl / "manifest.json"
     manifest.write_text('{"schema_version":"1"}\n', encoding="utf-8")
@@ -3153,6 +3155,44 @@ def test_run_step4_commit_leg_noop_emits_dispatcher_committed_breadcrumb(
     assert outcome == "noop"
     assert "COMMIT_ROUTE_OUTCOME=noop\n" in stdout
     assert "dispatcher-committed" in captured.out
+
+
+def test_run_step4_commit_leg_dispatcher_committed_commits_later_dirty_paths(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    impl = _session(tmp_path)
+    manifest = impl / "manifest.json"
+    manifest.write_text('{"schema_version":"1"}\n', encoding="utf-8")
+    (impl / "ship-seed-input.env").write_text(
+        f"MANIFEST_PATH={manifest}\nDISPATCHER_COMMITTED=true\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\nlint fix\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run_leg(*, argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(argv))
+        return subprocess.CompletedProcess(list(argv), 0, "COMMITTED=true\nSHA=def\n", "")
+
+    monkeypatch.setattr(implement_dispatch, "_run_leg_with_timeout", fake_run_leg)
+    monkeypatch.setattr(dispatch_commit_route, "_run_leg_with_timeout", fake_run_leg)
+
+    outcome, stdout = implement_dispatch._run_step4_commit_leg(impl, deadline_ms=123)
+
+    assert outcome == "continue"
+    assert "COMMIT_ROUTE_OUTCOME=continue\n" in stdout
+    assert calls == [[
+        "implement",
+        "commit",
+        "--message",
+        "Apply post-dispatch checks fixes",
+        "--pathspec-from-file",
+        str(impl / "dispatcher-committed-dirty-paths.nul"),
+        "--pathspec-file-nul",
+    ]]
+    assert (impl / "dispatcher-committed-dirty-paths.nul").read_bytes() == b"README.md\0"
 
 
 def test_pathspec_clean_relative_to_head_detects_dirty_and_clean(repo: Path) -> None:
