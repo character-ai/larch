@@ -68,6 +68,32 @@ def test_write_final_report_module_renders_summary(tmp_path: Path, monkeypatch) 
     assert "## /implement run run1" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
+def test_final_report_code_review_line_ignores_stale_ship_state(tmp_path: Path) -> None:
+    _write_minimal_state(tmp_path)
+    ship = tmp_path / "ship-pr-state.sh"
+    ship.write_text(
+        "PR_NUMBER=0\nPR_URL=N/A\nCODE_REVIEW_LINE=stale ship value\n",
+        encoding="utf-8",
+    )
+    run_dir = tmp_path / "larch-logs" / "implement" / "run1"
+    run_dir.mkdir(parents=True)
+    (run_dir / "code-review-tally.json").write_text(
+        json.dumps({"accepted_count": 2, "rejected_count": 1}),
+        encoding="utf-8",
+    )
+
+    fields = final_report._derive_final_report_fields(
+        tmp_path,
+        run_id="run1",
+        repo="",
+        repo_unavailable=True,
+        pr_number="0",
+        ship=ship,
+    )
+
+    assert fields["code_review_line"] == "2/3 accepted"
+
+
 def test_write_final_report_includes_review_timing_gantt(tmp_path: Path, monkeypatch) -> None:  # type: ignore[no-untyped-def]
     _write_minimal_state(tmp_path)
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
