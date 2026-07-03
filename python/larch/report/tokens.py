@@ -1254,17 +1254,21 @@ def _cached_claude_source_replay(
     return None
 
 
-def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, str]) -> tuple[Path | None, str]:
-    latest: Path | None = None
-    requested_sid = ""
-    for key in ("LARCH_CLAUDE_SESSION_ID", "LARCH_TOKEN_SESSION_ID"):
+def _requested_claude_session_id(env_map: Mapping[str, str]) -> str:
+    for key in ("LARCH_CLAUDE_SESSION_ID", "CLAUDE_CODE_SESSION_ID"):
         sid = env_map.get(key, "")
         if sid and _SAFE_SESSION_RE.fullmatch(sid):
-            requested_sid = sid
-            candidate = project_dir / f"{sid}.jsonl"
-            if candidate.is_file():
-                latest = candidate
-            break
+            return sid
+    return ""
+
+
+def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, str]) -> tuple[Path | None, str]:
+    latest: Path | None = None
+    requested_sid = _requested_claude_session_id(env_map)
+    if requested_sid:
+        candidate = project_dir / f"{requested_sid}.jsonl"
+        if candidate.is_file():
+            latest = candidate
     if latest is None and not requested_sid:
         files = sorted(project_dir.glob("*.jsonl"), key=lambda p: p.stat().st_mtime, reverse=True)
         latest = files[0] if files else None
