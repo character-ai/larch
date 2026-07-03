@@ -9,10 +9,10 @@ Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_backg
 The harness pins these surfaces:
 
 - `AGENTS.md`: the canonical bullet covering Monitor, Bash polling loops, the foreground-terminal-sentinel-probe primary recovery path, and the background-recovery-waiter ban (#4725).
-- `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `skills/implement/scripts/step-5-review.sh` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback while keeping implement premature-notification recovery notification-driven.
+- `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `skills/implement/scripts/step-5-review.sh` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback while documenting the narrow Step 3/5 post-denial same-step sentinel probe.
 - `skills/shared/design-background-wait.md`: the `/design` Step 3 result-file sleep-loop ban, background-recovery-waiter ban, exact compact-table missing warning, and post-notification sequence.
 - `skills/design/SKILL.md`: `/design` hot-path loci use the shared wait contract without carrying full duplicated boilerplate. First-time Step 3 launch keeps the full inline load and parameter contract. Step 3 resume uses a pinned back-reference to that first-time fence.
-- `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban, the foreground-terminal-sentinel-probe primary recovery wording, and the background-recovery-waiter ban (#4725).
+- `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban, the `/design` foreground-terminal-sentinel-probe primary recovery wording, the `/implement` Step 3/5 post-denial retry contract, and the background-recovery-waiter ban (#4725).
 
 Family B background+monitor pairing assertions were removed in breadcrumbs Stage 3 (#3118); Stage 4 removes the remaining skill-fence prose.
 
@@ -44,8 +44,8 @@ Family B background+monitor pairing assertions were removed in breadcrumbs Stage
 - `AGENTS.md` carries the foreground-probe primary recovery wording `the sanctioned recovery path is one foreground non-sleeping` and the probe-form wording `one foreground non-sleeping [ -f … ] or test -f … probe against the relevant terminal completion sentinel`.
 - `AGENTS.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` and the platform-assumption wording `the backgrounded task reliably re-fires a <task-notification> on completion` (#4725).
 - `skills/implement/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator``.
-- `skills/implement/SKILL.md` tells operators to `end the turn and wait for the next <task-notification>` instead of probing `$DESIGN_TMPDIR` or design-only sentinels, and it documents that `/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today.
-- `skills/implement/SKILL.md` states that `/implement` notification-only recovery and `/design` foreground terminal-sentinel probing are intentionally different contracts, not contradictory guidance.
+- `skills/implement/SKILL.md` tells operators to make no progress probes before notification, keep premature Step 3/5 notifications notification-only, and use exact `test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"` or `test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"` probes only after a denied read follows a genuine completion notification.
+- `skills/implement/SKILL.md` states that a present same-step sentinel permits one retry of the just-denied output read, while an absent sentinel after a genuine notification routes through existing failure or stall handling instead of waiting for another notification.
 - `skills/implement/SKILL.md` carries the background-recovery-waiter ban `NEVER launch a background recovery waiter` (#4725).
 - `skills/implement/SKILL.md` carries the exact fallback ban `Do NOT fall back to Monitor`.
 - `skills/design/SKILL.md` carries the exact Monitor-ban literal ``NEVER use the `Monitor` tool anywhere within the `/design` orchestrator``.

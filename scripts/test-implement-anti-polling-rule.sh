@@ -398,6 +398,12 @@ check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER keeps /implement Steps 3 and 5 notification-only recovery" \
     'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
 check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins Step 3/5 post-denial recovery trigger" \
+    'If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step'
+check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins retry-on-present guidance" \
+    'When the sentinel is present, retry the just-denied output read once.'
+check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER pins /implement Step 8 rc-probe recovery" \
     'For `/implement` Step 8, run one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_absent "$ORCH_NEVER_MD" \
@@ -435,21 +441,21 @@ check "$IMPL_MD" \
     'NEVER use the `Monitor` tool anywhere within the `/implement` orchestrator'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list keeps implement Steps 3 and 5 notification-only" \
-    'Steps 3 and 5 (`implement-step3-checks`, `implement-step5-review`) remain notification-only'
+    "SKILL.md NEVER list keeps implement Steps 3 and 5 no-probe before notification" \
+    'Before the `<task-notification>`, make no progress probes.'
 check "$IMPL_MD" \
     "SKILL.md NEVER list pins implement Step 8 rc probe" \
-    'Step 8 alone uses one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
+    'Step 8 uses one foreground non-sleeping `test -f "$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc"` at notification time'
 check_context "$IMPL_MD" \
-    "SKILL.md NEVER #8 forbids Step 3 and Step 5 sentinel probes" \
+    "SKILL.md NEVER #8 pins Step 3 and Step 5 same-step probe trigger" \
     "$IMPL_NEVER8_ANCHOR" \
     "3" \
-    'do not probe `.completed/step-3-terminal` or `.completed/step-5-terminal`'
+    'If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step'
 check_context "$IMPL_MD" \
     "SKILL.md NEVER #8 forbids design sentinel probes" \
     "$IMPL_NEVER8_ANCHOR" \
     "3" \
-    'do not probe `$DESIGN_TMPDIR` or design-only sentinels'
+    'do not use `ps`, Monitor, TaskOutput, task-output reads, or background recovery waiters'
 check "$IMPL_MD" \
     "SKILL.md NEVER list lazy-loads orchestrator-never only for premature recovery" \
     'On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting.'
@@ -468,8 +474,17 @@ check_absent "$IMPL_MD" \
     '/implement` does not write `$IMPLEMENT_TMPDIR/.completed/*-terminal` sentinels today'
 
 check "$IMPL_MD" \
-    "SKILL.md NEVER list pins scoped /implement vs /design recovery asymmetry" \
-    'Foreground `.completed/*-terminal` probing remains a `/design`-only carve-out'
+    "SKILL.md NEVER list pins Step 3 exact probe form" \
+    'test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins Step 5 exact probe form" \
+    'test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins retry-on-present guidance" \
+    'When the same-step sentinel is present, retry the just-denied output read once.'
+check "$IMPL_MD" \
+    "SKILL.md NEVER list pins absent-sentinel no-second-notification guidance" \
+    'When it is absent after a genuine completion notification, do not wait for another notification'
 check "$IMPL_MD" \
     "SKILL.md NEVER list pins Step 8 hook clamp" \
     'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent'

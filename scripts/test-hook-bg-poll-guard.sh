@@ -609,6 +609,41 @@ out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'implement-step3-checks step-3-terminal sentinel releases Bash probe'
 rm -f "$D/.completed/step-3-terminal" "$MARKER"
 
+# /implement Step 3 foreground terminal-sentinel probe carve-out. This path is
+# allowed only for the exact `test -f` shape after a genuine completion-notification
+# read was denied, and it is clamped while the sentinel is absent.
+write_marker $$ "$(date +%s)" 21600 implement-step3-checks
+rm -f "$D/.completed/step-3-terminal" "$D"/bg-poll-guard-probe-denials.step-3-terminal.count
+implement_step3_probe='test -f "$IMPLEMENT_TMPDIR/.completed/step-3-terminal"'
+implement_step3_probe_braced='test -f "${IMPLEMENT_TMPDIR}/.completed/step-3-terminal"'
+implement_step3_probe_prefixed="IMPLEMENT_TMPDIR=$D; test -f \"\$IMPLEMENT_TMPDIR/.completed/step-3-terminal\""
+out=$(run_payload "$(payload_bash "$implement_step3_probe_braced" "$D")")
+assert_allow "$out" 'implement Step 3 terminal probe braced form allows while sentinel absent'
+rm -f "$D"/bg-poll-guard-probe-denials.step-3-terminal.count
+out=$(run_payload "$(payload_bash "$implement_step3_probe_prefixed" "$D")")
+assert_allow "$out" 'implement Step 3 terminal probe with IMPLEMENT_TMPDIR prefix allows while sentinel absent'
+rm -f "$D"/bg-poll-guard-probe-denials.step-3-terminal.count
+out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
+assert_allow "$out" 'implement Step 3 terminal probe allows while absent, first attempt'
+out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
+assert_allow "$out" 'implement Step 3 terminal probe allows while absent, second attempt'
+out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
+assert_deny "$out" 'implement Step 3 terminal probe clamps repeated absent probes'
+: >"$D/.completed/step-3-terminal"
+out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
+assert_allow "$out" 'implement Step 3 terminal sentinel presence releases marker and allows probe'
+if [ ! -e "$D/bg-poll-guard-probe-denials.step-3-terminal.count" ]; then
+  pass 'implement Step 3 terminal sentinel presence clears clamp counter file'
+else
+  fail 'implement Step 3 terminal sentinel presence must clear clamp counter file'
+fi
+rm -f "$D/.completed/step-3-terminal" "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+out=$(run_payload "$(payload_bash "$implement_step3_probe" "$D")")
+assert_deny "$out" 'implement Step 3 terminal probe bound to Step 5 marker denies'
+rm -f "$MARKER"
+
 # implement-step5-review marker and terminal sentinel.
 write_marker $$ "$(date +%s)" 21600 implement-step5-review
 out=$(run_payload "$(payload_monitor)")
@@ -630,6 +665,55 @@ assert_allow "$out" 'implement-step5-review step-5-terminal sentinel releases Mo
 out=$(run_payload "$(payload_bash "$design_tmpdir_ls")")
 assert_allow "$out" 'implement-step5-review step-5-terminal sentinel releases Bash probe'
 rm -f "$D/.completed/step-5-terminal" "$MARKER"
+
+# /implement Step 5 foreground terminal-sentinel probe carve-out mirrors Step 3
+# but binds only to implement-step5-review markers and .completed/step-5-terminal.
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+rm -f "$D/.completed/step-5-terminal" "$D"/bg-poll-guard-probe-denials.step-5-terminal.count
+implement_step5_probe='test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
+implement_step5_probe_braced='test -f "${IMPLEMENT_TMPDIR}/.completed/step-5-terminal"'
+implement_step5_probe_prefixed="IMPLEMENT_TMPDIR=$D; test -f \"\$IMPLEMENT_TMPDIR/.completed/step-5-terminal\""
+out=$(run_payload "$(payload_bash "$implement_step5_probe_braced" "$D")")
+assert_allow "$out" 'implement Step 5 terminal probe braced form allows while sentinel absent'
+rm -f "$D"/bg-poll-guard-probe-denials.step-5-terminal.count
+out=$(run_payload "$(payload_bash "$implement_step5_probe_prefixed" "$D")")
+assert_allow "$out" 'implement Step 5 terminal probe with IMPLEMENT_TMPDIR prefix allows while sentinel absent'
+rm -f "$D"/bg-poll-guard-probe-denials.step-5-terminal.count
+out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
+assert_allow "$out" 'implement Step 5 terminal probe allows while absent, first attempt'
+out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
+assert_allow "$out" 'implement Step 5 terminal probe allows while absent, second attempt'
+out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
+assert_deny "$out" 'implement Step 5 terminal probe clamps repeated absent probes'
+: >"$D/.completed/step-5-terminal"
+out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
+assert_allow "$out" 'implement Step 5 terminal sentinel presence releases marker and allows probe'
+if [ ! -e "$D/bg-poll-guard-probe-denials.step-5-terminal.count" ]; then
+  pass 'implement Step 5 terminal sentinel presence clears clamp counter file'
+else
+  fail 'implement Step 5 terminal sentinel presence must clear clamp counter file'
+fi
+rm -f "$D/.completed/step-5-terminal" "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 implement-step3-checks
+out=$(run_payload "$(payload_bash "$implement_step5_probe" "$D")")
+assert_deny "$out" 'implement Step 5 terminal probe bound to Step 3 marker denies'
+rm -f "$MARKER"
+
+write_marker $$ "$(date +%s)" 21600 implement-step5-review
+implement_step5_appended='test -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" && cat "$IMPLEMENT_TMPDIR/tasks/foo.output"'
+out=$(run_payload "$(payload_bash "$implement_step5_appended" "$D")")
+assert_deny "$out" 'implement Step 5 terminal probe with appended cat denies'
+implement_step5_bracket='[ -f "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" ]'
+out=$(run_payload "$(payload_bash "$implement_step5_bracket" "$D")")
+assert_deny "$out" 'implement Step 5 bracket terminal probe remains denied'
+touch_step5_terminal='touch "$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
+out=$(run_payload "$(payload_bash "$touch_step5_terminal" "$D")")
+assert_deny "$out" 'live Step 5 marker plus touch terminal sentinel forgery denies'
+truncate_step5_terminal=': >"$IMPLEMENT_TMPDIR/.completed/step-5-terminal"'
+out=$(run_payload "$(payload_bash "$truncate_step5_terminal" "$D")")
+assert_deny "$out" 'live Step 5 marker plus truncate terminal sentinel forgery denies'
+rm -f "$MARKER"
 
 # implement-step8-ship marker, rc release sentinel, and sanctioned rc probe.
 rm -f "$D/.step-8-ship-handoff.rc" "$D/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" "$MARKER"
@@ -843,6 +927,8 @@ out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
 assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny TaskOutput from a different clone cwd'
 out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
 assert_allow "$out" '#5925 follow-up: unrelated-clone live marker does not deny own tasks/*.output Read from a different clone cwd'
+out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN")")
+assert_allow "$out" '#6080: unrelated-clone live marker does not deny own tasks/*.output Bash read from a different clone cwd'
 rm -f "$MARKER_UNRELATED"
 
 write_marker_at "$MARKER_OWN" $$ "$(date +%s)" 21600 implement-step5-review
@@ -852,6 +938,8 @@ out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN")")
 assert_deny "$out" '#5925 follow-up: same-clone live marker still denies TaskOutput from its own repo cwd'
 out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN")")
 assert_deny "$out" '#5925 follow-up: same-clone live marker still denies own tasks/*.output Read from its own repo cwd'
+out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN")")
+assert_deny "$out" '#6080: same-clone live marker still denies own tasks/*.output Bash read from its own repo cwd'
 rm -f "$MARKER_OWN"
 
 # No marker: Monitor and TaskOutput are allowed.
