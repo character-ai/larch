@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:35:55
-- **Cost**: 💰 TOTAL ~$36.24 — Claude $0.32, Codex-5.5 $20.14, Codex-mini $1.65, Cursor $10.77, Claude (subprocess) $3.36  |  Tokens: 59138k
+- **Cost**: 💰 TOTAL ~$36.28 — Claude $0.34, Codex-5.5 $20.14, Codex-mini $1.65, Cursor $10.77, Claude (subprocess) $3.38  |  Tokens: 59170k
 - **Issue**: #6101 — https://github.com/character-ai/larch/issues/6101
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -92,3 +92,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (nit): Step 2b anchor should precede plan composition. Concern: The Step 2b readability MANDATORY load appears after the plan-composition instructions, so agents may begin plan bullets before loading `readability-style.md`, weakening composition-site enforcement.
 - **Round 1 OOS_2** (nit): Manifest empty-row validation needs a test. Concern: New manifest validation for empty path/variant rows is untested, so invalid TSV rows could regress without a failing unit test.
 - **Round 1 OOS_3** (nit): Pass-through skill exemption for `larch-size`. Concern: The skill states it passes CLI output through unchanged but still carries a full readability directive and manifest row, and the plan allowed an explicit exemption for pure pass-through skills.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
