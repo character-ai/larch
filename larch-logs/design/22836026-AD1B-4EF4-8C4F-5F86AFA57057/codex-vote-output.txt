@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- the scoped fix can use the round-finalize timestamps directly; this vendor-skill filter is not required.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- fixture skill labels do not affect the bar-rendering path, so this is not a necessary test correction.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cap preservation is an edge-case hardening, not required for the main unlabeled-tail fix.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- same as finding 1; the scope does not require deriving gate-b start from vendor-row skills.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- cap reservation is a separate edge-case issue and too narrow to accept here.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rerun idempotence is plausible, but not material enough to file as part of this change.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the cap edge case, and still too narrow to file as a separate issue here.

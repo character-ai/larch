@@ -1,0 +1,10 @@
+# attributed_ballot_sha256=0a5b8ebd439cb6685106ca2666f547d2016838a3ba0014ad5894cfeb09f63e1d
+# neutral_ballot_sha256=16f97b0cf3b9fd68ed3538647f5ff6b3456ca15f46509d08e125b7f94d6b4261
+item_id	reviewer	reviewer_line
+FINDING_1	Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-dyn-Timing Ledger Integrity	- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-dyn-Timing Ledger Integrity
+FINDING_2	Cursor-Innovation, Cursor-dyn-Timing Ledger Integrity	- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-Timing Ledger Integrity
+FINDING_3	Codex-dyn-Timing Ledger Integrity	- **Reviewer(s)**: Codex-dyn-Timing Ledger Integrity
+FINDING_4	Cursor-Arch	- **Reviewer(s)**: Cursor-Arch
+OOS_1	Cursor-Innovation	- **Reviewer**: Cursor-Innovation
+OOS_2	Cursor-Innovation	- **Reviewer**: Cursor-Innovation
+OOS_3	Cursor-dyn-Timing Ledger Integrity	- **Reviewer**: Cursor-dyn-Timing Ledger Integrity

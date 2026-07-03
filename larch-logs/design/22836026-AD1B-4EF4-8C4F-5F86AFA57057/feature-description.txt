@@ -1,0 +1,72 @@
+# [BUG] /design plan-review round Gantt chart hides Gate B apply time as unlabeled…
+
+## Summary
+
+The `/design` plan-review round Gantt chart ("Round N reviewer timing" in the final-summary output) renders a misleadingly large, unlabeled empty tail at the end of every round that has at least one accepted finding. The chart's declared window duration includes time spent on Gate B's plan-apply/dedup/postplan-validation work, but that work has no labeled bar of its own, so it renders as blank space after the last reviewer/voter bar.
+
+## Original report
+
+Surfaced during manual review of a completed `/design` run's final-summary output (issue #6061, run `F37028B8-64BD-4BB2-96DB-44ADEB6B87B0`). Both rendered Gantt charts ("Round 1 reviewer timing" and "Round 2 reviewer timing") showed a large empty region between the last labeled bar and the chart's declared right edge. Asked to root-cause why, given that "something happened that took a while but didn't end up in the diagram."
+
+## Reproduction scenario
+
+1. Run `/design` on any issue where at least one plan-review round produces one or more accepted in-scope findings (the common case; Gate B then applies them).
+2. Let the run complete through Step 5c so `final-summary.md` renders.
+3. Inspect the `### Round N reviewer timing` ASCII Gantt for that round.
+4. Compare the chart's declared window span (e.g. `window 0:00-11:50 (710s)`) against the horizontal position where the last rendered bar (typically the last `*/vote` row) ends.
+
+Concretely reproduced in run `F37028B8-64BD-4BB2-96DB-44ADEB6B87B0` (design of issue #6061), both rounds:
+- Round 1: declared window `0:00-11:50 (710s)`. The last bar (`codex/vote`, 107s) ends well before the 11:50 mark by ASCII-column position, leaving roughly 4 minutes of unlabeled trailing space.
+- Round 2: declared window `0:00-8:02 (482s)`. The last bar (`codex/vote`, 80s) similarly ends with roughly 3+ minutes of unlabeled trailing space before the window's right edge.
+
+Run log (published, merged): `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/` on `main` (landed via merged PR https://github.com/character-ai/larch/pull/6067). See `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/final-summary.md` for the exact rendered charts, and `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/plan-review/round-1/round-start-s` (value `1783043153`) plus `round-1/round-meta.json` / `round-1/round-summary.env` for the round's recorded metadata.
+
+## Expected behavior
+
+The "Round N reviewer timing" Gantt window should either:
+(a) only span the time actually consumed by reviewer/aggregator/voter subprocesses, so the window's declared end lines up closely with the last rendered bar's end, or
+(b) include a labeled bar/segment for any additional work counted inside that window, so the chart accurately attributes all the time it displays.
+
+## Observed behavior
+
+The window's declared duration is noticeably longer than the sum of rendered bar positions; a multi-minute unlabeled gap appears at the end of the chart in both rounds of the reproduction run.
+
+## Root cause analysis
+
+Verified by direct code reading (line numbers current as of `main` at investigation time; re-check before implementing, since the code may have moved):
+
+- `python/larch/review/plan_review.py:479` calls `_write_design_round_meta(tmpdir=tmpdir, round_num=round_num)` inside the `"awaiting-continuation"` phase handler, gated on `$DESIGN_TMPDIR/.gate-b-postapply-ready-{round_num}` existing on disk. That marker is written only after Gate B has already applied every accepted finding to `plan.txt`, run `python/cli.py plan-review gate-b-dedup --snapshot-trailers` then `--dedup`, and validated the revised plan via postplan (`design step2b-postplan --site gate-b`).
+- `_write_design_round_meta` (`plan_review.py:219-228`) runs `python/cli.py progress write-design-round-meta`, then calls `_record_design_round_timing_from_start_file` (`python/larch/review/plan_review_loop.py:549-558`), which stamps `end_s = int(time.time())` — literally whatever wall-clock moment this function happens to execute.
+- The window's `start_s` comes from `plan-review/round-N/round-start-s`, stamped immediately before dispatch.
+- Individual reviewer/aggregator/voter subprocess tasks each get their own Gantt bar via `record-vendor-task`, which writes a separate `v1 vendor` ledger row per task (`python/larch/report/timing.py:70-90`, invoked from e.g. `python/larch/agents/_claude_runner.py` and the Codex/Cursor launch equivalents). The round's own window is a distinct `v1 round` ledger row (`python/larch/report/timing.py:92-121`, `TimingLedger.record_round`) whose end boundary has no corresponding labeled bar.
+- Net effect: whenever a round has at least one accepted finding, all the wall-clock time the main agent spends reading `accepted-plan-findings.md`, rewriting `plan.txt`, and running dedup + postplan validation between "last vote subprocess exits" and "round resumes at `awaiting-continuation`" is silently folded into that round's own "reviewer timing" Gantt window as unlabeled trailing space, even though none of that time was spent by reviewers or voters. The chart's label ("reviewer timing") is misleading about what the tail actually represents.
+- Contrast case supporting this diagnosis: `plan_review.py:423` shows the other call site of `_write_design_round_meta`, reached when `accepted == 0` (nothing for Gate B to apply). On that path the round-close timing stamp happens immediately after tally with no Gate B apply work in between, so the same trailing gap should be much smaller or absent — this is a testable prediction if reproducing on a zero-findings round.
+
+## Evidence
+
+- `python/larch/review/plan_review.py:423` and `:479` — both call sites of `_write_design_round_meta`.
+- `python/larch/review/plan_review.py:219-228` — `_write_design_round_meta` body, calling `progress write-design-round-meta` then `_record_design_round_timing_from_start_file`.
+- `python/larch/review/plan_review_loop.py:549-558` — `_record_design_round_timing_from_start_file`, stamping `end_s=int(time.time())` at call time.
+- `python/larch/report/timing.py:70-90` — `record_vendor` (per-task Gantt bars).
+- `python/larch/report/timing.py:92-121` — `record_round` (the round-level ledger row consumed for the chart's window bounds).
+- Published run log `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/final-summary.md` — the two Gantt charts showing the gap.
+- Published run log `larch-logs/design/F37028B8-64BD-4BB2-96DB-44ADEB6B87B0/plan-review/round-1/round-start-s`, `round-meta.json`, `round-summary.env` — round-1 timing metadata.
+
+## Affected files
+
+- `python/larch/review/plan_review.py` — owns the phase-handler call sites that decide when the round's timing is finalized relative to Gate B's apply cycle.
+- `python/larch/review/plan_review_loop.py` — owns the round-timing stamping helper that reads `round-start-s` and writes `end_s=time.time()`.
+- `python/larch/report/timing.py` — owns the `v1 vendor` / `v1 round` ledger row formats consumed by the Gantt renderer.
+- `python/larch/report/progress_report.py` — owns Gantt rendering and window-to-bar layout (`_render_phase_gantt`, `_timing_round_windows`/`_timing_round_attempt_windows` consumption); relevant for whichever fix direction is chosen.
+
+## Suggested fix(es)
+
+Informational only; pick whichever is more correct given the surrounding architecture, or propose something better during `/design`:
+
+1. Record a labeled bar/segment for the Gate B apply-and-validate span (e.g. a "gate-b-apply" task recorded in the same `v1 vendor`-style ledger format) so it renders visibly in the Gantt instead of as unlabeled space.
+2. Stamp the round's `end_s` immediately after tally/artifact-write completes (i.e., right when reviewers + aggregator + voters are actually done, before Gate B runs), and attribute Gate B's own apply/dedup/postplan time to a separate, clearly-labeled bucket (e.g. "between rounds") instead of folding it into the round's "reviewer timing" window at all.
+
+## Open questions
+
+- Should the Gate B apply/dedup/postplan span be attributed to the round it follows, the round it precedes, or a distinct "between-rounds" bucket?
+- Is the current placement of the round-end timestamp (after Gate B's postapply-ready marker) deliberate for some other consumer of that timestamp that a fix would need to preserve? Not identified during this investigation; worth checking other readers of the `v1 round` ledger rows before changing the stamping point.

@@ -1,0 +1,8 @@
+Reading the ballot and verifying findings against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- edge-case row-cap drop; plan excludes cap changes and typical rounds stay well under PROGRESS_GANTT_ROW_CAP
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent 25-row cap edge case; typical design panels are far smaller so issue overhead exceeds value
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real on Gate C re-run review but rare operator path; does not clear backlog materiality
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same cap edge case as FINDING_3; plan explicitly excludes cap changes and typical rounds are ~15 rows
