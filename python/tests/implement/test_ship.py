@@ -45,6 +45,22 @@ def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     return base.with_(**kwargs)
 
 
+def _pin_guidelines_note_text(
+    *,
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | None = None,
+) -> str:
+    note, _warning_logged = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    )
+    return note
+
+
 @pytest.fixture(autouse=True)
 def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     real_flush = ship.run_logs.flush_logs_pre
@@ -4853,7 +4869,7 @@ def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) ->
         base_ref="origin/main",
         diff_text=diff_text,
     )
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
     assert note == "Consulted note"
     assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
 
@@ -4868,9 +4884,14 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatc
         diff_text="implementation diff",
     )
 
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note, warning_logged = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
 
     assert note == ship.architectural_guidelines.dropped_note_message()
+    assert warning_logged is True
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
     assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
@@ -4899,7 +4920,7 @@ def test_pin_and_load_guidelines_note_recovers_when_diff_changes_with_repo(
 
     monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
 
-    note = ship._pin_and_load_guidelines_note(
+    note = _pin_guidelines_note_text(
         implement_tmpdir=str(tmp_path),
         head_sha="head",
         base_ref="origin/main",
@@ -4937,7 +4958,7 @@ def test_pin_and_load_guidelines_note_reuses_one_live_diff(
 
     monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
 
-    note = ship._pin_and_load_guidelines_note(
+    note = _pin_guidelines_note_text(
         implement_tmpdir=str(tmp_path),
         head_sha="head",
         base_ref="origin/main",
@@ -5084,14 +5105,14 @@ def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_pa
 
 
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
-    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
+    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).write_text("note\n", encoding="utf-8")
     (tmp_path / ship.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
         "STATUS=present\nHEAD_SHA=other\n",
         encoding="utf-8",
     )
-    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
+    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
 
 
@@ -5108,7 +5129,7 @@ def test_pin_and_load_guidelines_note_stale_durable_returns_drop_notice(tmp_path
     assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
     (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).write_text("changed diff", encoding="utf-8")
 
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
 
     assert note == ship.architectural_guidelines.dropped_note_message()
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
@@ -5127,7 +5148,7 @@ def test_pin_and_load_guidelines_note_success_clears_prior_drop_marker(tmp_path:
         diff_text=diff_text,
     )
 
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
 
     assert note == "fresh note"
     assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
@@ -5149,7 +5170,7 @@ def test_pin_and_load_guidelines_note_falls_back_to_existing_drop_marker(
     )
     monkeypatch.setattr(ship.architectural_guidelines, "persist_dropped_note_notice", lambda *_args, **_kwargs: False)
 
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
 
     assert note == "preseeded notice"
 
@@ -5178,7 +5199,7 @@ def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_mar
         lambda *_args, **_kwargs: False,
     )
 
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
 
     assert note == "preseeded notice"
 
@@ -5272,7 +5293,7 @@ def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
         base_ref="origin/main",
         diff_text=diff_text,
     )
-    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == "Guideline note"
+    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == "Guideline note"
 
     ship._invalidate_guidelines_note(str(tmp_path))
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
@@ -5299,7 +5320,7 @@ def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
         base_ref="origin/main",
         diff_text="implementation diff",
     )
-    note = ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
+    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
     assert note == ship.architectural_guidelines.dropped_note_message()
 
     ship._invalidate_guidelines_note(str(tmp_path))
@@ -5382,7 +5403,7 @@ def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
         base_ref: str,
         *,
         repo_root: str | None = None,
-    ) -> str:
+    ) -> tuple[str, bool]:
         order.append("pin")
         return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
 
@@ -5397,6 +5418,75 @@ def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
     assert result.outcome is Outcome.OK
     assert order.index("pin") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Guideline deviation note"
+
+
+def test_guidelines_pin_warning_flushes_before_pr_body(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    order: list[str] = []
+
+    def fake_pin(*_args: object, **_kwargs: object) -> tuple[str, bool]:
+        order.append("pin")
+        return "Guidelines dropped", True
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_compose(**_kwargs: object) -> str:
+        order.append("compose")
+        return "body"
+
+    def fake_ensure(*_args: object, **_kwargs: object) -> object:
+        order.append("ensure")
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", fake_pin)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    post_pin_flush = order.index("flush", order.index("pin"))
+    assert order.index("pin") < post_pin_flush < order.index("compose") < order.index("ensure")
+
+
+def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    ensure_calls = 0
+    flush_calls = 0
+
+    def fake_pin(*_args: object, **_kwargs: object) -> tuple[str, bool]:
+        return "Guidelines dropped", True
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        nonlocal flush_calls
+        flush_calls += 1
+        if flush_calls == 1:
+            return run_logs.RefreshSkip(skipped=False, reason="")
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_COMMIT_FAILED)
+
+    def fake_ensure(*_args: object, **_kwargs: object) -> object:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", fake_pin)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
+
+    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert "architectural-guidelines warning run-log refresh skipped" in result.detail
+    assert ensure_calls == 0
 
 
 def test_open_pr_resume_pins_guidelines_note_before_compose(
@@ -5442,7 +5532,7 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
         base_ref: str,
         *,
         repo_root: str | None = None,
-    ) -> str:
+    ) -> tuple[str, bool]:
         order.append("pin")
         return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
 
@@ -5545,6 +5635,43 @@ def test_pin_and_load_guidelines_note_logs_redaction_failure(
         raise ShipError(msg)
 
     monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
-    assert ship._pin_and_load_guidelines_note(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
+    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
     issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
     assert "architectural-guidelines note redaction failed" in issues
+
+
+def test_guidelines_warning_append_failure_warns_stderr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
+
+    def fail_redact(_body: str) -> str:
+        raise ShipError("redaction failed for PR body")
+
+    def fail_append(*_args: object, **_kwargs: object) -> None:
+        raise OSError("append failed")
+
+    monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
+    monkeypatch.setattr(ship.run_logs, "append_execution_issue", fail_append)
+
+    note, warning_logged = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    captured = capsys.readouterr()
+    assert note == ""
+    assert warning_logged is False
+    assert "architectural-guidelines warning append failed: append failed" in captured.err

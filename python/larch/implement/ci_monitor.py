@@ -10,12 +10,12 @@ import sys
 import tempfile
 import time
 from collections.abc import Callable
-from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
 from larch.agents import agents
+from larch.implement import ship_guidelines
 from larch.core import config
 from larch.core import external_defaults
 from larch.git import gh
@@ -46,6 +46,7 @@ _PR_CHECKS_STATUS_FIELD_MIN_PARTS = 2
 SleepFn = Callable[[float], None]
 ClockFn = Callable[[], float]
 LaunchFn = Callable[[str], TierAttempt]
+PrePushLogRefreshFn = Callable[[], bool]
 
 
 @dataclass(frozen=True)
@@ -92,6 +93,13 @@ class ClassifiedJobs:
     jobs: tuple[JobClass, ...]
     fixable: tuple[JobClass, ...]
     unfixable: tuple[JobClass, ...]
+
+
+@dataclass(frozen=True)
+class StagePushContext:
+    classified: ClassifiedJobs | None = None
+    run_context: RunContext | None = None
+    pre_push_log_refresh: PrePushLogRefreshFn | None = None
 
 
 @dataclass(frozen=True)
@@ -1177,6 +1185,73 @@ def _implement_tmpdir() -> str | None:
     return raw or None
 
 
+def _run_pre_push_log_refresh(callback: PrePushLogRefreshFn | None) -> bool:
+    if callback is None:
+        return False
+    try:
+        return bool(callback())
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))
+        _warn_stderr(f"ship-pr: pre-push log refresh callback failed: {detail}")
+        return False
+
+
+def _refresh_run_logs_before_ci_push(
+    *,
+    runner: Runner,
+    ctx: RunContext | None,
+    cwd: str | None,
+    warning_logged: bool,
+    refresh_required: bool,
+) -> bool:
+    if not refresh_required:
+        return True
+    ok = True
+    if ctx is None:
+        if warning_logged:
+            _warn_stderr("ship-pr: run-log refresh skipped before CI-fix push: missing run context")
+            ok = False
+    else:
+        try:
+            skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
+        except (OSError, ShipError) as exc:
+            if warning_logged:
+                detail = logging_util.sanitize_diagnostic_line(redact.redact(str(exc)))
+                _warn_stderr(f"ship-pr: run-log refresh failed before CI-fix push: {detail}")
+                ok = False
+        else:
+            if skip.skipped and warning_logged:
+                reason = skip.reason or "unknown"
+                if skip.error:
+                    reason = f"{reason}: {logging_util.sanitize_diagnostic_line(skip.error)}"
+                _warn_stderr(f"ship-pr: run-log refresh skipped before CI-fix push: {reason}")
+                ok = False
+            elif skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
+                _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
+                ok = False
+    return ok
+
+
+def _refresh_before_stage_push(
+    *,
+    runner: Runner,
+    context: StagePushContext | None,
+    cwd: str | None,
+    did_rebase: bool,
+    ci_fix_rebase_pending: bool,
+) -> bool:
+    pre_push_log_refresh = context.pre_push_log_refresh if context is not None else None
+    ctx = context.run_context if context is not None else None
+    warning_logged = _run_pre_push_log_refresh(pre_push_log_refresh)
+    return _refresh_run_logs_before_ci_push(
+        runner=runner,
+        ctx=ctx,
+        cwd=cwd,
+        warning_logged=warning_logged,
+        refresh_required=did_rebase or ci_fix_rebase_pending or warning_logged,
+    )
+
+
 def _resolve_plan_file(plan_file: str | None) -> str | None:
     if not plan_file:
         return None
@@ -1409,10 +1484,10 @@ def stage_and_push(
     base_remote: str = "origin",
     base_ref: str = "main",
     ci_fix_rebase_pending: bool = False,
-    classified: ClassifiedJobs | None = None,
-    ctx: RunContext | None = None,
+    context: StagePushContext | None = None,
 ) -> tuple[bool, str | None, tuple[str, ...], bool, bool]:
     """Stage delta paths, commit, then push; force-push only after a rebase."""
+    classified = context.classified if context is not None else None
     head: str | None
     branch: str
     did_rebase = False
@@ -1481,12 +1556,15 @@ def stage_and_push(
             ]
             if failed_verify:
                 return False, head, delta_paths, did_rebase, False
-        if ctx is not None:
-            with suppress(OSError, ShipError):
-                skip = run_logs.flush_logs_pre(runner=runner, ctx=ctx.with_(state_file=None), cwd=cwd)
-                if skip.skipped and skip.reason == run_logs.REFRESH_SKIP_RECOVERY_FAILED:
-                    _warn_stderr("ship-pr: run-log refresh skipped before force-push: manifest recovery failed")
-                    return False, head, delta_paths, did_rebase, True
+    if not _refresh_before_stage_push(
+        runner=runner,
+        context=context,
+        cwd=cwd,
+        did_rebase=did_rebase,
+        ci_fix_rebase_pending=ci_fix_rebase_pending,
+    ):
+        return False, head, delta_paths, did_rebase, did_rebase or ci_fix_rebase_pending
+    if did_rebase or ci_fix_rebase_pending:
         remote = runner.run(
             ["git", "ls-remote", "--exit-code", "--heads", "origin", branch],
             cwd=cwd,
@@ -1531,6 +1609,12 @@ def run_ci_fix(
     ctx: RunContext | None = None,
 ) -> FixResult:
     """Retry a pending CI-fix rebase push; normal fixing is delegated."""
+    def _invalidate_guidelines_before_push() -> bool:
+        if ctx is None:
+            return False
+
+        return ship_guidelines._invalidate_guidelines_note(ctx.tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
     if ci_fix_rebase_pending:
         pushed, _post_head, delta_paths, did_rebase, pending = stage_and_push(
             runner,
@@ -1540,8 +1624,11 @@ def run_ci_fix(
             base_remote=base_remote,
             base_ref=base_ref,
             ci_fix_rebase_pending=True,
-            classified=classified,
-            ctx=ctx,
+            context=StagePushContext(
+                classified=classified,
+                run_context=ctx,
+                pre_push_log_refresh=_invalidate_guidelines_before_push,
+            ),
         )
         if not pushed:
             return FixResult(

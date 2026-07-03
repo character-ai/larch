@@ -708,6 +708,130 @@ def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
     assert err == "ci-wait-malformed-output"
 
 
+def test_run_cycle_invalidates_guidelines_via_stage_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def run_case(*, known_helper: bool) -> None:
+        repo = tmp_path / f"repo-{known_helper}"
+        repo.mkdir()
+        out_dir = tmp_path / f"out-{known_helper}"
+        out_dir.mkdir()
+        invalidated: list[str] = []
+        callback_results: list[bool] = []
+
+        args = Namespace(
+            pr=1,
+            repo="o/r",
+            repo_root=str(repo),
+            run_id="42",
+            plan_file="",
+            base_remote="origin",
+            base_ref="main",
+            output_dir=str(out_dir),
+            implement_tmpdir=str(tmp_path),
+        )
+        ctx = make_run_context(tmpdir=str(tmp_path), run_id="42", repo="o/r")
+
+        def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+            return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+        def fake_collect_failed_logs(*_args: object, **_kwargs: object) -> ci_monitor.LogCollectResult:
+            return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+        def fake_capture_baseline(
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+            return (), (), (), "abc123"
+
+        def fake_known_fix(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+            return known_helper, "known" if known_helper else ""
+
+        def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
+            _ = Path(str(kwargs["output"])).write_text("fixed\n", encoding="utf-8")
+            return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+        def fake_stage_and_push(*_args: object, **kwargs: object) -> tuple[bool, str, tuple[str, ...], bool, bool]:
+            context = kwargs["context"]
+            assert isinstance(context, ci_monitor.StagePushContext)
+            callback = context.pre_push_log_refresh
+            assert callable(callback)
+            callback_results.append(bool(callback()))
+            return True, "abc124", ("file.py",), False, False
+
+        def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
+            return {"ACTION": "merge", "CI_STATUS": "pass"}, None
+
+        def fake_invalidate(implement_tmpdir: str) -> bool:
+            invalidated.append(implement_tmpdir)
+            return True
+
+        def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
+            return True
+
+        def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+            return True
+
+        def fake_delta_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+            return ("file.py",)
+
+        def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+            return 0
+
+        def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+            return agents.LaunchFailure("none", "")
+
+        def fake_capture_head(*_args: object, **_kwargs: object) -> str:
+            return "abc123"
+
+        def fake_head_changed(*_args: object, **_kwargs: object) -> bool:
+            return False
+
+        def fake_forbidden_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+            return ()
+
+        def fake_revert_forbidden_paths(*_args: object, **_kwargs: object) -> int:
+            return 0
+
+        monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+        monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+        monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+        monkeypatch.setattr(ci_agentic_fix, "_apply_known_harness_fix", fake_known_fix)
+        monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
+        monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
+        monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+        monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+        monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+        monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+        monkeypatch.setattr(coder_delta_guards, "capture_head", fake_capture_head)
+        monkeypatch.setattr(coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
+        monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+        monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
+        monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+        monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
+        monkeypatch.setattr(ci_agentic_fix.ship_guidelines, "_invalidate_guidelines_note", fake_invalidate)
+
+        status, _detail, _attempted, paths, pending, _next_run, _log_text = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+            proc,
+            args=args,
+            repo_root=repo,
+            ctx=ctx,
+            cycle=1,
+            run_id="42",
+        )
+
+        assert status == "passed"
+        assert paths == ("file.py",)
+        assert pending is False
+        assert invalidated == [str(tmp_path)]
+        assert callback_results == [True]
+
+
+    run_case(known_helper=True)
+    run_case(known_helper=False)
+
+
 def test_agentic_fix_result_missing_implement_tmpdir_fail_closed() -> None:
     fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
         proc,

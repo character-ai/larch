@@ -201,6 +201,79 @@ def _write_phase14_flag(tmpdir: str, *, reason: str) -> None:
         )
 
 
+def _flush_guidelines_warning_before_pr(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    resume: ResumePlan,
+) -> None:
+    step = "pr-create-guidelines-warning-refresh"
+    try:
+        refresh = run_logs.flush_logs_pre(
+            runner=runner,
+            ctx=ctx.with_(state_file=None),
+            cwd=cwd,
+        )
+    except (OSError, ShipError) as exc:
+        detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
+        refresh = run_logs.RefreshSkip(
+            skipped=True,
+            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            error=detail,
+        )
+    if not refresh.skipped:
+        return
+    reason = refresh.reason or "unknown"
+    if refresh.error:
+        reason = f"{reason}: {logging_util.sanitize_diagnostic_line(refresh.error)}"
+    _breadcrumb(step="warning", detail=f"guidelines warning refresh skipped: {reason}")
+    _write_terminal_state(
+        ctx=ctx.with_(stall_tracking=True, stall_step=step),
+        result=Outcome.STALLED,
+        step=step,
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+    )
+    raise Stalled(f"architectural-guidelines warning run-log refresh skipped: {reason}")
+
+
+def _compose_pr_body_for_pr_create(
+    *,
+    runner: Runner,
+    pr_context: RunContext,
+    repo_root: str,
+    base_ref: str,
+    resume: ResumePlan,
+) -> str:
+    compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    architectural_guidelines_note, pin_warning_logged = _pin_and_load_guidelines_note(
+        implement_tmpdir=pr_context.tmpdir,
+        head_sha=compose_head_sha,
+        base_ref=compose_base_ref,
+        repo_root=repo_root,
+    )
+    if pin_warning_logged:
+        _flush_guidelines_warning_before_pr(
+            runner=runner,
+            ctx=pr_context,
+            cwd=repo_root,
+            resume=resume,
+        )
+    return pr_body.compose_pr_body(
+        summary=_summary_from_manifest(pr_context),
+        mermaid=pr_context.mermaid,
+        test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
+        issue_number=int(pr_context.issue_number or pr_context.issue)
+        if (pr_context.issue_number or pr_context.issue).isdigit()
+        else None,
+        architectural_guidelines_note=architectural_guidelines_note,
+    )
+
+
 def _ship_postmerge_phase(
     *,
     runner: Runner,
@@ -448,20 +521,12 @@ def run_ship(
             transient_retries=resume.transient_retries,
         )
         _breadcrumb(step="pr-create", detail="PR")
-        compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
-        compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
-        architectural_guidelines_note = _pin_and_load_guidelines_note(
-            implement_tmpdir=pr_context.tmpdir,
-            head_sha=compose_head_sha,
-            base_ref=compose_base_ref,
+        body = _compose_pr_body_for_pr_create(
+            runner=runner,
+            pr_context=pr_context,
             repo_root=repo_root,
-        )
-        body = pr_body.compose_pr_body(
-            summary=_summary_from_manifest(pr_context),
-            mermaid=pr_context.mermaid,
-            test_plan=pr_context.test_plan or "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
-            issue_number=int(pr_context.issue_number or pr_context.issue) if (pr_context.issue_number or pr_context.issue).isdigit() else None,
-            architectural_guidelines_note=architectural_guidelines_note,
+            base_ref=base_ref,
+            resume=resume,
         )
         title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
         ensured: pr.PrResult = pr.ensure_pr(runner=runner, ctx=pr_context, body=body, title=title, cwd=repo_root, base=base_ref)
@@ -720,7 +785,7 @@ def run_ship(
                 if monitor.transient_rerun_attempted:
                     transient_retries += 1
                 if monitor.did_fixing:
-                    _invalidate_guidelines_note(working.tmpdir)
+                    _ = _invalidate_guidelines_note(working.tmpdir)
                     fix_attempts += 1
                 if monitor.action == "wait" or monitor.goto_rebase:
                     iteration += 1

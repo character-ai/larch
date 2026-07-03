@@ -1804,12 +1804,104 @@ def test_stage_and_push_defer_rebase_uses_typed_rebase_push(tmp_path: Any) -> No
         cwd=str(tmp_path),
         commit_label="codex",
         delta_paths=("fixed.py",),
-        classified=classified,
+        context=ci_monitor.StagePushContext(classified=classified),
     )
     assert pushed is True
     assert did_rebase is True
     assert pending is False
     assert ("git", "rebase", "origin/main") in runner.calls
+
+
+def test_stage_and_push_warning_refreshes_before_normal_push(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    commit_script = "cli.py git commit"
+    responses = {
+        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
+    }
+    order: list[str] = []
+
+    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
+        order.append("flush")
+        return ci_monitor.run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
+        order.append("push")
+        return _cr(("git", "push"), 0)
+
+    def callback() -> bool:
+        order.append("callback")
+        return True
+
+    monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.git, "push", fake_push)
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="claude",
+        delta_paths=("fixed.py",),
+        context=ci_monitor.StagePushContext(
+            run_context=make_run_context(tmpdir=str(tmp_path), run_id="run-abc"),
+            pre_push_log_refresh=callback,
+        ),
+    )
+
+    assert pushed is True
+    assert pending is False
+    assert order == ["callback", "flush", "push"]
+
+
+def test_stage_and_push_warning_refresh_skip_blocks_push(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Any,
+) -> None:
+    commit_script = "cli.py git commit"
+    responses = {
+        ("git", "add", "--", "fixed.py"): _cr(("git", "add"), 0),
+        (commit_script, "--no-trailer", "-m", "Apply CI fixes (claude)"): _cr((commit_script,), 0),
+        ("git", "rev-parse", "HEAD"): _cr(("git", "rev-parse"), stdout="head\n"),
+        ("git", "symbolic-ref", "--short", "HEAD"): _cr(("git", "symbolic-ref"), stdout="feature\n"),
+        ("git", "fetch", "origin", "main", "--quiet"): _cr(("git", "fetch"), 0),
+        ("git", "rev-list", "--count", "HEAD..origin/main"): _cr(("git", "rev-list"), stdout="0\n"),
+    }
+    order: list[str] = []
+
+    def fake_flush(*_args: object, **_kwargs: object) -> ci_monitor.run_logs.RefreshSkip:
+        order.append("flush")
+        return ci_monitor.run_logs.RefreshSkip(skipped=True, reason=ci_monitor.config.REFRESH_SKIP_VOLATILE_ONLY)
+
+    def fake_push(*_args: object, **_kwargs: object) -> CommandResult:
+        order.append("push")
+        return _cr(("git", "push"), 0)
+
+    def callback() -> bool:
+        order.append("callback")
+        return True
+
+    monkeypatch.setattr(ci_monitor.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ci_monitor.git, "push", fake_push)
+    runner = RecordingRunner(responses)
+    pushed, _head, _delta, _did_rebase, pending = ci_monitor.stage_and_push(
+        runner,
+        cwd=str(tmp_path),
+        commit_label="claude",
+        delta_paths=("fixed.py",),
+        context=ci_monitor.StagePushContext(
+            run_context=make_run_context(tmpdir=str(tmp_path), run_id="run-abc"),
+            pre_push_log_refresh=callback,
+        ),
+    )
+
+    assert pushed is False
+    assert pending is False
+    assert order == ["callback", "flush"]
 
 
 def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
@@ -1828,7 +1920,7 @@ def test_pending_retry_verifies_before_force_push(tmp_path: Any) -> None:
         commit_label="pending-retry",
         delta_paths=(),
         ci_fix_rebase_pending=True,
-        classified=classified,
+        context=ci_monitor.StagePushContext(classified=classified),
     )
     assert pushed is False
     assert pending is False
@@ -1851,7 +1943,7 @@ def test_pending_retry_verifies_pyright_before_force_push(tmp_path: Any) -> None
         commit_label="pending-retry",
         delta_paths=(),
         ci_fix_rebase_pending=True,
-        classified=classified,
+        context=ci_monitor.StagePushContext(classified=classified),
     )
     assert pushed is False
     assert pending is False
@@ -1874,7 +1966,7 @@ def test_pending_retry_missing_remote_oid_preserves_pending(tmp_path: Any) -> No
         commit_label="pending-retry",
         delta_paths=(),
         ci_fix_rebase_pending=True,
-        classified=ci_monitor.ClassifiedJobs(0, (), (), ()),
+        context=ci_monitor.StagePushContext(classified=ci_monitor.ClassifiedJobs(0, (), (), ())),
     )
     assert pushed is False
     assert pending is True
@@ -1900,8 +1992,10 @@ def test_pending_retry_missing_local_remote_ref_uses_ls_remote_lease(tmp_path: A
         commit_label="pending-retry",
         delta_paths=(),
         ci_fix_rebase_pending=True,
-        classified=ci_monitor.classify_failed_jobs(
-            (FailedJob(name="python-lint", conclusion="failure"),),
+        context=ci_monitor.StagePushContext(
+            classified=ci_monitor.classify_failed_jobs(
+                (FailedJob(name="python-lint", conclusion="failure"),),
+            ),
         ),
     )
     assert pushed is True

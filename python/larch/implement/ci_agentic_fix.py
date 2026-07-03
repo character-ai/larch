@@ -12,6 +12,7 @@ from pathlib import Path
 
 from larch.agents import agents
 from larch.implement import ci_monitor
+from larch.implement import ship_guidelines
 from larch.core import coder_delta_guards
 from larch.core import config
 from larch.git import git
@@ -93,6 +94,11 @@ def _reconstruct_ctx(*, args: argparse.Namespace, repo_root: Path) -> RunContext
         no_logs_commit=args.no_logs_commit,
         plan_file=args.plan_file,
     )
+
+
+def _invalidate_guidelines_before_ci_push(args: argparse.Namespace) -> bool:
+    implement_tmpdir = str(getattr(args, "implement_tmpdir", "") or "")
+    return ship_guidelines._invalidate_guidelines_note(implement_tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
 def _write_failure_log(*, output_dir: Path, text: str) -> Path:
@@ -489,8 +495,11 @@ def _run_cycle(
                     delta_paths=delta_paths,
                     base_remote=args.base_remote,
                     base_ref=args.base_ref,
-                    classified=classified,
-                    ctx=ctx,
+                    context=ci_monitor.StagePushContext(
+                        classified=classified,
+                        run_context=ctx,
+                        pre_push_log_refresh=lambda: _invalidate_guidelines_before_ci_push(args),
+                    ),
                 )
                 if not pushed and pending:
                     return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None, failure_log_text
@@ -711,8 +720,11 @@ def _run_cycle(
             delta_paths=delta_paths,
             base_remote=args.base_remote,
             base_ref=args.base_ref,
-            classified=classified,
-            ctx=ctx,
+            context=ci_monitor.StagePushContext(
+                classified=classified,
+                run_context=ctx,
+                pre_push_log_refresh=lambda: _invalidate_guidelines_before_ci_push(args),
+            ),
         )
         if not pushed and pending:
             return "rebase-required", "push-rebase-required", fix_attempted, pushed_paths, True, None, failure_log_text
