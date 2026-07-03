@@ -557,13 +557,13 @@ def _read_sidecar(log_root: Path, state: AnalyzerState) -> SidecarIndex:
     path = log_root / SIDECAR_PATH
     if not path.is_file() or path.is_symlink():
         state.bump("missing_rejected_sidecar")
-        return SidecarIndex({}, 0, False)
+        return SidecarIndex({}, 0, present=False)
     try:
         with path.open(encoding="utf-8", newline="") as handle:
             rows = [dict(row) for row in csv.DictReader(handle, delimiter="\t")]
     except (OSError, csv.Error):
         state.bump("malformed_rejected_sidecar")
-        return SidecarIndex({}, 0, False)
+        return SidecarIndex({}, 0, present=False)
     deduped: dict[str, Mapping[str, str]] = {}
     seen_hashes: set[str] = set()
     seen_rows: set[str] = set()
@@ -612,7 +612,7 @@ def _read_sidecar(log_root: Path, state: AnalyzerState) -> SidecarIndex:
         by_run[key].append(row)
     if duplicates:
         state.bump("duplicate_sidecar_rows", duplicates)
-    return SidecarIndex({key: tuple(value) for key, value in by_run.items()}, duplicates, True)
+    return SidecarIndex({key: tuple(value) for key, value in by_run.items()}, duplicates, present=True)
 
 
 def _sidecar_rows(index: SidecarIndex, *, skill: str, run_id: str) -> tuple[Mapping[str, str], ...]:
