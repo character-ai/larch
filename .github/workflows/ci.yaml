@@ -61,11 +61,12 @@ jobs:
       - name: Run pre-commit linters (external tools)
         # Runs markdownlint, jsonlint, and actionlint only.
         # `agent-lint`, `agnix`, and `shellcheck` run in dedicated jobs.
-        # `gitleaks` moved to the `gitleaks` job. Local bash/python linters
-        # run in `lint-local`. If a dedicated job is removed, drop its hook
+        # `gitleaks` moved to the `gitleaks` job. Scoped ruff/pyright hooks
+        # are covered by the Python jobs. Local bash/python linters run in
+        # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
         run: |
           set -euo pipefail
           log="$(mktemp)"
@@ -120,9 +121,9 @@ jobs:
       - name: Run pre-commit linters (local)
         # Runs only local bash/python linters. External tools (markdownlint,
         # jsonlint, actionlint) run in `lint`. Dedicated-job hooks
-        # (gitleaks, agnix, shellcheck, agent-lint) are skipped here.
+        # (gitleaks, agnix, shellcheck, agent-lint, ruff, pyright) are skipped here.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,markdownlint,jsonlint,agent-lint,actionlint
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,markdownlint,jsonlint,agent-lint,actionlint
         run: make lint-only
 
   # Mermaid fence lint and SIGPIPE safety lint — split from the `lint` job
@@ -340,6 +341,17 @@ jobs:
         run: agnix --version
       - name: Run agnix
         run: agnix . --strict --target claude-code --config .agnix.toml
+
+  contains-pins:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - name: Run contains-pin scanner
+        run: python3 python/cli.py checks contains-pins
 
   # Dedicated gitleaks gate — runs two sequential scans: (1) working-tree
   # scan (`--no-git`; formerly run inside the `lint` pre-commit hook, moved

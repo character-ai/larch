@@ -1094,30 +1094,29 @@ def test_run_relevant_checks_precommit_failure_skips_later_phases(
     assert "contains-pin" not in log[marker_index:]
 
 
-def test_run_relevant_checks_direct_targets_dedup_and_env_scrub(
+def test_run_relevant_checks_python_change_skips_direct_make_fanout(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     session = _checks_session(tmp_path, monkeypatch)
     repo = _git_repo(tmp_path)
-    script = repo / "scripts" / "read-result-env.sh"
-    script.parent.mkdir()
-    script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+    changed = repo / "python" / "larch" / "review" / "review_and_fix.py"
+    changed.parent.mkdir(parents=True)
+    changed.write_text("print('ok')\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", "/plugin-cache")
     monkeypatch.setenv("LARCH_QUIET_ACTIVE", "1")
-    make_log = tmp_path / "make-env.txt"
     _checks_path(
         monkeypatch,
         tmp_path,
         precommit="#!/usr/bin/env bash\nexit 0\n",
         agent_lint="#!/usr/bin/env bash\nexit 0\n",
-        make=f"#!/usr/bin/env bash\nprintf '%s\\n' \"$*\" > '{make_log}'\nprintf 'root=%s quiet=%s\\n' \"${{CLAUDE_PLUGIN_ROOT-unset}}\" \"${{LARCH_QUIET_ACTIVE-unset}}\" >> '{make_log}'\nexit 0\n",
+        make="#!/usr/bin/env bash\necho 'make should not run' >&2\nexit 99\n",
     )
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
     assert result.ok is True
-    text = make_log.read_text(encoding="utf-8")
-    assert "test-read-result-env test-design-structure" in text
-    assert "root=unset quiet=unset" in text
+    assert result.raw_log_path is not None
+    log = Path(result.raw_log_path).read_text(encoding="utf-8")
+    assert "=== Running direct relevant make target(s):" not in log
 
 
 def test_run_relevant_checks_rejects_dotdot_site(
@@ -3405,217 +3404,31 @@ def test_checks_lint_fix_main_reads_presence_from_session_env(
 
 
 
+
 def _direct_targets_for(paths: tuple[str, ...], tmp_path: Path) -> tuple[str, ...]:
     return _crr._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
 
 
-def _direct_targets_with_toolchain(
-    paths: tuple[str, ...],
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> tuple[str, ...]:
-    def available(*_args: object, **_kwargs: object) -> bool:
-        return True
-
-    monkeypatch.setattr(_crr, "_python311_available", available)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(_crr, "_pytest_available", available)  # pyright: ignore[reportPrivateUsage]
-    return _crr._direct_targets(runner=StubRunner(), changed=paths, cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
+def test_direct_targets_are_ci_first_no_local_make_fanout(tmp_path: Path) -> None:
+    assert not _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
+    assert not _direct_targets_for(("python/larch/review/review_and_fix.py",), tmp_path)
+    assert not _direct_targets_for(("python/test_plan_review.py",), tmp_path)
 
 
-def test_direct_targets_implement_skill_focused_targets(tmp_path: Path) -> None:
-    targets = _direct_targets_for(("skills/implement/SKILL.md",), tmp_path)
-    assert "test-implement-structure" in targets
-    assert "test-render-cost-line-callsites" in targets
+def test_local_relevant_checks_ci_superset_guard() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+    precommit = (repo_root / ".pre-commit-config.yaml").read_text(encoding="utf-8")
+    workflow = (repo_root / ".github" / "workflows" / "ci.yaml").read_text(encoding="utf-8")
 
-
-def test_direct_targets_design_step2b_routes_to_structure_and_drafter(tmp_path: Path) -> None:
-    targets = _direct_targets_for(("python/larch/design/design_step2b.py",), tmp_path)
-    assert "test-design-step2b-drafter" in targets
-    assert "test-design-structure" in targets
-
-
-def test_direct_targets_design_lifecycle_and_launcher_python_tests(tmp_path: Path) -> None:
-    lifecycle_targets = _direct_targets_for(("python/larch/design/design_lifecycle.py",), tmp_path)
-    assert "test-design-step0-init" in lifecycle_targets
-    assert "test-design-step1d5" in lifecycle_targets
-    assert "test-design-stage-terminal-state" in lifecycle_targets
-    assert "test-design-failure-report" in lifecycle_targets
-    assert "test-design-structure" in lifecycle_targets
-    session_targets = _direct_targets_for(("python/larch/state/session_env.py",), tmp_path)
-    assert "test-design-structure" in session_targets
-    assert "py-test" in session_targets
-
-
-@pytest.mark.parametrize(
-    ("path", "target"),
-    [
-        ("python/larch/design/design_argv.py", "test-parse-design-argv"),
-        ("python/larch/design/design_lifecycle.py", "test-design-driver"),
-        ("python/larch/design/design_lifecycle.py", "test-design-step0-init"),
-        ("python/design_log_publish_flow.py", "test-design-log-publish"),
-        ("python/design_log_ship.py", "test-design-log-ship"),
-        ("python/design_oos.py", "test-file-design-oos"),
-        ("python/design_pause.py", "test-design-pause-resume"),
-        ("python/design_postplan.py", "test-design-postplan-emit"),
-        ("python/design_publish.py", "test-design-publish"),
-        ("python/design_step_log.py", "test-run-step1-plan-log"),
-        ("python/design_summary.py", "test-render-final-summary"),
-        ("python/design_summary.py", "test-render-final-summary-bash32"),
-        ("python/plan_quality.py", "test-design-driver"),
-        ("python/plan_quality.py", "test-step0b-router-flag-recovery"),
-        ("python/larch/review/plan_review_panel.py", "test-plan-review-panel"),
-        ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-review-panel"),
-        ("python/larch/review/plan_review_panel.py", "test-dispatch-plan-voters"),
-        ("python/larch/rendering/rendering.py", "test-dispatch-plan-review-panel"),
-        ("python/larch/rendering/rendering.py", "test-dispatch-plan-voters"),
-        ("python/test_design_log_ship.py", "test-design-log-ship"),
-    ],
-)
-def test_direct_targets_design_module_focused_targets(tmp_path: Path, path: str, target: str) -> None:
-    assert target in _direct_targets_for((path,), tmp_path)
-
-
-@pytest.mark.parametrize(
-    ("path", "target"),
-    [
-        ("scripts/lint-readability-preamble.tsv", "test-design-structure"),
-        ("scripts/lint-readability-preamble.tsv", "test-brainstorm-prompts"),
-    ],
-)
-def test_direct_targets_readability_manifest_routes_to_structure(tmp_path: Path, path: str, target: str) -> None:
-    assert target in _direct_targets_for((path,), tmp_path)
-
-
-@pytest.mark.parametrize(
-    ("path", "expected"),
-    [
-        ("scripts/test-implement-anti-polling-rule.sh", {"test-implement-anti-polling-rule"}),
-        (
-            "AGENTS.md",
-            {
-                "test-design-structure",
-                "test-review-structure",
-                "test-research-structure",
-                "test-implement-anti-polling-rule",
-                "py-lint",
-                "py-test",
-            },
-        ),
-        (
-            "skills/design/SKILL.md",
-            {
-                "test-design-structure",
-                "test-render-cost-line-callsites",
-                "test-design-step3-mav",
-                "test-step3-orchestrator-fence",
-                "test-references-headers",
-                "test-implement-anti-polling-rule",
-                "test-lint-readability-preamble",
-                "test-brainstorm-prompts",
-            },
-        ),
-        ("skills/shared/design-background-wait.md", {"test-implement-anti-polling-rule"}),
-        ("skills/shared/orchestrator-never.md", {"test-implement-anti-polling-rule"}),
-        (
-            "skills/implement/SKILL.md",
-            {
-                "test-implement-structure",
-                "test-render-cost-line-callsites",
-                "test-references-headers",
-                "test-implement-anti-polling-rule",
-                "test-lint-readability-preamble",
-                "test-design-structure",
-                "test-brainstorm-prompts",
-            },
-        ),
-        ("python/larch/review/review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
-        ("python/test_review_aggregate.py", {"test-aggregate-findings", "py-lint", "py-test"}),
-        (
-            "python/larch/report/final_report.py",
-            {"test-write-final-report", "test-step-18b-final-report", "py-test"},
-        ),
-        (
-            "python/test_final_report.py",
-            {"test-write-final-report", "test-step-18b-final-report", "py-lint", "py-test"},
-        ),
-        ("python/larch/report/progress_report.py", {"py-test"}),
-        ("python/larch/rendering/gantt.py", {"py-test"}),
-        ("python/larch/report/review_phase_detail.py", {"py-test"}),
-        ("python/larch/implement/checks.py", {"py-test"}),
-        ("python/test_checks.py", {"py-lint", "py-test"}),
-    ],
-)
-def test_direct_targets_chronic_surface_full_union_sets(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    path: str,
-    expected: set[str],
-) -> None:
-    # These are full union expectations, not one-row spot checks. The design and
-    # implement SKILL paths combine their structure rows, the skills/* references
-    # header row, the anti-polling row, and the readability-preamble rule targets
-    # (test-lint-readability-preamble, test-design-structure, test-brainstorm-prompts)
-    # that the skills/*/SKILL.md glob routes to. The design SKILL also inherits the
-    # Step 3 MAV fence targets. Top-level python/*.py paths inherit py-lint and
-    # py-test when the toolchain probes are stubbed available.
-    targets = set(_direct_targets_with_toolchain((path,), tmp_path, monkeypatch))
-    assert targets == expected
-
-
-def test_direct_targets_rule_targets_before_py_lint(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    bin_dir = tmp_path / "bin"
-    bin_dir.mkdir()
-    _stub_tool(
-        bin_dir,
-        "python3",
-        '#!/usr/bin/env bash\nif [[ "$1" == "-c" ]]; then echo 311; exit 0; fi\nexit 0\n',
-    )
-    for tool in ("ruff", "pylint", "pyright", "pytest"):
-        _stub_tool(bin_dir, tool, "#!/usr/bin/env bash\nexit 0\n")
-    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ['PATH']}")
-    runner = StubRunner()
-    targets = _crr._direct_targets(runner=runner, changed=("python/larch/review/review_and_fix.py",), cwd=str(tmp_path), env=dict(os.environ), log_fd=2)  # pyright: ignore[reportPrivateUsage]
-    assert "test-review-and-fix" in targets
-    assert "py-lint" in targets
-    assert targets.index("test-review-and-fix") < targets.index("py-lint")
-
-
-def _write_partition_guard(repo: Path, enforced: tuple[str, ...]) -> None:
-    scripts_dir = repo / "scripts"
-    scripts_dir.mkdir(parents=True, exist_ok=True)
-    lines = ["ENFORCED = ("]
-    lines.extend(f'    "{path}",' for path in enforced)
-    lines.append(")")
-    _ = (scripts_dir / "lint-harness-pytest-partition.py").write_text(
-        "\n".join(lines) + "\n", encoding="utf-8",
-    )
-
-
-def test_enforced_partition_files_reads_guard_tuple(tmp_path: Path) -> None:
-    _write_partition_guard(tmp_path, ("python/test_plan_review.py", "python/test_agents.py"))
-    enforced = _crr._enforced_partition_files(tmp_path)  # pyright: ignore[reportPrivateUsage]
-    assert enforced == frozenset({"python/test_plan_review.py", "python/test_agents.py"})
-
-
-def test_enforced_partition_files_missing_guard_is_empty(tmp_path: Path) -> None:
-    assert _crr._enforced_partition_files(tmp_path) == frozenset()  # pyright: ignore[reportPrivateUsage]
-
-
-def test_direct_targets_enforced_test_file_adds_partition_guard(tmp_path: Path) -> None:
-    _write_partition_guard(tmp_path, ("python/test_plan_review.py",))
-    targets = _direct_targets_for(("python/test_plan_review.py",), tmp_path)
-    assert "test-harness-shards-coverage" in targets
-
-
-def test_direct_targets_non_enforced_test_file_skips_partition_guard(tmp_path: Path) -> None:
-    _write_partition_guard(tmp_path, ("python/test_plan_review.py",))
-    targets = _direct_targets_for(("python/test_ship.py",), tmp_path)
-    assert "test-harness-shards-coverage" not in targets
-
+    assert "id: ruff" in precommit
+    assert "ruff check --fix" in precommit
+    assert "id: pyright" in precommit
+    assert "pyright --project python/pyrightconfig.json" in precommit
+    assert "contains-pins:" in workflow
+    assert "python3 python/cli.py checks contains-pins" in workflow
+    assert "python-lint:" in workflow
+    assert "python-pyright:" in workflow
+    assert "agent-lint:" in workflow
 
 def test_existing_regular_files_includes_symlink_to_file(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
@@ -3722,7 +3535,7 @@ def test_run_relevant_checks_skips_undefined_direct_make_targets(
     assert "skipping undefined direct make target(s): test-unwired-direct-target" in log
 
 
-def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
+def test_run_relevant_checks_deletion_only_counts_contains_pins_phase(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -3754,14 +3567,9 @@ def test_run_relevant_checks_deletion_only_without_agent_lint_fails_closed(
 
     monkeypatch.setattr(_crr, "_command_available", available)  # pyright: ignore[reportPrivateUsage]
     result = checks.run_relevant_checks(proc, site="unit", tmpdir=str(session), repo_root=str(repo))
-    assert result.ok is False
-    assert result.exit_code == 2
-    assert result.failure_reason == "no-validation-phases"
-    assert result.redacted_log_path is not None
-    assert Path(result.redacted_log_path).stat().st_mode & 0o777 == 0o600
-    assert result.digest_file_path is not None
-    assert Path(result.digest_file_path).is_file()
-    assert Path(result.digest_file_path).stat().st_mode & 0o777 == 0o600
+    assert result.ok is True
+    assert result.exit_code == 0
+    assert result.failure_reason is None
 
 
 def test_run_relevant_checks_no_changes_skips_precommit_requirement(

@@ -446,7 +446,7 @@ def claude_sub_default_model(raw: str) -> str:
     return CLAUDE_SUB_DEFAULT_MODEL_BY_RAW.get(raw, CLAUDE_OPUS_4_8_MODEL)
 
 
-CI_AGENTIC_FIX_MAX_CYCLES: Final = 20
+CI_AGENTIC_FIX_MAX_CYCLES: Final = 30
 FIXER_ROLE: Final = "resolve-conflict"
 REBASE_MAX_ATTEMPTS: Final = 20
 # Rebase conflicts confined to these generated files are mechanically

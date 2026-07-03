@@ -11,7 +11,7 @@ Read `.ship-route-exit-handoff.env` with `larch_io.read_kvs` where applicable be
   1. Read `FAILED_RUN_ID` from `.ship-route-exit-handoff.env` and read `REPO` from scoped `ship-pr-state.sh`.
   1b. If `FAILED_RUN_ID` is empty, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" pr checks` as the fallback diagnostic path, then route to `operator-bail` or post-driver `stall` and end this procedure; do not continue into Step 2, and skip steps 3-12, including sentinel writes, `gh run-logs`, autonomous repair, commit, push, and ship re-entry.
   2. If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to operator-bail.
-  3. Use sentinel `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count`. Attempts 1-3 may run; the next arrival falls through.
+  3. Use sentinel `$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.attempted` and counter `$IMPLEMENT_TMPDIR/main-agent-ci-fix.count`. Attempts 1-30 may run; the next arrival falls through.
   4. Write the sentinel and increment the counter before repo edits. On write failure, append Tool Failures and fall through.
   5. Capture fresh CI logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" gh run-logs --run-id "$FAILED_RUN_ID" --repo "$REPO" | python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" redact secrets > "$IMPLEMENT_TMPDIR/main-agent-ci-fix-$FAILED_RUN_ID.gh-run-logs.redacted.txt"`.
   6. Make the minimal repo edit from the redacted CI log and optional detail file. For merge-ref-sensitive generated artifacts such as `python/skill-closure-baseline.json`, rebase onto current `main` before regenerating so the repair matches pull-request merge-ref CI.

@@ -186,6 +186,28 @@ repos:
         language: system
         types: [json]
 
+  - repo: local
+    hooks:
+      - id: ruff
+        name: ruff (autofix changed Python files)
+        entry: ruff check --fix --config python/ruff.toml
+        language: python
+        additional_dependencies: [ruff==0.15.15]
+        files: ^python/.*\.py$
+        pass_filenames: true
+
+      - id: pyright
+        name: pyright (changed Python files)
+        # language: system so pyright resolves project + dev deps (e.g. pytest)
+        # from the ambient env, mirroring CI's python-pyright job. An isolated
+        # additional_dependencies venv can't see those imports and reports
+        # spurious reportMissingImports. Runs locally only; CI's lint job SKIPs
+        # this hook (pyright is covered by the dedicated python-pyright job).
+        entry: pyright --project python/pyrightconfig.json
+        language: system
+        files: ^python/.*\.py$
+        pass_filenames: true
+
   - repo: https://github.com/zhupanov/agent-lint
     rev: v2.3.2
     hooks:
