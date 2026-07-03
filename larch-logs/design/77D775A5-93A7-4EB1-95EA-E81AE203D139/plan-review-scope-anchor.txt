@@ -1,0 +1,142 @@
+```
+/design run CA394A61-9BA8-43BA-AF74-FBF4F2DAAAC3 — approved
+
+- Duration: 01:18:18
+- Cost: 💰 TOTAL ~$43.36 — Claude $18.39, Codex-5.5 $6.61, Codex-mini $2.36, Cursor $13.95, Claude (subprocess) $2.05  |  Tokens: 78737k
+- Issue: #6164 — https://github.com/character-ai/larch/issues/6164
+- Plan review: complete (2 rounds)
+- Difficulty: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD escalated-high-accepted
+- Dynamic archetypes: static-only, drafter filter_failed
+- OOS filed: 0
+- Exec issues: 2
+- Warnings: 0
+- Run logs: larch-logs/design/CA394A61-9BA8-43BA-AF74-FBF4F2DAAAC3/
+- Main agent model: claude-sonnet-5
+- Effort: max
+- Larch version: unknown
+
+<!-- larch:run-summary v=1 -->
+
+Exec Issues and Warnings
+
+Exec Issues (2):
+1. Step design Step 3 — codex-review failed (exit 1 — quota — auth-retries=1, transient-retries=1)
+2. Step design Step 3 — codex-review failed (exit 1 — unknown — auth-retries=1, transient-retries=1)
+Warnings (0):
+
+Review Phase Detail
+
+┌───────────────────┬─────────────┬──────────┬──────────────┬──────────────┬────────────┬────────┬───────────┐
+│       Round       │ Suggestions │ Accepted │ OOS proposed │ OOS accepted │    Time    │  Cost  │ Reviewers │
+├───────────────────┼─────────────┼──────────┼──────────────┼──────────────┼────────────┼────────┼───────────┤
+│                 1 │           6 │        2 │            5 │            0 │ 26m 39s    │ $11.16 │        10 │
+├───────────────────┼─────────────┼──────────┼──────────────┼──────────────┼────────────┼────────┼───────────┤
+│                 2 │           3 │        0 │            5 │            0 │ 43m 24s    │ $11.59 │         8 │
+├───────────────────┼─────────────┼──────────┼──────────────┼──────────────┼────────────┼────────┼───────────┤
+│ Total (round-sum) │           9 │        2 │           10 │            0 │ 1h 10m 03s │ $22.75 │        18 │
+└───────────────────┴─────────────┴──────────┴──────────────┴──────────────┴────────────┴────────┴───────────┘
+
+The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way.
+
+Round 1 reviewer timing
+
+Round 1 reviewer timing  ·  window 0:00-26:39 (1599s)
+                                            0:00                               26:39
+                                           ┌────────────────────────────────────────┐
+codex/codex-plan-arch                      │█████                                   │ 193s
+cursor/cursor-plan-innovation              │██████                                  │ 233s
+codex/codex-plan-requirements              │██████                                  │ 249s
+cursor/dyn-cursor-plan-telemetry-redaction │██████                                  │ 249s
+codex/codex-plan-pragmatic                 │███████                                 │ 273s
+codex/codex-plan-innovation                │████████                                │ 310s
+cursor/cursor-plan-requirements            │███████████████                         │ 572s
+cursor/cursor-plan-arch                    │████████████████████                    │ 807s
+cursor/cursor-plan-pragmatic               │█████████████████████                   │ 824s
+codex/dyn-codex-plan-telemetry-redaction   │███████                                 │ 256s
+aggregator                                 │                     ███                │ 119s
+cursor/vote                                │                        ███             │ 111s
+codex/vote                                 │                        ███             │ 140s
+claude/vote                                │                        ████████        │ 302s
+                                           └────────────────────────────────────────┘
+
+Round 2 reviewer timing
+
+Round 2 reviewer timing  ·  window 0:00-43:24 (2604s)
+                                 0:00                                          43:24
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-pragmatic      │██                                                 │ 124s
+codex/codex-plan-requirements   │                                      ███          │ 119s
+codex/codex-plan-innovation     │                                      ███          │ 121s
+cursor/cursor-plan-pragmatic    │                                      ███          │ 149s
+cursor/cursor-plan-requirements │                                      ████         │ 157s
+cursor/cursor-plan-innovation   │                                      ████         │ 164s
+cursor/cursor-plan-arch         │                                      ████         │ 178s
+codex/codex-plan-arch           │                                      ████         │ 197s
+codex/codex-plan-pragmatic      │                                      ████         │ 201s
+aggregator                      │                                          █        │  25s
+codex/vote                      │                                           █       │  49s
+cursor/vote                     │                                           ██      │  92s
+claude/vote                     │                                           ████████│ 408s
+                                └───────────────────────────────────────────────────┘
+
+  Top reviewers (by per-round accepted-point score, whole run):
+  1. Codex-Innovation — 2
+  2. Codex-Pragmatic — 2
+  3. Cursor-Arch — 2
+  4. Cursor-Innovation — 2
+
+  Reviewer slot failures: 0
+
+  Read 1 file
+
+⏺ [Bug] /design report fallback required
+
+  The /design failure reporter could not safely file an issue.
+
+  ┌─────────┬────────────────────────────────┐
+  │  Field  │             Value              │
+  ├─────────┼────────────────────────────────┤
+  │ Outcome │ approved                       │
+  ├─────────┼────────────────────────────────┤
+  │ Reason  │ tier-a-dedup-status-unexpected │
+  └─────────┴────────────────────────────────┘
+
+  Use the local artifacts in DESIGN_TMPDIR to investigate. This fallback contains no log tail.
+
+⏺ ⏩ 5c.5: status=ok arch=new
+
+  ➡️  5: finalize — plan written to issue #6164; NEXT REQUIRED: continue
+
+  ▎ 🔶 /design 6: cleanup
+
+  Ran 1 shell command
+
+⏺ The /design run for issue #6164 is complete: plan approved after 2 review rounds, published to the issue, PR #6191 opened for the design log, and the tracking issue renamed. Two things from this run are worth
+  persisting to memory before I close out — a process mistake I made and self-corrected, and a genuinely novel recovery scenario.
+
+```
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix `dedup_tier_a_report()` in `python/larch/state/_report.py` to translate the cross-repo helper's raw `FILE_FAILURE_REPORT_STATUS`/`_URL`/`_FALLBACK_REASON` output into `STALL_RECOVERY_REPORT_*` before emitting, matching the documented contract in `python/stall-recovery-report.md`.
+- Add regression coverage that exercises the real translation seam (mocked shell subprocess with realistic stdout), closing the gap that let this ship.
+
+### Non-goals
+- No change to `scripts/file-failure-report-cross-repo.sh` — its `FILE_FAILURE_REPORT_*` output contract is correct and already relied on by the Tier B path.
+- No change to `design_terminal.py`'s consumer logic — it already reads the correct `STALL_RECOVERY_REPORT_STATUS` key; only the producer was wrong.
+- No broader refactor of `stall_recovery.py` / `_report.py` beyond this call site.
+
+### Approach sketch
+- In `dedup_tier_a_report()`, after writing the shell helper's raw stdout to `out`, call `normalize_file_failure_report_env()` on it instead of `_emit_env_file(out)` — mirroring the sibling `_emit_chat_print_filing_status` pattern already in the same file.
+- `normalize_file_failure_report_env` already lives in `_normalize.py` and is already imported into `_report.py`; no new import or CLI surface needed.
+- Add a test in `python/tests/state/test_stall_recovery.py` that mocks the cross-repo helper subprocess to emit realistic `FILE_FAILURE_REPORT_STATUS=...` stdout, then asserts `dedup_tier_a_report_main` emits the translated `STALL_RECOVERY_REPORT_STATUS`.
+- Fixing this shared function repairs both `/design`'s auto-bug-filer and `/implement`'s native terminal-failure/escalation-success reporting flow, which calls the same `dedup-tier-a-report` subcommand directly.
+
+### Surfaces in scope
+- `python/larch/state/_report.py`
+- `python/tests/state/test_stall_recovery.py`
+
+### Open questions
+- None.
