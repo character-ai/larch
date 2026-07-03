@@ -1,0 +1,17 @@
+{
+  "applied_tier": "HARD",
+  "audit_upgrade": null,
+  "confidence": "medium",
+  "design_tier": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Cross-cutting lifecycle change across difficulty policy, implement and design review loops, skill scripts, docs, and tests.",
+  "schema_version": 1
+}
