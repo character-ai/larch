@@ -1,0 +1,302 @@
+## Goal
+Implement issue #6103: [IMPLEMENTING] [FEATURE] /analyze-bugs: tiered low-cost verification of closed [BUG] fixes.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement the approved four-stage funnel as a dev-only workflow.
+
+Keep the orchestration thin:
+
+- Python owns fetch, bundle building, cache keys, ledger reads/writes, report rendering, and cost estimates.
+- `.claude/skills/analyze-bugs/SKILL.md` owns stage ordering, Task dispatch, approval gating, and forwarding flags.
+- Agent prompts own only semantic judgment.
+
+Use fail-closed defaults:
+
+- If deterministic evidence is incomplete, mark the bug `NEEDS_DEEP`.
+- If agent output is malformed, mark the bug `UNVERIFIABLE` or keep it queued for deep review.
+- If a cache key changes, re-run the relevant stage.
+
+Anchor all git evidence to one resolved ref:
+
+- Resolve the evidence ref once per run: `origin/main` after `git fetch origin main`, with a documented fallback to local `main` when offline.
+- Every `git log`, `git show`, and later-history scan names that ref explicitly; never implicit `HEAD`.
+- The deep stage requires a clean checkout of `main` in sync with the evidence ref, because the verifier reads the working tree.
+
+Hand off durable paths explicitly between stages:
+
+- `prefetch` emits whole-line stdout KVs; later verbs require the matching path argv and never guess the active run.
+- The durable ledger lives at `~/.cache/larch/analyze-bugs/<repo-slug>/ledger.jsonl` beside `runs/`; per-run bundles and manifests live under `runs/<run-id>/`.
+
+## Files to modify/create
+
+### NEW: python/larch/issue/analyze_bugs.py
+
+Add the stdlib-only implementation module behind `python3 python/cli.py analyze-bugs ...`, packaged beside `analyze_issues.py` per the repo package and CLI import model.
+
+Core pieces:
+
+- Frozen dataclasses for issues, fix evidence, bundle records, ledger records, triage records, deep records, and report counts.
+- A `Runner` seam using `larch.core.proc` for all `gh` and `git` calls.
+- One module-level deep-model alias map: `sonnet|opus|fable` each map to a Task `model` value and a `rate_row` model id; dispatch and pricing must read the same map.
+- `prefetch` verb:
+  - Resolve repo from `--repo` or `gh repo view`.
+  - Resolve the evidence ref and emit `EVIDENCE_REF=` on stdout.
+  - Collect exactly the newest `-n/--count` issues whose title starts with `[BUG]`: paginate `gh issue list --state all` until N title-prefix matches are collected or the corpus is exhausted.
+  - Keep `--state all` on every corpus call, including optional-field fallback retries.
+  - Emit `BUGS_REQUESTED=` and `BUGS_SELECTED=` counts; an under-filled window is reported, not silent.
+  - Request `number,title,state,stateReason,body,url,closedAt,closedByPullRequestsReferences`.
+  - Fall back cleanly when optional fields are unavailable.
+  - Strip `larch:plan` blocks from issue bodies via `larch.issue.issue_wire.strip_named_block`.
+  - On malformed plan-block markers, do not cache the bug as clean evidence: set mechanical `NEEDS_DEEP`.
+  - Map fixes with `git log <evidence-ref> --grep "Fixes #N"` first; post-filter matched messages with a boundary-aware exact reference so `#123` never binds `#1234`.
+  - Pin one fix_sha rule: the newest commit reachable from the evidence ref with an exact `Fixes #N` reference wins; document the rule beside `later_history_hash` construction.
+  - Fall back to `closedByPullRequestsReferences` only when the local grep finds no commit; resolve each referenced PR to its merge commit via `gh pr view --json mergeCommit`.
+  - When no unique fix_sha resolves, set `fix_sha=""` with mechanical `NEEDS_DEEP`; cached agent rows never skip that bug until a unique fix_sha exists.
+  - Emit mechanical verdicts: open becomes `NOT_FIXED`, closed not-planned becomes `WONTFIX`, closed completed with no traceable fix becomes `NEEDS_DEEP`.
+  - Build capped per-bug bundle files under `~/.cache/larch/analyze-bugs/<repo-slug>/runs/<run-id>/`.
+  - Use `git show --unified=1` plus a hard character cap for diffs.
+  - Include touched files, later commits touching those files (`git log <sha>..<evidence-ref> -- <files>`), and revert-scan evidence.
+  - Emit whole-line handoff KVs on stdout: `RUN_DIR=`, `MANIFEST_PATH=`, `LEDGER_PATH=`, `TRIAGE_BATCH_PATHS=`, `DEEP_QUEUE_PATH=`.
+- `ledger` verb:
+  - Require explicit path argv from the caller: `--run-dir` and `--ledger-path`, plus `--ingest-triage <jsonl>` or `--ingest-deep <jsonl>` for ingest phases; never guess the active run.
+  - Compute the key `(issue_number, fix_sha, later_history_hash)`.
+  - Load `ledger.jsonl` with corrupt-line quarantine.
+  - Track per-stage state on every row: `triage_verdict`, `deep_verdict`, `stages_complete`.
+  - Skip triage only when triage is complete for the current key; skip deep only when deep is complete for the current key; `--refresh` ignores both.
+  - Always enqueue deep for `SUSPECT`, `NEEDS_DEEP`, mechanical `NEEDS_DEEP`, and `--sample` picks, regardless of triage skip.
+  - Ingest strict JSONL from triage and deep stages as an upsert keyed by `(cache_key, stage)`, last-write-wins within a run.
+  - Validate ingest rows against the pinned agent JSONL schemas; reject rows missing required fields, carrying unknown verdicts, or duplicated within one batch, per-row fail-closed without aborting valid rows.
+  - Preserve intermediate progress so interrupted runs resume.
+  - Select deep candidates in fixed priority order: mechanical `NEEDS_DEEP`, then triage `SUSPECT`, then triage `NEEDS_DEEP`, then `--sample K` fills any remaining budget.
+  - Draw `--sample K` deterministically pseudo-randomly from triage `FIXED_CLEAR` and `FIXED_LIKELY` rows not already deep-queued; tag them with `sampled: true` provenance.
+  - Enforce `--deep-max M`; when required candidates exceed M, emit `DEEP_CAP_TRUNCATED=true`, list truncated issue numbers on stderr, and keep truncated bugs un-certified.
+  - Validate `--deep-model` through the alias map and echo `DEEP_MODEL=` and `DEEP_RATE_MODEL=`; unsupported values fail closed before any Task spend.
+- `report` verb:
+  - Require the same explicit path argv: `--run-dir`, `--manifest`, and `--ledger-path`.
+  - Merge mechanical, triage, deep, skipped, and cached verdicts by joining ledger state on the full cache key triple; ignore cached verdicts whose key differs from the current manifest row.
+  - Apply fixed precedence: current-run stage output, then key-matched ledger rows, then mechanical defaults.
+  - Render a markdown table with counts, issue links, fix commits, verdict, reason, and missing items.
+  - Report truncated deep candidates as pending `NEEDS_DEEP`, never as `CONFIRMED_FIXED`.
+  - Print sample calibration metrics from sampled deep outcomes only: sample size, sampled failures, and the triage false-pass rate.
+  - Render a follow-up issue body for `NOT_FIXED`, `INCOMPLETE`, and `REGRESSED` findings, but do not file it.
+  - Print an end-of-run `ANALYZE_BUGS_COST_ESTIMATE=...` line using `larch.report.report_tokens_cost.rate_row`, priced through the same deep-model alias map.
+  - Mark the cost line as estimated when exact Task token usage is unavailable.
+
+Implementation details:
+
+- Sanitize repo slugs before using them in cache paths.
+- Create cache files and ledgers with private permissions.
+- Use atomic temp-plus-replace for generated JSON manifests and reports.
+- Append ledger rows with one JSON object per line.
+- Keep all subprocess argv values as separate tokens.
+- Validate issue numbers as positive integers before passing them to `git` or `gh`.
+- Avoid direct `subprocess.*` calls.
+
+### UPDATED: python/larch/cli.py
+
+Register the new CLI surface, matching the `analyze-issues` registration shape:
+
+- `("analyze-bugs", "prefetch")` -> `("larch.issue.analyze_bugs", "prefetch_main")`
+- `("analyze-bugs", "ledger")` -> `("larch.issue.analyze_bugs", "ledger_main")`
+- `("analyze-bugs", "report")` -> `("larch.issue.analyze_bugs", "report_main")`
+
+Keep the existing dispatcher shape. Do not add shell shims.
+
+### UPDATED: python/larch/core/config.py
+
+Add shared constants only where they cross module or CLI boundaries:
+
+- cache directory name pieces,
+- default count `200`,
+- default deep max `30`,
+- default batch size `10`,
+- allowed deep models and the alias-to-model-id entries when they reuse existing model constants,
+- verdict literals when reused by tests or report rendering.
+
+Keep module-private constants inside `python/larch/issue/analyze_bugs.py` when they have one caller.
+
+### NEW: python/tests/issue/test_analyze_bugs.py
+
+Add offline regression coverage.
+
+Cover:
+
+- `[BUG]` title filtering and count window semantics, including pagination until N matches and the under-filled corpus case.
+- `--state all` present on every corpus call, including optional-field fallback retries.
+- Mechanical verdicts:
+  - open issue -> `NOT_FIXED`,
+  - closed `NOT_PLANNED` -> `WONTFIX`,
+  - closed completed with no fix -> `NEEDS_DEEP`.
+- Plan-block stripping from issue bodies, including malformed markers forcing mechanical `NEEDS_DEEP`.
+- Evidence-ref pinning: git evidence commands receive the resolved ref, not `HEAD`.
+- Diff cap and bundle manifest shape.
+- Prefetch stdout handoff KVs (`RUN_DIR=`, `MANIFEST_PATH=`, `LEDGER_PATH=`, batch and queue paths) and ledger/report refusing to run without the explicit path argv.
+- `Fixes #N` mapping via fake runner, including newest-wins among multiple candidates, the ambiguous `fix_sha=""` path, and the prefix-collision case where `#123` must not bind `#1234`.
+- PR fallback resolving `mergeCommit` when local grep misses, including the squash-only-local-checkout case falling back to `NEEDS_DEEP`.
+- Later-history hash changes when a later touching commit changes.
+- Ledger skip, refresh, and resume behavior, including per-stage skips from `triage_verdict`, `deep_verdict`, and `stages_complete`.
+- Deep queue priority order and `DEEP_CAP_TRUNCATED` overflow behavior.
+- Sample pool restriction: only triage `FIXED_CLEAR` / `FIXED_LIKELY` rows not already deep-queued, with `sampled: true` provenance and false-pass metrics computed from sampled outcomes only.
+- Report join on the full cache key: a stale cached verdict under an old key is ignored for a reopened or re-fixed bug.
+- Ingest upsert idempotency: duplicate rows within one batch rejected per-row; re-ingest does not change resume behavior.
+- Ingest schema validation: triage and deep rows missing required fields or carrying unknown verdicts are rejected.
+- Corrupt ledger line quarantine.
+- Deep-model alias map: each alias drives both Task model and `rate_row` id consistently; unsupported values fail closed.
+- Report counts and follow-up body content.
+- Cost estimate line uses the shared rate table.
+
+Use a fake `Runner`. Do not call live `gh`, live `git`, or network.
+
+### NEW: .claude/agents/bug-fix-triage.md
+
+Add a dev-only Haiku agent: frontmatter `model: haiku`, no tools.
+
+Prompt contract:
+
+- Input is a numbered batch of capped bundles.
+- Map each issue work item to diff evidence.
+- Emit strict JSONL only, one object per line with exactly the ingest schema: `{"issue": <int>, "verdict": "FIXED_CLEAR|FIXED_LIKELY|SUSPECT|NEEDS_DEEP", "missing_items": [<strings>], "reason": <string>, "needs_deep": <bool>}`.
+- Escalate on doubt.
+- Never certify correctness beyond obvious coverage.
+
+### NEW: .claude/agents/bug-fix-verifier.md
+
+Add a dev-only deep-verify agent: frontmatter `model: sonnet` (the skill overrides the Task model per `--deep-model`), tools `Read`, `Grep`, `Glob`.
+
+
+- Verify only queued bugs.
+- Inspect the synced main checkout read-only.
+- Respect an explicit read budget.
+- Check that the fix is still present and that later commits did not regress it.
+- Emit one JSONL object per bug with exactly the ingest schema: `{"issue": <int>, "verdict": "CONFIRMED_FIXED|INCOMPLETE|REGRESSED|NOT_FIXED|UNVERIFIABLE", "reason": <string>}`.
+
+### NEW: .claude/skills/analyze-bugs/SKILL.md
+
+Add the dev-only skill: frontmatter description starts with `Use when`; allowed tools include `Bash`, `Read`, `Task`, `AskUserQuestion`, and `Skill`; use `$PWD/...` paths, not `${CLAUDE_PLUGIN_ROOT}/...`.
+
+Workflow:
+
+1. Parse and forward flags:
+   - `-n COUNT`, default `200`.
+   - `--deep-max M`, default `30`.
+   - `--deep-model sonnet|opus|fable`, default `sonnet`.
+   - `--refresh`.
+   - `--sample K`.
+2. Preflight: require a clean worktree on `main` in sync with `origin/main` before any deep dispatch; fail loudly otherwise.
+3. Run `python3 "$PWD/python/cli.py" analyze-bugs prefetch ...` and parse the whole-line handoff KVs (`RUN_DIR=`, `MANIFEST_PATH=`, `LEDGER_PATH=`, `TRIAGE_BATCH_PATHS=`, `DEEP_QUEUE_PATH=`) from stdout.
+4. Run `python3 "$PWD/python/cli.py" analyze-bugs ledger ...` with `--run-dir` and `--ledger-path` from those KVs to compute pending batches.
+5. Launch Task batches with `bug-fix-triage`.
+6. Ingest triage JSONL through the ledger verb with `--ingest-triage <path>`.
+7. Launch Task deep checks with `bug-fix-verifier`, passing the Task `model` from the alias map echoed as `DEEP_MODEL=`; unsupported values already failed closed in Python.
+8. Ingest deep JSONL with `--ingest-deep <path>`.
+9. Run `report` with `--run-dir`, `--manifest`, and `--ledger-path` from the same KVs.
+10. Print the markdown report and cost summary.
+11. If the report contains follow-up findings, ask for approval before calling `/issue` once with the generated body file.
+
+Do not call `gh issue create` directly.
+
+### UPDATED: README.md
+
+Add `/analyze-bugs` to the private skill catalog.
+
+Mention:
+
+- dev-only,
+- default `-n 200`,
+- local ledger under `~/.cache/larch/analyze-bugs/`,
+- report-only default,
+- one combined follow-up issue offer behind approval.
+
+### UPDATED: docs/skills.md
+
+Add a private skill entry for `/analyze-bugs`.
+
+Keep it concise. Document flags, stages, cache behavior, and the no-test-execution constraint.
+
+### UPDATED: SECURITY.md
+
+Document the new local cache behavior.
+
+Include:
+
+- cache path,
+- private permissions intent,
+- cache may contain issue bodies, stripped plans, file paths, and capped diffs,
+- ledger is local and not committed,
+- operators can delete the cache safely to force reanalysis.
+
+## Edge cases
+
+- `gh` is missing or repo detection fails.
+- Checkout is not on `main` or is behind `origin/main` at deep-stage time.
+- Fewer than N `[BUG]` issues exist in the corpus.
+- `stateReason` is unavailable from `gh issue list`.
+- Issue body has malformed `larch:plan` markers.
+- Issue title contains `[BUG]` outside the prefix.
+- Multiple commits mention `Fixes #N`, including prefix collisions such as `#123` vs `#1234`.
+- Merge commits or squash commits carry the only fix reference.
+- PR references lack a local merge commit or a `mergeCommit` field.
+- Fix commit is not present in the local checkout.
+- Diff contains binary files, huge files, renames, deletes, or generated files.
+- No touched files can be derived.
+- Later-history scan returns no commits.
+- Revert scan finds an explicit revert after the fix.
+- Agent JSONL includes extra prose, duplicate issue rows, unknown verdicts, missing required fields, or invalid issue numbers.
+- A reopened or re-fixed bug carries a stale cached verdict under an old cache key.
+- `--sample K` exceeds the eligible sampled pool.
+- `--deep-max` is lower than the number of required deep candidates.
+- Ledger key changes because later touched-file history changes.
+- Cache directory exists with stale partial files from an interrupted run.
+
+## Failure modes
+
+- Fail prefetch with a clear nonzero exit when issue fetch or git evidence cannot produce a usable manifest.
+- Refuse ledger and report runs that lack the explicit run and ledger path argv.
+- Fail closed to `NEEDS_DEEP` when fix mapping is ambiguous.
+- Fail closed to `UNVERIFIABLE` when deep verification cannot inspect enough code.
+- Refuse deep dispatch when the checkout is not a clean synced `main`.
+- Surface deep-cap truncation loudly and never report truncated bugs as verified.
+- Reject unsupported `--deep-model` values before any Task spend.
+- Quarantine malformed ledger lines instead of dropping the whole ledger.
+- Reject malformed agent JSONL and keep affected issues queued or marked unverifiable.
+- Refuse to file the combined follow-up unless the operator approves.
+- Never treat Haiku triage as final for suspect or ambiguous cases.
+
+## Testing strategy
+
+Run targeted tests first:
+
+- `python3 -m pytest python/tests/issue/test_analyze_bugs.py`
+
+Run targeted lint/type checks for changed Python:
+
+- `python3 -m ruff check python/larch/issue/analyze_bugs.py python/tests/issue/test_analyze_bugs.py python/larch/cli.py python/larch/core/config.py`
+- `python3 -m pyright python/larch/issue/analyze_bugs.py python/tests/issue/test_analyze_bugs.py`
+
+Run agent and skill checks for new prompt files:
+
+- `pre-commit run agnix --files .claude/skills/analyze-bugs/SKILL.md .claude/agents/bug-fix-triage.md .claude/agents/bug-fix-verifier.md`
+- `python3 python/cli.py lint skill-description-length --files .claude/skills/analyze-bugs/SKILL.md`
+
+Run relevant checks before handoff if dependencies are installed:
+
+- `python3 python/cli.py checks run-relevant`
+
+Do not run live `gh` or live `git` integration tests in unit coverage. Keep live validation manual.
+
+## Acceptance
+
+- `python3 -m pytest python/tests/issue/test_analyze_bugs.py` passes with the coverage list from the plan, offline via a fake `Runner`.
+- `python3 -m ruff check` and `python3 -m pyright` pass on the changed Python files.
+- `pre-commit run agnix` and `python3 python/cli.py lint skill-description-length` pass on the three new prompt files.
+- `python3 python/cli.py analyze-bugs prefetch|ledger|report` dispatch through the `python/larch/cli.py` registry.
+- `/analyze-bugs` runs stages 0-3 report-only, prints the report and the cost estimate line, and files at most one combined follow-up issue only after operator approval.
+
+diff_lines: 2100
+
+## Test plan
+(no test plan section in plan-file)
