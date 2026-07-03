@@ -98,6 +98,11 @@ def _handle_stale_guidelines_note(*, tmpdir: Path, staged_present: bool) -> tupl
             tmpdir,
             redact_fn=pr_body.redact_pr_body,
         )
+        if not persisted:
+            warning_logged = _log_guidelines_ship_warning(
+                implement_tmpdir=tmpdir,
+                message="architectural-guidelines drop notice persist failed before invalidate",
+            ) or warning_logged
     try:
         architectural_guidelines.invalidate_implement_note(tmpdir)
     except OSError as exc:

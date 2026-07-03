@@ -13,6 +13,9 @@ from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext
+from larch.report import run_log_flush
+from larch.report import run_logs
+from test_support import RecordingRunner
 from test_support import make_run_context
 
 if TYPE_CHECKING:
@@ -717,8 +720,9 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         repo.mkdir()
         out_dir = tmp_path / f"out-{known_helper}"
         out_dir.mkdir()
+        implement_dir = tmp_path / f"implement-{known_helper}"
         invalidated: list[str] = []
-        callback_results: list[bool] = []
+        push_calls: list[str] = []
 
         args = Namespace(
             pr=1,
@@ -729,9 +733,11 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
             base_remote="origin",
             base_ref="main",
             output_dir=str(out_dir),
-            implement_tmpdir=str(tmp_path),
+            implement_tmpdir=str(implement_dir),
         )
-        ctx = make_run_context(tmpdir=str(tmp_path), run_id="42", repo="o/r")
+        ctx = make_run_context(tmpdir=str(implement_dir), run_id="42", repo="o/r")
+        _ = run_logs.init_run(ctx)
+        _ = (implement_dir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
 
         def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
             return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
@@ -752,20 +758,29 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
             _ = Path(str(kwargs["output"])).write_text("fixed\n", encoding="utf-8")
             return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
 
-        def fake_stage_and_push(*_args: object, **kwargs: object) -> tuple[bool, str, tuple[str, ...], bool, bool]:
-            context = kwargs["context"]
-            assert isinstance(context, ci_monitor.StagePushContext)
-            callback = context.pre_push_log_refresh
-            assert callable(callback)
-            callback_results.append(bool(callback()))
-            return True, "abc124", ("file.py",), False, False
+        def fake_commit_with_trailer(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+        def fake_fetch(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "fetch"), 0, "", "", 0.01)
+
+        def fake_current_branch(*_args: object, **_kwargs: object) -> str:
+            return "feat"
+
+        def fake_try_rev_parse(*_args: object, **_kwargs: object) -> str:
+            return "abc123"
+
+        def fake_push(*args: object, **_kwargs: object) -> proc.CommandResult:
+            push_calls.append(str(args[2]))
+            return proc.CommandResult(("git", "push"), 0, "", "", 0.01)
 
         def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
+            batch = implement_dir / "larch-logs" / "implement" / "42" / "execution-issues.ndjson"
+            assert batch.is_file()
+            issue_text = batch.read_text(encoding="utf-8")
+            assert "architectural-guidelines drop notice persist failed before invalidate" in issue_text
+            assert (implement_dir / ".execution-issues-flushed.sha").is_file()
             return {"ACTION": "merge", "CI_STATUS": "pass"}, None
-
-        def fake_invalidate(implement_tmpdir: str) -> bool:
-            invalidated.append(implement_tmpdir)
-            return True
 
         def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
             return True
@@ -794,6 +809,15 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         def fake_revert_forbidden_paths(*_args: object, **_kwargs: object) -> int:
             return 0
 
+        def fake_invalidate(implement_tmpdir: str) -> bool:
+            invalidated.append(implement_tmpdir)
+            run_logs.append_execution_issue(
+                log_file=Path(implement_tmpdir) / "execution-issues.md",
+                category="Warnings",
+                entry="- **architectural-guidelines drop notice persist failed before invalidate**",
+            )
+            return True
+
         monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
         monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
         monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
@@ -801,6 +825,11 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
         monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
         monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+        monkeypatch.setattr(ci_monitor.git, "commit_with_trailer", fake_commit_with_trailer)
+        monkeypatch.setattr(ci_monitor.git, "fetch", fake_fetch)
+        monkeypatch.setattr(ci_monitor.git, "current_branch", fake_current_branch)
+        monkeypatch.setattr(ci_monitor.git, "try_rev_parse", fake_try_rev_parse)
+        monkeypatch.setattr(ci_monitor.git, "push", fake_push)
         monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
         monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
         monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
@@ -808,12 +837,25 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         monkeypatch.setattr(coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
         monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
         monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
-        monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
-        monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
         monkeypatch.setattr(ci_agentic_fix.ship_guidelines, "_invalidate_guidelines_note", fake_invalidate)
+        monkeypatch.setattr(
+            run_log_flush,
+            "_commit_run",
+            lambda *_args, **_kwargs: proc.CommandResult(("git", "commit"), 0, "", "", 0.01),
+        )
+        monkeypatch.setattr(run_log_flush, "_write_final_report", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "capture_session_transcript", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_render_ledger_reports", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", lambda *_args, **_kwargs: None)
+        monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
+        monkeypatch.setattr(run_logs, "_commit_run", lambda *_args, **_kwargs: proc.CommandResult(("git", "commit"), 0, "", "", 0.01))
 
         status, _detail, _attempted, paths, pending, _next_run, _log_text = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
-            proc,
+            RecordingRunner(),
             args=args,
             repo_root=repo,
             ctx=ctx,
@@ -824,8 +866,8 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         assert status == "passed"
         assert paths == ("file.py",)
         assert pending is False
-        assert invalidated == [str(tmp_path)]
-        assert callback_results == [True]
+        assert invalidated == [str(implement_dir)]
+        assert push_calls == ["feat"]
 
 
     run_case(known_helper=True)

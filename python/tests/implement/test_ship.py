@@ -17,6 +17,7 @@ from larch.report import final_report
 from larch.report import run_log_flush
 from larch.report import run_logs
 from larch.implement import ship
+from larch.implement import ship_guidelines
 from larch.implement import ship_pr
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
@@ -98,14 +99,6 @@ def _replace_guidelines_sidecar_value(tmpdir: Path, *, key: str, value: str) -> 
     sidecar = tmpdir / ship.architectural_guidelines.STAGED_ASSESSMENT_ENV
     lines = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in sidecar.read_text(encoding="utf-8").splitlines()]
     sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
-
-
-def _seed_warning_flush_inputs(tmpdir: Path, *, warning: str) -> None:
-    _ = (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    _ = (tmpdir / "execution-issues.md").write_text(
-        f"### Warnings\n- {warning}\n",
-        encoding="utf-8",
-    )
 
 
 def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5047,6 +5040,35 @@ def test_pin_and_load_guidelines_note_returns_drop_notice_on_write_failure(
     assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
 
 
+def test_handle_stale_guidelines_note_logs_warning_when_persist_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint("staged diff"),
+        base_ref="origin/main",
+        diff_text="staged diff",
+    )
+    monkeypatch.setattr(
+        ship_guidelines.architectural_guidelines,
+        "maybe_persist_dropped_note_before_invalidate",
+        lambda *_args, **_kwargs: False,
+    )
+
+    note, warning_logged = ship_guidelines._handle_stale_guidelines_note(  # pyright: ignore[reportPrivateUsage]
+        tmpdir=tmp_path,
+        staged_present=True,
+    )
+
+    assert note == ""
+    assert warning_logged is True
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "architectural-guidelines drop notice persist failed before invalidate" in issues
+
+
 def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -5510,8 +5532,22 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     _stub_happy_ship_mocks(monkeypatch)
     monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
     monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
+    order: list[str] = []
+
+    real_flush = _REAL_FLUSH_LOGS_PRE
+
+    def capturing_flush(
+        *,
+        runner: RecordingRunner,
+        ctx: RunContext,
+        cwd: str | None = None,
+        strict_final_report: bool = False,
+    ) -> run_logs.RefreshSkip:
+        order.append("flush-after-pin" if "pin" in order else "flush-before-pin")
+        return real_flush(runner=runner, ctx=ctx, cwd=cwd, strict_final_report=strict_final_report)
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)
+    monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
 
     def noop(*_args: object, **_kwargs: object) -> None:
         return None
@@ -5533,8 +5569,37 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", noop)
 
     ctx = _ctx(tmp_path, merge=merge)
-    run_logs.init_run(ctx)
-    _seed_warning_flush_inputs(tmp_path, warning="architectural-guidelines warning")
+    _ = run_logs.init_run(ctx)
+    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="Guideline deviation note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    monkeypatch.setattr(
+        ship.architectural_guidelines,
+        "write_implement_note",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("durable write failed")),
+    )
+    real_pin = ship._pin_and_load_guidelines_note
+
+    def spy_pin(
+        implement_tmpdir: str,
+        head_sha: str,
+        base_ref: str,
+        *,
+        repo_root: str | None = None,
+    ) -> tuple[str, bool]:
+        order.append("pin")
+        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        return "body"
 
     def fake_ensure_pr(
         *,
@@ -5545,13 +5610,16 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
         cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
         base: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
     ) -> object:
+        order.append("ensure")
         run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
         batch = run_dir / "execution-issues.ndjson"
         assert batch.is_file()
-        assert "architectural-guidelines warning" in batch.read_text(encoding="utf-8")
+        assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in batch.read_text(encoding="utf-8")
         assert (tmp_path / ".execution-issues-flushed.sha").is_file()
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
+    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", spy_pin)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
     if merge:
         monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"))
@@ -5561,6 +5629,7 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     result = ship.run_ship(_ctx(tmp_path, merge=merge), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
+    assert order.index("pin") < order.index("flush-after-pin") < order.index("compose") < order.index("ensure")
 
 
 def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
