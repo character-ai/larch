@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rerun timing is an explicit non-goal in the plan, so this does not clear the necessity gate for the labeled gate-b/apply feature.

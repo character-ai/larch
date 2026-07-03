@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan's Non-goals block explicitly defers per-attempt round timing rows as intentional; rerun suppression is pre-existing behavior the plan deliberately excludes, not a defect in the plan's own feature scope.

@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Approved non-goals keep intentional single-row idempotency; rerun timing is explicitly out of scope for this narrower #6091 fix.
