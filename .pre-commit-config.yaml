@@ -200,7 +200,7 @@ repos:
         name: pyright (changed Python files)
         entry: pyright --project python/pyrightconfig.json
         language: python
-        additional_dependencies: [pyright==1.1.409]
+        additional_dependencies: [pyright==1.1.409, pytest==9.0.3]
         files: ^python/.*\.py$
         pass_filenames: true
 
