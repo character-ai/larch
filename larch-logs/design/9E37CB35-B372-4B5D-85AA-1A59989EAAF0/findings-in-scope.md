@@ -1,0 +1,21 @@
+### FINDING_1: Step 0-pre still forces a pre-0a flags read
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The Step 0-pre gating still requires reading `flags.md` before the new Python-driven validation path, so the eager-closure reduction can still be blocked on every `/design` run.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In the Step 0-pre section, change the When line to run immediately before Step 0a (or before session setup) with no flags.md read prerequisite. Align any nearby Step 0-pre prose that still implies flags.md is required first.
+
+### FINDING_2: flags.md still presents normative parse authority
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The `flags.md` header still frames parse validation as normative authority even though the plan demotes it to a conditional background reference, which leaves conflicting signals in the same edit.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: When replacing parse-argv with parse-flags on line 14, repoint to python/cli.py design parse-flags and reword the sentence as background-only (not normative validation). Keep the plan-size and later sections untouched per plan scope.
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: skills/design/references/flags.md:14
+- **Concern**: [SCOPE-REDUCTION] flags.md body can still claim normative validation authority. Scenario: The plan limits authority edits to the header, so the Public flags section can still say parse-flags is normative after the PR. That leaves flags.md as a competing validation source instead of a conditional prose reference.
+- **Proposed resolution**: Extend the flags.md update to remove or soften all normative validation wording, including the Public flags sentence, while still leaving non-argv sections unchanged.

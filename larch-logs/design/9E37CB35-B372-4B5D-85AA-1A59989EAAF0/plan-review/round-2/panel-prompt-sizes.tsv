@@ -1,0 +1,7 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	2	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	27405	6852		0	0
+design Step 3	phase1	2	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19617	4905		0	0
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	9632	2408	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	2	voter-1	voter	claude	claude-vote-output.txt	16575	4144		0	0
+design Step 3	phase1	2	voter-2	voter	codex	codex-vote-output.txt	16575	4144		0	0
+design Step 3	phase1	2	voter-3	voter	cursor	cursor-vote-output.txt	16575	4144		0	0

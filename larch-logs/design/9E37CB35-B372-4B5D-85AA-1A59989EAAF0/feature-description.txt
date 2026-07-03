@@ -1,0 +1,12 @@
+# md-to-py-XI: /design flag parsing via Python parse-flags envelope; demote flags.md from eager closure
+
+**Context.** `skills/design/references/flags.md` (9.8KB, about 2.5k estimated tokens after #5879) is force-read before argument parsing on every design run as the single normative source for flag validation. Validation rules of this shape are mechanical and belong in Python per the program goal.
+
+**Scope.** Add `python3 python/cli.py design parse-flags` consuming the raw argument string and emitting a validated KV envelope plus exact error strings. SKILL.md keeps the non-normative flag table and drops the force-read; `flags.md` becomes a conditional reference for edge-case prose or shrinks accordingly.
+
+**Acceptance.**
+
+- Design eager closure drops by about the file's size (ratchet confirms).
+- Flag acceptance and rejection behavior identical on the documented matrix (harness-covered); structure tests pass.
+
+Part of md-to-py-XI (round X: #5885). Serializes with other design-file children under the single-/design invariant.

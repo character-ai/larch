@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan line 49 explicitly says "Remove the mandatory pre-parse read of `skills/design/references/flags.md`"; the eager read is already removed in the plan
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly restricts flags.md to "header only"; the plan correctly limits changes there; body normative language is real but outside the permitted scope
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- proposed resolution asks to extend flags.md body edits beyond "header only" which the scope anchor explicitly restricts; documentation inconsistency but not a blocking feature concern

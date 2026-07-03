@@ -1,0 +1,4 @@
+Reading the ballot and verifying claims against the plan and codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already mandates header demotion; no extra revision needed for acceptance.
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Body normative prose on line 14 is stale docs only; Python validation and dropped eager read deliver the feature without rewriting it.

@@ -1,0 +1,29 @@
+## Proposed Design Outline
+
+### Goals
+- Mechanize `/design`'s public-flag argv validation and error messaging into a Python CLI verb that emits ready-to-print error strings, so `SKILL.md` no longer force-reads `flags.md` before every run.
+- Preserve today's flag acceptance/rejection decision matrix exactly (no grammar or default changes).
+- Shrink `/design`'s eager reference closure by roughly `flags.md`'s current size (~2.5k tokens).
+
+### Non-goals
+- No changes to plan-size threshold values, Step 3 review-cap semantics, or plan-command validator behavior (owned by `step2b5-rc-handling.md`, `validator-failure.md`, `plan-review.md`).
+- No new public flags; no changes to existing flag semantics or defaults.
+- No broader audit of unrelated `checks_run_relevant.py` mapping entries beyond the one this change directly touches.
+
+### Approach sketch
+- Extend the existing `design_argv.py` parser to also emit ready-to-print error strings alongside today's KV envelope; register under a new `design parse-flags` verb, retiring `parse-argv` in the same commit.
+- Repoint `SKILL.md` Step 0-pre to call `design parse-flags`, drop the `flags.md` force-read directive, and print the mechanized error string on abort.
+- Update `flags.md`'s own header so it stops claiming eager/normative authority; leave its background threshold/validator prose as-is.
+- Update `scripts/test-design-structure.sh` pins, the stale relevant-checks mapping entry, and regenerate `python/skill-closure-baseline.json`.
+
+### Surfaces in scope
+- `python/larch/design/design_argv.py`, `python/larch/cli.py` registry
+- `skills/design/SKILL.md` (Step 0-pre section)
+- `skills/design/references/flags.md` (header only)
+- `python/tests/design/test_design_argv.py`
+- `python/larch/implement/checks_run_relevant.py` (one stale entry)
+- `scripts/test-design-structure.sh`
+- `python/skill-closure-baseline.json`
+
+### Open questions
+- None.

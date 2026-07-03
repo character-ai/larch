@@ -1,0 +1,1 @@
+Plan: replace `/design`'s public flag parser surface with `design parse-flags`, have Python emit the ready-to-print validation error line, repoint Step 0-pre, demote `flags.md` from eager/normative, update focused tests, fix the stale relevant-checks mapping, and regenerate the design closure baseline.
