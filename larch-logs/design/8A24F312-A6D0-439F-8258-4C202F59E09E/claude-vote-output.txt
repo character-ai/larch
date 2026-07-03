@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- exact duplicate of round-1 FINDING_3, rejected 0/3, no materially new evidence
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- calibration feedback is system-generated content; scope defines payload as externally-supplied per-run data (plan/diff/issue), so classification is a definitional choice not a defect; round-2 new finding must clear gate 2/3 and does not
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- reviewer-slot inventory is system-generated per-run context; same definitional ambiguity as FINDING_4; does not clearly corrupt the scaffold metric enough to clear gate 2 for a round-2 new finding
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- token columns go beyond stated acceptance bytes-only criteria but adding them is reasonable foresight for density-pass children; a plan that delivers more than acceptance requires is not defective
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent speculative drift risk at two parallel dispatch paths does not clear the OOS materiality impact floor

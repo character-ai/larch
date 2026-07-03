@@ -1,0 +1,1 @@
+Plan: add scaffold and payload byte columns to panel prompt telemetry, thread payload counts from renderers and manifests into launchers, sort `measure-panel-cost` by scaffold bytes, and update docs and focused Python tests.
