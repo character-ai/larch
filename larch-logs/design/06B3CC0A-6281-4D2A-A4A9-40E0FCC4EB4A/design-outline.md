@@ -1,0 +1,20 @@
+## Proposed Design Outline
+
+### Goals
+- Close the coverage gap: add execution-based tests proving `DIFFICULTY_OVERRIDE` (from `run-flags.sh`) is forwarded as `--difficulty <tier>` to `review-and-fix step5`.
+- Cover both `step-5-review.sh` and `step-5-resume.sh` — identical forwarding pattern, identical gap (per Round 1 decision).
+
+### Non-goals
+- No change to the wrappers' forwarding logic itself; current behavior is correct, this is coverage-only.
+- No audit of other `run-flags.sh` keys (QUICK_MODE, NO_ISSUES, FORCE_REQUESTED, SELF_REVIEW_REQUESTED, SELF_IMPLEMENT_REQUESTED) or other wrapper scripts.
+
+### Approach sketch
+- Add subprocess-based pytest tests to `python/tests/review/test_review_and_fix.py`, the existing home of the structural (text-only) test for `step-5-review.sh`.
+- Execute the real `.sh` wrapper with a stub `python3` shim (temp bin dir prepended to `PATH`) that intercepts only the final `review-and-fix step5` call — captures argv, exits 0 — and delegates every other call (`session read-key`, `timing telemetry-mark`/`timing mark`) to the real interpreter, so `run-flags.sh` reading stays real.
+- Two cases per wrapper: `DIFFICULTY_OVERRIDE` set to a valid tier forwards `--difficulty <tier>`; absent `run-flags.sh` forwards no `--difficulty` flag.
+
+### Surfaces in scope
+- `python/tests/review/test_review_and_fix.py`
+
+### Open questions
+- None.

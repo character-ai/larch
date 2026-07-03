@@ -1,0 +1,1 @@
+1	the temp `python3` stub is not robustly bootstrapped, so the wrapper may fail before argv capture or recurse through `path` instead of invoking the intended interpreter.
