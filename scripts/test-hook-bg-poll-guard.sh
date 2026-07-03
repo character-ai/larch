@@ -66,6 +66,11 @@ run_payload_auto_markers() {
   printf '%s' "$payload" | LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-$$}" "$HOOK"
 }
 
+run_payload_with_marker() {
+  local marker="$1" payload="$2"
+  printf '%s' "$payload" | LARCH_BG_POLL_GUARD_MARKER="$marker" LARCH_BG_POLL_GUARD_SESSION_PID="${LARCH_BG_POLL_GUARD_SESSION_PID:-}" "$HOOK"
+}
+
 write_marker_at() {
   local marker="$1" pid="$2" start="$3" timeout="${4:-21600}" step="${5:-design-step3-review}"
   cat >"$marker" <<EOF_MARKER
@@ -949,6 +954,10 @@ out=$(run_payload_auto_markers "$(payload_read "$MARKER_OWN" "$CWD_OWN")")
 assert_allow "$out" '#6108: same-clone Read of .bg-wait-active diagnosis marker allows'
 out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\"" "$CWD_OWN")")
 assert_allow "$out" '#6108: same-clone simple Bash read of .bg-wait-active diagnosis marker allows'
+out=$(run_payload_with_marker "$MARKER_OWN" "$(payload_bash "awk '{print}' \"$MARKER_OWN\"" "$CWD_OWN")")
+assert_allow "$out" '#6108: same-clone awk read of .bg-wait-active diagnosis marker allows'
+out=$(run_payload_with_marker "$MARKER_OWN" "$(payload_bash "cat \"$MARKER_OWN\" # \"$D_OWN/plan-review/ballot.txt\"" "$CWD_OWN")")
+assert_allow "$out" '#6108: comment-suffix .bg-wait-active diagnosis still allows after stripping comments'
 out=$(run_payload_auto_markers "$(payload_bash "cat \"$MARKER_OWN\" && cat tasks/foo.output" "$CWD_OWN")")
 assert_deny "$out" '#6108: mixed marker diagnosis plus progress artifact still denies'
 rm -f "$MARKER_OWN"

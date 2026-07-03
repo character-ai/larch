@@ -809,8 +809,24 @@ bash_has_bracket_file_test() {
   printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])(\[\[|\[)[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
 }
 
+bash_split_shell_command() {
+  python3 - "$1" <<'PY'
+import shlex
+import sys
+
+try:
+    tokens = shlex.split(sys.argv[1], posix=True, comments=True)
+except ValueError:
+    raise SystemExit(1)
+
+for token in tokens:
+    print(token)
+PY
+}
+
 bash_is_marker_only_diagnosis() {
-  local cmd="$1" normalized
+  local cmd="$1" normalized verb token non_option_count=0 marker_count=0 marker_token=""
+  local -a tokens=()
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
   case "$normalized" in
@@ -823,7 +839,52 @@ bash_is_marker_only_diagnosis() {
   esac
   printf '%s' "$normalized" | grep -Fq "\$(" && return 1
   printf '%s' "$normalized" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install|rm|truncate)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 1
-  printf '%s' "$normalized" | grep -Eq '^(cat|stat|ls|wc|head|sed|awk)([[:space:]]|$)'
+  tokens_text=$(bash_split_shell_command "$normalized") || return 1
+  while IFS= read -r token || [ -n "$token" ]; do
+    tokens+=("$token")
+  done <<EOF_TOKENS
+$tokens_text
+EOF_TOKENS
+  [ "${#tokens[@]}" -gt 0 ] || return 1
+  verb="${tokens[0]}"
+  case "$verb" in
+    cat|stat|ls|wc|head|sed|awk) ;;
+    *) return 1 ;;
+  esac
+  for token in "${tokens[@]:1}"; do
+    case "$token" in
+      -*|--*) continue ;;
+    esac
+    non_option_count=$((non_option_count + 1))
+    case "$(basename "$token" 2>/dev/null)" in
+      .bg-wait-active)
+        marker_count=$((marker_count + 1))
+        marker_token="$token"
+        ;;
+      *)
+        case "$verb" in
+          cat|stat|ls|wc|head) return 1 ;;
+        esac
+        ;;
+    esac
+  done
+  case "$verb" in
+    cat|stat|ls|wc|head)
+      [ "$non_option_count" -eq 1 ] || return 1
+      ;;
+    sed|awk)
+      [ "$non_option_count" -eq 2 ] || return 1
+      ;;
+  esac
+  [ "$marker_count" -eq 1 ] || return 1
+  [ -n "$marker_token" ] || return 1
+  while IFS= read -r live_dir || [ -n "$live_dir" ]; do
+    [ -n "$live_dir" ] || continue
+    if path_under_dir "$marker_token" "$live_dir" && path_is_bg_wait_marker "$marker_token"; then
+      return 0
+    fi
+  done <"$live_dirs_file"
+  return 1
 }
 
 
@@ -902,6 +963,14 @@ bash_has_probe_target() {
   local implement_tmpdir_braced="\${IMPLEMENT_TMPDIR}"
   case "$cmd" in
     *"$dir"*) return 0 ;;
+  esac
+  case "$dir" in
+    /private/*)
+      case "$cmd" in *"${dir#/private}"*) return 0 ;; esac
+      ;;
+    *)
+      case "$cmd" in *"/private$dir"*) return 0 ;; esac
+      ;;
   esac
   case "$cmd" in
     *tasks/*.output*|*"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*)
