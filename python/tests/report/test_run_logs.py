@@ -63,7 +63,53 @@ def _ctx(tmp_path: Path, state_file: str | None = None) -> RunContext:
 
 def test_validate_run_id_slug() -> None:
     assert run_logs.validate_run_id_slug("run-1")
+    assert run_logs.validate_run_id_slug("-abc123")
     assert not run_logs.validate_run_id_slug("../evil")
+    assert not run_logs.validate_run_id_slug("a..b")
+    assert not run_logs.validate_run_id_slug("bad/slash")
+    assert not run_logs.validate_run_id_slug(r"bad\slash")
+
+
+@pytest.mark.parametrize(
+    "argv",
+    [
+        ["--run-id", "run-1"],
+        ["--run-id=-abc123"],
+        ["--run-id", "abc.DEF_123"],
+    ],
+)
+def test_larch_log_validate_run_id_main_valid(
+    argv: list[str],
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = run_logs.larch_log_validate_run_id_main(argv)
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == "VALID=true\n"
+
+
+@pytest.mark.parametrize(
+    "value",
+    ["", "../evil", "a..b", "bad/slash", r"bad\slash", "bad space", "bad*char"],
+)
+def test_larch_log_validate_run_id_main_invalid(
+    value: str,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = run_logs.larch_log_validate_run_id_main([f"--run-id={value}"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert captured.out == "VALID=false\n"
+
+
+def test_larch_log_validate_run_id_main_missing_arg(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = run_logs.larch_log_validate_run_id_main([])
+
+    captured = capsys.readouterr()
+    assert rc != 0
+    assert captured.out == ""
 
 
 def test_atomic_write_uses_nofollow(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
