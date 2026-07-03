@@ -1,0 +1,16 @@
+### FINDING_1: Leading-hyphen RUN_IDs are misparsed by the new guard
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned Step 4 `run-log validate-run-id` call passes `--run-id` as a separate argv token, so valid slug values that begin with `-` can be treated as options or missing arguments by the parser. That makes the new guard reject values that the Python slug validator and the prior Bash check accept.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Use an argv shape or parser that preserves dash-leading values, for example `--run-id="${RUN_ID:-}"`, and add a focused valid-case test for a dash-leading run id.
+  - From Codex-Innovation: Change the SKILL.md call to use the equals form: run-log validate-run-id --run-id="${RUN_ID:-}".
+  - From Codex-Pragmatic: Pass the value with the option token, for example `--run-id="${RUN_ID:-}"`, and add a focused valid leading-hyphen case to the new validator tests.
+  - From Codex-Requirements: Make the new verb accept leading-hyphen values, for example with a minimal manual parser or by changing the SKILL.md call to `--run-id="${RUN_ID:-}"`, and add a focused valid test for a leading-hyphen slug.
+
+### FINDING_2: The test plan does not pin the exact review-guard shape
+- **Reviewer(s)**: Codex-dyn-Cli Skill Contract
+- **Severity**: important
+- **Concern**: The proposed tests cover the Python main path and CLI registry wiring, but they do not assert the Step 4 review guard itself. That leaves room for the duplicated slug regex or path checks to remain or be reintroduced in `skills/review/SKILL.md` while the planned tests still pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Cli Skill Contract: Add a minimal review guard shape assertion, preferably in scripts/test-review-structure.sh, that requires `run-log validate-run-id` in the Step 4 guard and rejects the duplicated regex/path-check literals in skills/review/SKILL.md; include that harness in the focused testing strategy.

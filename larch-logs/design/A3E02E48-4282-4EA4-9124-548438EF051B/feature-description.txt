@@ -1,0 +1,60 @@
+# [BUG] Review Step 4 RUN_ID validation duplicates validate_run_id_slug as inline Bash…
+
+## Summary
+
+The Step 4 `RUN_ID` slug-validation guard added to `skills/review/SKILL.md` by PR #6105 (issue #6089) reimplements `run_log_batch.validate_run_id_slug`'s non-empty / no-`..` / no-`/` / no-`\` / `^[A-Za-z0-9._-]+$` check as inline Bash glob/regex matching (`review_run_id_valid`) instead of calling a Python CLI helper. This duplicates validation logic that already has a single Python source of truth, violating `ARCHITECTURAL_GUIDELINES.md` guideline G-Skill-2: "logic lives in Python behind `cli.py`; SKILL.md and Bash stay thin."
+
+## Original report
+
+Bug filed via `/bug` with the argument `G-Skill-2 (logic lives in Python behind cli.py; SKILL.md and Bash stay thin)`. This names the specific `ARCHITECTURAL_GUIDELINES.md` entry that was violated; it was surfaced by the `/implement` Architectural Guidelines Phase A step during the run that implemented issue #6089 (PR #6105), which flagged the deviation described below as a non-blocking Warning.
+
+## Reproduction scenario
+
+Not a runtime bug; it is a static code-organization issue visible by reading the source:
+
+1. Open `skills/review/SKILL.md` around lines 84-89.
+2. Observe the inline Bash block that computes `review_run_id_valid` by hand.
+3. Compare against `python/larch/report/run_log_batch.py` lines 141-144, which implements the identical rule as `validate_run_id_slug`.
+4. Search `python/larch/cli.py`'s `("run-log", ...)` verb table (around lines 427-444): no verb exposes `validate_run_id_slug` to callers outside the `larch.report` package.
+
+## Expected behavior
+
+Per G-Skill-2, the RUN_ID slug-validity check that gates Step 4 review larch-log writes should be a Python-owned check invoked through `cli.py` (for example a `run-log validate-run-id` verb, or reuse of an existing verb with a check-only mode), with `skills/review/SKILL.md` staying a thin caller that branches on that check's result. This matches the pattern used elsewhere in this skill for logic that belongs in Python.
+
+## Observed behavior
+
+`skills/review/SKILL.md` Step 4 instead recomputes the slug rule directly in Bash:
+
+```bash
+review_run_id_valid=false
+if [[ -n "${RUN_ID:-}" && "$RUN_ID" != *..* && "$RUN_ID" != */* && "$RUN_ID" != *\\* && "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+  review_run_id_valid=true
+fi
+```
+
+This mirrors `validate_run_id_slug`'s behavior byte-for-byte but lives in a second, independently-maintained location. `python/larch/cli.py`'s `("run-log", ...)` verb registry has no `validate`-style entry, so `skills/review/SKILL.md` has no CLI call to delegate to instead of re-deriving the predicate inline.
+
+## Root cause analysis
+
+Issue #6089's plan (implemented by PR #6105) added this RUN_ID validity guard to close an OOS finding from #5976, and explicitly named `run_log_batch.validate_run_id_slug` as the rule to match: "Add a Step 4 `RUN_ID` validity guard matching `run_log_batch.validate_run_id_slug`." Two `/design` review rounds and the round-1 `/implement` code-review panel did not flag that the guard could delegate to a Python CLI call instead of duplicating the Bash. The `/implement` Architectural Guidelines Phase A step (which compares the diff against `ARCHITECTURAL_GUIDELINES.md` after code review) is the one place that caught it, but per `AGENTS.md` that phase's deviations "are warnings only and never block PR creation," so the PR merged with the duplication intact.
+
+## Evidence
+
+- `skills/review/SKILL.md:84-89` — the new inline Bash slug guard (`review_run_id_valid=...`), also referenced in prose at lines 75 and 117.
+- `python/larch/report/run_log_batch.py:141-144` — `validate_run_id_slug`, the Python source of truth for this exact rule.
+- `python/larch/cli.py:427-444` — the `("run-log", ...)` verb registry; no `validate`/slug-check entry exists. `validate_run_id_slug` is called only internally, from `run_log_manifest.py`, `run_log_commit.py:314`, and `run_log_flush.py:965,1007` — never from outside the `larch.report` package.
+- Flagged during the `/implement` run for issue #6089 (PR #6105, merged to `main` as commit `cf0d33786`) by the Architectural Guidelines Phase A step, logged as a non-blocking Warning in that run's final summary.
+
+## Affected files
+
+- `skills/review/SKILL.md` — carries the duplicated Bash validation logic; would become a thin caller of a new or reused Python check.
+- `python/larch/report/run_log_batch.py` — houses `validate_run_id_slug`, the logic that needs a CLI-facing entry point.
+- `python/larch/cli.py` — would gain a new `(domain, verb)` registry entry if a dedicated verb is added.
+
+## Suggested fix(es)
+
+Expose `validate_run_id_slug` (or an equivalent thin check) as a `cli.py` verb, e.g. `python3 cli.py run-log validate-run-id --run-id "$RUN_ID"` returning a `VALID=true|false` KV (or a plain exit code). Change `skills/review/SKILL.md` Step 4's guard to call that verb and branch on its result instead of re-deriving the glob/regex predicate inline in Bash. No behavior change should be required; this is a structural move of one existing rule into one place.
+
+## Open questions
+
+Should the new verb be a narrow single-purpose `validate-run-id` check, or folded into an existing `run-log` verb (e.g., give `capture-transcript` / `commit` a `--check-only` mode) so the registry doesn't accumulate single-purpose validators? Leaving this for `/design`.

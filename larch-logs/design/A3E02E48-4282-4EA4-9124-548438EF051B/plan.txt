@@ -1,0 +1,107 @@
+## Goal
+
+Move `/review` Step 4 `RUN_ID` validation behind `python/cli.py` while keeping Step 4 behavior unchanged.
+
+## Files to modify/create
+
+### UPDATED: python/larch/report/run_logs.py
+
+Add a new `larch_log_validate_run_id_main(argv: list[str]) -> int` near the existing `larch_log_*_main` entry points.
+
+Implementation shape:
+- Parse `--run-id` as a required argument.
+- Print exactly `VALID=true` when `validate_run_id_slug(args.run_id)` returns true.
+- Print exactly `VALID=false` when it returns false.
+- Return `0` for both valid and invalid values.
+- Return a usage-style nonzero code only for malformed CLI usage, such as missing `--run-id`.
+
+Do not use `_parse_common`, because it validates run IDs as an error path. This verb must be a check-only predicate.
+
+### UPDATED: python/larch/cli.py
+
+Register the new verb:
+- `("run-log", "validate-run-id"): ("larch.report.run_logs", "larch_log_validate_run_id_main")`
+
+Add the same key to `_MACHINE_STDOUT_KEYS`, because callers consume `VALID=true|false` as machine stdout and must not inherit quiet-mode suppression.
+
+### UPDATED: python/larch/review/review_tally.py
+
+`log_phase()` forwards `--run-id` to the `run-log write`/`run-log append` subprocess as two separate argv list items (`"--run-id", args.run_id`) at both the main batch call and the `panel-prompt-sizes` sibling call. Change both to a single `f"--run-id={args.run_id}"` list item, so a dash-leading but valid run-id cannot be misread as another option by the child process's argparse parser.
+
+### UPDATED: skills/review/SKILL.md
+
+In Step 4:
+- Replace the prose that spells out the slug rule with prose that says the guard calls `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log validate-run-id`.
+- Keep the statement that all Step 4 review larch-log writes, standalone transcript capture, and standalone commit are gated on that guard.
+- Replace the inline `[[ ... =~ ^[A-Za-z0-9._-]+$ ]]` block in the exact `review-scout-manifest` pattern with a thin CLI call.
+- Pass `--run-id` using the `=` form (`--run-id="${RUN_ID:-}"` or `--run-id="$RUN_ID"`) on every Step 4 argparse-backed CLI call that takes it, not only the new validator: the `review log-phase` call in the exact `review-scout-manifest` pattern, and the standalone `run-log capture-transcript` and `run-log commit` calls. A separate argv token lets a dash-leading slug value be misread as another option by argparse; the `=` form assigns the value unambiguously regardless of its leading character.
+
+Preferred guard shape:
+```bash
+review_run_id_valid=false
+if python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log validate-run-id --run-id="${RUN_ID:-}" | grep -qx 'VALID=true'; then
+  review_run_id_valid=true
+fi
+```
+
+In the exact `review-scout-manifest` pattern, change `--run-id "$RUN_ID" \` to `--run-id="$RUN_ID" \` on the `review log-phase` call. In the standalone transcript-capture and commit prose, change both `--run-id "$RUN_ID"` occurrences to `--run-id="$RUN_ID"`.
+
+Keep the rest of the `jq`, `review log-phase`, transcript capture, and commit prose unchanged except where it refers to the duplicated rule or the `--run-id` argv form.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add focused tests for `larch_log_validate_run_id_main`:
+- Valid examples print `VALID=true` and return `0`, including a dash-leading value passed as `--run-id=-abc123` to confirm the `=` form is not misread as another option.
+- Invalid examples print `VALID=false` and return `0`: empty string, `../evil`, `a..b`, slash, backslash, and spaces or other disallowed characters.
+- Keep or extend the existing `test_validate_run_id_slug` so the helper remains directly covered.
+
+### UPDATED: python/tests/test_cli.py
+
+Add dispatcher coverage:
+- Assert the registry maps `("run-log", "validate-run-id")` to `larch.report.run_logs.larch_log_validate_run_id_main`.
+- Assert the key is in `_MACHINE_STDOUT_KEYS`, or add it to the existing machine-stdout quiet-mode test case.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+Extend `log_phase` coverage (near `test_log_phase_rejects_unknown_batch` and `test_log_phase_accepts_panel_prompt_sizes_batch`) with a case that passes a dash-leading `--run-id` value and a fake runner, asserting the forwarded `run-log write`/`append` argv carries `--run-id=<value>` as one token rather than two.
+
+## Approach
+
+1. Add the new Python main as a thin wrapper over `validate_run_id_slug`.
+2. Wire it through the central dispatcher and machine-stdout key set.
+3. Update `/review` Step 4 to consume the new predicate, and change every Step 4 `--run-id` argparse CLI call (validator, log-phase, capture-transcript, commit) to the `=` form so dash-leading values parse correctly everywhere, not only at the new guard.
+4. Fix `review_tally.py`'s internal `log-phase` subprocess forwarding to use the same `=` form.
+5. Add unit tests before broader lint.
+6. Keep `skills/implement/scripts/post-tracking-issue.sh` out of scope. It has a distinct behavior gap and was explicitly excluded by discussion round 1.
+
+## Edge cases
+
+- Empty `RUN_ID` must be `VALID=false` with return code `0`, so `/review` can skip log writes without aborting.
+- Invalid but present values like `..`, `a..b`, `bad/slash`, and `bad\slash` must be false, not usage errors.
+- A dash-leading but otherwise valid slug (for example `-abc123`) must be `VALID=true`, and every later Step 4 call that receives it (log-phase, capture-transcript, commit, and `review_tally.py`'s internal forwarding) must still succeed, not just the validator call.
+- Quiet-mode inheritance must not suppress the `VALID=` line.
+- The SKILL.md guard should parse an exact `VALID=true` line, not a loose substring.
+- Avoid reintroducing the regex or `..` checks in SKILL.md prose.
+
+## Failure modes
+
+- If invalid run IDs return nonzero, `set -e` or `pipefail` contexts can turn a skipped log write into a Step 4 abort.
+- If the verb is not marked machine stdout, the guard may fail under quiet larch contexts.
+- If SKILL.md keeps the rule in prose, the duplicate source of truth remains.
+- If only the new validator call uses the `=` form while log-phase, capture-transcript, commit, or `review_tally.py` keep the two-token form, a dash-leading run-id passes the guard but still breaks the actual larch-log write.
+- If review skill closure grows, prefer tightening nearby wording. Update the closure baseline only if the growth is intentional and unavoidable.
+
+## Testing strategy
+
+Run focused Python tests:
+python3 -m pytest python/tests/report/test_run_logs.py python/tests/test_cli.py python/tests/review/test_review_tally.py
+
+Run review skill prompt checks:
+python3 python/cli.py lint skill-closure-growth --skill review
+python3 python/cli.py lint consecutive-bash
+
+Optionally run relevant checks if the environment has the required tools:
+python3 python/cli.py checks run-relevant --site run-log-validate-run-id --tmpdir /tmp
+
+difficulty: MODERATE
+diff_lines: 70

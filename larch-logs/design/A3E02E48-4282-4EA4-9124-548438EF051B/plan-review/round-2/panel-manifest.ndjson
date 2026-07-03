@@ -1,0 +1,4 @@
+{"slot":"codex-plan-arch","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-arch-output.txt","vendor":"codex","resolved_model":"gpt-5.5","model_role":"default","focus_area":"arch"}
+{"slot":"codex-plan-innovation","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-innovation-output.txt","vendor":"codex","resolved_model":"gpt-5.5","model_role":"default","focus_area":"innovation"}
+{"slot":"codex-plan-pragmatic","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-pragmatic-output.txt","vendor":"codex","resolved_model":"gpt-5.5","model_role":"default","focus_area":"pragmatic"}
+{"slot":"codex-plan-requirements","tool":"codex","output":"<TMPDIR>/plan-review/round-2/codex-primary-plan-requirements-output.txt","vendor":"codex","resolved_model":"gpt-5.5","model_role":"default","focus_area":"requirements"}
