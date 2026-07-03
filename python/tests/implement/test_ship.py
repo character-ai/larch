@@ -296,6 +296,143 @@ def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monke
     assert _read_state(state)["PHASE"] == "rebase"
 
 
+def test_ship_rebase_phase_preserves_guidelines_note_after_unchanged_diff_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    repo_root = str(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Larch Test")
+    git("config", "user.email", "larch@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nimplementation\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "implementation")
+    pre_rebase_head = git("rev-parse", "HEAD")
+    initial_diff = ship.architectural_guidelines.materialize_implementation_diff(
+        repo,
+        base_remote="origin",
+        base_ref="main",
+    )
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="Guideline deviation note\n",
+        assessed_head_sha=pre_rebase_head,
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(initial_diff),
+        base_ref="origin/main",
+        diff_text=initial_diff,
+    )
+
+    git("switch", "main")
+    (repo / "unrelated.txt").write_text("main advanced\n", encoding="utf-8")
+    git("add", "unrelated.txt")
+    git("commit", "-m", "advance main")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("switch", "feature")
+
+    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        assert cwd == repo_root
+        assert tmpdir == str(tmp_path)
+        del repo, run_id, allow_conflict_fix, enable_pre_push_handoff
+        git("rebase", f"{base_remote}/{base_ref}")
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    def real_try_rev_parse(
+        _runner: RecordingRunner,
+        ref: str,
+        *,
+        cwd: str | None = None,
+    ) -> str:
+        assert cwd == repo_root
+        return git("rev-parse", ref)
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", real_try_rev_parse)
+
+    result = ship._ship_rebase_phase(
+        runner=RecordingRunner(),
+        working=_ctx(
+            tmp_path,
+            state_file=str(tmp_path / "ship-pr-state.sh"),
+            pr_number=7,
+            pr_url="https://example.com/pr/7",
+            merge=True,
+        ),
+        cwd=repo_root,
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    post_rebase_head = git("rev-parse", "HEAD")
+    rebased_diff = ship.architectural_guidelines.materialize_implementation_diff(
+        repo,
+        base_remote="origin",
+        base_ref="main",
+    )
+    durable_metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
+    assert result.terminal is None
+    assert result.rebase_count == 1
+    assert post_rebase_head != pre_rebase_head
+    assert rebased_diff == initial_diff
+    assert ship.architectural_guidelines.note_consumable(
+        implement_tmpdir=tmp_path,
+        head_sha=post_rebase_head,
+    )
+    assert (
+        tmp_path / ship.architectural_guidelines.DURABLE_NOTE
+    ).read_text(encoding="utf-8") == "Guideline deviation note\n"
+    assert durable_metadata["HEAD_SHA"] == post_rebase_head
+    assert durable_metadata["ASSESSED_HEAD_SHA"] == post_rebase_head
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+
+
 def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
