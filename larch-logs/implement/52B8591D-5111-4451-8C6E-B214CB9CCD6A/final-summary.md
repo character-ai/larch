@@ -1,16 +1,15 @@
-## /implement run 52B8591D-5111-4451-8C6E-B214CB9CCD6A — stalled
+## /implement run 52B8591D-5111-4451-8C6E-B214CB9CCD6A — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:35:41
-- **Cost**: 💰 TOTAL ~$12.49 — Claude $0.03, Codex-5.5 $8.88, Codex-mini $0.51, Cursor $2.64, Claude (subprocess) $0.43  |  Tokens: 17965k
+- **Cost**: 💰 TOTAL ~$12.49 — Claude $0.00, Codex-5.5 $8.88, Codex-mini $0.51, Cursor $2.64, Claude (subprocess) $0.46  |  Tokens: 17996k
 - **Issue**: #6068 — https://github.com/character-ai/larch/issues/6068
 - **PR**: #6082 — https://github.com/character-ai/larch/pull/6082
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +170/-8, larch-logs +633/-0
+- **Lines (PR diff)**: code +170/-8, larch-logs +652/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -77,4 +76,8 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; one minor deviation identified.
+
+- **G-Cfg-1** (define every wire-literal once in `config.py`, aggregate rather than re-list): `python/larch/review/plan_review_loop.py` defines a new module-level `TIMING_VENDOR_COLS = 13`, which duplicates the existing `TIMING_VENDOR_MIN_COLS = 13` already defined in `python/larch/report/progress_report.py`. Both constants encode the same `v1 vendor` timing-ledger column-count wire literal; if that row grammar ever changes, an editor could update one and miss the other. Non-blocking — the value is read-only and used at a single call site, but centralizing it (e.g. importing the existing constant, or moving both to `config.py`) would remove the duplication.
+
+The rest of the diff is consistent with the guidelines: the new silent-skip failure paths in `_gate_b_apply_start_s` / `_record_gate_b_apply_timing_from_round_window` match G-Py-4's documented-narrow-degraded-path carve-out (the plan's own "Failure modes" section explicitly calls for best-effort skip of the cosmetic Gantt bar without failing `/design`), and the `_derive_progress_label` dict-based rewrite and `TIMING_TASK_KINDS_ALLOWED` frozenset addition follow existing conventions in those files.
