@@ -28,6 +28,7 @@ COMMON_ENV_DEFAULTS: dict[str, str] = {
     "skip_approve_requested": "false",
     "no_dedup_requested": "false",
     "run_id": "",
+    "difficulty": "",
     "SUMMARY_OUTCOME": "",
     "CLARIFY_FAILURE_LOG": "",
     "CLARIFY_HARD_HALT_RC": "1",
@@ -51,6 +52,7 @@ PARSED_ENV_KEYS = (
     "skip_approve_requested",
     "no_dedup_requested",
     "run_id",
+    "difficulty",
     "POSITIONAL_KIND",
     "POSITIONAL_VALUE",
 )

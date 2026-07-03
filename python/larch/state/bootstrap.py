@@ -137,7 +137,7 @@ def _merge_write_ship_seed_input(*, tmpdir: str, values: dict[str, str], only_mi
         if only_missing and data.get(key):
             continue
         data[key] = value
-    ordered = ("MERGE", "DRAFT", "FORKED_TARGET", "NO_ADMIN_FALLBACK", "NO_LOGS_COMMIT", "DEFERRED", "MANIFEST_PATH", "TOOL_LABEL")
+    ordered = ("MERGE", "DRAFT", "FORKED_TARGET", "NO_ADMIN_FALLBACK", "NO_LOGS_COMMIT", "DIFFICULTY_OVERRIDE", "DEFERRED", "MANIFEST_PATH", "TOOL_LABEL")
     text = "".join(f"{key}={data.get(key, '')}\n" for key in ordered if key in data)
     _atomic_text(path=path, text=text)
 
@@ -223,6 +223,7 @@ class BootstrapOptions:
     force_requested: str = "false"
     self_review_requested: str = "false"
     self_implement_requested: str = "false"
+    difficulty_override: str = ""
     upstream_repo: str = ""
     run_id: str = ""
     preflight_tmpdir: str = ""
@@ -372,6 +373,8 @@ def _persist_run_flags(st: BootstrapState) -> bool:
         st.opts.self_review_requested,
         "--self-implement-requested",
         st.opts.self_implement_requested,
+        "--difficulty-override",
+        st.opts.difficulty_override,
     )
     if result.returncode != 0:
         st.stall_tracking = "true"
@@ -612,6 +615,8 @@ def _write_initial_difficulty_record(st: BootstrapState, tier: str) -> None:
     ]
     if difficulty.tier_valid(tier):
         args.extend(["--design-tier", tier])
+    if difficulty.tier_valid(st.opts.difficulty_override):
+        args.extend(["--override-tier", st.opts.difficulty_override, "--override-source", "operator"])
     result = _cli(*args)
     if result.returncode != 0 or not out.is_file():
         return
@@ -1110,6 +1115,7 @@ def _emit_final(st: BootstrapState) -> None:
         ("FORCE_REQUESTED", st.opts.force_requested),
         ("SELF_REVIEW_REQUESTED", st.opts.self_review_requested),
         ("SELF_IMPLEMENT_REQUESTED", st.opts.self_implement_requested),
+        ("DIFFICULTY_OVERRIDE", st.opts.difficulty_override),
         ("coder", st.coder),
         ("coder_fallback", st.coder_fallback),
         ("IMPLEMENT_BAIL_REASON", st.implement_bail_reason),
@@ -1752,6 +1758,7 @@ def invoke_main(argv: list[str]) -> int:
     parser.add_argument("--self-review-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--self-implement-requested", default="", choices=["", "true", "false"])
     parser.add_argument("--non-interactive", default="", choices=["", "true", "false"])
+    parser.add_argument("--difficulty", default="", choices=["", "TRIVIAL", "MODERATE", "HARD"])
     try:
         args = parser.parse_args(argv)
     except SystemExit as exc:
@@ -1801,6 +1808,7 @@ def invoke_main(argv: list[str]) -> int:
     force = args.force_requested or _str_bool(env.get("force_requested", "")) or "false"
     self_review = args.self_review_requested or _str_bool(env.get("self_review", "")) or "false"
     self_implement = args.self_implement_requested or _str_bool(env.get("self_implement", "")) or "false"
+    difficulty_override = args.difficulty or env.get("difficulty", "") or env.get("DIFFICULTY_OVERRIDE", "")
     non_interactive = args.non_interactive or _str_bool(env.get("non_interactive", "")) or ""
     coder = "" if args.mode == "resume" else (args.coder or env.get("coder", ""))
     if args.mode == "resume" and not env.get("IMPLEMENT_TMPDIR", ""):
@@ -1818,6 +1826,7 @@ def invoke_main(argv: list[str]) -> int:
         force_requested=force if force in {"true", "false"} else "false",
         self_review_requested=self_review if self_review in {"true", "false"} else "false",
         self_implement_requested=self_implement if self_implement in {"true", "false"} else "false",
+        difficulty_override=difficulty_override if difficulty_override in {"TRIVIAL", "MODERATE", "HARD"} else "",
         upstream_repo=upstream,
         run_id=run_id,
         preflight_tmpdir=preflight,
@@ -1868,6 +1877,7 @@ def invoke_main(argv: list[str]) -> int:
                 "FORKED_TARGET": _bool_text(value=opts.forked_target),
                 "NO_ADMIN_FALLBACK": _bool_text(value=opts.no_admin_fallback),
                 "NO_LOGS_COMMIT": _bool_text(value=opts.no_logs_commit),
+                "DIFFICULTY_OVERRIDE": opts.difficulty_override,
                 "DEFERRED": _bool_text(value=data.get("DEFERRED", "false")),
             },
             only_missing=args.mode == "resume",

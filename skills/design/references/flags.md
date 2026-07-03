@@ -85,3 +85,8 @@ These are **not** public `/design` argv surfaces after issue #2485; they remain 
 
 - `--branch-info <values>`: parse IS_MAIN, IS_USER_BRANCH, USER_PREFIX, CURRENT_BRANCH from space-separated KEY=VALUE pairs. All listed keys are required. Values are safe for splitting: USER_PREFIX is sanitized by pr create-branch `derive_user_prefix`, and CURRENT_BRANCH cannot contain spaces. **Historical note**: `/design` no longer creates a feature branch for this legacy flag; `/implement` owns that lifecycle. The flag remains for orchestration-context propagation only.
 - `--step-prefix <prefix>`: encodes numeric prefix, textual breadcrumb path, and optional parent skill path using a `::` delimiter. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/step-prefix-encoding.md` for the full encoding spec.
+
+
+### Difficulty override
+
+`--difficulty <TRIVIAL|MODERATE|HARD>` persists `difficulty_override` in `run-params.json`. The override sets the starting plan-review tier, beats rating and floors, and is logged `override_source=operator`. No environment knob disables the 1:30 audit; the audit is orthogonal to the override and may still upgrade a below-HARD run while preserving both fields. Tier caps are TRIVIAL=2, MODERATE=2, HARD=3.

@@ -277,12 +277,20 @@ def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, roun
         _append_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, plugin_root=_PLUGIN_ROOT)
 
 
-def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool) -> None:
+def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
     from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
+    codex_role = difficulty.codex_review_model_role(tier)
     for slot in external_defaults.slot_defaults("review.panel"):
         if slot.slot == "generalist":
             continue
+        if tier == difficulty.TRIVIAL:
+            if codex_slots_available and slot.tool != "codex":
+                continue
+            if not codex_slots_available and cursor_slots_available and slot.tool != "cursor":
+                continue
         if slot.tool == "codex" and not codex_slots_available:
+            continue
+        if slot.tool == "cursor" and not cursor_slots_available:
             continue
         _append_manifest_row(
             manifest=manifest,
@@ -291,7 +299,7 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
                 "tool": slot.tool,
                 "output": str(review_tmpdir / slot.output),
                 "agent": str(_PLUGIN_ROOT / slot.agent),
-                **({"model_role": slot.model_role} if slot.model_role else {}),
+                **({"model_role": codex_role} if slot.tool == "codex" else {}),
             }
         )
 
@@ -303,6 +311,8 @@ def _synthesize_dynamic_slots(*,
     mode: str,
     context: Mapping[str, str],
     codex_available: bool,
+    cursor_available: bool = True,
+    tier: str = difficulty.MODERATE,
     session_env_path: str = "",
     runner: object = None,
 ) -> int:
@@ -351,13 +361,14 @@ def _synthesize_dynamic_slots(*,
             _write_text(path=rendered_prompt, text=result.stdout)
         else:
             _write_text(path=rendered_prompt, text=agent_file.read_text(encoding="utf-8"))
-        cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
-        _append_manifest_row(
-            manifest=manifest,
-            row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area}
-        )
-        count += 1
-        if codex_available:
+        if cursor_available and (tier != difficulty.TRIVIAL or not codex_available):
+            cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
+            _append_manifest_row(
+                manifest=manifest,
+                row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area}
+            )
+            count += 1
+        if codex_available and (tier != difficulty.TRIVIAL or codex_available):
             codex_out = review_tmpdir / f"dyn-{name}-codex-output.txt"
             _append_manifest_row(
                 manifest=manifest,
@@ -368,7 +379,7 @@ def _synthesize_dynamic_slots(*,
                     "prompt_file": str(rendered_prompt),
                     "weight": weight,
                     "focus_area": focus_area,
-                    "model_role": "default",
+                    "model_role": difficulty.codex_review_model_role(tier),
                 }
             )
             count += 1
@@ -460,7 +471,7 @@ def _degraded_retry_carry_forward(*, manifest: Path, review_tmpdir: Path) -> tup
 
 def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: PLR0915,RUF100
     logging_util.quiet_init(argv0="review-dispatch-panel")
-    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--panel simple|hard] [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
+    usage = "Usage: review dispatch-panel --mode diff|description --review-tmpdir DIR --codex-available true|false --cursor-available true|false [--tier TRIVIAL|MODERATE|HARD] [--panel simple|hard] [--dynamic-archetypes 0-1] [--pre-scouted-manifest FILE] [--prune-ledger FILE] [--site SITE] [context flags]"
     options = {
         "--mode",
         "--diff-file",
@@ -478,6 +489,10 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         "--launch-review",
         "--session-env-path",
         "--panel",
+        "--tier",
+        "--escalated-round",
+        "--skip-prune",
+        "--audit-upgrade",
         "--dynamic-archetypes",
         "--pre-scouted-manifest",
         "--round-num",
@@ -493,7 +508,21 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     review_tmpdir = Path(_get(parsed=parsed, key="--review-tmpdir"))
     codex_available = _get(parsed=parsed, key="--codex-available")
     cursor_available = _get(parsed=parsed, key="--cursor-available")
-    panel = _get(parsed=parsed, key="--panel", default="hard")
+    raw_tier = _get(parsed=parsed, key="--tier")
+    tier = difficulty.normalize_tier(raw_tier)
+    if raw_tier and not tier:
+        _diag("review dispatch-panel: --tier must be TRIVIAL, MODERATE, or HARD")
+        return 2
+    panel = _get(parsed=parsed, key="--panel", default="")
+    if tier:
+        panel = difficulty.threshold_panel_for_tier(tier)
+    else:
+        panel = panel or "hard"
+        tier = difficulty.TRIVIAL if panel == "simple" else difficulty.MODERATE
+    panel_shape = difficulty.panel_shape_for_tier(tier)
+    escalated_round = _get(parsed=parsed, key="--escalated-round", default="false")
+    skip_prune = _get(parsed=parsed, key="--skip-prune", default="false")
+    audit_upgrade = _get(parsed=parsed, key="--audit-upgrade", default="")
     dynamic_raw = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed=parsed, key="--round-num", default="1")
     plan_file = _get(parsed=parsed, key="--plan-file")
@@ -509,6 +538,9 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         return 2
     if panel not in {"simple", "hard"}:
         _diag("review dispatch-panel: --panel must be simple or hard")
+        return 2
+    if escalated_round not in {"true", "false"} or skip_prune not in {"true", "false"}:
+        _diag("review dispatch-panel: --escalated-round/--skip-prune must be true or false")
         return 2
     if dynamic_raw not in {"0", "1"}:
         _diag("review dispatch-panel: --dynamic-archetypes/LARCH_DYNAMIC_ARCHETYPES_MAX must be an integer from 0 to 1")
@@ -526,7 +558,8 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     manifest = review_tmpdir / "panel-manifest.ndjson"
     manifest.write_text("", encoding="utf-8")
     codex_slots_available = codex_available == "true"
-    _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available)
+    cursor_slots_available = cursor_available == "true"
+    _append_static_specialist_rows(manifest=manifest, review_tmpdir=review_tmpdir, codex_slots_available=codex_slots_available, cursor_slots_available=cursor_slots_available, tier=tier)
     _append_round_generic_codex_row(manifest=manifest, review_tmpdir=review_tmpdir, round_num=round_num, codex_slots_available=codex_slots_available)
     scout_status = "na"
     scout_fail_reason = ""
@@ -584,7 +617,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
                             "plan_file": plan_file,
                             "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, cursor_available=cursor_slots_available, tier=tier, session_env_path=session_env_path)
                 else:
                     _write_empty_scout_manifest(scout_manifest)
                     scout_status = "producer-invalid" if site == "implement Step 5" else "parse-failed"
@@ -607,7 +640,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
                             "plan_file": plan_file,
                             "feature_file": _get(parsed=parsed, key="--feature-file"),
                         }
-                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path)
+                        _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, cursor_available=cursor_slots_available, tier=tier, session_env_path=session_env_path)
                     elif scout_status == "parse-failed" and not scout_fail_reason:
                         scout_fail_reason = "cached_parse_failed"
                         _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
@@ -677,7 +710,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
                         "plan_file": plan_file,
                         "feature_file": _get(parsed=parsed, key="--feature-file"),
                     }
-                    _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, session_env_path=session_env_path)
+                    _synthesize_dynamic_slots(scout_manifest=scout_manifest, review_tmpdir=review_tmpdir, manifest=manifest, mode=mode, context=context, codex_available=codex_slots_available, cursor_available=cursor_slots_available, tier=tier, session_env_path=session_env_path)
                 _write_scout_status(review_tmpdir=review_tmpdir, round_num=round_num, status=scout_status, manifest=scout_manifest, fail_reason=scout_fail_reason)
 
     _append_producer_scout_warning_once(status=scout_status, fail_reason=scout_fail_reason)
@@ -691,10 +724,14 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     pruned_combos = ""
     panel_pruned_empty = "false"
     prune_ledger = _get(parsed=parsed, key="--prune-ledger")
-    prune_evaluated = prune_window_evaluated(round_num)
+    prune_evaluated = "false" if escalated_round == "true" or skip_prune == "true" else prune_window_evaluated(round_num)
     if prune_ledger:
         prune_tmp = review_tmpdir / f"panel-manifest.pruned.{os.getpid()}.ndjson"
-        result = reviewer_prune_filter(ledger=Path(prune_ledger), round_num=round_num, manifest=manifest, out=prune_tmp)
+        result = reviewer_prune_filter(ledger=Path(prune_ledger), round_num=round_num, manifest=manifest, out=prune_tmp) if prune_evaluated == "true" else None
+        if result is None:
+            shutil.copyfile(manifest, prune_tmp)
+            from larch.review.review_pipeline_shared import PruneFilterResult  # noqa: PLC0415
+            result = PruneFilterResult("false", static_slot_count + dynamic_slots, 0, "", "false")
         if result.warn:
             _emit_kv(key="WARN", value=result.warn)
         prune_active = result.prune_active if prune_evaluated == "true" else "false"
@@ -718,7 +755,12 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         _emit_kv(key="EXTERNAL_OUTPUT_FILES", value="")
         _emit_kv(key="CLAUDE_OUTPUT_FILES", value="")
         _emit_kv(key="PANEL_MODE", value="waterfall")
-        _emit_kv(key="PANEL_SHAPE", value=panel)
+        _emit_kv(key="PANEL_SHAPE", value=panel_shape)
+        _emit_kv(key="PANEL_TIER", value=tier)
+        _emit_kv(key="PANEL_ROUND_CAP", value=difficulty.tier_ceiling(tier))
+        _emit_kv(key="PANEL_ESCALATED_ROUND", value=escalated_round)
+        if audit_upgrade:
+            _emit_kv(key="AUDIT_UPGRADE", value=audit_upgrade)
         _emit_kv(key="SCOUT_STATUS", value=scout_status)
         if scout_fail_reason:
             _emit_kv(key="SCOUT_FAIL_REASON", value=scout_fail_reason)
@@ -781,7 +823,7 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
         "--site",
         site,
         "--model-role",
-        "review",
+        difficulty.codex_review_model_role(tier),
         "--no-fallback",
     ]
     if mode == "diff" and diff_file:
@@ -816,7 +858,12 @@ def dispatch_panel(argv: list[str], *, runner: object = None) -> int:  # noqa: P
     _emit_kv(key="EXTERNAL_OUTPUT_FILES", value=" ".join(external_outputs))
     _emit_kv(key="CLAUDE_OUTPUT_FILES", value=" ".join(claude_outputs))
     _emit_kv(key="PANEL_MODE", value="waterfall")
-    _emit_kv(key="PANEL_SHAPE", value=panel)
+    _emit_kv(key="PANEL_SHAPE", value=panel_shape)
+    _emit_kv(key="PANEL_TIER", value=tier)
+    _emit_kv(key="PANEL_ROUND_CAP", value=difficulty.tier_ceiling(tier))
+    _emit_kv(key="PANEL_ESCALATED_ROUND", value=escalated_round)
+    if audit_upgrade:
+        _emit_kv(key="AUDIT_UPGRADE", value=audit_upgrade)
     _emit_kv(key="SCOUT_STATUS", value=scout_status)
     if scout_fail_reason:
         _emit_kv(key="SCOUT_FAIL_REASON", value=scout_fail_reason)

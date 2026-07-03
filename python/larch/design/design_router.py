@@ -34,6 +34,7 @@ def route_main(argv: Sequence[str]) -> int:
         "--brainstorm-requested": "false",
         "--approve-requested": "false",
         "--skip-approve-requested": "false",
+        "--difficulty": "",
     }
     i = 0
     while i < len(args):
@@ -140,6 +141,7 @@ def route_main(argv: Sequence[str]) -> int:
             merge_brainstorm=optional["--brainstorm-requested"] == "true" or brainstorm_prefix == "true",
             merge_approve=optional["--approve-requested"] == "true",
             merge_skip_approve=optional["--skip-approve-requested"] == "true",
+            difficulty=optional["--difficulty"],
         )
 
     out: list[tuple[str, str]] = [("ROUTE", route), ("BRAINSTORM_PREFIX", brainstorm_prefix)]
@@ -171,7 +173,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
     i = 0
     while i < len(args):
         token = args[i]
-        if token in {"--design-tmpdir", "--issue", "--session-id", "--claude-pid", "--partition-requested", "--brainstorm-requested", "--approve-requested", "--skip-approve-requested", "--repo"}:
+        if token in {"--design-tmpdir", "--issue", "--session-id", "--claude-pid", "--partition-requested", "--brainstorm-requested", "--approve-requested", "--skip-approve-requested", "--repo", "--difficulty"}:
             if i + 1 >= len(args):
                 print(f"design-init-runparams.sh: {token} requires a value", file=sys.stderr)
                 return 2
@@ -263,6 +265,8 @@ def init_runparams_main(argv: Sequence[str]) -> int:
             parsed["--approve-requested"],
             "--skip-approve-requested",
             parsed["--skip-approve-requested"],
+            "--difficulty",
+            parsed.get("--difficulty", ""),
             "--output",
             str(run_params_path),
         ],
@@ -281,6 +285,7 @@ def init_runparams_main(argv: Sequence[str]) -> int:
         merge_brainstorm=parsed["--brainstorm-requested"] == "true",
         merge_approve=parsed["--approve-requested"] == "true",
         merge_skip_approve=parsed["--skip-approve-requested"] == "true",
+        difficulty=parsed.get("--difficulty", ""),
     )
     result_rows: list[tuple[str, str]] = [("INIT_STATUS", init_status), ("RENAMED", renamed), ("RUN_PARAMS_PATH", str(run_params_path))]
     result_rows.extend(("WARN", w) for w in warn_lines)
@@ -315,8 +320,9 @@ def _merge_router_flags(
     merge_brainstorm: bool,
     merge_approve: bool,
     merge_skip_approve: bool,
+    difficulty: str = "",
 ) -> None:
-    if not (merge_partition or merge_brainstorm or merge_approve or merge_skip_approve):
+    if not (merge_partition or merge_brainstorm or merge_approve or merge_skip_approve or difficulty):
         return
     if not run_params.is_file() or run_params.is_symlink():
         warn_lines.append(
@@ -332,6 +338,8 @@ def _merge_router_flags(
         data["brainstorm_requested"] = bool(data.get("brainstorm_requested")) or merge_brainstorm
         data["approve_requested"] = bool(data.get("approve_requested")) or merge_approve
         data["skip_approve_requested"] = bool(data.get("skip_approve_requested")) or merge_skip_approve
+        if difficulty:
+            data["difficulty_override"] = difficulty
         _ = run_params.write_text(json.dumps(data, indent=2) + "\n", encoding="utf-8")
     except (OSError, json.JSONDecodeError):
         warn_lines.append("**⚠ 0b: jq unavailable or run-params parse failed; current router flags may not persist into resumed/already-planned flow.**")

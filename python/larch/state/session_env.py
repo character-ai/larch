@@ -70,7 +70,7 @@ WRITE_DESIGN_ENV_KEYS = frozenset({
     "CLAUDE_PLUGIN_ROOT",
     "LARCH_CLAUDE_SOURCE_FILE",
 })
-RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED", "SELF_IMPLEMENT_REQUESTED"})
+RUN_FLAG_KEYS = frozenset({"QUICK_MODE", "NO_ISSUES", "FORCE_REQUESTED", "SELF_REVIEW_REQUESTED", "SELF_IMPLEMENT_REQUESTED", "DIFFICULTY_OVERRIDE"})
 # Core finalize state-file keys shared with finalize._COMMON_REQUIRED_KEYS.
 # Single source of truth so the two lists cannot drift (and to avoid
 # duplicate-code, pylint R0801).
@@ -1278,6 +1278,7 @@ def persist_run_flags_main(argv: list[str]) -> int:
     parser.add_argument("--force-requested", default="false")
     parser.add_argument("--self-review-requested", default="false")
     parser.add_argument("--self-implement-requested", default="false")
+    parser.add_argument("--difficulty-override", default="")
     try:
         args = parser.parse_args(argv)
         if not args.implement_tmpdir:
@@ -1288,12 +1289,15 @@ def persist_run_flags_main(argv: list[str]) -> int:
             value = getattr(args, flag)
             if value not in _BOOL:
                 raise ValueError(f"--{flag.replace('_', '-')} must be true or false")
+        if args.difficulty_override and args.difficulty_override not in {"TRIVIAL", "MODERATE", "HARD"}:
+            raise ValueError("--difficulty-override must be empty, TRIVIAL, MODERATE, or HARD")
         data: dict[str, str] = {
             "QUICK_MODE": args.quick_mode,
             "NO_ISSUES": args.no_issues,
             "FORCE_REQUESTED": args.force_requested,
             "SELF_REVIEW_REQUESTED": args.self_review_requested,
             "SELF_IMPLEMENT_REQUESTED": args.self_implement_requested,
+            "DIFFICULTY_OVERRIDE": args.difficulty_override,
         }
         target = Path(args.implement_tmpdir) / "run-flags.sh"
         if not _writer_target_allowed(target):
@@ -1317,6 +1321,7 @@ def write_run_params_main(argv: list[str]) -> int:
     parser.add_argument("--brainstorm-requested", default="")
     parser.add_argument("--approve-requested", default="")
     parser.add_argument("--skip-approve-requested", default="")
+    parser.add_argument("--difficulty", default="")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
@@ -1334,6 +1339,8 @@ def write_run_params_main(argv: list[str]) -> int:
                 raise ValueError(f"invalid {cli_flag}: requires a value")
             if value not in _BOOL:
                 raise ValueError(f"invalid {cli_flag}: {value}")
+        if args.difficulty and args.difficulty not in {"TRIVIAL", "MODERATE", "HARD"}:
+            raise ValueError(f"invalid --difficulty: {args.difficulty}")
         out = Path(args.output)
         if not out.is_absolute():
             raise ValueError(f"--output must be absolute: {out}")
@@ -1350,6 +1357,7 @@ def write_run_params_main(argv: list[str]) -> int:
             "brainstorm_requested": args.brainstorm_requested == "true",
             "approve_requested": args.approve_requested == "true",
             "skip_approve_requested": args.skip_approve_requested == "true",
+            "difficulty_override": args.difficulty,
         }
         _atomic_write(path=out, text=json.dumps(payload, indent=2, sort_keys=False) + "\n")
         _emit_kv(key="RUN_PARAMS_WRITTEN", value=str(out))

@@ -4432,3 +4432,87 @@ def test_apply_findings_with_coder_logs_panel_prompt_size(tmp_path: Path, monkey
     assert "implementer" in text
     assert "# Review Fix Application" not in text
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
+
+
+def test_dispatch_panel_trivial_uses_codex_singles_and_tier_kvs(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_executable(waterfall, """#!/usr/bin/env bash
+set -euo pipefail
+printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
+""")
+    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
+
+    proc = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--review-tmpdir", str(tmp_path / "review"),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--tier", "TRIVIAL",
+        "--dynamic-archetypes", "0",
+        "--plan-file", str(plan),
+        env=env,
+    )
+
+    assert proc.returncode == 0
+    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
+    assert {row["tool"] for row in rows} == {"codex"}
+    assert all(row.get("model_role") == "review" for row in rows)
+    assert "PANEL_SHAPE=singles" in proc.stdout
+    assert "PANEL_TIER=TRIVIAL" in proc.stdout
+    assert "PANEL_ROUND_CAP=2" in proc.stdout
+
+
+def test_dispatch_panel_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("plan", encoding="utf-8")
+    waterfall = tmp_path / "waterfall.sh"
+    _write_executable(waterfall, """#!/usr/bin/env bash
+set -euo pipefail
+printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_OK=true\nDYNAMIC_DISPATCH_OK=true\n'
+""")
+    env = {**os.environ, "DISPATCH_WATERFALL": str(waterfall)}
+
+    proc = run_review(
+        "dispatch-panel",
+        "--mode", "diff",
+        "--review-tmpdir", str(tmp_path / "review"),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--tier", "HARD",
+        "--dynamic-archetypes", "0",
+        "--plan-file", str(plan),
+        env=env,
+    )
+
+    assert proc.returncode == 0
+    rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
+    assert {row["tool"] for row in rows} == {"codex", "cursor"}
+    assert {row.get("model_role") for row in rows if row["tool"] == "codex"} == {"default"}
+    assert "PANEL_SHAPE=pairs" in proc.stdout
+    assert "PANEL_ROUND_CAP=3" in proc.stdout
+
+
+def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
+    round2 = _run_review_core(tmp_path, round_num=2, findings=1, accepted=1, extra_env={"LARCH_QUIET_DISABLE": "1"})
+    assert "REVIEW_CORE_STATUS=cap-reached" in round2.stdout
+    hard = run_review(
+        "core",
+        "--mode", "diff",
+        "--output-dir", str(tmp_path / "hard-core2"),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--tier", "HARD",
+        "--round-num", "2",
+        env=rts.build_review_core_env(
+            _stub_dir=tmp_path / "hard-stubs",
+            stubs=_write_review_core_stubs(tmp_path / "hard-stubs"),
+            TEST_FINDINGS="1",
+            TEST_ACCEPTED="1",
+            TEST_ROUND_NUM="2",
+        ),
+    )
+    assert "REVIEW_CORE_STATUS=fix-required" in hard.stdout
+    assert "EFFECTIVE_ROUND_CAP=3" in hard.stdout

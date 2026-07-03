@@ -104,3 +104,8 @@ Under `/implement`, committed `larch-logs/implement/<RUN_ID>/` files are the dur
 ## Migration from legacy agent slugs
 
 The previous two archetypes `general-reviewer` and `deep-analysis-reviewer` have been replaced by the single unified `code-reviewer`. Consumers that invoked those older agent slugs directly (via `--agents` or subagent_type references in downstream docs/scripts) must switch to `larch:code-reviewer`.
+
+
+## Difficulty-tiered panels
+
+Code review uses TRIVIAL singles (Codex review-role preferred, Cursor singles when Codex is unavailable), MODERATE Codex review-role plus Cursor pairs, and HARD pairs with the Codex default role. Design review always keeps Codex plus Cursor pairs; TRIVIAL and MODERATE share the cap-2 review-role shape, while HARD uses cap 3 and the Codex default role. The random audit is orthogonal to an operator `--difficulty` override.

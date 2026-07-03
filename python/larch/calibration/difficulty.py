@@ -7,18 +7,20 @@ from __future__ import annotations
 import argparse
 import fnmatch
 import json
+import random
 import re
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import cast
 from larch import io as larch_io
+from larch.core import config
 from larch.core import proc
 
-TRIVIAL = "TRIVIAL"
-MODERATE = "MODERATE"
-HARD = "HARD"
-TIERS = (TRIVIAL, MODERATE, HARD)
+TRIVIAL = config.DIFFICULTY_TIER_TRIVIAL
+MODERATE = config.DIFFICULTY_TIER_MODERATE
+HARD = config.DIFFICULTY_TIER_HARD
+TIERS = config.DIFFICULTY_TIERS
 CONFIDENCES = ("low", "medium", "high")
 SCHEMA_VERSION = 1
 RATIONALE_MAX_CHARS = 500
@@ -66,6 +68,43 @@ class FloorResult:
 
 
 @dataclass(frozen=True)
+class TierPolicy:
+    tier: str
+    round_cap: int
+    codex_model_role: str
+    panel_shape: str
+    threshold_panel: str
+
+
+@dataclass(frozen=True)
+class TierResolution:
+    panel_tier: str
+    round_cap: int
+    codex_model_role: str
+    audit_evaluated: bool
+    audit_upgrade: bool
+    override_source: str
+    escalated_round: bool = False
+    escalations: tuple[object, ...] = ()
+
+
+@dataclass(frozen=True)
+class PanelComposition:
+    tier: str
+    shape: str
+    codex_model_role: str
+    threshold_panel: str
+
+
+@dataclass(frozen=True)
+class AuditDecision:
+    evaluated: bool
+    upgrade: bool
+    roll: int | None
+    denominator: int
+
+
+@dataclass(frozen=True)
 class DifficultyRecord:
     schema_version: int
     rater: str
@@ -80,12 +119,63 @@ class DifficultyRecord:
     override_source: str
     floors_applied: list[dict[str, str]]
     audit_upgrade: str | None
-    escalations: list[str]
+    escalations: list[object]
     panel_skipped: str | None
+    panel_tier: str | None = None
+    round_cap: int | None = None
+    codex_model_role: str | None = None
+    audit_evaluated: bool | None = None
+    escalated_round: bool | None = None
 
 
 def tier_valid(value: str) -> bool:
     return value in _TIER_RANK
+
+
+def normalize_tier(value: object, default: str = "") -> str:
+    tier = str(value or "").strip().upper()
+    return tier if tier_valid(tier) else default
+
+
+def tier_rank(tier: str) -> int:
+    normalized = normalize_tier(tier)
+    if not normalized:
+        raise ValueError(f"invalid difficulty tier: {tier}")
+    return _TIER_RANK[normalized]
+
+
+def next_tier(tier: str) -> str:
+    normalized = normalize_tier(tier, MODERATE)
+    if normalized == HARD:
+        return HARD
+    return TIERS[_TIER_RANK[normalized] + 1]
+
+
+def tier_ceiling(tier: str) -> int:
+    return int(config.DIFFICULTY_TIER_CEILINGS[normalize_tier(tier, MODERATE)])
+
+
+def codex_review_model_role(tier: str) -> str:
+    return config.DIFFICULTY_CODEX_MODEL_ROLES[normalize_tier(tier, MODERATE)]
+
+
+def panel_shape_for_tier(tier: str) -> str:
+    return "singles" if normalize_tier(tier, MODERATE) == TRIVIAL else "pairs"
+
+
+def threshold_panel_for_tier(tier: str) -> str:
+    return config.DIFFICULTY_THRESHOLD_PANEL_TOKENS[normalize_tier(tier, MODERATE)]
+
+
+def panel_policy(tier: str) -> TierPolicy:
+    normalized = normalize_tier(tier, MODERATE)
+    return TierPolicy(
+        tier=normalized,
+        round_cap=tier_ceiling(normalized),
+        codex_model_role=codex_review_model_role(normalized),
+        panel_shape=panel_shape_for_tier(normalized),
+        threshold_panel=threshold_panel_for_tier(normalized),
+    )
 
 
 def confidence_valid(value: str) -> bool:
@@ -187,6 +277,224 @@ def match_floors(paths: tuple[str, ...], floors: tuple[DifficultyFloor, ...] | N
     return FloorResult(tier=tier_max(*(match.floor for match in matches)), matches=tuple(matches)) if matches else FloorResult(tier=TRIVIAL, matches=())
 
 
+def _coerce_record_mapping(record_or_rating: object) -> dict[str, object]:
+    if isinstance(record_or_rating, DifficultyRecord):
+        return cast("dict[str, object]", asdict(record_or_rating))
+    if isinstance(record_or_rating, DifficultyRating):
+        return {
+            "predicted_tier": record_or_rating.predicted_tier,
+            "applied_tier": record_or_rating.adjusted_tier,
+        }
+    if isinstance(record_or_rating, dict):
+        return cast("dict[str, object]", record_or_rating)
+    return {}
+
+
+def resolve_applied_tier(
+    record_or_rating: object,
+    floors: tuple[str, ...] | list[str] | str | None = None,
+    override: str = "",
+    fallback_tier: str = MODERATE,
+) -> str:
+    override_tier = normalize_tier(override)
+    if override_tier:
+        return override_tier
+    data = _coerce_record_mapping(record_or_rating)
+    base = normalize_tier(data.get("applied_tier")) or normalize_tier(data.get("adjusted_tier")) or normalize_tier(data.get("predicted_tier")) or normalize_tier(fallback_tier, MODERATE)
+    floor_values = (floors,) if isinstance(floors, str) else tuple(floors or ())
+    return tier_max(base, *(normalize_tier(value) for value in floor_values))
+
+
+def _rng_roll(rng: object, denominator: int) -> int:
+    if rng is None:
+        return random.SystemRandom().randint(1, denominator)
+    if isinstance(rng, int):
+        return rng
+    if callable(rng):
+        value = rng()
+        return int(value)
+    randrange = getattr(rng, "randrange", None)
+    if callable(randrange):
+        return int(randrange(1, denominator + 1))
+    randint = getattr(rng, "randint", None)
+    if callable(randint):
+        return int(randint(1, denominator))
+    return denominator
+
+
+def maybe_audit_upgrade(tier: str, rng: object, *, override_source: str = "") -> AuditDecision:
+    del override_source
+    denominator = config.DIFFICULTY_AUDIT_DENOMINATOR
+    normalized = normalize_tier(tier, MODERATE)
+    if normalized == HARD:
+        return AuditDecision(evaluated=False, upgrade=False, roll=None, denominator=denominator)
+    roll = _rng_roll(rng, denominator)
+    return AuditDecision(evaluated=True, upgrade=roll == 1, roll=roll, denominator=denominator)
+
+
+def _load_record_data(path: Path) -> dict[str, object]:
+    if not path.is_file() or path.is_symlink():
+        return {}
+    try:
+        data: object = json.loads(path.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return cast("dict[str, object]", data) if isinstance(data, dict) else {}
+
+
+def _record_escalations_for_round(data: dict[str, object], round_num: int | None = None) -> tuple[object, ...]:
+    raw = data.get("escalations")
+    if not isinstance(raw, list):
+        return ()
+    if round_num is None:
+        return tuple(raw)
+    result: list[object] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        try:
+            item_round = int(str(item.get("round") or 0) or 0)
+        except ValueError:
+            continue
+        if item_round == round_num:
+            result.append(item)
+    return tuple(result)
+
+
+def _write_record_data(path: Path, data: dict[str, object]) -> None:
+    larch_io.atomic_write(path=path, text=json.dumps(data, indent=2, sort_keys=True) + "\n", prefix=f".{path.name}.")
+
+
+def _resolution_from_data(data: dict[str, object], *, round_num: int | None = None) -> TierResolution | None:
+    panel_tier = normalize_tier(data.get("panel_tier"))
+    if not panel_tier:
+        return None
+    round_escalations = _record_escalations_for_round(data, round_num) if round_num is not None else ()
+    return TierResolution(
+        panel_tier=panel_tier,
+        round_cap=int(data.get("round_cap") or tier_ceiling(panel_tier)),
+        codex_model_role=str(data.get("codex_model_role") or codex_review_model_role(panel_tier)),
+        audit_evaluated=bool(data.get("audit_evaluated")),
+        audit_upgrade=str(data.get("audit_upgrade") or "").lower() == "true" or data.get("audit_upgrade") is True,
+        override_source=str(data.get("override_source") or "none"),
+        escalated_round=bool(round_escalations) if round_num is not None else bool(data.get("escalated_round")),
+        escalations=_record_escalations_for_round(data),
+    )
+
+
+def resolve_panel_tier(
+    record_path: Path,
+    override: str = "",
+    rng: object = None,
+    *,
+    audit_enabled: bool = True,
+    round_num: int | None = None,
+) -> TierResolution:
+    data = _load_record_data(record_path)
+    override_tier = normalize_tier(override)
+    existing = _resolution_from_data(data, round_num=round_num)
+    if existing is not None:
+        has_escalations = bool(_record_escalations_for_round(data))
+        resolved_once = data.get("audit_evaluated") is not None or data.get("audit_upgrade") is not None
+        existing_operator_override = data.get("override_source") == "operator"
+        if not override_tier or not audit_enabled or has_escalations or (resolved_once and existing_operator_override):
+            return existing
+    override_source = "operator" if override_tier else str(data.get("override_source") or "none")
+    starting = override_tier or resolve_applied_tier(data, override="", fallback_tier=MODERATE)
+    audit_evaluated = bool(data.get("audit_evaluated"))
+    audit_upgrade = str(data.get("audit_upgrade") or "").lower() == "true" or data.get("audit_upgrade") is True
+    if not audit_evaluated and audit_enabled:
+        # Missing records synthesize MODERATE without sampling. Normal bootstraps
+        # create a record before panel resolution, so production runs still take
+        # the 1:30 audit path while recordless recovery paths stay stable.
+        audit_rng = rng if rng is not None else (None if data else config.DIFFICULTY_AUDIT_DENOMINATOR)
+        decision = maybe_audit_upgrade(starting, audit_rng, override_source=override_source)
+        audit_evaluated = decision.evaluated
+        audit_upgrade = decision.upgrade
+    panel_tier = HARD if audit_upgrade and starting != HARD else starting
+    resolution = TierResolution(
+        panel_tier=panel_tier,
+        round_cap=tier_ceiling(panel_tier),
+        codex_model_role=codex_review_model_role(panel_tier),
+        audit_evaluated=audit_evaluated,
+        audit_upgrade=audit_upgrade,
+        override_source=override_source,
+        escalated_round=bool(data.get("escalated_round")),
+        escalations=_record_escalations_for_round(data),
+    )
+    if not data:
+        data = {
+            "schema_version": SCHEMA_VERSION,
+            "rater": "fallback",
+            "rater_tool": "unknown",
+            "rater_model": "unknown",
+            "predicted_tier": starting,
+            "confidence": "medium",
+            "rationale": "fallback rating synthesized for panel resolution",
+            "design_tier": None,
+            "implement_tier": None,
+            "floors_applied": [],
+            "panel_skipped": None,
+            "escalations": [],
+        }
+    data.update(
+        {
+            "applied_tier": panel_tier,
+            "panel_tier": resolution.panel_tier,
+            "round_cap": resolution.round_cap,
+            "codex_model_role": resolution.codex_model_role,
+            "audit_evaluated": resolution.audit_evaluated,
+            "audit_upgrade": "true" if resolution.audit_upgrade else None,
+            "override_source": resolution.override_source,
+            "escalated_round": resolution.escalated_round,
+        }
+    )
+    _write_record_data(record_path, data)
+    return resolution
+
+
+def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier: str, trigger: str) -> None:
+    data = _load_record_data(record_path)
+    if not data:
+        data = {
+            "schema_version": SCHEMA_VERSION,
+            "rater": "fallback",
+            "rater_tool": "unknown",
+            "rater_model": "unknown",
+            "predicted_tier": normalize_tier(from_tier, MODERATE),
+            "confidence": "medium",
+            "rationale": "escalation record",
+            "design_tier": None,
+            "implement_tier": None,
+            "floors_applied": [],
+            "override_source": "none",
+            "audit_upgrade": None,
+            "panel_skipped": None,
+        }
+    escalations = data.get("escalations")
+    if not isinstance(escalations, list):
+        escalations = []
+    entry = {
+        "round": round_num,
+        "from_tier": normalize_tier(from_tier, MODERATE),
+        "to_tier": normalize_tier(to_tier, HARD),
+        "trigger": trigger,
+    }
+    escalations.append(entry)
+    to_normalized = normalize_tier(to_tier, HARD)
+    data.update(
+        {
+            "escalations": escalations,
+            "applied_tier": to_normalized,
+            "panel_tier": to_normalized,
+            "round_cap": tier_ceiling(to_normalized),
+            "codex_model_role": codex_review_model_role(to_normalized),
+            "escalated_round": True,
+        }
+    )
+    _write_record_data(record_path, data)
+
+
 def plan_difficulty(text: str) -> str:
     for line in reversed(trailing_plan_metadata_lines(text)):
         match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
@@ -266,8 +574,14 @@ def build_record(
     changed_paths: tuple[str, ...] = (),
     panel_skipped: str = "",
     audit_upgrade: str = "",
-    escalations: tuple[str, ...] = (),
+    escalations: tuple[object, ...] = (),
     override_source: str = "",
+    override_tier: str = "",
+    panel_tier: str = "",
+    round_cap: int | None = None,
+    codex_model_role: str = "",
+    audit_evaluated: bool | None = None,
+    escalated_round: bool | None = None,
 ) -> DifficultyRecord:
     source = implement_rating or design_rating or fallback_rating
     if source is None:
@@ -279,8 +593,15 @@ def build_record(
     if model_tier == TRIVIAL and design_rating is None and implement_rating is None and fallback_rating is not None:
         model_tier = fallback_rating.adjusted_tier
     floors = match_floors(changed_paths)
-    applied = tier_max(model_tier, floors.tier)
-    derived_override = "floor" if floors.matches and _TIER_RANK[floors.tier] > _TIER_RANK[model_tier] else "none"
+    explicit_override = normalize_tier(override_tier)
+    applied = explicit_override or tier_max(model_tier, floors.tier)
+    audit_upgrade_bool = str(audit_upgrade).lower() == "true"
+    if audit_upgrade_bool and applied != HARD:
+        applied = HARD
+    derived_override = "operator" if explicit_override else "floor" if floors.matches and _TIER_RANK[floors.tier] > _TIER_RANK[model_tier] else "none"
+    effective_panel_tier = normalize_tier(panel_tier) or applied
+    effective_round_cap = round_cap if round_cap is not None else tier_ceiling(effective_panel_tier)
+    effective_codex_role = codex_model_role or codex_review_model_role(effective_panel_tier)
     return DifficultyRecord(
         schema_version=SCHEMA_VERSION,
         rater=rater or "unknown",
@@ -297,6 +618,11 @@ def build_record(
         audit_upgrade=audit_upgrade or None,
         escalations=list(escalations),
         panel_skipped=panel_skipped or None,
+        panel_tier=effective_panel_tier,
+        round_cap=effective_round_cap,
+        codex_model_role=effective_codex_role,
+        audit_evaluated=audit_evaluated,
+        escalated_round=escalated_round,
     )
 
 
@@ -330,6 +656,22 @@ def difficulty_line(record: DifficultyRecord | dict[str, object]) -> str:
     audit = data.get("audit_upgrade")
     if audit:
         parts.append(f"audit {audit}")
+    if data.get("override_source") == "operator":
+        parts.append("override operator")
+    escalations = data.get("escalations")
+    if isinstance(escalations, list) and escalations:
+        rendered: list[str] = []
+        for item in escalations:
+            if isinstance(item, dict):
+                from_tier = item.get("from_tier", "?")
+                to_tier = item.get("to_tier", "?")
+                round_num = item.get("round", "?")
+                trigger = item.get("trigger", "")
+                suffix = f" {trigger}" if trigger else ""
+                rendered.append(f"r{round_num} {from_tier}->{to_tier}{suffix}")
+            else:
+                rendered.append(str(item))
+        parts.append("escalated " + ", ".join(rendered))
     skipped = data.get("panel_skipped")
     if skipped:
         parts.append(f"panel skipped: {skipped}")
@@ -364,7 +706,60 @@ def _record_from_args(args: argparse.Namespace) -> DifficultyRecord:
         audit_upgrade=args.audit_upgrade,
         escalations=tuple(args.escalation or ()),
         override_source=args.override_source,
+        override_tier=args.override_tier,
+        panel_tier=args.panel_tier,
+        round_cap=int(args.round_cap) if str(args.round_cap).isdigit() else None,
+        codex_model_role=args.codex_model_role,
+        audit_evaluated=True if args.audit_evaluated == "true" else False if args.audit_evaluated == "false" else None,
+        escalated_round=True if args.escalated_round == "true" else False if args.escalated_round == "false" else None,
     )
+
+
+def _merge_existing_record_fields(record: DifficultyRecord, existing: dict[str, object], explicit_args: argparse.Namespace) -> DifficultyRecord:
+    if not existing:
+        return record
+    data = asdict(record)
+    preserve = (
+        "override_source",
+        "audit_upgrade",
+        "escalations",
+        "applied_tier",
+        "panel_tier",
+        "round_cap",
+        "codex_model_role",
+        "audit_evaluated",
+        "escalated_round",
+    )
+    explicit = {
+        key
+        for key, value in {
+            "override_source": explicit_args.override_source,
+            "audit_upgrade": explicit_args.audit_upgrade,
+            "escalations": explicit_args.escalation,
+            "round_cap": explicit_args.round_cap,
+            "codex_model_role": explicit_args.codex_model_role,
+            "audit_evaluated": explicit_args.audit_evaluated,
+            "escalated_round": explicit_args.escalated_round,
+        }.items()
+        if value
+    }
+    if explicit_args.override_tier or explicit_args.panel_tier:
+        explicit.update({"applied_tier", "panel_tier"})
+    for key in preserve:
+        if key in explicit:
+            continue
+        if key == "override_source" and existing.get(key) == "operator":
+            data[key] = "operator"
+            continue
+        value = existing.get(key)
+        if value not in (None, "", []):
+            data[key] = value
+    if data.get("override_source") == "operator":
+        # Floor logic must not replace an operator override on refresh.
+        existing_applied = normalize_tier(existing.get("applied_tier"))
+        if existing_applied and not explicit_args.override_tier:
+            data["applied_tier"] = existing_applied
+    return DifficultyRecord(**data)
 
 
 def validate_rating_main(argv: list[str] | None = None) -> int:
@@ -418,11 +813,18 @@ def write_record_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--audit-upgrade", default="")
     parser.add_argument("--escalation", action="append")
     parser.add_argument("--override-source", default="")
+    parser.add_argument("--override-tier", default="")
+    parser.add_argument("--panel-tier", default="")
+    parser.add_argument("--round-cap", default="")
+    parser.add_argument("--codex-model-role", default="")
+    parser.add_argument("--audit-evaluated", choices=("", "true", "false"), default="")
+    parser.add_argument("--escalated-round", choices=("", "true", "false"), default="")
     parser.add_argument("--fallback-tier", default="MODERATE")
     parser.add_argument("--fallback-rationale", default="fallback rating synthesized for recovery path")
     args = parser.parse_args(argv)
     try:
         record = _record_from_args(args)
+        record = _merge_existing_record_fields(record, _load_record_data(Path(args.output)), args)
         write_record(Path(args.output), record)
     except (OSError, ValueError) as exc:
         print(f"STATUS=error\nERROR={exc}")
@@ -455,6 +857,40 @@ def render_line_main(argv: list[str] | None = None) -> int:
         print("STATUS=error\nERROR=record must be object", file=sys.stderr)
         return 1
     print(difficulty_line(cast("dict[str, object]", data)))
+    return 0
+
+
+def resolve_panel_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py difficulty resolve-panel")
+    parser.add_argument("--record-file", required=True)
+    parser.add_argument("--override", default="")
+    parser.add_argument("--audit-roll", default="")
+    parser.add_argument("--no-audit", action="store_true")
+    args = parser.parse_args(argv)
+    override = normalize_tier(args.override)
+    if args.override and not override:
+        print("STATUS=error\nERROR=invalid-override")
+        return 2
+    rng: object = None
+    if args.audit_roll:
+        try:
+            rng = int(args.audit_roll)
+        except ValueError:
+            print("STATUS=error\nERROR=invalid-audit-roll")
+            return 2
+    try:
+        resolution = resolve_panel_tier(Path(args.record_file), override=override, rng=rng, audit_enabled=not args.no_audit)
+    except (OSError, ValueError) as exc:
+        print(f"STATUS=error\nERROR={exc}")
+        return 1
+    print("STATUS=ok")
+    print(f"PANEL_TIER={resolution.panel_tier}")
+    print(f"ROUND_CAP={resolution.round_cap}")
+    print(f"CODEX_MODEL_ROLE={resolution.codex_model_role}")
+    print(f"AUDIT_EVALUATED={'true' if resolution.audit_evaluated else 'false'}")
+    print(f"AUDIT_UPGRADE={'true' if resolution.audit_upgrade else 'false'}")
+    print(f"OVERRIDE_SOURCE={resolution.override_source}")
+    print(f"ESCALATED_ROUND={'true' if resolution.escalated_round else 'false'}")
     return 0
 
 

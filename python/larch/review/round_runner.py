@@ -21,6 +21,7 @@ from pathlib import Path
 from collections.abc import Callable, Mapping
 
 from larch.core import config
+from larch.calibration import difficulty
 from larch.report import progress_report
 from larch.review import review_pipeline
 from larch.review import review_tally
@@ -192,6 +193,7 @@ def _write_summary(*, path: Path, result: RoundResult, round_cap: int) -> None:
         "round_num": result.round_num,
         "rounds_completed": result.round_num,
         "round_cap": round_cap,
+        "panel_tier": getattr(result, "panel_tier", ""),
         "accepted_count": result.total_accepted_count,
         "rejected_count": result.total_rejected_count,
         "exonerated_count": result.total_exonerated_count,
@@ -232,13 +234,16 @@ def _timing_row_matches(
 
 
 def _core_args_for_round(*, args: argparse.Namespace, round_dir: Path, dynamic_archetypes: str, prune_ledger: Path) -> list[str]:
+    panel_tier = difficulty.normalize_tier(getattr(args, "panel_tier", ""), difficulty.MODERATE)
     core_args = [
         "--mode", "diff",
         "--output-dir", str(round_dir),
         "--session-env-path", str(args.session_env_path),
         "--codex-available", args.codex_available,
         "--cursor-available", args.cursor_available,
-        "--panel", "hard",
+        "--panel", difficulty.threshold_panel_for_tier(panel_tier),
+        "--tier", panel_tier,
+        "--escalated-round", str(getattr(args, "escalated_round", "false") or "false").lower(),
         "--round-num", str(args.round_num),
         "--dynamic-archetypes", dynamic_archetypes,
         "--prune-ledger", str(prune_ledger),

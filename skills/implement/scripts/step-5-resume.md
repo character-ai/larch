@@ -1,6 +1,6 @@
 # step-5-resume.sh
 
-Step 5 main-agent handoff resume helper. Records round timing, exits immediately for `--record-only`, delegates the `--ready-to-commit` commit phase to `python/cli.py implement commit-route --site step5-resume-handoff`, and re-enters `review-and-fix step5` only when commit-route emits `NEXT_ACTION=continue`.
+Step 5 main-agent handoff resume helper. Records round timing, exits immediately for `--record-only`, delegates the `--ready-to-commit` commit phase to `python/cli.py implement commit-route --site step5-resume-handoff`, and re-enters `review-and-fix step5` only when commit-route emits `NEXT_ACTION=continue`. Resume reuses the persisted difficulty override while `review-and-fix step5` reuses recorded audit and escalation state.
 
 ## Caller
 

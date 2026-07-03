@@ -18,6 +18,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.review import review_aggregate
 from larch.review import voting
+from larch.review.plan_review_common import resolve_plan_review_tier
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
 _COLLECT_TIMEOUT = "1860"
@@ -781,6 +782,7 @@ def execute_round(
         "DEGRADED_PANEL": "0",
     }
     out_lines: list[str] = []
+    resolution = resolve_plan_review_tier(design, round_num=round_num)
 
     panel_args = [
         "plan-review",
@@ -801,6 +803,10 @@ def execute_round(
         cursor_present,
         "--timeout",
         _PANEL_TIMEOUT,
+        "--tier",
+        resolution.panel_tier,
+        "--escalated-round",
+        "true" if resolution.escalated_round else "false",
     ]
     panel = _run_cli(argv=panel_args, env={"LARCH_QUIET_DISABLE": "1"})
     out_lines.append(panel.stdout)

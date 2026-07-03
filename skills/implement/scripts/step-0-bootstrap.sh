@@ -23,6 +23,7 @@ RUN_ID_ARG=""
 CALLER_ENV_ARG=""
 SESSION_ENV_ARG=""
 NON_INTERACTIVE_ARG=""
+DIFFICULTY_ARG=""
 while [ $# -gt 0 ]; do
     case "$1" in
         --mode) [ $# -ge 2 ] || { printf '%s
@@ -59,8 +60,10 @@ while [ $# -gt 0 ]; do
 ' 'step-0-bootstrap.sh: --session-env requires a value' >&2; exit 2; }; SESSION_ENV_ARG=$2; shift 2 ;;
         --non-interactive) [ $# -ge 2 ] || { printf '%s
 ' 'step-0-bootstrap.sh: --non-interactive requires a value' >&2; exit 2; }; NON_INTERACTIVE_ARG=$2; shift 2 ;;
+        --difficulty) [ $# -ge 2 ] || { printf '%s
+' 'step-0-bootstrap.sh: --difficulty requires a value' >&2; exit 2; }; DIFFICULTY_ARG=$2; shift 2 ;;
         --help) printf '%s
-' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--force-requested true|false] [--self-review-requested true|false] [--self-implement-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH]'; exit 0 ;;
+' 'Usage: step-0-bootstrap.sh --mode initial|resume [--issue-number N] [--preflight-tmpdir PATH] [--coder claude|codex|cursor] [--force-requested true|false] [--self-review-requested true|false] [--self-implement-requested true|false] [--forked-target true|false] [--merge-requested true|false] [--draft-requested true|false] [--no-admin-fallback true|false] [--no-logs-commit true|false] [--upstream-repo OWNER/REPO] [--run-id ID] [--caller-env PATH] [--session-env PATH] [--difficulty TRIVIAL|MODERATE|HARD]'; exit 0 ;;
         *) printf '%s
 ' "step-0-bootstrap.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -85,6 +88,8 @@ case "$NO_LOGS_COMMIT_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --no-logs-commit must be true or false' >&2; exit 2 ;; esac
 case "$NON_INTERACTIVE_ARG" in ""|true|false) ;; *) printf '%s
 ' 'step-0-bootstrap.sh: --non-interactive must be true or false' >&2; exit 2 ;; esac
+case "$DIFFICULTY_ARG" in ""|TRIVIAL|MODERATE|HARD) ;; *) printf '%s
+' 'step-0-bootstrap.sh: --difficulty must be TRIVIAL, MODERATE, or HARD' >&2; exit 2 ;; esac
 
 
 rehydrate_plugin_root() {
@@ -135,6 +140,7 @@ case "$NO_LOGS_COMMIT_ARG" in true|false) no_logs_commit="$NO_LOGS_COMMIT_ARG" ;
 [ -n "$RUN_ID_ARG" ] && RUN_ID="$RUN_ID_ARG"
 [ -n "$CALLER_ENV_ARG" ] && CALLER_ENV_PATH="$CALLER_ENV_ARG"
 [ -n "$SESSION_ENV_ARG" ] && SESSION_ENV_PATH="$SESSION_ENV_ARG"
+[ -n "$DIFFICULTY_ARG" ] && difficulty="$DIFFICULTY_ARG"
 _non_interactive=false
 case "$NON_INTERACTIVE_ARG" in
     true) _non_interactive=true ;;
@@ -243,6 +249,7 @@ if [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
 fi
 export forked_target force_requested self_review self_implement coder RUN_ID PREFLIGHT_TMPDIR
 export merge draft no_admin_fallback no_logs_commit
+export difficulty
 export CALLER_ENV_PATH SESSION_ENV_PATH TARGET_ISSUE_NUMBER ISSUE_NUMBER UPSTREAM_REPO FORK_REPO FORK_OWNER
 export LARCH_CLAUDE_PID="${LARCH_CLAUDE_PID:-$PPID}"
 if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
@@ -250,7 +257,7 @@ if [ -n "${PREFLIGHT_TMPDIR:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ]; then
     mv -f "$IMPLEMENT_TMPDIR/preflight-tmpdir.env.tmp" "$IMPLEMENT_TMPDIR/preflight-tmpdir.env"
 fi
 set +e
-_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --force-requested "${force_requested:-false}"     --self-review-requested "${self_review:-false}"     --self-implement-requested "${self_implement:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive")
+_inv_out=$(python3 "$PY_CLI" bootstrap invoke --mode "$MODE"     --issue-number "${TARGET_ISSUE_NUMBER:-${ISSUE_NUMBER:-}}"     --preflight-tmpdir "${PREFLIGHT_TMPDIR:-}"     --coder "${coder:-}"     --force-requested "${force_requested:-false}"     --self-review-requested "${self_review:-false}"     --self-implement-requested "${self_implement:-false}"     --forked-target "${forked_target:-false}"     --merge-requested "${merge:-false}"     --draft-requested "${draft:-false}"     --no-admin-fallback "${no_admin_fallback:-false}"     --no-logs-commit "${no_logs_commit:-false}"     --upstream-repo "${UPSTREAM_REPO:-}"     --run-id "${RUN_ID:-}"     --caller-env "${CALLER_ENV_PATH:-${SESSION_ENV_PATH:-}}"     --non-interactive "$_non_interactive"     --difficulty "${difficulty:-}")
 _inv_rc=$?
 set -e
 if [ "$_inv_rc" -eq 2 ]; then

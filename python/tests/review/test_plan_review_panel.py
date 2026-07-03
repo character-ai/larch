@@ -704,7 +704,7 @@ def test_panel_dispatch_dynamic_scout_rows(tmp_path: Path) -> None:
     assert "dyn-cursor-plan-alpha" in manifest_text
     assert "dyn-codex-plan-beta" in manifest_text
     rows = _manifest_rows(design / "plan-review-slots.ndjson")
-    assert all(row.get("model_role") == "default" for row in rows if row.get("tool") == "codex")
+    assert all(row.get("model_role") == "review" for row in rows if row.get("tool") == "codex")
 
 
 def test_panel_dispatch_dynamic_rows_render_full_scaffold(tmp_path: Path) -> None:

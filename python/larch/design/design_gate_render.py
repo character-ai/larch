@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import NoReturn
 
-from larch.review.plan_review_common import ROUND_CAP
+from larch.review.plan_review_common import effective_authorized_cap
 
 
 _TRUE_FALSE = frozenset({"true", "false"})
@@ -179,8 +179,9 @@ def _gate_c_question(*, at_cap: bool) -> str:
 
 def _render_gate_c(*, design_tmpdir: str | None, without_see_full_plan: bool, panel_failed: bool) -> GateRender:
     count, warning = _review_count(design_tmpdir)
-    at_cap = count >= ROUND_CAP
-    extra: list[tuple[str, str]] = [("REVIEW_ROUND_CAP", str(ROUND_CAP))]
+    cap = effective_authorized_cap(Path(design_tmpdir)) if design_tmpdir else 2
+    at_cap = count >= cap
+    extra: list[tuple[str, str]] = [("REVIEW_ROUND_CAP", str(cap))]
     if warning:
         extra.append(("REVIEW_ROUND_COUNT_WARN", warning))
     return GateRender(

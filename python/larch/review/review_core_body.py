@@ -1,5 +1,5 @@
 # pyright: reportArgumentType=false, reportOptionalIterable=false, reportUnknownArgumentType=false, reportUnknownVariableType=false, reportUnknownMemberType=false, reportPrivateUsage=false, reportUnusedCallResult=false, reportUnusedFunction=false
-# ruff: noqa: PLR2004,ARG001
+# ruff: noqa: ARG001
 # pylint: disable=too-many-branches,too-many-statements,too-many-locals,too-many-arguments,unused-argument,too-many-boolean-expressions
 """Core review pipeline orchestration logic."""
 
@@ -13,6 +13,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.calibration import difficulty
 from larch.review.review_pipeline_shared import (
     PreVoteGateError,
     PreVoteOosGateResult,
@@ -788,6 +789,8 @@ def _review_core_body(
     codex_available: str,
     cursor_available: str,
     panel: str,
+    tier: str = "",
+    escalated_round: str = "false",
     dynamic: str,
     round_num: int,
     session_env_path: str,
@@ -798,6 +801,8 @@ def _review_core_body(
     commands: ReviewCommands | None = None,
 ) -> ReviewCoreResult:
     commands = commands or _review_commands()
+    tier = difficulty.normalize_tier(tier) or (difficulty.TRIVIAL if panel == "simple" else difficulty.MODERATE)
+    panel = difficulty.threshold_panel_for_tier(tier)
     review_tmpdir.mkdir(parents=True, exist_ok=True)
 
     gather_args = ["--mode", mode, "--output-dir", str(review_tmpdir)]
@@ -832,6 +837,10 @@ def _review_core_body(
         str(review_tmpdir),
         "--panel",
         panel,
+        "--tier",
+        tier,
+        "--escalated-round",
+        escalated_round,
         "--codex-available",
         codex_available,
         "--cursor-available",
@@ -866,6 +875,7 @@ def _review_core_body(
     claude_outputs = dispatch.get("CLAUDE_OUTPUT_FILES", "")
     panel_mode = dispatch.get("PANEL_MODE", "waterfall")
     panel_shape = dispatch.get("PANEL_SHAPE", panel)
+    panel_tier = dispatch.get("PANEL_TIER", tier)
     panel_manifest = dispatch.get("PANEL_MANIFEST", "")
     scout_status = dispatch.get("SCOUT_STATUS", "na")
     scout_fail_reason = dispatch.get("SCOUT_FAIL_REASON", "")
@@ -922,7 +932,7 @@ def _review_core_body(
         "--collector-results-file",
         str(collector_results),
         "--panel",
-        panel_shape,
+        difficulty.threshold_panel_for_tier(panel_tier),
         "--intended-slots",
         str(intended_slots),
         "--launched-slots",
@@ -1129,9 +1139,12 @@ def _review_core_body(
     _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
     _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
     status = "ok"
+    effective_round_cap = difficulty.tier_ceiling(panel_tier)
     if mode == "diff" and accepted.isdigit() and int(accepted) > 0:
-        status = "cap-reached" if round_num >= 2 else "fix-required"
+        status = "cap-reached" if round_num >= effective_round_cap else "fix-required"
     rows.extend(_core_common_rows(status=status, round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, accepted=accepted, rejected=rejected, exonerated=exonerated, neutral=neutral, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0"), accepted_file=accepted_file))
+    rows.append(("PANEL_TIER", panel_tier))
+    rows.append(("EFFECTIVE_ROUND_CAP", effective_round_cap))
     if classification:
         rows.append(("FINDINGS_CLASSIFICATION_TSV_FILE", classification))
     return ReviewCoreResult(0, ReviewCoreStatus.from_wire(status), tuple(rows))
@@ -1153,6 +1166,8 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
         "--feature-file",
         "--description-text",
         "--panel",
+        "--tier",
+        "--escalated-round",
         "--dynamic-archetypes",
         "--pre-scouted-manifest",
         "--run-id",
@@ -1170,9 +1185,17 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
     codex_available = _get(parsed=parsed, key="--codex-available")
     cursor_available = _get(parsed=parsed, key="--cursor-available")
     panel = _get(parsed=parsed, key="--panel", default="hard")
+    raw_tier = _get(parsed=parsed, key="--tier")
+    tier = difficulty.normalize_tier(raw_tier) or (difficulty.TRIVIAL if panel == "simple" else difficulty.MODERATE)
+    if raw_tier and not difficulty.normalize_tier(raw_tier):
+        logging_util.diagnostic(usage)
+        return 2
+    if raw_tier:
+        panel = difficulty.threshold_panel_for_tier(tier)
+    escalated_round = _get(parsed=parsed, key="--escalated-round", default="false")
     dynamic = _get(parsed=parsed, key="--dynamic-archetypes", default=os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX") or "0")
     round_raw = _get(parsed=parsed, key="--round-num", default="1")
-    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1"} or not round_raw.isdigit() or int(round_raw) <= 0:
+    if mode not in {"diff", "description"} or not str(review_tmpdir) or codex_available not in {"true", "false"} or cursor_available not in {"true", "false"} or panel not in {"simple", "hard"} or dynamic not in {"0", "1"} or escalated_round not in {"true", "false"} or not round_raw.isdigit() or int(round_raw) <= 0:
         logging_util.diagnostic(usage)
         return 2
     round_num = int(round_raw)
@@ -1187,6 +1210,8 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
         codex_available=codex_available,
         cursor_available=cursor_available,
         panel=panel,
+        tier=tier,
+        escalated_round=escalated_round,
         dynamic=dynamic,
         round_num=round_num,
         session_env_path=session_env_path,

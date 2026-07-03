@@ -21,7 +21,6 @@ from larch.review.plan_review_common import (
     NON_NIT_CONTINUE_THRESHOLD,
     OPTIONAL_TRAILER_KEYS,
     POSTPLAN_EMIT_KEYS,
-    ROUND_CAP,
     STRUCTURAL_DIFF_LINE_THRESHOLD,
     STRUCTURAL_MIN_REVIEW_ROUNDS,
     STRUCTURAL_PLAN_LINE_THRESHOLD,
@@ -34,6 +33,9 @@ from larch.review.plan_review_common import (
     _strip_crlf,
     _validate_tmpdir_arg,
     _write_atomic,
+    effective_authorized_cap,
+    plan_review_round_cap,
+    resolve_plan_review_tier,
 )
 from larch.review.plan_review_findings import (
     _already_addressed_keys_in_rejected,
@@ -59,6 +61,9 @@ from larch.review.plan_review_normalize import (
     step3_record_report_evidence,
     step3_stage_postplan_failed,
 )
+
+DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD = 2
+
 
 def step3_loop_persist_envelope(
     *,
@@ -776,7 +781,20 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         reason = "ballot-items-lost"
     elif ns.approve_requested == "true":
         reason = "explicit-approve"
-    elif review_count >= ROUND_CAP:
+    cap = effective_authorized_cap(tmpdir)
+    panel_tier = ""
+    if high >= DESIGN_ESCALATION_HIGH_ACCEPTED_THRESHOLD and review_count < plan_review_round_cap("HARD"):
+        cont = True
+        resolution = resolve_plan_review_tier(tmpdir)
+        from larch.calibration import difficulty  # noqa: PLC0415
+        if resolution.panel_tier != difficulty.HARD:
+            reason = "escalated-high-accepted"
+            difficulty.append_escalation(tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME, review_count + 1, resolution.panel_tier, difficulty.HARD, reason)
+        else:
+            reason = "high-accepted"
+        cap = plan_review_round_cap("HARD")
+        panel_tier = difficulty.HARD
+    elif review_count >= cap:
         reason = "cap-reached"
     elif panel_pruned_empty == "true":
         cont = False
@@ -803,7 +821,8 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         ("PLAN_REVIEW_CONTINUE", "true" if cont else "false"),
         ("PLAN_REVIEW_CONTINUE_REASON", reason),
         ("REVIEW_ROUND_COUNT", str(review_count)),
-        ("REVIEW_ROUND_CAP", str(ROUND_CAP)),
+        ("REVIEW_ROUND_CAP", str(cap)),
+        ("PANEL_TIER", panel_tier),
         ("ACCEPTED_COUNT", str(accepted)),
         ("NIT_ACCEPTED_COUNT", str(nit)),
         ("NON_NIT_ACCEPTED_COUNT", str(non_nit)),
