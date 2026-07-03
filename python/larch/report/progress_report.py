@@ -25,6 +25,7 @@ from larch.rendering.gantt import GanttRow, format_mss, render_gantt
 from larch import io as larch_io
 from larch.core import config
 from larch.core import logging_util
+from larch.report.timing import TIMING_VENDOR_MIN_COLS
 from larch.review import plan_review_round
 from larch.report import report_tokens_cost
 from larch.review import voting
@@ -43,7 +44,6 @@ TIMING_ROUND_END_COL = 7
 # Issue #5504: reserved trailing column repurposed as the 1-based round attempt index
 # (written by timing.TimingLedger.record_round). Rows predating it carry "-" -> attempt 1.
 TIMING_ROUND_ATTEMPT_COL = 12
-TIMING_VENDOR_MIN_COLS = 13
 TIMING_VENDOR_VENDOR_COL = 5
 TIMING_VENDOR_KIND_COL = 6
 TIMING_VENDOR_START_COL = 7
@@ -894,7 +894,7 @@ def _is_ci_gantt_row(*, kind: str, output: str) -> bool:
 # them so the chart always shows the coder applying review fixes (issue #5264).
 _CODER_APPLY_TASK_KINDS: frozenset[str] = frozenset({
     "codex-review-fix", "cursor-review-fix", "claude-review-fix",
-    "codex-plan-autofix", "cursor-plan-autofix",
+    "codex-plan-autofix", "cursor-plan-autofix", "gate-b-apply",
 })
 
 

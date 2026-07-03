@@ -12,7 +12,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from larch.design.design_lifecycle import json_get_bool, phase_driver_write_result_env
-from larch.report.timing import TimingLedger
+from larch.report.timing import TIMING_VENDOR_MIN_COLS, TimingLedger
 from larch.review import plan_review_round
 from larch.review import plan_review_tally
 from larch.review.plan_review_common import (
@@ -59,9 +59,6 @@ from larch.review.plan_review_normalize import (
     step3_record_report_evidence,
     step3_stage_postplan_failed,
 )
-
-TIMING_VENDOR_COLS = 13
-
 
 def step3_loop_persist_envelope(
     *,
@@ -559,7 +556,7 @@ def _gate_b_apply_start_s(*, ledger: Path, round_start_s: int, end_s: int, outpu
     duplicate = False
     for line in lines:
         cols = line.split("\t")
-        if len(cols) < TIMING_VENDOR_COLS or cols[0] != "v1" or cols[1] != "vendor" or cols[3] != "design":
+        if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor" or cols[3] != "design":
             continue
         kind = cols[6]
         if kind == "gate-b-apply" and Path(cols[10]).name == output_basename:
