@@ -3,7 +3,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 00:12:54
-- **Cost**: 💰 TOTAL ~$3.19 — Claude $0.55, Codex-5.5 $0.69, Codex-mini $0.74, Cursor $0.98, Claude (subprocess) $0.23  |  Tokens: 4778k
+- **Cost**: 💰 TOTAL ~$6.00 — Claude $3.36, Codex-5.5 $0.69, Codex-mini $0.74, Cursor $0.98, Claude (subprocess) $0.23  |  Tokens: 8085k
 - **Issue**: #6153 — https://github.com/character-ai/larch/issues/6153
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -72,3 +72,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (nit): New test misses `report.md` persistence assertion. Concern: The new test does not assert `report.md` persistence, which is a consistency-only gap because `render_report` always writes the file.
 - **Round 1 OOS_5** (nit): Final-verdict ladder lacks direct branch tests. Concern: `_final_verdict` priority ordering is only covered indirectly, so regressions would still need full `render_report` fixtures.
 - **Round 1 OOS_6** (latent): Triage verdict can surface when `deep_verdict` is absent. Concern: A bundle with mechanical `NEEDS_DEEP`, a ledger triage verdict, and no `deep_verdict` would show the triage verdict instead of the mechanical status, although current routing makes that path unlikely.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
