@@ -12,11 +12,11 @@
 
 ## Review-round cap
 
-Gate C prompt shaping is delegated to `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. The renderer emits `REVIEW_ROUND_CAP=<N>` from `larch.review.plan_review_common.ROUND_CAP`, which mirrors Step 3 authority. It reads `$DESIGN_TMPDIR/review-round-count.txt`; missing or empty means 0. Non-numeric means 0 and emits `REVIEW_ROUND_COUNT_WARN=non-numeric`. At or above `REVIEW_ROUND_CAP`, the renderer omits `Re-run review panel`. `Other` preserves the rendered option set. `See full plan` re-fires with `--without-see-full-plan`, leaving the cap-aware remaining options. Step 3 enforces the cap on every entry (initial, Gate C re-run, Gate A "Ready for review" post-discussion) and short-circuits with the breadcrumb `**⚠ Step 3: review-round cap (<cap>) reached; skipping panel and continuing to Step 3b, then Step 3b finalize, then Step 4, then Gate C.**` when counter >= cap. SKILL.md Step 3 is the sole counter writer; `python/plan_review.py` is stateless for this file. Gate A "Discuss more" loops remain uncapped.
+Gate C option shaping comes from `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. Consume `REVIEW_ROUND_CAP`, option rows, and optional `REVIEW_ROUND_COUNT_WARN`. Do not restate renderer cap math. Step 3 is the counter authority and enforces the cap on every entry, including Gate C re-runs and Gate A **Ready for review** re-entry. Gate A **Discuss more** loops remain uncapped. Round 3 is offered only when escalation or substantiality has been recorded; a HARD-rated run with two non-substantial rounds does not surface another review option.
 
 ## Renderer parsing contract
 
-Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate ...`. If `GATE_RENDER_STATUS=ok` is absent, stop for repair. If required `HEADER`, `QUESTION`, or `OPTION_*` fields are missing before an `AskUserQuestion`, stop for repair. Do not reconstruct fallback prompt copy in prose. After Gate C `render-gate`, when `REVIEW_ROUND_COUNT_WARN=non-numeric` is present, append the same bounded Warning to `$DESIGN_TMPDIR/execution-issues.md` before `AskUserQuestion`.
+Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design render-gate ...`. Require `GATE_RENDER_STATUS=ok` and every `HEADER`, `QUESTION`, and `OPTION_*` field needed by `AskUserQuestion`; stop for repair on any miss. Do not reconstruct fallback prompt copy in prose. After Gate C `render-gate`, append the bounded Warning to `$DESIGN_TMPDIR/execution-issues.md` when `REVIEW_ROUND_COUNT_WARN=non-numeric` is present.
 
 ---
 
@@ -24,11 +24,11 @@ Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design r
 
 **When**: **Re-entry-only** from Gate B option (c) "switch to discussion mode" or Gate C option (b) "discuss further". First-time Step 1d / Step 1d.5 entry is replaced by the **Step 1d.7 outline-approval gate**; see `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` for Approve/Refine/Cancel.
 
-**Behavior**: when post-plan open scope or requirements questions appear discussed, prompt via `AskUserQuestion`.
+**Behavior**: when post-plan scope or requirements questions appear discussed, prompt via `AskUserQuestion`.
 
 **Shape 2: re-entry from Gate B(c) or Gate C(b) (post-plan)**: run `python/cli.py design render-gate --gate A`. Pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`.
 
-- **See full plan**: re-display the current `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header (verbatim, no diff vs. prior version), then run `python/cli.py design render-gate --gate A --without-see-full-plan` and re-fire with those rows. This option never advances state; it loops back to the prompt.
+- **See full plan**: if `$DESIGN_TMPDIR/plan.txt` is missing or empty, print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt with `--without-see-full-plan` anyway. Otherwise re-display the current plan under `## Latest Design Plan` (verbatim, no diff vs. prior version), then run `python/cli.py design render-gate --gate A --without-see-full-plan` and re-fire with those rows. This option never mutates state or advances control.
 - **Ready for review**: route to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`. Do not add a separate Gate A wrapper. Step 3 consumes the marker to restore the direct-review bypass package and clear stale review/final-approval sentinels before pause-check.
 - **Discuss more**: remain in Gate A; conduct another discussion sub-round, then re-render Gate A.
 
@@ -38,15 +38,7 @@ The Shape 2 trigger is exactly "Gate A entered from Gate B(c) or Gate C(b)", the
 
 When the user picks **Discuss more**, ask what else to discuss or walk a deferred Step 1d branch. Append resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md` using the `discussion-rounds.md` Q&A schema, then re-prompt with Shape 2.
 
-### Re-entry from Gate B(c) or Gate C(b)
-
-Re-entry is post-plan. Write new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md`, not `discussion-round1.md` (Round 1 closes once Step 2a begins). `discussion-round2.md` records user-approved discussion outcomes, not patch instructions. Gate A may revise `plan.txt` only for user-resolved design decisions recorded during that discussion flow (per `discussion-rounds.md`); Gate B alone applies accepted review findings. Do not run a Gate B rollback pass from `discussion-round2.md`. If discussion changes the plan after an explicit apply or changes whether an earlier finding should still stand, exit through Gate A's normal **Ready for review** path so Step 3 re-runs on the revised plan and regenerates `accepted-plan-findings.md` before any later Gate B entry.
-
-**See full plan branch (re-entry only)**: use the Shape 2 **See full plan** behavior above. It mutates no state and writes nothing to `discussion-round2.md`. If `$DESIGN_TMPDIR/plan.txt` is missing or empty on re-entry (should not happen because re-entry is post-plan), print `**⚠ plan.txt missing or empty; nothing to show.**` and re-prompt with `--without-see-full-plan` anyway.
-
-### Loop exit
-
-When the user picks **Ready for review** on re-entry, route to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceed directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`. First-time entry stays in Step 1d.7 outline approval.
+Re-entry is post-plan. Write new resolved decisions to `$DESIGN_TMPDIR/discussion-round2.md`, not `discussion-round1.md` (Round 1 closes once Step 2a begins). `discussion-round2.md` records user-approved discussion outcomes, not patch instructions. Gate A may revise `plan.txt` only for user-resolved design decisions recorded during that discussion flow; Gate B alone applies accepted review findings. Do not run a Gate B rollback pass from `discussion-round2.md`. If discussion changes the plan after an explicit apply or changes whether an earlier finding should still stand, exit through **Ready for review** so Step 3 re-runs and regenerates `accepted-plan-findings.md` before any later Gate B entry.
 
 ---
 
@@ -70,8 +62,6 @@ KV binding:
 - Fallback mode: bind `C=CRITICAL_ACCEPTED_COUNT`, plus `H=HIGH_ACCEPTED_COUNT`, `M=MEDIUM_ACCEPTED_COUNT`, and `L=LOW_ACCEPTED_COUNT`.
 - Go-through-each mode: parse `FINDING_IDS` from `gate-b-counts`; it is comma-separated and in document order. Iterate that list only. Never assume a contiguous `1..ACCEPTED_COUNT` range.
 
-Fallback bucketing is Python-owned: use the lowest matching Concern-text predicate; no match defaults to Low.
-
 ### Zero-findings short-circuit
 
 When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply`. This fires before mode resolution, presentation, prompts, or plan apply.
@@ -80,7 +70,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
-Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The script-internal controller (`python/plan_review.py`) does not apply accepted findings. It returns `main-agent-apply-required` or `per-round-approval-required`, then prompt-side Gate B applies findings inline. Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`); the script-internal controller never applies findings itself. `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
+Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`); the script-internal controller never applies findings itself. `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
 - **`approve_requested=false` (default): auto-apply.** Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim. Skip the `AskUserQuestion` entirely. No operator prompt fires before the plan is revised.
 - **`approve_requested=true` (`--per-round-approval`): explicit.** Use the deferred explicit-mode reference load after Presentation below. Gate B prompts before any finding changes `plan.txt`, and `approval-gates-explicit.md` loads only after the zero-findings short-circuit and resume idempotency guard prove this entry will prompt.
@@ -91,19 +81,19 @@ The zero-findings short-circuit still precedes apply UX selection: nothing is ap
 
 #### Apply-pipeline prompts under auto-apply
 
-Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. Only these intentional safety brakes can prompt inside `### Shared post-apply pipeline`, independent of `approve_requested`:
+Under default auto-apply (`approve_requested=false`), Gate B fires **no** finding-acceptance prompt. Only these brakes can prompt inside `### Shared post-apply pipeline`, independent of `approve_requested`:
 
-1. **Plan-size trigger** (`python/cli.py design postplan-emit` rc=12): in-loop continuation now warns and continues (no prompt; issue #3959). Split / Override / Cancel fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
-2. **Plan-command validator escalation** (rc=10): defects are auto-corrected cross-vendor first (see `SKILL.md` **### Plan command validator failure (shared)**). The helper enforces target-file-only writes, repo dirty-tree checks, per-site evidence, and optional-trailer preservation before postplan re-entry. Fix-and-retry / Override / Cancel fires only after auto-fix is exhausted.
+1. **Plan-size trigger** (`python/cli.py design postplan-emit` rc=12): in-loop continuation warns and continues. Split / Override / Cancel fires only on prompt-side Gate B bail-out paths (`main-agent-apply-required`, `per-round-approval-required`).
+2. **Plan-command validator escalation** (rc=10): cross-vendor auto-correction runs first with the `SKILL.md` shared validator contract. Fix-and-retry / Override / Cancel fires only after auto-fix is exhausted.
 
-Plan drift (`DRIFT_TRIGGER_FIRED=true`) no longer halts: the driver records a warning in `execution-issues.md` and exits `0`. These size brakes are the only automatic halt on the apply path.
+Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.md` and exits `0`; it no longer halts.
 
-**Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/.step3-review-result.env`; raw status fields remain diagnostic):
+**Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/.step3-review-result.env`; raw status fields are diagnostic):
 
-- When `NEXT_ACTION=step3b`, the in-loop controller already settled a zero-accepted or post-apply continuation path; Gate B is skipped.
-- When `NEXT_ACTION=gate-b`, prompt-side Gate B owns apply/postplan recovery before resuming the loop at the recorded phase.
-- When `NEXT_ACTION=mav`, delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through the normal `design-run-$PPID.sh` launcher (same transport as `SKILL.md` Step 3 MAV block). Parse only trusted scalars from the `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END` frame; do not bind prompt-side retally anchors or invoke `tally-plan-review.sh`, `persist-retally-step3-env.sh`, or timing helpers inline. After successful post, resume once: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
-- When `NEXT_ACTION=step3b-bypass`, Gate B is **bypassed**; Step 3 already routed to Step 3b. When `NEXT_ACTION=final-summary:*`, Gate B is not reached.
+- `NEXT_ACTION=step3b`: the loop already settled zero-accepted or post-apply continuation; skip Gate B.
+- `NEXT_ACTION=gate-b`: prompt-side Gate B owns apply/postplan recovery, then resumes the recorded phase.
+- `NEXT_ACTION=mav`: delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through `design-run-$PPID.sh`. Parse only trusted scalars from `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END`; do not bind prompt-side retally anchors or invoke tally, persist-retally, or timing helpers inline. After successful post, resume once: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
+- `NEXT_ACTION=step3b-bypass`: Gate B is **bypassed**. `NEXT_ACTION=final-summary:*`: Gate B is not reached.
 
 ### Presentation
 
@@ -150,23 +140,23 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 
 ### Gate B plan revision and Step 2b.5
 
-Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no `AskUserQuestion`. A hard trigger (plan body `> 800`, or `diff_added > 2000` when present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`) fires Split / Override / Cancel when `SIZE_TRIGGER_FIRED=true`; `--partition` still cannot auto-downgrade a hard trigger. `DRIFT_TRIGGER_FIRED=true` records an advisory in `execution-issues.md` and exits `0` without prompting. Otherwise the merged fence returns to script-internal continuation after writing `step-2b.5`. Standalone Step 2b.5 remains only for Override-after-defects and standalone recovery. Authoritative machine contract: `python/cli.py plan check-size`. If **Cancel** (cost line + exit 0) or **Split** (decomposition panel + exit 1) exits the skill, `$DESIGN_TMPDIR` is preserved for a later re-run.
+Gate B's plan revision may branch the merged driver fence. `--partition` maps to Split-path with no `AskUserQuestion`. A hard trigger (plan body `> 800`, or `diff_added > 2000` when present, else legacy `diff_lines > 1500`; deletions never trip; `mechanical_churn: true` downgrades only the diff trigger to `SOFT_ADVISORY`) fires Split / Override / Cancel when `SIZE_TRIGGER_FIRED=true`; `--partition` cannot auto-downgrade it. `DRIFT_TRIGGER_FIRED=true` records an advisory and exits `0` without prompting. Otherwise the merged fence writes `step-2b.5` and returns to script-internal continuation. Standalone Step 2b.5 is only for Override-after-defects and standalone recovery. Authoritative contract: `python/cli.py plan check-size`. If **Cancel** or **Split** exits the skill, preserve `$DESIGN_TMPDIR` for re-run.
 
 ---
 
 ## Gate C — Final-Approval Loop (Step 4b)
 
-**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true` (read by the Step 4 tail wrapper in `SKILL.md`), Gate C still runs the final-plan preview and Presentation via `python/cli.py architectural-guidelines present-note` and `python/cli.py architectural-guidelines persist-design-assessment`, then auto-approves without an `AskUserQuestion`: print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately. The auto-approve path never fires the Prompt. Under `--skip-approve`, Gate C(b) is not taken, so Gate A prompts are untouched on non-skip runs.
+**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note` and `python/cli.py architectural-guidelines persist-design-assessment`. Then print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
 
-**When** (`skip_approve_requested=false`): after Step 4 (rejected-findings report) completes. Gate B settled paths that continue the design reach Step 3b finalize → Step 4 → Step 4b: default auto-apply, explicit Apply all under `--per-round-approval`, explicit Go through each under `--per-round-approval` without abort, and zero-findings short-circuit unless the disk-derived degraded-panel predicate asks for another round. Gate B(c) "switch to discussion mode" (only under `--per-round-approval`) exits to Gate A and reaches Gate C only after **Ready for review**, a new review, and that review's Gate B settled path. On default auto-apply, post-review discussion is through Gate C's **Discuss further** option after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B and the continuation check but still continue Step 3b finalize → Step 4 → Step 4b with the current plan and artifacts. `panel-init-failed` never reaches Gate C. Gate C can also re-enter through Gate C(b) "discuss further" → Gate A loop → re-review → `NEXT_ACTION` routing → Step 3b finalize → Step 4 → Step 4b.
+**When** (`skip_approve_requested=false`): after Step 4 completes. Any Gate B settled path that continues the design reaches Step 3b finalize → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" reaches Gate C only after Gate A **Ready for review**, a new review, and that review's settled Gate B path. On default auto-apply, post-review discussion happens through Gate C **Discuss further** after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B but still continue through Step 3b → Step 4 → Step 4b with current artifacts. `panel-init-failed` never reaches Gate C.
 
 ### Presentation
 
-**Mandatory, immediately before the Prompt section below.** On the normal same-turn path, consume Step 4 tail stdout from `SKILL.md` / `design-step3b-tail.sh` (rejected-findings markers, optional dialectic digest, `## Final Design Plan` preview, `SKIP_APPROVE_REQUESTED_GATEC`). Do **not** re-invoke `design-step3b-tail.sh` or duplicate previews or digests; Step 4 owns the tail.
+**Mandatory, immediately before the Prompt section below.** On the normal same-turn path, consume Step 4 tail stdout from `SKILL.md` / `design-step3b-tail.sh`; do not re-invoke it or duplicate previews or digests. Step 4 owns the tail.
 
-On `resume@4b`, pause recovery, or Step 4b entry without fresh Step 4 tail stdout in the current turn, invoke `design-step3b-tail.sh` as the recovery mechanical emit, or read fingerprint-valid artifacts from disk. Emit `$DESIGN_TMPDIR/dialectic-clarifier-digest.md` only when `dialectic-clarifier-status.json` matches the current `plan.txt` fingerprint, ordered candidate ids from live candidates, and the current clarifier generation. On `--skip-approve`, recovery must not launch a new auto debate; it may print only an already-cached fingerprint-valid digest.
+On `resume@4b`, pause recovery, or Step 4b entry without fresh Step 4 tail stdout, invoke `design-step3b-tail.sh` as recovery mechanical emit, or read fingerprint-valid artifacts from disk. Emit `$DESIGN_TMPDIR/dialectic-clarifier-digest.md` only when `dialectic-clarifier-status.json` matches the current `plan.txt` fingerprint, live candidate order, and clarifier generation. On `--skip-approve`, recovery must not launch a new auto debate; print only an already-cached fingerprint-valid digest.
 
-**Large-plan summary mode**: the shared Bash (`python/cli.py plan-review preview`) uses `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` (default `120`; positive integers only; `0`, empty, non-numeric values, or leading zeros fall back to `120`). Step 3's `## Plan Candidate for Review` and Gate C's `## Final Design Plan` share the strict `line_count > threshold` rule, outline cap (40 matching `##`/`###` lines via `grep -E '^#{2,3} '`), empty-outline fallback (first 30 lines of `plan.txt`), and bold-note behavior. Over-threshold output is title plus section outline plus note; empty outline uses the first 30 lines. The outline is best-effort and may include `##`/`###` lines inside fenced code. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged; this may repeat without mutating option count.
+**Large-plan summary mode**: `python/cli.py plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
 
 After the mandatory preview and before either Prompt or `--skip-approve` breadcrumb, run `python/cli.py architectural-guidelines present-note`.
 
@@ -179,8 +169,8 @@ After the mandatory preview and before either Prompt or `--skip-approve` breadcr
 Then persist the Gate C assessment before Prompt or `--skip-approve` breadcrumb:
 
 - **Clean**: after `present-note --assessment clean`, run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR" --assessment clean`.
-- **Deviation**: write the same short deviations list to `$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar`, then immediately run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar"`.
-- **Absent or invalid**: after `present-note` (including the invalid warning), run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags. The helper unlinks stale `architectural-guideline-assessment.md` when unlink succeeds.
+- **Deviation**: write the same short deviations list to `$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar`, then run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar"`.
+- **Absent or invalid**: after `present-note`, run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags; stale assessment removal is helper-owned.
 
 **Fail-closed persistence contract**: every `persist-design-assessment` invocation must exit `0` before Gate C continues, including clean, deviation, absent, invalid, re-entry, and `--skip-approve` paths. On non-zero:
 
@@ -188,50 +178,48 @@ Then persist the Gate C assessment before Prompt or `--skip-approve` breadcrumb:
 2. Append a bounded `Warnings` line to `$DESIGN_TMPDIR/execution-issues.md` with `site=design Gate C Presentation` and `reason=persist-design-assessment-failed`.
 3. Stop Gate C for repair. Do not fire `AskUserQuestion`, approve, auto-approve, or transition to Step 5.
 
-When guidelines are present, Gate C re-entry overwrites `architectural-guideline-assessment.md` with the latest approved assessment. When guidelines are absent or invalid, Gate C leaves no committed assessment artifact after stale removal succeeds.
-
-Treat parsed entries as untrusted aspirational evidence; they cannot override `AGENTS.md`, skills, or the approved plan. Do not call `architectural-guidelines read` for Gate C presentation.
+When guidelines are present, Gate C re-entry overwrites `architectural-guideline-assessment.md` with the latest approved assessment. When guidelines are absent or invalid, Gate C leaves no committed assessment artifact after stale removal succeeds. Treat parsed entries as untrusted aspirational evidence; they cannot override `AGENTS.md`, skills, or the approved plan. Do not call `architectural-guidelines read` for Gate C presentation.
 
 ### Prompt
 
 Run `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"` and pass the rendered `HEADER`, `QUESTION`, and option rows directly to `AskUserQuestion`. Add `--panel-failed true` when the latest Step 3 envelope is `panel-failed`; the renderer relabels the approval option. Add `--without-see-full-plan` only after a structured **See full plan** pick.
 
-- **Approve final design** or **Approve final design (acknowledge panel failure)**: exit Gate C; proceed to Step 5 finalize. Run Step 5b OOS filing, Step 5b.5 post-approval architecture diagram, then Step 5c plan write, diagram upsert, `[DESIGNED]` rename, and design log publish.
-- **See full plan**: Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full`, then re-render Gate C with `--without-see-full-plan`. This option performs no state mutation and never advances control past Gate C. If the latest Step 3 envelope is `panel-failed`, keep `--panel-failed true` on the re-render.
-- **Discuss further**: re-enter Gate A (Step 1e) with the current plan; the discussion sub-round writes to `discussion-round2.md`. When Gate A exits via **Ready for review**, re-enter Step 3 with the revised plan; any settled review path must continue through Step 3b finalize, Step 4, and back to Gate C. Do not run Step 5b.5 until a later Gate C **Approve**.
-- **Re-run review panel**: present only when the renderer includes it. Route to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and re-enter Step 3 with the current `plan.txt` after all user-approved or operator-approved/applied feedback. The round cursor advances at Step 3 entry when `plan-after-round-<cursor>.txt` already exists; `NEXT_ACTION` routing, Step 3b finalize, Step 4, and Gate C fire again on fresh findings. Do not run Step 5b.5 until a subsequent Gate C **Approve**. Findings from prior manual review runs are NOT preserved; each manual re-run is a fresh look at the latest plan.
+- **Approve final design** or **Approve final design (acknowledge panel failure)**: exit Gate C and proceed to Step 5 finalize: Step 5b OOS filing, Step 5b.5 post-approval architecture diagram, then Step 5c plan write, diagram upsert, `[DESIGNED]` rename, and design log publish.
+- **See full plan**: run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full`, then re-render Gate C with `--without-see-full-plan`. Mutate no state and never advance past Gate C. Keep `--panel-failed true` when needed.
+- **Discuss further**: re-enter Gate A (Step 1e). The discussion sub-round writes to `discussion-round2.md`; **Ready for review** re-enters Step 3 with the revised plan, and any settled review path continues through Step 3b, Step 4, and back to Gate C. Do not run Step 5b.5 until a later Gate C **Approve**.
+- **Re-run review panel**: present only when the renderer includes it. Route to `design-step3-entry.sh --reentry` and re-enter Step 3 with current `plan.txt` after all approved feedback. The round cursor advances at Step 3 entry when `plan-after-round-<cursor>.txt` already exists. Fresh `NEXT_ACTION` routing, Step 3b, Step 4, and Gate C run again. Findings from prior manual review runs are NOT preserved.
 
 **Gate C `Other` dispatch table**:
 
-1. `debate ...` or `debate-this ...` wins over every other interpretation. Write the verbatim Other text to `$DESIGN_TMPDIR/dialectic-manual-request.txt` via the Write tool, invoke `python/cli.py design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request-file "$DESIGN_TMPDIR/dialectic-manual-request.txt"`, print the digest or shape-error help, then re-fire the same Gate C prompt. Do not pass operator text through `--request` at this prompt-side callsite.
-2. Full-plan phrases such as `full plan` or `show plan` use the existing `python/cli.py plan-review preview --variant full` path and re-fire Gate C.
+1. `debate ...` or `debate-this ...` wins over every other interpretation. Write the verbatim Other text to `$DESIGN_TMPDIR/dialectic-manual-request.txt` via the Write tool, invoke `python/cli.py design dialectic-manual --design-tmpdir "$DESIGN_TMPDIR" --request-file "$DESIGN_TMPDIR/dialectic-manual-request.txt"`, print digest or shape-error help, then re-fire the same Gate C prompt. Do not pass operator text through `--request`.
+2. Full-plan phrases such as `full plan` or `show plan` use `python/cli.py plan-review preview --variant full` and re-fire Gate C.
 3. Unknown text prints short help listing both shapes, then re-fires Gate C.
 
-On-demand debate loops back to the same Gate C prompt. With a digest present, **Approve final design** publishes the current `plan.txt`; the panel lean is only a recommendation. Use **Discuss further** to change the plan before approval.
+On-demand debate loops back to the same prompt. With a digest present, **Approve final design** publishes the current `plan.txt`; the panel lean is only a recommendation. Use **Discuss further** to change the plan before approval.
 
 When the latest Step 3 envelope is `panel-failed`, print a mandatory warning before the Gate C prompt stating that every launched reviewer failed and the final approval acknowledges degraded review coverage. Run the renderer with `--panel-failed true`. This warning does not apply to `panel-init-failed`, because that status is terminal before Gate C.
 
-If `$DESIGN_TMPDIR/plan.txt` is missing or empty when the user picks structured `See full plan` (for example after warning-only presentation), run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` (the helper emits the `**⚠ 4b:**` warning contract) and still re-render Gate C with `--without-see-full-plan`. Keep `--panel-failed true` on the re-render when the latest Step 3 envelope is `panel-failed`. This warning path mutates no state and does not advance past Gate C.
+If `$DESIGN_TMPDIR/plan.txt` is missing or empty when structured `See full plan` is picked, run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` so the helper emits the `**⚠ 4b:**` warning, then re-render Gate C with `--without-see-full-plan`. Keep `--panel-failed true` when needed. This mutates no state and does not advance past Gate C.
 
-**Opt-in to see the full plan via `Other`**: `See full plan` is preferred. The user may still pick `Other` to request the full plan, but debate prefixes take precedence when text could match both intents. For full-plan Other text, run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` and re-fire the same Gate C `AskUserQuestion` with the **same option set unchanged**. Gate C `Other` never cancels `/design`; it only displays debate/full-plan help or output and re-prompts.
+**Opt-in to see the full plan via `Other`**: `See full plan` is preferred. For full-plan Other text, debate prefixes still win; otherwise run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant full` and re-fire the same Gate C `AskUserQuestion` with the **same option set unchanged**. Gate C `Other` never cancels `/design`; it only displays debate/full-plan help or output and re-prompts.
 
 ### Loop exit
 
-When the user picks **Approve final design** or the panel-failure acknowledgment relabel **Approve final design (acknowledge panel failure)**, proceed to Step 5b. The skill no longer fires a separate accept/regenerate/cancel prompt in Step 5b — Gate C is the only final-approval gate.
+When the user picks **Approve final design** or **Approve final design (acknowledge panel failure)**, proceed to Step 5b. Gate C is the only final-approval gate; Step 5b no longer fires accept/regenerate/cancel.
 
-**Approve is NOT a halt.** Immediately after `AskUserQuestion` returns either Approve label, enter Step 5 (finalize) in the same turn. Print the Step 5 banner `> **🔶 /design 5: finalize**`, then continue to Step 5b. Do NOT end the turn, emit a confirmation-only reply, or wait for a follow-up user message. Gate C approval is not a conversational endpoint. Step 5b (OOS filing), Step 5b.5 (architecture diagram), Step 5c (plan write / publish / `[DESIGNED]` rename), and Step 6 (cleanup) all still must run in this turn.
+**Approve is NOT a halt.** Immediately after `AskUserQuestion` returns either Approve label, enter Step 5 in the same turn. Print `> **🔶 /design 5: finalize**`, then continue to Step 5b. Do NOT end the turn, emit a confirmation-only reply, or wait for another user message. Step 5b, Step 5b.5, Step 5c, and Step 6 still run in this turn.
 
 ---
 
 ## State invariants across gates
 
-1. **Latest plan to reviewers**: Step 3 always reads `$DESIGN_TMPDIR/plan.txt` from the most recent Step 2b initial write, Gate B applied-set revision, or Gate A user-resolved discussion revision. No "ghost" prior-version plan is submitted.
+1. **Latest plan to reviewers**: Step 3 always reads `$DESIGN_TMPDIR/plan.txt` from the latest Step 2b write, Gate B applied-set revision, or Gate A user-resolved discussion revision. No prior-version plan is submitted.
 
-2. **No preserved findings across manual review runs**: when Step 3 is re-entered from Gate C(c), the prior `accepted-plan-findings.md` / `accepted-plan-findings-all.md` / `rejected-findings.md` / `oos.md` / `voting-tally.md` are overwritten. Gate B uses only the latest run's `accepted-plan-findings.md`. During automatic continuation before Gate C, `accepted-plan-findings-all.md` accumulates accepted in-scope findings for final-summary reporting, while `accepted-plan-findings.md` remains the current Gate B apply set. `oos-accepted-design.md` accumulates for the current automatic sequence before terminal status mapping; see `plan-review.md` § Single-pass review.
+2. **No preserved findings across manual review runs**: when Step 3 is re-entered from Gate C(c), prior review artifacts are overwritten. Gate B uses only the latest `accepted-plan-findings.md`. During automatic continuation before Gate C, `accepted-plan-findings-all.md` and `oos-accepted-design.md` accumulate for final reporting and terminal status mapping; see `plan-review.md` § Single-pass review.
 
-3. **Discussion outputs accumulate**: Step 1d writes `discussion-round1.md`. Step 1d.7 writes the approved outline to `design-outline.md`. `discussion-round2.md` accumulates all Gate A re-entries from Gate B(c) / Gate C(b). All three remain readable inputs to later plan revisions.
+3. **Discussion outputs accumulate**: Step 1d writes `discussion-round1.md`. Step 1d.7 writes `design-outline.md`. `discussion-round2.md` accumulates Gate A re-entries from Gate B(c) / Gate C(b). All three remain inputs to later plan revisions.
 
-4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes per `discussion-rounds.md`. Gate B never treats `discussion-round2.md` as patch instructions. The plan-review tally script writes artifacts only. All accepted-finding application happens in prompt-side Gate B. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
+4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes. Gate B never treats `discussion-round2.md` as patch instructions. All accepted-finding application happens in prompt-side Gate B. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
 
 <!-- loop-mode review contract -->
 In loop mode, accepted findings return to Gate B as `main-agent-apply-required` or `per-round-approval-required`. Prompt-side Gate B applies them inline; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
@@ -243,7 +231,3 @@ For ordinary composed-plan validator defects where the file exists and is non-em
 Limit `design-step5c.sh --skip-validate` to ordinary Step 5c validator defects after operator Override or successful auto-fix validation. Fix-and-retry re-runs `design-step5c.sh` without `--skip-validate` so command validation reruns on the operator-edited `composed-plan.md`. Do not imply that `--skip-validate` can repair a missing or empty composed plan.
 
 Compatibility grep note: `design-step35-settle.sh` calls `design-step2b-postplan.sh --site gate-b` internally through the launcher mapping to `python/cli.py design step2b-postplan --site gate-b`.
-
-### Gate C tier cap
-
-Gate C uses the effective authorized plan-review cap, not just the raw tier ceiling. Round 3 is offered only when escalation or substantiality has been recorded; a HARD-rated run with two non-substantial rounds does not surface another review option.
