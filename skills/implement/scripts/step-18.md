@@ -70,17 +70,21 @@ The orchestrator owns top-chat emission by parsing captured finalize stdout only
 There is no post-teardown Read fallback.
 If `EMIT_BODY=true` and `WFR_RC=0` but markers are absent or invalid, the orchestrator prints `**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**`.
 
-## Closing marks, restore, and teardown
+## Closing marks, safety nets, restore, and teardown
 
 Closing token and timing reports and `Step 18 — done` marks run before teardown because teardown removes `$IMPLEMENT_TMPDIR`, which is the ledger root (#3425).
-After the closing marks, the wrapper runs the Step 18 execution-issues safety net when a run id is available:
+Before the safety nets run, the wrapper resolves `RUN_ID` from `read_session_key LARCH_RUN_ID`, matching production `session-env.sh` and the closeout path.
+After the closing marks, the wrapper runs both Step 18 safety nets when `RUN_ID` is available:
 
 ```bash
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net --log-root "$IMPLEMENT_TMPDIR/larch-logs" --run-id "$RUN_ID" --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md"
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript --source-file "$LARCH_CLAUDE_SOURCE_FILE" --log-root "$IMPLEMENT_TMPDIR/larch-logs" --skill implement --run-id "$RUN_ID" --defer-commit true --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" --warning-step-label "18"
 ```
 
-The safety net is best effort and append-only.
-It never truncates `execution-issues.md`; Step 7a remains the primary pre-ship truncating checkpoint.
+Both safety nets are best effort and append-only.
+The transcript capture uses `--defer-commit true`; publishing paths decide whether staged logs are committed.
+Step 7a remains the primary green-path transcript and execution-issues capture point.
+Step 18 covers bail and stall paths that reach finalization before Step 7a.
 Then the copied `_restore_finalize=false` gate compares `ship-pr-state.sh` and `finalize-state.sh`.
 The compare reads use guarded `session read-key` defaults, so malformed or unreadable state files do not abort teardown under `set -e`.
 It invokes `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" session restore-finalize-state --implement-tmpdir "$IMPLEMENT_TMPDIR"` when `finalize-state.sh` is missing, ship stall or bail state is truthy, or `STALL_STEP` differs.
@@ -101,7 +105,7 @@ Stall KVs, `STALL_RECOVERY_REQUIRED`, Step 18b KVs, marker lines, and teardown t
 
 ## Harness
 
-`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues safety net, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
+`test-step-18.sh` covers gate predicates, Step 18b failure tolerance, marker non-abort behavior, marker emission, sentinel ownership, `_restore_finalize`, the execution-issues and transcript safety nets, exact teardown argv, ordering, post-terminal continuation, stream output, and no Read fallback.
 Shell-wrapper cases previously housed in `test-write-final-report.sh` moved to this harness.
 
 ## Edit in sync

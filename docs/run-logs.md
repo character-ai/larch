@@ -61,6 +61,7 @@ larch-logs/
   review/
     <RUN_ID>/
       manifest.json
+      session-transcript.jsonl
       review-context.md
       review-panel-manifest.ndjson
       review-findings.ndjson
@@ -474,13 +475,15 @@ Log of noteworthy events during the run, grouped by category: `Pre-existing Code
 
 ### session-transcript.jsonl
 
-**Mode**: replace. **Written**: Step 7a tail (pre-ship log flush) for runs that reach Step 7a. Runs that bail out before Step 7a do not write this batch. The transcript is truncated at the pre-ship boundary — Steps 8+ (PR creation, CI, merge, cleanup; version bump omitted in Phase 1) are not included. On each CI retry, the Python driver refreshes through `run_logs.flush_logs_pre`, so the final merged PR carries the most up-to-date transcript available before merge.
+**Mode**: replace. **Written**: `/implement` Step 7a remains the primary green-path capture point, with Step 18 as a best-effort finalization safety net for bail and stall paths that reach teardown first. `/design` captures once inside the shared `design log-publish` entry point, so Step 5c, clarify, and pause-save publish paths use the same hook. Standalone `/review` captures before cleanup and commits staged batches so the transcript survives tmpdir removal. Historical logs are not backfilled.
 
-A filtered, machine-readable rendering of the Claude Code session, produced by `python3 python/cli.py run-log render-session-transcript` from the raw session JSONL. **Schema v3 (policy: prose-errors-only).** The first line is a `{"v": 3, "source_basename": ..., "turns": N, "policy": "prose-errors-only"}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, and errored/warned `tool_result` entries (full body). `tool_call` blocks and non-error `tool_result` blocks are **omitted entirely** (v3 policy). Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit.
+A filtered, machine-readable rendering of the Claude Code session, produced by `python3 python/cli.py run-log render-session-transcript` from the raw session JSONL. **Schema v3.** The first line is a `{"v": 3, "source_basename": ..., "turns": N, ...}` header; subsequent lines are per-turn objects with a `blocks` array. Blocks carry user-typed slash commands and text, assistant prose, errored/warned `tool_result` entries, and sanitized reference `Read` stubs with normalized `file_path` values only. File contents, other `tool_call` blocks, and non-error `tool_result` blocks are omitted. Assistant `thinking` blocks are kept only when at least one `tool_use` in the same turn produced an errored result. Harness-injected SKILL.md expansions, attachments, and housekeeping events are dropped. Redacted for tmpdir paths and secrets before commit.
 
-**Accepted capability loss (v3)**: tool-sequence reconstruction for clean runs (e.g., auditing how many times a file was re-read) is no longer possible from the committed transcript. Incident forensics of that shape must use live-session artifacts instead.
+**Accepted capability loss (v3)**: full tool-sequence reconstruction for clean runs is not possible from the committed transcript. The retained reference `Read` stubs support aggregate reference-heatmap measurements, not detailed incident forensics.
 
-The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output (the run continues; nothing is committed). For runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `python/render_session_transcript.md` for the complete schema.
+The `session-transcript` capture records `SESSION_TRANSCRIPT_STATUS` in the execution-issues `Warnings` section for every capture outcome, including refresh/deferred-commit `captured` outcomes and `render-failed` / `render-empty` when the renderer cannot produce a usable output. The run continues when capture cannot produce a transcript. For `/implement` runs that reach Step 7a, `session-transcript.jsonl` is part of the required-file completeness manifest; pre-Step-7a partial directories remain excluded by the verifier's step reachability rules. The recovery warning records only the discovered transcript basename, not the full operator-local path. See `python/render_session_transcript.md` for the complete schema.
+
+`python3 python/cli.py token measure-references-heatmap` now starts with a `transcript_coverage` section that reports transcript-bearing runs, total runs, missing transcript runs, and the coverage ratio per skill before the per-reference heatmap rows. A skill with transcripts and zero reference reads is reported as measured zero data, not as missing data.
 
 ### round-<N>/
 

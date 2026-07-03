@@ -555,11 +555,6 @@ def _run_log_publish_after_capture(
     kvs: list[tuple[str, str]],
     result_env: Path,
 ) -> int | None:
-    if not _capture_design_transcript(ctx=ctx):
-        _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
-        _emit_rows(kvs)
-        _ = _write_result_env(path=result_env, rows=kvs)
-        return 5
     publish = proc.run(
         [
             sys.executable,
