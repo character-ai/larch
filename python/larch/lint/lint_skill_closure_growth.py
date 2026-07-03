@@ -30,6 +30,11 @@ CONDITIONAL_METRIC_FIELDS = (
     "conditional_estimated_tokens",
     "conditional_content_estimated_tokens",
 )
+CONDITIONAL_TO_CLOSURE_METRIC = {
+    "conditional_lines": "closure_lines",
+    "conditional_estimated_tokens": "closure_estimated_tokens",
+    "conditional_content_estimated_tokens": "closure_content_estimated_tokens",
+}
 BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files", *CONDITIONAL_METRIC_FIELDS, "conditional_files"})
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
 SUPPRESSED_IMPLEMENT_SECTIONS = frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"})
@@ -72,6 +77,10 @@ SESSION_START_REGISTRY_RE = re.compile(r"\bRead\b.*?step-name-registry\.tsv", re
 SESSION_SETUP_OUTPUT_RE = re.compile(r"\buse\b.*?session-setup-output\.md.*?\bfor\b", re.IGNORECASE)
 EXTERNAL_REVIEWERS_PROCEDURE_RE = re.compile(r"\bprocedure\s+in\b.*?external-reviewers\.md", re.IGNORECASE)
 IMPLEMENT_FINAL_SUMMARY_RE = re.compile(r"\bfollow\b.*?final-summary-emit\.md", re.IGNORECASE)
+BACKGROUND_REFERENCE_RE = re.compile(
+    r"\bsee\b(?P<body>.*?\.md.*?\bonly\s+for\s+background\b)",
+    re.IGNORECASE,
+)
 
 
 class BaselineRowDict(TypedDict):
@@ -157,6 +166,7 @@ class DirectiveMatch:
     index: int
     clause: str
     supported: bool
+    force_conditional: bool = False
 
 
 @dataclass(frozen=True)
@@ -298,6 +308,18 @@ def _sentence_clause(line: str, match: re.Match[str]) -> str:
     return line[sentence_start : sentence_end + 1]
 
 
+def _background_reference_matches(line: str) -> list[DirectiveMatch]:
+    return [
+        DirectiveMatch(
+            index=match.start(),
+            clause=_sentence_clause(line, match),
+            supported=True,
+            force_conditional=True,
+        )
+        for match in BACKGROUND_REFERENCE_RE.finditer(line)
+    ]
+
+
 def _narrow_directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
     patterns: list[re.Pattern[str]]
     if skill in {"design", "review"}:
@@ -327,6 +349,7 @@ def _directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
         for match in MANDATORY_DIRECTIVE_RE.finditer(line)
     ]
     matches.extend(_narrow_directive_matches(line, skill))
+    matches.extend(_background_reference_matches(line))
     for match in READ_COMPLETELY_RE.finditer(line):
         if any(existing.index <= match.start() for existing in matches):
             continue
@@ -447,7 +470,11 @@ def _paths_for_directive_match(
     skill_path: Path,
     context: DirectiveContext,
 ) -> tuple[bool, list[str]]:
-    is_conditional = context.conditional_section or _line_is_conditional(context.line, context.match.index)
+    is_conditional = (
+        context.conditional_section
+        or context.match.force_conditional
+        or _line_is_conditional(context.line, context.match.index)
+    )
     paths = _extract_repo_paths(root, skill_path, context.match.clause, strict=not is_conditional)
     if not paths and SESSION_START_REGISTRY_RE.search(context.match.clause):
         registry_rel = _session_start_registry_path(root, skill_path.parent.name)
@@ -704,6 +731,16 @@ def write_baseline(path: Path, results: Iterable[SkillClosureResult]) -> None:
     _ = path.write_text(_canonical_json(results), encoding="utf-8")
 
 
+def _conditional_growth_allowed_by_tier_move(result: SkillClosureResult, row: BaselineRow, metric: str) -> bool:
+    moved_to_conditional = (set(row.files) - set(row.conditional_files)) & set(result.conditional_files)
+    if not moved_to_conditional:
+        return False
+    eager_metric = CONDITIONAL_TO_CLOSURE_METRIC[metric]
+    live_combined = getattr(result, eager_metric) + getattr(result, metric)
+    baseline_combined = getattr(row, eager_metric) + getattr(row, metric)
+    return live_combined <= baseline_combined
+
+
 def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRow]) -> list[str]:
     baseline_by_skill = {row.skill: row for row in baseline}
     violations: list[str] = []
@@ -719,7 +756,15 @@ def _growth_violations(live: list[SkillClosureResult], baseline: list[BaselineRo
                 live_value = getattr(result, metric)
                 baseline_value = getattr(row, metric)
                 if live_value > baseline_value:
+                    if _conditional_growth_allowed_by_tier_move(result, row, metric):
+                        continue
                     violations.append(f"{result.skill}: {metric} {live_value} > baseline {baseline_value}")
+        baseline_tracked_files = set(row.files) | set(row.conditional_files)
+        live_tracked_files = set(result.files) | set(result.conditional_files)
+        violations.extend(
+            f"{result.skill}: baseline-tracked file dropped {rel}"
+            for rel in sorted(baseline_tracked_files - live_tracked_files)
+        )
         if result.skill in FILE_RATCHET_TARGETS:
             baseline_files = set(row.files)
             violations.extend(

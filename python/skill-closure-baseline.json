@@ -3,16 +3,17 @@
     "closure_content_estimated_tokens": 52930,
     "closure_estimated_tokens": 53095,
     "closure_lines": 1846,
-    "conditional_content_estimated_tokens": 10349,
-    "conditional_estimated_tokens": 10396,
+    "conditional_content_estimated_tokens": 12918,
+    "conditional_estimated_tokens": 12974,
     "conditional_files": [
+      "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
       "skills/design/references/settle-rc-dispatch.md",
       "skills/design/references/step2b5-rc-handling.md",
       "skills/design/references/decompose-panel.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 494,
+    "conditional_lines": 584,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
