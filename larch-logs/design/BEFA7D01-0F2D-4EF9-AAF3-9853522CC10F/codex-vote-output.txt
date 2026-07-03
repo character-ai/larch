@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- order-only coverage is not necessary to fix the flush regression
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dropping the fallback is a cleanup/scope cut, not required for this issue
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- speculative future refactor risk, not a current necessary defect
