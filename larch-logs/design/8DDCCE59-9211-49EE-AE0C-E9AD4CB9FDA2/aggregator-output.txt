@@ -1,0 +1,87 @@
+### FINDING_1: Register `difficulty resolve-panel`
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The CLI dispatch table is missing the `difficulty resolve-panel` entry, so shell wrappers and `/review` cannot invoke the resolver at runtime.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `### UPDATED: python/larch/cli.py` registering `("difficulty", "resolve-panel")` to `resolve_panel_main` (or the planned entrypoint) in both dispatch maps, matching G-CLI-1.
+  - From Cursor-Pragmatic: Add `### UPDATED: python/larch/cli.py` and register `("difficulty", "resolve-panel")` to `resolve_panel_main` per G-CLI-1, with a focused registry test if the repo pattern requires it.
+
+### FINDING_2: Persist implement difficulty override through run-flags
+- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The operator difficulty override is planned to ride through `persist-run-flags`, but the current run-flag key set excludes it. As a result, bootstrap can write the override and Step 5 still cannot recover it from `run-flags.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Extend `persist_run_flags_main` with optional `--difficulty`, add `DIFFICULTY_OVERRIDE` to `RUN_FLAG_KEYS`, thread the flag through `bootstrap._persist_run_flags` / `invoke_main`, and read it in `step-5-review.sh` / `step-5-resume.sh`.
+  - From Codex-Innovation: Extend session persist-run-flags and RUN_FLAG_KEYS for DIFFICULTY_OVERRIDE, pass it from bootstrap, and have Step 5 read that exact key
+  - From Cursor-Pragmatic: Extend `RUN_FLAG_KEYS` and `persist_run_flags_main` with optional `--difficulty-override` (empty or `TRIVIAL|MODERATE|HARD`); thread it from `bootstrap.invoke` / `_persist_run_flags`; document the same contract in `bootstrap.py` and `skills/implement/scripts/step-0-bootstrap.sh`. Alternatively drop the run-flags read path and have Step 5 read override state only from `difficulty-rating.json`, but pick one source and wire it end-to-end.
+  - From Cursor-Requirements: Add `DIFFICULTY_OVERRIDE` to `RUN_FLAG_KEYS`, extend `persist_run_flags_main` and `bootstrap invoke/BootstrapOptions`, and thread the value through `step-0-bootstrap.sh` like other run flags.
+
+### FINDING_3: Preserve `difficulty_override` on run-params refresh
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: `write-run-params` rebuilds `run-params.json` from the current booleans only, so a stored `difficulty_override` is lost on init or resume refresh when no fresh tier flag is provided.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: When `--difficulty` is omitted, read the existing output file and carry forward `difficulty_override`; only replace it when a new valid tier is passed. Mirror resume semantics in `design_router._merge_router_flags` or stop full-replacing on resume.
+  - From Cursor-Pragmatic: When `--difficulty` is absent, read existing run-params.json and carry forward difficulty_override; when present, replace it. Extend `_merge_router_flags` (or equivalent) so resume paths preserve the key unless a new valid `--difficulty` is supplied.
+  - From Cursor-Requirements: When `--difficulty` is absent, read the existing file and carry `difficulty_override` forward; only overwrite it when a new valid tier is passed. Mirror the resume rule already stated for `route_main`.
+
+### FINDING_4: Thread `--difficulty` into `init-runparams`
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The Step 0 init path cannot carry a parsed difficulty override into `session write-run-params`, so `init-runparams` never reaches `run-params.json` even after argv parsing lands.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add `--difficulty` to `init_runparams_main`, forward it into `session write-run-params`, and extend `_step0_init_driver_cmd` to pass the parsed Step 0-pre value.
+  - From Cursor-Requirements: Extend `init_runparams_main` and `_step0_init_driver_cmd` with the same `--difficulty` contract as `route_main`, and pass it through to `session write-run-params`.
+
+### FINDING_5: Make dynamic Codex rows tier-aware
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Dynamic Codex row assembly still hardcodes the default model role, so tier-aware reviewer-role selection is not applied consistently in either review panel.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Thread `codex_review_model_role(tier)` (or the dispatch `--tier`) into dynamic row construction the same as static rows; lock with the planned panel-manifest tests.
+  - From Cursor-Innovation: Apply the same tier→`review`/`default` mapping used for static design slots when `--tier` is HARD vs TRIVIAL/MODERATE.
+
+### FINDING_6: Resolve bootstrap override precedence
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Bootstrap records the operator override in more than one place without a clear precedence rule, so refresh and merge paths can diverge on which difficulty setting is authoritative.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pick one authoritative store (`difficulty-rating.json` after bootstrap) and drop the redundant run-flags path, or document and test strict precedence when both differ.
+
+### FINDING_7: Preserve `override_source` during record refresh
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Log-flush record refresh drops `override_source` from the existing difficulty record, so later writes can erase the operator origin even when the rest of the difficulty state is preserved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pass through `override_source` (and post-escalation `applied_tier`) from the existing record, or route refresh through the shared merge helper planned for `write-record`.
+
+### FINDING_8: Preserve TierResolution fields in `difficulty-rating.json`
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: The `difficulty-rating.json` write contract does not preserve the TierResolution sidecar and resume fields, so record rewrites can lose panel tier, caps, audit state, or escalated-round state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Extend `DifficultyRecord` (or a documented wrapper schema) with the TierResolution/resume fields, and make `write-record` merge-on-existing-output preserve them unless explicitly replaced; cover with `test_difficulty.py`.
+  - From Cursor-Requirements: Extend `DifficultyRecord` (or documented top-level JSON keys) with `panel_tier`, `round_cap`, `codex_model_role`, `audit_evaluated`, and `escalated_round`; teach `write-record` merge and `append_escalation` to read/write them.
+  - From Codex-Requirements: Extend the record schema or merge path to preserve every TierResolution field, using one consistent JSON key style, and cover refresh-after-resolution before resume
+
+### FINDING_9: Keep `config.py` leaf-only
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: `config.py` is planned to import calibration/difficulty, which would create a circular dependency through `core/proc/config` and make tier literals unavailable during import.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Keep config.py leaf-only; do not import calibration from config. Either move tier literals into config and import them from difficulty, or leave tier tokens in difficulty and keep only non-tier tunables in config
+
+### FINDING_10: Use the authorized cap for design Step 3
+- **Reviewer(s)**: Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: Design Step 3 still appears to use the raw tier cap on re-entry and continuation, so a HARD run can schedule an extra round without the authorized-cap gate.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Use the effective authorized cap helper for every design Step 3 entry and continuation guard, not only Gate C rendering; raw HARD cap should permit round 3 only after recorded substantiality/escalation authorization
+  - From Codex-Requirements: Use the effective authorized cap in plan_review_continuation and the Step 3 pre-launch cap guard, not only Gate C rendering; add a focused HARD one-high no-round-3 case
+
+### FINDING_11: Make escalated-round state round-specific
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The persisted escalated-round flag is not tied to the round it was earned in, so resume can treat later rounds as if the earlier escalation were still active.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Store escalation target_round values or derive escalated_round from the current round and escalation entries, then test resume into the escalated round and the following non-escalated round

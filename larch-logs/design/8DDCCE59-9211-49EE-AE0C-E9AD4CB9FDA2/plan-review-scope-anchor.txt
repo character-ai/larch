@@ -1,0 +1,63 @@
+**Skills:** /implement Step 5, /review, /design plan review.
+
+**Initiative:** difficulty-tiers, child 2 of 3. Consumes the rating from the rating-capture issue. Procedure is unchanged at every tier: findings aggregator, voting panel (#5887), pruning (#5886), and fix coder (#5888) run identically; only reviewer composition, reviewer model, and the round ceiling vary with the applied tier.
+
+**Tier ladder (/implement Step 5 and /review; per static archetype and the at-most-one dynamic archetype of #5886):**
+
+- **TRIVIAL**: one Codex/gpt-5.4-mini reviewer per archetype (3 static plus at most 1 dynamic = 3-4 reviewers). Ceiling 2. Codex unavailable: flip the whole panel to Cursor/composer-2.5 singles; a singles panel has no pair redundancy, so the #5886 drop-the-half rule does not apply here. Both vendors down: #5889 policy.
+- **MODERATE**: Codex/gpt-5.4-mini plus Cursor/composer-2.5 pair per archetype. Ceiling 2. A missing vendor drops that half (#5886 rule).
+- **HARD**: Codex/gpt-5.5 plus Cursor/composer-2.5 pair per archetype. Ceiling 3. Same drop-the-half rule.
+
+**/design plan review:** same 2/2/3 ceilings, but every design tier keeps Codex plus Cursor pairs across the 4 static archetypes: the backtest measured 58% of accepted plan findings as Cursor-only, so shedding a vendor half is not yet safe there. v1 collapses design TRIVIAL and MODERATE to the same panel (gpt-5.4-mini plus Composer pairs, ceiling 2); HARD bumps the Codex half to gpt-5.5 with ceiling 3. The design-side escalation trigger (accepted-count per round) is settled during /design of this issue. Plan voters stay per #5887 (unchanged).
+
+**Escalation:** when a round at TRIVIAL or MODERATE trips the existing substantiality gate (`_step5_post_round_gates`: at least 2 high-severity accepted, at least 100 structural LOC of fixes, at least 8 findings fixed, or bulk-skip), the next round runs the full panel of the next tier up. No pruning on an escalated round; escalation precedes pruning. The ceiling follows the tier in effect, so a run escalated to HARD at round 2 may reach round 3. Every escalation is logged with its trigger.
+
+**Random audits:** 1 in 30 runs rated below HARD runs the HARD panel instead, logged `audit_upgrade=true`. This is the only unbiased ongoing estimate of what the cheap panels miss; do not remove it when early confusion matrices look clean.
+
+**Operator override:** `--difficulty=<tier>` on /implement, /review, and /design beats rating and floors and is logged as `override_source=operator`.
+
+**Revisions to #5886 (DONE), explicit:**
+
+1. The blanket archetype Codex bump to gpt-5.5 becomes HARD-only; TRIVIAL and MODERATE archetype halves run gpt-5.4-mini (per-tier `model_role`).
+2. The uniform round cap 2 becomes per-tier ceilings 2/2/3. This reintroduces a round-3 branch for HARD only: the prune window generalizes (round 3 prunes on rounds 1-2 data) and must preserve the #5733 `-output` label-join fix.
+3. TRIVIAL introduces a singles panel with the flip-to-other-vendor availability rule instead of drop-the-half.
+
+**Backtest evidence for the shape (100 /implement panel runs plus 100 /design runs; full numbers in the umbrella issue):** 92% of runs already complete in one round via the substantiality gate, so ceilings only bite heavy runs; round 3 accepted 21 findings across the 3 heavy runs that reached it; Cursor-only catches are 22% of accepted findings overall but concentrated in large diffs (2 findings across 33 small runs).
+
+**Acceptance:**
+
+- Panels resolve per the tier tables across all three skills; ceilings 2/2/3 enforced; HARD round 3 reachable only via the substantiality gate.
+- Escalated rounds run the next tier's full panel; escalation precedes pruning.
+- 1:30 audit upgrades occur and are flagged; `--difficulty` override wins and is logged.
+- TRIVIAL with Codex down flips to Cursor singles; both-down follows #5889.
+- No regression of the #5733 join fix; a regression test asserts the round-1 prune ledger populates non-zero before round-2 pruning relies on it.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Consume child-1's difficulty `applied_tier` to compose **tiered reviewer panels** (TRIVIAL/MODERATE/HARD) with per-tier round ceilings **2/2/3** across /implement Step 5, /review, and /design plan review.
+- Add tier-aware **escalation** (reuse `_step5_post_round_gates` for /implement+/review; ≥2 high-sev accepted for /design), **1:30 random HARD audits**, and a `--difficulty` operator override — all logged into the existing `difficulty-rating.json` fields.
+- Keep the procedure identical at every tier: only reviewer composition, reviewer model, and ceiling vary.
+
+### Non-goals
+- No #5992 difficulty-calibration analyzer work.
+- No change to voting (#5887), aggregation, fix-coder (#5888), or the rating-capture rubric/schema (#5990).
+- No /design vendor shedding (design always keeps Codex+Cursor pairs).
+
+### Approach sketch
+- Add a shared **tier→panel resolver** (frozen dataclass) in `calibration/difficulty.py`, plus `resolve_applied_tier(rating, floors, override, audit)`; keep tier ceilings, per-tier model roles, and the audit ratio (30) as `config.py` Finals.
+- Wire the resolver into `review_dispatch_panel.py` (/implement Step 5 + /review) and `plan_review_panel.py` (/design): pick model_role (gpt-5.4-mini vs gpt-5.5), singles-vs-pairs + flip-on-vendor-down (TRIVIAL only), and replace uniform round-cap 2 with the tier ceiling.
+- Escalation in `review_and_fix.py` / `round_runner.py` (existing gate) and `plan_review_loop.py` (new ≥2-high-sev design trigger): escalated round runs next tier's full panel, precedes pruning, no prune that round.
+- Round-3 branch (HARD only): generalize the prune window (round 3 prunes on rounds 1-2 data) while preserving the #5733 `-output` label-join fix; add its regression test.
+- Add `--difficulty` argv to /implement, /review, /design; inject an RNG seam for the audit so it is testable.
+
+### Surfaces in scope
+- `python/larch/calibration/difficulty.py`, `python/larch/core/config.py`
+- `python/larch/review/`: `review_dispatch_panel.py`, `plan_review_panel.py`, `review_and_fix.py`, `round_runner.py`, `plan_review.py` / `plan_review_loop.py`, `review_prune.py` / `review_pipeline_shared.py`
+- `--difficulty` argv surfaces in /implement, /review, /design (skills + python argv parsers)
+- Tests: `test_difficulty.py`, `test_review_and_fix.py`, panel tests, + #5733 prune-ledger regression test
+
+### Open questions
+- None. (Escalation trigger, no-rating fallback, and audit-vs-override precedence resolved in Round 1.)
