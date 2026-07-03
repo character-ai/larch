@@ -3,14 +3,14 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 02:18:17
-- **Cost**: 💰 TOTAL ~$41.49 — Claude $0.18, Codex-5.5 $23.69, Codex-mini $1.72, Cursor $14.24, Claude (subprocess) $1.66  |  Tokens: 71211k
+- **Cost**: 💰 TOTAL ~$41.49 — Claude $0.18, Codex-5.5 $23.69, Codex-mini $1.72, Cursor $14.24, Claude (subprocess) $1.66  |  Tokens: 71244k
 - **Issue**: #6115 — https://github.com/character-ai/larch/issues/6115
 - **PR**: #6151 — https://github.com/character-ai/larch/pull/6151
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +946/-95, larch-logs +1279/-0
+- **Lines (PR diff)**: code +959/-95, larch-logs +1283/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -128,6 +128,6 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 Consulted ARCHITECTURAL_GUIDELINES.md; one narrow deviation identified.
 
-- **G-Cfg-1** (define every env-var name once in config.py as a `Final`): `config.ENV_MODE: Final = "MODE"` (python/larch/core/config.py:511) is the existing canonical definition for the `MODE` env-var name, previously consumed via `ctx.str_value(key=config.ENV_MODE, ...)` in `design_step5c.py`. This diff removes that call site and introduces `_resolve_summary_mode` (python/larch/design/design_summary.py), which re-hardcodes the literal `"MODE"` (and `"mode"`) instead of importing `config.ENV_MODE`. `config.ENV_MODE` is now unused repository-wide. Minor and mechanically fixable (one import plus one substitution); does not affect correctness and is not gating.
+- **G-Cfg-1** (define every env-var name once in config.py as a `Final`): `config.ENV_MODE: Final = "MODE"` (python/larch/core/config.py:511) is the existing canonical definition for the `MODE` env-var name, previously consumed via `ctx.str_value(key=config.ENV_MODE, ...)` in `design_step5c.py`. This diff removes that call site and introduces `resolve_summary_mode` (python/larch/design/design_summary.py; renamed from `_resolve_summary_mode` during CI-fix once pyright flagged the private-usage cross-module import), which re-hardcodes the literal `"MODE"` (and `"mode"`) instead of importing `config.ENV_MODE`. `config.ENV_MODE` is now unused repository-wide. Minor and mechanically fixable (one import plus one substitution); does not affect correctness and is not gating.
 
 All other entries checked clean against this diff: `FinalSummaryRenderRequest` is a frozen dataclass (G-Py-1); the non-gating catch-and-return-bool render path matches the plan's explicit non-gating design intent (G-Py-4); external calls remain isolated behind patchable seams exercised by the new tests (G-Py-5); the new `source-env.sh` export-prefix parser mirrors the existing precedent in `design_pause.py` and `session_env.py` rather than bypassing a shared `larch.io` helper that doesn't yet support that grammar (G-IO-1).
