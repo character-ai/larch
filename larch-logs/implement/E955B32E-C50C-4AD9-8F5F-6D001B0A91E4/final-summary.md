@@ -3,7 +3,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 00:13:23
-- **Cost**: 💰 TOTAL ~$3.63 — Claude $0.52, Codex-5.5 $1.49, Codex-mini $0.73, Cursor $0.67, Claude (subprocess) $0.22  |  Tokens: 6601k
+- **Cost**: 💰 TOTAL ~$6.05 — Claude $2.94, Codex-5.5 $1.49, Codex-mini $0.73, Cursor $0.67, Claude (subprocess) $0.22  |  Tokens: 11033k
 - **Issue**: #6114 — https://github.com/character-ai/larch/issues/6114
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): Test-shipping helpers could be simplified without changing behavior. Concern: The test scaffolding is a bit repetitive, but the duplicated bootstrap, lack of a fail-fast invalidate monkeypatch, and absence of an explicit `_pin_and_load_guidelines_note(..., repo_root=repo_root)` call are maintainability-only issues.
 - **Round 1 OOS_3** (latent): Related behavioral coverage is still deferred. Concern: Coverage at other call sites remains deferred, so the new ship-level behavioral test does not yet protect the analogous `ci_monitor` / `ci_agentic_fix` rebase paths or the phase-14 rebase path.
 - **Round 1 OOS_4** (nit): Missing durable `DIFF_FINGERPRINT` assertion. Concern: The new test still omits a durable `DIFF_FINGERPRINT` assertion, leaving a stale fingerprint unguarded even if head pinning passes.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
