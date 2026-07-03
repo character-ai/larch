@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:48:12
-- **Cost**: 💰 TOTAL ~$39.97 — Claude $1.46, Codex-5.5 $28.85, Codex-mini $2.05, Cursor $7.00, Claude (subprocess) $0.61  |  Tokens: 62900k
+- **Cost**: 💰 TOTAL ~$46.38 — Claude $7.87, Codex-5.5 $28.85, Codex-mini $2.05, Cursor $7.00, Claude (subprocess) $0.61  |  Tokens: 73359k
 - **Issue**: #6090 — https://github.com/character-ai/larch/issues/6090
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -90,3 +90,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (nit): Unit tests still miss the missing-pointer launcher exits. Concern: There are no focused subprocess tests for the missing-pointer and missing-`larch-run.sh` exit paths, so those regressions would still be runtime-only.
 - **Round 1 OOS_5** (nit): Old launcher-path prose is still present as documentation drift. Concern: The launcher-path prose in `skills/implement/SKILL.md` still mentions `$IMPLEMENT_TMPDIR/larch-run.sh`, which is documentation drift only.
 - **Round 1 OOS_6** (latent): Step 2 coder substitution remains an orchestrator-responsibility gap. Concern: The Step 2 coder fence is still a residual orchestrator contract. It fails if `coder` is absent in a fresh shell, but the plan left that substitution responsibility outside the launcher work.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.

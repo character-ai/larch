@@ -10,6 +10,8 @@
 === larch-quiet-read-session-env-key.sh-54403.log ===
 === larch-quiet-read-session-env-key.sh-54405.log ===
 === larch-quiet-sessionstart-health.sh-9104.log ===
+=== larch-quiet-ship.py-20421.log ===
+ship.py: pr-prep: postbump/Flush+Push
 === larch-quiet-write-implement-current-env.sh-21896.log ===
 PASS: test-implement-fence-shape.sh launcher sandbox
 === larch-quiet-write-implement-current-env.sh-6564.log ===
