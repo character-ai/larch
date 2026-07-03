@@ -3373,6 +3373,7 @@ def test_step5c_core_rc1_uses_stdout_over_stale_primary_and_binds_final_summary_
     def fake_render(_argv: list[str]) -> int:
         seen_argv.append(list(_argv))
         seen_env.append(os.environ.get("FINAL_SUMMARY_PATH", ""))
+        current_summary.write_text("current rendered summary\n", encoding="utf-8")
         return 0
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel

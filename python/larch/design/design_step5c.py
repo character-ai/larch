@@ -20,7 +20,6 @@ from larch.core.ctx import Ctx
 
 from larch.design.design_core import (
     _CoreUsageError,
-    _append_execution_issue,
     _bg_wait_marker_context,
     _capture_contract_stream_to_paths,
     _core_diagnostic,
@@ -173,40 +172,25 @@ def _step5c_render_final_summary(
     final_summary_path: str,
     plan_write_ok: str = "",
 ) -> bool:
-    from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
+    del plan_write_ok
+    from larch.design.design_summary import (  # noqa: PLC0415
+        FinalSummaryRenderRequest,
+        render_final_summary_for_request,
+    )
 
-    args = [
-        "--outcome",
-        outcome,
-        "--mode",
-        ctx.str_value(key=config.ENV_MODE, default="N/A") or "N/A",
-        "--design-tmpdir",
-        str(design_tmpdir),
-        "--issue-number",
-        ctx.issue_number,
-    ]
-    if ctx.session_id:
-        args.extend(["--session-id", ctx.session_id])
-    args.append("--post-publish-only")
-    if ctx.repo:
-        args.extend(["--repo", ctx.repo])
-    out_path = design_tmpdir / f"render-final-summary.{outcome}.stdout.log"
-    render_rc = 0
-    if outcome == "approved" or plan_write_ok == "true":
-        summary_path = Path(final_summary_path)
-        with contextlib.suppress(OSError):
-            summary_resolved = summary_path.resolve()
-            tmpdir_resolved = design_tmpdir.resolve()
-            if summary_resolved.is_relative_to(tmpdir_resolved) and summary_resolved.is_file():
-                summary_resolved.unlink()
-    try:
-        with out_path.open("w", encoding="utf-8") as out, contextlib.redirect_stdout(out):
-            render_rc = int(render_final_summary_main(args))
-    except BaseException as exc:
-        render_rc = 1
-        _core_print_exc()
-        _append_execution_issue(design_tmpdir=design_tmpdir, message=f"Warning: render_final_summary_main failed: {exc}")
-    return render_rc == 0
+    return render_final_summary_for_request(
+        FinalSummaryRenderRequest(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            mode=ctx.str_value(key=config.ENV_MODE, default="N/A") or "N/A",
+            issue_number=ctx.issue_number,
+            session_id=ctx.session_id,
+            repo=ctx.repo,
+            upsert_summary_comment=True,
+            stdout_log_path=design_tmpdir / f"render-final-summary.{outcome}.stdout.log",
+            final_summary_path=Path(final_summary_path),
+        )
+    )
 
 
 def _step5c_stage_failed_publish_tail(*, design_tmpdir: Path, plugin_root: Path, publish_rc: int) -> None:

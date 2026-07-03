@@ -583,6 +583,8 @@ def _run_log_publish_after_capture(
     ctx: _TranscriptCaptureContext,
     kvs: list[tuple[str, str]],
     result_env: Path,
+    outcome: str,
+    write_result_env_on_publish_failure: bool = True,
 ) -> int | None:
     publish = proc.run(
         [
@@ -596,6 +598,8 @@ def _run_log_publish_after_capture(
             ctx.session_id,
             "--issue",
             ctx.issue,
+            "--outcome",
+            outcome,
             *(["--repo", ctx.repo] if ctx.repo else []),
         ],
     )
@@ -609,8 +613,9 @@ def _run_log_publish_after_capture(
                 kvs.append(("LOG_RECOVERY_BRANCH", publish_kv[key]))
     if publish.returncode != 0 and not publish_kv.get("RECOVERY_BRANCH"):
         _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
-        _emit_rows(kvs)
-        _ = _write_result_env(path=result_env, rows=kvs)
+        if write_result_env_on_publish_failure:
+            _emit_rows(kvs)
+            _ = _write_result_env(path=result_env, rows=kvs)
         return 5
     scrub_violations = publish_kv.get("SECRET_SCRUB_VIOLATIONS", "0")
     if scrub_violations.isdigit() and int(scrub_violations) > 0:
@@ -622,8 +627,10 @@ def _run_log_publish_after_capture(
             flush=True,
         )
     if publish.returncode == 0 and publish_kv.get("PUBLISH_OK") == "false":
-        _emit_rows(kvs)
-        return 0 if _write_result_env(path=result_env, rows=kvs) else 3
+        if write_result_env_on_publish_failure:
+            _emit_rows(kvs)
+            return 0 if _write_result_env(path=result_env, rows=kvs) else 3
+        return 0
     return None
 
 
@@ -822,6 +829,22 @@ def publish_core(argv: Sequence[str]) -> int:
         check=False,
     )
     if block.returncode != 0:
+        if parsed["--session-id"]:
+            _ = _run_log_publish_after_capture(
+                ctx=_TranscriptCaptureContext(
+                    design_tmpdir=design_tmpdir,
+                    plugin_root=plugin_root,
+                    session_id=parsed["--session-id"],
+                    issue=parsed["--issue"],
+                    repo=parsed["--repo"],
+                    claude_pid=parsed["--claude-pid"],
+                    warning_step_label="5c",
+                ),
+                kvs=kvs,
+                result_env=result_env,
+                outcome="failed-plan-write",
+                write_result_env_on_publish_failure=False,
+            )
         _emit_rows(kvs)
         return 1 if _write_result_env(path=result_env, rows=kvs) else 3
     kvs[0] = ("PLAN_WRITE_OK", "true")
@@ -979,6 +1002,7 @@ def publish_core(argv: Sequence[str]) -> int:
             ),
             kvs=kvs,
             result_env=result_env,
+            outcome="approved",
         )
         if publish_rc is not None:
             return publish_rc

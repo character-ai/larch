@@ -73,6 +73,8 @@ def _run_publish(repo: Path, design: Path, bin_dir: Path) -> subprocess.Complete
             RUN_ID,
             "--issue",
             "33",
+            "--outcome",
+            "approved",
         ],
         cwd=repo,
         capture_output=True,
@@ -91,7 +93,7 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     env = os.environ.copy()
     env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
     result = subprocess.run(
-        [sys.executable, str(cli_py), "design", "log-publish", "--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12", "--dry-run"],
+        [sys.executable, str(cli_py), "design", "log-publish", "--design-tmpdir", str(design), "--run-id", "RUN1", "--issue", "12", "--outcome", "approved", "--dry-run"],
         capture_output=True,
         text=True,
         check=False,
@@ -120,6 +122,11 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         captured["warning_step_label"] = ctx.warning_step_label
         return True
 
+    def fake_render(**kwargs: object) -> bool:
+        order.append("render")
+        captured["render_outcome"] = str(kwargs["outcome"])
+        return True
+
     def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
         order.append("publish")
         return (True, "77", "https://github.com/o/r/pull/77", "", "0")
@@ -127,6 +134,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
     monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
     rc = design_log_publish_flow.log_publish_main([
@@ -135,10 +143,11 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         "--issue", "33",
         "--repo", "o/r",
         "--reason", "final",
+        "--outcome", "approved",
     ])
 
     assert rc == 0
-    assert order == ["capture", "publish"]
+    assert order == ["capture", "render", "publish"]
     assert captured == {
         "design_tmpdir": str(design),
         "plugin_root": str(plugin_root),
@@ -147,6 +156,7 @@ def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.Monk
         "repo": "o/r",
         "claude_pid": "12345",
         "warning_step_label": "5c",
+        "render_outcome": "approved",
     }
 
 
@@ -167,7 +177,9 @@ def test_log_publish_capture_failure_skips_publish(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
-    rc = design_log_publish_flow.log_publish_main(["--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33"])
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33", "--outcome", "approved"
+    ])
 
     assert rc == 0
     assert not published
@@ -184,11 +196,16 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
         assert ctx.warning_step_label == "pause"
         return True
 
+    def fake_render(**kwargs: object) -> bool:
+        reasons.append(str(kwargs["outcome"]))
+        return True
+
     def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
         reasons.append(str(kwargs["run_id"]))
         return (True, "", "", "", "0")
 
     monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_render_final_summary_before_copy", fake_render)
     monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
 
     rc = design_log_publish_flow.log_publish_main([
@@ -196,10 +213,11 @@ def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.Monk
         "--run-id", RUN_ID,
         "--issue", "33",
         "--reason", "pause",
+        "--outcome", "paused",
     ])
 
     assert rc == 0
-    assert reasons == [RUN_ID]
+    assert reasons == ["paused", RUN_ID]
     assert "PUBLISH_OK=true" in capsys.readouterr().out
 
 def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
@@ -230,6 +248,7 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     origin = tmp_path / "origin.git"
     ls = subprocess.run(["git", "ls-tree", "-r", "--name-only", LOG_BRANCH], cwd=origin, capture_output=True, text=True, check=False)
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
+    assert f"larch-logs/design/{RUN_ID}/final-summary.md" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/manifest.json" in ls.stdout, ls.stdout
     meta = (design / ".design-log-publish-metadata.env").read_text(encoding="utf-8")
     assert "DESIGN_LOG_PR_NUMBER=77" in meta

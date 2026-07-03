@@ -1461,10 +1461,13 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: P
     _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
     _ = (design / "composed-plan.md").write_text("# plan\n", encoding="utf-8")
     (design / ".design-publish-result.env").mkdir()
+    call_log = tmp_path / "calls.ndjson"
     old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
     old_fail = os.environ.get("FAKE_CLI_NAMED_BLOCK_FAIL")
+    old_log = os.environ.get("FAKE_CLI_CALL_LOG")
     os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
     os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = "1"
+    os.environ["FAKE_CLI_CALL_LOG"] = str(call_log)
     try:
         rc = design_publish.publish_core(
             [
@@ -1487,7 +1490,15 @@ def test_publish_result_env_write_failure_returns_3_with_stdout_rows(tmp_path: P
             _ = os.environ.pop("FAKE_CLI_NAMED_BLOCK_FAIL", None)
         else:
             os.environ["FAKE_CLI_NAMED_BLOCK_FAIL"] = old_fail
+        if old_log is None:
+            _ = os.environ.pop("FAKE_CLI_CALL_LOG", None)
+        else:
+            os.environ["FAKE_CLI_CALL_LOG"] = old_log
     out = capsys.readouterr().out
+    calls = _call_args(call_log)
+    log_publish_calls = [args for args in calls if args[:2] == ["design", "log-publish"]]
+    assert log_publish_calls
+    assert log_publish_calls[0][log_publish_calls[0].index("--outcome") + 1] == "failed-plan-write"
     assert rc == 3
     assert "PLAN_WRITE_OK=false" in out
     assert "VALIDATE_STATUS=ok" in out
@@ -1574,7 +1585,9 @@ def test_publish_delegates_to_log_publish_without_inline_capture(tmp_path: Path)
     assert result.returncode == 0, result.stderr
     assert not (design / "session-transcript.jsonl").exists()
     calls = _call_args(call_log)
-    assert any(args[:2] == ["design", "log-publish"] for args in calls)
+    log_publish_calls = [args for args in calls if args[:2] == ["design", "log-publish"]]
+    assert log_publish_calls
+    assert log_publish_calls[0][log_publish_calls[0].index("--outcome") + 1] == "approved"
     assert all(args[:2] != ["run-log", "capture-transcript"] for args in calls)
     assert all(args[:2] != ["token", "claude-source"] for args in calls)
 

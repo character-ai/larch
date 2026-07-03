@@ -128,7 +128,9 @@ def test_pause_save_writes_marker_on_publish_success(tmp_path: Path, monkeypatch
     _ = (design / "source-env.sh").write_text("export SESSION_ID=RUN1\nexport REPO=owner/repo\n", encoding="utf-8")
     monkeypatch.setattr(design_pause.gh, "issue_view_body", lambda *_args, **_kwargs: "issue body\n")  # type: ignore[attr-defined]
 
+    calls: list[list[str]] = []
     def fake_run(cmd: list[str], *_args: object, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(cmd)
         if "log-publish" in cmd:
             return subprocess.CompletedProcess(cmd, 0, stdout="PUBLISH_OK=true\n", stderr="")
         if "named-block" in cmd:
@@ -139,6 +141,8 @@ def test_pause_save_writes_marker_on_publish_success(tmp_path: Path, monkeypatch
     rc = design_pause.pause_save_main(["--design-tmpdir", str(design), "--issue", "9", "--repo", "owner/repo"])
     out = capsys.readouterr().out  # type: ignore[attr-defined]
     assert rc == 0
+    publish_call = next(cmd for cmd in calls if "log-publish" in cmd)
+    assert publish_call[publish_call.index("--outcome") + 1] == "paused"
     assert "PAUSE_OK=true" in out
     assert (design / "pause-state.txt").is_file()
 

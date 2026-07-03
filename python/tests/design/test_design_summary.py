@@ -557,3 +557,103 @@ def test_render_final_summary_persists_difficulty_record_before_render(
     assert rc == 0
     assert (tmp_path / "difficulty-rating.json").is_file()
     assert any(args[:2] == ("run-log", "write") for args in calls)
+
+
+def test_final_summary_request_skips_upsert_and_forces_post_phase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    calls: list[list[str]] = []
+
+    def fake_render(argv: list[str]) -> int:
+        calls.append(argv)
+        (tmp_path / "final-summary.md").write_text("enriched\n", encoding="utf-8")
+        return 0
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+
+    ok = design_summary.render_final_summary_for_request(
+        design_summary.FinalSummaryRenderRequest(
+            design_tmpdir=tmp_path,
+            outcome="approved",
+            mode="design",
+            issue_number="42",
+            session_id="RUN1",
+            repo="owner/repo",
+            upsert_summary_comment=False,
+            stdout_log_path=tmp_path / "summary.stdout.log",
+        )
+    )
+
+    assert ok
+    assert calls == [
+        [
+            "--outcome",
+            "approved",
+            "--mode",
+            "design",
+            "--design-tmpdir",
+            str(tmp_path),
+            "--issue-number",
+            "42",
+            "--session-id",
+            "RUN1",
+            "--post-publish-only",
+            "--repo",
+            "owner/repo",
+            "--skip-summary-upsert",
+        ]
+    ]
+    assert "--pre-publish-only" not in calls[0]
+    assert (tmp_path / "final-summary.md").read_text(encoding="utf-8") == "enriched\n"
+
+
+def test_final_summary_request_unlinks_stale_file_on_failed_render(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    stale = tmp_path / "final-summary.md"
+    stale.write_text("stale\n", encoding="utf-8")
+
+    def fake_render(_argv: list[str]) -> int:
+        assert not stale.exists()
+        stale.write_text("partial\n", encoding="utf-8")
+        return 1
+
+    monkeypatch.setattr(design_summary, "render_final_summary_main", fake_render)
+
+    ok = design_summary.render_final_summary_for_request(
+        design_summary.FinalSummaryRenderRequest(
+            design_tmpdir=tmp_path,
+            outcome="approved",
+            mode="N/A",
+            issue_number="0",
+            session_id="RUN1",
+            repo="",
+            upsert_summary_comment=True,
+            stdout_log_path=tmp_path / "summary.stdout.log",
+        )
+    )
+
+    assert not ok
+    assert not stale.exists()
+
+
+def test_render_final_summary_accepts_paused_outcome(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("SESSION_ID", "RUN1")
+    monkeypatch.setenv("ISSUE_NUMBER", "0")
+
+    def fake_run_cli(*args: str) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("render", "run-summary"):
+            out_file = Path(args[args.index("--output-file") + 1])
+            out_file.write_text("## paused\n", encoding="utf-8")
+        return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    monkeypatch.setattr(design_summary, "_run_design_failure_report_gate", lambda **_kw: None)
+
+    assert design_summary.render_final_summary_main(["--outcome", "paused"]) == 0
