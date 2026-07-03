@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:22:40
-- **Cost**: 💰 TOTAL ~$11.46 — Claude $0.56, Codex-5.5 $7.85, Codex-mini $0.34, Cursor $2.48, Claude (subprocess) $0.23  |  Tokens: 15205k
+- **Cost**: 💰 TOTAL ~$11.09 — Claude $0.17, Codex-5.5 $7.85, Codex-mini $0.34, Cursor $2.48, Claude (subprocess) $0.25  |  Tokens: 15122k
 - **Issue**: #6089 — https://github.com/character-ai/larch/issues/6089
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,13 +11,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/3C912C95-6829-4AA6-99A9-B4F6283F9A17/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.2.7
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Architectural guidelines (Phase A): G-Skill-2 deviation — skills/review/SKILL.md's new review_run_id_valid guard reimplements run_log_batch.validate_run_id_slug's regex/glob check as inline Bash in...
 
 ## Review Phase Detail
 
@@ -66,3 +71,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (nit): capture-transcript still needs slug and log-root checks. Concern: `capture-transcript` still builds paths from `Path(args.log_root)` and `args.run_id` directly, so the Python boundary does not enforce slug validity or the commit-style log-root resolution fallback.
 - **Round 1 OOS_5** (nit): publish CLI integration test still lacks the warning-step-label pin. Concern: The design publish CLI integration path has no argv pin for `--warning-step-label 5c`, so the default final publish path is not covered.
 - **Round 1 OOS_6** (nit): offline Step 4 harness is still missing. Concern: No dedicated offline harness covers the standalone Step 4 capture argv, nested-review skip, or `SESSION_UUID` mismatch, so the prompt-only guard wiring remains unmechanized in CI.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
