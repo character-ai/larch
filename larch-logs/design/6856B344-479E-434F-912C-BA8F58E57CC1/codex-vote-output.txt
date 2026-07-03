@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- existing terse-answer prose conflicts, but the feature can still ship with the new rule.
+FINDING_2: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- the semantic-vs-text trigger is plausible, but the broken text-match path is not established here.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- same-gate looping is implied by re-firing the identical call, so the extra side-effect wording is not necessary.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- no seven-call decision counter is defined in the anchored design scope.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the same pattern may exist in /implement, but that parity is outside this issue.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the /implement loop may share the pattern, but that is out of scope for this design fix.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the loop risk is real, but it is a tradeoff of the requested indefinite-wait behavior, not a blocker.
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the six-rule count matches the planned addition, so this drift is transient.
