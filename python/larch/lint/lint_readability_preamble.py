@@ -202,7 +202,8 @@ def _check_skill_path_form(*, root: Path, exemptions: set[str]) -> bool:
             continue
         expected = _style_path_for_row(rel)
         forbidden = PUBLIC_STYLE_PATH if expected == DEV_STYLE_PATH else DEV_STYLE_PATH
-        if expected not in text:
+        anchor = _orchestrator_anchor(rel)
+        if anchor not in text:
             print(f"{rel}: missing per-skill readability directive for {expected}", file=sys.stderr)
             ok = False
         if forbidden in text:

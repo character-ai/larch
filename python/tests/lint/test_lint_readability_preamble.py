@@ -8,6 +8,8 @@ from larch.lint.lint_readability_preamble import main
 
 EXTERNAL = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
+PUBLIC_PATH = "${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md"
+DEV_PATH = "$PWD/skills/shared/readability-style.md"
 PUBLIC_ORCH = "**MANDATORY — READ ENTIRE FILE before composing fixture text: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
 DEV_ORCH = "**MANDATORY — READ ENTIRE FILE before composing fixture text: `$PWD/skills/shared/readability-style.md`.**"
 
@@ -117,6 +119,22 @@ def test_missing_per_skill_directive(tmp_path: Path, capsys: pytest.CaptureFixtu
     rc, err = run(tmp_path, capsys)
     assert rc == 1
     assert "skills/foo/SKILL.md: missing per-skill readability directive" in err
+
+
+def test_bare_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "skills/foo/SKILL.md", f"See {PUBLIC_PATH} for the style rules.\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "skills/foo/SKILL.md: missing per-skill readability directive" in err
+
+
+def test_non_mandatory_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / ".claude/skills/foo/SKILL.md", f"Read {DEV_PATH} before writing prose.\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert ".claude/skills/foo/SKILL.md: missing per-skill readability directive" in err
 
 
 def test_explicit_exemption_behavior(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

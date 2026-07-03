@@ -151,6 +151,7 @@ Generate the alias skill by running:
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" alias generate \
     --name "<alias-name>" \
     --target "<target-skill>" \
+    --target-dir "$TARGET_DIR" \
     --flags "<preset-flags>" \
     --version "$(jq -r .version "${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json")" \
     > "$TARGET_DIR/SKILL.md"

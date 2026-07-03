@@ -17,7 +17,7 @@ Companion to `python/test_alias_skill.py`: that harness tests the Python alias r
 | C | Step 2 contains the canonical non-eval allowlist parser literal `REPO_ROOT\|PLUGIN_REPO\|TARGET_DIR` |
 | D | Check 6 uses `test -e "$TARGET_DIR"` — and the old hardcoded `test -d ".claude/skills/<alias-name>"` is gone |
 | E | `E_COLLISION` row interpolates `$TARGET_DIR` |
-| F | Step 3 recipe uses `$TARGET_DIR` for both `mkdir` and the redirect path; old hardcoded paths gone |
+| F | Step 3 recipe uses `$TARGET_DIR` for both `mkdir` and the redirect path, and threads `$TARGET_DIR` into `alias generate` via `--target-dir`; old hardcoded paths gone |
 | G | Step 3 announce line interpolates `$TARGET_DIR` |
 | H | Step 4 sentinel uses `$TARGET_DIR/SKILL.md`; old `REPO_ROOT=$(git rev-parse ... \|\| pwd -P)` line is gone |
 | I | NEVER list mentions `--private` (rule #5), TARGET_DIR threading (#6), and non-eval (#7) |
