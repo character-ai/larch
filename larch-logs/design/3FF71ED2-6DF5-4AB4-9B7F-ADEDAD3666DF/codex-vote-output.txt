@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of the earlier structural-pin OOS; not required for this scoped fix
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the omission is real, but the plan already requires --log-root on every review log command, so this is not necessary to ship the feature
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- a dedicated harness is a deferred follow-up, not necessary to deliver the Step 4 fix
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- resolving log_root inside capture-transcript is broader hardening, not needed for the scoped SKILL.md hoist

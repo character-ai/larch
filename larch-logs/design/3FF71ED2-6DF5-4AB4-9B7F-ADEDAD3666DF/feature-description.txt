@@ -1,0 +1,53 @@
+# OOS follow-ups from #5976 (review Step 4 log-root, transcript, heatmap, Step 18)
+
+OOS follow-ups from #5976 (review Step 4 log-root, transcript, heatmap, Step 18)
+
+## Description
+
+Five out-of-scope findings surfaced during code review of #5976 (PR #6084, "md-to-py-XI: write session-transcript.jsonl in every run so the reference heatmap accrues") were accepted as real but out-of-scope for that change. Filing them together here for follow-up triage.
+
+### 1. [important] Standalone review Step 4 needs an unconditional log root and RUN_ID validation
+
+**Reviewers**: cursor-specialist-correctness, codex-specialist-correctness, cursor-specialist-edge-cases, codex-specialist-edge-cases, cursor-specialist-testing, codex-specialist-testing, dyn-dyn-transcript-flow (7 independent reviewers flagged this)
+
+**Concern**: The Step 4 review capture and commit path in `skills/review/SKILL.md` only defines `review_log_root` inside the scout-manifest branch (around line 82-84). A normal standalone review with `SCOUT_STATUS=na` leaves it unset, so it expands to empty. `run-log capture-transcript` (`python/larch/report/run_log_flush.py`, around line 811) then uses `Path(args.log_root)` directly, staging under a relative `review/<RUN_ID>/...` path instead of the correct location. `run-log commit` separately rejects an empty log root (`python/larch/report/run_log_batch.py`, around lines 219-226), so the review transcript ends up non-durable and may be staged under the wrong local directory.
+
+**Suggested fix**: Define `review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"` unconditionally before all Step 4 log-phase, transcript-capture, and commit calls (not just inside the scout-manifest branch), and pass that value to every review log command. Also consider guarding transcript capture/commit on `[[ -z "${SESSION_ENV_PATH:-}" && -n "${RUN_ID:-}" ]]` and validating `RUN_ID` with the same slug contract used elsewhere before capture, plus adding a no-scout standalone-review coverage case to the test suite.
+
+### 2. [nit] Step 5c warning label should reflect pause and clarify publish paths
+
+**Reviewer**: cursor-specialist-edge-cases
+
+**Concern**: `_capture_design_transcript` (in `python/larch/design/design_publish.py`) hardcodes the "5c" warning label even when `log_publish_main` is invoked for the `pause` or `clarify` reasons, not just the final Step 5c publish. That makes execution-issue warnings point to the wrong step and can confuse operators auditing capture gaps.
+
+**Suggested fix**: Thread a `warning_step_label` value through `_TranscriptCaptureContext`, derived from `log_publish_main`'s `--reason` argument (`final` → `5c`, `pause` → `pause`, etc.), instead of a hardcoded literal.
+
+### 3. [nit] Add a review Step 4 regression harness
+
+**Reviewer**: cursor-specialist-testing
+
+**Concern**: Standalone review transcript capture (added for #5976) lacks a dedicated offline harness or Python regression test, so future Step 4 changes could break the nested-review guard, source binding, or commit ordering without CI coverage.
+
+**Suggested fix**: Add a thin review Step 4 harness covering capture argv, the nested-review skip (`SESSION_ENV_PATH` set), and the `SESSION_UUID` mismatch case.
+
+### 4. [nit] Heatmap TSV consumers may need compatibility notes for the new sections
+
+**Reviewer**: dyn-dyn-transcript-flow
+
+**Concern**: `measure_references_heatmap()` in `python/larch/report/tokens.py` now emits a TSV with two sections (`# transcript_coverage` then `# reference_heatmap`) instead of one flat table. Downstream parsers that still expect the legacy single-section header shape could break.
+
+**Suggested fix**: If anything outside this repo consumes `larch-logs/measure-references-heatmap/*.tsv`, add a short compatibility note (e.g. in `docs/run-logs.md`) describing the new sectioned shape.
+
+### 5. [nit] Step 18 and teardown both flush execution issues
+
+**Reviewer**: dyn-dyn-transcript-flow
+
+**Concern**: `skills/implement/scripts/step-18.sh` finalize and the separate `finalize.teardown` path both run `execution-issues flush-safety-net`, which duplicates work on terminal runs. The flush is append-only so this is not incorrect, just redundant.
+
+**Suggested fix**: De-duplicate the two flush call sites, or make the second call a no-op when the first already ran in the same process.
+
+## Source
+
+- Issue: https://github.com/character-ai/larch/issues/5976
+- PR: https://github.com/character-ai/larch/pull/6084
+- Run log: `larch-logs/implement/0961DCAF-6B71-4446-B77D-750CCD0B48C4/round-1/oos-dropped-before-vote.md`

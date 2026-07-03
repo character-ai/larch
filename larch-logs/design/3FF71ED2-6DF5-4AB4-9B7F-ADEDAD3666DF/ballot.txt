@@ -1,0 +1,46 @@
+### FINDING_1: Scout-manifest RUN_ID guard still allows invalid IDs
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The scout-manifest branch still gates Step 4 review logging on a bare non-empty `RUN_ID` instead of the slug-valid predicate used elsewhere. That means a slug-invalid value can still reach `review log-phase` on the standalone path, leaving a partial fix even if the bulk log-phase, capture, and commit paths are corrected.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Name the scout-manifest guard in ### UPDATED: skills/review/SKILL.md and switch it to the same slug-valid predicate used for bulk log-phase, capture, and commit (not bare non-empty).
+  - From Cursor-Pragmatic: Fold the scout block under the same slug-valid `RUN_ID` gate as the other Step 4 log work, or replace the scout `RUN_ID` test with the same slug contract and rely on the hoisted `review_log_root` only
+
+### FINDING_2: Step 4 pin needs a matching harness update
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The planned Step 4 opener wording changes the exact string that `scripts/test-review-structure.sh` pins, so the structural check will fail unless the harness is updated in the same change. Leaving that file under `### MAY_UPDATE` makes a required CI companion look optional.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Promote `scripts/test-review-structure.sh` to ### UPDATED (or add an explicit cross-reference in the firm SKILL.md section) and update pin (18) to the new validated-RUN_ID opener plus hoisted `review_log_root` contract.
+
+### FINDING_3: _capture_design_transcript still bypasses warning_step_label
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The updated helper list does not cover the direct `_append_transcript_warning` calls inside `_capture_design_transcript`. That leaves the `session-id-drift` and `hoist-failed` paths emitting the old hardcoded design step label even after the surrounding helper plumbing is updated.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add _capture_design_transcript to the UPDATED: design_publish.py contract: pass ctx.warning_step_label (or ctx) into every _append_transcript_warning call inside _capture_design_transcript, not only into the nested helpers.
+
+### FINDING_4: Bulk Step 4 log-phase example omits hoisted --log-root
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The Step 4 prose still shows `--log-root` only in the scout-manifest and capture/commit examples, not in the bulk review log-phase call. That leaves room for an implementer to hoist the variable but still omit `--log-root` on the main batch path, which can leave review batches unstaged when `LARCH_LOG_ROOT` is unset.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In skills/review/SKILL.md UPDATED, require an explicit bulk review log-phase example (or one shared argv template) that includes --log-root "$review_log_root" alongside --run-id, not only scout-manifest and capture/commit fences.
+
+### OOS_1: [OUT_OF_SCOPE] No offline harness for standalone Step 4 transcript and commit wiring
+- **Description**: [OUT_OF_SCOPE] No offline harness for standalone Step 4 transcript and commit wiring. Scenario: Issue #5976 item 3 asked for a dedicated Step 4 regression harness (nested skip, argv, SESSION_UUID mismatch). The plan deliberately omits it and only offers an optional structure pin. Future edits to Step 4 guards can regress without CI signal beyond grep pins.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/review/SKILL.md:111-111
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] capture-transcript could resolve log-root like commit instead of SKILL-only hoisting
+- **Description**: [OUT_OF_SCOPE] capture-transcript could resolve log-root like commit instead of SKILL-only hoisting. Scenario: run-log commit rejects empty roots via _resolve_log_root, but capture-transcript uses Path(args.log_root) directly, so an empty --log-root stages under a cwd-relative review/<RUN_ID>/ tree. Hoisting review_log_root in SKILL.md fixes /review Step 4 only; the same footgun remains for any future caller that omits --log-root.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/report/run_log_flush.py:811-812
+- **Phase**: design

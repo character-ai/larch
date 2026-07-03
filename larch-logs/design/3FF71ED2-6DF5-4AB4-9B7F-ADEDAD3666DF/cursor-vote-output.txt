@@ -1,0 +1,7 @@
+Reading the ballot and verifying findings against the codebase.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan can add slug validation without changing the exact pin (18) opener string; MAY_UPDATE already covers an optional companion update
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires all Step 4 log commands use hoisted --log-root; an extra bulk example is documentation polish not a necessity gate
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- SKILL hoisting fixes the scoped /review Step 4 footgun; hardening capture-transcript for hypothetical future callers fails the OOS issue-overhead test
