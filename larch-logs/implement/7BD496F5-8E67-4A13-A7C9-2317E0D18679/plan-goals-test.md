@@ -1,0 +1,123 @@
+## Goal
+Implement issue #6062: [IMPLEMENTING] [BUG] Guideline-pin drift races persist outside the ship path (closeout re-materialization, note_fingerprint_stale fallback, non-atomic materialize_implementation_diff).
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement the minimum scoped fix.
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`; draft from direct code and tests.
+- Preserve the approved scope: close the closeout pin race, close the `materialize_implementation_diff` internal atomicity gap, and rely on that helper change for `note_fingerprint_stale`'s live-diff fallback.
+- Do not add shared helper modules, new abstractions, or status-contract changes.
+
+## Files to modify/create
+
+### UPDATED: python/larch/state/closeout.py
+
+In `_pin_architectural_guidelines_note_best_effort`:
+
+- Keep the current setup:
+  - read `BASE_REF`
+  - resolve current `HEAD`
+  - resolve repo root
+  - preserve the post-merge durable-note mismatch skip
+  - preserve `"failed"` on unexpected exceptions
+- Replace the current older sequence:
+  - `pin_note_from_staged(...)`
+  - `refresh_staged_assessment_for_current_head(...)`
+  - second `pin_note_from_staged(...)`
+- Use one call to:
+  - `architectural_guidelines.pin_note_from_staged_for_current_head(...)`
+- Return `"ok"` when that call returns true.
+- Return `"skipped"` when it returns false.
+
+This brings closeout to parity with `python/larch/implement/ship_guidelines.py`.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+In `materialize_implementation_diff`:
+
+- Resolve `HEAD` once before merge-base:
+  - run `git rev-parse --verify HEAD^{commit}` or the closest repo-style equivalent
+  - store the returned SHA in a local such as `head_sha`
+  - raise `RuntimeError` with stderr/stdout fallback when resolution fails
+- Use that frozen `head_sha` in `git merge-base`:
+  - `git merge-base <head_sha> <base_remote>/<base_ref>`
+- Use the frozen `head_sha` in `git diff`:
+  - `git diff <base_sha>..<head_sha> -- . :(exclude)larch-logs/**`
+- Keep the current diff output, exclusion, and error behavior.
+
+Do not change `note_fingerprint_stale` directly. Its live fallback already routes through `materialize_implementation_diff`.
+
+### UPDATED: python/tests/state/test_closeout.py
+
+Update closeout pin tests for the new single-helper path.
+
+- Change tests that monkeypatch `pin_note_from_staged` only to patch `pin_note_from_staged_for_current_head` when they assert closeout helper routing.
+- Keep the post-merge mismatch test and assert the helper is not called.
+- Keep the post-merge matching and no-post-merge tests, but assert the new helper receives `head_sha`, `base_ref`, and `repo_root`.
+- Strengthen the drift-refresh test by counting live diff materializations and asserting closeout performs exactly one materialization for the successful recovery case.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+Add focused coverage for the frozen-head diff snapshot.
+
+- Add a unit-style test for `materialize_implementation_diff` that monkeypatches subprocess execution.
+- Assert the command order:
+  - resolves `HEAD` once
+  - passes the resolved SHA to `git merge-base`
+  - passes `<base_sha>..<resolved_head_sha>` to `git diff`
+  - never passes literal `HEAD` to merge-base or diff after resolution
+- Keep existing real-git tests, including upstream/origin behavior.
+
+## Edge cases
+
+- If `HEAD` cannot be resolved, `materialize_implementation_diff` should fail closed with `RuntimeError`.
+- If merge-base cannot be resolved, preserve the existing `RuntimeError` path.
+- If diff fails, preserve the existing `RuntimeError` path.
+- If closeout cannot resolve repo root or current `HEAD`, preserve `"failed"`.
+- If the single pin helper cannot pin, preserve `"skipped"` rather than retrying.
+
+## Failure modes
+
+- A test that still patches `pin_note_from_staged` may become misleading because closeout no longer calls it directly.
+- A fake subprocess test may be too brittle if it asserts incidental kwargs. Assert command argv and minimal needed kwargs only.
+- `git rev-parse --verify HEAD^{commit}` may need quoting only as a single argv element, not shell quoting.
+
+## Testing strategy
+
+Run focused tests:
+
+```bash
+python3 -m pytest python/tests/core/test_architectural_guidelines.py python/tests/state/test_closeout.py
+```
+
+Run focused lint if dependencies are available:
+
+```bash
+python3 -m ruff check python/larch/core/architectural_guidelines.py python/larch/state/closeout.py python/tests/core/test_architectural_guidelines.py python/tests/state/test_closeout.py
+```
+
+Optionally run relevant checks before handoff:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+## Acceptance
+
+- `python/larch/state/closeout.py`'s `_pin_architectural_guidelines_note_best_effort` calls `architectural_guidelines.pin_note_from_staged_for_current_head` exactly once per invocation instead of the old pin/refresh/retry sequence; it still returns `"ok"`, `"skipped"`, or `"failed"`, and still short-circuits on the post-merge durable-note HEAD mismatch.
+- `python/larch/core/architectural_guidelines.py`'s `materialize_implementation_diff` resolves `HEAD` to an explicit SHA once and passes that frozen SHA to both the `git merge-base` and `git diff` subprocess calls; it fails closed with `RuntimeError` if HEAD cannot be resolved, matching the existing merge-base/diff failure behavior.
+- `note_fingerprint_stale`'s live-diff fallback requires no direct code change; it inherits the atomicity fix because its fallback materializes through `materialize_implementation_diff`.
+- `python/tests/state/test_closeout.py` and `python/tests/core/test_architectural_guidelines.py` are updated so existing coverage targets the new call shape (patching `pin_note_from_staged_for_current_head` instead of `pin_note_from_staged` where closeout routing is asserted), and add focused coverage proving a single live-diff materialization for closeout's recovery path and a frozen, reused HEAD SHA across the merge-base and diff calls in `materialize_implementation_diff`.
+- `python3 -m pytest python/tests/core/test_architectural_guidelines.py python/tests/state/test_closeout.py` passes.
+
+diff_added: 55
+diff_deleted: 18
+mechanical_churn: false
+diff_lines: 73
+
+## Test plan
+(no test plan section in plan-file)
