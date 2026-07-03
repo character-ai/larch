@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:24:10
-- **Cost**: 💰 TOTAL ~$15.35 — Claude $0.47, Codex-5.5 $11.22, Codex-mini $0.49, Cursor $2.96, Claude (subprocess) $0.21  |  Tokens: 20147k
+- **Cost**: 💰 TOTAL ~$19.18 — Claude $4.30, Codex-5.5 $11.22, Codex-mini $0.49, Cursor $2.96, Claude (subprocess) $0.21  |  Tokens: 24472k
 - **Issue**: #6178 — https://github.com/character-ai/larch/issues/6178
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -61,3 +61,7 @@ codex/validity-vote                │                                       █
 These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.
 
 - **Round 1 OOS_1** (nit): Research-phase cleanup pin is too weak. Concern: The structural test only proves one cleanup line exists, so a future edit could drop one abort branch and still pass the check.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
