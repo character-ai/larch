@@ -2343,7 +2343,7 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     round_dir.mkdir(parents=True)
     _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
     (tmp_path / ".gate-b-postapply-ready-1").touch()
-    (tmp_path / "timing-ledger.tsv").write_text(
+    _ = (tmp_path / "timing-ledger.tsv").write_text(
         "v1\tvendor\t1050\tdesign\t-\tcodex\tcodex-plan-requirements\t1010\t1050\t40\tcodex.out\t0\tcomplete\n"
         "v1\tvendor\t1125\tdesign\t-\tclaude\tclaude-plan-voter\t1060\t1125\t65\tclaude-vote.out\t0\tsignal\n",
         encoding="utf-8",
