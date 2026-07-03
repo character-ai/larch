@@ -216,7 +216,7 @@ def _ship_rebase_phase(
         )
         raise
     rebase_count += 1
-    _invalidate_guidelines_note(working.tmpdir)
+    _ = _invalidate_guidelines_note(working.tmpdir)
     return ShipRebasePhaseResult(rebase_count)
 
 
@@ -248,7 +248,7 @@ def _ship_phase14_rebase(
         )
         phase14_flag.unlink(missing_ok=True)
         rebase_count += 1
-        _invalidate_guidelines_note(working.tmpdir)
+        _ = _invalidate_guidelines_note(working.tmpdir)
         _write_ship_state(
             working,
             phase="ci-initial",

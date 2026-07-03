@@ -13,6 +13,9 @@ from larch.core import coder_delta_guards
 from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext
+from larch.report import run_log_flush
+from larch.report import run_logs
+from test_support import RecordingRunner
 from test_support import make_run_context
 
 if TYPE_CHECKING:
@@ -706,6 +709,171 @@ def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
     )
     assert not parsed
     assert err == "ci-wait-malformed-output"
+
+
+def test_run_cycle_invalidates_guidelines_via_stage_callback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    def run_case(*, known_helper: bool) -> None:
+        repo = tmp_path / f"repo-{known_helper}"
+        repo.mkdir()
+        out_dir = tmp_path / f"out-{known_helper}"
+        out_dir.mkdir()
+        implement_dir = tmp_path / f"implement-{known_helper}"
+        invalidated: list[str] = []
+        push_calls: list[str] = []
+
+        args = Namespace(
+            pr=1,
+            repo="o/r",
+            repo_root=str(repo),
+            run_id="42",
+            plan_file="",
+            base_remote="origin",
+            base_ref="main",
+            output_dir=str(out_dir),
+            implement_tmpdir=str(implement_dir),
+        )
+        ctx = make_run_context(tmpdir=str(implement_dir), run_id="42", repo="o/r")
+        _ = run_logs.init_run(ctx)
+        _ = (implement_dir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+
+        def fake_read_failed_jobs(*_args: object, **_kwargs: object) -> tuple[tuple[ci_monitor.FailedJob, ...], str]:
+            return ((ci_monitor.FailedJob(name="python-lint", conclusion="failure"),), "ready")
+
+        def fake_collect_failed_logs(*_args: object, **_kwargs: object) -> ci_monitor.LogCollectResult:
+            return ci_monitor.LogCollectResult(text="FAIL lint\n", state="ready")
+
+        def fake_capture_baseline(
+            *_args: object,
+            **_kwargs: object,
+        ) -> tuple[tuple[str, ...], tuple[str, ...], tuple[str, ...], str]:
+            return (), (), (), "abc123"
+
+        def fake_known_fix(*_args: object, **_kwargs: object) -> tuple[bool, str]:
+            return known_helper, "known" if known_helper else ""
+
+        def fake_launch_tier(*_args: object, **kwargs: object) -> proc.CommandResult:
+            _ = Path(str(kwargs["output"])).write_text("fixed\n", encoding="utf-8")
+            return proc.CommandResult(("cli",), 0, "LAUNCHER_EXIT=0\n", "", 0.01)
+
+        def fake_commit_with_trailer(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+        def fake_fetch(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "fetch"), 0, "", "", 0.01)
+
+        def fake_current_branch(*_args: object, **_kwargs: object) -> str:
+            return "feat"
+
+        def fake_try_rev_parse(*_args: object, **_kwargs: object) -> str:
+            return "abc123"
+
+        def fake_push(*args: object, **_kwargs: object) -> proc.CommandResult:
+            push_calls.append(str(args[2]))
+            return proc.CommandResult(("git", "push"), 0, "", "", 0.01)
+
+        def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
+            batch = implement_dir / "larch-logs" / "implement" / "42" / "execution-issues.ndjson"
+            assert batch.is_file()
+            issue_text = batch.read_text(encoding="utf-8")
+            assert "architectural-guidelines drop notice persist failed before invalidate" in issue_text
+            assert (implement_dir / ".execution-issues-flushed.sha").is_file()
+            return {"ACTION": "merge", "CI_STATUS": "pass"}, None
+
+        def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
+            return True
+
+        def fake_verify_job_locally(*_args: object, **_kwargs: object) -> bool:
+            return True
+
+        def fake_delta_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+            return ("file.py",)
+
+        def fake_resolve_launcher_exit(*_args: object, **_kwargs: object) -> int:
+            return 0
+
+        def fake_classify_launch_failure(*_args: object, **_kwargs: object) -> agents.LaunchFailure:
+            return agents.LaunchFailure("none", "")
+
+        def fake_capture_head(*_args: object, **_kwargs: object) -> str:
+            return "abc123"
+
+        def fake_head_changed(*_args: object, **_kwargs: object) -> bool:
+            return False
+
+        def fake_forbidden_paths(*_args: object, **_kwargs: object) -> tuple[str, ...]:
+            return ()
+
+        def fake_revert_forbidden_paths(*_args: object, **_kwargs: object) -> int:
+            return 0
+
+        def fake_invalidate(implement_tmpdir: str) -> bool:
+            invalidated.append(implement_tmpdir)
+            run_logs.append_execution_issue(
+                log_file=Path(implement_tmpdir) / "execution-issues.md",
+                category="Warnings",
+                entry="- **architectural-guidelines drop notice persist failed before invalidate**",
+            )
+            return True
+
+        def fake_commit_run(*_args: object, **_kwargs: object) -> proc.CommandResult:
+            return proc.CommandResult(("git", "commit"), 0, "", "", 0.01)
+
+        def fake_run_log_flush_noop(*_args: object, **_kwargs: object) -> None:
+            return None
+
+        monkeypatch.setattr(ci_monitor, "read_failed_jobs", fake_read_failed_jobs)
+        monkeypatch.setattr(ci_monitor, "collect_failed_logs", fake_collect_failed_logs)
+        monkeypatch.setattr(ci_monitor, "_capture_baseline", fake_capture_baseline)
+        monkeypatch.setattr(ci_agentic_fix, "_apply_known_harness_fix", fake_known_fix)
+        monkeypatch.setattr(ci_monitor, "prepare_python_toolchain", fake_prepare_python_toolchain)
+        monkeypatch.setattr(ci_monitor, "verify_job_locally", fake_verify_job_locally)
+        monkeypatch.setattr(ci_monitor, "_delta_paths", fake_delta_paths)
+        monkeypatch.setattr(ci_monitor.git, "commit_with_trailer", fake_commit_with_trailer)
+        monkeypatch.setattr(ci_monitor.git, "fetch", fake_fetch)
+        monkeypatch.setattr(ci_monitor.git, "current_branch", fake_current_branch)
+        monkeypatch.setattr(ci_monitor.git, "try_rev_parse", fake_try_rev_parse)
+        monkeypatch.setattr(ci_monitor.git, "push", fake_push)
+        monkeypatch.setattr(agents, "launch_tier", fake_launch_tier)
+        monkeypatch.setattr(agents, "resolve_launcher_exit", fake_resolve_launcher_exit)
+        monkeypatch.setattr(agents, "classify_launch_failure", fake_classify_launch_failure)
+        monkeypatch.setattr(coder_delta_guards, "capture_head", fake_capture_head)
+        monkeypatch.setattr(coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
+        monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
+        monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
+        monkeypatch.setattr(ci_agentic_fix.ship_guidelines, "_invalidate_guidelines_note", fake_invalidate)
+        monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit_run)
+        monkeypatch.setattr(run_log_flush, "_write_final_report", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "capture_session_transcript", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_render_ledger_reports", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", fake_run_log_flush_noop)
+        monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", fake_run_log_flush_noop)
+        monkeypatch.setattr(ci_agentic_fix, "_wait_for_ci", fake_wait_for_ci)
+        monkeypatch.setattr(run_logs, "_commit_run", fake_commit_run)
+
+        status, _detail, _attempted, paths, pending, _next_run, _log_text = ci_agentic_fix._run_cycle(  # pyright: ignore[reportPrivateUsage]
+            RecordingRunner(),
+            args=args,
+            repo_root=repo,
+            ctx=ctx,
+            cycle=1,
+            run_id="42",
+        )
+
+        assert status == "passed"
+        assert paths == ("file.py",)
+        assert pending is False
+        assert invalidated == [str(implement_dir)]
+        assert push_calls == ["feat"]
+
+
+    run_case(known_helper=True)
+    run_case(known_helper=False)
 
 
 def test_agentic_fix_result_missing_implement_tmpdir_fail_closed() -> None:

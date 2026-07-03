@@ -1,0 +1,180 @@
+## Goal
+Implement issue #6061: [IMPLEMENTING] [BUG] Architectural-guideline drop warnings can silently miss committed run logs (flush timing + swallowed append).
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Draft from direct codebase inspection. `approach-synthesis.txt` is `NO_SKETCHES`.
+
+Fix both scoped bugs without adding a new standalone push.
+
+- Make `_log_guidelines_ship_warning` statusful and fail-loud.
+  - Return `True` when `run_logs.append_execution_issue` succeeds.
+  - Catch append exceptions, emit a redacted `BreadcrumbWriter` stderr warning, and return `False`.
+  - Do not raise from this helper. Ship-pr must keep going.
+- Make `_invalidate_guidelines_note` return whether it appended a warning.
+  - Accumulate `True` only for warnings that reached `execution-issues.md`.
+  - Preserve current invalidation behavior.
+  - Keep existing callers safe: callers may ignore the return value.
+- Make `_pin_and_load_guidelines_note` also statusful (Gate B FINDING_2/FINDING_5 round 1; FINDING_1 round 2).
+  - Change its return type from `str` to `tuple[str, bool]`: `(note_text, warning_logged)`.
+  - `warning_logged` is `True` only when one of its internal branches called `_log_guidelines_ship_warning` and that append succeeded.
+  - Preserve the existing note-text contract for `compose_pr_body`; only add the second element.
+- Add a pre-push refresh seam to `ci_monitor.stage_and_push`.
+  - Add an optional callback such as `pre_push_log_refresh: Callable[[], bool] | None = None`.
+  - Invoke it after the CI-fix commit and local verification, before the normal push or force-with-lease push.
+  - If it returns `True`, call `run_logs.flush_logs_pre(...)` before the push so the warning is committed into `larch-logs/implement/<run-id>/execution-issues.ndjson`.
+  - Preserve the existing rebase/force-push flush. Rebase paths still flush before force-push even when the callback returns `False`.
+  - If the warning callback returned `True` and `flush_logs_pre` skips or fails, do not push. Return the existing not-pushed shape so the caller can fail or retry without moving the remote head.
+- Wire the seam from `ci_agentic_fix`.
+  - Pass a callback to both `stage_and_push` call sites.
+  - The callback calls `_invalidate_guidelines_note(args.implement_tmpdir)`.
+  - This makes the warning ride the already-scheduled CI-fix push.
+- Cover the PR-creation path once, upstream of the merge/non-merge branch (Gate B FINDING_2/FINDING_5 round 1; FINDING_1 round 2).
+  - `pr.ensure_pr(...)` already pushes the current branch head unconditionally for both the `--merge` and non-merge outcomes (it is called once, before ship.py branches on `working.merge`).
+  - In `ship.py`, unpack `(architectural_guidelines_note, pin_warning_logged)` from `_pin_and_load_guidelines_note(...)`. Use the note text for `compose_pr_body` unchanged.
+  - When `pin_warning_logged` is `True`, call `run_logs.flush_logs_pre(...)` immediately, before `compose_pr_body`/`ensure_pr` are called, so the warning's committed batch rides `ensure_pr`'s existing push. This covers both `_complete_pr_created_without_merge` and the `--merge` loop in one place; no separate handling is needed in `ship_merge.py`.
+  - Fail closed the same way as the CI-fix seam: if that flush skips or fails, stall this run (`Outcome.STALLED`) before calling `ensure_pr`, matching the existing pre-PR stall pattern already used for `preflight`/`postbump` failures at this point in `ship.py`. Do not create or update the PR without the warning committed.
+- Leave the parent `ship.py` post-monitor invalidation as an idempotent fallback.
+  - Do not add a post-push flush there.
+  - Do not add any push after merge.
+  - Do not weaken the Step 18 teardown guard that avoids commits on `main`/`master` and after `post-merge-sentinel`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+- Import `logging_util`.
+- Change `_log_guidelines_ship_warning(...) -> bool`.
+- Replace `suppress(Exception)` with explicit `try/except Exception as exc`.
+- On exception, emit a concise warning such as:
+  - `ship-pr: architectural-guidelines warning append failed: <redacted exc>`
+- Change `_invalidate_guidelines_note(...) -> bool`.
+- Return `False` for empty tmpdir or no warning.
+- Return `True` when a guideline-drop warning is appended to `execution-issues.md`.
+- Change `_pin_and_load_guidelines_note(...) -> tuple[str, bool]`.
+  - Thread a `warning_logged` boolean out of every internal branch that calls `_log_guidelines_ship_warning` (`_handle_unconsumable_guidelines_note`, `_handle_stale_guidelines_note`, the note-read-failure and redaction-failure branches, and the "pin-note-from-staged skipped" branch).
+  - Return `(note_text, warning_logged)` from every return point, including the empty-tmpdir/empty-head-sha early return (`("", False)`).
+- Update internal call sites in this file to ignore or accumulate the boolean as needed.
+
+### UPDATED: python/larch/implement/ci_monitor.py
+
+- Import `Callable` from `collections.abc` if not already available.
+- Add an optional callback parameter to `stage_and_push`.
+- After commit/rebase and required local verification, but before either push:
+  - call the callback once when present;
+  - store `warning_logged = callback_result`.
+- Compute whether a pre-push log refresh is required:
+  - existing rebase or pending-rebase path;
+  - or `warning_logged`.
+- Run `run_logs.flush_logs_pre` when a refresh is required and `ctx` is present.
+- Preserve existing behavior for rebase force-push recovery.
+- Add warning-specific fail-closed behavior:
+  - if `warning_logged` is true and the refresh is skipped or fails, return not-pushed;
+  - do not execute `git push`;
+  - do not silently merge with an uncommitted warning.
+
+### UPDATED: python/larch/implement/ci_agentic_fix.py
+
+- Import `ship_guidelines` or `_invalidate_guidelines_note`.
+- Add a small private helper such as `_invalidate_guidelines_before_ci_push(args) -> bool`.
+- Pass the helper into both `ci_monitor.stage_and_push` calls, including the pending-rebase retry call site (`run_ci_fix`'s `stage_and_push` invocation).
+- Do not call the helper before local verification passes.
+- Do not add any extra push.
+
+### UPDATED: python/larch/implement/ship.py
+
+- At the `_pin_and_load_guidelines_note(...)` call site (PR creation / `pr-create` phase, before `compose_pr_body`), unpack `(architectural_guidelines_note, pin_warning_logged)`.
+- Pass `architectural_guidelines_note` to `compose_pr_body(...)` unchanged.
+- When `pin_warning_logged` is `True`, call `run_logs.flush_logs_pre(...)` before `compose_pr_body`/`ensure_pr`, inspecting the full `RefreshSkip` result (no blanket `suppress`).
+- On any skip or failure of that warning-triggered refresh, stall this run (`Outcome.STALLED`) before calling `ensure_pr`, using the same terminal-state/ship-state writers already used for `preflight`/`postbump` stalls at this point in the function.
+- Do not add any flush or push logic to `_post_ensure_flush_and_push` or `ship_merge.py`; the single pre-`ensure_pr` flush covers both the `--merge` and non-merge (`_complete_pr_created_without_merge`) outcomes because `ensure_pr` always pushes first.
+
+### UPDATED: python/tests/implement/test_ci_monitor.py
+
+- Add coverage for `stage_and_push` with the pre-push callback.
+- Assert the callback runs before the push.
+- Assert a warning-triggered refresh happens before the normal push.
+- Assert a warning-triggered refresh skip blocks the push.
+- Keep existing pending-rebase tests green.
+
+### UPDATED: python/tests/implement/test_ci_agentic_fix.py
+
+- Add a regression test for the exact race:
+  - create a temp implement tmpdir with a run id and run-log manifest;
+  - mark Step 7a reached with `.execution-issues-step7a-reached`;
+  - create a durable guidelines note;
+  - force `_invalidate_guidelines_note` to append the guideline-drop warning;
+  - run the successful CI-fix push path;
+  - assert there is exactly one branch push;
+  - assert `larch-logs/implement/<run-id>/execution-issues.ndjson` contains the architectural-guidelines warning before the simulated clean merge.
+- Stub final-report and commit helpers as needed so the test stays offline and deterministic.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Update existing assertions if they call `_invalidate_guidelines_note` or `_pin_and_load_guidelines_note` and need to unpack or ignore the new return shape.
+- Add or adapt a focused test for append failure:
+  - monkeypatch `run_logs.append_execution_issue` to raise;
+  - call the guideline warning path;
+  - assert no exception escapes;
+  - assert stderr contains an architectural-guidelines append failure warning.
+- Add a first-try regression test (FINDING_2/FINDING_5 round 1; FINDING_1 round 2), parameterized over both outcomes:
+  - `pin_warning_logged=True` on a **non-merge** run: assert `flush_logs_pre` runs before `ensure_pr`, and the warning reaches the committed `execution-issues.ndjson` before `_complete_pr_created_without_merge` returns.
+  - `pin_warning_logged=True` on a **`--merge`** run with no CI-fix round: assert the same flush-before-`ensure_pr` ordering, and that no extra push happens later in the merge loop.
+  - `pin_warning_logged=True` with a failing/skipped flush: assert `ensure_pr` is never called and the run stalls.
+
+## Edge cases
+
+- **No tmpdir**: `_invalidate_guidelines_note` and `_pin_and_load_guidelines_note` return falsy/`("", False)` and do nothing further.
+- **Append fails**: ship-pr continues, but stderr records the failure.
+- **Warning logged but run-log refresh skipped (CI-fix seam)**: do not push; the CI-fix loop can retry without moving the remote head.
+- **Warning logged but run-log refresh skipped (pre-`ensure_pr` seam)**: stall before creating or updating the PR, matching existing pre-PR stall behavior; the operator retries with a fresh ship-pr invocation.
+- **Rebase force-push path**: keep the existing pre-force-push refresh and lease behavior.
+- **Post-merge state**: do not change teardown guards. Never commit on `main`/`master` or after the post-merge sentinel.
+- **Duplicate invalidation**: the parent `ship.py` fallback may run after the delegate invalidates. It should be harmless because the note is already invalidated.
+- **Non-merge PR creation**: pin/load logs a warning; the flush before `ensure_pr` still commits it, even though `_complete_pr_created_without_merge` never reaches the CI-fix loop or a merge.
+- **First-try `--merge`, no CI-fix**: pin/load logs a warning at PR-creation time; the flush before `ensure_pr` commits it, so the warning reaches the committed batch even with zero CI-fix rounds.
+
+## Failure modes
+
+- `flush_logs_pre` may fail due manifest recovery or commit failure. In warning-triggered paths, block the push (CI-fix seam) or stall before PR creation (pre-`ensure_pr` seam), and surface a warning either way.
+- The callback may return `False` because append failed. The operator still gets stderr, but there is no execution issue to commit.
+- If the callback itself raises unexpectedly, catch at the stage-and-push seam, warn, treat it like `False`, and do not abort ship-pr unless current code policy already aborts that class of error.
+
+## Testing strategy
+
+Run only changed-file relevant tests first.
+
+- `python3 -m pytest python/tests/implement/test_ci_monitor.py`
+- `python3 -m pytest python/tests/implement/test_ci_agentic_fix.py`
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- If import or typing fallout touches shared run-log code, also run:
+  - `python3 -m pytest python/tests/report/test_run_logs.py -k execution`
+- Run Python lint for changed Python files:
+  - `make py-lint`
+- Run full Python tests only if local targeted tests expose cross-module fallout:
+  - `make py-test`
+
+## Acceptance
+
+Run only changed-file relevant tests first.
+
+- `python3 -m pytest python/tests/implement/test_ci_monitor.py`
+- `python3 -m pytest python/tests/implement/test_ci_agentic_fix.py`
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- If import or typing fallout touches shared run-log code, also run:
+  - `python3 -m pytest python/tests/report/test_run_logs.py -k execution`
+- Run Python lint for changed Python files:
+  - `make py-lint`
+- Run full Python tests only if local targeted tests expose cross-module fallout:
+  - `make py-test`
+
+diff_added: 195
+diff_deleted: 32
+mechanical_churn: false
+diff_lines: 227
+
+## Test plan
+(no test plan section in plan-file)
