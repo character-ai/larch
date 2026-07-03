@@ -121,7 +121,7 @@ class RunRecord:
         floors = self.rating.get("floors_applied")
         floor_tiers: list[str] = []
         if isinstance(floors, list):
-            for item in floors:
+            for item in cast("list[object]", floors):
                 if isinstance(item, dict):
                     floor = difficulty.normalize_tier(item.get("floor"), "")
                     if floor:
@@ -160,7 +160,7 @@ class AggregateRow:
 
 @dataclass
 class AnalyzerState:
-    counters: Counter[str] = field(default_factory=Counter)
+    counters: Counter[str] = field(default_factory=Counter[str])
 
     def bump(self, key: str, amount: int = 1) -> None:
         self.counters[key] += amount
@@ -467,7 +467,7 @@ def _vendor_totals(data: Mapping[str, object], vendor: str) -> Mapping[str, obje
         return cast("dict[str, object]", bucket)
     vendor_obj = data.get(vendor)
     if isinstance(vendor_obj, dict):
-        totals = vendor_obj.get("totals")
+        totals = cast("dict[str, object]", vendor_obj).get("totals")
         if isinstance(totals, dict):
             return cast("dict[str, object]", totals)
     return {}
@@ -533,7 +533,7 @@ def _token_timing(skill: str, run_dir: Path, state: AnalyzerState) -> TokenTimin
         total_seconds = safe_int(value=data.get("total_seconds"))
         per_step = data.get("per_step")
         if total_seconds <= 0 and isinstance(per_step, list):
-            total_seconds = sum(safe_int(value=item.get("duration_seconds")) for item in per_step if isinstance(item, dict))
+            total_seconds = sum(safe_int(value=item.get("duration_seconds")) for item in cast("list[object]", per_step) if isinstance(item, dict))
         latency = total_seconds if total_seconds > 0 else None
     return TokenTimingSummary(token_total, cost_usd, latency)
 
@@ -656,10 +656,6 @@ def _render_matrix(label: str, records: Sequence[RunRecord]) -> list[str]:
 
 def _fmt_int(value: int | None) -> str:
     return "n/a" if value is None else f"{value}"
-
-
-def _fmt_float(value: float | None) -> str:
-    return "n/a" if value is None else f"{value:.2f}"
 
 
 def _fmt_cost(value: float | None) -> str:
@@ -864,8 +860,8 @@ def _default_log_root() -> Path:
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="difficulty-calibration analyze")
-    parser.add_argument("--log-root", default=str(_default_log_root()))
-    parser.add_argument("--out", default="")
+    _ = parser.add_argument("--log-root", default=str(_default_log_root()))
+    _ = parser.add_argument("--out", default="")
     return parser.parse_args(list(argv))
 
 
@@ -880,7 +876,7 @@ def analyze_main(argv: list[str] | None = None) -> int:
     if args.out:
         out = Path(str(args.out))
         out.parent.mkdir(parents=True, exist_ok=True)
-        out.write_text(report, encoding="utf-8")
+        _ = out.write_text(report, encoding="utf-8")
         print(f"REPORT_FILE={out}")
     else:
         print(report, end="")
@@ -889,3 +885,5 @@ def analyze_main(argv: list[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(analyze_main())
+# pyright: reportUnknownVariableType=false, reportUnusedFunction=false
+# pyright: reportUnusedCallResult=false

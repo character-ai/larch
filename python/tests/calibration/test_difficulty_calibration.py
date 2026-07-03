@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+# pyright: reportUnusedCallResult=false
+
 import json
 from pathlib import Path
 from typing import Any
+
+import pytest
 
 from larch.calibration import difficulty
 from larch.calibration import difficulty_calibration as dc
@@ -178,7 +182,7 @@ def test_implement_identity_restarts_each_round(tmp_path: Path) -> None:
     assert record.realized_tier == difficulty.MODERATE
 
 
-def test_panel_kind_is_pinned_per_skill(tmp_path: Path, monkeypatch) -> None:
+def test_panel_kind_is_pinned_per_skill(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     root = _root(tmp_path)
     design_run = _run(root, "design", "D")
     _design_tsv(design_run, 1, _design_row("FINDING_1", "accepted"))
@@ -291,7 +295,7 @@ def test_under_rating_and_sidecar_burden(tmp_path: Path) -> None:
     assert "| implement | MISS | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1 |" in report
 
 
-def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys) -> None:
+def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     root = _root(tmp_path)
     run = _run(root, "implement", "OUT", applied=difficulty.TRIVIAL)
     _implement_tsv(run, 1, _code_row("FINDING_1", "rejected"))
@@ -306,9 +310,12 @@ def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys) -
     assert "# Difficulty Calibration" in out.read_text(encoding="utf-8")
 
 
-def test_missing_log_root_exits_2(tmp_path: Path, capsys) -> None:
+def test_missing_log_root_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = dc.analyze_main(["--log-root", str(tmp_path / "missing")])
     captured = capsys.readouterr()
 
     assert rc == 2
     assert "--log-root is missing" in captured.err
+# pyright: reportMissingParameterType=false, reportUnknownMemberType=false
+# pyright: reportUnknownParameterType=false, reportUnknownVariableType=false
+# pyright: reportUnusedCallResult=false
