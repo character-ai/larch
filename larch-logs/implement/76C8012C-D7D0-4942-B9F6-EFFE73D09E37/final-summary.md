@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 03:40:19
-- **Cost**: 💰 TOTAL ~$66.36 — Claude $0.18, Codex-5.5 $47.30, Codex-mini $3.09, Cursor $15.35, Claude (subprocess) $0.44  |  Tokens: 117228k
+- **Cost**: 💰 TOTAL ~$109.28 — Claude $43.09, Codex-5.5 $47.30, Codex-mini $3.09, Cursor $15.35, Claude (subprocess) $0.45  |  Tokens: 168187k
 - **Issue**: #5990 — https://github.com/character-ai/larch/issues/5990
 - **Plan review**: N/A
 - **Dynamic archetypes**: ok (1)
@@ -10,7 +10,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/76C8012C-D7D0-4942-B9F6-EFFE73D09E37/`
 - **Main agent model**: claude-opus-4-8
 - **Effort**: max
@@ -20,9 +20,10 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (2):
+Warnings (3):
   1. Step 7a.1 — 13 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/design/clarify.py, python/larch/report/run_log_flush.py, python/larc...
   2. Step 5: code review hit the 2-round cap without fully converging; reviewer fixes were applied and committed, proceeding.
+  3. Architectural guidelines (G-Py-6 simplicity): difficulty threading grew publish_core, _handle_design_clarify_publish, and _refresh_difficulty_record past prior complexity baselines (plan-mandated;...
 
 ## Review Phase Detail
 
@@ -89,3 +90,7 @@ codex/apply                       │                           █████�
 7. codex/testing — 10
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
