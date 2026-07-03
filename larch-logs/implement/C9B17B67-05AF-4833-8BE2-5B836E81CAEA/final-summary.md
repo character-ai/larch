@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:12:26
-- **Cost**: 💰 TOTAL ~$3.87 — Claude $0.37, Codex-5.5 $1.53, Codex-mini $0.26, Cursor $1.55, Claude (subprocess) $0.16  |  Tokens: 5739k
+- **Cost**: 💰 TOTAL ~$6.97 — Claude $3.47, Codex-5.5 $1.53, Codex-mini $0.26, Cursor $1.55, Claude (subprocess) $0.16  |  Tokens: 9723k
 - **Issue**: #6157 — https://github.com/character-ai/larch/issues/6157
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (nit): Wrong reference target for the OOS triage policy. Concern: `agents/_implementer-base.md` points to `skills/implement/SKILL.md` for the OOS triage policy, but the referenced section is in `skills/implement/references/execution-issues-tracking.md`; this looks pre-existing and outside the diff.
 - **Round 1 OOS_2** (latent): Uncertainty guidance is inconsistent across policy surfaces. Concern: The restored uncertainty rule is present in the implementer prompts, but the canonical OOS triage policy and other main-agent paths still do not carry the same explicit guidance, and the wording still leaves uncertainty around maybe-security inline-folding. T…
 - **Round 1 OOS_3** (latent): Prompt compression drift and missing regression guard. Concern: To stay within the +40-token cap, the branch recompressed the existing security bullet, which makes the diff harder to audit and can hide a future re-compression; there is also no targeted lint/test that anchors the restored caution substring.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
