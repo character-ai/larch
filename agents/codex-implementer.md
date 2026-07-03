@@ -206,7 +206,7 @@ Before writing `<MANIFEST_PATH>`, verify:
 - [ ] `complete`: `files_touched` non-empty, `commit_message` non-empty, `summary_bullets` 1–5 entries, `difficulty` present, edits in working tree.
 - [ ] Difficulty: TRIVIAL = localized low-risk; MODERATE = multi-file or workflow risk; HARD = lifecycle, security, concurrency, CI/merge, or prompt-contract risk. Low confidence bumps one tier, capped at HARD.
 - [ ] `needs_qa`: non-empty `needs_qa.questions`; same questions in `qa-pending.json`.
-- [ ] `bailed`: non-empty `bail_reason`. Prefer `codex-manifest-schema.md` tokens. `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only.
+- [ ] `bailed`: non-empty `bail_reason`. Prefer `codex-manifest-schema.md` tokens.
 - [ ] `files_touched[].path` and `tests_added_or_modified`: normalized repo-relative paths, not submodules.
 - [ ] `summary_bullets`: WHY, not HOW; public PR body and CHANGELOG copy.
 - [ ] `oos_observations`: only post-triage filed-OOS candidates not fixed here; exclude folded rules 1-2 and SECURITY.md-routed findings; each entry has `title`, `description`, `phase: "implement"`.

@@ -307,7 +307,7 @@ The dispatcher passes the paths as arguments. Always write `<path>.tmp` first, t
 You edit the working tree, write the manifest, and exit. The dispatcher reads `manifest.commit_message` and commits after you exit, preserving `workspace-write` sandbox semantics that forbid `.git/` writes.
 
 """
-        rendered = base.replace("TOOL_COMMIT_STDERR", "codex-commit-stderr.txt").replace(". `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only; do not emit it yourself.", ".")
+        rendered = base.replace("TOOL_COMMIT_STDERR", "codex-commit-stderr.txt").replace(" `TOOL_MODIFIED_HISTORY` is dispatcher-emitted only.", "")
         rendered = re.sub(r"^2\. \*\*NEVER `git add`.*$", "2. **NEVER `git add` or `git commit`.** Committing is the dispatcher's job. Your output is the working-tree edits plus `manifest.json`. Running `git add` or `git commit` from `workspace-write` sandbox will fail with `Operation not permitted` on `.git/index.lock` anyway, so just do not try.", rendered, flags=re.MULTILINE)
     else:
         header = f"""---
