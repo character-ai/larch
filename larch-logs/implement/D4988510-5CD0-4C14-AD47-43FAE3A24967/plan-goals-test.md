@@ -1,0 +1,214 @@
+## Goal
+Implement issue #6178: [IMPLEMENTING] [BUG] research read-only hook leaks across skills, blocking writes outside /tmp.
+
+## Implementation Plan
+## Plan
+
+### Context
+
+`approach-synthesis.txt` was `NO_SKETCHES`, so this plan comes from direct repo inspection. Round 1 and the approved outline bind the scope: add an activation gate plus TTL, keep the `/tmp` predicate fail-closed while active, and update coupled docs.
+
+Repo evidence adds one required scope correction: current `skills/bug/SKILL.md` also wires `scripts/deny-edit-write.sh` for `Write`. The fix must preserve `/bug`'s current write guard or the new `/research` sentinel would make `/bug` fail open.
+
+Review rounds reshaped the activation design: liveness is skill-token-scoped and PID-agnostic (production PreToolUse hook `$PPID` does not reliably match orchestrator Bash `$PPID`; see the #5684 pattern in `hook-bg-poll-guard.md`), a missing or unknown token is inactive (no any-sentinel fallback, so a stale pre-upgrade registration cannot be re-armed by another consumer's sentinel), the cache root must be nounset-safe, `/research` writes its sentinel only after Step 0 fully resolves, and every post-creation abort branch removes it.
+
+### Approach
+
+- Add a skill-token-scoped activation gate before the existing path parser in `scripts/deny-edit-write.sh`.
+  - Each consumer passes its token as the hook's first argument: `deny-edit-write.sh research` (`skills/research/SKILL.md`) and `deny-edit-write.sh bug` (`skills/bug/SKILL.md`).
+  - Activation directory: `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active/` with nounset-safe expansion; an unresolvable or absent directory means inactive.
+  - `activation_is_live <token>` returns true only when a sentinel named `<token>-*` in that directory has mtime within the TTL (about 360 minutes). No hook-side `$PPID` correlation: skills embed their own `$PPID` in the filename for debugging and per-run overwrite only.
+  - A missing or unrecognized token is inactive (allow). There is no any-fresh-sentinel fallback: a leaked stale registration wired as bare `deny-edit-write.sh` (pre-upgrade argv) must not be re-armed by a later consumer's fresh sentinel, which is exactly the reported cross-skill failure. Correct token wiring is enforced by structural pins on both frontmatter blocks, not by a runtime fallback.
+  - A `/bug` sentinel cannot re-arm a leaked `/research` hook: token scoping keeps each consumer's activation independent.
+  - If activation is not live, exit 0 with empty stdout. This makes leaked registrations fail open.
+  - The gate must never trip `set -u` or exit non-zero; the always-exit-0 contract holds even with `XDG_CACHE_HOME` and `HOME` both unset.
+- Keep existing deny behavior unchanged after the gate is active.
+  - Preserve the byte-identical deny envelope.
+  - Preserve matcher strings in skill frontmatter.
+  - Preserve canonical `/tmp` allow logic and fail-closed path ambiguity.
+- Make both current hook consumers create and remove their own sentinel:
+  - `/research`: create only after Step 0 fully succeeds, including degraded-tools gate resolution (Continue or non-interactive pass), immediately before the first `Write`/`Edit`/`NotebookEdit` need; remove during Step 4 cleanup and in every controlled abort branch that can run after creation, including the `references/research-phase.md` cleanup-tmpdir abort branches and the "Filing findings as issues" abort branches (`VERIFIED=false` and `ISSUES_FAILED>=1`).
+  - `/bug`: create after `$BUG_TMPDIR` exists and before the first `Write`; remove on success (Step 7), on the Step 3 and Step 5 security aborts, and on Step 6 failure paths while still leaving `$BUG_TMPDIR` for debugging.
+- Update tests to cover inactive, active, stale, cross-token, tokenless-inactive, foreign-PID, unset-`HOME`, and `jq`-absent behavior.
+- Update docs to describe the activation axis separately from the path-deny axis.
+
+### Files to modify/create
+
+### UPDATED: scripts/deny-edit-write.sh
+
+- Parse the optional skill token from `$1` before reading stdin.
+- Add constants for:
+  - activation directory with nounset-safe expansion `${XDG_CACHE_HOME:-${HOME:-}/.cache}/larch/deny-edit-write-active`
+  - TTL minutes, about 360
+- Add `activation_is_live()` before the current `jq` availability branch.
+  - Return false when the activation directory is absent or unreadable.
+  - With a recognized token: return true when any `<token>-*` sentinel is newer than the TTL (for example via `find -mmin`).
+  - With a missing or unrecognized token: return false (inactive), so stale tokenless registrations cannot be re-armed by any consumer's sentinel.
+  - Return false for stale, unreadable, or ambiguous activation state; never abort under `set -u`.
+  - Do not compare against the hook's own `$PPID`; production hook parent PIDs diverge from orchestrator Bash `$PPID` (#5684 pattern).
+- Exit 0 immediately when activation is not live.
+- Leave all existing deny JSON branches after the gate.
+- Keep the fixed reason literal byte-identical.
+- Do not change the canonical `/tmp` path-resolution predicate.
+
+### UPDATED: scripts/test-deny-edit-write.sh
+
+- Run the hook with an isolated `XDG_CACHE_HOME` so tests never see real sentinels.
+- Add inactive-gate cases:
+  - repo path allows when no sentinel exists
+  - malformed JSON allows when no sentinel exists
+  - `jq` absent allows when no sentinel exists
+- Update existing deny/allow cases to create a fresh token sentinel first.
+- Add stale-sentinel cases:
+  - repo path allows when the sentinel mtime is older than the TTL
+  - `/tmp` paths still allow with a stale sentinel
+- Add token-scoping cases:
+  - a fresh `research-*` sentinel does not activate a hook invoked with the `bug` token, and vice versa
+  - a tokenless invocation with a fresh `bug-*` sentinel and a repo-path stdin allows with empty stdout (the leaked pre-upgrade registration scenario)
+  - an unrecognized token behaves the same as tokenless: inactive, allow
+- Add a production-divergence case modeled on `scripts/test-hook-bg-poll-guard.sh` T14: a sentinel written under a foreign PID still activates the deny (no PPID correlation).
+- Add an unset-`HOME` plus unset-`XDG_CACHE_HOME` case: the hook exits 0 and allows instead of tripping `set -u`.
+- Keep byte-identity tests for active deny output.
+- Keep the `jq`-absent fallback test, but run it with a fresh sentinel so it still verifies active fail-closed behavior.
+- Use portable test setup for stale mtime, preferably a small `python3 -c 'os.utime(...)'` helper.
+
+### UPDATED: scripts/deny-edit-write.md
+
+- Split the contract into two phases:
+  - activation gate (token-scoped, TTL-bounded, fail-open)
+  - active `/tmp` enforcement (fail-closed, unchanged)
+- Document the sentinel directory, recognized token prefixes, TTL, nounset-safe root, and that filenames embed the writer's `$PPID` for debugging only.
+- Document that a missing or unrecognized token is inactive: there is no any-sentinel fallback, so stale tokenless registrations stay disarmed; structural pins own wiring correctness.
+- State explicitly that the hook performs no `$PPID` correlation and why (production hook parents diverge; #5684 pattern).
+- State that stale or leaked registrations no longer deny by themselves.
+- Keep the existing path-resolution and byte-identical deny-envelope contract.
+
+### UPDATED: scripts/test-deny-edit-write.md
+
+- Add the new inactive, active, stale, cross-token, tokenless-inactive, foreign-PID, unset-`HOME`, and `jq`-absent-active cases.
+- Note that the harness isolates the larch cache home.
+
+### UPDATED: skills/research/SKILL.md
+
+- Frontmatter: change the hook command to pass the `research` token as its argument.
+- Create the `/research` activation sentinel only after Step 0 fully succeeds, including degraded-tools gate resolution (Continue or non-interactive pass), immediately before the first `Write`/`Edit`/`NotebookEdit` need, with `mkdir -p` plus a simple file create named `research-$PPID`.
+- Abort loudly if the sentinel cannot be written.
+- In Step 4 cleanup, remove the sentinel before or alongside tempdir cleanup.
+- Remove the sentinel in every controlled abort branch that can run after creation, including both "Filing findings as issues" abort branches (`VERIFIED=false` and `ISSUES_FAILED>=1`), preferring the shared cleanup path where practical.
+- Update the read-only contract prose:
+  - the hook denies only while a fresh `research-*` activation sentinel exists
+  - a leaked hook registration without a fresh sentinel allows
+  - while active, `/tmp` enforcement remains fail-closed
+
+### UPDATED: skills/research/references/research-phase.md
+
+- Remove the activation sentinel in every cleanup-tmpdir abort branch, mirroring Step 4 cleanup.
+
+### UPDATED: skills/bug/SKILL.md
+
+- Frontmatter: keep matcher `Write`; change the hook command to pass the `bug` token.
+- In Step 2, after `$BUG_TMPDIR` is created, create the `bug-$PPID` activation sentinel.
+- Abort loudly and remove `$BUG_TMPDIR` if the sentinel cannot be written.
+- In the Step 3 security abort, remove the sentinel when removing `$BUG_TMPDIR`, same as Step 5.
+- In the Step 5 security abort, remove the sentinel as well as `$BUG_TMPDIR`.
+- In Step 6 failure paths, remove the sentinel before stopping, but keep `$BUG_TMPDIR` for debugging as the current contract says.
+- In Step 7 cleanup, remove the sentinel with `$BUG_TMPDIR`.
+- Update the contract line about `$BUG_TMPDIR` to mention that the hook is active only after this sentinel is written.
+
+### UPDATED: scripts/test-research-structure.sh
+
+- Add structural pins for the `/research` activation sentinel setup and cleanup prose.
+- Pin the create-after-degraded-tools-gate ordering (sentinel creation prose appears only after gate resolution).
+- Pin the loud abort wording for sentinel write failure.
+- Pin sentinel removal in the `research-phase.md` abort branches.
+- Pin sentinel removal in both filing-abort branches (`VERIFIED=false` and `ISSUES_FAILED>=1`), mirroring the `/bug` Step 6 failure sentinel-removal checks.
+- Pin the distinction between activation fail-open and active path fail-closed behavior.
+
+### UPDATED: scripts/test-research-structure.md
+
+- Document the new `/research` sentinel pins.
+
+### UPDATED: scripts/test-bug-structure.sh
+
+- Add structural pins for:
+  - `Write` hook frontmatter remains present and passes the `bug` token
+  - Step 2 creates the activation sentinel
+  - Step 3 security abort removes the sentinel with `$BUG_TMPDIR`
+  - Step 5 and Step 7 remove it
+  - Step 6 failure removes the sentinel while leaving `$BUG_TMPDIR`
+
+### UPDATED: scripts/test-bug-structure.md
+
+- Document the new `/bug` sentinel pins.
+
+### UPDATED: .claude/rules/research-readonly-hook-coupling.md
+
+- Rename or broaden the prose so it no longer claims `/research` is the only skill wiring this hook.
+- State current consumers:
+  - `/research` with matcher `Edit|Write|NotebookEdit` and token `research`
+  - `/bug` with matcher `Write` and token `bug`
+- Keep the hard rule that `/research`'s matcher stays exactly `Edit|Write|NotebookEdit`.
+- Add the activation sentinel (recognized token prefixes, TTL, PID-agnostic liveness, tokenless-inactive) as a required coupled surface.
+- Add `skills/bug/SKILL.md`, `skills/research/references/research-phase.md`, `scripts/test-bug-structure.sh`, and `scripts/test-bug-structure.md` to the rule frontmatter paths.
+
+### UPDATED: SECURITY.md
+
+- Update the `/research` hook discussion to mention the token-scoped activation sentinel and TTL.
+- Add a short note that stale or leaked hook registrations fail open when no fresh token sentinel exists, including tokenless pre-upgrade registrations.
+- Preserve the residual-risk framing for `Bash`, `Skill`, `Agent`, and external reviewers.
+- Add `/bug` to the hook-consumer discussion where relevant.
+- Keep the reduced Bash surface note accurate for the local FD-3 `hook_emit` path.
+
+### UPDATED: docs/skills.md
+
+- Update `/research` prose to say the hook is activation-gated and active only during a live run.
+- Update `/bug` prose if it mentions scratch writes, so it reflects the active sentinel plus canonical `/tmp` guard.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+- Update the `/research` lifecycle note to mention the fresh activation sentinel and stale-sentinel TTL.
+- Keep the `Bash` and external-reviewer caveats.
+
+### Edge cases
+
+- Hook leaked into `/design` with no fresh sentinel: allow all matched tool calls.
+- Hook active during a real `/research`: deny repo paths, relative paths, malformed JSON, missing paths, symlink escapes, and canonicalization failures as today.
+- Hook active during `/bug`: deny `Write` outside canonical `/tmp`.
+- `/bug` runs while a leaked `/research` registration exists: the `bug-*` sentinel does not satisfy the `research` token check, so the leaked hook stays inactive.
+- Stale pre-upgrade registration invoked without a token while a fresh `bug-*` sentinel exists: stays inactive and allows, so the reported cross-skill re-arm cannot recur.
+- Sentinel written by a different parent PID than the hook sees: still activates; liveness is token plus mtime only.
+- Stale sentinel from a crashed run: ignore after TTL.
+- `XDG_CACHE_HOME` and `HOME` both unset: gate resolves inactive and exits 0; no `set -u` abort.
+- Sentinel write fails: abort setup loudly rather than running a read-only skill without its intended guard.
+- `/research` filing-abort branches after the sentinel exists: remove the sentinel before stopping.
+- `/bug` issue filing fails: remove the activation sentinel but leave `$BUG_TMPDIR` for debugging.
+
+### Failure modes
+
+- If a consumer forgets its token argument, that consumer's hook stays inactive: non-blocking but unguarded. Structural pins on both frontmatter blocks are the warning signal.
+- If cleanup prose is missed on one abort path, TTL still prevents an indefinite stuck session.
+- If docs still claim `/research` is the only hook consumer, future edits may weaken `/bug`.
+- If inactive-gate tests do not isolate cache state, a real local sentinel can make tests flaky.
+
+### Testing strategy
+
+- `bash scripts/test-deny-edit-write.sh`
+- `bash scripts/test-research-structure.sh`
+- `bash scripts/test-bug-structure.sh`
+- `make test-deny-edit-write test-research-structure test-bug-structure`
+- Run relevant shell lint for changed shell files, for example `make lint-bash32` when available.
+- Run `python3 python/cli.py checks run-relevant` as the final scoped validation if the local toolchain is available.
+
+## Acceptance
+
+- `bash scripts/test-deny-edit-write.sh` passes with the new inactive-gate, active, stale-sentinel, cross-token, tokenless-inactive, foreign-PID, unset-`HOME`, and `jq`-absent cases.
+- A bare-argv hook invocation with a fresh `bug-*` sentinel and a repo-path stdin allows with empty stdout and exit 0 (the reported leak scenario cannot recur).
+- With a fresh `research-*` sentinel, a repo-path `Write` still denies with the byte-identical deny envelope; `/tmp` targets still allow.
+- `bash scripts/test-research-structure.sh` and `bash scripts/test-bug-structure.sh` pass with the new sentinel setup, ordering, and abort-path removal pins.
+- `make test-deny-edit-write test-research-structure test-bug-structure` passes.
+- `make lint-bash32` passes for the changed shell files.
+
+diff_lines: 380
+
+## Test plan
+(no test plan section in plan-file)
