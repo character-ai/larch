@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:48:31
-- **Cost**: 💰 TOTAL ~$12.98 — Claude $0.53, Codex-5.5 $8.65, Codex-mini $0.51, Cursor $3.07, Claude (subprocess) $0.22  |  Tokens: 17696k
+- **Cost**: 💰 TOTAL ~$15.78 — Claude $3.33, Codex-5.5 $8.65, Codex-mini $0.51, Cursor $3.07, Claude (subprocess) $0.22  |  Tokens: 21807k
 - **Issue**: #5980 — https://github.com/character-ai/larch/issues/5980
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Cursor strip-regex guard number mismatch is pre-existing. Concern: The Cursor strip regex still targets guard #9 for spawn text while the interactive-subprocess guard is #8. The mismatch predates this branch and was marked out of scope.
 - **Round 1 OOS_2** (latent): Security uncertainty clause removal is pre-existing and ancillary. Concern: Compression removed the OOS triage line “If uncertain whether a finding is security, do not file publicly.” That weakens conservative security routing guidance, but the issue is pre-existing and ancillary to the manifest, `needs_qa`, and commit contracts this…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
