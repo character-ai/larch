@@ -1,6 +1,7 @@
 # pyright: reportUnusedCallResult=false, reportUnusedFunction=false
 """Tests for checks.py (stub Runner only; no bash executed)."""
 
+# pyright: reportUnknownArgumentType=false, reportUnknownMemberType=false, reportUnknownParameterType=false, reportUnknownVariableType=false, reportUntypedFunctionDecorator=false
 from __future__ import annotations
 
 import os
