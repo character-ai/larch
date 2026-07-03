@@ -74,7 +74,7 @@ Then classify the just-fixed round as substantial or non-substantial using main-
 
 Print `> **🔶 /review 4: final summary**`. Standalone diff mode prints `review-round-summary.md`; nested mode copies artifacts and emits only the `### review-result` footer. **Continue to Step 4d IMMEDIATELY** after summary-side artifacts — the review-result footer is not terminal for the remainder of Step 4 (larch-log batches, etc.). Description mode composes issue-oriented artifacts for operator inspection; accepted OOS items are not auto-filed — use `/issue` manually when you want GitHub tracking. Security-tagged findings continue to be held locally per the voting protocol.
 
-Set `review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"` before any Step 4 larch-log command, and use `--log-root "$review_log_root"` on every `review log-phase`, `run-log capture-transcript`, and `run-log commit` call. Compute one slug-valid guard matching `run_log_batch.validate_run_id_slug`: `RUN_ID` must be non-empty, must not contain `..`, `/`, or `\`, and must match `^[A-Za-z0-9._-]+$`. Gate all Step 4 review larch-log writes, standalone transcript capture, and standalone commit on that slug-valid guard.
+Set `review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"` before any Step 4 larch-log command, and use `--log-root "$review_log_root"` on every `review log-phase`, `run-log capture-transcript`, and `run-log commit` call. Compute one slug-valid guard by calling `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log validate-run-id`. Gate all Step 4 review larch-log writes, standalone transcript capture, and standalone commit on that slug-valid guard.
 
 If `RUN_ID` is non-empty, write flat review larch-log batches only after the slug-valid guard passes with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review log-phase`: `review-context`, `review-panel-manifest`, `review-findings`, `review-tally`, `review-scout-manifest`, `difficulty-rating`, `review-round-summary`, and one `review-findings-classification-round-${N}` batch for each round `N` that produced a non-empty classification TSV. Prefer `SCOUT_DIFFICULTY_RATING` for `difficulty write-record`; if absent, write a bounded inline main-agent rating sidecar using the shared rubric. Feed the changed-path list into the CLI so floors can raise `applied_tier`. This wrapper is the only place `review log-phase` is called.
 
@@ -85,7 +85,7 @@ Write `review-scout-manifest` after the tally batch when `SCOUT_STATUS` is non-e
 ```bash
 review_log_root="${LARCH_LOG_ROOT:-$REVIEW_TMPDIR/larch-logs}"
 review_run_id_valid=false
-if [[ -n "${RUN_ID:-}" && "$RUN_ID" != *..* && "$RUN_ID" != */* && "$RUN_ID" != *\\* && "$RUN_ID" =~ ^[A-Za-z0-9._-]+$ ]]; then
+if python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log validate-run-id --run-id="${RUN_ID:-}" | grep -qx 'VALID=true'; then
   review_run_id_valid=true
 fi
 if [[ "$review_run_id_valid" = true && "${SCOUT_STATUS:-na}" != "na" ]]; then
@@ -106,7 +106,7 @@ if [[ "$review_run_id_valid" = true && "${SCOUT_STATUS:-na}" != "na" ]]; then
        yield_tsv_basename: $yield_tsv_basename
      }' > "$scout_payload_file"
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review log-phase \
-    --run-id "$RUN_ID" \
+    --run-id="$RUN_ID" \
     --log-root "$review_log_root" \
     --batch review-scout-manifest \
     --action write \
@@ -116,7 +116,7 @@ fi
 
 The wrapper owns this larch-log write; `review core` only emits the KVs.
 
-Standalone review transcript capture is separate from `review log-phase`. When `SESSION_ENV_PATH` is empty, `review_run_id_valid=true`, and `LARCH_CLAUDE_SOURCE_FILE` is non-empty, call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log capture-transcript --source-file "$LARCH_CLAUDE_SOURCE_FILE" --log-root "$review_log_root" --skill review --run-id "$RUN_ID" --defer-commit true --execution-issues-log "$REVIEW_TMPDIR/execution-issues.md" --warning-step-label "4"`, then relay any `SESSION_TRANSCRIPT_STATUS=` line. When `SESSION_ENV_PATH` is empty and `review_run_id_valid=true`, best-effort commit the staged review batches with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log commit --log-root "$review_log_root" --skill review --run-id "$RUN_ID"`; warn on failure but continue to cleanup. Nested `/review` runs inside `/implement` keep parent log ownership unchanged and must skip both transcript capture and this commit.
+Standalone review transcript capture is separate from `review log-phase`. When `SESSION_ENV_PATH` is empty, `review_run_id_valid=true`, and `LARCH_CLAUDE_SOURCE_FILE` is non-empty, call `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log capture-transcript --source-file "$LARCH_CLAUDE_SOURCE_FILE" --log-root "$review_log_root" --skill review --run-id="$RUN_ID" --defer-commit true --execution-issues-log "$REVIEW_TMPDIR/execution-issues.md" --warning-step-label "4"`, then relay any `SESSION_TRANSCRIPT_STATUS=` line. When `SESSION_ENV_PATH` is empty and `review_run_id_valid=true`, best-effort commit the staged review batches with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log commit --log-root "$review_log_root" --skill review --run-id="$RUN_ID"`; warn on failure but continue to cleanup. Nested `/review` runs inside `/implement` keep parent log ownership unchanged and must skip both transcript capture and this commit.
 
 <!-- step:5 — Cleanup -->
 ## Step 5 — Cleanup

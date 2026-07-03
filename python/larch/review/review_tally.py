@@ -1266,7 +1266,7 @@ def log_phase(argv: list[str]) -> int:
     else:
         cmd = [*base, "append"]
         file_args = ["--record-file", args.payload_file]
-    log_args = ["--skill", "review", "--run-id", args.run_id, "--batch", args.batch]
+    log_args = ["--skill", "review", f"--run-id={args.run_id}", "--batch", args.batch]
     if args.log_root:
         log_args = ["--log-root", args.log_root, *log_args]
     proc = subprocess.run([*cmd, *log_args, *file_args], text=True, capture_output=True, check=False)
@@ -1277,7 +1277,7 @@ def log_phase(argv: list[str]) -> int:
     if args.batch == "review-panel-manifest" and args.action == "write":
         sibling = Path(args.payload_file).with_name("panel-prompt-sizes.tsv")
         if sibling.is_file() and sibling.stat().st_size > 0:
-            extra_log_args = ["--skill", "review", "--run-id", args.run_id, "--batch", "panel-prompt-sizes"]
+            extra_log_args = ["--skill", "review", f"--run-id={args.run_id}", "--batch", "panel-prompt-sizes"]
             if args.log_root:
                 extra_log_args = ["--log-root", args.log_root, *extra_log_args]
             # lint-subprocess-via-runner: ok sibling panel-prompt-sizes write mirrors the baselined run-log subprocess.run above in this function

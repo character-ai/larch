@@ -6,6 +6,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    import pytest
 
 from larch.review import review_tally
 import review_test_support as rts
@@ -2265,6 +2269,49 @@ def test_tally_seed_oos_seq_counts_mixed_oos_and_finding_headings(tmp_path: Path
     )
 
     assert review_tally._seed_oos_seq(str(session_env)) == 3  # pyright: ignore[reportPrivateUsage]
+
+
+def test_log_phase_forwards_dash_leading_run_id_as_single_token(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    payload = tmp_path / "review-panel-manifest.ndjson"
+    payload.write_text("{}\n", encoding="utf-8")
+    sibling = tmp_path / "panel-prompt-sizes.tsv"
+    sibling.write_text("site\tslot\nreview\tcorrectness\n", encoding="utf-8")
+    calls: list[list[str]] = []
+
+    def fake_run(
+        argv: list[str],
+        **_kwargs: object,
+    ) -> subprocess.CompletedProcess[str]:
+        calls.append(argv)
+        return subprocess.CompletedProcess(argv, 0, "LOG_WRITTEN=true\n", "")
+
+    monkeypatch.setattr(review_tally.subprocess, "run", fake_run)
+
+    rc = review_tally.log_phase(
+        [
+            "--run-id=-abc123",
+            "--batch",
+            "review-panel-manifest",
+            "--action",
+            "write",
+            "--payload-file",
+            str(payload),
+            "--log-root",
+            str(tmp_path / "logs"),
+        ]
+    )
+
+    assert rc == 0
+    assert len(calls) == 2
+    for argv in calls:
+        assert "--run-id=-abc123" in argv
+        assert "--run-id" not in argv
+    assert "--batch" in calls[0]
+    assert calls[0][calls[0].index("--batch") + 1] == "review-panel-manifest"
+    assert calls[1][calls[1].index("--batch") + 1] == "panel-prompt-sizes"
 
 
 def test_log_phase_accepts_panel_prompt_sizes_batch(tmp_path: Path) -> None:

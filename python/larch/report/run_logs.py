@@ -6,7 +6,8 @@ The bulk of the original run_logs.py has been split into four sibling modules.
 This file re-exports all their public symbols and keeps the implementations
 that did not move:
   - larch_log_init_main, larch_log_write_main, larch_log_append_main,
-    larch_log_exists_main, larch_log_manifest_main
+    larch_log_exists_main, larch_log_manifest_main,
+    larch_log_validate_run_id_main
   - verify_completeness_main and its helpers
   - append_entry_main, append_failure_main
   - larch_log_write_round_main
@@ -216,6 +217,17 @@ def _common_parser(prog: str) -> argparse.ArgumentParser:
     parser.add_argument("--skill", required=True)
     parser.add_argument("--run-id", required=True)
     return parser
+
+
+def larch_log_validate_run_id_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py run-log validate-run-id", add_help=False)
+    parser.add_argument("--run-id", required=True)
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code) if isinstance(exc.code, int) else 2
+    print(f"VALID={'true' if validate_run_id_slug(args.run_id) else 'false'}")
+    return 0
 
 
 def larch_log_init_main(argv: list[str]) -> int:
