@@ -1,0 +1,1 @@
+1	the review step 0 prose still ties transcript materialization to `larch_token_session_id` and `session_uuid` matching, so standalone review runs with a real claude uuid can still leave `larch_claude_source_file` empty and skip capture.
