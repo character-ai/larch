@@ -1,0 +1,225 @@
+## Goal
+Implement issue #6108: [IMPLEMENTING] [BUG] bg-poll-guard cross-clone block: foreign session's live .bg-wait-active denies….
+
+## Implementation Plan
+## Plan
+
+Context:
+- `approach-synthesis.txt` is `NO_SKETCHES`; this plan uses direct repo inspection and the resolved Round 1 constraints.
+- The approved outline binds scope to `scripts/hook-bg-poll-guard.sh`, its test and contract docs, and the `SECURITY.md` guard paragraph.
+- Do not add a sessionstart-health version-skew check. Note rollout lag in docs only.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-bg-poll-guard.sh
+
+Implement the hook fix in the smallest safe shape:
+
+1. **Add clone ownership helpers.**
+   - Duplicate `clone_paths_same()` and `marker_foreign_clone()` from `scripts/hook-no-progress-guard.sh`.
+   - Keep them self-contained in this hook.
+   - Use `.larch-keepalive` `CLONE_PATH` as the primary identity.
+   - Treat uncertainty as same-clone:
+     - empty or uncanonical `cwd`
+     - missing `.larch-keepalive`
+     - unreadable or malformed `CLONE_PATH`
+   - This preserves fail-safe behavior.
+
+2. **Move or create `cwd_canon` before live-marker collection.**
+   - Current code computes it after `live_dirs_file` population.
+   - Collection-time filtering needs it earlier.
+   - Remove the later duplicate assignment.
+
+3. **Filter foreign markers in the live-marker collection loop.**
+   - After `marker_is_live "$marker"` returns `0`, call `marker_foreign_clone "$LIVE_MARKER_DIR" "$cwd_canon"`.
+   - If it returns true, skip writing the dir to `live_dirs_file` and `live_markers_file`.
+   - This prevents foreign markers from reaching:
+     - Bash deny loops
+     - Read deny loops
+     - Monitor and TaskOutput deny loops
+     - Step 3 waiter denial
+     - foreground probe clamp target selection
+     - denial telemetry attribution
+
+4. **Make the retained-marker plausibility gate keepalive-aware.**
+   - `bash_probe_target_dir_plausible` currently correlates only the cwd basename tag with the marker-dir basename tag; a same-clone cwd in a repo subdirectory fails that correlation and would let gated same-clone probes through.
+   - Before the basename-tag heuristic, compare the marker dir's `.larch-keepalive` `CLONE_PATH` against `cwd_canon` via `clone_paths_same()`.
+   - Known same clone returns plausible.
+   - Known foreign returns not plausible (defense in depth; collection already dropped foreign markers).
+   - Unknown identity (missing or unparsable keepalive, empty cwd) falls back to the existing basename-tag heuristic unchanged.
+   - This keeps same-clone Monitor, TaskOutput, `tasks/*.output`, and bare tmpdir-variable probes denied when cwd is a repo subdirectory.
+
+5. **Keep same-clone behavior intact.**
+   - Do not weaken same-clone denies for:
+     - progress probes
+     - `tasks/*.output`
+     - known result files
+     - `plan-review/`
+     - Monitor
+     - TaskOutput
+     - terminal-sentinel mutation attempts
+     - repeated foreground probes
+
+6. **Allow `.bg-wait-active` marker diagnosis reads.**
+   - Add a small helper for marker-file path detection by basename.
+   - For `Read`, exit allow when the target basename is exactly `.bg-wait-active`.
+   - For `Bash`, add a narrow marker-read exemption:
+     - allow simple read/probe commands whose guarded target is only `.bg-wait-active`
+     - allow common diagnosis verbs such as `cat`, `stat`, `ls`, `wc`, `head`, `sed`, and `awk`
+     - reject mixed commands that also reference task outputs, result files, `.completed/*`, `plan-review/`, or mutation/redirection shapes
+   - Do not exempt `.completed/*` sentinels.
+
+7. **Enrich deny reasons.**
+   - Refactor deny emitters to accept the triggering live dir:
+     - `json_deny "$dir"`
+     - `json_deny_monitor "$dir"`
+     - `json_deny_probe "$dir"`
+   - Include in every `permissionDecisionReason`:
+     - marker path, as `$dir/.bg-wait-active`
+     - marker `STEP`
+     - hook plugin version
+   - Use static `printf` formatting, not `jq`, for final deny JSON.
+   - Add a small JSON string escape helper so paths and step values cannot break the deny JSON.
+   - Resolve hook version once, best effort:
+     - prefer `${CLAUDE_PLUGIN_ROOT}/.claude-plugin/plugin.json`
+     - fall back to the repo root relative to the script
+     - use `unknown` if unreadable or unparsable
+   - Keep hook fail-open behavior for parse errors before a deny branch.
+   - Do not make final deny emission depend on `jq`.
+
+8. **Preserve telemetry semantics.**
+   - Denial counters should increment under the same-clone marker dir only.
+   - Foreign-clone markers skipped at collection time must not get denial counts from this session.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+
+Add focused regression coverage near the existing #5925/#6080 block.
+
+1. **Add keepalive fixture helpers.**
+   - Create fake repo clone dirs.
+   - Write `.larch-keepalive` files with `CLONE_PATH=<repo>`.
+   - Use auto marker discovery where possible so collection filtering is exercised.
+
+2. **Foreign marker never denies when clone identity differs.**
+   - Foreign live marker plus Bash containing the foreign marker dir path allows.
+   - Foreign live marker plus Read under the foreign marker dir allows.
+   - Foreign live marker plus Monitor allows.
+   - Foreign live marker plus TaskOutput allows.
+   - Foreign live marker plus Bash/Read of `tasks/*.output` from the current clone still allows.
+   - Verify no `bg-poll-guard-denials.count` appears or changes under the foreign marker dir.
+
+3. **Marker-file diagnosis is allowed.**
+   - Same-clone `Read` of `.bg-wait-active` allows while the marker is live.
+   - Same-clone simple Bash read of `.bg-wait-active` allows while the marker is live.
+   - A mixed Bash command that reads `.bg-wait-active` plus a progress artifact still denies.
+
+4. **Same-clone denials still fire.**
+   - Same-clone Bash direct dir probe denies.
+   - Same-clone Read under live dir, except `.bg-wait-active`, denies.
+   - Same-clone Monitor and TaskOutput deny.
+   - Same-clone `tasks/*.output` Bash and Read denies.
+   - Same-clone probes from a repo subdirectory cwd, with keepalive `CLONE_PATH` at the repo root, still deny for at least one keepalive-gated path such as Monitor or `tasks/*.output`.
+
+5. **Probe clamps do not bind to a foreign sole-live dir.**
+   - With only a foreign live marker present, a sanctioned foreground probe from a different clone should allow and should not create a probe counter under the foreign dir.
+   - With a same-clone live marker present, existing clamp behavior should remain unchanged.
+
+6. **Deny reason metadata.**
+   - Update `assert_deny` so raw marker path in deny reason is no longer treated as a failure.
+   - Add assertions that deny JSON is valid and the reason contains:
+     - `.bg-wait-active`
+     - `STEP=<expected>` or equivalent step text
+     - `hook_version=` or equivalent version text
+   - Keep static deny shape checks.
+
+### UPDATED: scripts/hook-bg-poll-guard.md
+
+Update the contract doc to match behavior:
+
+- Live marker collection drops markers whose `.larch-keepalive` `CLONE_PATH` is known to belong to another repo clone.
+- Missing or unreadable clone identity keeps the marker, preserving conservative guard behavior.
+- The retained-marker plausibility gate prefers the `.larch-keepalive` `CLONE_PATH` comparison and falls back to the basename-tag heuristic only when clone identity is unknown.
+- `.bg-wait-active` reads are diagnosis, not progress polling.
+- `.completed/*` reads remain guarded.
+- Deny reasons intentionally include the marker path, marker step, and hook version.
+- Note that hook fixes only affect sessions started after a plugin upgrade because running sessions keep their pinned `CLAUDE_PLUGIN_ROOT`.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.md
+
+Update harness invariants:
+
+- It now covers collection-time clone filtering via `.larch-keepalive`.
+- It verifies foreign markers do not deny Bash, Read, Monitor, TaskOutput, waiter, or clamp paths when identity is known.
+- It verifies same-clone subdirectory-cwd probes still deny through the keepalive-aware plausibility gate.
+- It verifies `.bg-wait-active` diagnosis reads are allowed.
+- It verifies enriched deny reasons.
+
+### UPDATED: SECURITY.md
+
+Update the “Plugin-shipped hooks (/design and /implement background polling)” paragraph:
+
+- State that `.bg-wait-active` markers gate only their owning repo clone when clone identity is known.
+- State that marker identity comes from `.larch-keepalive` `CLONE_PATH`.
+- State that unknown identity keeps conservative behavior.
+- State that `.bg-wait-active` itself can be read for diagnosis.
+- State that deny reasons include marker path, marker step, and hook version.
+- Add the rollout caveat: upgraded hook behavior reaches only newly started Claude sessions because existing sessions run their pinned plugin root.
+
+## Approach
+
+- Prefer structural filtering over patching each deny branch.
+- Keep hooks self-contained; do not add a shared Bash library.
+- Use the existing no-progress guard ownership semantics to avoid inventing a second clone identity model.
+- Keep same-clone guard behavior as the regression anchor.
+- Make diagnosability explicit but narrow.
+
+## Edge cases
+
+- **Empty `cwd`:** keep markers during collection. Existing downstream gates still decide whether to deny.
+- **Missing `.larch-keepalive`:** keep markers. Do not fail open globally.
+- **Different clones with same basename:** `.larch-keepalive` path comparison should distinguish them when present.
+- **Subdirectory cwd:** `clone_paths_same()` treats repo root and subdirectories as same clone, at collection time and inside the keepalive-aware plausibility gate, so same-clone probes from subdirectory cwds still deny.
+- **Symlink marker:** keep current rejection in `marker_is_live`.
+- **Plugin version missing:** report `unknown` without failing the hook.
+- **JSON escaping:** escape marker path, step, and version before `printf`.
+- **Marker-read bypass risk:** allow only marker-only diagnosis reads. Mixed commands still route to deny logic.
+
+## Failure modes when non-trivial
+
+- Over-filtering could let a same-clone progress poll through. Tests must pin same-clone denies.
+- Under-filtering could preserve cross-clone stalls. Tests must pin foreign-clone allow cases.
+- A broad Bash marker-read exemption could become a polling bypass. Keep it marker-only.
+- Invalid deny JSON would make the hook fail ineffective. Parse deny output with `jq` in tests.
+- Deny reason path disclosure is now intentional. Keep it limited to the local marker path and step metadata.
+
+## Testing strategy
+
+Run changed-file checks:
+
+- `bash scripts/test-hook-bg-poll-guard.sh`
+- `bash scripts/lint-bash32.sh scripts/hook-bg-poll-guard.sh scripts/test-hook-bg-poll-guard.sh`
+- `pre-commit run shellcheck --files scripts/hook-bg-poll-guard.sh scripts/test-hook-bg-poll-guard.sh`
+- `pre-commit run markdownlint --files scripts/hook-bg-poll-guard.md scripts/test-hook-bg-poll-guard.md SECURITY.md`
+
+If available, also run:
+
+- `make test-hook-bg-poll-guard`
+
+## Difficulty and confidence
+
+Confidence: high. The affected code paths and prior helper implementation are directly visible. The work is still high blast radius because it changes a shipped hook that controls live `/design` and `/implement` orchestration.
+
+## Acceptance
+
+- `bash scripts/test-hook-bg-poll-guard.sh` passes with the new cross-clone, subdirectory-cwd, marker-diagnosis, and deny-metadata regressions, and every existing same-clone deny case stays green.
+- A foreign clone's live `.bg-wait-active` marker never denies Bash, Read, Monitor, or TaskOutput calls in another clone's session, and no `bg-poll-guard-denials.count` appears under the foreign marker dir.
+- Same-clone probes from a repo subdirectory cwd still deny on keepalive-gated paths.
+- A session can read a `.bg-wait-active` marker file (Read tool and simple Bash reads) while the wait is live.
+- Every deny reason names the triggering marker path, its `STEP`, and the hook plugin version; deny JSON remains valid static-printf output.
+- Bash 3.2 lint, shellcheck, and markdownlint pass on changed files; `scripts/hook-bg-poll-guard.md`, `scripts/test-hook-bg-poll-guard.md`, and `SECURITY.md` are updated in the same PR.
+
+mechanical_churn: false
+diff_lines: 250
+
+## Test plan
+(no test plan section in plan-file)

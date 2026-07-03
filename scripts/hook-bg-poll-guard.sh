@@ -27,6 +27,11 @@ canonical_dir() {
   (cd "$1" 2>/dev/null && pwd -P)
 }
 
+cwd_canon=""
+if [ -n "$cwd" ] && [ -d "$cwd" ]; then
+  cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
+fi
+
 is_allowed_marker_parent() {
   local dir="$1" home_sessions tmp_root
   [ -n "$dir" ] || return 1
@@ -74,6 +79,45 @@ marker_candidates() {
 marker_value() {
   local marker="$1" key="$2"
   awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
+}
+
+# Returns 0 when two canonical clone paths denote the same repo tree: exact
+# match or one path is a subdirectory of the other (#5927 subdirectory cwd).
+clone_paths_same() {
+  local marker_canon="$1" current_canon="$2"
+  [ "$marker_canon" = "$current_canon" ] && return 0
+  case "$current_canon" in
+    "$marker_canon"/*) return 0 ;;
+  esac
+  case "$marker_canon" in
+    "$current_canon"/*) return 0 ;;
+  esac
+  return 1
+}
+
+# Returns 0 only when the marker directory's recorded clone identity is known
+# and canonically differs from the current session's cwd (#5927). Unknown
+# identity on either side returns 1 (treated as same-clone / still blocks), so
+# a missing or unparsable .larch-keepalive never introduces a false negative.
+marker_foreign_clone() {
+  local dir="$1" current_canon="$2" keepalive marker_clone marker_canon
+  [ -n "$current_canon" ] || return 1
+  keepalive="$dir/.larch-keepalive"
+  [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
+  marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
+  [ -n "$marker_clone" ] || return 1
+  marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null) || return 1
+  clone_paths_same "$marker_canon" "$current_canon" && return 1
+  return 0
+}
+
+marker_clone_identity_canon() {
+  local dir="$1" keepalive marker_clone
+  keepalive="$dir/.larch-keepalive"
+  [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
+  marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
+  [ -n "$marker_clone" ] || return 1
+  canonical_dir "$marker_clone" 2>/dev/null
 }
 
 marker_step_completed() {
@@ -403,24 +447,78 @@ step8_handoff_probe_clamp() {
     fi
   fi
   if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
-    json_deny_probe
+    json_deny_probe "$dir"
   fi
   exit 0
 }
 
+json_escape() {
+  # Escape the limited local metadata embedded in hook deny JSON without depending on
+  # jq at final emission time. Bash strings cannot contain NUL; other control chars
+  # are collapsed to spaces before JSON quoting.
+  printf '%s' "$1" | LC_ALL=C tr '\n\r\t' '   ' | sed 's/\\/\\\\/g; s/"/\\"/g'
+}
+
+resolve_hook_plugin_version() {
+  local root plugin_json version script_dir
+  if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    plugin_json="$CLAUDE_PLUGIN_ROOT/.claude-plugin/plugin.json"
+    if [ -f "$plugin_json" ] && [ ! -L "$plugin_json" ]; then
+      version=$(awk -F'"' '/"version"[[:space:]]*:/ { print $4; exit }' "$plugin_json" 2>/dev/null || true)
+      if [ -n "$version" ]; then
+        printf '%s' "$version"
+        return 0
+      fi
+    fi
+  fi
+  script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd -P) || script_dir=""
+  if [ -n "$script_dir" ]; then
+    root=$(cd "$script_dir/.." 2>/dev/null && pwd -P) || root=""
+    plugin_json="$root/.claude-plugin/plugin.json"
+    if [ -f "$plugin_json" ] && [ ! -L "$plugin_json" ]; then
+      version=$(awk -F'"' '/"version"[[:space:]]*:/ { print $4; exit }' "$plugin_json" 2>/dev/null || true)
+      if [ -n "$version" ]; then
+        printf '%s' "$version"
+        return 0
+      fi
+    fi
+  fi
+  printf '%s' unknown
+}
+
+HOOK_PLUGIN_VERSION=$(resolve_hook_plugin_version)
+
+deny_reason_with_marker() {
+  local base="$1" dir="$2" marker step
+  marker="$dir/.bg-wait-active"
+  step=$(marker_value "$marker" STEP 2>/dev/null || printf '%s' unknown)
+  printf '%s marker=%s STEP=%s hook_version=%s' "$base" "$marker" "$step" "$HOOK_PLUGIN_VERSION"
+}
+
+emit_deny_json() {
+  local reason escaped
+  reason="$1"
+  escaped=$(json_escape "$reason")
+  printf '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"%s"}}\n' "$escaped"
+}
+
 json_deny_probe() {
+  local dir="$1" reason
   # #5610: emit deny JSON with a static printf string, not jq -cn ... || true. jq is still
   # required to parse the hook input up front, but a jq runtime failure at this final emit
   # point must not silently swallow the deny signal.
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears."}}'
+  reason=$(deny_reason_with_marker 'Repeated foreground terminal-sentinel probes while the sentinel is still absent. These are spurious empty-output <task-notification> turns (#5240, #5478): end the turn without probing and wait for a <task-notification> with new non-empty content. The guard clears once the sentinel appears.' "$dir")
+  emit_deny_json "$reason"
 }
 
 json_deny_monitor() {
+  local dir="$1" reason
   # Deny Monitor and TaskOutput tool calls while any immediate-background wait is active.
   # Arming Monitor during a background wait is the primary amplifier of premature
   # notification storms (BC8DDA64: 7 Monitors armed, 40 "still waiting" turns). Static
   # printf — not jq — so a jq failure cannot swallow the deny.
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"An immediate-background wait is active. Do not arm Monitor or poll TaskOutput during a background wait; end the turn and wait for <task-notification>."}}'
+  reason=$(deny_reason_with_marker 'An immediate-background wait is active. Do not arm Monitor or poll TaskOutput during a background wait; end the turn and wait for <task-notification>.' "$dir")
+  emit_deny_json "$reason"
 }
 
 terminal_sentinel_probe_clamp() {
@@ -442,7 +540,7 @@ terminal_sentinel_probe_clamp() {
     fi
   fi
   if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
-    json_deny_probe
+    json_deny_probe "$dir"
   fi
   exit 0
 }
@@ -464,7 +562,7 @@ implement_terminal_sentinel_probe_clamp() {
     fi
   fi
   if [ "$sentinel_present" -eq 0 ] && [ "$over_threshold" -eq 1 ]; then
-    json_deny_probe
+    json_deny_probe "$dir"
   fi
   exit 0
 }
@@ -511,10 +609,12 @@ marker_is_live() {
 }
 
 json_deny() {
+  local dir="$1" reason
   # #5610: emit deny JSON with a static printf string, not jq -cn ... || true, so a jq
   # runtime failure at the final emit point cannot silently swallow the deny signal. jq is
   # still required to parse the hook input up front (the hook fails open when jq is absent).
-  printf '%s\n' '{"hookSpecificOutput":{"hookEventName":"PreToolUse","permissionDecision":"deny","permissionDecisionReason":"An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts."}}'
+  reason=$(deny_reason_with_marker 'An immediate-background wait is active. End the turn and wait for <task-notification>; do not poll progress artifacts.' "$dir")
+  emit_deny_json "$reason"
 }
 
 increment_denial_count() {
@@ -533,7 +633,7 @@ increment_denial_count() {
 
 deny_if_needed() {
   local dir="$1"
-  json_deny
+  json_deny "$dir"
   increment_denial_count "$dir" || true
   exit 0
 }
@@ -565,6 +665,13 @@ path_is_task_output() {
 path_is_known_result() {
   case "$(basename "$1" 2>/dev/null)" in
     .step3-review-result.env|.design-publish-result.env|final-summary.md) return 0 ;;
+  esac
+  return 1
+}
+
+path_is_bg_wait_marker() {
+  case "$(basename "$1" 2>/dev/null)" in
+    .bg-wait-active) return 0 ;;
   esac
   return 1
 }
@@ -702,6 +809,89 @@ bash_has_bracket_file_test() {
   printf '%s' "$1" | tr '\n' ' ' | grep -Eq '(^|[;&|[:space:]])(\[\[|\[)[[:space:]]+!?[[:space:]]*-f[[:space:]]+'
 }
 
+bash_split_shell_command() {
+  python3 - "$1" <<'PY'
+import shlex
+import sys
+
+try:
+    tokens = shlex.split(sys.argv[1], posix=True, comments=True)
+except ValueError:
+    raise SystemExit(1)
+
+for token in tokens:
+    print(token)
+PY
+}
+
+bash_is_marker_only_diagnosis() {
+  local cmd="$1" normalized verb token non_option_count=0 marker_count=0 marker_token="" joined
+  local -a tokens=()
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  case "$normalized" in
+    *.bg-wait-active*) ;;
+    *) return 1 ;;
+  esac
+  tokens_text=$(bash_split_shell_command "$normalized") || return 1
+  while IFS= read -r token || [ -n "$token" ]; do
+    tokens+=("$token")
+  done <<EOF_TOKENS
+$tokens_text
+EOF_TOKENS
+  [ "${#tokens[@]}" -gt 0 ] || return 1
+  # Reject on the comment-stripped, dequoted token text: a disallowed
+  # reference inside a trailing shell comment is inert in real bash and
+  # must not trigger a false deny.
+  joined="${tokens[*]}"
+  case "$joined" in
+    *tasks/*.output*|*.completed/*|*.step3-review-result.env*|*.design-publish-result.env*|*final-summary.md*|*plan-review/*|*.step-8-ship-handoff.*) return 1 ;;
+    *';'*|*'&&'*|*'||'*|*'|'*|*'`'*) return 1 ;;
+  esac
+  printf '%s' "$joined" | grep -Fq "\$(" && return 1
+  printf '%s' "$joined" | grep -Eq '(^|[^[:alnum:]_])(touch|mkdir|cp|mv|ln|tee|install|rm|truncate)([^[:alnum:]_]|$)|:[[:space:]]*>|(^|[^[:alnum:]_])echo[^|]*>|(^|[^[:alnum:]_])printf[^|]*>|>[[:space:]]' && return 1
+  verb="${tokens[0]}"
+  case "$verb" in
+    cat|stat|ls|wc|head|sed|awk) ;;
+    *) return 1 ;;
+  esac
+  for token in "${tokens[@]:1}"; do
+    case "$token" in
+      -*) continue ;;
+    esac
+    non_option_count=$((non_option_count + 1))
+    case "$(basename "$token" 2>/dev/null)" in
+      .bg-wait-active)
+        marker_count=$((marker_count + 1))
+        marker_token="$token"
+        ;;
+      *)
+        case "$verb" in
+          cat|stat|ls|wc|head) return 1 ;;
+        esac
+        ;;
+    esac
+  done
+  case "$verb" in
+    cat|stat|ls|wc|head)
+      [ "$non_option_count" -eq 1 ] || return 1
+      ;;
+    sed|awk)
+      [ "$non_option_count" -eq 2 ] || return 1
+      ;;
+  esac
+  [ "$marker_count" -eq 1 ] || return 1
+  [ -n "$marker_token" ] || return 1
+  while IFS= read -r live_dir || [ -n "$live_dir" ]; do
+    [ -n "$live_dir" ] || continue
+    if path_under_dir "$marker_token" "$live_dir" && path_is_bg_wait_marker "$marker_token"; then
+      return 0
+    fi
+  done <"$live_dirs_file"
+  return 1
+}
+
+
 bash_clone_tag_from_basename() {
   # Mirrors _make_session_tmpdir()'s clone_tag derivation in
   # python/larch/state/session_env.py: replace any byte outside
@@ -737,23 +927,25 @@ bash_probe_target_dir_plausible() {
   # command targets this specific dir. At actual runtime that reference
   # expands to whichever session's own env var happens to be set, which the
   # hook cannot observe directly (#5684: hook input carries no session
-  # identifier). Treat the reference as plausibly targeting dir only when
-  # there is real correlation: the call's own cwd already is dir, or dir's
-  # embedded repo-clone tag (bash_marker_clone_tag) matches the tag derived
-  # from cwd's basename the same way _make_session_tmpdir names a session's
-  # own tmpdir. Heuristic, not a guarantee: two distinct repo clones sharing
-  # a basename still collide, the same known limitation #5684 already
-  # accepts for directory-based session isolation elsewhere in this file.
-  local dir="$1" cwd_canon="$2" marker_tag cwd_tag
+  # identifier). Prefer the marker's .larch-keepalive CLONE_PATH identity;
+  # when it is unavailable, fall back to the older cwd-basename/session-tag
+  # heuristic. The keepalive path handles repo subdirectory cwds without the
+  # same-basename collision accepted by the fallback heuristic.
+  local dir="$1" cwd_canon="$2" marker_tag cwd_tag marker_canon
   [ -n "$dir" ] || return 1
   if [ -n "$cwd_canon" ] && [ "$cwd_canon" = "$dir" ]; then
     return 0
   fi
   [ -n "$cwd_canon" ] || return 1
+  if marker_canon=$(marker_clone_identity_canon "$dir" 2>/dev/null); then
+    clone_paths_same "$marker_canon" "$cwd_canon" && return 0
+    return 1
+  fi
   marker_tag=$(bash_marker_clone_tag "$(basename "$dir")") || return 1
   cwd_tag=$(bash_clone_tag_from_basename "$(basename "$cwd_canon")")
   [ -n "$cwd_tag" ] && [ "$cwd_tag" = "$marker_tag" ]
 }
+
 
 bash_has_probe_target() {
   # #5925: the six generic tmpdir-variable-name alternatives below used to
@@ -775,6 +967,14 @@ bash_has_probe_target() {
   local implement_tmpdir_braced="\${IMPLEMENT_TMPDIR}"
   case "$cmd" in
     *"$dir"*) return 0 ;;
+  esac
+  case "$dir" in
+    /private/*)
+      case "$cmd" in *"${dir#/private}"*) return 0 ;; esac
+      ;;
+    *)
+      case "$cmd" in *"/private$dir"*) return 0 ;; esac
+      ;;
   esac
   case "$cmd" in
     *tasks/*.output*|*"$design_tmpdir_ref"*|*"$design_tmpdir_braced"*|*"$session_tmpdir_ref"*|*"$session_tmpdir_braced"*|*"$implement_tmpdir_ref"*|*"$implement_tmpdir_braced"*)
@@ -821,6 +1021,9 @@ while IFS= read -r marker || [ -n "$marker" ]; do
   marker_rc=$?
   case "$marker_rc" in
     0)
+      if marker_foreign_clone "$LIVE_MARKER_DIR" "$cwd_canon"; then
+        continue
+      fi
       printf '%s\n' "$LIVE_MARKER_DIR" >>"$live_dirs_file"
       printf '%s|%s\n' "$LIVE_MARKER_DIR" "$LIVE_MARKER_STEP" >>"$live_markers_file"
       ;;
@@ -832,11 +1035,6 @@ $(marker_candidates)
 EOF_MARKERS
 
 [ -s "$live_dirs_file" ] || exit 0
-
-cwd_canon=""
-if [ -n "$cwd" ] && [ -d "$cwd" ]; then
-  cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
-fi
 
 # Monitor and TaskOutput are denied only while an immediate-background wait owned by THIS
 # repo clone is live. #5925 follow-up: the deny was previously unconditional on any live
@@ -853,7 +1051,7 @@ case "$tool_name" in
     while IFS= read -r dir || [ -n "$dir" ]; do
       [ -n "$dir" ] || continue
       bash_probe_target_dir_plausible "$dir" "$cwd_canon" || continue
-      json_deny_monitor
+      json_deny_monitor "$dir"
       increment_denial_count "$dir" || true
       exit 0
     done <"$live_dirs_file"
@@ -870,6 +1068,9 @@ if [ "$tool_name" = "Read" ]; then
       if [ -n "$cwd_canon" ]; then read_abs="$cwd_canon/$read_path"; else read_abs="$read_path"; fi
       ;;
   esac
+  if path_is_bg_wait_marker "$read_abs"; then
+    exit 0
+  fi
   while IFS= read -r dir || [ -n "$dir" ]; do
     [ -n "$dir" ] || continue
     # #5925 follow-up: path_is_task_output matches the tasks/*.output read-path pattern
@@ -890,6 +1091,7 @@ fi
 cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || exit 0
 [ -n "$cmd" ] || exit 0
 bash_is_strict_wrapper_only "$cmd" && exit 0
+bash_is_marker_only_diagnosis "$cmd" && exit 0
 # #4725: the background sleep-loop Step 3 recovery waiter is itself a zero-output
 # background task, so it fires its own premature <task-notification> within
 # seconds and breeds a re-engagement loop. Deny it (it used to be allowed here),
