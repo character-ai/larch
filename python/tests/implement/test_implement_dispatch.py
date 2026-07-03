@@ -13,7 +13,7 @@ import sys
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -36,7 +36,9 @@ from larch.implement import (
 from larch.core import config
 from larch.core import logging_util
 from larch.report import run_logs
-from larch.core.proc import CommandResult
+
+if TYPE_CHECKING:
+    from larch.core.proc import CommandResult
 
 
 def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
