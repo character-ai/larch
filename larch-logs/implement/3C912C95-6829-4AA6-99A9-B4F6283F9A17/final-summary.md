@@ -1,16 +1,15 @@
-## /implement run 3C912C95-6829-4AA6-99A9-B4F6283F9A17 — stalled
+## /implement run 3C912C95-6829-4AA6-99A9-B4F6283F9A17 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:22:40
-- **Cost**: 💰 TOTAL ~$10.99 — Claude $0.03, Codex-5.5 $7.85, Codex-mini $0.34, Cursor $2.48, Claude (subprocess) $0.29  |  Tokens: 15218k
+- **Cost**: 💰 TOTAL ~$11.15 — Claude $0.17, Codex-5.5 $7.85, Codex-mini $0.34, Cursor $2.48, Claude (subprocess) $0.31  |  Tokens: 15250k
 - **Issue**: #6089 — https://github.com/character-ai/larch/issues/6089
 - **PR**: #6105 — https://github.com/character-ai/larch/pull/6105
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +107/-20, larch-logs +550/-0
+- **Lines (PR diff)**: code +112/-25, larch-logs +566/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -76,4 +75,6 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md against the materialized diff. One deviation identified:
+
+- **G-Skill-2** (logic lives in Python behind `cli.py`; SKILL.md and Bash stay thin): the new `review_run_id_valid` guard in `skills/review/SKILL.md` reimplements `run_log_batch.validate_run_id_slug`'s non-empty/no-`..`/no-`/`/no-`\`/`^[A-Za-z0-9._-]+$` check as inline Bash glob/regex matching instead of calling a Python CLI helper. No `("run-log", "validate-*")` verb exists in `larch/cli.py`'s registry, so the slug rule now lives in two places (the Python source of truth plus this new Bash copy) and can drift. Narrow in scope (one bash conditional); not blocking.
