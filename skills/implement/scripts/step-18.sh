@@ -99,10 +99,11 @@ read_key_from_file() {
 }
 
 rehydrate_larch_triplet() {
+    RUN_ID=$(read_session_key LARCH_RUN_ID "${RUN_ID:-}")
     LARCH_TOKEN_SESSION_ID=$(read_session_key LARCH_TOKEN_SESSION_ID "${LARCH_TOKEN_SESSION_ID:-}")
     LARCH_CLAUDE_SOURCE_FILE=$(read_session_key LARCH_CLAUDE_SOURCE_FILE "${LARCH_CLAUDE_SOURCE_FILE:-}")
     LARCH_TIMING_LEDGER=$(read_session_key LARCH_TIMING_LEDGER "${LARCH_TIMING_LEDGER:-}")
-    export LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
+    export RUN_ID LARCH_TOKEN_SESSION_ID LARCH_CLAUDE_SOURCE_FILE LARCH_TIMING_LEDGER
 }
 
 _stall_layer_active() {
@@ -168,7 +169,7 @@ run_gate() {
 }
 
 run_finalize() {
-    local step18b_out step18b_err step18b_rc emit_body wfr_rc step17_present snapshot_ok marker_rc
+    local step18b_out step18b_err step18b_rc emit_body wfr_rc step17_present snapshot_ok marker_rc capture_out capture_rc
     if [ "$STEP17_EMITTED" = true ]; then
         touch "$IMPLEMENT_TMPDIR/.step17-emitted"
     fi
@@ -214,6 +215,27 @@ run_finalize() {
     DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing report --since-last-mark --terse > /dev/null || true
     python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" token mark "Step 18 — done" || true
     DESIGN_TMPDIR='' LARCH_TIMING_SKILL=implement python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" timing mark "Step 18 — done" || true
+    if [ -n "${RUN_ID:-}" ]; then
+        python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" execution-issues flush-safety-net \
+            --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+            --run-id "$RUN_ID" \
+            --issue-log "$IMPLEMENT_TMPDIR/execution-issues.md" >/dev/null 2>&1 || true
+        if [ -n "${LARCH_CLAUDE_SOURCE_FILE:-}" ] && [ ! -f "$IMPLEMENT_TMPDIR/.completed/step-7a-terminal" ]; then
+            set +e
+            capture_out=$(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" run-log capture-transcript \
+                --source-file "$LARCH_CLAUDE_SOURCE_FILE" \
+                --log-root "$IMPLEMENT_TMPDIR/larch-logs" \
+                --skill implement \
+                --run-id "$RUN_ID" \
+                --defer-commit true \
+                --execution-issues-log "$IMPLEMENT_TMPDIR/execution-issues.md" \
+                --warning-step-label "18" 2>/dev/null)
+            capture_rc=$?
+            set -e
+            printf '%s\n' "$capture_out" | awk 'index($0,"SESSION_TRANSCRIPT_STATUS=")==1{print}'
+            : "$capture_rc"
+        fi
+    fi
     _restore_finalize=false
     if [ -f "$IMPLEMENT_TMPDIR/ship-pr-state.sh" ]; then
       if [ ! -f "$IMPLEMENT_TMPDIR/finalize-state.sh" ]; then

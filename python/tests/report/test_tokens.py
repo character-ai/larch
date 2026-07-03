@@ -1058,7 +1058,13 @@ def test_measure_references_heatmap_counts_raw_v3_future_and_normalized_paths(tm
 
     out = tokens.measure_references_heatmap()
 
-    rows = {(row["skill"], row["reference_path"]): row for row in _tsv_rows(out)}
+    coverage = {row["skill"]: row for row in _tsv_section_rows(out, "transcript_coverage")}
+    assert coverage["design"]["runs_observed"] == "2"
+    assert coverage["design"]["transcript_runs_observed"] == "1"
+    assert coverage["design"]["missing_transcript_runs"] == "1"
+    assert coverage["design"]["transcript_coverage_ratio"] == "0.500000"
+    assert coverage["design"]["reference_capture_status"] == "measured"
+    rows = {(row["skill"], row["reference_path"]): row for row in _tsv_section_rows(out, "reference_heatmap")}
     assert rows[("design", "skills/design/references/approval-gates.md")]["reads_observed"] == "2"
     assert rows[("design", "skills/design/references/approval-gates.md")]["runs_observed"] == "2"
     assert rows[("design", "skills/design/references/approval-gates.md")]["loads_per_run"] == "1.000000"
@@ -1077,8 +1083,39 @@ def test_measure_references_heatmap_skips_symlinked_transcript(tmp_path: Path, m
 
     out = tokens.measure_references_heatmap()
 
-    assert not _tsv_rows(out)
+    coverage = {row["skill"]: row for row in _tsv_section_rows(out, "transcript_coverage")}
+    assert coverage["design"]["runs_observed"] == "1"
+    assert coverage["design"]["transcript_runs_observed"] == "0"
+    assert coverage["design"]["missing_transcript_runs"] == "1"
+    assert coverage["design"]["transcript_coverage_ratio"] == "0.000000"
+    assert coverage["design"]["reference_capture_status"] == "not-yet-measured"
+    assert not _tsv_section_rows(out, "reference_heatmap")
 
+
+
+def test_measure_references_heatmap_reports_review_transcript_coverage(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    _setup_reference_repo(tmp_path, monkeypatch)
+    design1 = _write_valid_run(tmp_path, skill="design", run_id="run1")
+    _write_transcript(design1, [])
+    _ = _write_valid_run(tmp_path, skill="design", run_id="run2", issue=2)
+    review = tmp_path / "larch-logs" / "review" / "run3"
+    review.mkdir(parents=True)
+    _write_transcript(review, [])
+
+    out = tokens.measure_references_heatmap()
+
+    coverage = {row["skill"]: row for row in _tsv_section_rows(out, "transcript_coverage")}
+    assert coverage["design"]["runs_observed"] == "2"
+    assert coverage["design"]["transcript_runs_observed"] == "1"
+    assert coverage["design"]["missing_transcript_runs"] == "1"
+    assert coverage["design"]["transcript_coverage_ratio"] == "0.500000"
+    assert coverage["design"]["reference_capture_status"] == "measured"
+    assert coverage["review"]["runs_observed"] == "1"
+    assert coverage["review"]["transcript_runs_observed"] == "1"
+    assert coverage["review"]["missing_transcript_runs"] == "0"
+    assert coverage["review"]["transcript_coverage_ratio"] == "1.000000"
+    assert coverage["review"]["reference_capture_status"] == "measured"
+    assert not _tsv_section_rows(out, "reference_heatmap")
 
 def test_measure_realized_cost_averages_reference_reads_across_missing_transcripts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _setup_reference_repo(tmp_path, monkeypatch)

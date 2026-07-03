@@ -51,8 +51,7 @@ def is_valid_run_dir(run_dir: Path, warn: Callable[[str], None] | None = None) -
     return load_run_manifest(run_dir, warn=warn) is not None
 
 
-def run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
-    """Return symlink-safe, manifest-accepted child run directories."""
+def _safe_child_run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
     dirs: list[Path] = []
     try:
         resolved_base = log_base.resolve(strict=True)
@@ -73,10 +72,18 @@ def run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[
         if not (resolved == resolved_base or resolved_base in resolved.parents):
             _warn(warn, f"run directory {path} resolves outside {log_base}; skipping")
             continue
-        if not is_valid_run_dir(path, warn=warn):
-            continue
         dirs.append(path)
     return dirs
+
+
+def run_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
+    """Return symlink-safe, manifest-accepted child run directories."""
+    return [path for path in _safe_child_run_dirs(log_base, warn=warn) if is_valid_run_dir(path, warn=warn)]
+
+
+def review_transcript_dirs(log_base: Path, warn: Callable[[str], None] | None = None) -> list[Path]:
+    """Return review run directories with a safe transcript and no manifest requirement."""
+    return [path for path in _safe_child_run_dirs(log_base, warn=warn) if safe_transcript_path(path) is not None]
 
 
 def safe_transcript_path(run_dir: Path) -> Path | None:

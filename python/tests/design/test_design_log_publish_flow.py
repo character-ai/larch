@@ -8,6 +8,7 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
+from typing import Any
 
 import pytest
 from larch.design import design_log_publish_flow
@@ -99,6 +100,104 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     assert result.returncode == 0
     assert "PUBLISH_OK=true" in result.stdout
 
+
+
+def test_log_publish_captures_transcript_before_publish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    plugin_root = tmp_path / "plugin"
+    order: list[str] = []
+    captured: dict[str, str] = {}
+
+    def fake_capture(*, ctx: Any) -> bool:
+        order.append("capture")
+        captured["design_tmpdir"] = str(ctx.design_tmpdir)
+        captured["plugin_root"] = str(ctx.plugin_root)
+        captured["session_id"] = ctx.session_id
+        captured["issue"] = ctx.issue
+        captured["repo"] = ctx.repo
+        captured["claude_pid"] = ctx.claude_pid
+        return True
+
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+        order.append("publish")
+        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(plugin_root))
+    monkeypatch.setenv("LARCH_CLAUDE_PID", "12345")
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
+
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir", str(design),
+        "--run-id", RUN_ID,
+        "--issue", "33",
+        "--repo", "o/r",
+        "--reason", "final",
+    ])
+
+    assert rc == 0
+    assert order == ["capture", "publish"]
+    assert captured == {
+        "design_tmpdir": str(design),
+        "plugin_root": str(plugin_root),
+        "session_id": RUN_ID,
+        "issue": "33",
+        "repo": "o/r",
+        "claude_pid": "12345",
+    }
+
+
+def test_log_publish_capture_failure_skips_publish(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    published = False
+
+    def fake_capture(*, ctx: Any) -> bool:
+        assert ctx.session_id == RUN_ID
+        return False
+
+    def fake_publish(**_kwargs: object) -> tuple[bool, str, str, str, str]:
+        nonlocal published
+        published = True
+        return (True, "77", "https://github.com/o/r/pull/77", "", "0")
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
+
+    rc = design_log_publish_flow.log_publish_main(["--design-tmpdir", str(design), "--run-id", RUN_ID, "--issue", "33"])
+
+    assert rc == 0
+    assert not published
+    assert "PUBLISH_OK=false" in capsys.readouterr().out
+
+
+def test_log_publish_capture_skip_still_publishes_pause(monkeypatch: pytest.MonkeyPatch, tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    design = tmp_path / "design"
+    design.mkdir()
+    reasons: list[str] = []
+
+    def fake_capture(*, ctx: Any) -> bool:
+        assert ctx.session_id == RUN_ID
+        return True
+
+    def fake_publish(**kwargs: object) -> tuple[bool, str, str, str, str]:
+        reasons.append(str(kwargs["run_id"]))
+        return (True, "", "", "", "0")
+
+    monkeypatch.setattr(design_log_publish_flow.design_publish, "_capture_design_transcript", fake_capture)
+    monkeypatch.setattr(design_log_publish_flow, "_publish_design_logs", fake_publish)
+
+    rc = design_log_publish_flow.log_publish_main([
+        "--design-tmpdir", str(design),
+        "--run-id", RUN_ID,
+        "--issue", "33",
+        "--reason", "pause",
+    ])
+
+    assert rc == 0
+    assert reasons == [RUN_ID]
+    assert "PUBLISH_OK=true" in capsys.readouterr().out
 
 def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     # The design run tree is committed to a dedicated branch and PR'd; the

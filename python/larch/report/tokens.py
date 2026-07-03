@@ -1760,7 +1760,15 @@ def _skill_run_dirs(repo: Path) -> dict[str, list[Path]]:
     for skill_dir in sorted(root.iterdir()):
         if skill_dir.is_symlink() or not skill_dir.is_dir():
             continue
-        runs = run_log_corpus.run_dirs(skill_dir)
+        runs = list(run_log_corpus.run_dirs(skill_dir))
+        if skill_dir.name == "review":
+            seen = {path.resolve() for path in runs}
+            for path in run_log_corpus.review_transcript_dirs(skill_dir):
+                resolved = path.resolve()
+                if resolved not in seen:
+                    runs.append(path)
+                    seen.add(resolved)
+            runs.sort(key=lambda path: path.name)
         if runs:
             by_skill[skill_dir.name] = runs
     return by_skill
@@ -1896,7 +1904,14 @@ def measure_references_heatmap() -> Path:
     out_path = repo / "larch-logs" / "measure-references-heatmap" / f"{_measure_stamp()}.tsv"
     run_dirs_by_skill = _skill_run_dirs(repo)
     reads: list[ObservedReferenceRead] = []
+    coverage_rows: list[tuple[str, int, int, int, float, str]] = []
     for skill, dirs in run_dirs_by_skill.items():
+        transcript_runs = sum(1 for run_dir in dirs if run_log_corpus.safe_transcript_path(run_dir) is not None)
+        runs_observed = len(dirs)
+        missing_transcripts = runs_observed - transcript_runs
+        ratio = transcript_runs / runs_observed if runs_observed else 0.0
+        capture_status = "measured" if transcript_runs else "not-yet-measured"
+        coverage_rows.append((skill, runs_observed, transcript_runs, missing_transcripts, ratio, capture_status))
         for run_dir in dirs:
             reads.extend(_reference_reads_for_run(repo=repo, skill=skill, run_dir=run_dir))
     counts: collections.Counter[tuple[str, str]] = collections.Counter((read.skill, read.reference_path) for read in reads)
@@ -1907,10 +1922,18 @@ def measure_references_heatmap() -> Path:
         loads_per_run = read_count / runs_observed if runs_observed else 0.0
         byte_count, token_count = token_info.get(rel, (0, 0))
         rows.append((skill, rel, read_count, runs_observed, loads_per_run, byte_count, token_count))
+    coverage_rows.sort(key=lambda row: row[0])
     rows.sort(key=lambda row: (row[0], -row[2], row[1]))
     _atomic_text(
         path=out_path,
         text=(
+            "# transcript_coverage\n"
+            "skill\truns_observed\ttranscript_runs_observed\tmissing_transcript_runs\ttranscript_coverage_ratio\treference_capture_status\n"
+            + "".join(
+                f"{skill}\t{runs_count}\t{transcript_count}\t{missing_count}\t{ratio:.6f}\t{capture_status}\n"
+                for skill, runs_count, transcript_count, missing_count, ratio, capture_status in coverage_rows
+            )
+            + "# reference_heatmap\n"
             "skill\treference_path\treads_observed\truns_observed\tloads_per_run\tbytes\ttokens\n"
             + "".join(
                 f"{skill}\t{rel}\t{reads_count}\t{runs_count}\t{loads:.6f}\t{byte_count}\t{token_count}\n"

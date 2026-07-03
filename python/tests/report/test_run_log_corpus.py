@@ -44,3 +44,20 @@ def test_load_run_manifest_accepts_plain_issue_number(tmp_path: Path) -> None:
     manifest = run_log_corpus.load_run_manifest(run_dir)
     assert manifest is not None
     assert manifest["issue_number"] == 42
+
+
+def test_review_transcript_dirs_counts_manifestless_transcript(tmp_path: Path) -> None:
+    review_root = tmp_path / "larch-logs" / "review"
+    with_transcript = review_root / "run-a"
+    with_transcript.mkdir(parents=True)
+    _ = (with_transcript / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
+    without_transcript = review_root / "run-b"
+    without_transcript.mkdir(parents=True)
+    with_manifest = review_root / "run-c"
+    with_manifest.mkdir(parents=True)
+    _write_manifest(with_manifest, {"issue_number": 1})
+    _ = (with_manifest / "session-transcript.jsonl").write_text("{}\n", encoding="utf-8")
+
+    dirs = run_log_corpus.review_transcript_dirs(review_root)
+
+    assert [path.name for path in dirs] == ["run-a", "run-c"]

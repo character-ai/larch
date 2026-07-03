@@ -463,7 +463,7 @@ def _refresh_design_source_env(*, ctx: _TranscriptCaptureContext, source_env: Pa
     return False
 
 
-def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:
+def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # pyright: ignore[reportUnusedFunction]  # used by design_log_publish_flow
     """Capture and hoist a design session transcript before committed log publish.
 
     Returns False only for publish-blocking hygiene failures. Capture skip statuses
@@ -555,11 +555,6 @@ def _run_log_publish_after_capture(
     kvs: list[tuple[str, str]],
     result_env: Path,
 ) -> int | None:
-    if not _capture_design_transcript(ctx=ctx):
-        _replace_kv(rows=kvs, key="PUBLISH_OK", value="false")
-        _emit_rows(kvs)
-        _ = _write_result_env(path=result_env, rows=kvs)
-        return 5
     publish = proc.run(
         [
             sys.executable,

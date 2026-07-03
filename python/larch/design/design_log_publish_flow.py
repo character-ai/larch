@@ -14,6 +14,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch.core import redact
+from larch.design import design_publish
 
 _PR_URL_RE = re.compile(r"/pull/([0-9]+)")
 _RUN_LOG_COMMIT_SCRUB_FAILURE_RE = re.compile(
@@ -453,6 +454,20 @@ def log_publish_main(argv: Sequence[str]) -> int:
         return 0
 
     plugin_root = Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
+    capture_ctx = design_publish._TranscriptCaptureContext(  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        design_tmpdir=design_tmpdir,
+        plugin_root=plugin_root,
+        session_id=parsed["--run-id"],
+        issue=parsed["--issue"],
+        repo=parsed["--repo"],
+        claude_pid=os.environ.get("LARCH_CLAUDE_PID", "") or os.environ.get("PPID", ""),
+    )
+    if not design_publish._capture_design_transcript(ctx=capture_ctx):  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
+        _emit(k="PUBLISH_OK", v="false")
+        _emit(k="PR_NUMBER", v="")
+        _emit(k="PR_URL", v="")
+        return 0
+
     try:
         publish_ok, pr_number, pr_url, recovery_branch, scrub_violations = _publish_design_logs(
             plugin_root=plugin_root,

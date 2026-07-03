@@ -112,6 +112,10 @@ def main() -> int:
     if args[:2] == ["execution-issues", "flush-safety-net"]:
         log("flush-safety-net " + " ".join(args[2:]))
         return 0
+    if args[:2] == ["run-log", "capture-transcript"]:
+        log("capture-transcript " + " ".join(args[2:]))
+        print("SESSION_TRANSCRIPT_STATUS=captured")
+        return 0
     if args[:2] == ["session", "restore-finalize-state"]:
         log("restore-finalize-state " + " ".join(args[2:]))
         return 0
@@ -145,7 +149,7 @@ make_impl() {
     local name=$1
     local dir="$TMP_ROOT/$name"
     mkdir -p "$dir"
-    printf 'LARCH_TOKEN_SESSION_ID=tok\nLARCH_CLAUDE_SOURCE_FILE=source.jsonl\nLARCH_TIMING_LEDGER=%s/timing-ledger.tsv\nSTALL_TRACKING=false\n' "$dir" >"$dir/session-env.sh"
+    printf 'LARCH_RUN_ID=RUN1\nLARCH_TOKEN_SESSION_ID=tok\nLARCH_CLAUDE_SOURCE_FILE=source.jsonl\nLARCH_TIMING_LEDGER=%s/timing-ledger.tsv\nSTALL_TRACKING=false\n' "$dir" >"$dir/session-env.sh"
     printf 'STALL_TRACKING=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_STEP=\n' >"$dir/ship-pr-state.sh"
     printf 'STALL_TRACKING=false\nSTALL_STEP=\n' >"$dir/finalize-state.sh"
     printf '%s\n' "$dir"
@@ -215,8 +219,24 @@ assert_contains 'STASH_REF=refs/stash/test' "$text" 'teardown stash relay'
 assert_contains 'SENTINEL_WRITTEN=true' "$text" 'teardown sentinel relay'
 assert_contains 'FINALIZE_SUBCOMMAND=teardown' "$text" 'teardown subcommand relay'
 assert_contains 'FINALIZE_WARNINGS=none' "$text" 'teardown warnings relay'
-assert_contains 'step18b sentinel=false argv=final-report step18b --implement-tmpdir' "$(cat "$log")" 'finalize step18b invocation'
-assert_contains 'teardown sentinel=before argv=implement-finalize teardown --state-file' "$(cat "$log")" 'finalize teardown invocation'
+log_text=$(cat "$log")
+assert_contains 'step18b sentinel=false argv=final-report step18b --implement-tmpdir' "$log_text" 'finalize step18b invocation'
+assert_contains 'flush-safety-net --log-root' "$log_text" 'finalize flush safety net'
+assert_contains '--run-id RUN1' "$log_text" 'finalize safety net run id'
+assert_contains 'capture-transcript --source-file source.jsonl --log-root' "$log_text" 'finalize transcript capture'
+assert_contains '--skill implement --run-id RUN1 --defer-commit true' "$log_text" 'finalize transcript capture argv'
+assert_contains 'teardown sentinel=before argv=implement-finalize teardown --state-file' "$log_text" 'finalize teardown invocation'
+assert_contains 'SESSION_TRANSCRIPT_STATUS=captured' "$text" 'finalize transcript status relay'
+
+# Step 7a completion suppresses Step 18 transcript recapture.
+impl=$(make_impl step7a-complete)
+mkdir -p "$impl/.completed"
+: >"$impl/.completed/step-7a-terminal"
+out="$TMP_ROOT/step7a-complete.out"; log="$TMP_ROOT/step7a-complete.log"
+STEP18_STUB_EMIT_BODY=false run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'step7a-complete exited non-zero'
+log_text=$(cat "$log")
+assert_contains 'flush-safety-net' "$log_text" 'step7a-complete still flushes execution issues'
+assert_not_contains 'capture-transcript' "$log_text" 'step7a-complete skips transcript recapture'
 
 # --step17-emitted true creates sentinel before step18b and can suppress body.
 impl=$(make_impl step17-present)
@@ -291,13 +311,28 @@ STEP18_STUB_EMIT_BODY=false STEP18_STUB_READ_KEY_FAIL_KEY=STALL_TRACKING run_ste
 assert_contains 'teardown sentinel=' "$(cat "$log")" 'restore read-key failure still tears down'
 assert_contains 'restore-finalize-state --implement-tmpdir' "$(cat "$log")" 'restore read-key failure uses default and continues'
 
-# Ordering: closing marks before restore and teardown.
+# Ordering: closing marks, safety nets, restore, and teardown.
 mark_line=$(line_no 'token mark Step 18 — done' "$TMP_ROOT/restore-mismatch.log")
+flush_line=$(line_no 'flush-safety-net' "$TMP_ROOT/restore-mismatch.log")
+capture_line=$(line_no 'capture-transcript' "$TMP_ROOT/restore-mismatch.log")
 restore_line=$(line_no 'restore-finalize-state' "$TMP_ROOT/restore-mismatch.log")
 teardown_line=$(line_no 'teardown sentinel=' "$TMP_ROOT/restore-mismatch.log")
-[ -n "$mark_line" ] && [ -n "$restore_line" ] && [ -n "$teardown_line" ] || fail 'ordering log missing expected rows'
-[ "$mark_line" -lt "$restore_line" ] || fail 'closing mark must precede restore-finalize-state'
+[ -n "$mark_line" ] && [ -n "$flush_line" ] && [ -n "$capture_line" ] && [ -n "$restore_line" ] && [ -n "$teardown_line" ] || fail 'ordering log missing expected rows'
+[ "$mark_line" -lt "$flush_line" ] || fail 'closing mark must precede execution-issues safety net'
+[ "$flush_line" -lt "$capture_line" ] || fail 'execution-issues safety net must precede transcript safety net'
+[ "$capture_line" -lt "$restore_line" ] || fail 'transcript safety net must precede restore-finalize-state'
 [ "$restore_line" -lt "$teardown_line" ] || fail 'restore-finalize-state must precede teardown'
+
+# Missing run id skips both safety nets and still tears down.
+impl=$(make_impl no-run-id)
+awk '$0 !~ /^LARCH_RUN_ID=/' "$impl/session-env.sh" >"$impl/session-env.tmp"
+mv "$impl/session-env.tmp" "$impl/session-env.sh"
+out="$TMP_ROOT/no-run-id.out"; log="$TMP_ROOT/no-run-id.log"
+STEP18_STUB_EMIT_BODY=false RUN_ID='' run_step18 "$impl" "$out" "$log" --phase finalize --step17-emitted false || fail 'no run id finalize exited non-zero'
+log_text=$(cat "$log")
+assert_not_contains 'flush-safety-net' "$log_text" 'no run id flush safety net skip'
+assert_not_contains 'capture-transcript' "$log_text" 'no run id transcript safety net skip'
+assert_contains 'teardown sentinel=' "$log_text" 'no run id teardown'
 
 # Post-terminal continuation: finalize can run directly with disk STALL_TRACKING=true.
 impl=$(make_impl post-terminal)
