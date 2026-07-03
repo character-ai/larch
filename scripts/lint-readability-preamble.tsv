@@ -1,5 +1,5 @@
 # path	variant	expected_count	prompt_kind	step_markers
-__metadata__	metadata-min-count	42		
+__metadata__	metadata-min-count	43		
 skills/design/SKILL.md	orchestrator-inline	2		2b
 skills/design/references/design-outline.md	orchestrator-inline	1		
 skills/design/references/brainstorm.md	orchestrator-inline	1		
@@ -14,6 +14,7 @@ skills/block-issue/SKILL.md	orchestrator-inline	1
 skills/bug/SKILL.md	orchestrator-inline	1		
 skills/cleanup/SKILL.md	orchestrator-inline	1		
 skills/deps/SKILL.md	orchestrator-inline	1		
+skills/difficulty-calibration/SKILL.md	orchestrator-inline	1		
 skills/fluff-analysis/SKILL.md	orchestrator-inline	1		
 skills/gc-run-logs/SKILL.md	orchestrator-inline	1		
 skills/im/SKILL.md	orchestrator-inline	1		

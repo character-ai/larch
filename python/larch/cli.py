@@ -294,6 +294,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("render", "scope-anchor"): ("larch.rendering.rendering", "render_scope_anchor_main"),
     ("render", "findings-view"): ("larch.rendering.rendering", "render_findings_view_main"),
     ("voter-calibration", "snapshot"): ("larch.review.voting", "voter_calibration_snapshot_main"),
+    ("difficulty-calibration", "analyze"): ("larch.calibration.difficulty_calibration", "analyze_main"),
     ("scope-anchor", "relay-allowed"): ("larch.rendering.rendering", "scope_anchor_relay_allowed_main"),
     ("scope-anchor", "validate"): ("larch.rendering.rendering", "scope_anchor_validate_main"),
     ("scope-anchor", "retally-handoff"): ("larch.rendering.rendering", "scope_anchor_retally_handoff_main"),

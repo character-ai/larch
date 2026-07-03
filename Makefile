@@ -30,7 +30,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: lint-bare-grep-probe test-lint-bare-grep-probe lint-codex-exec-auth test-lint-codex-exec-auth lint-consecutive-bash test-lint-consecutive-bash test-launch-codex-exec lint-awk-multibyte-regex test-lint-awk-multibyte-regex
 .PHONY: lint-tier1a-size test-lint-tier1a-size
 .PHONY: test-design-multi-round-integration test-lib-design-round-artifacts test-step3-orchestrator-fence test-design-step3-state test-design-step3-mav
-.PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration
+.PHONY: test-no-grouped-reuse-guard test-review-and-fix-record-timing test-review-and-fix-step5-loop-timing test-record-plan-review-round-timing test-reviewer-prune test-lib-prune-decision test-fluff-analysis-corpus test-voter-calibration test-difficulty-calibration
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
@@ -265,6 +265,9 @@ test-fluff-analysis:
 
 test-rejected-analysis:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/rejected-analysis/scripts/test-rejected-analysis.sh
+
+test-difficulty-calibration:
+	python3 -m pytest python/tests/calibration/test_difficulty_calibration.py
 
 test-voter-calibration:
 	python3 python/cli.py timing harness-mark --label $@ -- bash skills/voter-calibration/scripts/test-voter-calibration.sh

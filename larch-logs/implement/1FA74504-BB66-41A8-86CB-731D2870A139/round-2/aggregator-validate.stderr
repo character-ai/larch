@@ -1,0 +1,1 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Skip records with started_month is None in _render_drift, consistent with _rende')
