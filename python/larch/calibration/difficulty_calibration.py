@@ -7,7 +7,6 @@ import argparse
 import csv
 import json
 import re
-import subprocess
 import sys
 from collections import Counter, defaultdict
 from collections.abc import Mapping, Sequence
@@ -856,14 +855,11 @@ def render_report(corpus: Corpus) -> str:
 
 
 def _default_log_root() -> Path:
-    try:
-        proc = subprocess.run(["git", "rev-parse", "--show-toplevel"], check=False, capture_output=True, text=True)  # noqa: S607
-    except OSError:
-        return Path.cwd() / "larch-logs"
-    root = proc.stdout.strip()
-    if proc.returncode == 0 and root:
-        return Path(root) / "larch-logs"
-    return Path.cwd() / "larch-logs"
+    cwd = Path.cwd()
+    for candidate in (cwd, *cwd.parents):
+        if (candidate / ".git").exists():
+            return candidate / "larch-logs"
+    return cwd / "larch-logs"
 
 
 def parse_args(argv: Sequence[str]) -> argparse.Namespace:

@@ -7,6 +7,13 @@ allowed-tools: Bash, Read
 
 # difficulty-calibration
 
+Use `$ARGUMENTS` as optional CLI flags for the analyzer.
+
+## Verification
+
+After running the backing script, validate that the output includes a difficulty
+classification and any required evidence before reporting the result.
+
 **MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Analyze predicted versus realized difficulty tiers from committed `larch-logs/` data.
