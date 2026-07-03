@@ -311,7 +311,7 @@ def refresh_execution_issues(implement_tmpdir: Path, *, best_effort: bool = Fals
 
 def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py execution-issues refresh")
-    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--implement-tmpdir", default="")
     parser.add_argument("--best-effort", action="store_true")
     try:
         args = parser.parse_args(argv)
@@ -319,7 +319,12 @@ def refresh_execution_issues_main(argv: list[str] | None = None) -> int:
         emit_kv(key="REFRESHED", value="false")
         emit_kv(key="ERROR", value="usage")
         return VALIDATION_FAILED_RC
-    rc, refreshed, reason = refresh_execution_issues(Path(args.implement_tmpdir), best_effort=args.best_effort)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        emit_kv(key="REFRESHED", value="false")
+        emit_kv(key="ERROR", value="--implement-tmpdir is required or IMPLEMENT_TMPDIR must be set")
+        return VALIDATION_FAILED_RC
+    rc, refreshed, reason = refresh_execution_issues(Path(raw_tmpdir), best_effort=args.best_effort)
     emit_kv(key="REFRESHED", value=str(refreshed).lower())
     if reason:
         emit_kv(key="REASON" if refreshed else "ERROR", value=reason)

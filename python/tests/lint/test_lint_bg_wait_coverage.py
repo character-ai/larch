@@ -41,15 +41,15 @@ def test_accepts_current_design_and_implement_background_patterns(
         """
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 15600000`.**
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4
 ```
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-5-review.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-5-review.sh
 ```
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-8-ship.sh
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-ship.sh
 ```
 """,
     )
@@ -83,7 +83,7 @@ def test_rejects_unknown_implement_background_launch(
         """
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1000`.**
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement future-background
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement future-background
 ```
 """,
     )
@@ -100,7 +100,7 @@ def test_accepts_direct_checks_step5_resume(
         """
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 32700000`.**
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"
 ```
 """,
     )

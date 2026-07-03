@@ -416,7 +416,8 @@ def main(argv: list[str] | None = None) -> int:
         emit(key="STEP_7A_BAIL_REASON", value="argv")
         emit(key="REBASE_OUTCOME", value="skipped")
         return 2
-    if not args.implement_tmpdir:
+    raw_tmpdir = args.implement_tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
         emit(key="DIAGRAM_STATUS", value="failed")
         emit(key="DIAGRAM_REASON", value="")
         emit(key="DIAGRAM_PATH", value="")
@@ -426,7 +427,7 @@ def main(argv: list[str] | None = None) -> int:
         emit(key="REBASE_OUTCOME", value="skipped")
         return 2
     return run_step7a(
-        Path(args.implement_tmpdir),
+        Path(raw_tmpdir),
         issue_number=args.issue_number,
         run_id=args.run_id,
         no_logs_commit=args.no_logs_commit == "true",

@@ -260,7 +260,10 @@ probe_target_live_dir_step8() {
   local cmd="$1" normalized assigned_tmpdir assigned_canon dir step step8_count=0 sole_step8_dir=""
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
-  if printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
+  # shellcheck disable=SC2016 # Match literal $PPID in the candidate Bash command.
+  if printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=\$\(awk .*current-implement-env-\$PPID\.sh.*\);'; then
+    :
+  elif printf '%s' "$normalized" | grep -Eq '^IMPLEMENT_TMPDIR=[^;]+;'; then
     assigned_tmpdir=$(printf '%s' "$normalized" | sed -E 's/^IMPLEMENT_TMPDIR=([^;]+);.*/\1/' | tr -d '"' | tr -d "'")
     assigned_canon=$(canonical_dir "$assigned_tmpdir" 2>/dev/null) || return 1
     while IFS='|' read -r dir step || [ -n "$dir" ]; do
@@ -357,7 +360,7 @@ bash_is_implement_terminal_sentinel_foreground_probe() {
 }
 
 bash_is_step8_handoff_foreground_probe() {
-  local cmd="$1" normalized dir probe_target_re test_re
+  local cmd="$1" normalized dir probe_target_re test_re pointer_test_re
   normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
   normalized=$(bash_trim "$normalized")
   bash_is_control_loop "$normalized" && return 1
@@ -366,7 +369,9 @@ bash_is_step8_handoff_foreground_probe() {
   # shellcheck disable=SC2016 # Match literal $IMPLEMENT_TMPDIR in the candidate Bash command.
   probe_target_re='(\$IMPLEMENT_TMPDIR/\.step-8-ship-handoff\.rc|\$\{IMPLEMENT_TMPDIR\}/\.step-8-ship-handoff\.rc)'
   test_re='^(IMPLEMENT_TMPDIR=[^;]+;[[:space:]]*)?test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$'
-  printf '%s' "$normalized" | grep -Eq "$test_re" || return 1
+  # shellcheck disable=SC2016 # Match literal $PPID in the candidate Bash command.
+  pointer_test_re='^IMPLEMENT_TMPDIR=\$\(awk .*current-implement-env-\$PPID\.sh.*\);[[:space:]]*test[[:space:]]+-f[[:space:]]+"?'"$probe_target_re"'"?$'
+  printf '%s' "$normalized" | grep -Eq "$test_re" || printf '%s' "$normalized" | grep -Eq "$pointer_test_re" || return 1
   dir=$(probe_target_live_dir_step8 "$normalized") || return 1
   [ ! -L "$dir/.step-8-ship-handoff.rc" ] || return 1
   return 0

@@ -92,10 +92,10 @@ else:
 
 # Wrapper call sites. The pre-bootstrap Step 0 fences keep the old shape.
 for script in [
-    'step-0-bootstrap.sh" --mode initial',
+    'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial',
 ]:
     require(skill, script, f'SKILL old-shape wrapper {script}')
-require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.sh" --mode resume', 'bootstrap-recovery relocated resume wrapper')
+require('skills/implement/references/bootstrap-recovery.md', 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', 'bootstrap-recovery relocated resume wrapper')
 
 # Collapsed Preflight helper surface.
 for path in [
@@ -146,7 +146,7 @@ forbid(skill, 'single-line envelope', 'SKILL must not describe single-line envel
 forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exit 2')
 
 
-launcher = 'bash "$IMPLEMENT_TMPDIR/larch-run.sh" '
+launcher = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 bootstrap_recovery_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely.'
 self_review_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.'
 bootstrap_recovery_read_degraded = '**MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
@@ -340,7 +340,7 @@ mav_idx = skill_text.find('- **`main-agent-vote-required`**:')
 coder_idx = skill_text.find('- **`coder-main-agent-required`**:')
 shared_step5 = '> **Continue after child returns.** On composite `NEXT_ACTION=checks-failed`, apply **Checks Failure Entry Macro** with pinned `--site step5-mav --checks-site step5-review-fixes`.'
 shared_idx = skill_text.find(shared_step5)
-resume_idx = skill_text.find('bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
+resume_idx = skill_text.find('"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "$FINAL_ROUND_NUM"')
 if not (mav_idx >= 0 and coder_idx > mav_idx and shared_idx > coder_idx and resume_idx > shared_idx):
     checks.append('SKILL.md must route Step 5 MAV and coder branches through one shared checks block before checks-step5-resume')
 else:
@@ -401,7 +401,7 @@ cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/
 require_near(
     skill,
     cleanup_read,
-    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize',
+    '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize',
     'Step 18 cleanup read before composite fence',
     1600,
 )
@@ -425,7 +425,7 @@ require(skill, 'Marker emission is gated on captured Step 17 render success and 
 forbid(skill, 'Do NOT use a Bash `cat` or Python tool call to print the summary body', 'retired Step 17 Bash-cat prohibition string')
 forbid(skill, 'via Bash `cat` whose output is then re-emitted as orchestrator text', 'SKILL must not sanction Bash cat for summary emit')
 
-if not re.search(r'timeout: 32700000[\s\S]{0,900}bash "\$IMPLEMENT_TMPDIR/larch-run\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
+if not re.search(r'timeout: 32700000[\s\S]{0,900}"\$HOME/\.cache/larch/sessions/implement-run-\$PPID\.sh" python/cli\.py implement checks-step5-resume --checks-site step5-review-fixes --final-round-num "\$FINAL_ROUND_NUM"', skill_text):
     checks.append('SKILL.md must background the Step 5 checks-step5-resume composite fence with timeout 32700000')
 if re.search(r'(^|[\s])--auto([^A-Za-z0-9_-]|$)', skill_text):
     checks.append('SKILL.md must not document standalone --auto flag token (issue #2497)')
@@ -461,8 +461,8 @@ if conflict_ref.is_file():
     ]:
         if forbidden in conflict_text:
             checks.append(f'conflict-resolution.md must not use direct foreground ship re-entry prose {forbidden!r}')
-require(skill, 'step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
-require('skills/implement/references/bootstrap-recovery.md', 'step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper relocated')
+require(skill, 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode initial', 'Step 0 initial bootstrap wrapper')
+require('skills/implement/references/bootstrap-recovery.md', 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume', 'Step 0 resume bootstrap wrapper relocated')
 require('skills/implement/scripts/step-0-bootstrap.sh', 'set +e', 'step-0 bootstrap set +e guard')
 require('python/larch/state/bootstrap.py', 'preserve_coder=args.resume == "true"', 'bootstrap parse-routing resume preserves coder')
 forbid(skill, launcher + 'skills/implement/scripts/step-0-degraded-gate.sh', 'SKILL active flow must not call step-0-degraded-gate.sh')
@@ -716,14 +716,14 @@ require(skill, matrix_read, 'ship-pr exit matrix Step 8+ entry read')
 require_near(
     skill,
     matrix_read,
-    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship route-exit',
+    '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship route-exit',
     'Step 8+ matrix read before route-exit fence',
     1200,
 )
 require_near(
     skill,
     matrix_read,
-    'bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py ship pre-driver',
+    '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-driver',
     'Step 8+ matrix read before pre-driver fence',
     1600,
 )
@@ -897,7 +897,7 @@ for needle in [
     'BRANCH_ACTION',
     'PLAN_FILE',
     'Bootstrap edit gate (NEVER #21)',
-    'step-0-bootstrap.sh" --mode resume',
+    'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume',
     'LARCH_CLAUDE_PLUGIN_ROOT=',
     'Parse the resumed wrapper stdout before',
 ]:

@@ -122,7 +122,7 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     logging_util.quiet_init(argv0="cli.py")
     parser = argparse.ArgumentParser(prog="cli.py implement recovery-paths")
     parser.add_argument("--repo-root", required=True)
-    parser.add_argument("--tmpdir", required=True)
+    parser.add_argument("--tmpdir", default="")
     parser.add_argument("--capture-postlaunch", action="store_true")
     parser.add_argument("--prelaunch-porcelain", required=True)
     parser.add_argument("--postlaunch-porcelain", required=True)
@@ -130,7 +130,11 @@ def recovery_paths_main(argv: list[str] | None = None) -> int:
     parser.add_argument("--out-file", required=True)
     args = parser.parse_args(argv)
     repo_root = Path(args.repo_root)
-    tmpdir = Path(args.tmpdir)
+    raw_tmpdir = args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        _err("implement recovery-paths: --tmpdir is required or IMPLEMENT_TMPDIR must be set")
+        return 2
+    tmpdir = Path(raw_tmpdir)
     if args.capture_postlaunch:
         rc = _capture_postlaunch_porcelain(repo_root=repo_root, implement_tmpdir=tmpdir)
         if rc != 0:

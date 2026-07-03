@@ -27,6 +27,7 @@ from larch.implement import implement_dispatch
 from larch.implement import (
     dispatch_commit_route,
     dispatch_leg,
+    dispatch_manifest,
     dispatch_ship,
     dispatch_step18,
     dispatch_step2,
@@ -107,6 +108,81 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("larch.agents.agents", "launch_codex_implement_main")
     assert _REGISTRY[("agent", "launch-cursor-implement")] == ("larch.agents.agents", "launch_cursor_implement_main")
+
+
+def test_normalize_coder_scout_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    source = tmp / "scout.raw.json"
+    source.write_text('{"archetypes":[]}\n', encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, Path] = {}
+
+    def fake_normalize_coder_scout(*, tmpdir: Path, input_path: Path, producer: str = "external") -> str:
+        seen["tmpdir"] = tmpdir
+        seen["input_path"] = input_path
+        assert producer == "external"
+        return "ok"
+
+    monkeypatch.setattr(dispatch_manifest, "normalize_coder_scout", fake_normalize_coder_scout)
+
+    assert implement_dispatch.normalize_coder_scout_main(["--tmpdir", "", "--input", str(source)]) == 0
+
+    assert seen == {"tmpdir": tmp, "input_path": source}
+    assert f"SCOUT_CODER_MANIFEST={tmp / 'scout-coder-manifest.json'}" in capsys.readouterr().out
+
+
+def test_recovery_paths_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    pre = tmp / "pre.nul"
+    post = tmp / "post.nul"
+    digests = tmp / "digests.txt"
+    out = tmp / "paths.nul"
+    for path in (pre, post, digests):
+        path.write_bytes(b"")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, Path] = {}
+
+    def fake_compute_recovery_paths(
+        *,
+        repo_root: Path,
+        tmpdir: Path,
+        porcelain: implement_dispatch.RecoveryPorcelainInputs,
+        out_file: Path,
+    ) -> bool:
+        _ = porcelain
+        seen["repo_root"] = repo_root
+        seen["tmpdir"] = tmpdir
+        seen["out_file"] = out_file
+        return True
+
+    monkeypatch.setattr(dispatch_recovery, "compute_recovery_paths", fake_compute_recovery_paths)
+
+    rc = implement_dispatch.recovery_paths_main([
+        "--repo-root",
+        str(repo),
+        "--tmpdir",
+        "",
+        "--prelaunch-porcelain",
+        str(pre),
+        "--postlaunch-porcelain",
+        str(post),
+        "--prelaunch-digests",
+        str(digests),
+        "--out-file",
+        str(out),
+    ])
+
+    assert rc == 0
+    assert seen == {"repo_root": repo, "tmpdir": tmp, "out_file": out}
 
 
 def _write_ship_handoff(tmp: Path, rc: int, payload: dict[str, object]) -> None:
@@ -263,6 +339,21 @@ def test_ship_route_exit_retries_transient_and_persists_count(
     assert sleeps == [30, 30]
     assert (tmp / "ship-pr-net-retries-python.count").read_text(encoding="utf-8").strip() == "2"
     assert "RESHIP_DELAY_SECONDS=30" in (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+
+
+def test_ship_route_exit_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    monkeypatch.setattr(implement_dispatch.time, "sleep", lambda _seconds: None)
+    _write_ship_handoff(tmp, 0, {"outcome": "OK"})
+
+    assert implement_dispatch.ship_route_exit_main(["--implement-tmpdir", ""]) == 0
+
+    assert capsys.readouterr().out == "NEXT_ACTION=complete\n"
 
 
 def test_ship_route_exit_fourth_transient_seeds_stall(
@@ -691,6 +782,24 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
         "--step17-emitted",
         "true",
     ]
+
+
+def test_step18_gate_finalize_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    monkeypatch.setenv("STALL_TRACKING", "false")
+    finalize_calls: list[list[str]] = []
+    _install_step18_normalize(monkeypatch, succeeded=False)
+    _install_step18_finalize(monkeypatch, calls=finalize_calls)
+
+    assert implement_dispatch.step_18_gate_finalize_main(["--implement-tmpdir", ""]) == 0
+
+    assert finalize_calls
+    assert capsys.readouterr().out.rstrip().endswith("NEXT_ACTION=finalize-done")
 
 
 def test_step18_gate_finalize_active_stall_breaks_out_without_finalize(
@@ -1199,10 +1308,32 @@ def _malformed_launcher(edit: Callable[[Path, implement_dispatch.DispatchState],
 
 
 def test_run_dispatch_missing_tmpdir_exits_2(capsys: pytest.CaptureFixture[str]) -> None:
-    with pytest.raises(SystemExit) as exc:
-        implement_dispatch.run_dispatch_main(["--coder", "codex"])
-    assert exc.value.code == 2
-    assert "--implement-tmpdir" in capsys.readouterr().err
+    rc = implement_dispatch.run_dispatch_main(["--coder", "codex"])
+    assert rc == 2
+    assert "--implement-tmpdir is required" in capsys.readouterr().err
+
+
+def test_run_dispatch_empty_tmpdir_argv_falls_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    captured: dict[str, list[str]] = {}
+
+    def fake_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        call = list(argv)
+        if len(call) >= 4 and call[2:4] == ["implement", "step2-dispatch"]:
+            captured["argv"] = call
+            return subprocess.CompletedProcess(call, 0, "STATUS=complete\n", "")
+        return subprocess.CompletedProcess(call, 0, "", "")
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "run", fake_run)
+
+    rc = implement_dispatch.run_dispatch_main(["--implement-tmpdir", "", "--coder", "claude"])
+
+    assert rc == 0
+    assert str(tmp) in captured["argv"]
 
 
 def test_run_dispatch_missing_answers_path_exits_2(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -8,13 +8,13 @@ It replaces the retired Step 18a gate, Step 18b final-report, and Step 18 finali
 Gate phase:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase gate --stall-tracking-memory "${STALL_TRACKING:-false}"
 ```
 
 Finalize phase:
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"
 ```
 
 Step 18a.5 remains prompt-side between gate clearance and `--phase finalize`.

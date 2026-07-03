@@ -46,11 +46,11 @@ grep -Fq '"final-report", "write", "--implement-tmpdir"' "$REPO/python/larch/sta
 grep -Fq '"--print-stdout"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 default mode may retain --print-stdout'
 grep -Fq 'category="Tool Failures"' "$REPO/python/larch/state/closeout.py" || fail 'Step 17 failure path must retain Tool Failures append'
 # shellcheck disable=SC2016
-step18_launcher='bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
+step18_launcher='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-18.sh --phase finalize --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
 # shellcheck disable=SC2016
 grep -Fq "$step18_launcher" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke step-18.sh finalize phase'
 # shellcheck disable=SC2016
-step18_composite='bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
+step18_composite='"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement step-18-gate-finalize --implement-tmpdir "$IMPLEMENT_TMPDIR" --stall-tracking-memory "${STALL_TRACKING:-false}" --step17-emitted "${STEP17_EMITTED_FOR_STEP18:-false}"'
 # shellcheck disable=SC2016
 grep -Fq "$step18_composite" "$REPO/skills/implement/SKILL.md" || fail 'Step 18 must invoke composite gate-finalize path'
 # shellcheck disable=SC2016
@@ -74,7 +74,7 @@ grep -Fq 'Relay teardown tail records verbatim from captured composite stdout on
 grep -Fq 'write `$IMPLEMENT_TMPDIR/.step17-emitted`' "$REPO/skills/implement/SKILL.md" || fail 'Step 17/18 must persist top-chat emission sentinel'
 # shellcheck disable=SC2016
 step18_block=$(awk '
-    /bash "\$IMPLEMENT_TMPDIR\/larch-run\.sh" skills\/implement\/scripts\/step-18\.sh --phase finalize/ { in_block=1 }
+    /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-18\.sh --phase finalize/ { in_block=1 }
     in_block { print }
     in_block && /^```$/ { exit }
 ' "$REPO/skills/implement/SKILL.md")

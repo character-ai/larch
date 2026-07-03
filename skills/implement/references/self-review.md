@@ -9,7 +9,7 @@ Entry conditions: this reference is used for explicit `--self-review` and runtim
 When `self_review=true`, self-review inline. First, mark Step 5 telemetry best-effort, then print the Step 5 banner.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true
 ```
 
 Print `> **🔶 /implement 5: code review — self-review mode (main agent inline)**` after the telemetry mark returns.
@@ -21,7 +21,7 @@ Print `> **🔶 /implement 5: code review — self-review mode (main agent inlin
 4.5. Capture a pre-edit tree snapshot before inline fixes. **The snapshot helper exits non-zero if any tracked files have unstaged working-tree modifications at call time.** If it fails, commit or discard those changes before retrying.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-self-review-snapshot --implement-tmpdir "$IMPLEMENT_TMPDIR"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py review-and-fix write-pre-self-review-snapshot --implement-tmpdir "$IMPLEMENT_TMPDIR"
 ```
 
 5. Apply each in-scope fix via Edit/Write. Skip only fixes out of scope under the OOS triage policy from step 3 or edits targeting a submodule / `.claude-plugin/plugin.json`. For each fixed in-scope finding, append one heading with exact prefix `### [Code Review] Self-review accepted` to `$IMPLEMENT_TMPDIR/self-review-accepted.md`; create it on first append. Append once when one finding needs multiple edits, and once per finding when one edit resolves several findings. Write fileable OOS items to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md` using `### OOS_<N>:`; never duplicate them in `self-review-accepted.md`. Fold triage failures inline when required, such as documentation drift or < ~30 LOC bugs.
@@ -33,7 +33,7 @@ bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-pre-sel
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 14700000`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review
 ```
 
 After the composite fence returns, parse exactly one line-anchored composite `NEXT_ACTION=` record. Continue only on `NEXT_ACTION=continue`. On `NEXT_ACTION=main-agent-edit`, follow the reference's in-step Edit/Write and re-entry contract, then re-run this same composite launcher with identical argv. On missing, duplicated, malformed, seed-failed, or non-zero-without-`NEXT_ACTION` output, treat it as an invalid composite envelope: log to `Warnings`, set prompt-side `STALL_TRACKING=true` and `STALL_STEP=5` when durable seed is absent, and skip to Step 18. Do not proceed to the next self-review step or Step 6.
@@ -43,7 +43,7 @@ After the composite fence returns, parse exactly one line-anchored composite `NE
 10. Emit self-review Step 5 run-log artifacts so final report and `audit_runs` Step 5 detection treat a clean self-review as review ran. The CLI reconciles accepted and rejected counts from durable self-review artifacts under `$IMPLEMENT_TMPDIR`. This verb is best effort: writer failure records a Warnings entry in `$IMPLEMENT_TMPDIR/execution-issues.md` and returns `0`, so it never blocks Step 6.
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py review-and-fix write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"
 ```
 
 11. Proceed directly to `### Cross-Skill Presence Propagation` in `skills/implement/SKILL.md`, then `### Track Rejected Code Review Findings` in `skills/implement/SKILL.md`, then Step 6, same chain as `STEP5_REVIEW_STATUS=complete`. Set `FILES_CHANGED_HINT=true` if fixes were committed, otherwise `false`.

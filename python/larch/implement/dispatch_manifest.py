@@ -240,11 +240,15 @@ def normalize_coder_scout(
 
 def normalize_coder_scout_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py implement normalize-coder-scout")
-    parser.add_argument("--tmpdir", required=True)
+    parser.add_argument("--tmpdir", default="")
     parser.add_argument("--input", required=True)
     parser.add_argument("--producer", choices=("external", "main-agent"), default="external")
     args = parser.parse_args(argv)
-    tmpdir = Path(args.tmpdir)
+    raw_tmpdir = args.tmpdir or os.environ.get("IMPLEMENT_TMPDIR", "")
+    if not raw_tmpdir:
+        print("implement normalize-coder-scout: --tmpdir is required or IMPLEMENT_TMPDIR must be set", file=sys.stderr)
+        return 2
+    tmpdir = Path(raw_tmpdir)
     if not tmpdir.is_dir():
         print(f"implement normalize-coder-scout: --tmpdir not a directory: {tmpdir}", file=sys.stderr)
         return 2

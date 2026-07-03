@@ -4,14 +4,15 @@ High-level structural harness for the wrapperized `/implement` prompt. It verifi
 
 ## Launcher invariants
 
-- Four pre-bootstrap call sites retain the old plugin-root guard shape.
+- Two pre-bootstrap call sites retain the old plugin-root guard shape.
+- Step 0 initial and resume call sites prefix `LARCH_CLAUDE_PID="$PPID"` before `step-0-bootstrap.sh`.
 - The single Preflight helper call replaces the two direct `plan-block read` fences.
 - The helper block may use Bash 3.2 argv construction.
 - The helper block invokes the script through `bash`, so executable mode is not part of the runtime contract.
 - The helper emits one `KEY=value` record per line on success.
 - The helper emits `RESUME=true` or `RESUME=false`.
 - The prompt-side parser consumes the helper envelope only after exit `0`.
-- Post-Step-0 call sites use `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <relative-script>`.
+- Post-Step-0 call sites use `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" <relative-script>`.
 - Background wrapper assertions match the one-line launcher form for Step 5 review composites, Step 7a, and Step 8.
 - Timeout assertions and `<task-notification>` assertions remain load-bearing.
 - Step 8+ loads `ship-pr-exit-matrix.md` before the route-exit and pre-driver fences. Every-run branch semantics stay there, while the OOS checkpoint router and autonomous CI-fix bodies live in `ship-pr-oos-checkpoint-router.md` and `ship-pr-ci-fix.md`.

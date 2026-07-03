@@ -19,7 +19,7 @@ Persist it with the current post-7a `HEAD`, the materialized diff fingerprint, a
 **⚠ Foreground required — do NOT set `run_in_background: true`.**
 
 ```bash
-bash "$IMPLEMENT_TMPDIR/larch-run.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-architectural-guidelines-write-staged.sh "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"
 ```
 
 After the write-staged wrapper succeeds, print the clean or deviation note to chat.

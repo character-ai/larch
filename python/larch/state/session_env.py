@@ -884,6 +884,38 @@ def _implement_pointer_path(pid: str) -> Path:
     return Path.home() / ".cache" / "larch" / "sessions" / f"current-implement-env-{pid}.sh"
 
 
+def _implement_run_path(pid: str) -> Path:
+    return Path.home() / ".cache" / "larch" / "sessions" / f"implement-run-{pid}.sh"
+
+
+def _implement_run_launcher_text(pid: str) -> str:
+    return (
+        "#!/usr/bin/env bash\n"
+        "set -uo pipefail\n"
+        f'POINTER="$HOME/.cache/larch/sessions/current-implement-env-{pid}.sh"\n'
+        '[ -f "$POINTER" ] && [ ! -L "$POINTER" ] || { printf \'%s\\n\' "implement-run: missing current-env pointer: $POINTER" >&2; exit 2; }\n'
+        'IMPLEMENT_TMPDIR=$(awk \'BEGIN{p="IMPLEMENT_TMPDIR="} index($0,p)==1{print substr($0,length(p)+1); found=1; exit} END{exit found ? 0 : 1}\' "$POINTER" 2>/dev/null) || { printf \'%s\\n\' "implement-run: IMPLEMENT_TMPDIR missing from pointer: $POINTER" >&2; exit 2; }\n'
+        '[ -n "$IMPLEMENT_TMPDIR" ] || { printf \'%s\\n\' "implement-run: IMPLEMENT_TMPDIR empty in pointer: $POINTER" >&2; exit 2; }\n'
+        'case "$IMPLEMENT_TMPDIR" in /*) ;; *) printf \'%s\\n\' "implement-run: IMPLEMENT_TMPDIR must be absolute: $IMPLEMENT_TMPDIR" >&2; exit 2 ;; esac\n'
+        'LARCH_RUN_SH="$IMPLEMENT_TMPDIR/larch-run.sh"\n'
+        '[ -f "$LARCH_RUN_SH" ] || { printf \'%s\\n\' "implement-run: missing larch-run.sh: $LARCH_RUN_SH" >&2; exit 2; }\n'
+        '[ -x "$LARCH_RUN_SH" ] || { printf \'%s\\n\' "implement-run: larch-run.sh is not executable: $LARCH_RUN_SH" >&2; exit 2; }\n'
+        "export IMPLEMENT_TMPDIR\n"
+        'exec "$LARCH_RUN_SH" "$@"\n'
+    )
+
+
+def _write_implement_run_sh(pid: str) -> None:
+    run_path = _implement_run_path(pid)
+    expected_parent = Path.home() / ".cache" / "larch" / "sessions"
+    if run_path.parent != expected_parent:
+        raise ValueError(f"implement run path mismatch: {run_path}")
+    _assert_no_symlink_path_or_ancestors(run_path)
+    run_path.parent.mkdir(parents=True, exist_ok=True)
+    _assert_no_symlink_path_or_ancestors(run_path)
+    _atomic_write(path=run_path, text=_implement_run_launcher_text(pid), create_parent=False, mode=0o755)
+
+
 def _validate_claude_pid(pid: str) -> None:
     if not re.match(r"^[1-9][0-9]{0,6}$", pid):
         raise ValueError("Invalid --claude-pid: must be a positive integer of at most 7 decimal digits")
@@ -1049,6 +1081,7 @@ def write_implement_env_main(argv: list[str]) -> int:
         target.parent.mkdir(parents=True, exist_ok=True)
         _assert_no_symlink_path_or_ancestors(target)
         _atomic_write(path=target, text=_kv_text(data), create_parent=False)
+        _write_implement_run_sh(args.claude_pid)
         return 0
     except (OSError, ValueError) as exc:
         _err(f"ERROR={exc}")

@@ -463,6 +463,9 @@ def _phase_infra(st: BootstrapState) -> None:
                     output_file=diag,
                     status_label="failed",
                 )
+            st.emit_step_failed("write-implement-env")
+    elif st.implement_tmpdir and not pid:
+        st.emit_step_failed("write-implement-env")
     st.codex_available = "true" if st.codex_binary_found == "true" else "false"
     st.cursor_available = "true" if st.cursor_binary_found == "true" else "false"
     _err(f"→ step0: infra ready (tmpdir={st.implement_tmpdir} session={st.session_id})")

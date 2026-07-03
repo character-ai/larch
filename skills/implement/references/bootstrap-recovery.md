@@ -22,7 +22,7 @@ Step 0 dirty-tree recovery gate:
 
 1. Write `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `STATUS=dirty-or-unknown`, `STAGE=step0-plan-materialize`, and `RECOVERY_REQUIRED=true`.
 2. If `$IMPLEMENT_TMPDIR/.dirty-tree-prompted-step0-plan-materialize` is absent, create it and fire `AskUserQuestion` with exactly two operator paths: **Restore a clean tree and continue** / **Cancel this implement run**.
-3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs `python/cli.py dirty-tree checkpoint` and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds. Once clean, rewrite `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `RECOVERY_REQUIRED=false`, `unset IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh --mode resume`.
+3. On **Restore a clean tree and continue**: the operator cleans the worktree back to the Step 0 checkpoint state (for example by stashing, discarding scratch edits they do not want in this run, or otherwise restoring a clean `git status`), then the orchestrator re-runs `python/cli.py dirty-tree checkpoint` and only continues when it returns `STATUS=clean`. Keep `RECOVERY_REQUIRED=true` until the clean re-check succeeds. Once clean, rewrite `$IMPLEMENT_TMPDIR/dirty-tree-detected.env` with `RECOVERY_REQUIRED=false`, `unset IMPLEMENT_BAIL_REASON`, export the existing `IMPLEMENT_TMPDIR`, and immediately re-run the resume fence below.
 4. On **Cancel this implement run**: keep `RECOVERY_REQUIRED=true`, set `STALL_TRACKING=true`, and skip to Step 18 cleanup.
 
 The resumed bootstrap tail re-runs `python/cli.py dirty-tree checkpoint` internally before any Phase 3 tail helper. If that internal re-probe returns `STATUS=dirty` or `STATUS=unknown`, stay in recovery mode and do not branch/log. Parse the resumed wrapper stdout before continuing so `IMPLEMENT_BAIL_REASON`, `BRANCH_NAME`, `BRANCH_ACTION`, and `PLAN_FILE` come from the resumed tail rather than the pre-recovery pass. Parse the resumed wrapper stdout before re-evaluating `BOOTSTRAP_NEXT`.
@@ -35,5 +35,5 @@ export IMPLEMENT_TMPDIR
 [ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk 'BEGIN{p="LARCH_CLAUDE_PLUGIN_ROOT="} index($0,p)==1{print substr($0,length(p)+1); exit}' "$IMPLEMENT_TMPDIR/session-env.sh" 2>/dev/null || true)
 export CLAUDE_PLUGIN_ROOT
 # Dirty-tree resume preserves implementer selection in the wrapper routing envelope.
-"${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume
+LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume
 ```
