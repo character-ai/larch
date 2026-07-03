@@ -1,0 +1,1 @@
+The system indicates an active background wait. I'll end this turn and wait for the task notification before proceeding with the ballot review.
