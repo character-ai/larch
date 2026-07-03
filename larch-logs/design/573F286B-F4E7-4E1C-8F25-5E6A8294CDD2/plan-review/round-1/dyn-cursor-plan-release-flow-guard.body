@@ -1,0 +1,1 @@
+Review the plan for /release flag rename regressions. Focus on Step 1 parsing, explicit rejection of retired tokens, Step 4 PR_COUNT=0 safety, and docs/frontmatter consistency. Check that no old flag remains as a compatibility alias. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

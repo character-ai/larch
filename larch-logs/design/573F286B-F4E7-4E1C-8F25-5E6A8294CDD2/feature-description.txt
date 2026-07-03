@@ -1,0 +1,2 @@
+# Rename --approve/-a argument of /release skill to match --skip-approve/-s of /design
+
