@@ -1,0 +1,35 @@
+### FINDING_1: Did-fixing tests and HEAD simulation are not fully rewired
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan removes `did_fixing`, but it does not explicitly rewrite all tests that depend on the old counter-persistence behavior or the `did_fixing`-driven HEAD simulation, so the test suite can still assert dead semantics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Expand \`### UPDATED: python/tests/implement/test_ship.py\` to explicitly: remove or invert \`test_terminal_counter_persistence_counts_failed_fixing\` (assert \`FIX_ATTEMPTS\` stays 4 when monitor bails); rewrite round-trip test without \`did_fixing\`-gated increment; replace HEAD simulation in post-push reentry with an explicit flag or call-order hook; add \`git.try_rev_parse\` stubs where rebase tests spy on the new helper’s \`head_sha\`.`
+  - From Cursor-Innovation: `Extend \`test_ship.py\` plan bullets to explicitly delete or rewrite those three tests (e.g. expect \`FIX_ATTEMPTS\` unchanged at 4 or absent) and note \`test_post_push_reentry_uses_bounded_empty_checks_grace\` must drop the \`did_fixing\`-driven HEAD simulation branch`
+
+### FINDING_2: `ship_merge.py` plan misses the `git` import needed for HEAD resolution
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The planned `try_rev_parse(..., "HEAD")` call has no corresponding `larch.git` import in the `ship_merge.py` plan, so the new rebase path will fail with a `NameError`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Add \`from larch.git import git\` (or equivalent project convention) to the \`ship_merge.py\` plan file list and note it in the Step 2b ship_merge bullets.`
+
+### FINDING_3: Removing the ship namespace import needs a test-surface update
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: Removing the `ship.py` import without repointing the remaining fallback tests breaks existing `ship.*` callers, so the planned cleanup can fail tests even if the runtime behavior is correct.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: `In \`test_ship.py\`, add an explicit plan step to repoint those tests to \`ship_guidelines._invalidate_guidelines_note\` (the module is already imported at line 20), or keep a thin re-export in \`ship.py\` only if you intentionally preserve the \`ship.*\` test surface`
+
+### FINDING_4: The helper’s pin-vs-invalidate behavior needs direct unit coverage
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan wires in the new helper, but it does not directly prove that a successful pin suppresses invalidation and that pin failure or missing HEAD still falls back correctly.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: `Add a focused changed-file unit test for the helper: when pin_note_from_staged_for_current_head returns True, _invalidate_guidelines_note is not called and the helper returns False; when pinning fails or HEAD is missing, fallback invalidation runs and its warning boolean is returned.`
+
+### FINDING_5: Rebase pinning is sequenced too late
+- **Reviewer(s)**: Codex-dyn-Ship Guidelines Lifecycle
+- **Severity**: important
+- **Concern**: The plan resolves HEAD and calls the new helper only after `rebase.rebase_and_push` returns, but that function force-pushes before returning, so the helper runs after the window where the note must be preserved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Ship Guidelines Lifecycle: `Change the plan so ship_merge pins before the force-push, either with a narrow pre-push callback inside rebase.rebase_and_push between the rebase/sync and _force_push_branch, or by deferring the push and invoking the existing force-push path after the helper.`
