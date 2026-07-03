@@ -3026,7 +3026,7 @@ def test_step_final_summary_cancelled_outcome_uses_central_publish(tmp_path: Pat
 
     monkeypatch.setattr(design_terminal, "_publish_terminal_final_summary", fake_publish)
     monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", fake_upsert)
-    monkeypatch.setattr(design_summary, "render_final_summary_main", lambda _argv: (_ for _ in ()).throw(AssertionError("local render should not run")))
+    monkeypatch.setattr(design_summary, "render_final_summary_main", lambda _argv: (_ for _ in ()).throw(AssertionError("local render should not run")))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step_final_summary_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "cancelled-outline"],
@@ -3047,8 +3047,8 @@ def test_step_final_summary_cancelled_clarify_reuses_existing_summary(tmp_path: 
 
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
-    monkeypatch.setattr(design_terminal, "_publish_terminal_final_summary", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("publish should not run")))
-    monkeypatch.setattr(design_summary, "render_final_summary_main", lambda _argv: (_ for _ in ()).throw(AssertionError("render should not run")))
+    monkeypatch.setattr(design_terminal, "_publish_terminal_final_summary", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("publish should not run")))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
+    monkeypatch.setattr(design_summary, "render_final_summary_main", lambda _argv: (_ for _ in ()).throw(AssertionError("render should not run")))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step_final_summary_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "cancelled-clarify"],
@@ -3077,7 +3077,7 @@ def test_step_final_summary_central_publish_failures_skip_completion(
     from larch.design import design_summary  # noqa: PLC0415  # pylint: disable=import-outside-toplevel
 
     monkeypatch.setattr(design_terminal, "_publish_terminal_final_summary", fake_publish)
-    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: upsert_ok)
+    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: upsert_ok)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step_final_summary_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123", "--outcome", "cancelled-outline"],
@@ -3830,7 +3830,7 @@ def test_step5c_core_publish_tail_retries_central_publish_before_fallback(
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fail_render)
-    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **kwargs: upsert_calls.append(dict(kwargs)) or True)
+    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **kwargs: upsert_calls.append(dict(kwargs)) or True)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step5c_core,
         ["--session-env-path", str(env_path), "--claude-pid", "123"],
@@ -3861,7 +3861,7 @@ def test_step5c_core_publish_tail_skips_retry_when_publish_evidence_exists(
         return True
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
-    monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("central publish should not run")))
+    monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("central publish should not run")))  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step5c_core,
@@ -3898,7 +3898,7 @@ def test_step5c_core_publish_tail_falls_back_when_central_upsert_fails(
 
     monkeypatch.setattr(design_publish, "publish_core", fake_publish)
     monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
-    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: False)
+    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: False)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
     monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
     rc, contract, _ = _capture_core_contract(
         design_lifecycle.step5c_core,
