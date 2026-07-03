@@ -4,13 +4,14 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Any
-
-import pytest
+from typing import TYPE_CHECKING, Any
 
 from larch.calibration import difficulty
 from larch.calibration import difficulty_calibration as dc
 from larch.review import voting
+
+if TYPE_CHECKING:
+    import pytest
 
 
 DESIGN_HEADER = "finding_id\tfinding_reviewers\tvoting_result\tv1_vote\tv2_vote\tv3_vote\tscope\tbody_severity"
