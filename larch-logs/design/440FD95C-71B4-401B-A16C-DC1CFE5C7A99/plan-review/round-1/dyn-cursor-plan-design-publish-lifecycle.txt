@@ -1,0 +1,51 @@
+Reviewing the plan against the codebase: I'll read the cited publish, clarify, and terminal-summary paths first.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	risk-integration	python/larch/design/design_terminal.py:849-909 (planned change)	Terminal log-publish for all cancelled-* / failed-* duplicates clarify publish	`clarify.py` already calls `design log-publish` in `_publish_clarify_log_and_summary` (lines 880-916) on the happy `cancelled-clarify` path (1233-1241) and on `failed-clarify` partial-failure paths (1188-1196, 1218-1226). `/design` Step 0b then runs the Final summary block for those same outcomes (`skills/design/SKILL.md` lines 153-154). Routing them again through `_publish_terminal_final_summary` would invoke `log_publish_main` a second time on the same `larch-logs/design-{run_id}` branch (`design_log_publish_flow.py` lines 306-317), likely failing the second `git worktree add -b` and leaving `PUBLISH_OK=false` with no `.completed/step-final-summary` — breaking the clarify completion contract the plan says to preserve.	Exclude outcomes already published in clarify (`cancelled-clarify` always when `SESSION_ID` is set; `failed-clarify` when `design-log-publish.stdout` or `.design-log-publish-metadata.env` exists). For those, keep the approved-path pattern: local `--post-publish-only` render / readiness emit from `final-summary.md`, not a second `log_publish_main`.
+1	in_scope	important	correctness	python/larch/design/clarify.py:1274-1283	[ALREADY_ADDRESSED] Happy-path clarify can still emit `CLARIFY_PUBLISH_STATUS=ok` while upsert failed	Current code sets `CLARIFY_PUBLISH_STATUS=ok` unconditionally (line 1275) even though `_render_clarify_final_summary` return is discarded (911-915) and upsert failure is silent. Plan item 1 fixes this; ensure the implementation ties `CLARIFY_PUBLISH_STATUS=ok` to `publish_ok == "true"` after the disk upsert helper, not only `PUBLISH_OK` in `extra_rows` on failure branches.
+1	in_scope	important	completeness	python/larch/design/design_log_publish_flow.py:470-487	Dry-run render test has no matching production change	Approach item 3 and `test_design_log_publish_flow.py` require asserting `_render_final_summary_before_copy` runs before dry-run success, but `log_publish_main` dry-run returns at lines 470-487 without calling `_render_final_summary_before_copy` (non-dry-run path calls it at 506-512). No `### UPDATED:` entry covers `design_log_publish_flow.py`. Tests would fail or document behavior the plan does not implement.	Add `### UPDATED: python/larch/design/design_log_publish_flow.py` calling `_render_final_summary_before_copy` in the dry-run success path (mirroring 506-512, still no push/PR), or drop the dry-run render assertion from the test plan.
+
+## 1. risk-integration — Duplicate terminal log-publish after clarify (`design_terminal.py` / `clarify.py`)
+
+The plan’s terminal helper uses `_is_terminal_publish_outcome` for every `cancelled-*` and `failed-*` outcome. That collides with clarify, which already owns log publish on several of those outcomes.
+
+```867:917:python/larch/design/clarify.py
+def _publish_clarify_log_and_summary(
+    ...
+) -> str:
+    ...
+    publish = _run_cli(
+        ...
+        "log-publish",
+        ...
+    )
+    ...
+    if publish_ok == "true":
+        _ = _render_clarify_final_summary(
+            ...
+        )
+    return publish_ok
+```
+
+Happy clarify calls this with `outcome="cancelled-clarify"` (lines 1233-1241). Comment-post and label-remove failures call it with `outcome="failed-clarify"` (lines 1188-1196, 1218-1226). The orchestrator then runs the Final summary block for the same `SUMMARY_OUTCOME` values.
+
+A second `log_publish_main` on the same run id targets the same branch name (`design_log_publish_flow.py` lines 306-317). The first successful publish often leaves that branch on the remote; a second `worktree add -b` commonly fails. With the plan’s fail-closed terminal rule (no `.completed/step-final-summary` on publish failure), clarify success can lose its terminal sentinel even when clarify publish and disk upsert succeeded.
+
+**Minimum-change fix:** Mirror the approved / Step-5c split: clarify keeps centralized log publish + disk upsert; Final summary for `cancelled-clarify` (and `failed-clarify` when clarify already published) should use local render from `final-summary.md`, not `_publish_terminal_final_summary`. Gate republish on `.design-log-publish-metadata.env` or prior `design-log-publish` stdout when `failed-clarify` needs a first publish (e.g. fetch-only failures with no prior publish).
+
+## 2. correctness — Clarify success signaling (`clarify.py:1274-1283`)
+
+The plan’s disk-upsert helper addresses the core bug (discarded render at lines 911-915). One implementation detail to keep explicit: line 1275 still hard-codes `CLARIFY_PUBLISH_STATUS=ok` today. The plan says to set `ok` only when `publish_ok == "true"` after upsert; wire that into the happy-path rows, not only the failure branches.
+
+## 3. completeness — Dry-run render gap (`design_log_publish_flow.py:470-487`)
+
+Issue scope includes dry-run render ordering, but only test files are listed under `### UPDATED:`. Production dry-run still skips `_render_final_summary_before_copy`. Either add the small dry-run render call to the plan’s file list or drop the test requirement.
+
+---
+
+**Paused-path isolation:** Plan preserves the `.pause-requested` early return at `design_terminal.py:868-869`. Paused outcomes are outside `_is_terminal_publish_outcome`. No issue.
+
+**PUBLISH_OK parsing:** Plan correctly requires parsing the KV when exit code is 0 (`design_log_publish_flow.py` emits `PUBLISH_OK=false` with rc 0 at lines 531-537). Clarify already combines rc and KV at lines 897-898; extending that to upsert failure is sound.
+
+**Completion sentinels:** Fail-closed terminal publish (no sentinel on failure) matches current sentinel write at lines 905-908. The duplicate-publish risk above is what can block sentinel creation on otherwise-successful clarify runs.
+
+**[OUT_OF_SCOPE] scope-reduction — `design_step5c.py:566-568`:** After terminal log-publish owns `failed-publish-tail`, the inline `_step5c_render_final_summary` + upsert may be redundant with Final summary. Worth a follow-up trim, not required for this fix if terminal publish is the sole log commit path for that outcome.

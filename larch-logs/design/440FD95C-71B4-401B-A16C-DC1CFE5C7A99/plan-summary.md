@@ -1,0 +1,1 @@
+Plan: fix clarify to reuse the already-rendered `final-summary.md`, fail `PUBLISH_OK` when the follow-up upsert fails, route terminal cancelled/failed summaries through `design log-publish`, and add tests for the listed coverage gaps.

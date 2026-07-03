@@ -1,0 +1,62 @@
+### FINDING_1: Centralized publish must fail on `RECOVERY_BRANCH`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Centralized terminal and step5c publish paths only gate on `PUBLISH_OK`, so a non-empty `RECOVERY_BRANCH` can still mark completion even though recovery work is pending and logs are incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In _publish_terminal_final_summary (and any shared wrapper), parse RECOVERY_BRANCH from captured stdout the same way as PUBLISH_OK. Treat any non-empty RECOVERY_BRANCH as publish failure even when PUBLISH_OK=true. Propagate that through step_final_summary_core and step5c failed-publish-tail before disk upsert or sentinel writes.
+  - From Cursor-Pragmatic: Parse RECOVERY_BRANCH from centralized publish stdout in design_terminal.py and design_step5c.py, treat any non-empty value as publish failure, and apply the same gate in tests for terminal and failed-publish-tail paths.
+
+### FINDING_2: Shared disk-upsert helper must not live in `clarify.py`
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The shared disk-upsert helper is planned in `clarify.py`, but terminal and step5c also need it; importing it from there would create a module-load cycle through `design_lifecycle` / `design_terminal`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Place a neutral helper such as upsert_final_summary_from_disk in design_summary.py next to the existing tracking-issue upsert block (~628-638). Have clarify.py, design_terminal.py, and design_step5c.py import it from there.
+  - From Cursor-Innovation: Place the shared disk-upsert helper in design_summary.py (or design_terminal.py) and import it from clarify.py, design_terminal.py, and design_step5c.py. Do not import clarify from design_terminal.
+  - From Cursor-Pragmatic: Disk-upsert helper is planned only in clarify.py but reused from design_terminal.py and design_step5c.py clarify.py already imports design_lifecycle, which imports design_terminal and design_step5c. Top-level imports of the clarify helper from those modules create a circular import at module load. Place the shared disk-upsert helper in a neutral module such as design_summary.py (alongside existing upsert logic) or design_core.py, and import it from clarify, design_terminal, and design_step5c.
+  - From Cursor-Requirements: Define one shared `_upsert_final_summary_from_disk(...)` in `design_summary.py` (or `design_core.py`) and call it from clarify, terminal, and step5c. Do not make `design_terminal` import `clarify`.
+
+### FINDING_3: Disk-upsert failure must fail closed
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Terminal and step5c centralized paths can still complete after a successful log publish even if the follow-up disk upsert fails, which leaves the final-summary tracking comment stale or missing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: After centralized log publish succeeds, require the disk-upsert helper to return true before _emit_final_summary_marked_from_disk, sidecar emit, or sentinel touch. On upsert failure, append an execution issue, return non-zero, and skip completion. Apply the same success contract in step5c failed-publish-tail (centralized attempt fails if upsert fails; only then fall back to local render).
+  - From Cursor-Pragmatic: Require disk upsert to return success before _emit_final_summary_marked_from_disk, report-gate sidecars, or completion sentinel writes; return non-zero and skip completion on upsert failure.
+  - From Cursor-Requirements: Treat disk-upsert failure like clarify: return non-zero, keep PUBLISH_OK=false, skip .completed/step-final-summary, and on the step5c `failed-publish-tail` path fall back to `_step5c_render_final_summary` when upsert fails after centralized publish succeeds.
+
+### FINDING_4: Dry-run render can still trigger GitHub writes
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The planned dry-run render path can still reach failure-report GitHub writes, which violates the requirement that dry-run keep real git/gh side effects disabled.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Wrap the dry-run render with the stall-recovery dry-run env or use a render path that still writes final-summary.md but skips failure-report filing and other GitHub-capable post-publish work.
+
+### FINDING_5: Clarify success rows should not hardcode `CLARIFY_PUBLISH_STATUS=ok`
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Clarify still reports success in its final rows even when publish recovery or disk-upsert failures should flip the publish result to failure.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Gate the success rows on publish_ok and parsed publish stdout: emit CLARIFY_PUBLISH_STATUS=ok only when publish_ok is true and RECOVERY_BRANCH is empty; otherwise emit summary-upsert-failed or log-publish-recovery and keep PUBLISH_OK=false.
+
+### FINDING_6: `cancelled-clarify` and `failed-clarify` still re-render after clarify publish
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The Final summary block still re-renders for clarify outcomes that already published and upserted, which can drift the GitHub comment away from the committed log summary or hide a failed second upsert.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: For cancelled-clarify and failed-clarify, when a non-empty final-summary.md already exists after clarify publish, skip render_final_summary_main and only run _emit_final_summary_marked_from_disk plus _emit_report_gate_sidecars_from_disk from disk.
+
+### FINDING_7: Nonstandard plan heading may hide the `design_step5c.py` update
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The step5c fix may be missed by plan tooling because the heading format is not one of the recognized wire-format headings.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Change the heading to `### UPDATED: python/larch/design/design_step5c.py` while keeping the existing body.
+
+### FINDING_8:
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/larch/design/design_step5c.py:555-569; python/larch/design/design_publish.py:992-1008
+- **Concern**: [SCOPE-REDUCTION] The step5c retry plan can re-run log-publish after publish_core already attempted it.. Scenario: When approved publish reaches _run_log_publish_after_capture and returns rc 5, step5c enters the planned failed-publish-tail branch even though design log-publish already ran. The planned retry with outcome failed-publish-tail can create a second log-publish attempt for the same run id, violating the plan's no-double-publish scope.
+- **Proposed resolution**: Narrow the step5c centralized retry to catastrophic exits with no prior log-publish evidence. If publish stdout or result env already contains PUBLISH_OK, PR_URL, or RECOVERY_BRANCH from design log-publish, skip the centralized retry and keep the local-render fallback.

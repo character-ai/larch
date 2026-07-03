@@ -1,0 +1,30 @@
+# [OOS] Clarify final-summary follow-up: stale tracking-comment risk + review-flagged gaps from #6115
+
+Out-of-scope observations raised during code review of #6115 (PR #6151, "Render design final summaries before log-publish") across all 3 review rounds. Bundled into one follow-up issue per the OOS triage policy.
+
+## Most significant: clarify's follow-up render can leave a stale tracking comment (important, round 3)
+
+`clarify.py`'s `_publish_clarify_log_and_summary` calls `_render_clarify_final_summary` for its own tracking-comment upsert *after* `design log-publish` already rendered and committed the enriched summary, but:
+- The return value of `_render_clarify_final_summary` is discarded, so a failed tracking-comment upsert stays silent.
+- Because clarify re-renders instead of reusing the body `design log-publish` already wrote, a failed second pass (or drift between the two renders) can leave `CLARIFY_PUBLISH_STATUS=ok` / `PUBLISH_OK=true` while the `larch:final-summary` GitHub comment is stale or missing.
+
+Raised as: round 2 OOS_2 ("Clarify follow-up can hide a failed summary upsert"), round 2 OOS_3 ("Double-render paths can diverge or leave the tracking comment stale"), round 3 OOS_3 ("Clarify follow-up final-summary handling still re-renders and can leave stale status") — escalated to important severity by round 3 without being addressed.
+
+## Recurring, plan-deferred: cancellation/failed-publish-tail paths bypass the centralized render
+
+Cancellation (`Final summary block`) and `failed-publish-tail` terminal paths in `design_terminal.py` still never flow through the centralized `design log-publish` pre-copy render, so those rare outcomes can commit a `final-summary.md` without the enriched body. The plan for #6115 explicitly deferred this, and it was re-raised again in round 3 — worth a dedicated follow-up if those outcomes need committed enriched summaries.
+
+Raised as: round 1 OOS_2, round 2 OOS_1, round 3 OOS_1.
+
+## Smaller gaps (test coverage / robustness)
+
+- Dry-run mode skips the pre-copy render entirely, so it can't catch regressions in render-before-copy ordering (round 1 OOS_3).
+- The label-remove-failure clarify test never exercises `failed-clarify` on a real (non-empty) `SESSION_ID`, so that failure path plus summary-render ordering has no real coverage (round 1 OOS_4, round 2 OOS_4).
+- The existing pushed-tree `design log-publish` test only asserts the enriched `final-summary.md` file exists, not that it contains the enriched content (round 1 OOS_6).
+- The new enriched-integration test in `test_design_log_publish_flow.py` doesn't prepend the hermetic `gh` stub's `bin_dir` to `PATH`, so it can pick up host `gh` tooling or fail outside the sandboxed stub (round 3 OOS_2).
+
+## Context
+
+- Source PR: https://github.com/character-ai/larch/pull/6151
+- Source issue: https://github.com/character-ai/larch/issues/6115
+- Two related OOS items from the same reviews ("clarify mode source mismatch" / "shared mode resolver duplicated between clarify and log-publish") are intentionally not included above — both were resolved during PR #6151's CI-fix pass, which centralized `resolve_summary_mode` as a single shared, non-private helper now imported by `clarify.py`, `design_log_publish_flow.py`, and `design_step5c.py`. Verified on current main: both call sites import the same `resolve_summary_mode` from `design_summary.py`; no duplication remains.

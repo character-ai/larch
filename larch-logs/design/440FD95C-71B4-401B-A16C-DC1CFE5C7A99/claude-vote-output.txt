@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- speculative; plan already states no git/gh side effects in dry-run and _render_final_summary_before_copy is a file-write step whose name contains no GitHub API path
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan's updated status rows section already explicitly gates CLARIFY_PUBLISH_STATUS=ok on publish_ok==true and no recovery branch, and returns summary-upsert-failed when disk upsert fails after successful log publish
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
