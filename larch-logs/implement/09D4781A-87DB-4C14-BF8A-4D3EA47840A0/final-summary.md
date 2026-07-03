@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:13:49
-- **Cost**: 💰 TOTAL ~$6.82 — Claude $0.40, Codex-5.5 $1.57, Codex-mini $0.79, Cursor $3.89, Claude (subprocess) $0.17  |  Tokens: 12681k
+- **Cost**: 💰 TOTAL ~$9.82 — Claude $3.40, Codex-5.5 $1.57, Codex-mini $0.79, Cursor $3.89, Claude (subprocess) $0.17  |  Tokens: 17651k
 - **Issue**: #6155 — https://github.com/character-ai/larch/issues/6155
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Missing grep pins for routing literals. Concern: The design-structure harness does not pin the required `FINDING_IDS` and Gate A missing-plan literals, so prose edits could loosen those routing contracts without a failing check.
 - **Round 1 OOS_6** (nit): Missing negative pins for cap prose. Concern: The structure test does not block reintroducing renderer-owned cap math or the Gate C tier cap prose, so duplicated cap wording could creep back in.
 - **Round 1 OOS_7** (latent): Step 3 cap-hit breadcrumb removed. Concern: The eager gate reference no longer includes the step-3 cap-hit breadcrumb / short-circuit chain, so operator-visible cap-routing prose can drift away from the actual behavior.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
