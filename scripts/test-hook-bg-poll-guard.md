@@ -19,9 +19,11 @@ Offline regression harness for `scripts/hook-bg-poll-guard.sh`.
 - Covers marker denial, terminal-sentinel release, and symlink-sentinel refusal for `design-step4-tail`, `implement-step5-resume`, `implement-step5-self-review`, `implement-step6-checks`, and `implement-step7a`; those implement steps do not gain the Step 3/5 foreground-probe carve-out.
 - Pins the Step 4 foreground probe carve-out for `.completed/step-4`, including repeated-probe clamp behavior and denial of non-Step-4 terminal probes while the Step 4 tail marker is live.
 - Covers the #5925/#6080/#6108 cross-session fix: collection-time `.larch-keepalive` `CLONE_PATH` filtering drops known-foreign markers before Bash, Read, Monitor, TaskOutput, waiter, and foreground-probe clamp paths can deny. Foreign markers receive no denial or probe-clamp telemetry, while same-clone keepalive markers still deny from repo-root and repo-subdirectory cwds.
+- Covers marker-local clone identity hardening: embedded `CLONE_PATH` wins over conflicting keepalive data, missing embedded identity falls back to keepalive, and fully unknown identity still fails safe for direct marker-dir probes.
+- Pins the bare-dir-only Bash denial for same-clone marker dirs, including `/private` path aliases.
 - Pins the fallback clone-tag heuristic when keepalive identity is unavailable, including hyphenated clone tags and both the `IMPLEMENT_TMPDIR` and `DESIGN_TMPDIR` shapes, and keeps empty/missing `cwd` fail-open behavior for bare tmpdir-variable references.
 - Verifies `.bg-wait-active` diagnosis reads are allowed through both `Read` and simple Bash, while mixed marker-plus-progress-artifact commands still deny.
-- Verifies every deny reason is valid JSON and includes `.bg-wait-active`, `STEP=...`, and `hook_version=...` metadata.
+- Verifies every deny reason is valid JSON and includes `.bg-wait-active`, exact expected `STEP=...`, and `hook_version=...` metadata.
 - Uses temporary marker paths supplied through both `LARCH_BG_POLL_GUARD_MARKER` and automatic session discovery; it does not depend on a real Claude Code session.
 
 ## Harness

@@ -22,7 +22,7 @@ Combined `/design` wrapper for Step 4 rejected-findings output and Gate C previe
 - Writes `.completed/dialectic-gatec-terminal` after `dialectic-gatec` completes.
 - Owns digest-before-preview ordering and uses `design-step3b-tail.sh` as the retired `design-step4b-preview.sh` replacement.
 - The orchestrator, not this wrapper, backgrounds the whole tail fence when debate may run.
-- When backgrounded, arms `.bg-wait-active` with `STEP=design-step4-tail`, clears stale no-progress sidecars before marker write, and writes `.completed/step-4` before marker removal on exit.
+- When backgrounded, arms `.bg-wait-active` with `STEP=design-step4-tail`, copies `CLONE_PATH` from `.larch-keepalive` when available, clears stale no-progress sidecars before marker write, and writes `.completed/step-4` before marker removal on exit.
 - Exits early after the Gate C preview when `.pause-save-complete` exists.
 - Does not depend on architecture diagram artifacts.
 - Must not mutate repository files; dialectic artifacts live under `$DESIGN_TMPDIR`.

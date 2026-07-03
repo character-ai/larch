@@ -51,6 +51,7 @@ assert_contains 'trap persist_handoff EXIT' "$helper_text" 'static: EXIT trap pe
 assert_contains '.bg-wait-active' "$helper_text" 'static: wrapper writes bg-wait marker'
 assert_contains 'STEP=implement-step8-ship' "$helper_text" 'static: marker names implement-step8-ship'
 assert_contains 'TIMEOUT_S=21600' "$helper_text" 'static: marker pins Step 8 timeout'
+assert_contains 'CLONE_PATH=%s' "$helper_text" 'static: marker includes clone identity field'
 assert_contains 'no-progress-turns.count' "$helper_text" 'static: wrapper clears no-progress counter'
 assert_contains 'no-progress-circuit-breaker-armed' "$helper_text" 'static: wrapper clears no-progress breaker'
 assert_contains 'bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count' "$helper_text" 'static: wrapper clears Step 8 rc probe clamp counter'
@@ -87,6 +88,7 @@ mkdir -p "$IMPL_TMP"
 printf 'BRANCH_NAME=test-branch\nISSUE_NUMBER=42\nRUN_ID=run-ship-guard\nREPO=owner/repo\nMANIFEST_PATH=/tmp/manifest.json\nNO_ADMIN_FALLBACK=true\nNO_LOGS_COMMIT=true\n' >"$IMPL_TMP/ship-pr-state.sh"
 printf 'export CLAUDE_PLUGIN_ROOT=%s\n' "$REPO_ROOT" >"$IMPL_TMP/plugin-root.env"
 printf 'session-id\n' >"$IMPL_TMP/session-id"
+printf 'CLONE_PATH=%s\n' "$REPO_ROOT" >"$IMPL_TMP/.larch-keepalive"
 cat >"$IMPL_TMP/larch-run.sh" <<EOF_RUN
 #!/usr/bin/env bash
 set -euo pipefail
@@ -148,6 +150,7 @@ assert_contains '0' "$(cat "$IMPL_TMP/.step-8-ship-handoff.rc")" 'dynamic: hando
 assert_contains '"outcome":"OK"' "$(cat "$IMPL_TMP/.step-8-ship-handoff.json")" 'dynamic: driver JSON sidecar written after drain'
 assert_contains 'STEP=implement-step8-ship' "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with Step 8 step'
 assert_contains 'TIMEOUT_S=21600' "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with timeout'
+assert_contains "CLONE_PATH=$REPO_ROOT" "$(cat "$TMP_ROOT/marker-during-driver.txt")" 'dynamic: marker visible while driver runs with clone path'
 if [ ! -s "$TMP_ROOT/stale-seen-during-driver.txt" ]; then
   pass 'dynamic: stale handoff, no-progress, and probe counter files cleared before driver'
 else

@@ -74,12 +74,23 @@ clone_paths_same() {
 
 # Returns 0 only when the marker directory's recorded clone identity is known
 # and canonically differs from the current session's cwd (#5927). Unknown
-# identity on either side returns 1 (treated as same-clone / still blocks), so
-# a missing or unparsable .larch-keepalive never introduces a new false
-# negative — it just falls back to the pre-fix global-blocking behavior.
+# identity on either side returns 1 (treated as same-clone / still blocks). The
+# marker-local CLONE_PATH stamp wins when it is present and canonical; otherwise
+# fall back to .larch-keepalive so older markers keep the pre-stamp behavior.
 marker_foreign_clone() {
-  local dir="$1" current_canon="$2" keepalive marker_clone marker_canon
+  local dir="$1" current_canon="$2" marker keepalive marker_clone marker_canon
   [ -n "$current_canon" ] || return 1
+  marker="$dir/.bg-wait-active"
+  if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+    marker_clone=$(marker_value "$marker" CLONE_PATH 2>/dev/null || true)
+    if [ -n "$marker_clone" ]; then
+      marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null || true)
+      if [ -n "$marker_canon" ]; then
+        clone_paths_same "$marker_canon" "$current_canon" && return 1
+        return 0
+      fi
+    fi
+  fi
   keepalive="$dir/.larch-keepalive"
   [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
   marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1

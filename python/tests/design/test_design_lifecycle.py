@@ -3301,13 +3301,16 @@ def test_step5c_core_assembles_publish_argv_and_cleans_bg_marker(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-abc", REPO="owner/repo")
+    (design / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
     seen: list[list[str]] = []
 
     def fake_publish(argv: list[str]) -> int:
         seen.append(argv)
         marker = design / ".bg-wait-active"
         assert marker.is_file()
-        assert "STEP=design-step5c" in marker.read_text(encoding="utf-8")
+        marker_text = marker.read_text(encoding="utf-8")
+        assert "STEP=design-step5c" in marker_text
+        assert f"CLONE_PATH={tmp_path}" in marker_text
         print(_step5c_rows(design), end="")
         return 0
 

@@ -7,6 +7,15 @@ import pytest
 from larch.implement import step_7a
 
 
+def test_step7a_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
+    _ = (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
+    step_7a._write_bg_wait_marker(tmpdir=tmp_path, step="implement-step7a", timeout_s=21600)  # type: ignore[reportPrivateUsage]
+
+    marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
+    assert "STEP=implement-step7a\n" in marker_text
+    assert f"CLONE_PATH={tmp_path}\n" in marker_text
+
+
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 

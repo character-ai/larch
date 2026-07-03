@@ -95,15 +95,19 @@ design_step4_tail_cleanup() {
 }
 
 design_step4_tail_marker() {
-  local start claude_pid
+  local start claude_pid clone_path
   [ -n "${DESIGN_TMPDIR:-}" ] || return 0
   rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
   rm -f "$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
   start=$(date +%s 2>/dev/null) || start=0
   case "$start" in ''|*[!0-9]*) start=0 ;; esac
   claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${CLAUDE_PID:-${PPID:-}}}"
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=design-step4-tail\nTIMEOUT_S=900\n' \
-    "$$" "$claude_pid" "$start" >"$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  clone_path=""
+  if [ -f "$DESIGN_TMPDIR/.larch-keepalive" ] && [ ! -L "$DESIGN_TMPDIR/.larch-keepalive" ]; then
+    clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$DESIGN_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+  fi
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=design-step4-tail\nTIMEOUT_S=900\nCLONE_PATH=%s\n' \
+    "$$" "$claude_pid" "$start" "$clone_path" >"$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
 }
 
 design_source_env_optional

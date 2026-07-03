@@ -18,4 +18,8 @@ re-entry guard, custom threshold via `LARCH_NO_PROGRESS_GUARD_THRESHOLD`, Step 8
 release, and the additional Step 4 tail / implement Step 7a / Step 6 / Step 5 resume /
 Step 5 self-review marker mappings. Symlink sentinels stay live.
 
+Clone-scoping coverage verifies marker-local `CLONE_PATH` preference for both Stop and
+UserPromptSubmit, fallback to `.larch-keepalive` when the embedded stamp is absent, and
+the fail-safe count/block behavior when both identity sources are unavailable.
+
 See `hook-no-progress-guard.md` for the full invariant set.

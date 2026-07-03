@@ -54,6 +54,7 @@ The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log captu
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
 - The pre-ship log flush runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still flushing diagnostics when inputs allow.
 - The helper does not write a `diagrams` larch-log batch.
+- The Python entrypoint's bg-wait marker for immediate-background Step 7a runs includes `STEP=implement-step7a` and copies `CLONE_PATH` from `$IMPLEMENT_TMPDIR/.larch-keepalive` when available.
 
 ## Regression checklist
 

@@ -570,6 +570,7 @@ exclude = [
   "scripts/test-hook-anti-read-poll.sh",
   "scripts/test-hook-bg-poll-guard.sh",
   "scripts/test-hook-no-progress-guard.sh",
+  "scripts/test-hook-clone-ownership-parity.sh",
   "scripts/test-hook-progress-report.sh",
   "scripts/test-hook-stop-fail-close.sh",
   # not invokable directly) carrying the canonical plugin sparse install

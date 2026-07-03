@@ -42,7 +42,7 @@ Valid routing records are newline-delimited and line-anchored:
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Step 6 relies on the telemetry contract in `skills/shared/session-setup-output.md` and reads the session-env copy under `$IMPLEMENT_TMPDIR`.
-- Arms `.bg-wait-active` with `STEP=implement-step6-checks` for the outer Step 6 background fence, clears stale no-progress sidecars before marker write, and writes `.completed/step-6-terminal` before marker removal on exit.
+- Arms `.bg-wait-active` with `STEP=implement-step6-checks` for the outer Step 6 background fence, copies `CLONE_PATH` from `$IMPLEMENT_TMPDIR/.larch-keepalive` when available, clears stale no-progress sidecars before marker write, and writes `.completed/step-6-terminal` before marker removal on exit.
 - The wrapper does not call `review-and-fix check-changes` directly. Python owns the composite routing.
 
 ## Edit-in-sync

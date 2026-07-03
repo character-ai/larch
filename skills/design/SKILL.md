@@ -185,7 +185,7 @@ Parameters:
 ```
 
 Wait for `<task-notification>` before parsing `FINAL_SUMMARY_PATH`, confirming empty readiness markers, Reading the disk file, emitting the summary body, printing a cancellation line, or exiting.
-The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
+The launcher-routed Python port creates `.bg-wait-active` with `STEP=design-step-final-summary` and marker-local `CLONE_PATH` during the final-summary background wait. `step_final_summary_core` removes the marker on all completion paths, including success and failure, through `try`/`finally` cleanup before the process exits.
 After this cancellation fence's completed `design-step-final-summary.sh` `<task-notification>` stdout is available, parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`. Empty `LARCH_FINAL_SUMMARY_BEGIN` / `LARCH_FINAL_SUMMARY_END` markers are readiness only; read the disk file verbatim. Complete the shared sidecar follow-on before any cancellation line or exit. Apply no-recap. Step 5c item 5 uses the same common procedure with its own source/timing.
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/python/design_summary.py` (implementation: `python/design_summary.py`).
 Auto error-reporting teardown lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md`; load it at Step 5 entry or while debugging failure reporting.

@@ -97,11 +97,23 @@ clone_paths_same() {
 
 # Returns 0 only when the marker directory's recorded clone identity is known
 # and canonically differs from the current session's cwd (#5927). Unknown
-# identity on either side returns 1 (treated as same-clone / still blocks), so
-# a missing or unparsable .larch-keepalive never introduces a false negative.
+# identity on either side returns 1 (treated as same-clone / still blocks). The
+# marker-local CLONE_PATH stamp wins when it is present and canonical; otherwise
+# fall back to .larch-keepalive so older markers keep the pre-stamp behavior.
 marker_foreign_clone() {
-  local dir="$1" current_canon="$2" keepalive marker_clone marker_canon
+  local dir="$1" current_canon="$2" marker keepalive marker_clone marker_canon
   [ -n "$current_canon" ] || return 1
+  marker="$dir/.bg-wait-active"
+  if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+    marker_clone=$(marker_value "$marker" CLONE_PATH 2>/dev/null || true)
+    if [ -n "$marker_clone" ]; then
+      marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null || true)
+      if [ -n "$marker_canon" ]; then
+        clone_paths_same "$marker_canon" "$current_canon" && return 1
+        return 0
+      fi
+    fi
+  fi
   keepalive="$dir/.larch-keepalive"
   [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
   marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
@@ -112,7 +124,18 @@ marker_foreign_clone() {
 }
 
 marker_clone_identity_canon() {
-  local dir="$1" keepalive marker_clone
+  local dir="$1" marker keepalive marker_clone marker_canon
+  marker="$dir/.bg-wait-active"
+  if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+    marker_clone=$(marker_value "$marker" CLONE_PATH 2>/dev/null || true)
+    if [ -n "$marker_clone" ]; then
+      marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null || true)
+      if [ -n "$marker_canon" ]; then
+        printf '%s' "$marker_canon"
+        return 0
+      fi
+    fi
+  fi
   keepalive="$dir/.larch-keepalive"
   [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
   marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
@@ -655,6 +678,20 @@ path_under_dir() {
   return 1
 }
 
+path_same_dir_alias() {
+  local path="$1" dir="$2"
+  [ -n "$path" ] || return 1
+  [ -n "$dir" ] || return 1
+  while [[ "$path" == *//* ]]; do path=${path//\/\//\/}; done
+  while [[ "$dir" == *//* ]]; do dir=${dir//\/\//\/}; done
+  [ "$path" = "$dir" ] && return 0
+  case "$dir" in
+    /private/*) [ "$path" = "${dir#/private}" ] && return 0 ;;
+    *) [ "$path" = "/private$dir" ] && return 0 ;;
+  esac
+  return 1
+}
+
 path_is_task_output() {
   case "$1" in
     tasks/*.output|*/tasks/*.output) return 0 ;;
@@ -892,6 +929,35 @@ EOF_TOKENS
 }
 
 
+bash_bare_live_dir_only() {
+  local cmd="$1" normalized tokens_text token live_dir
+  local -a tokens=()
+  normalized=$(printf '%s' "$cmd" | tr '\n' ' ' | sed 's/[[:space:]][[:space:]]*/ /g')
+  normalized=$(bash_trim "$normalized")
+  [ -n "$normalized" ] || return 1
+  tokens_text=$(bash_split_shell_command "$normalized") || return 1
+  while IFS= read -r token || [ -n "$token" ]; do
+    tokens+=("$token")
+  done <<EOF_TOKENS
+$tokens_text
+EOF_TOKENS
+  [ "${#tokens[@]}" -eq 1 ] || return 1
+  token="${tokens[0]}"
+  case "$token" in
+    /*) ;;
+    *) return 1 ;;
+  esac
+  while IFS= read -r live_dir || [ -n "$live_dir" ]; do
+    [ -n "$live_dir" ] || continue
+    if path_same_dir_alias "$token" "$live_dir"; then
+      printf '%s' "$live_dir"
+      return 0
+    fi
+  done <"$live_dirs_file"
+  return 1
+}
+
+
 bash_clone_tag_from_basename() {
   # Mirrors _make_session_tmpdir()'s clone_tag derivation in
   # python/larch/state/session_env.py: replace any byte outside
@@ -1092,6 +1158,9 @@ cmd=$(printf '%s' "$INPUT" | jq -r '.tool_input.command // ""' 2>/dev/null) || e
 [ -n "$cmd" ] || exit 0
 bash_is_strict_wrapper_only "$cmd" && exit 0
 bash_is_marker_only_diagnosis "$cmd" && exit 0
+if bare_live_dir=$(bash_bare_live_dir_only "$cmd"); then
+  deny_if_needed "$bare_live_dir"
+fi
 # #4725: the background sleep-loop Step 3 recovery waiter is itself a zero-output
 # background task, so it fires its own premature <task-notification> within
 # seconds and breeds a re-engagement loop. Deny it (it used to be allowed here),

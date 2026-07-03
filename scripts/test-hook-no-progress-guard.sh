@@ -33,6 +33,11 @@ TIMEOUT_S=$timeout
 EOF_MARKER
 }
 
+write_keepalive() {
+  local dir="$1" clone_path="$2"
+  printf 'CLONE_PATH=%s\n' "$clone_path" >"$dir/.larch-keepalive"
+}
+
 stop_event() {
   printf '{"stop_hook_active":false,"cwd":"%s"}' "$D"
 }
@@ -392,6 +397,52 @@ case "$out" in
   *'"decision":"block"'*) pass "T20: subdirectory cwd still blocked for owning clone" ;;
   *) fail "T20: subdirectory cwd bypassed armed breaker: out='$out'" ;;
 esac
+
+rm -f "$D_A/no-progress-turns.count" "$D_A/no-progress-circuit-breaker-armed"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=design-step3-review" "TIMEOUT_S=21600" "CLONE_PATH=$CLONE_A" >"$MARKER_A"
+write_keepalive "$D_A" "$CLONE_B"
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+cnt=$(cat "$D_A/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T17: Stop path prefers marker-local same-clone CLONE_PATH over conflicting keepalive"
+else
+  fail "T17: marker-local same-clone CLONE_PATH should count Stop: out='$out' cnt=$cnt"
+fi
+touch "$D_A/no-progress-circuit-breaker-armed"
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+case "$out" in
+  *'"decision":"block"'*) pass "T17: UserPromptSubmit prefers marker-local same-clone CLONE_PATH over conflicting keepalive" ;;
+  *) fail "T17: marker-local same-clone CLONE_PATH should block prompt: out='$out'" ;;
+esac
+
+rm -f "$D_A/no-progress-turns.count" "$D_A/no-progress-circuit-breaker-armed"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=design-step3-review" "TIMEOUT_S=21600" "CLONE_PATH=$CLONE_B" >"$MARKER_A"
+write_keepalive "$D_A" "$CLONE_A"
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+cnt=$(cat "$D_A/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 0 ]; then
+  pass "T17: Stop path prefers marker-local foreign CLONE_PATH over conflicting keepalive"
+else
+  fail "T17: marker-local foreign CLONE_PATH should skip Stop count: out='$out' cnt=$cnt"
+fi
+touch "$D_A/no-progress-circuit-breaker-armed"
+out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+if [ -z "$out" ]; then
+  pass "T17: UserPromptSubmit prefers marker-local foreign CLONE_PATH over conflicting keepalive"
+else
+  fail "T17: marker-local foreign CLONE_PATH should not block prompt: out='$out'"
+fi
+
+rm -f "$D_A/no-progress-turns.count" "$D_A/no-progress-circuit-breaker-armed"
+printf '%s\n' "PID=$$" "CLAUDE_PID=$$" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=design-step3-review" "TIMEOUT_S=21600" >"$MARKER_A"
+write_keepalive "$D_A" "$CLONE_A"
+out=$(printf '{"stop_hook_active":false,"cwd":"%s"}' "$CLONE_A_SUB" | LARCH_BG_POLL_GUARD_MARKER="$MARKER_A" "$HOOK")
+cnt=$(cat "$D_A/no-progress-turns.count" 2>/dev/null || echo 0)
+if [ -z "$out" ] && [ "$cnt" -eq 1 ]; then
+  pass "T17: marker without CLONE_PATH falls back to keepalive for Stop"
+else
+  fail "T17: keepalive fallback should count Stop: out='$out' cnt=$cnt"
+fi
 
 rm -f "$MARKER_A" "$MARKER_B" "$D_A/.larch-keepalive" "$D_B/.larch-keepalive" \
       "$D_A/no-progress-circuit-breaker-armed" "$D_B/no-progress-circuit-breaker-armed"

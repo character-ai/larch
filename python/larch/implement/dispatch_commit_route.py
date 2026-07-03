@@ -59,6 +59,18 @@ def _clear_no_progress_sidecars(tmpdir: Path) -> None:
             (tmpdir / name).unlink()
 
 
+def _read_keepalive_clone_path(tmpdir: Path) -> str:
+    keepalive = tmpdir / ".larch-keepalive"
+    if not keepalive.is_file() or keepalive.is_symlink():
+        return ""
+    with contextlib.suppress(OSError):
+        for line in keepalive.read_text(encoding="utf-8", errors="replace").splitlines():
+            key, sep, value = line.partition("=")
+            if sep and key == "CLONE_PATH":
+                return value.strip()
+    return ""
+
+
 def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
     _clear_no_progress_sidecars(tmpdir)
     start = int(time.time())
@@ -69,6 +81,7 @@ def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
         f"START_EPOCH={start}\n"
         f"STEP={step}\n"
         f"TIMEOUT_S={timeout_s}\n"
+        f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}\n"
     )
     with contextlib.suppress(OSError):
         (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
