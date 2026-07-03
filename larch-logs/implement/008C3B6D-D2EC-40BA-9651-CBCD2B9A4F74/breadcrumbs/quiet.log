@@ -12,6 +12,14 @@
 === larch-quiet-sessionstart-health.sh-9104.log ===
 === larch-quiet-ship.py-20421.log ===
 ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: poll 2/180 pending after 17s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 27s
+ci_monitor: CI fail after 31s -> evaluate_failure
 === larch-quiet-write-implement-current-env.sh-21896.log ===
 PASS: test-implement-fence-shape.sh launcher sandbox
 === larch-quiet-write-implement-current-env.sh-6564.log ===
