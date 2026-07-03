@@ -1,0 +1,17 @@
+# md-to-py-XII: closure classifier tracks demoted references; flags.md sits in neither ratchet tier
+
+**Context.** After #5984, `skills/design/references/flags.md` (10,317 bytes, 90 lines) appears in neither the eager `files` list nor `conditional_files` in `python/skill-closure-baseline.json`. The classifier does not treat the residual "see for background" table mentions as closure edges. A demoted file can now regrow unseen: `lint skill-closure-growth` no longer watches it. Any future demotion can silently drop coverage the same way.
+
+**Scope.**
+
+- Classify demoted-but-extant references as conditional, or add an explicit tracked watchlist row per skill.
+- Audit all skills for other neither-tier reference files.
+- Regenerate the baseline in the same PR.
+
+**Acceptance.**
+
+- flags.md lands in a reported or ratcheted tier.
+- Lint reports when a previously classified file leaves both tiers.
+- Baseline regenerated; `make lint-skill-closure-growth` green.
+
+Part of md-to-py-XII (round XI: #5986). Blocks the closure-growth ledger child (same module: `python/larch/lint/lint_skill_closure_growth.py`).

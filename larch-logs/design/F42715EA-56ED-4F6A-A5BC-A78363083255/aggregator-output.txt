@@ -1,0 +1,29 @@
+### FINDING_1: Honor `force_conditional` when classifying background references
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: `force_conditional` is introduced on `DirectiveMatch`, but `_paths_for_directive_match` still decides conditional status only from `conditional_section` and `_line_is_conditional(...)`. That leaves background-only `see ... only for background` table rows classified as eager and can push `flags.md` out of `conditional_files`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In _paths_for_directive_match set is_conditional = context.conditional_section or context.match.force_conditional or _line_is_conditional(...). Set force_conditional=True on background-regex DirectiveMatch objects. Add a unit test using a when-free table-row-style line (per-round-approval wording) so the bug is not masked by rows that happen to contain when 1.
+  - From Cursor-Innovation: In _paths_for_directive_match, treat context.match.force_conditional as forcing is_conditional=True before _extract_repo_paths, so every only-for-background hit goes to conditional_files.
+  - From Cursor-Pragmatic: In lint_skill_closure_growth.py, set is_conditional from match.force_conditional before conditional_section and _line_is_conditional; document that hook in the plan UPDATED section
+
+### FINDING_2: Let baseline-added-file checks accept tier moves
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: The new-file check still compares live eager files only against `baseline.files`, so a file promoted from `conditional_files` to `files` is misreported as newly added even though the feature intends tier moves to pass.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Compare live eager files against `row.files ∪ row.conditional_files`, or skip any live file already present in either baseline tier, and add a test that exercises conditional-to-eager migration.
+  - From Codex-Requirements: Compare live.files against baseline.files ∪ baseline.conditional_files, not baseline.files alone, and add a regression test for conditional-to-eager promotion.
+
+### FINDING_3: Ratchet closure growth on the union-tracked set for tier moves
+- **Reviewer(s)**: Codex-dyn-Closure Ratchet Specialist
+- **Severity**: blocking
+- **Concern**: Even if the disappearance check accepts a conditional-to-eager move, `scan_skill()` and `_growth_violations()` still measure only eager files / `baseline.files`, so tier moves can continue to fail the closure-lines/tokens ratchet.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Closure Ratchet Specialist: Ratchet the union-tracked set, or exempt pure tier moves from closure metric growth, and add a reverse-direction case beside `test_baseline_check_fails_when_closure_lines_grow` in `python/tests/lint/test_lint_skill_closure_growth.py`.
+
+### FINDING_4 [OUT_OF_SCOPE]: Document the new dropped-tracked-file lint behavior
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: nit
+- **Concern**: The plan introduces a new dropped-tracked-file violation type in `_growth_violations`, but the operator-facing linting doc does not yet explain that baseline-tracked paths must remain in `files` or `conditional_files`.
+- **Suggested revisions (informational for voters; coder decides)**:

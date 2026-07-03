@@ -1,0 +1,124 @@
+## Plan
+
+## Approach
+
+Implement the smallest linter change that closes the gap.
+
+1. Add a conditional directive matcher for the existing prose convention:
+   - Match sentences like `see references/flags.md only for background`.
+   - Extract all markdown paths in the matched clause.
+   - Force these matches into `conditional_files`, not eager `files`.
+2. Add a baseline disappearance check:
+   - For each checked skill, compare `baseline.files ∪ baseline.conditional_files` with `live.files ∪ live.conditional_files`.
+   - Fail when any baseline-tracked file is missing from both live tiers.
+   - Allow moves between eager and conditional.
+3. Audit `design`, `implement`, and `review` `SKILL.md` references:
+   - Ensure `skills/design/references/flags.md` becomes tracked.
+   - Fix or document any other neither-tier references only if they are actual closure edges.
+   - Do not create a watchlist file.
+4. Regenerate `python/skill-closure-baseline.json`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/lint_skill_closure_growth.py
+
+- Add a regex for the `see ... only for background` convention.
+- Add a `force_conditional` flag to `DirectiveMatch`, or equivalent typed field.
+- Add background-reference matches inside `_directive_matches`.
+- Keep path extraction through `_extract_repo_paths` so relative paths like `references/flags.md` resolve against `skills/design/SKILL.md`.
+- In `_paths_for_directive_match`, wire the new flag into the conditional decision: `is_conditional = context.conditional_section or context.match.force_conditional or _line_is_conditional(context.line, context.match.index)`. Without this, `force_conditional` is set but never consulted, and background-only rows keep falling through to eager `_line_is_conditional` heuristics.
+- Add dropped-tracked-file violations to `_growth_violations`.
+- Apply the dropped-file check to the same live targets being checked, including `--skill`.
+
+### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py
+
+Add focused tests for:
+
+- `see references/flags.md only for background` classifies `flags.md` as conditional.
+- A when-free, if-free table-row-style background reference (mirroring a Purpose-cell line from `skills/design/SKILL.md` with no `when`/`if` wording) still classifies as conditional, not eager — guards against `force_conditional` silently going unused while `_line_is_conditional`'s heuristic happens to mask the bug on rows that do contain `when`.
+- Multiple background paths in one sentence are classified.
+- A baseline-tracked file moved from eager to conditional does not fail.
+- A baseline-tracked file removed from both tiers fails with a clear message.
+- `--skill` scopes the dropped-file check to that target.
+- The real `design` scan includes `skills/design/references/flags.md` in `conditional_files`.
+
+Update existing real-scan and baseline-freshness expectations after regeneration.
+
+### UPDATED: python/skill-closure-baseline.json
+
+Regenerate with:
+
+```bash
+python3 python/cli.py lint skill-closure-growth --write
+```
+
+Expected effect: `skills/design/references/flags.md` appears in `design.conditional_files`, with updated design conditional metrics.
+
+### MAY_UPDATE: skills/design/SKILL.md
+
+Only change if the audit finds a real closure edge that still cannot be classified after the linter update.
+
+Possible cases:
+
+- Rephrase a background-only reference to the supported `see ... only for background` convention.
+- Rephrase a true conditional load as an existing mandatory conditional read.
+- Leave maintenance-only citations unchanged.
+
+### MAY_UPDATE: skills/implement/SKILL.md
+
+Only change if the audit finds a true runtime closure edge absent from both tiers.
+
+Do not make doc-only references eager or conditional just to reduce grep output.
+
+### MAY_UPDATE: skills/review/SKILL.md
+
+
+## Edge cases
+
+- A path may be written as `references/flags.md`; resolve it relative to the skill file when the repo-root path does not exist.
+- A sentence may mention more than one background file.
+- A file may move between eager and conditional tiers. This must pass.
+- A file may be deleted or its directive removed. This must fail until the baseline is intentionally regenerated.
+- Existing report-only conditional metrics for `design` and `implement` stay report-only. The new dropped-file check is separate.
+
+## Failure modes
+
+- Over-broad regex could classify ordinary citations as closure files.
+- Missing dropped-file checks under `--skill` could hide the regression in scoped lint runs.
+- Regenerating the baseline before tests pass could bless a bad classifier result.
+- Updating skill prose unnecessarily could expand prompt closure.
+
+## Testing strategy
+
+Run targeted checks:
+
+PYTHONPATH=python python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth
+make lint-skill-closure-growth
+
+If Python lint dependencies are installed, also run:
+
+make py-lint
+
+Note: in this read-only planning sandbox, `pytest` could not start because no writable temporary directory was available.
+
+## Acceptance
+
+Run targeted checks:
+
+PYTHONPATH=python python3 -m pytest python/tests/lint/test_lint_skill_closure_growth.py
+python3 python/cli.py skill-closure report
+python3 python/cli.py lint skill-closure-growth
+make lint-skill-closure-growth
+
+If Python lint dependencies are installed, also run:
+
+make py-lint
+
+Note: in this read-only planning sandbox, `pytest` could not start because no writable temporary directory was available.
+
+review_status: ok
+rounds_completed: 2
+difficulty: MODERATE
+diff_lines: 190

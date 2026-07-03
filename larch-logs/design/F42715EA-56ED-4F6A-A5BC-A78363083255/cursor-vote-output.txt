@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan adds only a union-based disappearance check, not a separate eager-only new-file ratchet for design/implement/review
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- tier-move pass requirement applies to disappearance, not eager closure ratchet, and flags.md lands in report-only conditional metrics
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- mandated real design scan already exercises the production flags.md table-row path
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- lint failure output already signals the new enforcement; docs are optional polish
