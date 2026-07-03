@@ -249,16 +249,6 @@ def _parse_json_object(stdout: str, *, desc: str) -> dict[str, Any]:
     return cast("dict[str, Any]", data)
 
 
-def _parse_json_array(stdout: str, *, desc: str) -> list[dict[str, Any]]:
-    try:
-        data = json.loads(stdout or "[]")
-    except json.JSONDecodeError as exc:
-        raise AnalyzeBugsError(f"{desc}: invalid JSON: {exc}") from exc
-    if not isinstance(data, list):
-        raise AnalyzeBugsError(f"{desc}: JSON was not an array")
-    return [cast("dict[str, Any]", item) for item in data if isinstance(item, dict)]
-
-
 def resolve_repo(runner: Runner, explicit: str = "") -> str:
     if explicit:
         return explicit
