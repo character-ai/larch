@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:29:46
-- **Cost**: 💰 TOTAL ~$9.43 — Claude $0.81, Codex-5.5 $6.91, Codex-mini $0.06, Cursor $1.33, Claude (subprocess) $0.32  |  Tokens: 10502k
+- **Cost**: 💰 TOTAL ~$12.73 — Claude $4.11, Codex-5.5 $6.91, Codex-mini $0.06, Cursor $1.33, Claude (subprocess) $0.32  |  Tokens: 14957k
 - **Issue**: #6091 — https://github.com/character-ai/larch/issues/6091
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -59,3 +59,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): `gate-b-apply` reservation can interact badly with the Gantt row cap. Concern: Adding `"gate-b-apply"` to `_CODER_APPLY_TASK_KINDS` makes the apply-row reservation path account for an additional reserved lane. In the same cap path, that can push the rendered Gantt past `PROGRESS_GANTT_ROW_CAP` when multiple apply lanes are present.
 - **Round 1 OOS_3** (latent): `TimingLedger._append` can silently drop timing rows on flock timeout. Concern: When `TimingLedger._append` times out on the lock, it emits only a warning and skips the append. Under contention, gate-b-apply and other vendor timing rows can disappear with no visible bar in the chart.
 - **Round 1 OOS_4** (latent): Design reruns can suppress fresh `gate-b-apply` timing rows. Concern: Design round reruns reuse the same round and gate-b-apply idempotency keys, so a replayed Step 3 can fail to record a fresh apply window. That can hide post-Gate-B apply time in the Gantt on re-entry.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
