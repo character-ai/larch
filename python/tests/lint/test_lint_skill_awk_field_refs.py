@@ -48,12 +48,34 @@ def test_awk_f_file_source_does_not_treat_positional_files_as_program(
     write_skill(
         tmp_path,
         "skills/example/SKILL.md",
-        "```bash\nawk -f filter.awk \"$1\"\n```\n",
+        """```bash
+awk -f filter.awk "$1"
+```
+""",
     )
 
     rc, err = run(tmp_path, capsys)
 
     assert rc == 0, err
+
+
+def test_multiline_awk_program_is_buffered(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write_skill(
+        tmp_path,
+        "skills/example/SKILL.md",
+        """```bash
+awk '
+  $1 == "KEY" &&
+  $2 == "VALUE" { print }
+' file
+```
+""",
+    )
+
+    rc, err = run(tmp_path, capsys)
+
+    assert rc == 1
+    assert "skills/example/SKILL.md:2: bare awk $<digit> field reference" in err
 
 
 def test_shell_positional_parameters_are_clean(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

@@ -45,7 +45,7 @@ def _is_awk_token(token: str) -> bool:
     return re.search(r"(^|[/($=])awk$", clean) is not None
 
 
-def _awk_programs(command: str) -> list[str]:
+def _awk_programs(command: str) -> list[str]:  # noqa: C901
     try:
         tokens = shlex.split(command, posix=True)
     except ValueError:
@@ -93,6 +93,14 @@ def _command_has_awk_field_ref(command: str) -> bool:
     return any(FIELD_REF_RE.search(program) is not None for program in _awk_programs(command))
 
 
+def _command_is_complete(command: str) -> bool:
+    try:
+        shlex.split(command, posix=True)
+    except ValueError:
+        return False
+    return True
+
+
 def _suppression_reason(text: str) -> str | None:
     marker = text.find(SUPPRESSION)
     if marker == -1:
@@ -122,7 +130,7 @@ def report_command( *,path: Path, root: Path, line_no: int, command: str, previo
     ]
 
 
-def lint_file( *,path: Path, root: Path) -> list[str]:
+def lint_file( *,path: Path, root: Path) -> list[str]:  # noqa: C901
     try:
         lines = path.read_text(encoding="utf-8", errors="replace").splitlines()
     except OSError as exc:
@@ -172,6 +180,9 @@ def lint_file( *,path: Path, root: Path) -> list[str]:
         else:
             logical = f"{logical} {segment}" if segment else logical
         if line.rstrip().endswith("\\"):
+            previous = line
+            continue
+        if not _command_is_complete(logical):
             previous = line
             continue
         violations.extend(
