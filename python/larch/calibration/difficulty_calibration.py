@@ -24,7 +24,7 @@ SKILLS = ("design", "implement", "review")
 TIERS = (difficulty.TRIVIAL, difficulty.MODERATE, difficulty.HARD)
 UNKNOWN = "unknown"
 PANEL_KIND = {"design": "design", "implement": "code-review", "review": "code-review"}
-JSON_PHASES = {"code-review", "code_review", ""}
+JSON_PHASES = {"code-review", "code_review"}
 SIDECAR_PATH = Path("rejected-analysis-verdicts.tsv")
 ACCEPTED_HARD_THRESHOLD = 3
 
@@ -64,7 +64,8 @@ class RunRecord:
     realized_tier: str
     substantiality_proxy: str
     token_timing: TokenTimingSummary
-    sidecar: Mapping[str, int]
+    sidecar_rows: tuple[Mapping[str, str], ...]
+    sidecar_present: bool
 
     @property
     def applied_tier(self) -> str:
@@ -140,6 +141,7 @@ class Corpus:
 class SidecarIndex:
     by_run: Mapping[tuple[str, str], tuple[Mapping[str, str], ...]]
     duplicate_rows: int
+    present: bool
 
 
 @dataclass(frozen=True)
@@ -296,12 +298,14 @@ def _finding_id(value: object) -> str:
 
 
 def _row_in_scope(row: Mapping[str, str], header: Sequence[str], finding_id: str) -> bool:
+    scope = str(row.get("scope") or "").strip().lower()
+    if scope in {"oos", "out_of_scope", "out-of-scope"}:
+        return False
     if finding_id.upper().startswith("OOS_"):
         return False
     try:
         return not voting.classification_row_is_oos(dict(row), header=list(header))
     except Exception:
-        scope = str(row.get("scope") or "").strip().lower()
         return scope not in {"oos", "out_of_scope", "out-of-scope"}
 
 
@@ -343,10 +347,10 @@ def _parse_tsv_source(path: Path, *, skill: str, state: AnalyzerState) -> tuple[
     return parsed, True, len(rows)
 
 
-def _iter_jsonl_records(path: Path, state: AnalyzerState) -> tuple[list[Mapping[str, object]], bool]:
+def _iter_jsonl_records(path: Path, state: AnalyzerState) -> tuple[list[Mapping[str, object]], int]:
     text = _read_text(path, state, "unreadable_classification_sources")
     if text is None:
-        return [], False
+        return [], 0
     records: list[Mapping[str, object]] = []
     malformed = 0
     for line in text.splitlines():
@@ -363,28 +367,30 @@ def _iter_jsonl_records(path: Path, state: AnalyzerState) -> tuple[list[Mapping[
             malformed += 1
     if malformed:
         state.bump("malformed_classification_rows", malformed)
-    return records, True
+    return records, malformed
 
 
-def _json_identity(record: Mapping[str, object], round_num: int, fallback_id: str) -> FindingIdentity:
+def _json_identity(skill: str, record: Mapping[str, object], round_num: int, fallback_id: str) -> FindingIdentity:
     finding_hash = str(record.get("finding_hash") or "").strip()
     record_id = str(record.get("id") or "").strip()
     if finding_hash:
         key = f"hash:{finding_hash}"
-    elif record_id:
+    elif skill == "design" and record_id:
         key = f"id:{record_id}"
     else:
         key = f"{round_num}:{fallback_id}"
     return FindingIdentity(key=key, round_num=round_num, finding_id=fallback_id)
 
 
-def _parse_jsonl_source(path: Path, *, state: AnalyzerState) -> tuple[list[MutableClassificationRow], bool, int]:
-    records, parseable = _iter_jsonl_records(path, state)
+def _parse_jsonl_source(path: Path, *, skill: str, state: AnalyzerState) -> tuple[list[MutableClassificationRow], bool, int]:
+    records, iter_malformed = _iter_jsonl_records(path, state)
     parsed: list[MutableClassificationRow] = []
     malformed = 0
+    unsupported_phase = 0
     for record in records:
-        phase = str(record.get("phase") or "code-review").strip().lower()
+        phase = str(record.get("phase") or "").strip().lower()
         if phase not in JSON_PHASES:
+            unsupported_phase += 1
             continue
         raw_round = safe_int(value=record.get("round_num"))
         round_num = max(0, raw_round)
@@ -401,10 +407,13 @@ def _parse_jsonl_source(path: Path, *, state: AnalyzerState) -> tuple[list[Mutab
         accepted = outcome == "accepted"
         if outcome and outcome not in {"accepted", "rejected", "neutral"}:
             malformed += 1
-        parsed.append(MutableClassificationRow(identity=_json_identity(record, round_num, finding_id), accepted=accepted, parseable=True))
+        parsed.append(MutableClassificationRow(identity=_json_identity(skill, record, round_num, finding_id), accepted=accepted, parseable=True))
     if malformed:
         state.bump("malformed_classification_rows", malformed)
-    return parsed, parseable, len(records)
+    if unsupported_phase:
+        state.bump("unsupported_classification_rows", unsupported_phase)
+    source_parseable = bool(parsed) or not (iter_malformed or malformed or unsupported_phase)
+    return parsed, source_parseable, len(records)
 
 
 def _classification_outcome(skill: str, run_dir: Path, state: AnalyzerState) -> ClassificationOutcome:
@@ -419,7 +428,7 @@ def _classification_outcome(skill: str, run_dir: Path, state: AnalyzerState) -> 
     for source in sources:
         labels.append(source.relative_to(run_dir).as_posix())
         if source.suffix in {".jsonl", ".ndjson"}:
-            rows, source_parseable, count = _parse_jsonl_source(source, state=state)
+            rows, source_parseable, count = _parse_jsonl_source(source, skill=skill, state=state)
         else:
             rows, source_parseable, count = _parse_tsv_source(source, skill=skill, state=state)
         parseable = parseable or source_parseable
@@ -542,37 +551,66 @@ def _read_sidecar(log_root: Path, state: AnalyzerState) -> SidecarIndex:
     path = log_root / SIDECAR_PATH
     if not path.is_file() or path.is_symlink():
         state.bump("missing_rejected_sidecar")
-        return SidecarIndex({}, 0)
+        return SidecarIndex({}, 0, False)
     try:
         with path.open(encoding="utf-8", newline="") as handle:
             rows = [dict(row) for row in csv.DictReader(handle, delimiter="\t")]
     except (OSError, csv.Error):
         state.bump("malformed_rejected_sidecar")
-        return SidecarIndex({}, 0)
-    by_hash: dict[str, Mapping[str, str]] = {}
+        return SidecarIndex({}, 0, False)
+    deduped: dict[str, Mapping[str, str]] = {}
+    seen_hashes: set[str] = set()
+    seen_rows: set[str] = set()
     duplicates = 0
     for row in rows:
-        finding_hash = str(row.get("finding_hash") or "")
-        if finding_hash and finding_hash in by_hash:
-            duplicates += 1
+        finding_hash = str(row.get("finding_hash") or "").strip()
         if finding_hash:
-            by_hash[finding_hash] = row
+            if finding_hash in seen_hashes:
+                duplicates += 1
+            else:
+                seen_hashes.add(finding_hash)
+        else:
+            row_key = "\0".join(
+                (
+                    str(row.get("source_skill") or ""),
+                    str(row.get("run_id") or ""),
+                    str(row.get("round_num") or ""),
+                    str(row.get("finding_id") or ""),
+                    str(row.get("verdict") or ""),
+                    str(row.get("current_location") or ""),
+                    str(row.get("evidence") or ""),
+                    str(row.get("triaged_at") or ""),
+                )
+            )
+            if row_key in seen_rows:
+                duplicates += 1
+            else:
+                seen_rows.add(row_key)
+        row_key = "\0".join(
+            (
+                finding_hash or "row",
+                str(row.get("source_skill") or ""),
+                str(row.get("run_id") or ""),
+                str(row.get("round_num") or ""),
+                str(row.get("finding_id") or ""),
+                str(row.get("verdict") or ""),
+                str(row.get("current_location") or ""),
+                str(row.get("evidence") or ""),
+                str(row.get("triaged_at") or ""),
+            )
+        )
+        deduped[row_key] = row
     by_run: dict[tuple[str, str], list[Mapping[str, str]]] = defaultdict(list)
-    for row in by_hash.values():
+    for row in deduped.values():
         key = (str(row.get("source_skill") or ""), str(row.get("run_id") or ""))
         by_run[key].append(row)
     if duplicates:
         state.bump("duplicate_sidecar_rows", duplicates)
-    return SidecarIndex({key: tuple(value) for key, value in by_run.items()}, duplicates)
+    return SidecarIndex({key: tuple(value) for key, value in by_run.items()}, duplicates, True)
 
 
-def _sidecar_counts(index: SidecarIndex, *, skill: str, run_id: str) -> Mapping[str, int]:
-    counts = Counter[str]()
-    for row in index.by_run.get((skill, run_id), ()):
-        verdict = str(row.get("verdict") or "").strip().lower().replace("-", "_")
-        if verdict:
-            counts[verdict] += 1
-    return dict(counts)
+def _sidecar_rows(index: SidecarIndex, *, skill: str, run_id: str) -> tuple[Mapping[str, str], ...]:
+    return index.by_run.get((skill, run_id), ())
 
 
 def _started_month(value: object) -> str | None:
@@ -614,7 +652,8 @@ def _collect_skill_runs(log_root: Path, skill: str, state: AnalyzerState, sideca
                 realized_tier=realized,
                 substantiality_proxy=substantiality,
                 token_timing=_token_timing(skill, run_dir, state),
-                sidecar=_sidecar_counts(sidecar, skill=skill, run_id=run_dir.name),
+                sidecar_rows=_sidecar_rows(sidecar, skill=skill, run_id=run_dir.name),
+                sidecar_present=sidecar.present,
             )
         )
     return records
@@ -700,15 +739,45 @@ def _render_under_rating(records: Sequence[RunRecord]) -> list[str]:
 
 
 def _sidecar_note(record: RunRecord) -> str:
-    confirmed = record.sidecar.get("confirmed", 0)
-    stale = record.sidecar.get("stale", 0)
-    already_fixed = record.sidecar.get("already_fixed", 0) + record.sidecar.get("already-fixed", 0)
+    if not record.sidecar_present:
+        return "confirmed=n/a"
+    accepted_keys = {identity.key for identity in record.classification.accepted_identities}
+    counts = Counter[str]()
+    for row in record.sidecar_rows:
+        verdict = str(row.get("verdict") or "").strip().lower().replace("-", "_")
+        if not verdict:
+            continue
+        if accepted_keys and not _sidecar_row_matches(row, accepted_keys):
+            continue
+        counts[verdict] += 1
+    confirmed = counts.get("confirmed", 0)
+    stale = counts.get("stale", 0)
+    already_fixed = counts.get("already_fixed", 0) + counts.get("already-fixed", 0)
     parts = [f"confirmed={confirmed}"]
     if stale:
         parts.append(f"stale={stale}")
     if already_fixed:
         parts.append(f"already-fixed={already_fixed}")
     return "; ".join(parts)
+
+
+def _sidecar_row_identity_keys(row: Mapping[str, str]) -> tuple[str, ...]:
+    keys: list[str] = []
+    finding_hash = str(row.get("finding_hash") or "").strip()
+    if finding_hash:
+        keys.append(f"hash:{finding_hash}")
+    round_num = str(row.get("round_num") or "").strip()
+    finding_id = str(row.get("finding_id") or "").strip()
+    source_skill = str(row.get("source_skill") or "").strip().lower()
+    if round_num and finding_id:
+        keys.append(f"{round_num}:{finding_id}")
+    if source_skill == "design" and finding_id:
+        keys.append(f"design:{finding_id}")
+    return tuple(dict.fromkeys(keys))
+
+
+def _sidecar_row_matches(row: Mapping[str, str], accepted_keys: set[str]) -> bool:
+    return any(key in accepted_keys for key in _sidecar_row_identity_keys(row))
 
 
 def _render_corpus_summary(corpus: Corpus) -> list[str]:

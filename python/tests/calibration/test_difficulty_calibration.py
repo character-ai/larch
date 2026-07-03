@@ -112,6 +112,10 @@ def _review_tsv(run: Path, round_num: int, *rows: str) -> None:
     path.write_text(CODE_HEADER + "\n" + "\n".join(rows) + "\n", encoding="utf-8")
 
 
+def _review_jsonl(run: Path, *rows: str) -> None:
+    (run / "review-findings-full.jsonl").write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+
 def _report(root: Path) -> tuple[dc.Corpus, str]:
     corpus = dc.collect_corpus(root)
     return corpus, dc.render_report(corpus)
@@ -180,6 +184,72 @@ def test_implement_identity_restarts_each_round(tmp_path: Path) -> None:
     record = next(item for item in corpus.records if item.run_id == "IMPL-ID")
 
     assert record.classification.accepted_count == 2
+    assert record.realized_tier == difficulty.MODERATE
+
+
+def test_review_jsonl_identity_restarts_each_round(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "review", "REV-JSONL", applied=difficulty.MODERATE)
+    _review_jsonl(
+        run,
+        json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted", "round_num": 1}),
+        json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted", "round_num": 2}),
+    )
+
+    corpus, _report_text = _report(root)
+    record = next(item for item in corpus.records if item.run_id == "REV-JSONL")
+
+    assert record.classification.accepted_count == 2
+    assert record.realized_tier == difficulty.MODERATE
+
+
+def test_jsonl_malformed_only_is_unparseable(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "review", "BROKEN", applied=difficulty.HARD)
+    _review_jsonl(run, "{not-json}")
+
+    corpus, _report_text = _report(root)
+    record = next(item for item in corpus.records if item.run_id == "BROKEN")
+
+    assert record.classification.accepted_count is None
+    assert record.realized_tier == "unknown"
+    assert corpus.degraded["malformed_classification_rows"] == 1
+    assert corpus.degraded["unknown_realized_tiers"] == 1
+
+
+def test_jsonl_missing_and_unsupported_phases_are_degraded(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "review", "PHASES", applied=difficulty.MODERATE)
+    _review_jsonl(
+        run,
+        json.dumps({"id": "FINDING_1", "outcome": "accepted", "round_num": 1}),
+        json.dumps({"id": "FINDING_2", "phase": "design", "outcome": "accepted", "round_num": 1}),
+        json.dumps({"id": "FINDING_3", "phase": "code-review", "outcome": "accepted", "round_num": 1}),
+    )
+
+    corpus, _report_text = _report(root)
+    record = next(item for item in corpus.records if item.run_id == "PHASES")
+
+    assert record.classification.accepted_count == 1
+    assert record.realized_tier == difficulty.MODERATE
+    assert corpus.degraded["unsupported_classification_rows"] == 2
+
+
+def test_out_of_scope_spelling_rows_are_excluded_from_scope(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "SCOPE", applied=difficulty.MODERATE)
+    _implement_tsv(
+        run,
+        1,
+        _code_row("FINDING_1", "accepted", scope="out_of_scope"),
+        _code_row("FINDING_2", "accepted", scope="out-of-scope"),
+        _code_row("FINDING_3", "accepted"),
+    )
+
+    corpus, _report_text = _report(root)
+    record = next(item for item in corpus.records if item.run_id == "SCOPE")
+
+    assert record.classification.accepted_count == 1
     assert record.realized_tier == difficulty.MODERATE
 
 
@@ -293,7 +363,33 @@ def test_under_rating_and_sidecar_burden(tmp_path: Path) -> None:
     corpus, report = _report(root)
 
     assert corpus.degraded["duplicate_sidecar_rows"] == 1
-    assert "| implement | MISS | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1 |" in report
+    assert "| implement | MISS | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1; stale=1 |" in report
+
+
+def test_under_rating_missing_sidecar_renders_na(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "MISS-NA", applied=difficulty.MODERATE, predicted=difficulty.MODERATE)
+    _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"), _code_row("FINDING_2", "accepted"), _code_row("FINDING_3", "accepted"))
+
+    _corpus, report = _report(root)
+
+    assert "| implement | MISS-NA | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=n/a |" in report
+
+
+def test_under_rating_sidecar_matches_accepted_identities_without_hash(tmp_path: Path) -> None:
+    root = _root(tmp_path)
+    run = _run(root, "implement", "MATCH", applied=difficulty.MODERATE, predicted=difficulty.MODERATE)
+    _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"), _code_row("FINDING_2", "accepted"), _code_row("FINDING_3", "accepted"))
+    (root / "rejected-analysis-verdicts.tsv").write_text(
+        SIDECAR_HEADER
+        + "\n1\t\timplement\tMATCH\t1\tFINDING_1\tv1\tconfirmed\tloc\tevidence\t2026-01-01T00:00:00Z"
+        + "\n1\t\timplement\tMATCH\t1\tFINDING_9\tv1\tconfirmed\tloc\tevidence\t2026-01-02T00:00:00Z\n",
+        encoding="utf-8",
+    )
+
+    _corpus, report = _report(root)
+
+    assert "| implement | MATCH | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1 |" in report
 
 
 def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
