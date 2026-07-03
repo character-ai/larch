@@ -29,6 +29,7 @@ _VALID_OUTCOMES = frozenset({
     "failed-clarify", "failed-judge-panel", "failed-publish-tail",
     "publish-skipped", "paused",
 })
+_OOS_FILE_MAP_FIELD_COUNT = 3
 
 
 def _plugin_root() -> Path:
@@ -143,9 +144,14 @@ def _oos_info(design_tmpdir: Path) -> tuple[int, str]:
         return 0, ""
     urls: list[str] = []
     for raw_line in sentinel.read_text(encoding="utf-8").splitlines():
-        sline = raw_line.strip()
-        if sline.startswith("https://"):
-            urls.append(sline)
+        if not raw_line.startswith("OOS_FILE_MAP\t"):
+            continue
+        parts = raw_line.split("\t")
+        if len(parts) < _OOS_FILE_MAP_FIELD_COUNT:
+            continue
+        url = parts[2].strip()
+        if url:
+            urls.append(url)
     return len(urls), "\n".join(urls)
 
 
