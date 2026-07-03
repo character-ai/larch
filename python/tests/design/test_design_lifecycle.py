@@ -3844,6 +3844,43 @@ def test_step5c_core_publish_tail_retries_central_publish_before_fallback(
     assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
 
 
+def test_step5c_core_publish_tail_falls_back_when_central_publish_fails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design, env_path = _setup_step5c_design(tmp_path, monkeypatch, ISSUE_NUMBER="42", SESSION_ID="run-1", REPO="owner/repo")
+    central_calls: list[dict[str, str]] = []
+    fallback_calls: list[dict[str, object]] = []
+
+    def fake_publish(_argv: list[str]) -> int:
+        return 5
+
+    def fake_central(**kwargs: str) -> tuple[int, bool]:
+        central_calls.append(dict(kwargs))
+        return 5, False
+
+    def fake_render(**kwargs: object) -> bool:
+        fallback_calls.append(dict(kwargs))
+        (design / "final-summary.md").write_text("fallback summary\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(design_publish, "publish_core", fake_publish)
+    monkeypatch.setattr(design_step5c, "_publish_terminal_final_summary", fake_central)
+    monkeypatch.setattr(design_step5c, "_step5c_render_final_summary", fake_render)
+    rc, contract, _ = _capture_core_contract(
+        design_lifecycle.step5c_core,
+        ["--session-env-path", str(env_path), "--claude-pid", "123"],
+        tmp_path,
+        monkeypatch,
+    )
+
+    assert rc == 1
+    assert central_calls[0]["outcome"] == "failed-publish-tail"
+    assert len(fallback_calls) == 1
+    assert (design / "final-summary.md").read_text(encoding="utf-8") == "fallback summary\n"
+    assert "LARCH_FINAL_SUMMARY_BEGIN\nLARCH_FINAL_SUMMARY_END" in contract
+
+
 def test_step5c_core_publish_tail_skips_retry_when_publish_evidence_exists(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
