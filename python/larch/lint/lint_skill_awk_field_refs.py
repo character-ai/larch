@@ -95,7 +95,7 @@ def _command_has_awk_field_ref(command: str) -> bool:
 
 def _command_is_complete(command: str) -> bool:
     try:
-        shlex.split(command, posix=True)
+        _ = shlex.split(command, posix=True)
     except ValueError:
         return False
     return True
