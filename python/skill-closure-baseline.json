@@ -1,8 +1,8 @@
 [
   {
-    "closure_content_estimated_tokens": 56398,
-    "closure_estimated_tokens": 56574,
-    "closure_lines": 1940,
+    "closure_content_estimated_tokens": 56397,
+    "closure_estimated_tokens": 56573,
+    "closure_lines": 1942,
     "conditional_content_estimated_tokens": 10349,
     "conditional_estimated_tokens": 10396,
     "conditional_files": [
