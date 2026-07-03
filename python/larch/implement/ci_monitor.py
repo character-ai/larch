@@ -135,7 +135,6 @@ class MonitorResult:
     ci_status: str
     behind_count: int
     failed_run_id: str | None
-    did_fixing: bool
     goto_rebase: bool
     iterations: int
     result: StepResult
@@ -1618,11 +1617,16 @@ def run_ci_fix(
     ctx: RunContext | None = None,
 ) -> FixResult:
     """Retry a pending CI-fix rebase push; normal fixing is delegated."""
-    def _invalidate_guidelines_before_push() -> bool:
+    def _pin_or_invalidate_guidelines_before_push() -> bool:
         if ctx is None:
             return False
-
-        return ship_guidelines._invalidate_guidelines_note(ctx.tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
+        return ship_guidelines._pin_or_invalidate_guidelines_note(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            implement_tmpdir=ctx.tmpdir,
+            head_sha=head_sha,
+            base_ref=f"{base_remote}/{base_ref}",
+            repo_root=cwd,
+        )
 
     if ci_fix_rebase_pending:
         pushed, _post_head, delta_paths, did_rebase, pending = stage_and_push(
@@ -1636,7 +1640,7 @@ def run_ci_fix(
             context=StagePushContext(
                 classified=classified,
                 run_context=ctx,
-                pre_push_log_refresh=_invalidate_guidelines_before_push,
+                pre_push_log_refresh=_pin_or_invalidate_guidelines_before_push,
             ),
         )
         if not pushed:
@@ -2000,7 +2004,6 @@ def monitor(
 
     def _base_result(
         *,
-        did_fixing: bool,
         goto: bool,
         step: StepResult,
         rerun_already_running: bool = False,
@@ -2012,7 +2015,6 @@ def monitor(
             ci_status=status.status,
             behind_count=status.behind_count,
             failed_run_id=status.failed_run_id,
-            did_fixing=did_fixing,
             goto_rebase=goto,
             iterations=iteration,
             result=step,
@@ -2023,14 +2025,12 @@ def monitor(
 
     if decision.action in ("merge", "already_merged"):
         return _base_result(
-            did_fixing=False,
             goto=False,
             step=StepResult(outcome=Outcome.OK),
         )
 
     if decision.action == "rebase":
         return _base_result(
-            did_fixing=False,
             goto=True,
             step=StepResult(outcome=Outcome.OK),
         )
@@ -2038,7 +2038,6 @@ def monitor(
     if decision.action in ("evaluate_failure", "rebase_then_evaluate"):
         if decision.action == "rebase_then_evaluate":
             return _base_result(
-                did_fixing=False,
                 goto=True,
                 step=StepResult(outcome=Outcome.OK),
             )
@@ -2050,7 +2049,6 @@ def monitor(
         # (observed ~30 min in a real run). The main agent uses failed_run_id, or
         # the `pr checks` fallback when it is empty, to read the failure itself.
         return _base_result(
-            did_fixing=False,
             goto=False,
             step=StepResult(
                 outcome=Outcome.NEEDS_USER_INPUT,
@@ -2061,7 +2059,6 @@ def monitor(
     if decision.action == "bail":
         if decision.bail_reason and retry.is_transient_net_signature(decision.bail_reason):
             return _base_result(
-                did_fixing=False,
                 goto=False,
                 step=StepResult(
                     outcome=Outcome.TRANSIENT,
@@ -2070,7 +2067,6 @@ def monitor(
             )
         if decision.bail_reason == "fix-attempts-exhausted":
             return _base_result(
-                did_fixing=False,
                 goto=False,
                 step=StepResult(
                     outcome=Outcome.NEEDS_USER_INPUT,
@@ -2078,7 +2074,6 @@ def monitor(
                 ),
             )
         return _base_result(
-            did_fixing=False,
             goto=False,
             step=StepResult(
                 outcome=Outcome.STALLED,
@@ -2087,7 +2082,6 @@ def monitor(
         )
 
     return _base_result(
-        did_fixing=False,
         goto=False,
         step=StepResult(outcome=Outcome.STALLED, detail=decision.action),
     )

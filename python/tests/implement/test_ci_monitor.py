@@ -1410,7 +1410,6 @@ def test_monitor_evaluate_failure_bails_to_first_fixer(monkeypatch: pytest.Monke
 
     assert result.result.outcome is Outcome.NEEDS_USER_INPUT
     assert result.result.detail == "first-fixer-non-health"
-    assert result.did_fixing is False
     assert result.goto_rebase is False
     assert result.failed_run_id == "42"
 
@@ -1447,7 +1446,6 @@ def test_monitor_already_merged_short_circuit_ok() -> None:
     assert result.action == "already_merged"
     assert result.ci_status == "merged"
     assert result.result.outcome is Outcome.OK
-    assert result.did_fixing is False
     assert result.goto_rebase is False
 
 
@@ -2169,6 +2167,81 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
     assert not any("force-with-lease" in " ".join(call) for call in runner.calls)
 
 
+
+def test_run_ci_fix_pending_retry_pins_guidelines_before_push(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
+    calls: list[object] = []
+
+    def fake_try_rev_parse(*_args: object, **_kwargs: object) -> str:
+        calls.append("resolve-head")
+        return "current-head"
+
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        calls.append(("pin", kwargs))
+        return False
+
+    def fail_raw_invalidate(*_args: object, **_kwargs: object) -> bool:
+        raise AssertionError("pending retry should use pin-before-invalidate helper")
+
+    def fake_stage_and_push(
+        *_args: object,
+        context: ci_monitor.StagePushContext | None = None,
+        delta_paths: tuple[str, ...] = (),
+        base_remote: str = "",
+        base_ref: str = "",
+        ci_fix_rebase_pending: bool = False,
+        **_kwargs: object,
+    ) -> tuple[bool, str, tuple[str, ...], bool, bool]:
+        assert context is not None
+        assert context.run_context is ctx
+        assert context.pre_push_log_refresh is not None
+        assert delta_paths == ()
+        assert base_remote == "upstream"
+        assert base_ref == "trunk"
+        assert ci_fix_rebase_pending is True
+        calls.append("before-callback")
+        warning_logged = context.pre_push_log_refresh()
+        calls.append(("callback-return", warning_logged))
+        return True, "current-head", (), False, False
+
+    monkeypatch.setattr(ci_monitor.git, "try_rev_parse", fake_try_rev_parse)
+    monkeypatch.setattr(ci_monitor.ship_guidelines, "_pin_or_invalidate_guidelines_note", fake_pin_or_invalidate)
+    monkeypatch.setattr(ci_monitor.ship_guidelines, "_invalidate_guidelines_note", fail_raw_invalidate)
+    monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
+
+    fix = ci_monitor.run_ci_fix(
+        RecordingRunner(),
+        run_id="42",
+        repo="o/r",
+        classified=ci_monitor.ClassifiedJobs(0, (), (), ()),
+        logs=ci_monitor.LogCollectResult(text="", state="ready"),
+        plan_file=None,
+        cwd=str(tmp_path),
+        base_remote="upstream",
+        base_ref="trunk",
+        ci_fix_rebase_pending=True,
+        ctx=ctx,
+    )
+
+    assert fix.status == "pushed"
+    assert calls == [
+        "before-callback",
+        "resolve-head",
+        (
+            "pin",
+            {
+                "implement_tmpdir": str(tmp_path),
+                "head_sha": "current-head",
+                "base_ref": "upstream/trunk",
+                "repo_root": str(tmp_path),
+            },
+        ),
+        ("callback-return", False),
+    ]
+
 def test_run_ci_fix_non_pending_after_stage_fails_closed(tmp_path: Any) -> None:
     head = "deadbeef" * 5
 
@@ -2886,7 +2959,6 @@ def test_monitor_merge_ok_no_goto() -> None:
     )
     assert result.result.outcome == Outcome.OK
     assert result.goto_rebase is False
-    assert result.did_fixing is False
 
 
 def test_monitor_rebase_then_evaluate_no_fix() -> None:
@@ -2901,7 +2973,6 @@ def test_monitor_rebase_then_evaluate_no_fix() -> None:
     )
     assert result.action == "rebase_then_evaluate"
     assert result.goto_rebase is True
-    assert result.did_fixing is False
     # Behind + failed CI rebases first; it must not download logs or rerun.
     assert not any(c[:3] == ("gh", "run", "view") for c in runner.calls)
     assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)

@@ -97,6 +97,8 @@ def _reconstruct_ctx(*, args: argparse.Namespace, repo_root: Path) -> RunContext
 
 
 def _invalidate_guidelines_before_ci_push(args: argparse.Namespace) -> bool:
+    # CI-fix pushes carry real delta_paths, so the staged assessment never covered
+    # that diff; invalidate directly instead of re-pinning a stale note.
     implement_tmpdir = str(getattr(args, "implement_tmpdir", "") or "")
     return ship_guidelines._invalidate_guidelines_note(implement_tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 

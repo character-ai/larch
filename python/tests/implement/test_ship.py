@@ -62,6 +62,17 @@ def _pin_guidelines_note_text(
     return note
 
 
+def _successful_rebase_result(*, rebased: bool = False) -> ship.rebase.RebaseResult:
+    return ship.rebase.RebaseResult(
+        outcome=Outcome.OK,
+        rebased=rebased,
+        pushed=True,
+        new_version=None,
+        attempts=1,
+        detail="",
+    )
+
+
 @pytest.fixture(autouse=True)
 def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
     real_flush = ship.run_logs.flush_logs_pre
@@ -157,10 +168,29 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
         enable_pre_push_handoff: bool,
     ) -> object:
         del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
-        return object()
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=False,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    pin_calls: list[dict[str, object]] = []
+
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
+        return False
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "post-rebase-head")
+    monkeypatch.setitem(
+        ship._ship_rebase_phase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fake_pin_or_invalidate,
+    )
 
     result = ship._ship_rebase_phase(
         runner=RecordingRunner(),
@@ -177,6 +207,92 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
 
     assert result.terminal is None
     assert result.rebase_count == 5
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "post-rebase-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
+    assert _read_state(state)["PHASE"] == "rebase"
+
+
+def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_flush_logs_pre(**_kw: object) -> run_logs.RefreshSkip:
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    pin_calls: list[dict[str, object]] = []
+
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
+        return False
+
+    def fail_invalidate(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalidate helper should not be called after a clean rebase")
+
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "post-rebase-head")
+    monkeypatch.setitem(
+        ship._ship_rebase_phase.__globals__,
+        "_invalidate_guidelines_note",
+        fail_invalidate,
+    )
+    monkeypatch.setitem(
+        ship._ship_rebase_phase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fake_pin_or_invalidate,
+    )
+
+    result = ship._ship_rebase_phase(
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        iteration=0,
+        rebase_count=4,
+        fix_attempts=0,
+        transient_retries=0,
+        variant=ship.ShipRebaseVariant.MAIN_ADVANCED,
+    )
+
+    assert result.terminal is None
+    assert result.rebase_count == 5
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "post-rebase-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
     assert _read_state(state)["PHASE"] == "rebase"
 
 
@@ -205,9 +321,28 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
         enable_pre_push_handoff: bool,
     ) -> object:
         del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
-        return object()
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=False,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    pin_calls: list[dict[str, object]] = []
+
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
+        return False
 
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "phase14-head")
+    monkeypatch.setitem(
+        ship._ship_phase14_rebase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fake_pin_or_invalidate,
+    )
 
     new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
         runner=RecordingRunner(),
@@ -225,6 +360,105 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
 
     data = _read_state(state)
     assert new_count == 2
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "phase14-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
+    assert not flag.is_file()
+    assert data["PHASE"] == "ci-initial"
+    assert data["REBASE_COUNT"] == "2"
+    assert data.get("RESUME_PHASE", "") == ""
+    assert data.get("CALLER_KIND", "") == ""
+    assert data["LAST_MONITORED_HEAD"] == "abc123"
+
+
+def test_ship_phase14_rebase_rebased_retains_guidelines_note(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state = tmp_path / "ship-pr-state.sh"
+    flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    _ = flag.write_text("", encoding="utf-8")
+    _ = state.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
+        "RESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n"
+        "LAST_MONITORED_HEAD=abc123\n",
+        encoding="utf-8",
+    )
+    ctx = _ctx(tmp_path, state_file=str(state), pr_number=7, pr_url="https://example.com/pr/7", merge=True)
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        del repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    pin_calls: list[dict[str, object]] = []
+
+    def fake_pin_or_invalidate(**kwargs: object) -> bool:
+        pin_calls.append(kwargs)
+        return False
+
+    def fail_invalidate(*_args: object, **_kwargs: object) -> None:
+        raise AssertionError("invalidate helper should not be called after a clean rebase")
+
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "phase14-head")
+    monkeypatch.setitem(
+        ship._ship_phase14_rebase.__globals__,
+        "_invalidate_guidelines_note",
+        fail_invalidate,
+    )
+    monkeypatch.setitem(
+        ship._ship_phase14_rebase.__globals__,
+        "_pin_or_invalidate_guidelines_note",
+        fake_pin_or_invalidate,
+    )
+
+    new_count = ship._ship_phase14_rebase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        base_remote="origin",
+        base_ref="main",
+        phase14_flag=flag,
+        iteration=2,
+        rebase_count=1,
+        fix_attempts=0,
+        transient_retries=0,
+        last_monitored_head="abc123",
+    )
+
+    data = _read_state(state)
+    assert new_count == 2
+    assert pin_calls == [
+        {
+            "implement_tmpdir": str(tmp_path),
+            "head_sha": "phase14-head",
+            "base_ref": "origin/main",
+            "repo_root": str(tmp_path),
+        },
+    ]
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
@@ -309,7 +543,6 @@ def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -320,7 +553,7 @@ def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
         "merge_pr",
         lambda *_a, **_k: type("MR", (), {"result": merge_results.pop(0), "error": ""})(),
     )
-    monkeypatch.setattr(ship.rebase, "rebase_and_push", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", lambda *_a, **_k: _successful_rebase_result())
     monkeypatch.setattr(ship, "run_postmerge_phase", lambda *_a, **_k: ship.ShipResult(Outcome.OK))
 
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
@@ -572,7 +805,6 @@ def test_happy_path_stage_order(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "failed_run_id": None,
             },
         )(),
@@ -682,7 +914,6 @@ def test_straight_merge_post_ensure_committed_snapshot(
                 "result": StepResult(Outcome.NEEDS_USER_INPUT, "ci-fix-exhausted: lint"),
                 "action": "wait",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "failed_run_id": None,
                 "transient_rerun_attempted": False,
             },
@@ -765,7 +996,6 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "failed_run_id": None,
                 "transient_rerun_attempted": False,
             },
@@ -836,7 +1066,6 @@ def test_merge_review_required_exits_as_needs_user_input(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -925,7 +1154,6 @@ def test_recovered_open_pr_premerge_reconciles_stalled_summary_before_merge(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1018,7 +1246,6 @@ def test_recovered_stalled_summary_push_failure_blocks_merge(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1063,7 +1290,6 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1141,7 +1367,6 @@ def test_post_ensure_fresh_run_is_push_only_no_reflush(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1217,7 +1442,6 @@ def test_merge_loop_iteration_cap_stalls(
                 "result": StepResult(Outcome.OK),
                 "action": "wait",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1295,7 +1519,6 @@ DRAFT=false
                 "result": StepResult(Outcome.STALLED, "ci-monitor"),
                 "action": "wait",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1376,7 +1599,6 @@ def _no_checks_loop_stubs(
                 "result": StepResult(Outcome.STALLED, detail),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -1711,7 +1933,6 @@ def test_terminal_monitor_goto_rebase_does_not_increment_rebase_count() -> None:
         ci_status="failure",
         behind_count=0,
         failed_run_id=None,
-        did_fixing=False,
         goto_rebase=True,
         iterations=0,
         result=StepResult(Outcome.STALLED, "terminal"),
@@ -1897,7 +2118,6 @@ def test_stale_merged_flags_with_open_pr_resume_open_path(
                 "result": StepResult(Outcome.STALLED, "ci-monitor"),
                 "action": "wait",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -1954,7 +2174,7 @@ def test_fresh_postmerge_stall_preserves_postmerge_phase(
         lambda *_a, **_k: type(
             "M",
             (),
-            {"result": StepResult(Outcome.OK), "action": "merge", "goto_rebase": False, "did_fixing": False, "transient_rerun_attempted": False, "failed_run_id": None},
+            {"result": StepResult(Outcome.OK), "action": "merge", "goto_rebase": False, "transient_rerun_attempted": False, "failed_run_id": None},
         )(),
     )
     monkeypatch.setattr(ship.merge, "merge_pr", lambda *_a, **_k: type("MR", (), {"result": config.MERGE_RESULT_MERGED, "error": ""})())
@@ -2107,7 +2327,6 @@ def test_pre_push_conflict_handoff_persists_resume_tokens(
                 "result": StepResult(Outcome.OK),
                 "action": "rebase",
                 "goto_rebase": True,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -2167,8 +2386,9 @@ def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
     _open_pr_merge_loop_stubs(monkeypatch)
     rebase_calls: list[bool] = []
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         rebase_calls.append(True)
+        return _successful_rebase_result()
 
     monitor_calls: list[bool] = []
 
@@ -2181,7 +2401,6 @@ def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -2373,8 +2592,9 @@ def test_pre_push_handoff_without_flag_recreates_flag_and_resumes(
     _open_pr_merge_loop_stubs(monkeypatch)
     rebase_calls: list[bool] = []
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         rebase_calls.append(True)
+        return _successful_rebase_result()
 
     monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase)
     monkeypatch.setattr(
@@ -2387,7 +2607,6 @@ def test_pre_push_handoff_without_flag_recreates_flag_and_resumes(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -2406,7 +2625,7 @@ def test_pre_push_handoff_without_flag_recreates_flag_and_resumes(
     assert "CALLER_KIND=\n" in state
 
 
-def test_terminal_counter_persistence_counts_failed_fixing(
+def test_terminal_counter_persistence_keeps_failed_fix_attempts(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -2437,7 +2656,6 @@ def test_terminal_counter_persistence_counts_failed_fixing(
                 "result": StepResult(Outcome.NEEDS_USER_INPUT, "first-fixer-non-health"),
                 "action": "evaluate_failure",
                 "goto_rebase": False,
-                "did_fixing": True,
                 "transient_rerun_attempted": False,
                 "failed_run_id": "99",
             },
@@ -2448,7 +2666,7 @@ def test_terminal_counter_persistence_counts_failed_fixing(
     result = ship.run_ship(_ctx(tmp_path, state_file=str(state_file)), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.NEEDS_USER_INPUT
-    assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
+    assert "FIX_ATTEMPTS=4\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_terminal_counter_persistence_counts_failed_transient_rerun(
@@ -2482,7 +2700,6 @@ def test_terminal_counter_persistence_counts_failed_transient_rerun(
                 "result": StepResult(Outcome.TRANSIENT, "network"),
                 "action": "rerun",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": True,
                 "failed_run_id": None,
             },
@@ -2530,7 +2747,6 @@ def test_fourth_transient_cap_only_stalls_standalone_runs(
                 "result": StepResult(Outcome.TRANSIENT, "network"),
                 "action": "rerun",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": True,
                 "failed_run_id": "77",
             },
@@ -2612,7 +2828,6 @@ def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
                 "result": StepResult(outcome, "terminal"),
                 "action": "evaluate_failure",
                 "goto_rebase": False,
-                "did_fixing": outcome is Outcome.NEEDS_USER_INPUT,
                 "transient_rerun_attempted": False,
                 "failed_run_id": "99",
             },
@@ -2626,8 +2841,8 @@ def test_terminal_counter_round_trip_reuses_persisted_fix_attempts(
 
     assert first.outcome is Outcome.NEEDS_USER_INPUT
     assert second.outcome is Outcome.STALLED
-    assert seen == [4, 5]
-    assert "FIX_ATTEMPTS=5\n" in state_file.read_text(encoding="utf-8")
+    assert seen == [4, 4]
+    assert "FIX_ATTEMPTS=4\n" in state_file.read_text(encoding="utf-8")
 
 
 def test_post_push_reentry_uses_bounded_empty_checks_grace(
@@ -2653,16 +2868,15 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
             "result": StepResult(Outcome.OK),
             "action": "evaluate_failure",
             "goto_rebase": False,
-            "did_fixing": True,
             "transient_rerun_attempted": False,
             "failed_run_id": "99",
             "ci_fix_rebase_pending": False,
+            "advance_head": True,
         },
         {
             "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
             "action": "bail",
             "goto_rebase": False,
-            "did_fixing": False,
             "transient_rerun_attempted": False,
             "failed_run_id": None,
             "ci_fix_rebase_pending": False,
@@ -2693,7 +2907,7 @@ def test_post_push_reentry_uses_bounded_empty_checks_grace(
         assert isinstance(startup_deadline, int)
         seen_params.append((grace, startup_deadline))
         spec = results.pop(0)
-        if spec["did_fixing"]:
+        if spec.pop("advance_head", False):
             head["sha"] = "h1"  # the CI-fix push advanced HEAD
         return type("M", (), spec)()
 
@@ -2756,7 +2970,6 @@ def test_initial_ci_wait_uses_poll_based_startup_deadline(
                 "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -2792,16 +3005,15 @@ def test_initial_startup_deadline_cleared_after_first_monitor_ok(
             "result": StepResult(Outcome.OK),
             "action": "evaluate_failure",
             "goto_rebase": False,
-            "did_fixing": False,
             "transient_rerun_attempted": False,
             "failed_run_id": "99",
             "ci_fix_rebase_pending": False,
+            "advance_head": True,
         },
         {
             "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
             "action": "bail",
             "goto_rebase": False,
-            "did_fixing": False,
             "transient_rerun_attempted": False,
             "failed_run_id": None,
             "ci_fix_rebase_pending": False,
@@ -2894,7 +3106,6 @@ def test_cold_resume_zero_counters_still_gets_initial_startup_deadline(
                 "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -2954,7 +3165,6 @@ def test_post_push_resume_rehydrates_empty_checks_grace(
                 "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -3014,7 +3224,6 @@ def test_post_push_resume_missing_last_monitored_head_uses_grace(
                 "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -3074,7 +3283,6 @@ def test_post_push_resume_synced_head_uses_grace(
                 "result": StepResult(Outcome.STALLED, config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED),
                 "action": "bail",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
                 "ci_fix_rebase_pending": False,
@@ -3291,7 +3499,6 @@ def test_open_pr_resume_at_iteration_cap_still_observes_monitor(
                 "result": StepResult(Outcome.OK),
                 "action": "already_merged",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3343,7 +3550,6 @@ def test_open_pr_resume_at_iteration_cap_wait_stalls_after_monitor(
                 "result": StepResult(Outcome.OK),
                 "action": "wait",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3359,7 +3565,7 @@ def test_open_pr_resume_at_iteration_cap_wait_stalls_after_monitor(
     assert "ITERATION=51\n" in state_file.read_text(encoding="utf-8")
 
 
-def test_fix_only_monitor_result_does_not_consume_iteration(
+def test_monitor_ok_result_does_not_consume_iteration_or_fix_attempt(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
@@ -3391,7 +3597,6 @@ def test_fix_only_monitor_result_does_not_consume_iteration(
                 "result": StepResult(Outcome.OK),
                 "action": action,
                 "goto_rebase": False,
-                "did_fixing": action == "evaluate_failure",
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3410,7 +3615,7 @@ def test_fix_only_monitor_result_does_not_consume_iteration(
     assert result.outcome is Outcome.OK
     state = state_file.read_text(encoding="utf-8")
     assert "ITERATION=49\n" in state
-    assert "FIX_ATTEMPTS=1\n" in state
+    assert "FIX_ATTEMPTS=0\n" in state
 
 
 def test_transient_rerun_monitor_result_does_not_consume_iteration(
@@ -3445,7 +3650,6 @@ def test_transient_rerun_monitor_result_does_not_consume_iteration(
                 "result": StepResult(Outcome.OK),
                 "action": action,
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": action == "rerun",
                 "failed_run_id": None,
             },
@@ -3502,7 +3706,6 @@ def test_merge_retry_results_consume_iteration_budget(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3544,7 +3747,6 @@ def test_admin_fallback_ci_not_ready_ignores_review_required_until_ci_settles(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3593,7 +3795,6 @@ def test_no_admin_fallback_ci_not_ready_review_required_reports_observed_state(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3651,7 +3852,6 @@ def test_repeated_ci_not_ready_stalls_with_check_detail(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3705,7 +3905,6 @@ def test_race_ci_not_ready_detail_does_not_stall(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3762,7 +3961,6 @@ def test_changed_ci_not_ready_detail_resets_stall_guard(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
@@ -3820,15 +4018,15 @@ def test_main_advanced_merge_result_rebases_before_retry(
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "transient_rerun_attempted": False,
                 "failed_run_id": None,
             },
         )(),
     )
 
-    def fake_rebase(*_args: object, **_kwargs: object) -> None:
+    def fake_rebase(*_args: object, **_kwargs: object) -> ship.rebase.RebaseResult:
         order.append("rebase")
+        return _successful_rebase_result()
 
     def fake_merge(*_args: object, **_kwargs: object) -> object:
         result = merge_results.pop(0)
@@ -4012,7 +4210,6 @@ def test_ci_fix_rebase_pending_survives_head_mismatch(
                 "result": StepResult(Outcome.STALLED, detail="stop"),
                 "action": "evaluate_failure",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "failed_run_id": "1",
                 "ci_fix_rebase_pending": False,
                 "transient_rerun_attempted": False,
@@ -4699,7 +4896,6 @@ def test_pre_rebase_flush_commit_failed_fails_closed(
                 "result": StepResult(Outcome.OK),
                 "action": "wait",
                 "goto_rebase": True,
-                "did_fixing": False,
                 "failed_run_id": None,
                 "transient_rerun_attempted": False,
             },
@@ -5348,7 +5544,51 @@ def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_mar
     assert note == "preseeded notice"
 
 
-def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
+
+def test_pin_or_invalidate_guidelines_note_pins_current_head(tmp_path: Path) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    warning_logged = ship_guidelines._pin_or_invalidate_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    assert warning_logged is False
+    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+
+
+def test_pin_or_invalidate_guidelines_note_invalidates_without_head(tmp_path: Path) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    warning_logged = ship_guidelines._pin_or_invalidate_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="",
+        base_ref="origin/main",
+    )
+
+    assert warning_logged is False
+    assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
+    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
+
+def test_invalidate_guidelines_note_clears_pinned_note(tmp_path: Path) -> None:
     diff_text = "implementation diff"
     ship.architectural_guidelines.write_staged_assessment(
         implement_tmpdir=tmp_path,
@@ -5359,7 +5599,7 @@ def test_monitor_fixing_invalidates_guidelines_note(tmp_path: Path) -> None:
         diff_text=diff_text,
     )
     assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    ship._invalidate_guidelines_note(str(tmp_path))
+    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
     assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
@@ -5377,7 +5617,7 @@ def test_invalidate_guidelines_note_persists_drop_notice_from_durable_note(tmp_p
         base_ref="origin/main",
     )
 
-    ship._invalidate_guidelines_note(str(tmp_path))
+    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
 
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
@@ -5403,7 +5643,7 @@ def test_invalidate_guidelines_note_persist_failure_still_invalidates(
         lambda *_args, **_kwargs: False,
     )
 
-    ship._invalidate_guidelines_note(str(tmp_path))
+    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
 
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
@@ -5439,7 +5679,7 @@ def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
     )
     assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == "Guideline note"
 
-    ship._invalidate_guidelines_note(str(tmp_path))
+    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
@@ -5467,7 +5707,7 @@ def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
     note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
     assert note == ship.architectural_guidelines.dropped_note_message()
 
-    ship._invalidate_guidelines_note(str(tmp_path))
+    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
@@ -5499,7 +5739,6 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
                 "result": StepResult(Outcome.OK),
                 "action": "merge",
                 "goto_rebase": False,
-                "did_fixing": False,
                 "failed_run_id": None,
             },
         )(),
@@ -5832,68 +6071,6 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
     assert result.outcome is Outcome.OK
     assert order.index("pin") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
-
-
-def test_monitor_did_fixing_invalidates_guidelines_note_via_ship(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    invalidate_calls: list[str] = []
-    real_invalidate = ship._invalidate_guidelines_note
-
-    def spy_invalidate(implement_tmpdir: str) -> None:
-        invalidate_calls.append(implement_tmpdir)
-        real_invalidate(implement_tmpdir)
-
-    _stub_happy_ship_mocks(monkeypatch)
-    monkeypatch.setattr(ship, "_invalidate_guidelines_note", spy_invalidate)
-    monitor_calls = 0
-
-    def fake_monitor(*_args: object, **_kwargs: object) -> object:
-        nonlocal monitor_calls
-        monitor_calls += 1
-        if monitor_calls == 1:
-            return type(
-                "M",
-                (),
-                {
-                    "result": StepResult(Outcome.OK),
-                    "action": "wait",
-                    "goto_rebase": False,
-                    "did_fixing": True,
-                    "failed_run_id": None,
-                    "transient_rerun_attempted": False,
-                },
-            )()
-        return type(
-            "M",
-            (),
-            {
-                "result": StepResult(Outcome.STALLED, "stop-loop"),
-                "action": "wait",
-                "goto_rebase": False,
-                "did_fixing": False,
-                "failed_run_id": None,
-                "transient_rerun_attempted": False,
-            },
-        )()
-
-    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
-    result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
-    assert result.outcome is Outcome.STALLED
-    assert invalidate_calls == [str(tmp_path)]
-    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
 def test_pin_and_load_guidelines_note_logs_redaction_failure(
