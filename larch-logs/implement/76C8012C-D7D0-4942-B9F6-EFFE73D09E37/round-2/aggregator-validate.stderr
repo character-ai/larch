@@ -1,0 +1,7 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_5 not traceable to scoped input (first 80 chars: 'Mirror the Step 5c publish tail: validate/preserve `difficulty:` in the clarify ')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add a difficulty refresh during `_stage_pre_commit` that preserves model ratings')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add a flush-stage refresh that preserves the model rating, recomputes floor matc')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_7 not traceable to scoped input (first 80 chars: 'Write difficulty-rating.json from plan metadata/sidecar on terminal flush before')
+warning: fix text for slot 'dyn-dyn-difficulty-records' in FINDING_7 not traceable to scoped input (first 80 chars: 'Before final-summary render, call `difficulty write-record` from plan metadata/s')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_10 not traceable to scoped input (first 80 chars: 'Build the floor path list from manifest `files_touched` / `tests_added_or_modifi')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_11 not traceable to scoped input (first 80 chars: 'Forward `SCOUT_DIFFICULTY_RATING` and `SCOUT_DIFFICULTY_STATUS` in `dispatch_sco')
