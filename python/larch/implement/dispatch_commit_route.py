@@ -32,6 +32,7 @@ from larch.implement.dispatch_helpers import (
     _run,
     _run_cli_forward,
     _tmpdir_from_env,
+    _write_bytes_atomic,
     _write_text_atomic,
     GIT_BIN,
 )
@@ -234,6 +235,13 @@ class CommitRouteFailure:
     reason: str
     stdout: str
     stderr: str = ""
+
+
+@dataclass(frozen=True)
+class Step4CommitSeed:
+    message: str
+    pathspec: Path | None
+    noop_reason: str = ""
 
 
 _COMMIT_ROUTE_SITES: dict[str, CommitRouteSite] = {
@@ -622,6 +630,42 @@ def _pathspec_clean_relative_to_head(pathspec_file: Path) -> bool:
     return not result.stdout.strip()
 
 
+def _porcelain_status_paths_z(stdout: str) -> list[str]:
+    items = stdout.split("\0")
+    paths: list[str] = []
+    idx = 0
+    while idx < len(items):
+        rec = items[idx]
+        idx += 1
+        if not rec:
+            continue
+        status = rec[:2]
+        rel = rec[3:]
+        if rel:
+            paths.append(rel)
+        if ("R" in status or "C" in status) and idx < len(items):
+            old_rel = items[idx]
+            idx += 1
+            if old_rel:
+                paths.append(old_rel)
+    return sorted(dict.fromkeys(paths))
+
+
+def _dispatcher_committed_dirty_pathspec(implement_tmpdir: Path) -> tuple[Path | None, bool]:
+    result = _run([GIT_BIN, "status", "--porcelain=v1", "-z", "--untracked-files=all"])
+    if result.returncode != 0:
+        return None, False
+    paths = _porcelain_status_paths_z(result.stdout)
+    if not paths:
+        return None, True
+    pathspec = implement_tmpdir / "dispatcher-committed-dirty-paths.nul"
+    _write_bytes_atomic(
+        path=pathspec,
+        data=b"".join(path.encode("utf-8", "surrogateescape") + b"\0" for path in paths),
+    )
+    return pathspec, True
+
+
 def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
     commit_sha = ""
     commit = _run([GIT_BIN, "rev-parse", "--short", "HEAD"])
@@ -629,6 +673,40 @@ def _step4_noop(reason: str) -> tuple[CommitRouteOutcome, str]:
         commit_sha = commit.stdout.strip()
     print(f"⏩ 4: commit (impl) status=skip reason={reason} sha={commit_sha} elapsed=0s")
     return "noop", "COMMIT_ROUTE_OUTCOME=noop\nCOMMIT_OUTCOME=noop\n"
+
+
+def _step4_commit_seed_from_files(*, message_path: Path, pathspec: Path) -> Step4CommitSeed | None:
+    if not _path_readable_nonempty(message_path):
+        return None
+    message = _read_redacted_message(message_path)
+    if not message or not _path_readable_nonempty(pathspec):
+        return None
+    return Step4CommitSeed(message=message, pathspec=pathspec)
+
+
+def _step4_dispatcher_committed_seed(implement_tmpdir: Path) -> Step4CommitSeed | None:
+    pathspec, status_ok = _dispatcher_committed_dirty_pathspec(implement_tmpdir)
+    if not status_ok:
+        return None
+    if pathspec is None:
+        return Step4CommitSeed(message="", pathspec=None, noop_reason="dispatcher-committed")
+    return Step4CommitSeed(message="Apply post-dispatch checks fixes", pathspec=pathspec)
+
+
+def _resolve_step4_commit_seed(*, implement_tmpdir: Path, dispatcher_commit_complete: bool) -> Step4CommitSeed | None:
+    recovery_metadata = implement_tmpdir / "recovery-metadata.json"
+    recovery_message = implement_tmpdir / "recovery-commit-message.txt"
+    implementation_message = implement_tmpdir / "implementation-commit-message.txt"
+    recovery_paths = implement_tmpdir / "step2-recovery-paths-final.nul"
+    implementation_paths = implement_tmpdir / "implementation-commit-paths.nul"
+
+    if _path_readable_nonempty(recovery_metadata):
+        return _step4_commit_seed_from_files(message_path=recovery_message, pathspec=recovery_paths)
+    if _path_readable_nonempty(implementation_message):
+        return _step4_commit_seed_from_files(message_path=implementation_message, pathspec=implementation_paths)
+    if dispatcher_commit_complete:
+        return _step4_dispatcher_committed_seed(implement_tmpdir)
+    return None
 
 
 def _step4_commit_failure(
@@ -685,41 +763,27 @@ def _run_step4_commit_leg(  # noqa: PLR0911,RUF100
     seed_file = implement_tmpdir / "ship-seed-input.env"
     manifest_path = _read_kv_file(path=seed_file, key="MANIFEST_PATH", default="").strip()
     dispatcher_committed = _read_kv_file(path=seed_file, key="DISPATCHER_COMMITTED", default="").strip() == "true"
-    if dispatcher_committed and manifest_path and _path_readable_nonempty(Path(manifest_path)):
-        return _step4_noop("dispatcher-committed")
-
-    recovery_metadata = implement_tmpdir / "recovery-metadata.json"
-    recovery_message = implement_tmpdir / "recovery-commit-message.txt"
-    implementation_message = implement_tmpdir / "implementation-commit-message.txt"
-    recovery_paths = implement_tmpdir / "step2-recovery-paths-final.nul"
-    implementation_paths = implement_tmpdir / "implementation-commit-paths.nul"
-
-    if _path_readable_nonempty(recovery_metadata):
-        if not _path_readable_nonempty(recovery_message):
-            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
-        message = _read_redacted_message(recovery_message)
-        if not message or not _path_readable_nonempty(recovery_paths):
-            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
-        pathspec = recovery_paths
-    elif _path_readable_nonempty(implementation_message):
-        message = _read_redacted_message(implementation_message)
-        if not message or not _path_readable_nonempty(implementation_paths):
-            return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
-        pathspec = implementation_paths
-    else:
+    dispatcher_commit_complete = bool(dispatcher_committed and manifest_path and _path_readable_nonempty(Path(manifest_path)))
+    seed = _resolve_step4_commit_seed(
+        implement_tmpdir=implement_tmpdir,
+        dispatcher_commit_complete=dispatcher_commit_complete,
+    )
+    if seed is None:
         return "seed-failed", "COMMIT_ROUTE_OUTCOME=seed-failed\n"
-
-    if _pathspec_clean_relative_to_head(pathspec):
-        return _step4_noop("already-committed")
+    if seed.pathspec is None:
+        return _step4_noop(seed.noop_reason)
+    if _pathspec_clean_relative_to_head(seed.pathspec):
+        noop_reason = "dispatcher-committed" if dispatcher_commit_complete else "already-committed"
+        return _step4_noop(noop_reason)
 
     result = _run_leg_with_timeout(
         argv=[
             "implement",
             "commit",
             "--message",
-            message,
+            seed.message,
             "--pathspec-from-file",
-            str(pathspec),
+            str(seed.pathspec),
             "--pathspec-file-nul",
         ],
         deadline_ms=deadline_ms,
