@@ -682,7 +682,9 @@ def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, mon
     _ = claude.write_text(
         "#!/usr/bin/env bash\n"
         "cat >/dev/null\n"
-        "printf '%s\\n' '{\"result\":\"review ok\"}'\n",
+        "printf '{\"result\":\"env=%s\"}\\n' \"${"
+        + config.ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT
+        + ':-missing}"\n',
         encoding="utf-8",
     )
     claude.chmod(0o755)
@@ -705,7 +707,7 @@ def test_launch_claude_subprocess_uses_stdin_not_prompt_argv(tmp_path: Path, mon
     meta = output.with_suffix(output.suffix + ".meta").read_text(encoding="utf-8")
     assert secret_prompt not in meta
     assert "CMD_JSON=" in meta
-    assert output.read_text(encoding="utf-8") == "review ok"
+    assert output.read_text(encoding="utf-8") == "env=1"
     assert "HARD CONSTRAINTS" in output.with_suffix(output.suffix + ".prompt").read_text(encoding="utf-8")
 
 

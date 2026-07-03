@@ -153,6 +153,8 @@ def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, c
                 stderr_path.open("wb") as stderr_w,
             ):
                 try:
+                    child_env = dict(os.environ)
+                    child_env[config.ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT] = "1"
                     # lint-subprocess-via-runner: ok fast-fail auth polling needs Popen; the Runner seam is blocking-only (#5605)
                     proc_obj = subprocess.Popen(  # pylint: disable=consider-using-with
                         list(cmd),
@@ -160,6 +162,7 @@ def _run_claude_with_stdin(*, cmd: Sequence[str], prompt: str, timeout: float, c
                         stdout=stdout_w,
                         stderr=stderr_w,
                         cwd=cwd,
+                        env=child_env,
                     )
                 except FileNotFoundError as exc:
                     return CommandResult(tuple(cmd), 127, "", f"Failed to launch child: {exc}\n", time.monotonic() - start)
