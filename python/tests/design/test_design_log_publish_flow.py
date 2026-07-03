@@ -102,6 +102,8 @@ def test_log_publish_dry_run_success(tmp_path: Path) -> None:
     )
     assert result.returncode == 0
     assert "PUBLISH_OK=true" in result.stdout
+    summary = (design / "final-summary.md").read_text(encoding="utf-8")
+    assert "<!-- larch:run-summary v=1 -->" in summary
 
 
 
@@ -251,6 +253,16 @@ def test_log_publish_commits_pushes_and_opens_pr(tmp_path: Path) -> None:
     assert f"larch-logs/design/{RUN_ID}/artifact.txt" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/final-summary.md" in ls.stdout, ls.stdout
     assert f"larch-logs/design/{RUN_ID}/manifest.json" in ls.stdout, ls.stdout
+    blob = subprocess.run(
+        ["git", "show", f"{LOG_BRANCH}:larch-logs/design/{RUN_ID}/final-summary.md"],
+        cwd=origin,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert blob.returncode == 0, blob.stderr
+    assert "STALE-SENTINEL" not in blob.stdout
+    assert "<!-- larch:run-summary v=1 -->" in blob.stdout
     meta = (design / ".design-log-publish-metadata.env").read_text(encoding="utf-8")
     assert "DESIGN_LOG_PR_NUMBER=77" in meta
 
@@ -267,6 +279,7 @@ def test_log_publish_commits_enriched_final_summary_without_helper_upsert(
     _ = (design / "final-summary.md").write_text("STALE-SENTINEL\n", encoding="utf-8")
     bin_dir = tmp_path / "bin"
     _write_gh_stub(bin_dir / "gh", pr_create_rc=0)
+    monkeypatch.setenv("PATH", f"{bin_dir}:{os.environ.get('PATH', '')}")
 
     captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
     upsert_calls: list[list[str]] = []

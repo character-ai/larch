@@ -846,6 +846,62 @@ def _emit_report_gate_sidecars_from_disk(design_tmpdir: Path) -> None:
         logging_util.emit_kv(key="REPORT_GATE_SIDECARS_FILE", value=str(handoff))
 
 
+def _is_terminal_publish_outcome(outcome: str) -> bool:
+    return outcome.startswith("cancelled-") and outcome != "cancelled-clarify"
+
+
+def _parse_contract_value(text: str, key: str) -> str:
+    value = ""
+    for line in text.splitlines():
+        if line.startswith(f"{key}="):
+            value = line.split("=", 1)[1]
+    return value
+
+
+def _has_nonempty_final_summary(path: Path) -> bool:
+    return not path.is_symlink() and path.is_file() and path.stat().st_size > 0
+
+
+def _touch_final_summary_complete(design_tmpdir: Path) -> None:
+    completed = design_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-final-summary").touch()
+
+
+def _publish_terminal_final_summary(
+    *,
+    design_tmpdir: Path,
+    run_id: str,
+    issue: str,
+    outcome: str,
+    repo: str = "",
+) -> tuple[int, bool]:
+    from larch.design import design_log_publish_flow  # noqa: PLC0415
+
+    args = [
+        "--design-tmpdir",
+        str(design_tmpdir),
+        "--run-id",
+        run_id,
+        "--issue",
+        issue,
+        "--outcome",
+        outcome,
+    ]
+    if repo:
+        args.extend(["--repo", repo])
+    stdout_log = design_tmpdir / "design-log-publish.terminal.stdout.log"
+    stderr_log = design_tmpdir / "design-log-publish.terminal.stderr.log"
+    rc = 1
+    with stdout_log.open("w", encoding="utf-8") as out, stderr_log.open("w", encoding="utf-8") as err:
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            rc = int(design_log_publish_flow.log_publish_main(args))
+    stdout_text = stdout_log.read_text(encoding="utf-8", errors="replace") if stdout_log.is_file() else ""
+    publish_ok = _parse_contract_value(stdout_text, "PUBLISH_OK")
+    recovery_branch = _parse_contract_value(stdout_text, "RECOVERY_BRANCH")
+    return rc, rc == 0 and publish_ok == "true" and not recovery_branch
+
+
 def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     old_environ: dict[str, str] = os.environ.copy()
     try:
@@ -865,11 +921,62 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         logging_util.quiet_init(argv0="design-step-final-summary.sh")
         ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         final_summary_path = ctx.final_summary_path or str(design_tmpdir / "final-summary.md")
+        disk_final_summary = design_tmpdir / "final-summary.md"
         if (design_tmpdir / ".pause-requested").is_file():
             return _call_pause_save(design_tmpdir=design_tmpdir, ctx=ctx), []
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / "step-final-summary").unlink(missing_ok=True)
         with _bg_wait_marker_context(design_tmpdir=design_tmpdir, step="design-step-final-summary", claude_pid=parsed.claude_pid):
+            if ctx.summary_outcome in {"cancelled-clarify", "failed-clarify"} and _has_nonempty_final_summary(disk_final_summary):
+                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary))
+                _emit_report_gate_sidecars_from_disk(design_tmpdir)
+                sys.stdout.flush()
+                with contextlib.suppress(OSError):
+                    _final_summary_stream().flush()
+                _touch_final_summary_complete(design_tmpdir)
+                return 0, []
+            if _is_terminal_publish_outcome(ctx.summary_outcome):
+                if not ctx.session_id:
+                    _append_execution_issue(
+                        design_tmpdir=design_tmpdir,
+                        message="Warning: design log publish skipped for terminal summary because SESSION_ID is missing",
+                    )
+                    return 1, []
+                publish_rc, publish_ok = _publish_terminal_final_summary(
+                    design_tmpdir=design_tmpdir,
+                    run_id=ctx.session_id,
+                    issue=ctx.issue_number,
+                    outcome=ctx.summary_outcome,
+                    repo=ctx.repo,
+                )
+                if not publish_ok:
+                    _append_execution_issue(
+                        design_tmpdir=design_tmpdir,
+                        message=f"Warning: design log publish failed for terminal summary (exit {publish_rc})",
+                    )
+                    return 1, []
+                from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
+
+                repo_args = ["--repo", ctx.repo] if ctx.repo else []
+                if not upsert_final_summary_from_disk(
+                    design_tmpdir=design_tmpdir,
+                    issue=ctx.issue_number,
+                    session_id=ctx.session_id,
+                    repo_args=repo_args,
+                    final_summary_path=disk_final_summary,
+                ):
+                    _append_execution_issue(
+                        design_tmpdir=design_tmpdir,
+                        message="Warning: tracking-issue upsert-summary failed for terminal final summary",
+                    )
+                    return 1, []
+                _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=str(disk_final_summary))
+                _emit_report_gate_sidecars_from_disk(design_tmpdir)
+                sys.stdout.flush()
+                with contextlib.suppress(OSError):
+                    _final_summary_stream().flush()
+                _touch_final_summary_complete(design_tmpdir)
+                return 0, []
             # Local import is deliberate to avoid a design_summary <-> design_lifecycle
             # top-level import cycle while preserving the in-process port.
             from larch.design.design_summary import render_final_summary_main  # noqa: PLC0415
@@ -903,9 +1010,7 @@ def step_final_summary_core(argv: Sequence[str]) -> tuple[int, list[str]]:
             with contextlib.suppress(OSError):
                 _final_summary_stream().flush()
             if render_rc == 0:
-                completed = design_tmpdir / ".completed"
-                completed.mkdir(parents=True, exist_ok=True)
-                (completed / "step-final-summary").touch()
+                _touch_final_summary_complete(design_tmpdir)
             return int(render_rc), []
     except ValueError as exc:
         _core_diagnostic(f"design-step-final-summary.sh: {exc}")

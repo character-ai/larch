@@ -16,7 +16,7 @@ from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_lifecycle
 from larch.design import design_pause
-from larch.design.design_summary import resolve_summary_mode
+from larch.design import design_summary
 from larch.git import gh
 from larch import io as larch_io
 from larch.core import logging_util
@@ -830,38 +830,12 @@ def _stage_failed_clarify(
         )
 
 
-def _parse_publish_ok(text: str) -> str:
+def _parse_publish_value(text: str, key: str) -> str:
     value = ""
     for line in text.splitlines():
-        if line.startswith("PUBLISH_OK="):
+        if line.startswith(f"{key}="):
             value = line.split("=", 1)[1]
     return value
-
-
-def _render_clarify_final_summary(
-    *,
-    design_tmpdir: Path,
-    env: dict[str, str],
-    issue: str,
-    outcome: str,
-) -> bool:
-    from larch.design.design_summary import (  # noqa: PLC0415
-        FinalSummaryRenderRequest,
-        render_final_summary_for_request,
-    )
-
-    return render_final_summary_for_request(
-        FinalSummaryRenderRequest(
-            design_tmpdir=design_tmpdir,
-            outcome=outcome,
-            mode=resolve_summary_mode(design_tmpdir),
-            issue_number=issue,
-            session_id=env.get("SESSION_ID", ""),
-            repo=env.get("REPO", ""),
-            upsert_summary_comment=True,
-            stdout_log_path=design_tmpdir / f"render-final-summary.{outcome}.clarify.stdout.log",
-        )
-    )
 
 
 def _publish_clarify_log_and_summary(
@@ -894,8 +868,9 @@ def _publish_clarify_log_and_summary(
         stdout_path=design_tmpdir / "design-log-publish.stdout",
         stderr_path=design_tmpdir / "design-log-publish.failure.log",
     )
-    parsed_publish_ok = _parse_publish_ok(publish.stdout)
-    publish_ok = "true" if publish.returncode == 0 and parsed_publish_ok == "true" else "false"
+    parsed_publish_ok = _parse_publish_value(publish.stdout, "PUBLISH_OK")
+    recovery_branch = _parse_publish_value(publish.stdout, "RECOVERY_BRANCH")
+    publish_ok = "true" if publish.returncode == 0 and parsed_publish_ok == "true" and not recovery_branch else "false"
     if publish_ok != "true":
         failure_exit = publish.returncode if publish.returncode != 0 else 1
         _append_clarify_failure(
@@ -907,14 +882,39 @@ def _publish_clarify_log_and_summary(
             exit_code=failure_exit,
             output_file=design_tmpdir / "design-log-publish.failure.log",
         )
-    if publish_ok == "true":
-        _ = _render_clarify_final_summary(
+        return "false"
+    upsert_ok = design_summary.upsert_final_summary_from_disk(
+        design_tmpdir=design_tmpdir,
+        env=env,
+        issue=issue,
+        session_id=session_id,
+        repo_args=repo_args,
+    )
+    if not upsert_ok:
+        upsert_log = design_tmpdir / f"summary-upsert.{outcome}.failure.log"
+        upsert_log.write_text("tracking-issue upsert-summary failed or final-summary.md missing\n", encoding="utf-8")
+        _append_clarify_failure(
+            plugin_root=plugin_root,
             design_tmpdir=design_tmpdir,
             env=env,
-            issue=issue,
-            outcome=outcome,
+            site="design Step 0b final summary upsert",
+            tool="tracking-issue upsert-summary",
+            exit_code=1,
+            output_file=upsert_log,
         )
-    return publish_ok
+        return "false"
+    return "true"
+
+
+def _clarify_publish_status(*, design_tmpdir: Path, publish_ok: str) -> str:
+    if publish_ok == "true":
+        return "ok"
+    publish_stdout = design_tmpdir / "design-log-publish.stdout"
+    if publish_stdout.is_file() and _parse_publish_value(publish_stdout.read_text(encoding="utf-8", errors="replace"), "RECOVERY_BRANCH"):
+        return "log-publish-recovery"
+    if any(design_tmpdir.glob("summary-upsert.*.failure.log")):
+        return "summary-upsert-failed"
+    return "log-publish-failed"
 
 
 def _emit_design_kvs(rows: list[tuple[str, str]]) -> None:
@@ -1272,7 +1272,7 @@ def _handle_design_clarify_publish(
             )
 
     rows = [
-        ("CLARIFY_PUBLISH_STATUS", "ok"),
+        ("CLARIFY_PUBLISH_STATUS", _clarify_publish_status(design_tmpdir=design_tmpdir, publish_ok=publish_ok)),
         ("PLAN_WRITE_OK", "true"),
         ("PUBLISH_OK", publish_ok),
         ("RENAMED", renamed),
