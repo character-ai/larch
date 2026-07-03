@@ -422,7 +422,7 @@ def _locked_tsv_append(path: Path, row: _ChecksDigestSizeRow) -> None:
                     return
                 time.sleep(0.05)
         try:
-            handle.seek(0, os.SEEK_END)
+            _ = handle.seek(0, os.SEEK_END)
             _write_checks_digest_size_tsv(handle=handle, row=row, needs_header=handle.tell() == 0)
         finally:
             fcntl.flock(handle.fileno(), fcntl.LOCK_UN)

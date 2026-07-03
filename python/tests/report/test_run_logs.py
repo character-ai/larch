@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from io import StringIO
 from pathlib import Path
-from typing import Any, cast
+from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
@@ -20,9 +20,11 @@ from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 
 class RecordingRunner(_RecordingRunner):
@@ -1529,7 +1531,7 @@ def test_checks_digest_sizes_batch_is_append_mode_tsv(tmp_path: Path) -> None:
     assert run_logs._batch_extension("checks-digest-sizes") == ".tsv"  # pyright: ignore[reportPrivateUsage]
     assert run_logs._batch_sanitizer("checks-digest-sizes") == "none"  # pyright: ignore[reportPrivateUsage]
     record = tmp_path / "row.tsv"
-    record.write_text(
+    _ = record.write_text(
         "site\tattempt\tredacted_bytes\tdigest_bytes\tredacted_tokens\tdigest_tokens\tsaved_bytes\tsaved_tokens\tdigest_truncated\n"
         "step6\t1\t100\t20\t25\t5\t80\t20\tfalse\n",
         encoding="utf-8",
