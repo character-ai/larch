@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:18:17
-- **Cost**: 💰 TOTAL ~$41.91 — Claude $0.75, Codex-5.5 $23.69, Codex-mini $1.72, Cursor $14.24, Claude (subprocess) $1.51  |  Tokens: 71092k
+- **Cost**: 💰 TOTAL ~$41.35 — Claude $0.19, Codex-5.5 $23.69, Codex-mini $1.72, Cursor $14.24, Claude (subprocess) $1.51  |  Tokens: 70947k
 - **Issue**: #6115 — https://github.com/character-ai/larch/issues/6115
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,13 +11,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/9CF36376-D3FC-41B8-A6D3-1C2636C7920C/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.3.0
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a (architectural guidelines): G-Cfg-1 deviation — `config.ENV_MODE: Final = "MODE"` (python/larch/core/config.py:511) is the existing canonical definition for the `MODE` env-var name, previou...
 
 ## Review Phase Detail
 
@@ -116,3 +121,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_3** (latent): Double-render paths can diverge or leave the tracking comment stale. Concern: The clarify/approved publish flow renders the summary twice, so a failed second pass or enrichment drift can leave the committed log and tracking comment inconsistent.
 - **Round 2 OOS_4** (nit): Clarify label-remove failure path lacks coverage. Concern: There is still no test for the session-backed label-remove failure path with a failed-clarify outcome and upsert gating, so that combination could regress unnoticed.
 - **Additional candidates**: 4 omitted by the final-summary cap.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
