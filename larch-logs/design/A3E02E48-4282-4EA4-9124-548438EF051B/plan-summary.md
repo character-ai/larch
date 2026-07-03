@@ -1,0 +1,1 @@
+Add a narrow `run-log validate-run-id` CLI verb that delegates to `validate_run_id_slug`, then make `/review` Step 4 call it instead of duplicating the slug rule in Bash. Cover the Python entry point, dispatcher registration, quiet-mode handling, and invalid-value behavior with focused tests.
