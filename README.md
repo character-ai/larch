@@ -11,7 +11,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 ## Support Skills
 
 - Manage issues and their dependencies: `/issue`, `/bug`, `/combine-issues`, `/block-issue`, `/deps`
-- Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
+- Various analysis tools: `/report-tokens`, `/fluff-analysis`, `/difficulty-calibration`, `/rejected-analysis`, `/analyze-issues`, `/audit-runs`
 - `larch` management: `/status`, `/upgrade-larch`, `/larch-size`
 
 ## Table of Contents
@@ -129,6 +129,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><code>--n DAYS</code></td>
     </tr>
     <tr><td colspan="2">Recover verified real rejected code-review findings from committed run logs and file issues by default. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
+      <td><a href="docs/skills.md#difficulty-calibration"><code>/difficulty-calibration</code></a></td>
+      <td><code>[--log-root DIR] [--out FILE]</code></td>
+    </tr>
+    <tr><td colspan="2">Compare predicted and realized difficulty tiers from committed run logs. Diagnostic only; changes no thresholds, panels, tokens, routing, or reviewer points.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#voter-calibration"><code>/voter-calibration</code></a></td>

@@ -604,6 +604,7 @@ Run dirs with a `gc-slimmed` marker may be missing non-keep-set files. Audit sca
 **Consumer safety**:
 
 - `/report-tokens` (both skills): full cost-trend history is preserved indefinitely because it reads exactly the keep-set files. For `/design`, runs that never finalized `token-report-final.json` are priced from the retained `larch-tokens-*.jsonl` ledger fallback (committed vendor lanes only; the main-agent Claude lane lives in the uncommitted transcript and is not recoverable).
+- `/difficulty-calibration`: reads `difficulty-rating.json`, classification TSVs, JSONL/NDJSON fallback findings, token/timing reports, and `rejected-analysis-verdicts.tsv`. It tolerates gc-slimmed dirs and pre-initiative gaps. Non-escalated runs without a parseable classification source report realized tier `unknown`. It is read-only and produces no run-log batches.
 - `audit-runs`: targets recent batches within the retention window; aged dirs carry the `gc-slimmed` marker for honest scan reporting.
 
 ## Authoritative sources
@@ -638,7 +639,9 @@ Concise review logs now use `round-meta.json` `reviewer_signals[]` for reviewer 
 
 `larch-logs/rejected-analysis-ledger.tsv` is the committed idempotency ledger for `/rejected-analysis`. It records deterministic drops, verification outcomes, stale or already-fixed results, dirty-tree rejects, security-sensitive skips, cap drops, near-duplicate `alias_of` links, filed issue numbers, and deduplicated issue mappings. The primary key is `finding_hash`, computed from normalized `file_path` plus normalized `concern` only. `line_hint`, `FINDING_N`, run id, round, voter slots, and filesystem state do not participate in the hash.
 
-`larch-logs/rejected-analysis-verdicts.tsv` is the committed sidecar when verifier verdicts exist. It carries `finding_hash`, source skill, run id, round, finding id, dissenting slots, verifier verdict, re-checked location, evidence, and triage time for downstream diagnostics and `/voter-calibration` false-negative labels.
+`larch-logs/rejected-analysis-verdicts.tsv` is the committed sidecar when verifier verdicts exist. It carries `finding_hash`, source skill, run id, round, finding id, dissenting slots, verifier verdict, re-checked location, evidence, and triage time for downstream diagnostics, `/voter-calibration` false-negative labels, and `/difficulty-calibration` under-rating annotations.
+
+`/difficulty-calibration` reads `difficulty-rating.json`, classification TSVs, `review-findings-full.jsonl` or `review-findings.ndjson` fallbacks, token/timing reports, and the verdict sidecar from committed logs. It tolerates gc-slimmed dirs and missing pre-initiative artifacts. Non-escalated runs without a parseable classification source report realized tier `unknown`. The analyzer is read-only and writes no run-log batches.
 
 The collector reads implement artifacts from `larch-logs/implement/<run>/round-*/review-findings-full.jsonl` with `round-*/findings-classification.tsv`, falling back to the run-root JSONL only when no round-local JSONL exists. It reads standalone review artifacts from `larch-logs/review/<run>/review-findings.ndjson` with `review-findings-classification-round-*.tsv`, using `review-findings-full.jsonl` only as a fallback.
 

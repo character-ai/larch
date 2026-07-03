@@ -18,6 +18,7 @@ The skill set documented here matches the skills in the repository. Each entry l
 - [`/deps`](#deps)
 - [`/fluff-analysis`](#fluff-analysis)
 - [`/rejected-analysis`](#rejected-analysis)
+- [`/difficulty-calibration`](#difficulty-calibration)
 - [`/voter-calibration`](#voter-calibration)
 - [`/gc-run-logs`](#gc-run-logs)
 - [`/implement`](#implement)
@@ -111,7 +112,27 @@ The inclusion rule is deliberately narrow: keep rejected in-scope code-review ro
 
 The stable `finding_hash` hashes only normalized `file_path` plus normalized `concern`. `FINDING_N`, `line_hint`, run id, round, voter slots, and filesystem existence are ledger diagnostics only. Near-duplicate siblings are ledgered with `alias_of`, and every verification attempt writes durable `ingest-status.jsonl` staging so `launch-failed` remains retryable while terminal stale, already-fixed, dirty-tree, and verification-failed dispositions are not repeated.
 
-Verifier replies must bind back to the candidate path, with a small line slack when a line hint exists. Fields are TSV-sanitized before committed ledger, sidecar, or issue-batch output. Confirmed non-security findings are clustered and filed through `/issue`; `issue-cluster-map.json` maps batch indexes back to finding hashes, including dedup outcomes. Security-sensitive findings are skipped in prepare and re-filtered in finalize, then routed to `SECURITY.md` disclosure guidance instead of public filing. The verdict sidecar feeds `/voter-calibration`; this skill does not score voters.
+Verifier replies must bind back to the candidate path, with a small line slack when a line hint exists. Fields are TSV-sanitized before committed ledger, sidecar, or issue-batch output. Confirmed non-security findings are clustered and filed through `/issue`; `issue-cluster-map.json` maps batch indexes back to finding hashes, including dedup outcomes. Security-sensitive findings are skipped in prepare and re-filtered in finalize, then routed to `SECURITY.md` disclosure guidance instead of public filing. The verdict sidecar feeds `/voter-calibration` and `/difficulty-calibration`; this skill does not score voters.
+
+### `/difficulty-calibration`
+
+**Arguments**: `[--log-root DIR] [--out FILE]`
+
+**Source**: [`skills/difficulty-calibration/SKILL.md`](../skills/difficulty-calibration/SKILL.md)
+
+Compare predicted and realized difficulty tiers from committed `larch-logs/` data. The analyzer is read-only unless `--out FILE` is provided. It changes no thresholds, panels, reviewer points, token allocation, or live routing.
+
+The analyzer joins `difficulty-rating.json`, classification artifacts, token reports, timing reports, and `larch-logs/rejected-analysis-verdicts.tsv` when present. Classification precedence is fixed by skill:
+
+- `/implement`: `round-*/findings-classification.tsv`, then run-root `review-findings-full.jsonl`.
+- `/review`: `review-findings-classification-round-*.tsv`, then `review-findings.ndjson`, then run-root `review-findings-full.jsonl`.
+- `/design`: `plan-review/round-*/findings-classification.tsv` only.
+
+The realized-difficulty formula is fixed and severity-safe: committed escalation evidence makes the run `HARD` first; otherwise the deduped in-scope accepted finding count maps to `TRIVIAL` for 0, `MODERATE` for 1-2, and `HARD` for 3 or more. Substantiality evidence is committed-only; the analyzer does not reconstruct it from stdout, LOC snapshots, or severity labels.
+
+Audit pairing and drift tables bucket runs by `manifest.started_at` in UTC. Audited runs match only unaudited peers with the same skill, same pre-audit tier, and same calendar month. Missing timestamps or pre-audit tiers render `n/a`; peers are never synthesized.
+
+The report includes corpus and degraded-input counters, confusion matrices by skill and rater, under-rating misses with run-log links and false-negative sidecar annotations, per-tier token/cost/latency summaries, audit-run deltas, escalation statistics, and tier-distribution drift. Missing pre-initiative or gc-slimmed artifacts degrade to counters or `n/a`; non-escalated runs without a parseable classification source report realized tier `unknown` and do not enter matrix denominators.
 
 ### `/voter-calibration`
 
