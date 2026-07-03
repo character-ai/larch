@@ -50,6 +50,7 @@ printf '> **🔶 /implement 5: code review — review-and-fix step5 --mode loop,
 # Write bg-wait marker so hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress
 # probes during the review wait. Fail-open: a write failure must not abort the review.
 rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-5-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
 _step5_cleanup() {
   mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
   printf '' >"$IMPLEMENT_TMPDIR/.completed/step-5-terminal" 2>/dev/null || true
