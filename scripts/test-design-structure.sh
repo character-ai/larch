@@ -197,6 +197,7 @@ contains "$SKILL_MD" 'the sanctioned recovery path is one foreground, non-sleepi
 contains "$SKILL_MD" 'NEVER launch a background recovery waiter' 'Design anti-patterns must retain background recovery waiter ban'
 contains "$SKILL_MD" 'Do NOT fall back to Monitor' 'Design anti-patterns must retain Monitor fallback ban'
 contains "$SKILL_MD" 'read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics' 'Design anti-patterns must point detailed recovery to design-background-wait'
+contains "$SKILL_MD" 'NEVER treat an AskUserQuestion no-response fallback as an operator answer' 'Design anti-patterns must not treat AskUserQuestion no-response as an answer'
 contains "$SHARED_DESIGN_WAIT_MD" 'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.' 'Shared design wait must own Step 3 completion-condition literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'Foreground terminal-sentinel probe: after a premature notification with non-empty task output' 'Shared design wait must own foreground-probe literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'Foreground probes are non-sleeping `[ -f … ]` or `test -f …` checks only.' 'Shared design wait must document foreground probe forms'

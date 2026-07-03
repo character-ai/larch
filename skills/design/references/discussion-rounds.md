@@ -119,7 +119,7 @@ Reviewer findings are NEVER applied here. Gate B owns those. Print the revised p
 
 ## Cap
 
-At most **7 `AskUserQuestion` calls** in this step. If more than 7 decision branches remain, print: `⏩ Remaining design questions deferred to implementation.` and proceed.
+At most **7 `AskUserQuestion` calls** in this step. No-response refires retry the current branch and do not advance the seven-call decision counter. If more than 7 decision branches remain, print: `⏩ Remaining design questions deferred to implementation.` and proceed.
 
 ## Terse answers
 
