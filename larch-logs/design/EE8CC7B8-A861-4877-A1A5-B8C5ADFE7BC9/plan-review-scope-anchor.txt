@@ -1,0 +1,130 @@
+## Summary
+
+`/implement --merge`'s "Architectural guidelines" final-report note is dropped when `ship.py`'s CI-monitor loop performs a mid-loop rebase onto `origin/main` (in `_ship_rebase_phase` / `_ship_phase14_rebase`, `python/larch/implement/ship_merge.py:219,251`). Unlike every other known invalidation call site in this subsystem, these two call `_invalidate_guidelines_note` **directly and unconditionally** — with no attempt at `pin_note_from_staged_for_current_head` (the single-snapshot re-pin already used everywhere else) before giving up. This is a **distinct, still-open gap** in an active, multi-issue effort (#5754, #5969, #6021, #6034, #6059, #6061, #6062, #6063 — all closed) that has repeatedly fixed the *other* two known call sites but has never touched this one.
+
+## Related issues (read before triaging as a duplicate)
+
+This exact user-facing message has its own extensive history in this repo. All of the following are closed/`[DONE]`, and all of them fix a real bug — but none of them fix the mechanism described here:
+
+- **#5754** — fixed the post-merge `git checkout main` false-positive (`note_consumable` too strict once local HEAD moves to `main`). Added `note_readable_any_head()` fallback + a post-merge skip guard in `closeout.py`.
+- **#5969** — fixed `refresh_staged_assessment_for_current_head` returning `False` on *any* fingerprint drift instead of recovering. Scoped explicitly (per the issue's own plan) to the `ship_guidelines.py` caller only, i.e. `_pin_and_load_guidelines_note`, which is called exactly once, at initial PR-body composition (`ship.py`'s `_compose_pr_body_for_pr_create`).
+- **#6021** — extended the #5969 refresh-retry to the `closeout.py` best-effort pin (`_pin_architectural_guidelines_note_best_effort`), explicitly named in #5969 as "consciously left out of scope" the first time.
+- **#6034** — fixed `step_16_16a` (terminal-stall closeout path) never calling the pin helper at all (only `step_16_17` did).
+- **#6059** — fixed a TOCTOU race in the *same* `ship_guidelines.py` compose-time call site #5969 touched: three independent live-diff/fingerprint computations (initial check, refresh, retry) could each observe a different `origin/main`/HEAD state on a busy shared repo. Fixed by materializing the live diff once and reusing it.
+- **#6061** — diagnostic-only: guideline-drop warnings not reliably reaching committed run logs.
+- **#6062** — applied the #6059 single-materialization fix to `closeout.py` (which still had the old repeated-computation pattern) and made `materialize_implementation_diff` itself internally atomic (freeze `HEAD` once, reuse for both `merge-base` and `diff`).
+- **#6063** — test-coverage-only, no behavior change.
+
+Every one of these fixes lives in `ship_guidelines.py`'s `_pin_and_load_guidelines_note` (PR-creation-time compose) or `closeout.py`'s `_pin_architectural_guidelines_note_best_effort` (Step 16/16a/17). **`ship_merge.py:219` (`_ship_rebase_phase`) and `ship_merge.py:251` (`_ship_phase14_rebase`) are a third call site that none of the eight issues above mention, reference, or modify.** These two fire whenever the CI-monitor loop decides the PR needs a rebase-and-repush *after* the PR already exists (i.e., mid-CI-wait, not at initial creation and not at closeout) — a very common event on a busy shared repo, exactly the condition #5969/#6059/#6062 already document as routine here. And unlike the two already-fixed call sites, they don't call `pin_note_from_staged_for_current_head` (or any recovery helper) at all before invalidating — they go straight to `_invalidate_guidelines_note`.
+
+## Original report
+
+The architectural guideline note was dropped because HEAD drifted after staging.
+
+## Reproduction scenario
+
+Run `/implement --merge <issue>` on this repo (any issue whose plan touches files covered by `ARCHITECTURAL_GUIDELINES.md`) while other PRs are actively landing on `origin/main` — the routine case here, per #5969's own frequency audit and #6059's observed concurrent-merge conditions.
+
+1. Step 7a's "Architectural guidelines (Phase A — staging)" stages a clean assessment (e.g. "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.").
+2. Step 8+ (`ship pr`) creates the PR; `_compose_pr_body_for_pr_create` successfully pins the note via `_pin_and_load_guidelines_note` (this path is the one #5969/#6059 already hardened). The PR body includes the note.
+3. While `ship.py`'s CI-monitor loop is waiting on CI, `origin/main` advances (routine on this repo). `monitor.goto_rebase` fires, and `_ship_rebase_phase` (or, on the phase-14 force-push-gate path, `_ship_phase14_rebase`) runs `rebase.rebase_and_push(...)`, then immediately calls `_invalidate_guidelines_note(working.tmpdir)` — no pin/refresh attempt at all.
+4. By the time Step 16-17 (or a later `closeout.py` re-pin attempt) runs, the staged assessment and durable note are already gone; only the generic drop-notice placeholder survives.
+
+Concretely observed in the run just completed in this session: issue #6091 / PR #6100. Step 7a staged "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified." (`ARCHITECTURAL_GUIDELINES_WRITE_STATUS=ok`). `step-8-ship.sh` ran once in the background and returned `NEXT_ACTION=complete` directly — no `ci-fix` or `conflict-fix` `NEXT_ACTION` ever reached the orchestrator, ruling out the two orchestrator-escalation paths (which are the only paths documented to rerun Phase A). Step 16-17's mechanical re-pin attempt logged `ARCHITECTURAL_GUIDELINES_PIN_STATUS=skipped`, and the final summary showed only the generic drop notice — matching the exact symptom in #5754/#5969/#6021/#6034/#6059, but with all of those specific root causes already fixed in the tree at the time of this run.
+
+`command grep -rn "dropped because HEAD drifted" larch-logs/` shows this message recurring across many `larch-logs/implement/<run-id>/final-summary.md` files, including several dated after #6062's fix — consistent with a still-open gap.
+
+## Expected behavior
+
+A mid-CI-loop rebase that doesn't touch the feature branch's own files should not need to drop the note at all: `pin_note_from_staged_for_current_head` (already used by the two other call sites) is designed to re-stage the same assessment text against a freshly recomputed live diff/HEAD without new LLM judgment. The rebase-phase handlers should attempt this before falling back to invalidate, exactly as `_compose_pr_body_for_pr_create` and (post-#6021/#6062) `closeout.py` already do.
+
+## Observed behavior
+
+`_ship_rebase_phase` (`ship_merge.py:219`) and `_ship_phase14_rebase` (`ship_merge.py:251`) call `_invalidate_guidelines_note(working.tmpdir)` unconditionally immediately after every successful `rebase_and_push`, with no attempt to re-pin first. `_invalidate_guidelines_note` correctly persists the generic drop notice before wiping the staged/durable artifacts (via `maybe_persist_dropped_note_before_invalidate` + `invalidate_implement_note`), so nothing is silently lost from an auditability standpoint — but a still-valid assessment is discarded even when nothing about the underlying diff changed.
+
+Two related call sites show the same *shape* of unconditional invalidate-without-pin-attempt and may warrant the same fix, though I have not traced whether they're reachable without an orchestrator round-trip the way `ship_merge.py`'s is:
+- `python/larch/implement/ci_monitor.py:1625` (`_invalidate_guidelines_before_push`, inside the pending-CI-fix-rebase retry path).
+- `python/larch/implement/ci_agentic_fix.py:101`.
+
+Separately (does not affect the primary finding, but sits in the exact code I read while investigating): `python/larch/implement/ship.py:848`'s `if monitor.did_fixing: _invalidate_guidelines_note(...)` is dead code — `MonitorResult.did_fixing` is hardcoded `False` at all 8 of its construction sites in `ci_monitor.py` (`grep -rn "did_fixing=True" python/larch/` returns zero matches repo-wide), and a docstring on `run_ci_monitor_iteration` (~`ci_monitor.py:1977`) confirms the inline-fix behavior that used to set it was removed.
+
+## Root cause analysis
+
+Confirmed by direct source reading and cross-referenced against the closed-issue history above:
+
+- `python/larch/core/architectural_guidelines.py:33` defines `DROPPED_NOTE_MESSAGE`, matching the observed text exactly.
+- `python/larch/implement/ship_merge.py:219` (`_ship_rebase_phase`) and `:251` (`_ship_phase14_rebase`) call `_invalidate_guidelines_note` with no preceding pin attempt. Confirmed via `grep -rn "_invalidate_guidelines_note(" python/larch/` (excluding tests): only 5 real call sites exist repo-wide (`ci_agentic_fix.py:101`, `ship_merge.py:219`, `ship_merge.py:251`, `ship.py:848` [dead], `ci_monitor.py:1625`), and none of them call any pin/refresh helper first — they all go straight to invalidate. By contrast, both call sites the 8 closed issues actually fixed (`ship_guidelines.py`'s `_pin_and_load_guidelines_note` and `closeout.py`'s `_pin_architectural_guidelines_note_best_effort`) *do* attempt `pin_note_from_staged_for_current_head` / the refresh-then-retry sequence first, and only fall back to a drop notice when that attempt fails.
+- `python/larch/implement/ship_guidelines.py`'s `_pin_and_load_guidelines_note` (the only function that re-stages a note against a live HEAD without requiring fresh LLM judgment) is called from exactly one site in the entire ship pipeline: `ship.py`'s `_compose_pr_body_for_pr_create` (~line 259), used once, at initial PR-body composition. Nothing in `ship.py` / `ship_merge.py` / `ship_pr.py` calls it again after a later invalidation.
+- Issue #6021's own text confirms the scoping history directly: "The #5969 vetted plan scoped the refresh retry to the ship path (`ship_guidelines.py` caller); the closeout caller was identified... as the remaining surface of the same bug class and consciously left out of scope." Neither that issue nor any of its siblings (#6034, #6059, #6061, #6062, #6063) mentions a third caller in `ship_merge.py`.
+- Issue #5969 itself lists "rebase or a CI-fix commit" as the two things that cause "HEAD drifts" in its reproduction scenario — i.e., rebase was already understood as a trigger class in that issue — but the fix that shipped only touched the refresh helper invoked from the PR-creation compose path, not the separate, unconditional invalidate inside the CI-monitor loop's own rebase handlers.
+
+I was not able to directly confirm, from outside the single opaque background `step-8-ship.sh` call, that a `ship_merge.py` rebase specifically (as opposed to `ci_monitor.py:1625` or `ci_agentic_fix.py:101`) is what fired in the issue #6091/PR #6100 run described above — that call's internal Python-level control flow isn't traced back to the orchestrator. This is inferred from: (a) the orchestrator never receiving a `ci-fix`/`conflict-fix` `NEXT_ACTION` in that run, ruling out the two escalation paths that require orchestrator involvement and are the only ones documented to rerun Phase A staging; and (b) `_ship_rebase_phase`/`_ship_phase14_rebase` being the only invalidation call sites reachable with zero orchestrator hand-off. The broader claim — that `ship_merge.py`'s rebase-phase handlers invalidate unconditionally with no pin attempt, unlike the two call sites the closed-issue chain already fixed — is a direct reading of current source, not an inference.
+
+## Evidence
+
+- `python/larch/core/architectural_guidelines.py:33` — `DROPPED_NOTE_MESSAGE` literal.
+- `python/larch/implement/ship_merge.py:219,251` — unconditional `_invalidate_guidelines_note` after successful rebase, no pin/refresh attempt.
+- `python/larch/implement/ship_guidelines.py:119-176` (`_pin_and_load_guidelines_note`) and `ship.py:249-280` (`_compose_pr_body_for_pr_create`) — the sole re-stage call site in the whole pipeline, already hardened by #5969/#6059.
+- `python/larch/state/closeout.py:225-249` (`_pin_architectural_guidelines_note_best_effort`) — the other hardened call site, per #6021/#6034/#6062.
+- Issue #6021 body (quoted above) — direct textual confirmation that the #5969 fix was deliberately scoped to one caller, with a second caller ("closeout") named as an explicitly deferred, separate gap. No text anywhere in #6021/#6034/#6059/#6061/#6062/#6063 names `ship_merge.py`, `_ship_rebase_phase`, or `_ship_phase14_rebase`.
+- Issue #5969 body's reproduction scenario — names "rebase" explicitly as a drift trigger, confirming this class of event was already on the team's radar, just not wired to the call site this report identifies.
+- `command grep -rln "dropped because HEAD drifted" python/ skills/ scripts/` → only `python/larch/core/architectural_guidelines.py` (definition) and `python/tests/git/test_pr_body.py` (a test asserting the literal) — i.e., no test currently exercises the `ship_merge.py` call sites against this message.
+- `command grep -rn "dropped because HEAD drifted" larch-logs/` → matches across many historical run logs; reproduced live in the run for issue #6091/PR #6100 in this session, after all eight related fixes were already merged.
+- `grep -rn "did_fixing=True" python/larch/` → zero matches, confirming the unrelated `ship.py:848` dead-code side-finding.
+
+## Affected files
+
+- `python/larch/implement/ship_merge.py` — the two unaddressed unconditional-invalidate call sites (lines 219, 251); primary fix location.
+- `python/larch/implement/ship_guidelines.py` — houses `_invalidate_guidelines_note`, `_pin_and_load_guidelines_note`; a shared "try pin, then invalidate" helper could live here for reuse by `ship_merge.py`.
+- `python/larch/core/architectural_guidelines.py` — `pin_note_from_staged_for_current_head`, already proven safe to call speculatively (used by both hardened call sites).
+- `python/larch/implement/ci_monitor.py` — a related, not-yet-investigated `_invalidate_guidelines_before_push` call site (line 1625); also the dead `did_fixing` field (line 138, construction sites ~2003-2090).
+- `python/larch/implement/ci_agentic_fix.py` — another related, not-yet-investigated call site (line 101).
+- `python/larch/implement/ship.py` — the sole pin-attempt call site (`_compose_pr_body_for_pr_create`, ~line 259); also the dead `monitor.did_fixing` branch (line 848).
+- Prior art to mirror: `python/larch/state/closeout.py`'s post-#6062 `_pin_architectural_guidelines_note_best_effort`, and `python/larch/implement/ship_guidelines.py`'s `_pin_and_load_guidelines_note`.
+
+## Suggested fix(es)
+
+1. In `_ship_rebase_phase` and `_ship_phase14_rebase`, call `architectural_guidelines.pin_note_from_staged_for_current_head(...)` against the fresh post-rebase HEAD/live diff *before* falling back to `_invalidate_guidelines_note`, mirroring the pattern #5969/#6059 established in `ship_guidelines.py` and #6021/#6062 extended to `closeout.py`. This is a direct application of an already-validated, already-shipped-twice pattern, not a new design.
+2. Audit `ci_monitor.py:1625` and `ci_agentic_fix.py:101` for the same gap — both currently look like unconditional invalidate-without-pin-attempt calls, but I have not fully traced their reachability/frequency the way I traced `ship_merge.py`'s.
+3. Separately, remove the dead `monitor.did_fixing` branch (`ship.py:847-849`) and the always-`False` `did_fixing` field plumbing in `ci_monitor.py`, since it can never fire under the current implementation.
+4. Given the sheer number of prior issues on this exact symptom, consider whether a single shared helper (e.g. `try_pin_or_invalidate(tmpdir, head_sha, base_ref, repo_root)`) belongs in `ship_guidelines.py` or `architectural_guidelines.py`, called uniformly from all five current invalidation sites, so a sixth recurrence isn't needed the next time a new call site is added.
+
+No fix here has been validated against the test suite; `/design` should confirm scope (especially whether to bundle #2 into the same PR, which requires first confirming those two sites are actually reachable and unconditional the way `ship_merge.py`'s are) before implementation.
+
+## Open questions
+
+- Are `ci_monitor.py:1625` and `ci_agentic_fix.py:101` actually reachable without an orchestrator round-trip, the same way `ship_merge.py`'s rebase handlers are? I flagged them by pattern-match (same unconditional-invalidate shape) but did not trace their call graphs as thoroughly as `ship_merge.py`'s.
+- Given how many times this exact user-facing message has recurred (8 prior closed issues), should there be a regression test that specifically asserts "a rebase alone, with an unchanged feature-branch diff, never drops an already-staged note" — exercised against all known invalidation call sites at once, rather than one at a time as each is discovered?
+- Should the dead `monitor.did_fixing` cleanup (suggested fix #3) be folded into whatever PR fixes the primary issue, or filed/handled as separate, unrelated cleanup?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Stop the architectural-guidelines note from being dropped at any of the 4 confirmed invalidation call sites by attempting a pin-from-staged re-stage before falling back to invalidate.
+- Consolidate the "try pin, then invalidate" sequence into one shared helper reused by all 4 fixed call sites, instead of repeating the pattern ad hoc.
+- Remove the confirmed-dead `monitor.did_fixing` branch and its always-`False` plumbing while in this code.
+
+### Non-goals
+- No refactor of the two already-hardened call sites (`ship_guidelines.py`'s `_pin_and_load_guidelines_note`, `closeout.py`'s `_pin_architectural_guidelines_note_best_effort`) — they already pin correctly with logic suited to their own call contexts.
+- No new regression-test harness spanning all 6 call sites uniformly; tests are added per touched module using existing patterns.
+- No behavior change to rebase logic, CI-fix retry mechanics, or push semantics themselves — only guidelines-note handling after those operations succeed.
+
+### Approach sketch
+- Add a shared `try_pin_or_invalidate(...)` helper to `ship_guidelines.py`, wrapping `architectural_guidelines.pin_note_from_staged_for_current_head` with a fallback to the existing `_invalidate_guidelines_note` when the pin attempt returns `False`.
+- Update `ship_merge.py`'s `_ship_rebase_phase` (line 219) and `_ship_phase14_rebase` (line 251) to call the new helper instead of invalidating directly, resolving a fresh post-rebase HEAD via existing `git` Runner helpers.
+- Update `ci_monitor.py`'s `_invalidate_guidelines_before_push` (line 1625) and `ci_agentic_fix.py`'s `_invalidate_guidelines_before_ci_push` (line 101; covers both call sites at 501/726) the same way.
+- Remove the dead `if monitor.did_fixing:` branch in `ship.py` (~847-849) and the always-`False` `did_fixing` field/plumbing in `ci_monitor.py`.
+- Extend unit tests per touched module asserting a pin attempt happens before any fallback invalidate.
+
+### Surfaces in scope
+- `python/larch/implement/ship_guidelines.py` (new shared helper)
+- `python/larch/implement/ship_merge.py` (2 call sites)
+- `python/larch/implement/ci_monitor.py` (1 call site + dead `did_fixing` plumbing)
+- `python/larch/implement/ci_agentic_fix.py` (1 function, 2 call sites)
+- `python/larch/implement/ship.py` (dead code branch)
+- `python/tests/implement/` (corresponding test files)
+
+### Open questions
+- None.

@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- rewiring those cleanup tests is only needed if the optional did_fixing removal stays in this PR; the primary rebase-note fix does not require it.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- repointing ship.* tests is only needed if the optional ship.py import cleanup stays in scope; the bug fix itself does not depend on it.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the planned caller tests can cover the new helper path; a helper-only unit test is useful but not necessary.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- rebase_and_push returns after the branch is updated, so pinning immediately after return can still repin before invalidate.
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- this is separate ci-fix callback scope, not required to fix the ship_merge rebase-note regression.
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dead did_fixing cleanup is separate follow-up work, not necessary for the rebase-note fix.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bundling dead did_fixing removal is optional cleanup, not a requirement for the feature.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the traced ship_merge fix does not require firming up the untraced ci_monitor and ci_agentic_fix paths.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- did_fixing removal is unrelated cleanup and not needed to preserve the architectural-guidelines note on ship_merge rebase.
+FINDING_11: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the primary issue is the ship_merge rebase path; the extra cleanup and untraced paths are follow-up scope.
+FINDING_12: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the broader MonitorResult and helper cleanup is not required to fix the reported rebase regression.
+FINDING_13: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- dead did_fixing removal is separate cleanup, not necessary for the note-preservation bug fix.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

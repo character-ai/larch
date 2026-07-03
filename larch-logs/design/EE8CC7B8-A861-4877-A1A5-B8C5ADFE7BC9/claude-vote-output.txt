@@ -1,0 +1,14 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already mandates removing did_fixing from MonitorResult and rewriting the implicated test; specific test names are implementation-level detail an implementer encounters as compile failures
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- import omission surfaces immediately as NameError during first test run; a competent implementer adds it reflexively when writing git.try_rev_parse
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan line 74 explicitly says "Remove or rewrite test_monitor_did_fixing_invalidates_guidelines_note_via_ship", covering the namespace repointing
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan mandates caller-contract tests (monkeypatched helper calls); a standalone helper unit test is additional coverage the plan did not require
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- helper must run AFTER rebase_and_push returns to obtain the new post-rebase HEAD SHA; the note lives in tmp files not git, so timing relative to force-push is irrelevant
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor's "Approved direction / Goals" explicitly includes did_fixing removal; scope-reduction argument fails because the issue approved this scope
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same as FINDING_7; scope anchor explicitly approves did_fixing removal under "Goals"
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor "Surfaces in scope" explicitly lists ci_monitor.py and ci_agentic_fix.py; scope-reduction argument fails against the approved direction
+FINDING_10: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly approves did_fixing removal; duplicate of FINDING_7/8
+FINDING_11: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly approves all listed surfaces; scope-reduction argument fails
+FINDING_12: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly approves all listed surfaces; duplicate substance of FINDING_9/11
+FINDING_13: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly approves did_fixing removal; duplicate of FINDING_7/8/10
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

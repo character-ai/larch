@@ -1,0 +1,4 @@
+warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: '`Expand \\`### UPDATED: python/tests/implement/test_ship.py\\` to explicitly: remo')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`Extend \\`test_ship.py\\` plan bullets to explicitly delete or rewrite those thre')
+warning: fix text for slot 'Cursor-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: '`Add \\`from larch.git import git\\` (or equivalent project convention) to the \\`s')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_3 not traceable to scoped input (first 80 chars: '`In \\`test_ship.py\\`, add an explicit plan step to repoint those tests to \\`ship')
