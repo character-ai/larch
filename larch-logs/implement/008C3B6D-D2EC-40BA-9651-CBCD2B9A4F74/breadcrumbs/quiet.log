@@ -20,6 +20,7 @@ ci_monitor: CI status query #2 in progress after 14s
 ci_monitor: poll 2/180 pending after 17s; sleeping 10s
 ci_monitor: CI status query #3 in progress after 27s
 ci_monitor: CI fail after 31s -> evaluate_failure
+=== larch-quiet-tracking-issue-upsert-summary-67916.log ===
 === larch-quiet-write-implement-current-env.sh-21896.log ===
 PASS: test-implement-fence-shape.sh launcher sandbox
 === larch-quiet-write-implement-current-env.sh-6564.log ===
