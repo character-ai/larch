@@ -1,0 +1,2 @@
+# [BUG] When /design is run without -s, it should not time out asking for questions or asking for approval after 60 seconds, but wait for answers indefinitely
+

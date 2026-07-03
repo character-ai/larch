@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- explicit precedence over discussion-rounds.md terse-answers is clarity/robustness; the Anti-patterns NEVER section already carries authority over reference files loaded at specific steps; not a necessity gate.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan sketch does not specify text-matching; adding semantic-detection wording improves clarity but the feature is not broken without it; no necessity gate cleared.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already says "stay quiet on repeat retries," which covers absence of side effects; enumerating each suppressed artifact type is robustness, not a missing requirement.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan approach sketch already says "uncapped," which directly addresses cap interaction; an explicit seven-call-cap exclusion is redundant.
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- adding rule 6 brings the six-rule count to match the mindset reference; the stale count resolves as part of this implementation with no separate filing needed.
