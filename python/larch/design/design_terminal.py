@@ -552,7 +552,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         def file_issue_after_dedup() -> str:
             repo = ns.repo
             if not repo:
-                gh_out = subprocess.run(
+                gh_out = subprocess.run(  # lint-subprocess-via-runner: ok current-repo gh lookup is a blocking stdout capture mirroring the tier-a filing helpers
                     ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
                     capture_output=True,
                     text=True,
@@ -570,7 +570,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     else "/design terminal failure"
                 )
                 helper = (
-                    Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
+                    Path(os.environ.get(config.ENV_CLAUDE_PLUGIN_ROOT, Path(__file__).resolve().parents[3]))
                     / "scripts"
                     / "file-failure-report-cross-repo.sh"
                 )
@@ -585,7 +585,7 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                                 design_tmpdir / "design-failure-tier-a-file.stderr.log"
                             ).open("w", encoding="utf-8") as stderr_handle,
                         ):
-                            run_rc = subprocess.run(
+                            run_rc = subprocess.run(  # lint-subprocess-via-runner: ok tier-a file helper streams stdout/stderr to open sidecar log handles instead of captured pipes
                                 [
                                     str(helper),
                                     "--repo",
