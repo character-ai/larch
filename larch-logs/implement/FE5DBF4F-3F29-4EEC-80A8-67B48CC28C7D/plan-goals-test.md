@@ -1,0 +1,130 @@
+## Goal
+Implement issue #6070: [IMPLEMENTING] [BUG] /design plan-review Claude voter subprocesses falsely marked NOT_SUBSTANTIVE by….
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`. Draft from direct repository inspection.
+- Use the approved outline scope.
+- Add one explicit environment signal for Claude subprocesses.
+- Set the signal only in the Python launcher path that spawns `claude --print` children.
+- Make `hook-bg-poll-guard.sh` exit 0 when that signal is present.
+- Keep the existing `LARCH_BG_POLL_GUARD_DISABLE=1` operator escape hatch unchanged.
+- Do not weaken marker liveness, clone scoping, sentinel release, or foreground-probe clamp logic.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Add a `Final` env-var constant near the other `ENV_LARCH_*` constants.
+- Suggested name:
+  - `ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT: Final = "LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT"`
+- Use this constant from Python launcher code.
+- Do not add runtime logic to config.
+
+### UPDATED: python/larch/agents/_claude_runner.py
+
+- In `_run_claude_with_stdin`, build an explicit child environment:
+  - start from `dict(os.environ)`;
+  - set `config.ENV_LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT` to `"1"`;
+  - pass it as `env=child_env` to `subprocess.Popen`.
+- Keep stdin/stdout/stderr file handling unchanged.
+- Keep `cwd` unchanged.
+- Keep timeout and degraded-auth fast-fail behavior unchanged.
+- This covers `launch-claude-subprocess` and `launch-claude-review`, which are the relevant scout, reviewer, and voter subprocess paths in scope.
+- Accept the small broader effect that other `_run_claude_with_stdin` users also self-identify as child Claude subprocesses. They are spawned children, not the prompt-side orchestrator that the hook is meant to police.
+
+### UPDATED: scripts/hook-bg-poll-guard.sh
+
+- Add an early allow check immediately after the existing disable check:
+  - exact `"1"` value only;
+  - exit 0 before reading hook JSON or scanning markers.
+- Use the same fail-open pattern as `LARCH_BG_POLL_GUARD_DISABLE`.
+- Do not patch individual `Read`, `Bash`, `Monitor`, or `TaskOutput` branches.
+- Do not reintroduce `CLAUDE_PID` matching.
+- Do not change `marker_candidates`, `marker_is_live`, `path_under_dir`, or clone-tag plausibility checks.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+
+- Add a regression case with a live marker and a `Read` under the session tmpdir:
+  - without the env var: still denies;
+  - with `LARCH_CLAUDE_SUBPROCESS_HOOK_EXEMPT=1`: allows.
+- Add at least one guarded non-Read tool case, preferably `Monitor` or `TaskOutput`, to show the exemption is intentionally global for the child Claude subprocess.
+- Keep existing tests for `LARCH_BG_POLL_GUARD_DISABLE=1`.
+- Keep existing #5684 regression coverage proving live markers still deny without the subprocess env var.
+
+### UPDATED: python/tests/agents/test_agents.py
+
+- Add or extend a `launch_claude_subprocess` test to prove the fake `claude` child receives the new env var.
+- Prefer a fake `claude` script that emits JSON containing the env value in `.result`, for example `{"result":"env=1"}`.
+- Assert:
+  - return code is 0;
+  - output includes the expected env value;
+  - prompt body still does not leak into `CMD_JSON`.
+- Keep the test offline and independent of a real Claude binary.
+
+### UPDATED: scripts/hook-bg-poll-guard.md
+
+- Document the new subprocess exemption under invariants.
+- State that spawned Claude review, vote, and scout subprocesses may read their assigned files even while the parent orchestrator has a live immediate-background wait marker.
+- State that the orchestrator itself is still blocked unless the existing disable env var is set.
+- Mention that marker liveness remains unscoped by `CLAUDE_PID` per #5684.
+
+### UPDATED: SECURITY.md
+
+- Update the plugin-shipped background polling hook paragraph.
+- Correct the matcher if needed to match current `hooks/hooks.json` behavior: `Read|Bash|Monitor|TaskOutput`.
+- Document the new exemption as a child-process boundary:
+  - Claude subprocesses launched by larch set the exemption env var;
+  - this prevents collateral denial in review/vote/scout children;
+  - external Codex/Cursor processes are still outside Claude Code hooks.
+- Preserve the residual risk language about Claude Code honoring `permissionDecision=deny`.
+
+## Edge cases
+
+- **Inherited env in parent shell:** The launcher must set the env only for the `claude` child process. Do not export it in the orchestrator process.
+- **Malformed or non-`1` value:** The hook should allow only exact `"1"`. Empty, `"0"`, or other values should follow normal guard logic.
+- **Missing `jq`:** The new check runs before `jq`, so child subprocesses still allow even if `jq` is unavailable.
+- **Nested Claude tools:** The hook process for a child Claude tool call should inherit the child env and exit 0 before marker scans.
+- **Normal orchestrator polling:** A live marker plus orchestrator `Read`, `Bash`, `Monitor`, or `TaskOutput` without the env var must still deny.
+
+## Failure modes
+
+- If the env var is not passed to the child process, Claude voters can still be marked `NOT_SUBSTANTIVE` after hook denial.
+- If the env var leaks into the top-level orchestrator environment, the hook can no longer enforce immediate-background wait discipline for that session.
+- If the hook exemption is added too late, marker scans can still deny before the allow path.
+- If tests assert only `Read`, a future change may leave `Monitor` or `TaskOutput` collateral denial unpinned.
+
+## Testing strategy
+
+- Run changed hook harness:
+  - `make test-hook-bg-poll-guard`
+- Run changed Python launcher tests:
+  - `python3 -m pytest python/tests/agents/test_agents.py -q -k 'launch_claude_subprocess or launch_claude_review'`
+- Run relevant lint for touched Python and shell if dependencies are present:
+  - `make py-lint`
+  - `make shellcheck`
+- If using the repo relevant-checks path after edits:
+  - `python3 python/cli.py checks run-relevant`
+
+## Acceptance
+
+- Run changed hook harness:
+  - `make test-hook-bg-poll-guard`
+- Run changed Python launcher tests:
+  - `python3 -m pytest python/tests/agents/test_agents.py -q -k 'launch_claude_subprocess or launch_claude_review'`
+- Run relevant lint for touched Python and shell if dependencies are present:
+  - `make py-lint`
+  - `make shellcheck`
+- If using the repo relevant-checks path after edits:
+  - `python3 python/cli.py checks run-relevant`
+
+diff_added: 55
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 60
+
+## Test plan
+(no test plan section in plan-file)
