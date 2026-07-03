@@ -45,6 +45,7 @@ from larch.design.design_step0_env import load_bash_quoted_env
 from larch.design.design_terminal import (
     _emit_final_summary_marked_from_disk,
     _emit_report_gate_sidecars_from_disk,
+    _publish_terminal_final_summary,
     read_result_env_main,
     stage_terminal_state_core,
 )
@@ -250,6 +251,47 @@ def _step5c_stage_failed_publish_tail(*, design_tmpdir: Path, plugin_root: Path,
             category="Warnings",
             output_file=stderr_log,
         )
+
+
+def _step5c_publish_evidence_present(*, design_tmpdir: Path, publish_stdout_file: Path) -> bool:
+    evidence_keys = ("PUBLISH_OK=", "PR_URL=", "RECOVERY_BRANCH=")
+    texts = [
+        source.read_text(encoding="utf-8", errors="replace")
+        for source in (publish_stdout_file, design_tmpdir / ".design-publish-result.env")
+        if source.is_file()
+    ]
+    return any(key in text for text in texts for key in evidence_keys)
+
+
+def _step5c_try_central_failed_publish_tail(
+    *,
+    design_tmpdir: Path,
+    ctx: Ctx,
+    publish_stdout_file: Path,
+) -> bool:
+    if _step5c_publish_evidence_present(design_tmpdir=design_tmpdir, publish_stdout_file=publish_stdout_file):
+        return False
+    if not ctx.session_id:
+        return False
+    publish_rc, publish_ok = _publish_terminal_final_summary(
+        design_tmpdir=design_tmpdir,
+        run_id=ctx.session_id,
+        issue=ctx.issue_number,
+        outcome="failed-publish-tail",
+        repo=ctx.repo,
+    )
+    if publish_rc != 0 or not publish_ok:
+        return False
+    from larch.design.design_summary import upsert_final_summary_from_disk  # noqa: PLC0415
+
+    repo_args = ["--repo", ctx.repo] if ctx.repo else []
+    return upsert_final_summary_from_disk(
+        design_tmpdir=design_tmpdir,
+        issue=ctx.issue_number,
+        session_id=ctx.session_id,
+        repo_args=repo_args,
+        final_summary_path=design_tmpdir / "final-summary.md",
+    )
 
 
 def _step5c_write_status(
@@ -564,7 +606,12 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
                     )
                     _step5c_stage_failed_publish_tail(design_tmpdir=design_tmpdir, plugin_root=plugin_root, publish_rc=publish_rc)
                     failed_tail_summary_path = str(design_tmpdir / "final-summary.md")
-                    if _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
+                    central_publish_ok = _step5c_try_central_failed_publish_tail(
+                        design_tmpdir=design_tmpdir,
+                        ctx=ctx,
+                        publish_stdout_file=publish_stdout_file,
+                    )
+                    if central_publish_ok or _step5c_render_final_summary(design_tmpdir=design_tmpdir, ctx=ctx, outcome="failed-publish-tail", final_summary_path=failed_tail_summary_path):
                         _emit_final_summary_marked_from_disk(design_tmpdir=design_tmpdir, final_summary_path=failed_tail_summary_path)
                     _emit_report_gate_sidecars_from_disk(design_tmpdir)
                     if publish_rc == 2:

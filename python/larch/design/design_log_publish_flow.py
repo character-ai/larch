@@ -466,6 +466,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_URL", v="")
         return 0
     warning_step_label = "5c" if parsed["--reason"] == "final" else "pause"
+    outcome = parsed["--outcome"] or _default_outcome_for_reason(parsed["--reason"])
 
     if dry_run:
         for cmd in ("git", "gh"):
@@ -480,6 +481,14 @@ def log_publish_main(argv: Sequence[str]) -> int:
             _emit(k="PR_NUMBER", v="")
             _emit(k="PR_URL", v="")
             return 0
+        if not _render_final_summary_before_copy(
+            design_tmpdir=design_tmpdir,
+            outcome=outcome,
+            issue=parsed["--issue"],
+            repo=parsed["--repo"],
+            run_id=parsed["--run-id"],
+        ):
+            print("design log-publish: final-summary render failed; continuing without stale summary", file=sys.stderr)
         _persist_metadata(design_tmpdir=design_tmpdir, pr_number="", pr_url="", recovery_branch="")
         _emit(k="PUBLISH_OK", v="true")
         _emit(k="PR_NUMBER", v="")
@@ -502,7 +511,6 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_URL", v="")
         return 0
 
-    outcome = parsed["--outcome"] or _default_outcome_for_reason(parsed["--reason"])
     if not _render_final_summary_before_copy(
         design_tmpdir=design_tmpdir,
         outcome=outcome,

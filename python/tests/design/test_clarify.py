@@ -954,6 +954,25 @@ def _seed_publish(tmp_path: Path, *, request_id: str = "2", session_id: str = "R
     return source_env
 
 
+def _seed_final_summary(tmp_path: Path, text: str = "rendered summary\n") -> Path:
+    summary = tmp_path / "final-summary.md"
+    summary.write_text(text, encoding="utf-8")
+    return summary
+
+
+def _patch_summary_upsert(
+    monkeypatch: pytest.MonkeyPatch,
+    runner: DesignRunner,
+    *,
+    rc: int = 0,
+) -> None:
+    def fake_run_cli(*args: str) -> CommandResult:
+        runner.calls.append(["summary-upsert", *args])
+        return _result(argv=tuple(args), rc=rc)
+
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+
+
 def test_design_clarify_publish_happy_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -970,12 +989,8 @@ def test_design_clarify_publish_happy_path(
         ]
     )
     monkeypatch.setattr(clarify, "proc", runner)
-
-    def fake_summary(**kwargs: object) -> bool:
-        runner.calls.append(["summary-upsert", str(kwargs["outcome"])])
-        return True
-
-    monkeypatch.setattr(clarify, "_render_clarify_final_summary", fake_summary)
+    summary = _seed_final_summary(tmp_path)
+    _patch_summary_upsert(monkeypatch, runner)
     monkeypatch.setattr(
         clarify,
         "clarify_comment_post",
@@ -1006,60 +1021,63 @@ def test_design_clarify_publish_happy_path(
     rename_index = next(i for i, call in enumerate(runner.calls) if call[2:4] == ["tracking-issue", "rename"])
     log_publish_call = runner.calls[log_publish_index]
     assert log_publish_call[log_publish_call.index("--outcome") + 1] == "cancelled-clarify"
-    assert runner.calls[summary_index] == ["summary-upsert", "cancelled-clarify"]
+    summary_call = runner.calls[summary_index]
+    assert summary_call[1:3] == ["tracking-issue", "upsert-summary"]
+    assert summary_call[summary_call.index("--content-file") + 1] == str(summary)
+    assert summary_call[summary_call.index("--marker") + 1] == "<!-- larch:final-summary v1 runid=RUN1 -->"
     assert log_publish_index < summary_index < rename_index
     assert "<REDACTED-TOKEN>" not in (tmp_path / "clarify-plan.redacted.md").read_text(encoding="utf-8")
 
 
-def test_render_clarify_final_summary_uses_design_tmpdir_mode(
+def test_upsert_final_summary_from_disk_validates_and_calls_tracking_issue(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "run-params.json").write_text('{"mode":"design"}\n', encoding="utf-8")
-    env = {"MODE": "stale", "SESSION_ID": "RUN1", "REPO": "owner/repo"}
-    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
-    original = design_summary.render_final_summary_for_request
+    summary = _seed_final_summary(tmp_path)
+    calls: list[tuple[str, ...]] = []
 
-    def fake_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
-        captured["request"] = request
-        return True
+    def fake_run_cli(*args: str) -> CommandResult:
+        calls.append(args)
+        return _result(argv=tuple(args), rc=0)
 
-    monkeypatch.setattr(design_summary, "render_final_summary_for_request", fake_render)
-
-    assert clarify._render_clarify_final_summary(  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(design_summary, "_run_cli", fake_run_cli)
+    assert design_summary.upsert_final_summary_from_disk(
         design_tmpdir=tmp_path,
-        env=env,
         issue="7",
-        outcome="cancelled-clarify",
+        session_id="RUN1",
+        repo_args=["--repo", "owner/repo"],
+        final_summary_path=summary,
     )
-    assert captured["request"].mode == "design"
-    assert captured["request"].session_id == "RUN1"
-    assert captured["request"].upsert_summary_comment is True
-    monkeypatch.setattr(design_summary, "render_final_summary_for_request", original)
+    assert calls == [
+        (
+            "tracking-issue",
+            "upsert-summary",
+            "--issue",
+            "7",
+            "--marker",
+            "<!-- larch:final-summary v1 runid=RUN1 -->",
+            "--content-file",
+            str(summary),
+            "--repo",
+            "owner/repo",
+        )
+    ]
 
 
-def test_render_clarify_final_summary_falls_back_to_source_env_mode(
+def test_upsert_final_summary_from_disk_fails_closed(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    (tmp_path / "source-env.sh").write_text("export MODE=design\n", encoding="utf-8")
-    env = {"SESSION_ID": "RUN1", "REPO": "owner/repo"}
-    captured: dict[str, design_summary.FinalSummaryRenderRequest] = {}
-
-    def fake_render(request: design_summary.FinalSummaryRenderRequest) -> bool:
-        captured["request"] = request
-        return True
-
-    monkeypatch.setattr(design_summary, "render_final_summary_for_request", fake_render)
-
-    assert clarify._render_clarify_final_summary(  # pyright: ignore[reportPrivateUsage]
-        design_tmpdir=tmp_path,
-        env=env,
-        issue="7",
-        outcome="cancelled-clarify",
-    )
-    assert captured["request"].mode == "design"
-    assert captured["request"].session_id == "RUN1"
+    calls: list[tuple[str, ...]] = []
+    monkeypatch.setattr(design_summary, "_run_cli", lambda *args: calls.append(args) or _result(argv=tuple(args), rc=0))
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    empty = tmp_path / "final-summary.md"
+    empty.write_text("", encoding="utf-8")
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    empty.write_text("summary\n", encoding="utf-8")
+    monkeypatch.setattr(design_summary, "_run_cli", lambda *args: calls.append(args) or _result(argv=tuple(args), rc=9))
+    assert not design_summary.upsert_final_summary_from_disk(design_tmpdir=tmp_path, issue="7", session_id="RUN1")
+    assert calls
 
 
 def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
@@ -1081,7 +1099,8 @@ def test_design_clarify_publish_syncs_difficulty_and_writes_batch(
         ]
     )
     monkeypatch.setattr(clarify, "proc", runner)
-    monkeypatch.setattr(clarify, "_render_clarify_final_summary", lambda **_kwargs: True)
+    _seed_final_summary(tmp_path)
+    _patch_summary_upsert(monkeypatch, runner)
     monkeypatch.setattr(
         clarify,
         "clarify_comment_post",
@@ -1185,7 +1204,6 @@ def test_design_clarify_publish_failure_paths(
         _result(rc=9, stderr="publish failed\n"),
     ])
     monkeypatch.setattr(clarify, "proc", runner)
-    monkeypatch.setattr(clarify, "_render_clarify_final_summary", lambda **_kwargs: True)
     monkeypatch.setattr(
         clarify,
         "clarify_comment_post",
@@ -1264,21 +1282,18 @@ def test_design_clarify_publish_comment_failure_publishes_failed_summary(
         ]
     )
     monkeypatch.setattr(clarify, "proc", runner)
+    _seed_final_summary(tmp_path)
+    _patch_summary_upsert(monkeypatch, runner)
 
     def fail_comment_post(*_args: object, **_kwargs: object) -> clarify.ClarifyCommentResult:
         raise ShipError("comment post failed")
 
-    def fake_summary(**kwargs: object) -> bool:
-        runner.calls.append(["summary-upsert", str(kwargs["outcome"])])
-        return True
-
     monkeypatch.setattr(clarify, "clarify_comment_post", fail_comment_post)
-    monkeypatch.setattr(clarify, "_render_clarify_final_summary", fake_summary)
 
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
     log_publish_call = next(call for call in runner.calls if call[2:4] == ["design", "log-publish"])
     assert log_publish_call[log_publish_call.index("--outcome") + 1] == "failed-clarify"
-    assert ["summary-upsert", "failed-clarify"] in runner.calls
+    assert any(call[1:3] == ["tracking-issue", "upsert-summary"] for call in runner.calls)
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "CLARIFY_PUBLISH_STATUS=comment-post-failed\n" in result
     assert "PUBLISH_OK=true\n" in result
@@ -1318,14 +1333,138 @@ def test_design_clarify_publish_failure_skips_summary_render(
             label=clarify.LABEL_NAME,
         ),
     )
-    monkeypatch.setattr(
-        clarify,
-        "_render_clarify_final_summary",
-        lambda **kwargs: summary_calls.append(str(kwargs["outcome"])) or True,
-    )
+    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: summary_calls.append("upsert") or True)
 
     assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
     assert not summary_calls
     result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
     assert "PUBLISH_OK=false\n" in result
     assert "SUMMARY_OUTCOME=cancelled-clarify\n" in result
+
+
+def test_design_clarify_publish_summary_upsert_failure_blocks_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([
+        _result(stdout="PLAN_WRITE_OK=true\n"),
+        _result(stdout="STATUS=ok\n"),
+        _result(stdout=""),
+        _result(stdout="PUBLISH_OK=true\n"),
+        _result(stdout="FAILURE_APPENDED=true\n"),
+    ])
+    monkeypatch.setattr(clarify, "proc", runner)
+    _seed_final_summary(tmp_path)
+    _patch_summary_upsert(monkeypatch, runner, rc=7)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(posted=True, comment_id="123", comment_url="url", marker="marker"),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(changed=True, action="remove", label=clarify.LABEL_NAME),
+    )
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "PUBLISH_OK=false\n" in result
+    assert "CLARIFY_PUBLISH_STATUS=summary-upsert-failed\n" in result
+    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+
+
+def test_design_clarify_publish_missing_final_summary_blocks_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([
+        _result(stdout="PLAN_WRITE_OK=true\n"),
+        _result(stdout="STATUS=ok\n"),
+        _result(stdout=""),
+        _result(stdout="PUBLISH_OK=true\n"),
+        _result(stdout="FAILURE_APPENDED=true\n"),
+    ])
+    monkeypatch.setattr(clarify, "proc", runner)
+    monkeypatch.setattr(design_summary, "_run_cli", lambda *args: (_ for _ in ()).throw(AssertionError(f"upsert should not run: {args}")))
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(posted=True, comment_id="123", comment_url="url", marker="marker"),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(changed=True, action="remove", label=clarify.LABEL_NAME),
+    )
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "PUBLISH_OK=false\n" in result
+    assert "CLARIFY_PUBLISH_STATUS=summary-upsert-failed\n" in result
+    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+
+
+def test_design_clarify_publish_recovery_branch_blocks_rename(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([
+        _result(stdout="PLAN_WRITE_OK=true\n"),
+        _result(stdout="STATUS=ok\n"),
+        _result(stdout=""),
+        _result(stdout="PUBLISH_OK=true\nRECOVERY_BRANCH=larch-recovery\n"),
+        _result(stdout="FAILURE_APPENDED=true\n"),
+    ])
+    monkeypatch.setattr(clarify, "proc", runner)
+    _seed_final_summary(tmp_path)
+    monkeypatch.setattr(design_summary, "upsert_final_summary_from_disk", lambda **_kwargs: (_ for _ in ()).throw(AssertionError("upsert should not run after recovery")))
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(posted=True, comment_id="123", comment_url="url", marker="marker"),
+    )
+    monkeypatch.setattr(
+        clarify,
+        "clarify_label",
+        lambda *_args, **_kwargs: clarify.ClarifyLabelResult(changed=True, action="remove", label=clarify.LABEL_NAME),
+    )
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 0
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "PUBLISH_OK=false\n" in result
+    assert "CLARIFY_PUBLISH_STATUS=log-publish-recovery\n" in result
+    assert not any(call[2:4] == ["tracking-issue", "rename"] for call in runner.calls)
+
+
+def test_design_clarify_publish_label_remove_failure_publishes_with_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    source_env = _seed_publish(tmp_path)
+    runner = DesignRunner([
+        _result(stdout="PLAN_WRITE_OK=true\n"),
+        _result(stdout="STATUS=ok\n"),
+        _result(stdout=""),
+        _result(stdout="PUBLISH_OK=true\n"),
+    ])
+    monkeypatch.setattr(clarify, "proc", runner)
+    _seed_final_summary(tmp_path)
+    _patch_summary_upsert(monkeypatch, runner)
+    monkeypatch.setattr(
+        clarify,
+        "clarify_comment_post",
+        lambda *_args, **_kwargs: clarify.ClarifyCommentResult(posted=True, comment_id="123", comment_url="url", marker="marker"),
+    )
+    monkeypatch.setattr(clarify, "clarify_label", lambda *_args, **_kwargs: (_ for _ in ()).throw(ShipError("label failed")))
+
+    assert clarify.design_clarify_main(_design_args(source_env, "publish")) == 1
+    log_publish_call = next(call for call in runner.calls if call[2:4] == ["design", "log-publish"])
+    assert log_publish_call[log_publish_call.index("--outcome") + 1] == "failed-clarify"
+    assert any(call[1:3] == ["tracking-issue", "upsert-summary"] for call in runner.calls)
+    result = (tmp_path / ".design-clarify-publish-result.env").read_text(encoding="utf-8")
+    assert "CLARIFY_PUBLISH_STATUS=label-remove-failed\n" in result
+    assert "PUBLISH_OK=true\n" in result

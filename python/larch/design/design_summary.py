@@ -525,6 +525,33 @@ def render_final_summary_for_request(request: FinalSummaryRenderRequest) -> bool
     return render_rc == 0
 
 
+def upsert_final_summary_from_disk(
+    *,
+    design_tmpdir: Path,
+    issue: str,
+    session_id: str,
+    repo_args: Sequence[str] | None = None,
+    final_summary_path: Path | None = None,
+    env: dict[str, str] | None = None,
+) -> bool:
+    del env
+    summary_path = final_summary_path or (design_tmpdir / "final-summary.md")
+    if summary_path.is_symlink() or not summary_path.is_file() or summary_path.stat().st_size == 0:
+        return False
+    if not issue or issue == "0" or not session_id:
+        return False
+    marker = f"<!-- larch:final-summary v1 runid={session_id} -->"
+    ups_args: list[str] = [
+        "tracking-issue", "upsert-summary",
+        "--issue", issue,
+        "--marker", marker,
+        "--content-file", str(summary_path),
+    ]
+    if repo_args:
+        ups_args.extend(repo_args)
+    return _run_cli(*ups_args).returncode == 0
+
+
 def render_final_summary_main(argv: Sequence[str]) -> int:
     argv = list(argv)
     outcome = ""
@@ -631,17 +658,15 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
     write_ok = exit_rc == 0
     summary_written = write_ok and out_file.is_file() and out_file.stat().st_size > 0
 
-    if upsert_summary_comment and issue and issue != "0" and summary_written:
-        marker = f"<!-- larch:final-summary v1 runid={run_id} -->"
-        ups_args: list[str] = [
-            "tracking-issue", "upsert-summary",
-            "--issue", issue,
-            "--marker", marker,
-            "--content-file", str(out_file),
-        ]
-        if repo:
-            ups_args += ["--repo", repo]
-        _run_cli(*ups_args)  # pyright: ignore[reportUnusedCallResult]
+    if upsert_summary_comment and summary_written:
+        repo_args = ["--repo", repo] if repo else []
+        _ = upsert_final_summary_from_disk(
+            design_tmpdir=design_tmpdir,
+            issue=issue,
+            session_id=run_id,
+            repo_args=repo_args,
+            final_summary_path=out_file,
+        )
     _emit_report_gate_sidecars_file(design_tmpdir)
 
     return exit_rc
