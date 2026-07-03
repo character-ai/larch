@@ -433,6 +433,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         _emit(k="PR_NUMBER", v="")
         _emit(k="PR_URL", v="")
         return 0
+    warning_step_label = "5c" if parsed["--reason"] == "final" else "pause"
 
     if dry_run:
         for cmd in ("git", "gh"):
@@ -461,6 +462,7 @@ def log_publish_main(argv: Sequence[str]) -> int:
         issue=parsed["--issue"],
         repo=parsed["--repo"],
         claude_pid=os.environ.get("LARCH_CLAUDE_PID", "") or os.environ.get("PPID", ""),
+        warning_step_label=warning_step_label,
     )
     if not design_publish._capture_design_transcript(ctx=capture_ctx):  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
         _emit(k="PUBLISH_OK", v="false")

@@ -1600,7 +1600,12 @@ def test_publish_capture_does_not_read_session_env(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
 
 
-def _capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> tuple[bool, Path, Path]:
+def _capture_case(
+    tmp_path: Path,
+    env_overrides: dict[str, str],
+    *,
+    warning_step_label: str = "5c",
+) -> tuple[bool, Path, Path]:
     plugin_root = tmp_path / "plugin"
     _write_fake_cli(plugin_root / "python" / "cli.py")
     design = tmp_path / "design"
@@ -1630,6 +1635,7 @@ def _capture_case(tmp_path: Path, env_overrides: dict[str, str]) -> tuple[bool, 
                 issue="9",
                 repo="",
                 claude_pid="11",
+                warning_step_label=warning_step_label,
             )
         )
     finally:
@@ -1647,6 +1653,7 @@ def test_capture_design_transcript_persists_source_and_hoists(tmp_path: Path, ca
     calls = _call_args(call_log)
     capture_args = next(args for args in calls if args[:2] == ["run-log", "capture-transcript"])
     assert capture_args[capture_args.index("--source-file") + 1] == str(design / "claude-source.env")
+    assert capture_args[capture_args.index("--warning-step-label") + 1] == "5c"
     assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
 
 
@@ -1673,17 +1680,53 @@ def test_capture_aborts_when_stale_root_removal_fails(tmp_path: Path) -> None:
             issue="9",
             repo="",
             claude_pid="11",
+            warning_step_label="pause",
         )
     )
 
     assert not ok
+    warning_log = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step pause session-transcript stale-root-removal-failed" in warning_log
+    assert "design Step 5c session-transcript stale-root-removal-failed" not in warning_log
+
+
+def test_capture_session_id_drift_uses_warning_label(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    design.mkdir()
+    (design / "source-env.sh").write_text("SESSION_ID=OLD-RUN\n", encoding="utf-8")
+
+    ok = design_publish._capture_design_transcript(
+        ctx=design_publish._TranscriptCaptureContext(
+            design_tmpdir=design,
+            plugin_root=plugin_root,
+            session_id="RUN1",
+            issue="9",
+            repo="",
+            claude_pid="11",
+            warning_step_label="pause",
+        )
+    )
+
+    assert ok
+    warning_log = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step pause session-transcript session-id-drift" in warning_log
+    assert "design Step 5c session-transcript session-id-drift" not in warning_log
 
 
 def test_capture_snapshot_failure_or_capture_skip_keeps_root_absent(tmp_path: Path) -> None:
-    fail_ok, fail_design, fail_log = _capture_case(tmp_path / "fail", {"FAKE_CLI_TOKEN_SOURCE_FAIL": "1"})
+    fail_ok, fail_design, fail_log = _capture_case(
+        tmp_path / "fail",
+        {"FAKE_CLI_TOKEN_SOURCE_FAIL": "1"},
+        warning_step_label="pause",
+    )
     assert fail_ok
     assert not (fail_design / "session-transcript.jsonl").exists()
     assert all(args[:2] != ["run-log", "capture-transcript"] for args in _call_args(fail_log))
+    warning_log = (fail_design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step pause session-transcript snapshot-skipped" in warning_log
+    assert "design Step 5c session-transcript snapshot-skipped" not in warning_log
 
     skip_ok, skip_design, skip_log = _capture_case(tmp_path / "skip", {"FAKE_CLI_CAPTURE_SKIP": "1"})
     assert skip_ok
@@ -1697,3 +1740,6 @@ def test_capture_aborts_when_capture_succeeds_but_hoist_fails(tmp_path: Path) ->
     assert not ok
     assert not (design / "session-transcript.jsonl").exists()
     assert any(args[:2] == ["run-log", "capture-transcript"] for args in _call_args(call_log))
+
+    warning_log = (design / "execution-issues.md").read_text(encoding="utf-8")
+    assert "design Step 5c session-transcript hoist-failed" in warning_log
