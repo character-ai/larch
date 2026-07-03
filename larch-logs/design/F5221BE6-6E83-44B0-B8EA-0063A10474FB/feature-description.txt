@@ -1,0 +1,82 @@
+# [BUG] /implement post-Step-0 Bash fences fail (exit 127) because $IMPLEMENT_TMPDIR…
+
+## Summary
+
+`/implement`'s "Bash block prelude" contract (`skills/implement/SKILL.md:97-105`) requires every post-Step-0 fence to be a single physical line of the form `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <script> ...`, relying on `$IMPLEMENT_TMPDIR` already being an exported shell variable. The same section states the Bash tool does not preserve shell state between calls. Because each Bash tool invocation starts a fresh shell, `$IMPLEMENT_TMPDIR` is empty on the very first post-Step-0 fence, so the launcher path resolves to `/larch-run.sh` and `bash` fails with exit 127 before `larch-run.sh` ever runs.
+
+## Original report
+
+"the cause of the above failure \"Background command \"Dispatch Step 2 implementation to Codex\" failed with exit code 127\""
+
+This was reported immediately after a live `/implement --merge 6071` run's Step 2 dispatch fence failed in the background with exit code 127.
+
+## Reproduction scenario
+
+1. Run `/implement <issue-N>` through Step 0 in one Bash tool call. Step 0 bootstrap succeeds and exports `IMPLEMENT_TMPDIR` (and `CLAUDE_PLUGIN_ROOT`) only within that call's shell.
+2. Issue the Step 2 fence from `skills/implement/SKILL.md:310` verbatim, as its own separate Bash tool call, without re-exporting `IMPLEMENT_TMPDIR` first:
+   ```bash
+   bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --coder "$coder"
+   ```
+3. Observe: the new shell has no `IMPLEMENT_TMPDIR`, so `"$IMPLEMENT_TMPDIR/larch-run.sh"` expands to `/larch-run.sh`. `bash` cannot find that file and exits 127 with `bash: /larch-run.sh: No such file or directory`, before `larch-run.sh`'s own body (including its self-derivation fallback) ever executes.
+
+Reproduced live in this session: the first Step 2 dispatch attempt failed exactly this way. Re-running with `export IMPLEMENT_TMPDIR=<literal-tmpdir>` (and `export coder=codex`) prepended in the same Bash call succeeded.
+
+## Expected behavior
+
+Every post-Step-0 fence in `/implement` (roughly 21 occurrences of this pattern in `skills/implement/SKILL.md` alone, spanning Steps 2 through 18) should reliably resolve and invoke `$IMPLEMENT_TMPDIR/larch-run.sh` from a fresh Bash tool call, without the orchestrating agent needing to break the "exactly one nonblank, noncomment physical line" / "no inline shell logic" rule to reconstitute missing environment state.
+
+## Observed behavior
+
+The first post-Step-0 fence issued as its own Bash tool call fails with exit code 127 (`bash: /larch-run.sh: No such file or directory`) because `$IMPLEMENT_TMPDIR` is empty in the new shell. `larch-run.sh`'s internal self-derivation fallback never gets a chance to run, because the failure happens while the calling `bash` process is still trying to locate the script file, before any of the script's own text is interpreted.
+
+## Root cause analysis
+
+`skills/implement/SKILL.md:97-105` ("Bash block prelude") states plainly: "The Claude Code Bash tool does NOT preserve shell state between calls," matching the Bash tool's documented behavior (only cwd persists across separate invocations; exported variables do not). Despite stating this, the same section mandates that every post-Step-0 fence be a single physical line referencing `"$IMPLEMENT_TMPDIR/larch-run.sh"`, and explicitly forbids sourcing an env file, using continuations, or adding "inline shell logic" — which would include a plain `export IMPLEMENT_TMPDIR=...` line to work around the missing variable.
+
+`python/larch/state/bootstrap.py`'s `_write_larch_run_sh` (line 144) writes a self-healing fallback into the generated `larch-run.sh` (line 151: `IMPLEMENT_TMPDIR="${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}"`), which would correctly re-derive `IMPLEMENT_TMPDIR` from the script's own on-disk location once the script starts running. That fallback is unreachable in this failure mode: `bash "$IMPLEMENT_TMPDIR/larch-run.sh" ...` with an empty `IMPLEMENT_TMPDIR` resolves the launcher's own path to the literal string `/larch-run.sh` before `bash` ever opens or interprets the file, so it fails at the "no such file" stage rather than reaching line 151 of the generated script.
+
+The fallback solves "the script can't find its own tmpdir once it's running," but not "the caller can't find the script in the first place" — the actual failure mode whenever a fresh Bash tool call has no exported `IMPLEMENT_TMPDIR`.
+
+No shell profile on this machine (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.zprofile`) sources any larch session-env file, so nothing else re-establishes `IMPLEMENT_TMPDIR` automatically in a new shell.
+
+**This is the fourth time this problem area has surfaced, and the current gap traces directly to the fix that was supposed to close it:**
+
+- #2071 (DONE) fixed `CLAUDE_PLUGIN_ROOT` not being rehydrated in Bash blocks, establishing the "every post-Step-0 block re-derives its env vars" pattern — but only for `CLAUDE_PLUGIN_ROOT`, not `IMPLEMENT_TMPDIR` itself.
+- #2195 (DONE) fixed a Step 18 bug where `IMPLEMENT_TMPDIR` was assigned a literal value but not `export`-ed, so a **child process** (`capture-session-transcript.sh`) couldn't see it. Its root-cause writeup states plainly: "All other Step 0–17 Bash blocks in SKILL.md include `export IMPLEMENT_TMPDIR`." That is a different failure layer than this report — #2195 assumes the fence itself already has the correct value as a local shell variable; this report is about the value being absent from the fence's own shell in the first place.
+- #4037 (DONE, URGENT) fixed a Step 18 fence that used an unguarded `. "$IMPLEMENT_TMPDIR/plugin-root.env"` source with no `-f` test, crashing when the tmpdir had already been cleaned up by a prior successful teardown. Its "Structural fix" note says: "Issue #4011 (`/implement: collapse Bash-fence rehydration preludes via a session launcher script`) replaces ALL post-Step-0 fences with a single `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <script>` call that handles its own rehydration inside the launcher, eliminating the copy-drift hazard entirely."
+- **#4011 (DONE) is the issue that introduced the exact `larch-run.sh` launcher pattern this report is about.** Its plan explicitly lists, as the launcher's first responsibility: "1. Set `IMPLEMENT_TMPDIR` from the environment, or from the launcher directory if unset" — i.e. it anticipated `IMPLEMENT_TMPDIR` being unset and designed a self-derivation fallback for exactly that case (this is the `${IMPLEMENT_TMPDIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)}` line in `bootstrap.py:151`). But #4011's own acceptance criteria pin the caller-side fence shape as `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <script>` — which still requires `$IMPLEMENT_TMPDIR` to already be set *at the calling shell*, before the launcher (and its self-derivation fallback) ever starts running. The self-derivation branch can only ever fire once the launcher is already executing, so it never covers the case reproduced here: a brand-new Bash tool call, right after Step 0, with nothing yet exported.
+
+So this is not a fresh problem in a new area — it is a specific, still-open gap in the exact fix (#4011) that was supposed to eliminate this whole class of bug, in the exact way #4011 anticipated (an unset `IMPLEMENT_TMPDIR`) but did not fully close (the caller can't reach the fallback if it can't find the launcher first).
+
+## Evidence
+
+- `skills/implement/SKILL.md:97-105` — states the Bash tool does not preserve shell state between calls, then mandates single-physical-line fences using `$IMPLEMENT_TMPDIR` and forbids inline shell logic that could re-export it.
+- `skills/implement/SKILL.md:310` — the Step 2 first-dispatch fence that failed: `bash "$IMPLEMENT_TMPDIR/larch-run.sh" python/cli.py implement run-dispatch --implement-tmpdir "$IMPLEMENT_TMPDIR" --coder "$coder"`.
+- `skills/implement/SKILL.md` contains 21 occurrences of the identical `bash "$IMPLEMENT_TMPDIR/larch-run.sh"` launcher pattern; every post-Step-0 step shares this exposure.
+- `python/larch/state/bootstrap.py:144-176` (`_write_larch_run_sh`) generates `$IMPLEMENT_TMPDIR/larch-run.sh`; line 151 is the self-derivation fallback that cannot run before the launcher path itself is resolved by the calling shell.
+- Live reproduction this session: the Step 2 dispatch Bash tool call, issued fresh right after a separate Step 0 Bash tool call, failed with `bash: /larch-run.sh: No such file or directory`, exit code 127. Re-issuing the same command with `export IMPLEMENT_TMPDIR=<tmpdir>` and `export coder=codex` prepended in the same Bash call succeeded and launched the dispatcher.
+- Confirmed no shell profile file (`~/.zshrc`, `~/.bashrc`, `~/.bash_profile`, `~/.zprofile`) references any larch session-env sourcing mechanism.
+- #2071 (closed/DONE) — "`CLAUDE_PLUGIN_ROOT` not rehydrated in Bash blocks; Pre-bump log flush fails with exit 127." Same symptom family (exit 127 from a missing-env-var Bash block), different variable and fixed by a different mechanism (source-guard prelude, pre-dates the launcher).
+- #2195 (closed/DONE) — "`capture-session-transcript.sh` commits to local main after merge when `IMPLEMENT_TMPDIR` is not exported." Root cause writeup: "All other Step 0–17 Bash blocks in SKILL.md include `export IMPLEMENT_TMPDIR`" — describes a child-process export gap, not the fence's own shell missing the variable entirely.
+- #4037 (closed/DONE, URGENT) — "/implement Step 18 bash fence uses unguarded `plugin-root.env` source; crashes with 'No such file' when tmpdir is pre-cleaned." References #4011 as the structural fix that "replaces ALL post-Step-0 fences with a single `bash "$IMPLEMENT_TMPDIR/larch-run.sh" <script>` call."
+- #4011 (closed/DONE) — "/implement: collapse Bash-fence rehydration preludes via a session launcher script." Introduced the exact `larch-run.sh` launcher and single-line fence contract this report is about. Its own plan lists "Set `IMPLEMENT_TMPDIR` from the environment, or from the launcher directory if unset" as the launcher's first job, confirming an unset `IMPLEMENT_TMPDIR` was an anticipated case — just not this specific manifestation of it.
+
+## Affected files
+
+- `skills/implement/SKILL.md` — defines the "Bash block prelude" contract (lines 97-105) and all ~21 single-line launcher fences that depend on it (e.g. line 310).
+- `python/larch/state/bootstrap.py` — `_write_larch_run_sh` (lines 144-176) generates the `larch-run.sh` launcher whose self-derivation fallback (line 151) cannot help with this specific failure mode.
+
+## Suggested fix(es)
+
+No concrete fix identified yet. Possible directions for `/design` to evaluate, informed by why #4011's fallback doesn't close this case:
+
+- Have Step 0 (or `_write_larch_run_sh`) also create a fixed, PID-keyed path (similar in spirit to `/design`'s `~/.cache/larch/sessions/current-design-env-$PPID.sh`), and document that post-Step-0 fences invoke the launcher through that fixed path so a fresh shell with no exported variables can still locate it.
+- Relax the "exactly one nonblank, noncomment physical line" / "no inline shell logic" rule to explicitly permit a short, standard `export IMPLEMENT_TMPDIR=<literal-path> CLAUDE_PLUGIN_ROOT=<literal-path>;` prelude on the same physical line, since the orchestrating agent already knows the concrete resolved paths after Step 0. Note this is close to the pattern #2195 documents as the pre-#4011 convention (`IMPLEMENT_TMPDIR=<literal-value>` then `export IMPLEMENT_TMPDIR`), which #4011's single-line launcher fences moved away from.
+- Have the orchestrator resolve `$IMPLEMENT_TMPDIR/larch-run.sh` to its literal absolute path (rather than a shell-variable reference) when composing each fence, since the value is already known in-context after Step 0.
+- Re-open or amend #4011 directly, since its own plan anticipated an unset `IMPLEMENT_TMPDIR` (point 1: "Set `IMPLEMENT_TMPDIR` from the environment, or from the launcher directory if unset") but its accepted fence shape (`bash "$IMPLEMENT_TMPDIR/larch-run.sh" <script>`) cannot reach that fallback when the caller itself has no `IMPLEMENT_TMPDIR` to resolve the launcher's path with.
+
+## Open questions
+
+- Is `/design`'s PID-keyed session-env rehydration (`current-design-env-$PPID.sh`) actually wired into a shell-profile sourcing step anywhere, or does `/design` have the same latent exposure and has simply not hit it yet?
+- Is there an intended mechanism (specific to a particular Claude Code environment) that persists `IMPLEMENT_TMPDIR` across separate Bash tool calls, making this failure environment-specific rather than universal? Confirming this would clarify whether the fix belongs in the skill contract itself or only in a fallback for degraded environments.
+- #4011's CI harness `scripts/test-implement-fence-shape.sh` pins the "post-Step-0 fences collapse to one line" shape structurally. Does it (or should it) also assert that the launcher is reachable from a variable-free shell, so a future fence-shape change can't silently reintroduce this gap?
