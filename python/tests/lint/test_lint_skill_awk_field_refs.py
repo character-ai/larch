@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 def write_skill(root: Path, rel: str, body: str) -> None:
     path = root / rel
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(body, encoding="utf-8")
+    _ = path.write_text(body, encoding="utf-8")
 
 
 def run(root: Path, capsys: pytest.CaptureFixture[str]) -> tuple[int, str]:

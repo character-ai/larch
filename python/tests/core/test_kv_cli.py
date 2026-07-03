@@ -46,7 +46,7 @@ def test_stdin_last_match(capsys: pytest.CaptureFixture[str], monkeypatch: pytes
 
 def test_file_input(tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:
     source = tmp_path / "values.env"
-    source.write_text("OTHER=x\nKEY=file-value\n", encoding="utf-8")
+    _ = source.write_text("OTHER=x\nKEY=file-value\n", encoding="utf-8")
 
     rc, out, err = run_get(["--key", "KEY", "--file", str(source)], capsys, monkeypatch)
 
