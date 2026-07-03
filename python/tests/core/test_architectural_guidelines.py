@@ -6,11 +6,14 @@ from __future__ import annotations
 import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
+from unittest.mock import Mock
 
 if TYPE_CHECKING:
     import pytest
 
 from larch.core import architectural_guidelines as ag
+
+
 def _git(cwd: Path, *args: str) -> None:
     completed = subprocess.run(["git", *args], cwd=cwd, text=True, capture_output=True, check=False)
     assert completed.returncode == 0, completed.stderr or completed.stdout
@@ -31,6 +34,12 @@ def _repo(tmp_path: Path) -> Path:
     _git(repo, "update-ref", "refs/remotes/origin/main", "HEAD")
     _git(repo, "update-ref", "refs/remotes/upstream/main", "HEAD")
     return repo
+
+
+def _replace_staged_sidecar_value(tmpdir: Path, *, key: str, value: str) -> None:
+    sidecar = tmpdir / ag.STAGED_ASSESSMENT_ENV
+    lines = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in sidecar.read_text(encoding="utf-8").splitlines()]
+    sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_absent_file_returns_absent(tmp_path: Path) -> None:
@@ -627,6 +636,137 @@ def test_refresh_staged_assessment_for_current_head_recovers_when_diff_changes(
     assert "ASSESSED_HEAD_SHA=head-b" in sidecar
     assert ag.pin_note_from_staged(tmpdir, head_sha="head-b", base_ref="origin/main", repo_root=repo)
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_pin_note_from_staged_for_current_head_refreshes_from_live_diff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    live_fingerprint = ag.diff_fingerprint(live_diff)
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    repo = _repo(tmp_path / "git")
+    materialize_mock = Mock(return_value=live_diff)
+    monkeypatch.setattr(ag, "materialize_implementation_diff", materialize_mock)
+
+    assert ag.pin_note_from_staged_for_current_head(
+        tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        repo_root=repo,
+    )
+
+    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
+    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
+    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
+    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    durable_metadata = ag.durable_note_metadata(tmpdir)
+    assert durable_metadata["HEAD_SHA"] == "head-b"
+    assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
+    assert durable_metadata["DIFF_FINGERPRINT"] == live_fingerprint
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_pin_note_from_staged_for_current_head_empty_fingerprint_fails_after_live_materialize(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    _replace_staged_sidecar_value(tmpdir, key="DIFF_FINGERPRINT", value="")
+    repo = _repo(tmp_path / "git")
+    materialize_mock = Mock(return_value=live_diff)
+    monkeypatch.setattr(ag, "materialize_implementation_diff", materialize_mock)
+
+    assert not ag.pin_note_from_staged_for_current_head(
+        tmpdir,
+        head_sha="head-b",
+        base_ref="origin/main",
+        repo_root=repo,
+    )
+
+    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
+
+
+def test_pin_note_from_live_diff_refreshes_staged_and_durable_metadata(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    live_diff = "current live diff"
+    live_fingerprint = ag.diff_fingerprint(live_diff)
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
+        base_ref="origin/main",
+        diff_text="stale staged diff",
+    )
+
+    assert ag._pin_note_from_live_diff(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        resolved_base="origin/main",
+        live_diff=(live_diff, live_fingerprint),
+    )
+
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
+    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
+    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
+    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    durable_metadata = ag.durable_note_metadata(tmpdir)
+    assert durable_metadata["HEAD_SHA"] == "head-b"
+    assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
+    assert durable_metadata["DIFF_FINGERPRINT"] == live_fingerprint
+    assert durable_metadata["BASE_REF"] == "origin/main"
+
+
+def test_pin_note_from_live_diff_returns_false_on_durable_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmpdir = tmp_path / "implement"
+    live_diff = "current live diff"
+    live_fingerprint = ag.diff_fingerprint(live_diff)
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text="note\n",
+        assessed_head_sha="head-a",
+        diff_fingerprint_value=ag.diff_fingerprint("stale staged diff"),
+        base_ref="origin/main",
+        diff_text="stale staged diff",
+    )
+
+    def fail_write_note(**_kwargs: object) -> None:
+        raise OSError("durable write failed")
+
+    monkeypatch.setattr(ag, "write_implement_note", fail_write_note)
+
+    assert not ag._pin_note_from_live_diff(
+        implement_tmpdir=tmpdir,
+        head_sha="head-b",
+        resolved_base="origin/main",
+        live_diff=(live_diff, live_fingerprint),
+    )
+    assert not ag.note_consumable(implement_tmpdir=tmpdir, head_sha="head-b")
 
 
 def test_materialize_live_diff_returns_none_on_os_error(

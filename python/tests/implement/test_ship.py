@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from unittest.mock import Mock
 import pytest
 
 from larch.core import config
@@ -75,6 +76,12 @@ def _read_state(path: Path) -> dict[str, str]:
         key, value = line.split("=", 1)
         data[key] = value
     return data
+
+
+def _replace_guidelines_sidecar_value(tmpdir: Path, *, key: str, value: str) -> None:
+    sidecar = tmpdir / ship.architectural_guidelines.STAGED_ASSESSMENT_ENV
+    lines = [f"{key}={value}" if line.startswith(f"{key}=") else line for line in sidecar.read_text(encoding="utf-8").splitlines()]
+    sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
 def test_ship_rebase_phase_stall_returns_terminal_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -4942,6 +4949,138 @@ def test_pin_and_load_guidelines_note_reuses_one_live_diff(
     assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
     assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "current live diff"
+
+
+def test_pin_and_load_guidelines_note_empty_fingerprint_fails_after_live_materialize(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    staged_diff = "stale staged diff"
+    live_diff = "current live diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
+        base_ref="origin/main",
+        diff_text=staged_diff,
+    )
+    _replace_guidelines_sidecar_value(tmp_path, key="DIFF_FINGERPRINT", value="")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    materialize_mock = Mock(return_value=live_diff)
+    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", materialize_mock)
+
+    note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+
+    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
+    assert note == ship.architectural_guidelines.dropped_note_message()
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
+
+
+def test_pin_and_load_guidelines_note_returns_drop_notice_on_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    diff_text = "implementation diff"
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="staged note\n",
+        assessed_head_sha="old",
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+
+    def fail_write_note(**_kwargs: object) -> None:
+        raise OSError("durable write failed")
+
+    monkeypatch.setattr(ship.architectural_guidelines, "write_implement_note", fail_write_note)
+
+    note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    assert note == ship.architectural_guidelines.dropped_note_message()
+    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
+    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
+
+
+def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=False)
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    git("init")
+    git("config", "user.name", "Larch Test")
+    git("config", "user.email", "larch@example.invalid")
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    base_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", base_sha)
+    (repo / "README.md").write_text("base\nimplementation\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "implementation")
+    head_sha = git("rev-parse", "HEAD")
+    initial_diff = ship.architectural_guidelines.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    assert initial_diff
+    initial_fingerprint = ship.architectural_guidelines.diff_fingerprint(initial_diff)
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="moving note\n",
+        assessed_head_sha=head_sha,
+        diff_fingerprint_value=initial_fingerprint,
+        base_ref="origin/main",
+        diff_text=initial_diff,
+    )
+
+    note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha=head_sha,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+
+    assert note == "moving note"
+    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    ship.architectural_guidelines.write_staged_assessment(
+        implement_tmpdir=tmp_path,
+        assessment_text="moving note\n",
+        assessed_head_sha=head_sha,
+        diff_fingerprint_value=initial_fingerprint,
+        base_ref="origin/main",
+        diff_text=initial_diff,
+    )
+
+    refreshed_note = ship._pin_and_load_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha=head_sha,
+        base_ref="origin/main",
+        repo_root=str(repo),
+    )
+
+    assert refreshed_note == "moving note"
+    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == ""
+    durable_metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
+    assert durable_metadata["DIFF_FINGERPRINT"] == ship.architectural_guidelines.diff_fingerprint("")
 
 
 def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
