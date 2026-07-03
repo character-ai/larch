@@ -3,7 +3,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 00:35:19
-- **Cost**: 💰 TOTAL ~$9.53 — Claude $0.66, Codex-5.5 $4.65, Codex-mini $1.32, Cursor $2.63, Claude (subprocess) $0.27  |  Tokens: 16839k
+- **Cost**: 💰 TOTAL ~$12.43 — Claude $3.56, Codex-5.5 $4.65, Codex-mini $1.32, Cursor $2.63, Claude (subprocess) $0.27  |  Tokens: 21497k
 - **Issue**: #6117 — https://github.com/character-ai/larch/issues/6117
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_6** (nit): Retry-evidence broadening is not directly verified. Concern: The new retry-evidence behavior for non-panel escalations is only exercised indirectly. A regression in the retry append/fallback path could still sneak through without a focused assertion.
 - **Round 1 OOS_7** (latent): generic compose-status-missing remains as a residual catch-all. Concern: Some edge cases can still end in the generic `compose-status-missing` fallback after retry evidence is present. That residual catch-all is pre-existing unless the later fix removes it.
 - **Round 1 OOS_8** (latent): duplicate status lines can still be read with first-match semantics. Concern: `compose_env_key` is only tested on the terminal-failure path, so duplicate `STALL_RECOVERY_REPORT_STATUS` lines on append-after-compose paths can still be read stale and route to the wrong branch.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
