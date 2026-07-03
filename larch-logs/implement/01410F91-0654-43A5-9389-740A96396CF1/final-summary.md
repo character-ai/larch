@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:10:15
-- **Cost**: 💰 TOTAL ~$26.59 — Claude $0.82, Codex-5.5 $18.93, Codex-mini $0.97, Cursor $3.61, Claude (subprocess) $2.26  |  Tokens: 40475k
+- **Cost**: 💰 TOTAL ~$34.25 — Claude $8.48, Codex-5.5 $18.93, Codex-mini $0.97, Cursor $3.61, Claude (subprocess) $2.26  |  Tokens: 52269k
 - **Issue**: #6141 — https://github.com/character-ai/larch/issues/6141
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,13 +11,18 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 0
+- **Warnings**: 1
 - **Run logs**: `larch-logs/implement/01410F91-0654-43A5-9389-740A96396CF1/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
 - **Larch version**: 52.3.1
 
 <!-- larch:run-summary v=1 -->
+
+## Exec Issues and Warnings
+Exec Issues (0):
+Warnings (1):
+  1. Step 7a (architectural guidelines): G-IO-1 deviation — `_read_keepalive_clone_path(tmpdir: Path) -> str` is hand-rolled independently in `python/larch/design/design_core.py`, `python/larch/implemen...
 
 ## Review Phase Detail
 
@@ -63,3 +68,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (latent): Dead legacy marker path still omits `CLONE_PATH` stamping. Concern: The dead `run-step-checks.sh` / Step 3 path was intentionally left unchanged, but the legacy `.bg-wait-active` marker block still omits `CLONE_PATH` stamping if that path is ever reactivated.
 - **Round 1 OOS_2** (nit): `bash_probe_target_dir_plausible()` comment drift. Concern: The comment above `bash_probe_target_dir_plausible()` still describes the old keepalive-only resolver even though the code now uses the marker-local-first chain.
 - **Round 1 OOS_3** (nit): `_read_keepalive_clone_path()` parser duplication. Concern: The keepalive clone-path reader is duplicated across Bash and Python helpers, and the parser is slightly weaker than the external runner helper.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
