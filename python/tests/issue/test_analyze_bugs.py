@@ -32,33 +32,17 @@ def _issue(number: int, title: str, *, state: str = "CLOSED", reason: str = "COM
     }
 
 
-def test_fetch_filters_bug_prefix_and_keeps_state_all_on_fallback() -> None:
-    issues = [
-        _issue(1, "not [BUG] later"),
-        _issue(2, "[BUG] newest"),
-        _issue(3, "[BUG] older"),
-    ]
-    runner = RecordingRunner(responses=[_result(rc=1, stderr="bad field"), _result(json.dumps(issues))], strict=True)
-
-    selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=2)
-
-    assert [issue.number for issue in selected] == [2, 3]
-    assert all("--state" in call and "all" in call for call in runner.calls)
-    assert any("stateReason" in arg for arg in runner.calls[0])
-    assert not any("stateReason" in arg for arg in runner.calls[1])
-
-
-def test_fetch_bug_issues_pages_until_count_met() -> None:
-    page1 = [_issue(number, f"refactor {number}") for number in range(1, 101)]
-    page2 = [_issue(number, f"refactor {number}") for number in range(101, 200)]
-    page2.append(_issue(200, "[BUG] newest"))
-    runner = RecordingRunner(responses=[_result(json.dumps(page1)), _result(json.dumps(page2))], strict=True)
+def test_fetch_filters_bug_prefix_and_uses_paginated_gh_api() -> None:
+    page1 = [_issue(number, f"refactor {number}", body="body") for number in range(1, 101)]
+    page1[0]["pull_request"] = {"url": "https://github.com/o/r/pull/1"}
+    page2 = [_issue(number, f"refactor {number}", state="CLOSED", reason="COMPLETED") for number in range(101, 200)]
+    page2.append(_issue(200, "[BUG] newest", state="CLOSED", reason="COMPLETED"))
+    runner = RecordingRunner(responses=[_result(json.dumps(page1) + json.dumps(page2))], strict=True)
 
     selected, _corpus = analyze_bugs.fetch_bug_issues(runner, repo="o/r", count=1)
 
     assert [issue.number for issue in selected] == [200]
-    assert runner.calls[0][-2:] == ["--page", "1"]
-    assert runner.calls[1][-2:] == ["--page", "2"]
+    assert runner.calls == [["gh", "api", "--paginate", "repos/o/r/issues?state=all&per_page=100"]]
 
 
 def test_cache_key_changes_with_state_and_state_reason() -> None:
@@ -149,6 +133,44 @@ def test_build_bundle_record_rejects_unreadable_pr_fix_sha(tmp_path: Path) -> No
     assert "Not a valid object name" in bundle.mechanical_reason
 
 
+def test_build_bundle_record_rejects_pr_fix_sha_outside_evidence_ref(tmp_path: Path) -> None:
+    issue = analyze_bugs.IssueRecord(
+        7,
+        "[BUG] pr fix",
+        "CLOSED",
+        "COMPLETED",
+        "body",
+        "u",
+        "",
+        (),
+    )
+    runner = RecordingRunner(
+        responses=[
+            _result(""),
+            _result(json.dumps({"closedByPullRequestsReferences": [{"number": 9, "url": "https://github.com/o/r/pull/9"}]})),
+            _result(json.dumps({"mergeCommit": {"oid": "deadbeef"}})),
+            _result(),
+            _result(rc=1, stderr="fatal: Not a valid merge base"),
+        ],
+        strict=True,
+    )
+
+    bundle = analyze_bugs.build_bundle_record(
+        runner=runner,
+        issue=issue,
+        repo="o/r",
+        evidence_ref="origin/main",
+        run_dir=tmp_path,
+        diff_cap=100,
+        body_cap=100,
+    )
+
+    assert bundle.fix_sha == ""
+    assert bundle.mechanical_verdict == "NEEDS_DEEP"
+    assert "Not a valid merge base" in bundle.mechanical_reason
+    assert ["git", "merge-base", "--is-ancestor", "deadbeef", "origin/main"] in runner.calls
+
+
 def test_exact_fix_reference_newest_wins_and_prefix_collision() -> None:
     output = "badsha\x1fFixes #1234\x1e\ngoodsha\x1fFixes #123\x1e\noldsha\x1fFixes #123\x1e\n"
     runner = RecordingRunner(responses=[_result(output)], strict=True)
@@ -169,6 +191,8 @@ def test_prefetch_emits_manifest_and_handoff_paths(tmp_path: Path) -> None:
             _result("sha\n"),
             _result(json.dumps(issues)),
             _result("fixsha\x1fFixes #10\x1e"),
+            _result(),
+            _result(),
             _result("file.py\n"),
             _result("later: touch\n"),
             _result("diff --git a/file.py b/file.py\n"),
@@ -227,6 +251,175 @@ def test_ledger_ingest_rejects_duplicate_and_unknown_verdict(tmp_path: Path) -> 
     assert payload["INGEST_REJECTED"] == 2
     rows = (tmp_path / "ledger.jsonl").read_text(encoding="utf-8")
     assert "FIXED_CLEAR" in rows
+
+
+def test_ledger_ingest_rejects_issue_not_in_active_batch(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    manifest: dict[str, object] = {
+        "schema_version": "1",
+        "repo": "o/r",
+        "issues": [
+            {
+                "issue_number": 1,
+                "title": "[BUG] a",
+                "state": "CLOSED",
+                "state_reason": "COMPLETED",
+                "url": "u1",
+                "body_path": "b1",
+                "bundle_path": "bundle-1",
+                "fix_sha": "abc",
+                "fix_source": "git-log",
+                "touched_files": [],
+                "later_history_hash": "h1",
+                "mechanical_verdict": "",
+                "mechanical_reason": "",
+                "cache_key": "k1",
+            },
+            {
+                "issue_number": 2,
+                "title": "[BUG] b",
+                "state": "CLOSED",
+                "state_reason": "COMPLETED",
+                "url": "u2",
+                "body_path": "b2",
+                "bundle_path": "bundle-2",
+                "fix_sha": "def",
+                "fix_source": "git-log",
+                "touched_files": [],
+                "later_history_hash": "h2",
+                "mechanical_verdict": "",
+                "mechanical_reason": "",
+                "cache_key": "k2",
+            },
+        ],
+    }
+    _write_json(run_dir / "manifest.json", manifest)
+    (run_dir / "triage-pending-1.jsonl").write_text(
+        json.dumps({"issue": 1, "cache_key": "k1", "bundle_path": "bundle-1"}) + "\n",
+        encoding="utf-8",
+    )
+    batch = run_dir / "triage.jsonl"
+    batch.write_text(
+        '{"issue":2,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"off-task","needs_deep":false}\n',
+        encoding="utf-8",
+    )
+
+    payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=tmp_path / "ledger.jsonl", manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
+
+    assert payload["INGEST_ACCEPTED"] == 0
+    assert payload["INGEST_REJECTED"] == 1
+    assert not (tmp_path / "ledger.jsonl").exists()
+
+
+def test_ledger_ingest_refresh_triage_clears_stale_deep_verdict(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    body_path = run_dir / "issue-1-body.md"
+    bundle_path = run_dir / "issue-1-bundle.md"
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "1",
+            "repo": "o/r",
+            "run_id": "run-1",
+            "run_dir": str(run_dir),
+            "evidence_ref": "origin/main",
+            "bugs_requested": 1,
+            "bugs_selected": 1,
+            "generated_at": 1,
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "triage_batch_paths": [],
+            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+            "issues": [
+                {
+                    "issue_number": 1,
+                    "title": "[BUG] stale deep",
+                    "state": "CLOSED",
+                    "state_reason": "COMPLETED",
+                    "url": "u",
+                    "body_path": str(body_path),
+                    "bundle_path": str(bundle_path),
+                    "fix_sha": "sha1",
+                    "fix_source": "git-log",
+                    "touched_files": [],
+                    "later_history_hash": "later",
+                    "mechanical_verdict": "",
+                    "mechanical_reason": "",
+                    "cache_key": "cache-key",
+                    "sampled": False,
+                }
+            ],
+        },
+    )
+    _ = body_path.write_text("body\n", encoding="utf-8")
+    _ = bundle_path.write_text("bundle\n", encoding="utf-8")
+    ledger = tmp_path / "ledger.jsonl"
+    ledger.write_text(
+        json.dumps(
+            {
+                "cache_key": "cache-key",
+                "issue": 1,
+                "fix_sha": "sha1",
+                "later_history_hash": "later",
+                "triage_verdict": "FIXED_CLEAR",
+                "triage_reason": "old triage",
+                "triage_missing_items": [],
+                "triage_needs_deep": False,
+                "deep_verdict": "CONFIRMED_FIXED",
+                "deep_reason": "stale deep verdict",
+                "sampled": False,
+                "stages_complete": ["deep", "triage"],
+                "updated_at": 1,
+            },
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    batch = run_dir / "triage.jsonl"
+    batch.write_text(
+        '{"issue":1,"verdict":"FIXED_CLEAR","missing_items":[],"reason":"refresh","needs_deep":false}\n',
+        encoding="utf-8",
+    )
+
+    payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=batch, deep_path=None)
+
+    assert payload["INGEST_ACCEPTED"] == 1
+    updated = json.loads(ledger.read_text(encoding="utf-8").splitlines()[-1])
+    assert updated["deep_verdict"] == ""
+    assert updated["deep_reason"] == ""
+    assert "deep" not in updated["stages_complete"]
+
+
+def test_ledger_ingest_skips_missing_deep_ingest_file(tmp_path: Path) -> None:
+    run_dir = tmp_path / "run"
+    run_dir.mkdir()
+    _write_json(
+        run_dir / "manifest.json",
+        {
+            "schema_version": "1",
+            "repo": "o/r",
+            "run_id": "run-1",
+            "run_dir": str(run_dir),
+            "evidence_ref": "origin/main",
+            "bugs_requested": 0,
+            "bugs_selected": 0,
+            "generated_at": 1,
+            "ledger_path": str(tmp_path / "ledger.jsonl"),
+            "triage_batch_paths": [],
+            "deep_queue_path": str(run_dir / "deep-queue.jsonl"),
+            "issues": [],
+        },
+    )
+    ledger = tmp_path / "ledger.jsonl"
+
+    payload = analyze_bugs.ledger_ingest(run_dir=run_dir, ledger_path=ledger, manifest_path=run_dir / "manifest.json", triage_path=None, deep_path=run_dir / "missing-deep.jsonl")
+
+    assert payload["INGEST_STAGE"] == "deep"
+    assert payload["INGEST_ACCEPTED"] == 0
+    assert payload["INGEST_REJECTED"] == 0
+    assert not ledger.exists()
 
 
 def test_deep_queue_priority_cap_and_model_alias(tmp_path: Path) -> None:

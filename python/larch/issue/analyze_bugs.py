@@ -26,6 +26,7 @@ from pathlib import Path
 from typing import Any, Final, cast
 
 from larch.core import config, proc
+from larch.git import gh
 from larch.core.proc import Runner
 from larch.issue.issue_wire import strip_named_block
 from larch.report.report_tokens_cost import rate_row
@@ -284,6 +285,8 @@ def resolve_evidence_ref(runner: Runner) -> str:
 
 
 def _issue_from_raw(raw: Mapping[str, Any]) -> IssueRecord | None:
+    if raw.get("pull_request") is not None:
+        return None
     number_raw = raw.get("number")
     if isinstance(number_raw, bool):
         return None
@@ -293,72 +296,72 @@ def _issue_from_raw(raw: Mapping[str, Any]) -> IssueRecord | None:
         return None
     if number <= 0:
         return None
-    pr_refs_raw = raw.get("closedByPullRequestsReferences")
-    pr_refs: tuple[dict[str, Any], ...]
-    if isinstance(pr_refs_raw, list):
-        pr_refs = tuple(cast("dict[str, Any]", item) for item in pr_refs_raw if isinstance(item, dict))
-    elif isinstance(pr_refs_raw, dict) and isinstance(pr_refs_raw.get("nodes"), list):
-        pr_refs = tuple(cast("dict[str, Any]", item) for item in pr_refs_raw["nodes"] if isinstance(item, dict))
-    else:
-        pr_refs = ()
+    pr_refs = _closed_pr_refs_from_raw(raw)
     return IssueRecord(
         number=number,
         title=str(raw.get("title") or ""),
         state=str(raw.get("state") or ""),
-        state_reason=str(raw.get("stateReason") or ""),
+        state_reason=str(raw.get("stateReason") or raw.get("state_reason") or ""),
         body=str(raw.get("body") or ""),
-        url=str(raw.get("url") or ""),
-        closed_at=str(raw.get("closedAt") or ""),
+        url=str(raw.get("url") or raw.get("html_url") or ""),
+        closed_at=str(raw.get("closedAt") or raw.get("closed_at") or ""),
         closed_by_pull_requests=pr_refs,
     )
+
+
+def _closed_pr_refs_from_raw(raw: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    pr_refs_raw = raw.get("closedByPullRequestsReferences")
+    if isinstance(pr_refs_raw, list):
+        return tuple(cast("dict[str, Any]", item) for item in pr_refs_raw if isinstance(item, dict))
+    if isinstance(pr_refs_raw, dict) and isinstance(pr_refs_raw.get("nodes"), list):
+        return tuple(cast("dict[str, Any]", item) for item in pr_refs_raw["nodes"] if isinstance(item, dict))
+    return ()
 
 
 def _bug_title(title: str) -> bool:
     return title.lstrip().startswith(BUG_PREFIX)
 
 
-def _issue_list_argv(repo: str, *, limit: int, fields: Sequence[str]) -> list[str]:
+def _issue_list_argv(repo: str) -> list[str]:
+    return [
+        "gh",
+        "api",
+        "--paginate",
+        f"repos/{repo}/issues?state=all&per_page=100",
+    ]
+
+
+def _issue_pr_refs_argv(repo: str, *, issue_number: int) -> list[str]:
     return [
         "gh",
         "issue",
-        "list",
+        "view",
+        str(issue_number),
         "--repo",
         repo,
-        "--state",
-        "all",
-        "--limit",
-        str(limit),
         "--json",
-        ",".join(fields),
+        "closedByPullRequestsReferences",
     ]
 
 
 def fetch_bug_issues(runner: Runner, *, repo: str, count: int) -> tuple[list[IssueRecord], int]:
     if count <= 0:
         return [], 0
-    fields = ["number", "title", "state", "stateReason", "body", "url", "closedAt", "closedByPullRequestsReferences"]
-    fallback_fields = ["number", "title", "state", "body", "url", "closedAt"]
     selected: list[IssueRecord] = []
     last_corpus_len = 0
-    limit = 100
-    page = 1
-    while True:
-        result = runner.run(_issue_list_argv(repo, limit=limit, fields=fields) + ["--page", str(page)])
-        if result.returncode != 0:
-            result = runner.run(_issue_list_argv(repo, limit=limit, fields=fallback_fields) + ["--page", str(page)])
-        if result.returncode != 0:
-            raise AnalyzeBugsError(f"gh issue list failed: {(result.stderr or result.stdout).strip()}")
-        raw_rows = _parse_json_array(result.stdout, desc="gh issue list")
-        last_corpus_len = len(raw_rows)
-        issues = [issue for row in raw_rows if (issue := _issue_from_raw(row)) is not None]
-        for issue in issues:
-            if _bug_title(issue.title):
-                selected.append(issue)
-                if len(selected) >= count:
-                    return selected[:count], last_corpus_len
-        if len(raw_rows) < limit:
-            break
-        page += 1
+    result = runner.run(_issue_list_argv(repo))
+    if result.returncode != 0:
+        raise AnalyzeBugsError(f"gh issue list failed: {(result.stderr or result.stdout).strip()}")
+    raw_rows = [row for row in gh.loads_json_paginated_list(result.stdout) if isinstance(row, dict)]
+    last_corpus_len = len(raw_rows)
+    for row in raw_rows:
+        issue = _issue_from_raw(cast("Mapping[str, Any]", row))
+        if issue is None:
+            continue
+        if _bug_title(issue.title):
+            selected.append(issue)
+            if len(selected) >= count:
+                return selected[:count], last_corpus_len
     return selected[:count], last_corpus_len
 
 
@@ -438,7 +441,15 @@ def _merge_commit_sha(data: Mapping[str, Any]) -> str:
 
 def find_fix_by_pr_refs(runner: Runner, *, issue: IssueRecord, repo: str) -> FixEvidence:
     shas: list[str] = []
-    for ref in issue.closed_by_pull_requests:
+    refs = issue.closed_by_pull_requests
+    if not refs and repo and issue.number > 0:
+        result = runner.run(_issue_pr_refs_argv(repo, issue_number=issue.number))
+        if result.returncode == 0:
+            try:
+                refs = _closed_pr_refs_from_raw(_parse_json_object(result.stdout, desc="gh issue view"))
+            except AnalyzeBugsError:
+                refs = ()
+    for ref in refs:
         pr_number = _pr_number_from_ref(ref)
         if not pr_number:
             continue
@@ -460,12 +471,17 @@ def find_fix_by_pr_refs(runner: Runner, *, issue: IssueRecord, repo: str) -> Fix
     return FixEvidence(issue.number, "", "closedByPullRequestsReferences", reason="no PR merge commit")
 
 
-def _validate_local_fix_sha(runner: Runner, fix: FixEvidence) -> FixEvidence:
+def _validate_local_fix_sha(runner: Runner, fix: FixEvidence, *, evidence_ref: str) -> FixEvidence:
     if not fix.fix_sha:
         return fix
     result = runner.run(["git", "cat-file", "-e", f"{fix.fix_sha}^{{commit}}"])
     if result.returncode == 0:
-        return fix
+        reachability = runner.run(["git", "merge-base", "--is-ancestor", fix.fix_sha, evidence_ref])
+        if reachability.returncode == 0:
+            return fix
+        detail = (reachability.stderr or reachability.stdout or f"commit {fix.fix_sha} is not reachable from {evidence_ref}").strip()
+        reason = f"{fix.source}: {detail}" if detail else fix.source
+        return FixEvidence(fix.issue_number, "", fix.source, ambiguous=fix.ambiguous, reason=reason)
     detail = (result.stderr or result.stdout or f"commit {fix.fix_sha} is unavailable locally").strip()
     reason = f"{fix.source}: {detail}" if detail else fix.source
     return FixEvidence(fix.issue_number, "", fix.source, ambiguous=fix.ambiguous, reason=reason)
@@ -474,13 +490,14 @@ def _validate_local_fix_sha(runner: Runner, fix: FixEvidence) -> FixEvidence:
 def resolve_fix_evidence(runner: Runner, *, issue: IssueRecord, repo: str, evidence_ref: str) -> FixEvidence:
     fix = find_fix_by_git_log(runner, issue=issue.number, evidence_ref=evidence_ref)
     if fix.fix_sha:
-        return _validate_local_fix_sha(runner, fix)
-    if issue.closed_by_pull_requests:
-        pr_fix = find_fix_by_pr_refs(runner, issue=issue, repo=repo)
-        if pr_fix.fix_sha:
-            return _validate_local_fix_sha(runner, pr_fix)
-        if pr_fix.ambiguous:
-            return pr_fix
+        return _validate_local_fix_sha(runner, fix, evidence_ref=evidence_ref)
+    if issue.state.upper() == "OPEN":
+        return fix
+    pr_fix = find_fix_by_pr_refs(runner, issue=issue, repo=repo)
+    if pr_fix.fix_sha:
+        return _validate_local_fix_sha(runner, pr_fix, evidence_ref=evidence_ref)
+    if pr_fix.ambiguous:
+        return pr_fix
     return fix
 
 
@@ -870,6 +887,34 @@ def _write_deep_queue(path: Path, rows: Sequence[Mapping[str, Any]]) -> None:
     _atomic_write_text(path, text)
 
 
+def _stage_issue_numbers(run_dir: Path, *, stage: str) -> set[int]:
+    if stage == "deep":
+        paths = (run_dir / "deep-queue.jsonl",)
+    else:
+        paths = tuple(sorted(run_dir.glob("triage-pending-*.jsonl")))
+    issue_numbers: set[int] = set()
+    for path in paths:
+        if not path.is_file():
+            continue
+        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+            if not line.strip():
+                continue
+            try:
+                raw = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if not isinstance(raw, dict):
+                continue
+            issue = raw.get("issue")
+            if isinstance(issue, bool):
+                continue
+            with contextlib.suppress(TypeError, ValueError):
+                value = int(issue)
+                if value > 0:
+                    issue_numbers.add(value)
+    return issue_numbers
+
+
 def _validate_deep_model(alias: str) -> tuple[str, str]:
     pair = config.ANALYZE_BUGS_DEEP_MODEL_ALIASES.get(alias)
     if not pair:
@@ -893,6 +938,9 @@ def _upsert_record(base: LedgerRecord | None, bundle: BundleRecord, *, triage: T
         triage_reason = triage.reason
         triage_missing = triage.missing_items
         triage_needs_deep = triage.needs_deep
+        stages.discard("deep")
+        deep_verdict = ""
+        deep_reason = ""
     if deep:
         stages.add("deep")
         deep_verdict = deep.verdict
@@ -1026,8 +1074,11 @@ def ledger_ingest(*, run_dir: Path, ledger_path: Path, manifest_path: Path, tria
     path = triage_path or deep_path
     if path is None:
         raise AnalyzeBugsError("ingest path missing")
+    if deep_path is not None and not deep_path.is_file():
+        return {"INGEST_STAGE": "deep", "INGEST_ACCEPTED": 0, "INGEST_REJECTED": 0, "LEDGER_CORRUPT_LINES": corrupt_count}
     if not path.is_file():
         raise AnalyzeBugsError(f"ingest file not found: {path}")
+    expected_issues = _stage_issue_numbers(run_dir, stage=stage or ("deep" if deep_path is not None else "triage"))
     for lineno, line in enumerate(path.read_text(encoding="utf-8", errors="replace").splitlines(), 1):
         if not line.strip():
             continue
@@ -1057,6 +1108,10 @@ def ledger_ingest(*, run_dir: Path, ledger_path: Path, manifest_path: Path, tria
             rejected += 1
             continue
         seen.add(parsed.issue)
+        if expected_issues and parsed.issue not in expected_issues:
+            print(f"WARN: rejected line {lineno}: issue not in active {stage or 'ingest'} batch", file=sys.stderr)
+            rejected += 1
+            continue
         bundle = by_issue.get(parsed.issue)
         if bundle is None:
             print(f"WARN: rejected line {lineno}: issue not in current manifest", file=sys.stderr)
