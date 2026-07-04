@@ -2655,6 +2655,57 @@ def test_capture_transcript_main_defer_commit_no_warning(
     assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
 
 
+def test_capture_transcript_main_preserves_system_tmp_render_path(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    system_tmp = tmp_path / "system-tmp"
+    implement_tmp = tmp_path / "implement-tmp"
+    system_tmp.mkdir()
+    implement_tmp.mkdir()
+    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(implement_tmp))
+    monkeypatch.setattr(run_log_flush.tempfile, "tempdir", str(system_tmp))
+    transcript = tmp_path / "transcript.jsonl"
+    _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
+    source = tmp_path / "source.txt"
+    _ = source.write_text(f"TRANSCRIPT_PATH={transcript}\n", encoding="utf-8")
+    log_root = tmp_path / "larch-logs"
+    rendered_payload = '{"type":"stub"}\n'
+
+    def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        output = Path(args[args.index("--output") + 1])
+        assert output.is_relative_to(system_tmp)
+        assert not output.is_relative_to(implement_tmp)
+        _ = output.write_text(rendered_payload, encoding="utf-8")
+        return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(subprocess, "run", _fake_run)
+
+    buf = StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc = run_logs.capture_transcript_main(
+            [
+                "--source-file",
+                str(source),
+                "--log-root",
+                str(log_root),
+                "--skill",
+                "implement",
+                "--run-id",
+                "RUN1",
+                "--defer-commit",
+                "true",
+            ]
+        )
+
+    captured = buf.getvalue()
+    committed = log_root / "implement" / "RUN1" / "session-transcript.jsonl"
+    assert rc == 0
+    assert "SESSION_TRANSCRIPT_STATUS=captured" in captured
+    assert "write-failed" not in captured
+    assert committed.read_text(encoding="utf-8") == rendered_payload
+
+
 def test_init_run_writes_manifest_v2(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     _ = run_logs.init_run(ctx, run_id="run-abc")
