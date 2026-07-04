@@ -12,7 +12,7 @@ import shutil
 from pathlib import Path
 from typing import cast
 
-from larch.report import run_logs
+from larch.report import run_log_batch
 from larch.review import review_pipeline
 from larch.review import voting
 from larch.review._raf_util import (
@@ -239,7 +239,7 @@ def observe_code_review_tally_flush(*, impl_tmpdir: Path, run_id: str, result: o
         f"See `{rel_sidecar}` for stderr/stdout.\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(log_file=impl_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
+        run_log_batch.append_execution_issue(log_file=impl_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def _sorted_round_dirs(impl_tmpdir: Path) -> list[tuple[int, Path]]:
@@ -434,7 +434,7 @@ def _append_scout_flush_warning(*, implement_tmpdir: Path, round_num: int, detai
         f"{detail.rstrip()}\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(log_file=implement_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
+        run_log_batch.append_execution_issue(log_file=implement_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def flush_scout_manifest(*,
