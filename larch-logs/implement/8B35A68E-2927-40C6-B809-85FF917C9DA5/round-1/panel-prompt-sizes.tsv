@@ -1,0 +1,4 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	25779	6445	13730	3433	12049	3013	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	26045	6512	13996	3499	12049	3013	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	25487	6372	13438	3360	12049	3013	agents/reviewer-testing.md	5452	1363
