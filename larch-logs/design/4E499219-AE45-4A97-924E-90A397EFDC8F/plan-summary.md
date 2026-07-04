@@ -1,0 +1,1 @@
+Plan: add a direct shared readability directive to reviewer prompt sources, regenerate reviewer agents and pre-rendered bodies, and extend `lint readability-preamble` plus its manifest/tests to enforce agent prompt coverage.

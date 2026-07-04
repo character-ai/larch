@@ -1,0 +1,20 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/larch/rendering/rendering.py:906-916
+- **Concern**: Agent-file orchestrator-inline directive does not reach Codex/Cursor code-review prompts. Scenario: /implement Step 5 and /review dispatch Codex/Cursor through `python/cli.py render specialist` → `agent launch-review`, which concatenates `_load_specialist_body` output with tagging and diff context only. `render_plan_review_main` already appends the full `readability-style.md` body (rendering.py ~1368-1403), but `_render_specialist_text` has no equivalent. The planned `${CLAUDE_PLUGIN_ROOT}/...` Read directive is not path-substituted, Codex review grants only repo workdir plus output `--add-dir` (_review_launcher.py ~822-831), and Cursor `--workspace` is repo-only (~1158-1170). On marketplace installs the style file lives in the plugin cache, not the consumer repo, so external reviewers cannot load the guide and finding prose stays unchanged despite the new agent lines.
+- **Proposed resolution**: Add a `### UPDATED: python/larch/rendering/rendering.py` step: in `_render_specialist_text`, read `skills/shared/readability-style.md` from plugin root (same source as `render_plan_review_main`) and append it to `stable_chunks` after the agent body. Keep the orchestrator-inline line in agent files for lint/Claude-subagent parity; treat render-time inlining as the external-vendor delivery path already used for plan review.
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/larch/rendering/rendering.py:906-946
+- **Concern**: Step 5 and /review Codex/Cursor specialist prompts still will not carry readability rules after agent-file edits alone. Scenario: `launch-claude-review`, `launch-review`, and dynamic scout dispatch all build vendor prompts through `python/cli.py render specialist` (`_render_specialist_text` loads `agents/pre-rendered/reviewer-*-body.txt` and appends tagging/context only). Unlike `render plan-review`, that renderer never appends `skills/shared/readability-style.md`. A `MANDATORY — READ ENTIRE FILE ... ${CLAUDE_PLUGIN_ROOT}/...` line in agent bodies is inert for Codex/Cursor ask/read-only launches and for consumer repos where the plugin root is outside the workspace, so external reviewers keep emitting finding prose with only the existing concision caps
+- **Proposed resolution**: Add `### UPDATED: python/larch/rendering/rendering.py` to mirror `render_plan_review_main`: after the stable specialist body in `_render_specialist_text`, append the readability-style file contents (same `--readability-style-file` / `READABILITY_STYLE_FILE` fallback used at line 1368). Add a focused test beside `test_render_plan_review_inlines_strunk_and_white_readability` in `python/tests/rendering/test_rendering.py`. Keep the agent directive plus lint walk for Claude Agent-tool paths and drift enforcement; the render append is what actually wires style into the external panel path named in the issue
+
+
+
