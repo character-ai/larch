@@ -131,6 +131,17 @@ grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper mu
 grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper must delegate loop teardown to identity helper'
 # shellcheck disable=SC2016
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json"' "$WRAPPER" || fail 'Step 3 wrapper must clear loop identity sidecar after wait'
+# shellcheck disable=SC2016
+grep -Fq 'trap _step3_review_guarantee_post_loop_exit EXIT' "$WRAPPER" || fail 'post-loop trap must use cleanup-plus-guarantee helper'
+python3 - "$WRAPPER" <<'PY' || fail 'post-loop trap must not call sentinel-only helper directly'
+from pathlib import Path
+import sys
+
+for line in Path(sys.argv[1]).read_text(encoding="utf-8").splitlines():
+    stripped = line.strip()
+    if stripped == "trap '_step3_review_guarantee_completed_sentinels' EXIT":
+        raise SystemExit("sentinel-only post-loop trap found")
+PY
 python3 - "$WRAPPER" <<'PY' || fail 'Step 3 detach marker write must be guarded by loop identity publication'
 from pathlib import Path
 import sys
@@ -685,6 +696,7 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$sentinel_out" || fail 'sentin
 [ -e "$D_SENTINEL/.completed/step-3-terminal" ] || fail '#5418: normalize must mint step-3-terminal before emit when status is complete'
 [ ! -e "$D_SENTINEL/.step3-terminal-persisted-this-run" ] || fail '#5418: normalize writes only step-3-terminal; sidecar must stay absent so EXIT trap cannot mint step-3'
 [ ! -e "$D_SENTINEL/.completed/step-3.5" ] || fail '#4489: guarantee must not write deferred .completed/step-3.5 (Gate C / pause-resume gate)'
+[ ! -e "$D_SENTINEL/.bg-wait-active" ] || fail '#6268: post-loop trap must remove .bg-wait-active after normal completion'
 rm -rf "$D_SENTINEL"
 pass 'Step 3 wrapper clears stale terminal sentinels; normalize mints step-3-terminal before emit without triggering step-3'
 

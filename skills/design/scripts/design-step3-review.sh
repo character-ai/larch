@@ -371,6 +371,14 @@ _step3_review_guarantee_completed_sentinels() {
   return 0
 }
 
+_step3_review_guarantee_post_loop_exit() {
+  local _exit_rc=$?
+  trap - EXIT TERM HUP INT
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  _step3_review_guarantee_completed_sentinels
+  exit "$_exit_rc"
+}
+
 _step3_review_teardown_loop_group() {
   local _pid="${1:-}"
   [[ -n "$_pid" ]] || return 0
@@ -594,12 +602,14 @@ _step3_review_kill_tmpdir_processes
 # postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
 # fall-through) must leave .completed/step-3 in place. The hook-release sentinel
 # .completed/step-3-terminal is written only after the current wrapper pass
-# persists the result envelope. Replace the loop-cleanup trap with the guarantee
-# trap in a single atomic assignment: bash overwrites the active EXIT handler in
-# one step, so there is no window where no EXIT trap is registered. The earlier
-# two-step `trap - EXIT` removal followed by a re-arm left a gap in which a crash
-# or signal could skip the completion sentinel (#4724).
-trap '_step3_review_guarantee_completed_sentinels' EXIT
+# persists the result envelope. Replace the loop-cleanup trap with the post-loop
+# cleanup-plus-guarantee trap in a single atomic assignment: bash overwrites the
+# active EXIT handler in one step, so there is no window where no EXIT trap is
+# registered. The replacement trap owns both .bg-wait-active removal and the
+# completion-sentinel guarantee. The earlier two-step `trap - EXIT` removal
+# followed by a re-arm left a gap in which a crash or signal could skip the
+# completion sentinel (#4724).
+trap _step3_review_guarantee_post_loop_exit EXIT
 _step3_normalize_rc=0
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
   --design-tmpdir "$DESIGN_TMPDIR" \
