@@ -1,0 +1,17 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- pre-commit integration is optional for this fix; Makefile/CI wiring already covers the planned lint.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stronger test matching may be nice, but the plan's fixed inventory still ships the feature.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- frozen inventory drift is a future limitation, not a required part of fixing the missing stamp.
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- run-step-checks.sh is documented as legacy/helper-only; the live Step 3 path is the composite writer.
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- same legacy-only issue; dropping the shell update is a scope choice, not a correctness blocker.
+FINDING_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- patching the orphaned shell block is optional because the production Step 3 marker already comes from dispatch_commit_route.
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the stale shell block is dead-path cleanup, not a required feature fix.
+FINDING_8: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the extra lint/CLI/Makefile/pytest surface is beyond the single-marker-fix scope.
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the live Step 3 writer is the composite path; shell parity is legacy-only.
+FINDING_10: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- same as above; the shell change does not affect current production behavior.
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the shell wrapper is orphaned for active Step 3, so this is optional parity not a feature defect.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-commit coverage is a separate integration concern, not required to fix the marker stamp.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- deleting dead code is a reasonable alternative, but it is not necessary for the planned fix.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- hook parity is optional; the planned Makefile/CI path still delivers the lint.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-commit wiring is not needed for the feature to ship correctly.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same pre-commit integration concern; useful, but outside the issue's necessity gate.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- inventory drift is a known tradeoff of the minimum-change lint, not a blocker for this fix.

@@ -1,0 +1,74 @@
+# [BUG] run-step-checks.sh Step 3 bg-wait marker omits CLONE_PATH stamp
+
+## Summary
+
+The `/implement` Step 3 checks `.bg-wait-active` marker writer is the only one of nine bg-wait-marker writers that does not stamp a local `CLONE_PATH=` line on the marker (and it does not read `.larch-keepalive` at all). The recent cross-clone hook-scoping remediation (#5925 / #5927 / #6108 / #5948) resolves a marker's owning clone from its own `CLONE_PATH` stamp first, falling back to the sibling `.larch-keepalive` `CLONE_PATH`. Because the Step 3 marker never carries the direct stamp, its clone identity depends entirely on the keepalive fallback. If that keepalive is ever missing or unreadable, this marker's clone identity becomes unknown and can, under a narrow additional condition, cause a sibling clone's Step 3 tool calls to be falsely denied — the same cross-clone false-denial class as #5925 / #5927 (denial-only; this is not a process-kill path). Step 3 checks runs on every `/implement`, so this is the most frequently-live marker in the codebase, and no test guards the omission.
+
+## Original report
+
+Found during a correctness/completeness audit of the recent cross-session process-death fixes (the #6213 / #6237 kill cluster and the #5925 / #5927 / #6108 / #5948 / #6137–#6141 cross-clone hook-denial cluster).
+
+Independent enumeration of every `.bg-wait-active` writer showed eight of nine writers read `.larch-keepalive` and stamp `CLONE_PATH=%s` on the marker, while `skills/implement/scripts/run-step-checks.sh` (STEP=`implement-step3-checks`) writes only five fields and omits the stamp. The two guard hooks were confirmed to gate every deny/count/block decision through the deduped `marker_foreign_clone` clone-ownership helper (byte-identical across both hooks, CI-parity-tested), so cross-clone scoping is otherwise sound; this writer is the one site the CLONE_PATH remediation did not reach.
+
+## Reproduction scenario
+
+Direct field reproduction is difficult because it requires the keepalive fallback to be unavailable, which is off the normal path. The gap itself is confirmed statically:
+
+1. Start any `/implement` run and let it reach Step 3 checks (the site invoked with `run_in_background: true`). Observe the written marker:
+   `cat "$IMPLEMENT_TMPDIR/.bg-wait-active"` → contains `PID`, `CLAUDE_PID`, `START_EPOCH`, `STEP=implement-step5-review`-style `STEP=implement-step3-checks`, `TIMEOUT_S`, but **no `CLONE_PATH=` line**.
+2. Compare against the Step 5 marker written by `step-5-review.sh`, which includes a trailing `CLONE_PATH=<repo path>` line.
+
+Cross-clone denial requires the additional, off-normal-path condition below (keepalive missing/unreadable **and** a sibling clone whose leaf-dir basename sanitizes to the same clone-tag), so it is a latent exposure rather than a routinely-reproducible failure.
+
+## Expected behavior
+
+The Step 3 checks marker should carry the same `CLONE_PATH=` stamp every other bg-wait writer applies, so `marker_foreign_clone()` can resolve this marker's owning clone directly from the marker itself, without depending on the `.larch-keepalive` fallback. Clone scoping for this marker should be as robust as it is for Step 5, Step 6, Step 7a, Step 8, the checks-commit-route marker, and the design markers.
+
+## Observed behavior
+
+The Step 3 checks marker carries no `CLONE_PATH` stamp. `marker_foreign_clone()` falls back to `.larch-keepalive`'s `CLONE_PATH`. In the normal case the keepalive is present and scoping still holds. But when the keepalive is missing or unreadable, this marker's clone identity is unknown, so it drops into the #6138 "unknown identity keeps the marker conservatively" fail-closed path plus the basename clone-tag heuristic (`bash_probe_target_dir_plausible`). Under those conditions a sibling clone whose cwd leaf-dir basename sanitizes to the same clone-tag can have its own Step 3 Bash probes / `Monitor` / `TaskOutput` / prompt falsely denied by this foreign marker.
+
+## Root cause analysis
+
+`skills/implement/scripts/run-step-checks.sh:72-73` writes the marker with a five-field `printf` and no keepalive read:
+
+```
+printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\n' \
+  "$$" "$_step3_claude_pid" "$_step3_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+```
+
+Every other writer first reads `.larch-keepalive` `CLONE_PATH` (guarding against a symlink) and appends `CLONE_PATH=%s`. The clone-ownership remediation (#5925 / #5927) added the stamp to those writers but this one was missed. No lint or test asserts that every `.bg-wait-active` writer stamps `CLONE_PATH`; the existing parity test (`scripts/test-hook-clone-ownership-parity.sh`) only compares the two hook scripts' helper functions, not the marker writers, so the omission is unguarded.
+
+Severity is low: the keepalive fallback covers the normal case, the failure mode is a false tool-call denial (not a process kill), and it requires a basename clone-tag collision to actually cross-block. But it is a genuine completeness gap in the cross-clone remediation, on its highest-exposure marker.
+
+## Evidence
+
+- Omitting writer: `skills/implement/scripts/run-step-checks.sh:60-74` (marker written at lines 72-73; no `.larch-keepalive` read anywhere in the `SITE = step3` block).
+- Stamping writers (all read keepalive `CLONE_PATH` and append it): `skills/design/scripts/design-step3-review.sh:158-167`, `skills/design/scripts/design-step3b-tail.sh:106-110`, `skills/implement/scripts/step-5-review.sh:74-79`, `skills/implement/scripts/step-6-entry.sh:54-58`, `skills/implement/scripts/step-8-ship.sh:109-113`, `python/larch/design/design_core.py:161-188`, `python/larch/implement/step_7a.py:81-102`, `python/larch/implement/dispatch_commit_route.py:64-85`.
+- Consumer fallback: `marker_foreign_clone()` at `scripts/hook-bg-poll-guard.sh:103-124` and the byte-identical copy at `scripts/hook-no-progress-guard.sh:80-101` read the marker's own `CLONE_PATH` first, then `.larch-keepalive` `CLONE_PATH`; unknown identity returns "same-clone / keep marker" (fail-closed, #6138).
+- Basename fallback that can then false-match: `bash_probe_target_dir_plausible()` / `bash_marker_clone_tag()` / `bash_clone_tag_from_basename()` at `scripts/hook-bg-poll-guard.sh:961-1013`.
+- Keepalive provenance: `.larch-keepalive` is written once per session tmpdir at setup with `CLONE_PATH=<cwd>` in `python/larch/state/session_env.py` (write is best-effort; an OSError there is swallowed, which is when the fallback becomes unavailable).
+- Test coverage gap: `scripts/test-hook-clone-ownership-parity.sh:43-44` checks only `clone_paths_same` and `marker_foreign_clone`.
+
+## Affected files
+
+- `skills/implement/scripts/run-step-checks.sh` — add the keepalive read + `CLONE_PATH=%s` stamp to the Step 3 marker `printf` (mirror `step-5-review.sh:74-79`).
+- `skills/implement/scripts/run-step-checks.md` — sibling contract doc; note the CLONE_PATH stamp if it records marker fields.
+- (Optional, recommended) a lint or test asserting every `.bg-wait-active` writer stamps `CLONE_PATH`, so the set cannot drift again.
+
+## Suggested fix(es)
+
+1. In `run-step-checks.sh`, before the marker `printf`, read the keepalive clone path exactly as the sibling writers do:
+   ```bash
+   _step3_clone_path=""
+   if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
+     _step3_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+   fi
+   ```
+   then append `CLONE_PATH=%s\n` to the `printf` format and pass `"$_step3_clone_path"` as the final argument. Keep the write fail-open (`|| true`).
+2. Add a writer-parity check (lint or harness) that greps every `.bg-wait-active` writer and asserts each emits a `CLONE_PATH=` field, closing the recurrence gap the existing hook-helper parity test does not cover.
+
+## Open questions
+
+- Should the write be hardened so a missing/unreadable `.larch-keepalive` is itself surfaced (e.g., a diagnostic), given several writers silently degrade to an empty `CLONE_PATH` when the keepalive read fails? Or is the empty-stamp-plus-fallback behavior acceptable as-is once this writer is aligned?
+- Is a dedicated writer-parity lint worth the maintenance cost, or is aligning this single writer plus a comment sufficient?
