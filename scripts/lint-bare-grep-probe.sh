@@ -262,6 +262,14 @@ scan_file() {
         function is_argv_terminator(value) {
             return is_command_boundary(value) || is_redirect(value)
         }
+        function skip_redirect_operand(i,    nxt_idx) {
+            nxt_idx = i + 1
+            if (nxt_idx <= nt && !is_command_boundary(tok[nxt_idx]) &&
+                !is_redirect(tok[nxt_idx])) {
+                return nxt_idx
+            }
+            return i
+        }
         function has_stdin_devnull(idx,    i) {
             for (i = idx + 1; i <= nt; i++) {
                 if (is_command_boundary(tok[i])) return 0
@@ -327,7 +335,11 @@ scan_file() {
 
             for (i = idx + 1; i <= nt; i++) {
                 value = tok[i]
-                if (!tok_quoted[i] && is_argv_terminator(value)) break
+                if (!tok_quoted[i] && is_command_boundary(value)) break
+                if (!tok_quoted[i] && is_redirect(value)) {
+                    i = skip_redirect_operand(i)
+                    continue
+                }
 
                 if (!end_options && value == "--") {
                     end_options = 1
@@ -365,7 +377,11 @@ scan_file() {
 
             for (i = idx + 1; i <= nt; i++) {
                 value = tok[i]
-                if (!tok_quoted[i] && is_argv_terminator(value)) break
+                if (!tok_quoted[i] && is_command_boundary(value)) break
+                if (!tok_quoted[i] && is_redirect(value)) {
+                    i = skip_redirect_operand(i)
+                    continue
+                }
 
                 if (!end_options && value == "--") {
                     end_options = 1

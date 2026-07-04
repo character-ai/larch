@@ -327,6 +327,7 @@ assert_fence_line_allowed "path brace command grep" '{ command grep -q PATTERN f
 assert_fence_line_allowed "path env rg" 'LC_ALL=C rg -n PATTERN python/'
 assert_fence_line_allowed "stdin-safe rg" 'rg -n PATTERN --type py < /dev/null'
 assert_fence_line_allowed "redirected command grep with path" "command grep -v '^VALIDATION_' \"\$LANE_STATUS_FILE\" > \"\$LANE_STATUS_TMP\" || true"
+assert_fence_line_allowed "redirected rg with later safe path" 'rg -n PATTERN < /dev/null python/'
 assert_fence_line_allowed "piped rg allowed" 'cat file.txt | rg PATTERN'
 assert_fence_line_allowed "rg -e with path allowed" 'rg -e PATTERN python/'
 assert_fence_line_allowed "command grep -e with path allowed" 'command grep -e PATTERN file.txt'
@@ -355,6 +356,8 @@ assert_fence_line_violation "parent ascent ripgrep middle segment" 'ripgrep -n P
 assert_fence_line_violation "parent ascent rg trailing segment" 'rg -n PATTERN python/..' \
     "parent-directory ascent in grep-family path operand"
 assert_fence_line_violation "parent ascent rg after terminator" 'rg -n PATTERN -- ../python' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent after redirect" 'rg -n PATTERN > out.txt ../python' \
     "parent-directory ascent in grep-family path operand"
 assert_fence_line_violation "parent ascent before devnull" 'rg -n PATTERN ../python < /dev/null' \
     "parent-directory ascent in grep-family path operand"
