@@ -501,6 +501,19 @@ _step3_review_reattach_detached_loop() {
   exit "$_rc"
 }
 
+# #6258: The detach gate below normally reads the cached
+# _step3_review_loop_identity_ready flag, which is set one command AFTER
+# write-loop-identity creates .step3-loop-identity.json. A TERM/HUP/INT delivered
+# while write-loop-identity is still running is deferred by bash until that command
+# returns -- after the identity file exists but before the flag is set -- so the
+# flag alone races and can drop the detach for a live, reattachable loop (CI flake
+# in test-design-step3-review's external-TERM case). Consult the on-disk identity
+# file, the reattach source of truth, as a race-proof fallback.
+_step3_review_loop_identity_on_disk() {
+  [ -n "${DESIGN_TMPDIR:-}" ] || return 1
+  [ -f "$DESIGN_TMPDIR/.step3-loop-identity.json" ] && [ ! -L "$DESIGN_TMPDIR/.step3-loop-identity.json" ]
+}
+
 _step3_review_cleanup() {
   local _rc=$?
   trap - EXIT TERM HUP INT
@@ -508,7 +521,7 @@ _step3_review_cleanup() {
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then
-      if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then
+      if [ "${_step3_review_loop_identity_ready:-false}" = true ] || _step3_review_loop_identity_on_disk; then
         if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"; then
           disown -h "$_loop_pid" 2>/dev/null || true
           exit "$_rc"

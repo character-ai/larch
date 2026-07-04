@@ -117,7 +117,10 @@ from pathlib import Path
 import sys
 
 body = Path(sys.argv[1]).read_text(encoding="utf-8")
-guard = body.index('if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then')
+# #6258: the guard also accepts the on-disk identity sidecar as a race-proof
+# fallback, because the cached flag is set one command after write-loop-identity
+# and an external TERM in that window would otherwise drop the detach.
+guard = body.index('if [ "${_step3_review_loop_identity_ready:-false}" = true ] || _step3_review_loop_identity_on_disk; then')
 marker = body.index('_step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"')
 if guard > marker:
     raise SystemExit("detach marker write must be guarded by loop identity publication")
@@ -443,7 +446,7 @@ set -euo pipefail
 printf '%s\n' start >>"$DESIGN_TMPDIR/round-starts.log"
 : >"$DESIGN_TMPDIR/body-entered"
 waited=0
-while [[ ! -f "$DESIGN_TMPDIR/release-body" && "$waited" -lt 100 ]]; do
+while [[ ! -f "$DESIGN_TMPDIR/release-body" && ! -f "$DESIGN_TMPDIR/loop-stop" && "$waited" -lt 100 ]]; do
   sleep 0.1
   waited=$((waited + 1))
 done
@@ -520,8 +523,13 @@ if len(sys.argv) >= 3 and sys.argv[1] == "scope-anchor" and sys.argv[2] == "vali
 if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
     raise SystemExit(0)
 if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "kill-background-processes":
-    with open(os.environ["DESIGN_TMPDIR"] + "/unexpected-kill-helper", "a", encoding="utf-8") as handle:
+    tmpdir = os.environ["DESIGN_TMPDIR"]
+    with open(tmpdir + "/unexpected-kill-helper", "a", encoding="utf-8") as handle:
         handle.write("kill\n")
+    # Mirror the real kill: stop the detached loop stub so the fallback teardown's
+    # `wait "$_loop_pid"` returns promptly instead of blocking on the stub's 10s
+    # poll ceiling (#6258 harness speedup).
+    Path(tmpdir, "loop-stop").touch()
     raise SystemExit(0)
 raise SystemExit(0)
 PYEOF
