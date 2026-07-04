@@ -30,7 +30,7 @@ Foreground terminal-sentinel probe: after a premature notification with non-empt
 
 Do not launch a background recovery waiter such as `until [ -f … ]; do sleep N; done`: a zero-output background task can fire its own premature notification and amplify re-engagement, so `scripts/hook-bg-poll-guard.sh` denies it (#4725). Do not use `ps` polling or Monitor.
 
-If a non-empty `<task-notification>` is byte-identical to the previous non-empty notification in this wait sequence, yield without probing (#5418) only when `.completed/step-3-terminal` is absent. Track a fingerprint (the first 200 characters). If the sentinel is present, run the post-notification sequence.
+If a non-empty `<task-notification>` is byte-identical to the previous non-empty one in the same wait and `.completed/step-3-terminal` is absent, end silently (#5418): no tool call, `ScheduleWakeup`, or prose. Fingerprint first 200 chars. If present, run the post-notification sequence. Long reviews may keep `.bg-wait-active`; EXIT trap clears it and writes the sentinel.
 
 When `.completed/step-3-terminal` exists, run the Step 3 post-notification compact-table sequence and loop-routing parse without waiting for another notification. Route to Step 3b or later only when `.completed/step-3` is also present, the terminal loop-completion milestone. Mid-loop bail-outs may have `step-3-terminal` without `step-3`.
 
