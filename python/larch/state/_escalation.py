@@ -14,7 +14,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
-from larch.report import run_logs  # pylint: disable=cyclic-import
+from larch.report import run_log_batch
 from larch.state._tokens import (
     _DEFAULT_ESCALATION_FALLBACK,
     _DEFAULT_RECORD_FAILURE_MARKER,
@@ -97,7 +97,7 @@ def _append_record_escalation_tool_failure(*, tmpdir: Path, reason: str) -> None
         f"- reason: `{reason}`\n"
     )
     with contextlib.suppress(OSError):
-        run_logs.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
+        run_log_batch.append_execution_issue(log_file=execution, category="Tool Failures", entry=entry)
 
 
 def record_escalation(args: argparse.Namespace) -> int:

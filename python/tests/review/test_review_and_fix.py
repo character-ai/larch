@@ -1601,7 +1601,7 @@ def test_flush_review_batches_tally_warning_append_is_fail_open(tmp_path: Path, 
     def boom(**_kwargs):
         raise OSError("append failed")
 
-    monkeypatch.setattr(batch_report.run_logs, "append_execution_issue", boom)
+    monkeypatch.setattr(batch_report.run_log_batch, "append_execution_issue", boom)
 
     ok = batch_report.flush_review_batches(impl_tmpdir=impl, run_id="run-flush", rounds=1, _accepted=1, _rejected=0, composed_findings_source=findings_source)
 
