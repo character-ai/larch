@@ -1,0 +1,38 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Pragmatic
+**Phase**: design
+**Vote tally**: YES=3 NO=0 JUDGE_ERROR=0 Result=accepted
+
+## Description
+
+_summarize still treats absent targets as 0 during gaps; reappear-after-gap summary not in scope. Scenario: After _build_revisions clears stale last_values, detailed rows for a reappearing target get previous=None, but _summarize advance(..., snapshot_values.get(target, 0)) can still drive accumulators to 0 while the target is absent and never re-seed on reappear; summary totals can diverge from detailed ledger for disappear-then-reappear histories
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Stop `_summarize` from advancing absent targets to 0 during gap revisions.
+- Preserve `end=0` for permanently removed targets by advancing post-loop.
+- Add a `--since-tag` + gap + reappear test to prevent regression.
+
+### Non-goals
+- No change to `_build_revisions` or detailed ledger output.
+- No new CLI flags or public API surface.
+- No change to the reappear-detection and accumulator-reset logic added in #6219.
+
+### Approach sketch
+- In `_summarize`, skip the advance call for any target absent from `snapshot_values` in the current revision.
+- After the revision loop, identify accumulators whose target is absent from the final snapshot and advance them to 0 (permanent removal).
+- Add `test_since_tag_summary_with_gap_and_reappear` using the existing `_fixture_history_with_panel_tier_gap` helper.
+
+### Surfaces in scope
+- `python/larch/lint/skill_closure_ledger.py` (`_summarize`)
+- `python/tests/lint/test_skill_closure_ledger.py` (new test)
+
+### Open questions
+- None.

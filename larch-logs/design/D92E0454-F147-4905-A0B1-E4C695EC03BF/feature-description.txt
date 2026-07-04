@@ -1,0 +1,14 @@
+# [OOS] _summarize still treats absent targets as 0 during gaps; reappear-after-gap summary not in scope
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Pragmatic
+**Phase**: design
+**Vote tally**: YES=3 NO=0 JUDGE_ERROR=0 Result=accepted
+
+## Description
+
+_summarize still treats absent targets as 0 during gaps; reappear-after-gap summary not in scope. Scenario: After _build_revisions clears stale last_values, detailed rows for a reappearing target get previous=None, but _summarize advance(..., snapshot_values.get(target, 0)) can still drive accumulators to 0 while the target is absent and never re-seed on reappear; summary totals can diverge from detailed ledger for disappear-then-reappear histories
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*

@@ -1,0 +1,29 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "medium",
+  "design_tier": "MODERATE",
+  "escalated_round": true,
+  "escalations": [
+    {
+      "from_tier": "MODERATE",
+      "round": 3,
+      "to_tier": "HARD",
+      "trigger": "escalated-high-accepted"
+    }
+  ],
+  "floors_applied": [],
+  "implement_tier": null,
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "MODERATE",
+  "rater": "design",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "design plan metadata",
+  "round_cap": 3,
+  "schema_version": 1
+}

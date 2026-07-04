@@ -1,0 +1,52 @@
+## Scope
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection. The approved outline is binding.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/skill_closure_ledger.py
+
+Change `_summarize` only.
+
+Approach:
+- Track the final revision snapshot values and final commit SHA inside the iteration loop, updating both on each revision.
+- In the per-revision accumulator loop, skip the advance call for any target absent from `snapshot_values`; only targets present in the current snapshot advance.
+- Keep the existing `reappearing_targets` detection and accumulator-reset behavior unchanged.
+- After the revision loop, when at least one revision was visited, advance every accumulated target absent from `final_snapshot_values` to `0` using `final_commit_sha`. Skip the post-loop pass entirely when no revision was visited.
+
+Edge cases:
+- A target absent for one or more intermediate revisions, then reappearing, must not record a synthetic drop to `0`.
+- A target absent from the final selected snapshot must still return `end=0` (post-loop handles this).
+- A target first seen after a selection boundary with `previous=None` keeps current first-seen behavior.
+- When the selected revision range is empty, return an empty tuple immediately without executing the post-loop pass.
+
+Failure modes:
+- Advancing absent targets inside the loop can still create synthetic summary deltas.
+- Forgetting the post-loop final-removal pass will break the end=0 guarantee for permanently removed targets; `test_since_tag_summary_reflects_removed_target_in_final_snapshot` is the primary regression guard.
+- Mutating the detailed ledger path would violate the non-goal.
+
+### UPDATED: python/tests/lint/test_skill_closure_ledger.py
+
+Add `test_summarize_skips_absent_and_drives_removed_to_zero` as a focused unit test calling `_summarize` directly with hand-crafted `BaselineRevision`, `BaselineSnapshot`, `TargetValue`, and `TargetDelta` instances.
+
+The test must cover:
+1. A target that is absent for one intermediate revision and then reappears: assert `end` equals the reappear value (not 0), confirming the post-loop does not fire for targets present in the final snapshot.
+2. A target that is permanently removed (absent from final snapshot): assert `end==0` and `delta` equals the removal delta, confirming the post-loop correctly drives permanently removed targets to zero. This assertion distinguishes the full fix (in-loop skip + post-loop) from a partial fix that applies only the in-loop skip without the post-loop — a partial fix would produce `end` equal to the last known value instead of `0`, causing this assertion to fail.
+
+Do not add `test_since_tag_summary_with_gap_and_reappear`: the pinned panel-tier restart dict it would assert (`start=45000, end=45000, delta=0, raises=0`) is already produced by unfixed `_summarize` through the existing `reappearing_targets` reset at `skill_closure_ledger.py:306-310`, so the test would not fail on current code and provides no regression value.
+
+## Testing strategy
+
+Red-green boundary for the implementation:
+- Apply only the in-loop skip (no post-loop): `test_since_tag_summary_reflects_removed_target_in_final_snapshot` must fail (target `end` becomes the last-known value instead of `0`). This verifies the post-loop is necessary.
+- Apply the full fix (in-loop skip + post-loop): all existing and new tests pass.
+
+Run only changed Python tests:
+- `cd python && pytest tests/lint/test_skill_closure_ledger.py`
+
+Then lint changed files:
+- `cd python && ruff check larch/lint/skill_closure_ledger.py tests/lint/test_skill_closure_ledger.py`
+- `cd python && pyright larch/lint/skill_closure_ledger.py tests/lint/test_skill_closure_ledger.py`
+
+difficulty: MODERATE
+diff_lines: 60
