@@ -1,0 +1,22 @@
+### FINDING_1: Defer `stall_recovery` import in `final_report`
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: blocking
+- **Concern**: The batch_report import swap still leaves a circular import path through `final_report → stall_recovery → _escalation → run_logs → partially initialized run_log_flush`, so `from larch.report import run_log_flush` still fails during collection.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: python/larch/report/final_report.py to move `from larch.state import stall_recovery` to function scope at the normalized_outcome_values call site (~line 812); matches the existing lazy-import pattern documented in run_log_flush.py:280-281
+
+### FINDING_2: Retarget the review test monkeypatch
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The affected review test still patches `batch_report.run_logs.append_execution_issue`; once `batch_report` stops importing `run_logs`, that attribute will be missing and the required verification test will raise `AttributeError` before fail-open behavior is exercised.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Promote the test file to ### UPDATED and change the monkeypatch target to `batch_report.run_log_batch.append_execution_issue`
+  - From Cursor-Innovation: Promote python/tests/review/test_review_and_fix.py from ### MAY_UPDATE: to ### UPDATED: and retarget the monkeypatch to batch_report.run_log_batch.append_execution_issue
+  - From Cursor-Pragmatic: Change ### MAY_UPDATE: python/tests/review/test_review_and_fix.py to ### UPDATED: and require retargeting the monkeypatch to batch_report.run_log_batch.append_execution_issue so the listed verification step can pass.
+
+### FINDING_3: Defer `run_logs` import in `_escalation`
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: blocking
+- **Concern**: The batch_report-only change still leaves an import cycle through `_escalation`'s eager `run_logs` import, so `run_log_flush` remains partially initialized and test collection still fails.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Verified: batch_report→run_logs is the first cycle, but after that fix final_report still loads stall_recovery→_escalation→run_logs while run_log_flush is partially initialized; run_logs.py:160 then fails importing symbols from incomplete run_log_flush (same error class as today) pytest tests/report/test_run_log_flush.py still fails at collection Add ### UPDATED: python/larch/state/_escalation.py: defer `from larch.report import run_logs` into the function that calls append_execution_issue (~line 100); keep using the run_logs facade at runtime. Matches the lazy-import pattern already used in run_log_flush.py:279-281. Leave final_report.py untouched per plan constraints.

@@ -1,0 +1,17 @@
+# [OOS] Direct run-log flush test collection hits circular import
+
+## Out-of-Scope Observation
+
+**Surfaced by**: External implementer
+
+**Phase**: implement
+
+**Vote tally**: N/A — auto-filed per policy
+
+
+## Description
+
+Running `cd python && python3 -m pytest -q tests/report/test_run_log_flush.py` failed during collection with a circular import between `larch.report.run_log_flush` and `larch.report.run_logs`, blocking direct validation of that updated fixture.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
