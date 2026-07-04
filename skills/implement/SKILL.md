@@ -470,6 +470,8 @@ The reference owns inline review, the composite checks-commit route, `NEXT_ACTIO
 
 Nested review token-context propagation through `review-and-fix CLI` is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-implement-review-token-propagation.md`.
 
+The Step 5 signal-aware wrapper contract — bg-wait marker publication, argv forwarding, signal detach that withholds a false `.completed/step-5-terminal`, and reattach normalization — is pinned by `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-5-review.sh` and `${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/test-step-5-review.md`.
+
 **⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
