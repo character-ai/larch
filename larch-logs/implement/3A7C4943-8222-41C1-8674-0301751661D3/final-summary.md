@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:22:59
-- **Cost**: 💰 TOTAL ~$6.81: Claude $0.73, Codex-5.5 $2.01, Codex-mini $0.87, Cursor $2.06, Claude (subprocess) $1.14  |  Tokens: 12065k
+- **Cost**: 💰 TOTAL ~$7.16: Claude $1.08, Codex-5.5 $2.01, Codex-mini $0.87, Cursor $2.06, Claude (subprocess) $1.14  |  Tokens: 13037k
 - **Issue**: #6304: https://github.com/character-ai/larch/issues/6304
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_6** (latent): continuation-line probes escape line-based scanning. Concern: The line-based scan cannot see `../` on continuation lines, so multiline fenced probes can bypass parent-ascent detection.
 - **Round 1 OOS_7** (latent): absolute search roots remain unbounded. Concern: The linter still allows unbounded absolute search roots, so a probe can recurse through a huge tree even without any `..` segments.
 - **Round 1 OOS_8** (nit): stale test-lint-bare-grep-probe docs row. Concern: The documentation inventory row for `make test-lint-bare-grep-probe` still points at an outdated shard name and no longer matches the current test setup.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
