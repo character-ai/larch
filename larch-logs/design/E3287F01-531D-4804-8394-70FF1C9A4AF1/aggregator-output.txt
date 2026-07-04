@@ -1,0 +1,10 @@
+### FINDING_1: Missing exit-code assertion for unresolved `--since-tag`
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The unresolved `--since-tag` path is only checking stderr in the planned test, so a regression that prints the expected missing-tag message but returns a non-2 exit code could still pass CI. This leaves the required exit-2 contract unverified for the `--since-tag` failure case.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the planned unresolved `--since-tag` test, add `assert rc == 2` alongside the stderr substring check, mirroring the invalid `--root` test.
+  - From Codex-Innovation: Add `assert rc == 2` to the unresolved `--since-tag` test, matching the invalid-`--root` test.
+  - From Cursor-Pragmatic: Add assert rc == 2 (or TOOL_FAILURE_EXIT) to the missing-tag ledger_main test, matching the invalid --root case.
+  - From Codex-Pragmatic: Add `assert rc == 2` to the unresolved `--since-tag` test, matching the invalid `--root` test.
+  - From Codex-Requirements: Add `Assert rc 2` to the unresolved `--since-tag` test steps

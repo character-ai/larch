@@ -1,0 +1,20 @@
+Reviewing the plan against the current code in the cited files.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/git/git.py:224-227	[SCOPE-REDUCTION] Pin NUL split to split("\x00", 1) or require an explicit sep check if using partition	line.partition("\x00") on a delimiter-free row yields ("missing-delimiter", "", ""); a naive swap keeps a non-empty sha and accepts an empty subject, so test_log_path_commits_raises_on_malformed_output regresses and fail-closed parsing breaks	In log_path_commits(), replace the plan's "partition or split" fork with one rule: sha, subject = line.split("\x00", 1) and keep len(parts) == 2 and not parts[0]; if partition is kept, reject when sep == ""
+1	in_scope	latent	correctness	python/larch/lint/skill_closure_ledger.py:143-167	Duplicate-skill warning bullet omits the skill-closure ledger: stderr prefix that float warnings and both new tests require	The duplicate _parse_snapshot() instruction only names label and target; an implementer can omit the shared prefix, fail the duplicate-warning test, and break operator greps that key off skill-closure ledger:	Add the same skill-closure ledger: prefix requirement to the duplicate-warning implementation bullet; keep tests on stable substrings only
+
+## Findings
+
+1. **correctness** — `python/larch/git/git.py:224-227`: The plan’s `partition` option is a footgun. Delimiter-free lines must still raise `ShipError`; `split("\x00", 1)` preserves today’s `len(parts) != 2` guard, while bare `partition` does not unless `sep` is checked. Prefer one mandated approach in the plan.
+
+2. **correctness** — `python/larch/lint/skill_closure_ledger.py:143-167`: Float warnings explicitly require the `skill-closure ledger:` prefix; duplicate warnings do not in the implementation bullet, though the duplicate test and failure modes do. Align the duplicate bullet with the float bullet so warning contracts stay consistent.
+
+## What looks sound
+
+- **Warning decisions match issue scope**: Float rows stay skipped (not coerced); duplicate `skill` rows stay last-wins; both gain stderr visibility plus brief comments. That matches items 2 and 4.
+- **Bool handling**: Keeping `isinstance(tokens, bool)` on the int path (lines 162-163) preserves silent bool rejection; a separate float branch before it satisfies the edge-case note without extra scope.
+- **Stale `last_values` clearing**: Pruning keys absent from the current `BaselineSnapshot` before advancing revisions fixes cross-gap deltas while leaving continuous presence unchanged; existing `test_detailed_ledger_marks_real_deltas_and_first_seen_rows` and `test_window_uses_predecessor_outside_selected_range` should guard adjacent-revision behavior.
+- **Stale-target test design**: A appear → disappear → reappear fixture (beyond `_fixture_history_with_panel_tier_removed`, which only removes permanently) is the right acceptance pin for item 3.
+- **Git NUL test**: Stubbing `abc123\x00Subject with \x00 embedded\n` beside `test_log_path_commits_raises_on_malformed_output` pins embedded-NUL acceptance without overfitting prose.
+- **CLI error tests**: Invalid `--root` and unresolved `--since-tag` map to existing stderr in `_coerce_root` (line 131) and `_since_tag_commits` / `ledger_main` (lines 215-219, 335-337); substring assertions are appropriately loose.
+- **Minimum-change posture**: No new flags, columns, or summary semantics; scope stays tight relative to the issue anchor.

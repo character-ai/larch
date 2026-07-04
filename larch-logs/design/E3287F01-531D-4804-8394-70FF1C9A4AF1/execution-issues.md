@@ -1,0 +1,6 @@
+### Warnings
+
+- **Step design Step 5b — python/cli.py design file-oos-prepare failed (exit 0)**:
+  ```
+FILE_DESIGN_OOS_DEPS_AVAILABLE=false: intra-batch dependency TSV unavailable for this design run's OOS filing batch. Invoking /larch:issue without --intra-batch-deps-file / --no-dep-llm (single-item batch, so no serialization edges are needed).
+  ```

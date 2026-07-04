@@ -1,0 +1,23 @@
+# skill-closure ledger: harden historical-parsing edge cases from round-1 review
+
+skill-closure ledger: harden historical-parsing edge cases from round-1 review
+
+## Context
+
+Follow-up from round-1 code review on #6165 / PR #6216 (skill-closure ledger, `python/larch/lint/skill_closure_ledger.py` + `python/larch/git/git.py`). The review raised 10 out-of-scope observations; the 5 rated "important" or "latent" are consolidated here (the 5 "nit"-rated items were dropped as not worth tracking).
+
+## Items
+
+1. **Cover invalid `--root` and `--since-tag` failures** (important) — `python/larch/lint/skill_closure_ledger.py`: the invalid-`--root` and unresolved-`--since-tag` error paths (`_coerce_root`, `_since_tag_commits`) have no test coverage, so exit-2 and stderr-contract regressions on those paths could slip through CI unnoticed.
+
+2. **Decide how to handle float-valued JSON rows** (latent) — `_parse_snapshot()` in the same file silently skips any row where `closure_estimated_tokens` is not an `int` (e.g. a float value), via `isinstance(tokens, int)`. This can hide targets and skew later per-target deltas if historical baseline JSON ever contains a float. Needs an explicit decision: coerce, reject, or keep silently skipping (and document why).
+
+3. **Clear stale `last_values` when targets disappear** (important) — `_build_revisions()` never removes a target from `last_values` when a revision omits it. If the target reappears in a later revision, the delta is computed against the older stale value across the gap, attributing multiple commits' worth of change to one delta and potentially producing a spurious `raise`.
+
+4. **Detect duplicate `skill` keys** (latent) — `_parse_snapshot()` silently applies last-wins semantics when the same `skill` key appears twice in one baseline revision's JSON array. Corrupted or hand-edited history could hide the true per-merge delta for that commit without any warning.
+
+5. **Make NUL-delimited subject parsing collision-proof** (latent) — `git.log_path_commits()` splits `git log --format=%H%x00%s` output on `\x00` to separate SHA from subject. A NUL byte embedded in a commit subject (rare but possible) would corrupt the SHA/subject pairing for that row with no detection.
+
+## Acceptance
+
+- Each item above either has a fix + test, or an explicit documented behavior decision (e.g. a code comment or docs note explaining the chosen tradeoff), backed by a test that pins the chosen behavior.
