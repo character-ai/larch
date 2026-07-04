@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	35004	8751	13360	3340	21644	5411		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	21929	5483	13072	3268	8857	2215		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	34995	8749	13351	3338	21644	5411		0	0
+design Step 3	phase1	1	dyn-cursor-plan-signal-lifecycle-reviewer	plan-review	cursor	dyn-cursor-plan-signal-lifecycle-reviewer.txt	35299	8825	13226	3307	22073	5519		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	21944	5486	13087	3272	8857	2215		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	21920	5480	13063	3266	8857	2215		0	0
+design Step 3	phase1	1	dyn-codex-plan-signal-lifecycle-reviewer	plan-review	codex	dyn-codex-plan-signal-lifecycle-reviewer.txt	22224	5556	12938	3235	9286	2322		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	35017	8755	13373	3344	21644	5411		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	35019	8755	13375	3344	21644	5411		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	21942	5486	13085	3272	8857	2215		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	45763	11441	4500	1125	41263	10316	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	19983	4996	9056	2264	10927	2732		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	19983	4996	9056	2264	10927	2732		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	19983	4996	9056	2264	10927	2732		0	0

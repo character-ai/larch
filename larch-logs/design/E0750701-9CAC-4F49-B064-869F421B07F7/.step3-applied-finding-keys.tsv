@@ -1,0 +1,11 @@
+1	after an external `sigterm`/`hup`/`int`, a step 5 wrapper exit without `step5_review_status` still falls into the preflight-failure branch and skips the detached-loop reattach path instead of re-entering `step-5-review.sh`.
+1	the reattach entry sequence is not fail-closed: detached-marker detection must happen before stale-sentinel cleanup and fresh-launch setup, and failed reattach must not spawn another loop.
+1	step 3 orphan-timeout normalization is underspecified: the terminal status, `loop_status`, and `next_action` mapping are not pinned, so the cap can route into the wrong phase.
+1	a term/hup/int between step 5 launch and identity publication can leave an untracked process group unless cleanup tears down the loop identity or publishes a validated detached marker first.
+1	the orphan cap can still fire while a wrapper is actively reattached, because the detached marker stays authoritative during the wait.
+2	the planned reattach flow removes the detached marker before `await-loop-identity`, but the await contract still treats that marker as required, so the step 3/step 5 reattach handshake cannot complete safely as written.
+2	after the detached marker is removed, a failed await or normalize step can leave the loop in an inconsistent state: either still running with no reattach entry/orphan cap, or stuck in a retry loop because the marker remains present and the orchestrator keeps re-invoking the same failed reattach.
+2	the plan does not pin trap registration before the detached-marker check and `await-loop-identity`, so a reattach path could run without the signal-aware behavior that step 3 already relies on.
+2	reattach cleanup is only safe if vendor-process cleanup is mandatory and uses the implement tmpdir path; otherwise detached children can keep running after rejoin and race normalize-status or terminal-sentinel writes.
+2	if a signal arrives after step 5 launches `review-and-fix` but before identity publication, the teardown path needs a way to validate and kill the just-launched process group without relying on a missing sidecar/identity file; otherwise the child can keep running untracked.
+2	the new `review-and-fix normalize-status` entry point may inherit the quiet-init path and replay its envelope to a quiet log instead of stdout, which would break the step 5 wrapper’s status handoff.

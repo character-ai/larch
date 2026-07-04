@@ -1,0 +1,1 @@
+Implement full signal-aware Step 5 detach and reattach, add orphan caps for detached Step 3 and Step 5 loops, and document Step 8 as intentionally persist-and-resume. This is HARD because it changes signal traps, process identity, background wait sentinels, and review-loop lifecycle behavior.

@@ -1,0 +1,97 @@
+## Summary
+
+Issue #6237 hardened `/design` Step 3 against external harness task-stops (Claude Code v2.1.x spontaneously killing idle sessions' background task trees) by adding a signal-aware trap: on an external `TERM`/`HUP`/`INT` it detaches the file-backed, `setsid` review loop and reattaches on continuation instead of tearing it down. #6237 explicitly deferred (Open Questions 3 and 4) whether `/implement` Step 5 and Step 8 need the same treatment, and whether the detached loop needs an orphan cap. Those follow-ups are still open: both `/implement` wrappers install EXIT-only traps with no `TERM`/`HUP`/`INT` handler. On an external `SIGTERM` mid-wait, Step 5's EXIT trap unconditionally writes the `.completed/step-5-terminal` completion sentinel — the sentinel that releases the bg-poll guard and signals "review done" — even though the review was killed, not completed.
+
+**Scope / severity note:** this is resilience to an *external* harness bug (#6237 Layer 1), not a cross-clone process kill. Per #6237, Step 5 and Step 8 lack the destructive tmpdir sweep that made Step 3 a cross-*session* amplifier, so an external stop of Step 5/8 does not kill other sessions' processes. The impact is confined to the owning session.
+
+## Original report
+
+Found during a correctness/completeness audit of the recent cross-session process-death fixes. #6237's "Open questions" section explicitly asks: "Do `/implement` Step 5 and Step 8 wrappers need the same signal-aware trap in this issue, or a follow-up? Their kill paths are identity-validated already, but a harness stop still kills their drivers mid-run (the #6213 larch6 incident matches this signature)." and "Should the detached loop self-terminate if no wrapper reattaches within a bound (orphan cap), to avoid unattended vendor spend after a genuine session death?" This report tracks those deferred follow-ups after confirming the gap in the current tree.
+
+## Reproduction scenario
+
+The external harness trigger (Claude Code spontaneously stopping idle sessions' background tasks) is not reproducible on demand — see #6237. The larch-side gap is confirmed statically and can be exercised deterministically by simulating the stop:
+
+1. Start a `/implement` run and let it reach Step 5 (`step-5-review.sh` running `review-and-fix step5 --mode loop` in the background task) with a review round in flight.
+2. Send `SIGTERM` to the Step 5 wrapper bash process (simulating a harness task stop).
+3. Observe: bash runs the EXIT trap `_step5_cleanup` on the untrapped fatal `SIGTERM` (same mechanism #6237 documents for Step 3), which writes `.completed/step-5-terminal` — a "review complete" sentinel — even though the review was interrupted mid-round.
+4. Compare with Step 3 under the same stimulus: `design-step3-review.sh` has `TERM`/`HUP`/`INT` traps that set an external-signal flag, write a `.step3-wrapper-detached` marker, and skip the completion path so the loop can finish and be reattached.
+
+Step 8 can be probed the same way; its `persist_handoff` EXIT trap writes an rc of 143 and no completion JSON, which the existing Step 8 handoff-resume path already tolerates (the #6213 larch6 incident confirmed Step 8 resumes cleanly after an external `Terminated: 15`).
+
+## Expected behavior
+
+An external stop of a `/implement` Step 5 or Step 8 background task should not be mistaken for normal completion. Step 5's cleanup should not stamp the terminal completion sentinel when the exit was signal-induced; ideally the review round survives (detach-and-reattach) or at least is cleanly resumable without a false "done" signal. Step 8 should remain robust to an external stop (it already appears to via persist-and-resume, but should be assessed under the same lens). A detached loop left behind by a genuinely dead session should not run unbounded.
+
+## Observed behavior
+
+- Step 5: `_step5_cleanup` writes `.completed/step-5-terminal` and removes `.bg-wait-active` on every exit, including an external `SIGTERM`. There is no distinction between normal completion and signal-induced exit, so an external stop looks like a completed review to the guard/orchestrator, and the in-flight review round is lost.
+- Step 8: `persist_handoff` persists rc/json for resume on every exit; this degrades gracefully but has no explicit signal-aware branch.
+- Step 3's detached loop (post-#6237): no orphan cap; a file-backed `setsid` loop with no surviving wrapper to reattach can keep running (vendor spend) after a real session death.
+
+## Root cause analysis
+
+The #6237 fix was scoped to `design-step3-review.sh` only, and its own Open Questions deferred the parallel `/implement` wrappers and the orphan-cap idea. The `/implement` Step 5 and Step 8 wrappers predate the signal-aware pattern and were not migrated to it: they still rely on a single EXIT trap that runs identically for normal and signal-induced exits. For Step 5 specifically, the EXIT trap's unconditional terminal-sentinel write is the concrete defect — it conflates "wrapper exited" with "review completed."
+
+This is an inference from the trap structure, not a captured field incident on Step 5/8; the external harness trigger fired against `/design` sessions in #6237 and against a `/implement` Step 8 driver in #6213 (larch6), and the same trigger would hit Step 5 the same way.
+
+## Evidence
+
+- Reference implementation (has the fix): `skills/design/scripts/design-step3-review.sh:536-539` — `trap _step3_review_cleanup EXIT` plus `trap '_step3_review_signal_exit TERM 143' TERM`, `HUP 129`, `INT 130`; sets `_step3_review_external_signal`; `_step3_review_write_detached_marker` (:400); reattach path `_step3_review_reattach_detached_loop` (:470-547).
+- Gap 1 — Step 5: `skills/implement/scripts/step-5-review.sh:70` installs only `trap _step5_cleanup EXIT`. `_step5_cleanup` (:65-69) unconditionally `mkdir -p "$IMPLEMENT_TMPDIR/.completed"`, `printf '' > .completed/step-5-terminal`, `rm -f .bg-wait-active`. Review runs foreground at :81-87 (`review-and-fix step5 --mode loop`).
+- Gap 2 — Step 8: `skills/implement/scripts/step-8-ship.sh:44` installs only `trap persist_handoff EXIT`. `persist_handoff` (:21-43) writes `$?` to `.step-8-ship-handoff.rc`, the last outcome JSON to `.step-8-ship-handoff.json`, and removes `.bg-wait-active`.
+- Orphan cap: no self-termination bound exists in `design-step3-review.sh` for the detached loop (grep for `orphan`/`max-age`/self-term in the wrapper returns nothing).
+- #6237 body "Open questions" (items 3 and 4) name both follow-ups explicitly.
+
+## Affected files
+
+- `skills/implement/scripts/step-5-review.sh` (+ sibling `step-5-review.md`) — add signal-aware handling; at minimum, do not stamp the terminal completion sentinel on a signal-induced exit.
+- `skills/implement/scripts/step-8-ship.sh` (+ sibling `step-8-ship.md`) — confirm the persist-and-resume path is sufficient under an external stop, or add a signal-aware marker for symmetry.
+- `skills/design/scripts/design-step3-review.sh` — candidate site for an orphan cap on the detached loop.
+- Relevant test harnesses (`skills/implement/scripts/test-*`, `skills/design/scripts/test-design-step3-review.sh`) — add signal-path assertions per `.claude/rules/launcher-argv-test-coverage.md` conventions.
+
+## Suggested fix(es)
+
+1. **Step 5**: assess whether it warrants the full signal-aware detach-and-reattach (its `review-and-fix` loop already has resumable round state), or — as a smaller fix — trap `TERM`/`HUP`/`INT`, set an external-signal flag, and make `_step5_cleanup` skip the `.completed/step-5-terminal` write when that flag is set, exactly as `design-step3-review.sh` distinguishes external signal from normal completion.
+2. **Step 8**: verify `persist_handoff` + the Step 8 handoff-resume path is robust to an external stop (it appears to be, given #6213 larch6 recovered); if so, document that Step 8 is intentionally handled by persist-and-resume rather than detach; if not, add the signal-aware branch.
+3. **Orphan cap**: add a self-termination bound to the detached Step 3 loop (and any new Step 5 detached equivalent) so a dead session cannot leave an unattended vendor-spending loop.
+
+## Open questions
+
+- Is "detach and let the round finish" acceptable for Step 5, or is a deliberate operator abort (TaskStop) indistinguishable at the signal level the same concern #6237 raised for Step 3? If so, Step 5 needs the same abort-marker distinction.
+- Is Step 8's persist-and-resume already the intended, sufficient design (making only a documentation change necessary), or should it gain a signal-aware marker for symmetry with Step 3/5?
+- What bound is appropriate for the orphan cap (fixed max age, or tied to the step's `TIMEOUT_S`)? Should it apply only to `/design` Step 3 or to every detached file-backed loop?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add full signal-aware detach-and-reattach to `step-5-review.sh` so SIGTERM does not stamp a false "review done" terminal sentinel
+- Add an orphan-cap `--orphan-timeout-s` to both Step 3 and Step 5 detached loops so an unattended loop self-terminates after a configurable wall-clock bound
+- Document Step 8's persist-and-resume pattern as the intended and sufficient signal-resilience design
+
+### Non-goals
+- Changing Step 5 or Step 3 review logic, round structure, or coder dispatch
+- Adding orchestrator-side (SKILL.md Bash) signal handling; wrappers own it
+- Migrating Step 8 to full detach-and-reattach
+
+### Approach sketch
+- Refactor `step-5-review.sh` to run `review-and-fix step5 --new-process-group` in background (`&`), write loop identity, trap TERM/HUP/INT, write detached marker on signal, and reattach on next invocation
+- Add Python support: `--new-process-group` in `review-and-fix step5`, new CLI verbs `review-and-fix write-loop-identity` / `await-loop-identity` / `normalize-status` using new `IMPLEMENT_STEP5_*` config constants
+- Add `--orphan-timeout-s` to `review-and-fix step5 --mode loop` and `plan-review run --mode loop`; loop emits `orphan-timeout` status and stops if wrapper has not reattached within the bound
+- Pass `--orphan-timeout-s 7200` from the shell wrappers when launching detached loops; update `design-step3-review.sh` similarly
+- Update `step-8-ship.md` to explicitly document persist-and-resume as the intentional signal-resilience design
+
+### Surfaces in scope
+- `skills/implement/scripts/step-5-review.sh` + `step-5-review.md`
+- `skills/design/scripts/design-step3-review.sh`
+- `skills/implement/scripts/step-8-ship.md`
+- `python/larch/core/config.py`
+- `python/larch/review/review_and_fix.py`
+- `python/larch/cli.py`
+- Test harness (new): `skills/implement/scripts/test-step-5-review.sh` + `.md`
+- Test harness (update): `skills/design/scripts/test-design-step3-review.sh`
+
+### Open questions
+- Default orphan timeout: recommend 7200s (2 hours), shorter than TIMEOUT_S=21600 so stranded loops stop well before session expiry.
