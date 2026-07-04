@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- design-background-wait.md already orders fingerprint-before-probe and Step 3 mandates reading it; preamble reorder is redundant with the planned strengthen-only edit.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already extends anti-pattern #5 with byte-identical silent yield and ScheduleWakeup ban; an extra #4 carve-out is defensive redundancy, not required for delivery.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- silent-yield turns count the same as today's per-notification turn ends; banning ScheduleWakeup likely reduces turns and hook changes are explicitly out of scope.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- AGENTS.md/orchestrator-never conflicts are real but outside the approved two-file docs-only scope.
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan mandates running existing harnesses, not adding new literal pins; docs-only clarification does not require new CI literals.
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent harness-pin gap lacks backlog materiality for a docs-only two-file clarification.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=excellent UNCERTAIN=false -- broadening into implement anti-polling harness literals is correctly out of scope for this plan.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate latent test-pin concern; existing harness runs suffice per the plan testing strategy.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- re-delivered notifications are fully byte-identical; 200-char prefix nuance is a latent edge case, not this bug path.
+OOS_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- orchestrator-never tension is real but design-background-wait is authoritative at Step 3; separate issue overhead is not justified.
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of OOS_1/OOS_3; no additional filing value.
+OOS_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- tier-1 AGENTS.md probe rule conflict is real but outside plan scope and covered by the in-skill wait contract when /design runs.

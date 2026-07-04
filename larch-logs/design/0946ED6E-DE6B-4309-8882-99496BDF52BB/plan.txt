@@ -1,0 +1,62 @@
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection.
+
+Implement a docs-only clarification for `/design` immediate-background waits:
+
+- Keep the existing correctness path unchanged.
+- Make repeated byte-identical non-empty Step 3 notifications a silent-yield case.
+- State that a long review may keep `.bg-wait-active` live until the wrapper exits.
+- Preserve the existing empty-output rule, foreground-probe allowance, sentinel contract, and hook behavior.
+- Avoid hook, Bash, or Python changes.
+
+## Files to modify/create
+
+### UPDATED: skills/shared/design-background-wait.md
+
+Update the Step 3 task notification boundary.
+
+- Replace the current repeated-notification sentence with explicit action:
+  - if the non-empty `<task-notification>` fingerprint matches the previous non-empty notification in the same wait sequence,
+  - and `.completed/step-3-terminal` is absent,
+  - end the turn silently: no tool call, no `ScheduleWakeup`, no prose.
+- Keep the sentinel-present branch unchanged: if `.completed/step-3-terminal` exists, run the post-notification sequence.
+- Add a short note that this repeat can happen while reviewers are still running and `.bg-wait-active` remains present. It resolves when the process exits and the EXIT trap removes the marker and writes the terminal sentinel.
+- Do not tell the orchestrator to probe, poll `ps`, read task output, read reviewer files, or schedule a wakeup.
+
+### UPDATED: skills/design/SKILL.md
+
+Strengthen Anti-pattern #5 without renumbering the list.
+
+- Keep the existing title prefix `5. **NEVER act on an empty-output` so pinned harness literals stay stable.
+- Extend the body to cover repeated byte-identical non-empty notifications during `/design` immediate-background waits.
+- State the action plainly: end the turn silently, with no Bash, no `wc`, no sentinel check, no `ScheduleWakeup`, and no "still running" prose.
+- Point to `skills/shared/design-background-wait.md` for the detailed fingerprint rule.
+- Preserve the existing #5240 empty-output wording and the shared wait reference.
+
+## Edge cases
+
+- If `.completed/step-3-terminal` exists, the orchestrator must not silently yield. It should run the normal Step 3 post-notification sequence.
+- If output is empty, the existing empty-output rule still applies.
+- If output is new and non-empty, the existing one foreground terminal-sentinel probe allowance still applies.
+- If output is byte-identical and the sentinel is absent, the plan should not add another probe path.
+
+## Failure modes
+
+- Over-broad wording could suppress the real completion notification. Avoid this by conditioning silent yield on absent `.completed/step-3-terminal`.
+- Adding a new numbered anti-pattern could break references to the six-rule list. Extend #5 instead.
+- Extra prose in `skills/design/SKILL.md` can trip skill closure growth. Keep the edit short and offset wording if needed.
+
+## Testing strategy
+
+Run focused docs and prompt-contract checks:
+
+- `make test-implement-anti-polling-rule`
+- `make test-design-structure`
+- `python3 python/cli.py lint skill-closure-growth --skill design`
+- `pre-commit run markdownlint --files skills/shared/design-background-wait.md skills/design/SKILL.md`
+
+If the closure ratchet fails, shorten the new `skills/design/SKILL.md` prose rather than updating the baseline.
+
+difficulty: MODERATE
+diff_lines: 12

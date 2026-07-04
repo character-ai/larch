@@ -1,0 +1,120 @@
+### FINDING_1: Step 3 fingerprint must precede probes and post-notification handling
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Step 3 still routes repeated byte-identical or merely sentinel-present notifications into probe/post-notification handling before the fingerprint-based silent-yield rule, so the orchestrator can keep probing while hooks still block progress.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Condition silent yield on repeated byte-identical non-empty notifications when `.bg-wait-active` is still present or `.step3-terminal-persisted-this-run` is absent, even if `step-3-terminal` exists; run post-notification only after hook release (marker gone or both hook completion files present).
+  - From Cursor-Innovation: Extend the plan's `skills/design/SKILL.md` edits to amend the Step 3 `NEXT_ACTION` preamble: before any probe, apply the byte-identical fingerprint silent-yield rule from `design-background-wait.md`; probe only on the first non-empty notification with new content.
+  - From Cursor-Pragmatic: Qualify the premature branch: apply `skills/shared/design-background-wait.md` fingerprint silent-yield before any probe; probe only on the first non-empty notification per wait sequence when output is not byte-identical to the prior fingerprint.
+  - From Cursor-Requirements: Add a firm ### UPDATED: skills/design/SKILL.md item (or equivalent bullet in the existing Step 3 section) ordering notification handling: empty output -> silent yield; first/new non-empty with absent sentinel -> at most one foreground probe; byte-identical repeat with absent sentinel -> silent yield per design-background-wait.md; sentinel present -> post-notification sequence.
+  - From Cursor-dyn-Orchestrator Wait Contract: In the Step 3 post-loop routing paragraph add: on byte-identical non-empty repeat with absent step-3-terminal end the turn silently with no probe; probe only on the first or changed non-empty premature notification per design-background-wait.md
+  - From Cursor-dyn-Orchestrator Wait Contract: Reorder or prefix Step 3 boundary: evaluate empty then byte-identical fingerprint before any probe; mirror line 29 no-tool list and add bg-wait-active may remain until wrapper EXIT trap per issue
+
+### FINDING_2: Anti-pattern carve-outs must suppress repeated identical probes and ScheduleWakeup
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Anti-pattern #4/#5 still leave a path to probe or ScheduleWakeup on repeated byte-identical non-empty notifications, so the recovery loop can continue despite the new silent-yield rule.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In the anti-pattern #5 extension, explicitly forbid `ScheduleWakeup` on repeated byte-identical non-empty notifications (not only empty-output #5240) and state that silent end-turn is the only recovery action until hook release.
+  - From Cursor-Pragmatic: When extending #5, qualify the probe allowance to first non-empty per wait sequence only, and state that repeated byte-identical non-empty notifications end the turn silently with no probe (per `design-background-wait.md` #5418).
+  - From Cursor-Requirements: In the plan's skills/design/SKILL.md edit, add one exception sentence to anti-pattern #4 (after the pinned probe-per-recovery-turn phrase) that repeated byte-identical non-empty notifications are not recovery turns and must follow the #5418 silent-yield rule in design-background-wait.md and the extended anti-pattern #5.
+  - From Cursor-dyn-Orchestrator Wait Contract: Add one clause to #4 How to apply: byte-identical non-empty repeats with absent terminal sentinel end silently with no probe per design-background-wait.md Step 3 boundary
+  - From Cursor-dyn-Orchestrator Wait Contract: When extending #5 revise that sentence to new non-empty notifications excluding byte-identical repeats; point to design-background-wait.md fingerprint rule
+
+### FINDING_3: Silent yields must not trip the no-progress guard
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: Silent-yield turns still count toward the live-marker no-progress breaker, so repeated waits can exhaust the guard and dead-end the review before the marker clears.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add a carve-out or counter reset for repeated-identical Step 3 waits, or change the recovery so those repeats do not end a turn that the no-progress guard counts.
+
+### FINDING_4: Root /design guidance still probes repeats
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: Tier-1 `/design` guidance still tells callers to probe on any premature non-empty notification, so repeated identical notifications can keep burning turns at the root orchestration surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add ### MAY_UPDATE: AGENTS.md with a short carve-out: after one foreground probe on a new non-empty premature /design notification, end turns silently on byte-identical repeats while .completed/step-3-terminal (or the fence sentinel) is absent; point to skills/shared/design-background-wait.md for the fingerprint rule.
+  - From Codex-Requirements: Add AGENTS.md and skills/shared/orchestrator-never.md to the UPDATED list, and narrow their non-empty-notification recovery text to defer repeated byte-identical Step 3 notifications to skills/shared/design-background-wait.md instead of probing.
+
+### FINDING_5: The new repeat-notification contract is not pinned in test surfaces
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The proposed docs-only change leaves the repeat-notification silent-yield contract unpinned in the Bash test surfaces, so regressions can slip past CI.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Orchestrator Wait Contract: Add scripts/test-design-structure.sh and scripts/test-implement-anti-polling-rule.sh to the file list, and pin the repeated-notification sentence plus the sentinel-present branch there.
+
+### FINDING_6:
+- **Reviewer(s)**: anonymous
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: skills/shared/design-background-wait.md:33-35
+- **Concern**: [SCOPE-REDUCTION] Plan says replace repeated-notification sentence but repo already has #5418 fingerprint and sentinel-present branch. Scenario: Implementer may rewrite or drop working text instead of minimal strengthen-only delta
+- **Proposed resolution**: Retitle plan edit to strengthen/clarify existing lines 33-35; list only additive deltas explicit no-tool list bg-wait-active note ScheduleWakeup ban
+
+### OOS_1: No harness pin for the repeated-identical notification contract
+- **Description**: No harness pin for the repeated-identical notification contract. Scenario: The plan runs `make test-implement-anti-polling-rule` but does not add literals for the new anti-pattern #5 text or the strengthened #5418 silent-yield wording; a later prose edit can regress without CI signal.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: scripts/test-implement-anti-polling-rule.sh
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] `make test-implement-anti-polling-rule` is unrelated to the two markdown files this plan changes.
+- **Description**: [OUT_OF_SCOPE] `make test-implement-anti-polling-rule` is unrelated to the two markdown files this plan changes.. Scenario: It broadens verification into an unrelated implement harness, so the docs-only fix ships correctly without it.
+- **Reviewer**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: plan.txt:52-55
+- **Phase**: design
+
+
+
+### OOS_3: The testing plan reuses existing harness targets but does not pin the #5418 fingerprint or silent-yield literals
+- **Description**: The testing plan reuses existing harness targets but does not pin the #5418 fingerprint or silent-yield literals. Scenario: A future edit could drop the byte-identical yield rule from `design-background-wait.md` or the extended anti-pattern #5 body while all listed tests still pass.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: scripts/test-implement-anti-polling-rule.sh
+- **Phase**: design
+
+
+
+### OOS_4: Fingerprint rule mixes byte-identical wording with a 200-character prefix
+- **Description**: Fingerprint rule mixes byte-identical wording with a 200-character prefix. Scenario: The planned replacement says byte-identical matching but the live text also tracks only the first 200 characters. Divergent outputs after column 200 could be misclassified as new and trigger another probe.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: skills/shared/design-background-wait.md:33
+- **Phase**: design
+
+
+
+### OOS_5: orchestrator-never #3 still tells /design to repeat the one-shot probe on every recovery turn
+- **Description**: orchestrator-never #3 still tells /design to repeat the one-shot probe on every recovery turn. Scenario: NEVER #3 ends with repeat only that one-shot probe on the next explicit recovery turn, which conflicts with silent yield on identical re-fires; test-design-structure.sh pins the /design non-empty premature-recovery fragment.
+- **Reviewer**: anonymous
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/shared/orchestrator-never.md:3
+- **Phase**: design
+
+
+
+### OOS_6: Testing strategy runs anti-polling harness but plan adds no #5418 or byte-identical literal pins
+- **Description**: Testing strategy runs anti-polling harness but plan adds no #5418 or byte-identical literal pins. Scenario: Docs-only drift on new contract text is not mechanically guarded; regressions would not fail CI until an agent misbehaves in production
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: scripts/test-implement-anti-polling-rule.sh:49-209
+- **Phase**: design
+
+
+
+### OOS_7: Project-wide /design premature-notification rule still authorizes foreground probe on any non-empty output with no fingerprint carve-out
+- **Description**: Project-wide /design premature-notification rule still authorizes foreground probe on any non-empty output with no fingerprint carve-out. Scenario: Operators loading AGENTS.md without the updated shared wait doc may still probe on repeated identical Step 3 notifications
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: AGENTS.md:64
+- **Phase**: design

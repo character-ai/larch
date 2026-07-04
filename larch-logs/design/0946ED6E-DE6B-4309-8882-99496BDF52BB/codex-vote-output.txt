@@ -1,0 +1,13 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the shared Step 3 wait contract already puts the fingerprint rule ahead of post-notification parsing, so this is redundant.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- ScheduleWakeup is already banned and repeated-identical notifications already defer to the shared silent-yield rule.
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- silent-yield turns do count toward the live-marker breaker, but changing that runtime behavior is outside the docs-only plan.
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- the root AGENTS guidance is broader, but updating it is outside the plan's scoped surfaces.
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the missing test pin is real, but tests were not part of the approved two-file plan.
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- this is a minimal-delta/style preference, not a necessary feature fix.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the harness pin would help drift detection, but the docs-only fix ships without it.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- pulling in the unrelated implement harness overreaches the plan's two markdown surfaces.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the literal pins are useful, but not required for this issue to ship.
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the 200-character fingerprint is a separate wording consistency issue, not a necessary bug fix here.
+OOS_5: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- the root NEVER text is broader than the anchored plan scope, so this belongs out of scope.
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the test pin would be nice, but the approved plan does not require it.
+OOS_7: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- AGENTS.md is outside the planned file set, so this broader guidance change is out of scope.
