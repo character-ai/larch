@@ -189,6 +189,34 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
     return 0
 
 
+def _step5b_handle_empty_stdout_retry(*, plugin_root: Path, design_tmpdir: Path, stderr_path: Path, exit_code: int, verb: str) -> int:
+    retry_sentinel = design_tmpdir / ".oos-issue-retry-used"
+    if retry_sentinel.is_file():
+        _append_failure(
+            plugin_root=plugin_root,
+            design_tmpdir=design_tmpdir,
+            site="design Step 5b annotate-skip",
+            tool="file-design-oos.sh annotate",
+            exit_code=exit_code,
+            category="Tool Failures",
+            output_file=stderr_path,
+        )
+        print(f"**⚠ /design: annotate {verb} (empty issue stdout) after retry sentinel; stop before Step 5b.5**")
+        return 1
+    _ = retry_sentinel.write_text("used\n", encoding="utf-8")
+    _append_failure(
+        plugin_root=plugin_root,
+        design_tmpdir=design_tmpdir,
+        site="design Step 5b annotate-skip",
+        tool="file-design-oos.sh annotate",
+        exit_code=exit_code,
+        category="Warnings",
+        output_file=stderr_path,
+    )
+    print(f"**⚠ /design: annotate {verb} (empty issue stdout) — status unclear; see execution-issues**")
+    return 1
+
+
 def step5b_annotate_main(argv: Sequence[str]) -> int:
     try:
         parsed = _parse_common_wrapper_args(argv)
@@ -239,31 +267,13 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         if _step5b_issues_failed(oos_issue_stdout):
             print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
         if status in {"annotate-failed-empty-stdout", "annotate-skipped-empty-stdout"} and warn:
-            retry_sentinel = design_tmpdir / ".oos-issue-retry-used"
-            if retry_sentinel.is_file():
-                _append_failure(
-                    plugin_root=plugin_root,
-                    design_tmpdir=design_tmpdir,
-                    site="design Step 5b annotate-skip",
-                    tool="file-design-oos.sh annotate",
-                    exit_code=ann_rc,
-                    category="Tool Failures",
-                    output_file=stderr_path,
-                )
-                print("**⚠ /design: annotate failed (empty issue stdout) after retry sentinel; stop before Step 5b.5**")
-                return 1
-            _ = retry_sentinel.write_text("used\n", encoding="utf-8")
-            _append_failure(
+            return _step5b_handle_empty_stdout_retry(
                 plugin_root=plugin_root,
                 design_tmpdir=design_tmpdir,
-                site="design Step 5b annotate-skip",
-                tool="file-design-oos.sh annotate",
+                stderr_path=stderr_path,
                 exit_code=ann_rc,
-                category="Warnings",
-                output_file=stderr_path,
+                verb="failed",
             )
-            print("**⚠ /design: annotate failed (empty issue stdout) — status unclear; see execution-issues**")
-            return 1
         label_failed = status == "annotate-label-failed" or (design_tmpdir / ".oos-priority-label-pending").is_file()
         if label_failed:
             if not _path_nonempty(stderr_path):
@@ -283,31 +293,13 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         return ann_rc
 
     if status == "annotate-skipped-empty-stdout" and warn:
-        retry_sentinel = design_tmpdir / ".oos-issue-retry-used"
-        if retry_sentinel.is_file():
-            _append_failure(
-                plugin_root=plugin_root,
-                design_tmpdir=design_tmpdir,
-                site="design Step 5b annotate-skip",
-                tool="file-design-oos.sh annotate",
-                exit_code=0,
-                category="Tool Failures",
-                output_file=stderr_path,
-            )
-            print("**⚠ /design: annotate skipped (empty issue stdout) after retry sentinel; stop before Step 5b.5**")
-            return 1
-        _ = retry_sentinel.write_text("used\n", encoding="utf-8")
-        _append_failure(
+        return _step5b_handle_empty_stdout_retry(
             plugin_root=plugin_root,
             design_tmpdir=design_tmpdir,
-            site="design Step 5b annotate-skip",
-            tool="file-design-oos.sh annotate",
+            stderr_path=stderr_path,
             exit_code=0,
-            category="Warnings",
-            output_file=stderr_path,
+            verb="skipped",
         )
-        print("**⚠ /design: annotate skipped (empty issue stdout) — status unclear; see execution-issues**")
-        return 1
 
     if (design_tmpdir / ".oos-priority-label-pending").is_file():
         print("STEP5B_STATUS=annotate-label-failed")
