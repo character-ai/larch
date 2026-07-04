@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the planned lint flags `../` in all bash-fence grep path operands; background-only BASH_AUTHORING wording is doc inconsistency, not an enforcement gap.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- BASH_AUTHORING.md is already at the 97-line tier-1a cap and the plan adds prose without a cap budget or tier1a-size check, so CI would fail.
