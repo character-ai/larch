@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Test-only coverage executes existing shell wrappers with a controlled shim and validates argv forwarding across review and resume paths.",
+  "round_cap": 2,
+  "schema_version": 1
+}
