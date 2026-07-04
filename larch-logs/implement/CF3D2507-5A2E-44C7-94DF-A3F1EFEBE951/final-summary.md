@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:26:58
-- **Cost**: 💰 TOTAL ~$7.88 — Claude $0.92, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.41  |  Tokens: 16201k
+- **Cost**: 💰 TOTAL ~$8.74 — Claude $1.78, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.41  |  Tokens: 18173k
 - **Issue**: #6160 — https://github.com/character-ai/larch/issues/6160
 - **PR**: #6242 — https://github.com/character-ai/larch/pull/6242
 - **Plan review**: N/A
@@ -13,7 +13,7 @@
 - **Lines (PR diff)**: code +93/-44, larch-logs +779/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/CF3D2507-5A2E-44C7-94DF-A3F1EFEBE951/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
@@ -23,8 +23,9 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (2):
   1. Step 7a — session-transcript status=write-failed: larch-log write failed; transcript was not captured: [Errno 2] No such file or directory: '<TMPDIR>/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T...
+  2. Step pre-push-refresh — session-transcript status=write-failed: larch-log write failed; transcript was not captured: [Errno 2] No such file or directory: '<TMPDIR>/var/folders/dw/kg5dyxc91t973n1j62...
 
 ## Review Phase Detail
 
