@@ -17,7 +17,7 @@ from larch.core import config
 from larch.core import run_context
 from larch.git import pr_body
 from larch.issue import execution_issues
-from larch.implement.bg_wait import _write_bg_wait_marker
+from larch.implement.bg_wait import _write_bg_wait_marker  # type: ignore[reportPrivateUsage]
 from larch.report import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})

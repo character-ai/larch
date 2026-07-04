@@ -40,3 +40,4 @@ def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
     )
     with contextlib.suppress(OSError):
         (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
+# pyright: reportUnusedFunction=false, reportUnusedCallResult=false

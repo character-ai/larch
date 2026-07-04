@@ -308,3 +308,4 @@ def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.
 
     assert rc == 0
     assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
+# pyright: reportPrivateUsage=false
