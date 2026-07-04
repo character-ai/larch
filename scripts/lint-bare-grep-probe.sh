@@ -103,6 +103,10 @@ scan_file() {
             printf("lint-bare-grep-probe: %s:%s: no-path rg/grep probe may block on stdin in background mode; pass an explicit path or < /dev/null (%s)\n", rel, FNR, cmd) > "/dev/stderr"
             violations = 1
         }
+        function report_parent_ascent(cmd) {
+            printf("lint-bare-grep-probe: %s:%s: parent-directory ascent in grep-family path operand; use an absolute path or known bounded root instead of ../ ascents (%s)\n", rel, FNR, cmd) > "/dev/stderr"
+            violations = 1
+        }
         function clear_tokens() {
             nt = 0
         }
@@ -258,6 +262,14 @@ scan_file() {
         function is_argv_terminator(value) {
             return is_command_boundary(value) || is_redirect(value)
         }
+        function skip_redirect_operand(i,    nxt_idx) {
+            nxt_idx = i + 1
+            if (nxt_idx <= nt && !is_command_boundary(tok[nxt_idx]) &&
+                !is_redirect(tok[nxt_idx])) {
+                return nxt_idx
+            }
+            return i
+        }
         function has_stdin_devnull(idx,    i) {
             for (i = idx + 1; i <= nt; i++) {
                 if (is_command_boundary(tok[i])) return 0
@@ -314,13 +326,20 @@ scan_file() {
         function has_attached_short_value(value) {
             return value ~ /^-[ABCm][0-9]+$/
         }
-        function has_explicit_path(cmd, idx,    i, value, pattern_seen, end_options) {
+        function has_parent_ascent_segment(value) {
+            return value ~ /(^|\/)\.\.(\/|$)/
+        }
+        function has_parent_ascent_path(cmd, idx,    i, value, pattern_seen, end_options) {
             pattern_seen = 0
             end_options = 0
 
             for (i = idx + 1; i <= nt; i++) {
                 value = tok[i]
-                if (!tok_quoted[i] && is_argv_terminator(value)) break
+                if (!tok_quoted[i] && is_command_boundary(value)) break
+                if (!tok_quoted[i] && is_redirect(value)) {
+                    i = skip_redirect_operand(i)
+                    continue
+                }
 
                 if (!end_options && value == "--") {
                     end_options = 1
@@ -330,13 +349,55 @@ scan_file() {
                     if (is_pattern_option(value)) {
                         pattern_seen = 1
                         if (!has_equals_value(value) && !has_attached_short_value(value) &&
-                            i + 1 <= nt && !tok_quoted[i + 1] &&
+                            i + 1 <= nt &&
                             !is_argv_terminator(tok[i + 1])) {
                             i++
                         }
                     } else if (option_takes_value(cmd, value) &&
                         !has_equals_value(value) && !has_attached_short_value(value) &&
-                        i + 1 <= nt && !tok_quoted[i + 1] &&
+                        i + 1 <= nt &&
+                        !is_argv_terminator(tok[i + 1])) {
+                        i++
+                    }
+                    continue
+                }
+
+                if (!pattern_seen) {
+                    pattern_seen = 1
+                } else if (!is_quoted_operator_operand(i) &&
+                    has_parent_ascent_segment(value)) {
+                    return 1
+                }
+            }
+            return 0
+        }
+        function has_explicit_path(cmd, idx,    i, value, pattern_seen, end_options) {
+            pattern_seen = 0
+            end_options = 0
+
+            for (i = idx + 1; i <= nt; i++) {
+                value = tok[i]
+                if (!tok_quoted[i] && is_command_boundary(value)) break
+                if (!tok_quoted[i] && is_redirect(value)) {
+                    i = skip_redirect_operand(i)
+                    continue
+                }
+
+                if (!end_options && value == "--") {
+                    end_options = 1
+                    continue
+                }
+                if (!end_options && value ~ /^-/ && value != "-") {
+                    if (is_pattern_option(value)) {
+                        pattern_seen = 1
+                        if (!has_equals_value(value) && !has_attached_short_value(value) &&
+                            i + 1 <= nt &&
+                            !is_argv_terminator(tok[i + 1])) {
+                            i++
+                        }
+                    } else if (option_takes_value(cmd, value) &&
+                        !has_equals_value(value) && !has_attached_short_value(value) &&
+                        i + 1 <= nt &&
                         !is_argv_terminator(tok[i + 1])) {
                         i++
                     }
@@ -381,6 +442,10 @@ scan_file() {
                 } else {
                     report_wrapper("bare grep statement")
                 }
+                next
+            }
+            if (has_parent_ascent_path(tok[candidate], candidate)) {
+                report_parent_ascent(tok[candidate])
                 next
             }
             if (has_stdin_devnull(candidate)) next

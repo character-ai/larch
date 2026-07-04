@@ -40,8 +40,8 @@
     "closure_content_estimated_tokens": 38756,
     "closure_estimated_tokens": 38871,
     "closure_lines": 1226,
-    "conditional_content_estimated_tokens": 25958,
-    "conditional_estimated_tokens": 26017,
+    "conditional_content_estimated_tokens": 26083,
+    "conditional_estimated_tokens": 26142,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -58,7 +58,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 728,
+    "conditional_lines": 730,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",

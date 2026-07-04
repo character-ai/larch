@@ -10,10 +10,13 @@ orchestrator-facing Markdown. It is the static backstop for `BASH_AUTHORING.md`
   `if grep ...; then`, and `{ grep ...; } || X` guards. See issue #3104.
 - No-path `rg`, `ripgrep`, and grep-family safe forms may read stdin. In
   background Bash mode, stdin can stay open and block forever.
+- Parent-directory ascents in grep-family path operands can turn a bounded
+  probe into a broad recursive search.
 
 The lint forces wrapper-safe and stdin-safe probes: use `command grep` or an
 explicit subshell when needed for the wrapper trap, and always pass an explicit
-path operand or `< /dev/null` for grep-family producer probes.
+path operand or `< /dev/null` for grep-family producer probes. Use absolute
+paths or known bounded roots instead of `../` path ascents.
 
 ## Scope
 
@@ -46,6 +49,11 @@ It also rejects no-path `rg`, `ripgrep`, and safe-form `grep` probes that may
 read stdin. Grep-family probes are allowed only when the candidate command has
 an explicit path operand or an unquoted `< /dev/null` redirect. This applies to
 `grep`, `rg`, and `ripgrep`, including `command`, subshell, and brace wraps.
+The same candidate parsing rejects `..` path segments in grep-family path
+operands, including later operands when the first path is safe. It checks all
+path operands after the pattern, not only the first path. Pattern operands and
+option values are not path operands, so `-e "../pattern"` and
+`--include="../*.py"` do not trigger this rule.
 
 Subshell wrap (`( grep ... )`, `( ripgrep ... )`, `( command rg ... )`) does not
 exempt no-path probes from the stdin rule. It only addresses the wrapper-exit
@@ -54,6 +62,9 @@ allowed because stdin is pipe-fed, matching piped `grep`.
 
 Evaluation order:
 
+- Bare wrapper `grep` is reported before path checks.
+- Parent-directory ascent path checks run before the `< /dev/null`
+  short-circuit, so `rg PATTERN ../root < /dev/null` still fails.
 - An unquoted `< /dev/null` redirect on the candidate command segment
   short-circuits to allowed before terminator truncation.
 - Quoted, commented, or echo-only substrings containing `< /dev/null` do not
