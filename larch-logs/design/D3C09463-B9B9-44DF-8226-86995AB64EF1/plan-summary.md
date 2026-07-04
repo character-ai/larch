@@ -1,0 +1,1 @@
+Fix process killing as a fail-closed safety change. Add process identity records, owner tokens, pre-kill logging, and regression tests across implement, design Step 3, finalize cleanup, and remaining retained-PID signal sites.

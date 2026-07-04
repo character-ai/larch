@@ -1,0 +1,97 @@
+# Cross-clone process kill via stale `.active-leg-pgid`
+
+## Summary
+
+`implement kill-active-leg` signals a persisted process-group id without validating that the pgid still names the leg that recorded it. Every `larch-run.sh` `.py` invocation fires this cleanup on exit. On the operator's host the PID counter wraps roughly hourly, so a stale `.active-leg-pgid` file points into recycled pid space. The cleanup then SIGTERMs and, 2 seconds later, SIGKILLs an unrelated live process group. Observed victims on 2026-07-03: the `/implement` Step 8 ship driver in one clone and the `/design` Step 3 review loop in another. The kill path is silent (`2>/dev/null || true`, no logging), so incidents are unattributable after the fact.
+
+## Original report
+
+Operator report (2026-07-03, condensed):
+
+- "The run on-going in larch6 right now of `/larch:im 6175` hit a bug I have seen earlier today: some process spawned by the run got killed by another process running in another session in parallel in another clone. This should never happen and is a very serious bug."
+- larch6 session transcript: mid-run, the Step 8 ship driver got a raw `Terminated: 15` while polling CI, right before the merge decision, "not from any orchestrator logic". Claude Code printed: `Background command "Re-invoke Step 8+ ship PR state machine driver after CI-fix (background)" was stopped`. The `.step-8-ship-handoff.rc` sidecar was present and the `.json` sidecar absent. The operator verified PR #6208 had not merged, resumed, and the run completed normally.
+- Onset: "this issue has only started to happen very recently. I have not seen it before this week, possibly not before the last 2 or 3 days at most."
+- larch8, during `/larch:design -s 6165`: Claude Code printed `Background command "Resume Step 3 review loop continuation after round-2 Gate B apply" was stopped`; the review-round background process received an external SIGTERM partway through starting a new round. Operator: "So this means it affects both /implement and /design. DISASTER!!!"
+
+## Reproduction scenario
+
+Live incidents are stochastic (they need a stale pgid file plus PID-counter wraparound), so use the deterministic synthetic form:
+
+1. In an `/implement` session tmpdir, simulate a stale file: start a sacrificial process group (`sh -c 'sleep 300' &` in its own session via `setsid` or `start_new_session`), then write its pgid into `$IMPLEMENT_TMPDIR/.active-leg-pgid`.
+2. Run any `.py` command through that session's `larch-run.sh`, for example `larch-run.sh python/cli.py --help`-class probes.
+3. On exit, `_larch_cleanup_active_leg` fires `implement kill-active-leg`. The sacrificial group receives SIGTERM, then SIGKILL 2 seconds later. No log line records the kill anywhere.
+
+Natural seeding path, no synthetic step needed: start a Step 2 leg, SIGKILL the dispatcher process group mid-leg. `.active-leg-pgid` survives (the `finally` clear never runs). The file sits until the next `larch-run.sh` `.py` exit in that session, which can be hours later, after the pid space has recycled.
+
+## Expected behavior
+
+Session cleanup kills only the exact leg process group that this session launched and that is still the same process. A stale, reaped, or recycled pgid is never signaled. Every larch-initiated kill logs its target and reason so an operator can attribute a dead process.
+
+## Observed behavior
+
+Three incidents on 2026-07-03, operator-confirmed as cross-clone kills between parallel sessions:
+
+1. larch6 `/larch:im 6175`: Step 8 ship driver background task killed by external SIGTERM (`Terminated: 15`) mid-CI-poll, immediately before the merge decision. Recovered by manual resume; PR #6208 merged afterward.
+2. larch8 `/larch:design -s 6165`: Step 3 review-loop background task killed by external SIGTERM at roughly 16:44-16:50 local, partway through starting round 3.
+3. One earlier implement-side kill the same day, per the operator.
+
+No larch log records any of the kills. The committed run log for the larch6 run (`larch-logs/implement/44AAC654-D79D-442D-B42D-FB04A09ADEAD/`) contains no trace of the termination.
+
+## Root cause analysis
+
+Primary path (confirmed in code; attribution of the specific incidents is inferred, see below):
+
+- `python/larch/state/bootstrap.py:168`: the generated `larch-run.sh` wraps every `.py` invocation with `trap _larch_cleanup_active_leg EXIT INT TERM` plus an explicit post-run call. The helper runs `python3 cli.py implement kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null || true`.
+- `python/larch/implement/dispatch_leg.py:142-157` (`kill_active_leg_main`): reads `$IMPLEMENT_TMPDIR/.active-leg-pgid`, unlinks it, then calls `_kill_leg_process_group_targets(pgid=pgid, pid=pgid)`.
+- `python/larch/implement/dispatch_leg.py:103-128` (`_kill_leg_process_group_targets`): collects descendants via `pgrep -P`, sends `os.killpg(pgid, SIGTERM)`, sleeps 2s, then `os.killpg(pgid, SIGKILL)` plus per-descendant SIGKILL.
+- There is no validation that the pgid still identifies the recorded leg: no command-line match, no start-time comparison, no parentage check. A `kill -0` probe would not help; a recycled pid is alive.
+
+Staleness seeding: `_publish_active_leg_pgid` writes the file at leg launch (`dispatch_leg.py:219`; legs use `start_new_session=True`, so pgid equals the leg pid). The only clear is the `finally` at `dispatch_leg.py:237`. Any SIGKILL-class death of the dispatcher (user stop escalation, crash, machine sleep, or this same bug's own TERM-then-KILL hitting a dispatcher in another session mid-leg) leaves the file behind. That last case makes the bug self-propagating across clones.
+
+Amplifier: the operator runs about 10 parallel clones (larch1 through larch9). Observed PID allocation is roughly 55k pids/hour, and macOS pid_max is 99999, so the counter wraps about hourly. Any `.active-leg-pgid` older than about an hour points into recycled pid space. Long-lived Claude Code background tasks (ship drivers, `plan-review run ... --new-process-group` loops) each lead their own process group, which makes them the likely and most visible `killpg` victims.
+
+Same-session variant (confirmed exposure, no witnessed incident): multiple `larch-run.sh` `.py` invocations run concurrently inside one session (a live `ps` snapshot showed `implement run-dispatch` and `checks repair-loop` both running through `larch-run.sh`). `.active-leg-pgid` carries no writer or ownership token, so any quick `.py` command that exits while a Step 2/5 leg is live consumes the file and kills the live leg.
+
+Secondary same-class defect: `skills/design/scripts/design-step3-review.sh:363-367,383-389,421-427`. `_step3_review_teardown_loop_group` runs `kill -- -"$_pid"` on `$_loop_pid` after `wait` has already reaped the child (pid freed), and again in the EXIT-trap cleanup. Same class: group-signaling a retained pid without identity validation. The window is much smaller than the implement path.
+
+Reviewed and cleared: `kill_session_background_processes` (`python/larch/state/finalize.py:814-849`) scans `ps -A` for the session-unique tmpdir substring and is gated by `_cleanup_target_ok` (`python/larch/state/finalize.py:914`). It cannot match another session's processes and is not the cross-session killer. It does kill silently, so it shares the observability gap.
+
+Attribution caveat: because every kill path is silenced, no artifact proves which mechanism killed the three witnessed victims. The kill-active-leg path is the only discovered mechanism that can signal another session's live process group, its signal sequence matches the observations (`Terminated: 15`), and its introduction window matches the onset. Treat the mechanism as confirmed and the per-incident attribution as high-confidence inference.
+
+## Evidence
+
+- `python/larch/state/bootstrap.py:168` and the surrounding template: every `.py` step exit triggers `kill-active-leg` via trap plus explicit call.
+- `python/larch/implement/dispatch_leg.py:142-157`: read persisted pgid, unlink, signal with no identity validation.
+- `python/larch/implement/dispatch_leg.py:103-128`: SIGTERM, 2s, SIGKILL escalation against the whole group and re-enumerated descendants.
+- `python/larch/implement/dispatch_leg.py:216-237`: `start_new_session=True`, publish at launch, clear only in `finally`.
+- Introduction history: outer fence and `.active-leg-pgid` landed 2026-06-25 in #5283 (PR #5390, commit 27d270b72); extended 2026-06-28 by #5769 (PR #5808, commit 69d088939); relocated by packaging move #5169 (PR #5521, 2026-06-26). The mechanism is 5-8 days old, matching "not seen before this week".
+- PID churn measured from PID-keyed session artifacts in `~/.cache/larch/sessions/`: run-script names recorded Claude pids 41908 through 96963 between 15:55 and 16:48 on 2026-07-03 (about 55k pids in 53 minutes); a live `ps` at about 16:53 showed larch drivers at pids 6641 through 27745, so the counter had wrapped within the hour.
+- Live `ps` snapshot: `plan-review run --design-tmpdir ~<TMPDIR> --mode loop --starting-round 2 --new-process-group` runs as its own process group (pid = pgid), confirming background drivers are killpg-addressable units.
+- Same snapshot: two concurrent `larch-run.sh` `.py` invocations inside single sessions (`implement run-dispatch`, `checks repair-loop`), confirming the same-session consumption race is reachable.
+- Silencing: the fence calls `kill-active-leg ... 2>/dev/null || true`; neither `kill_active_leg_main` nor `_kill_leg_process_group_targets` logs targets; the larch6 committed run log contains no trace of the observed kill.
+- No `.active-leg-pgid` files existed under `~/.cache/larch/sessions/claude-*/` at inspection time, consistent with one-shot consume-and-unlink semantics.
+
+## Affected files
+
+- `python/larch/state/bootstrap.py`: generates the `larch-run.sh` outer fence that fires `kill-active-leg` on every `.py` invocation exit.
+- `python/larch/implement/dispatch_leg.py`: publishes, clears, reads, and signals `.active-leg-pgid`; owns `_kill_leg_process_group_targets`.
+- `skills/design/scripts/design-step3-review.sh`: post-`wait` and trap-time `kill -- -$_loop_pid` on a reaped pid.
+- `python/larch/state/finalize.py`: `kill_session_background_processes` needs kill logging only (scoping already safe).
+- `python/test_implement_dispatch.py`, `scripts/test-implement-structure.sh`, `scripts/test-implement-fence-shape.sh`: harnesses that pin the current fence and kill behavior; they need same-PR updates.
+
+## Suggested fix(es)
+
+Single combined fix, numbered work items:
+
+1. Identity validation in `kill-active-leg`: persist identity next to the pgid (leg start time, command signature, writer pid; a small JSON file). Before signaling, compare against `ps -o lstart=,command= -p <pgid>`. Refuse to signal on any mismatch. Never SIGKILL-escalate an unvalidated target.
+2. Ownership token: only the `larch-run.sh` invocation that launched the publishing dispatcher may consume `.active-leg-pgid`. Other concurrent `.py` invocation exits must be no-ops. This closes the same-session friendly-fire race.
+3. `design-step3-review.sh`: do not `kill -- -$_loop_pid` after `wait` has reaped the child. Track reap state, clear `_loop_pid` before the trap can reuse it, and apply the same identity validation before any group signal.
+4. Observability: every larch-initiated kill (`kill-active-leg`, finalize reaper, step3 teardown) logs target pgid/pids, the resolved victim command lines, the caller, and the reason to the session log before signaling. Drop the `2>/dev/null` silencing so future incidents are attributable.
+5. Audit the remaining persisted or retained-PID signal sites (`os.kill`, `os.killpg`, `kill --`, `pkill`-family) for the same validation gap, treating hourly PID wraparound as the baseline environment.
+
+## Open questions
+
+- Should the outer fence stop calling `kill-active-leg` entirely, and the dispatcher's own wrapper own leg cleanup by construction? That removes the cross-invocation consumer instead of tokenizing it.
+- Is pgid plus start-time plus argv signature sufficient identity on macOS, or should the record also carry the session id for defense in depth?
+- What signal does the Claude Code harness itself use when it stops a background task? Knowing this lets logs distinguish harness stops from external kills.
+- Are there non-larch processes on the host that could plausibly send SIGTERM to these groups (ruling in/out final alternative explanations once kill logging exists)?

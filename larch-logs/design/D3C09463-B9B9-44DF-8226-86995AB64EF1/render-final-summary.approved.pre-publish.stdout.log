@@ -1,0 +1,82 @@
+## /design run D3C09463-B9B9-44DF-8226-86995AB64EF1 — approved
+
+- **Duration**: 00:28:43
+- **Cost**: 💰 TOTAL ~$36.22 — Claude $18.32, Codex-5.5 $10.43, Codex-mini $0.37, Cursor $5.82, Claude (subprocess) $1.28  |  Tokens: 34251k
+- **Issue**: #6213 — https://github.com/character-ai/larch/issues/6213
+- **Plan review**: complete (2 rounds)
+- **Difficulty**: predicted HARD; applied HARD
+- **Dynamic archetypes**: static-only, drafter filter_failed
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/D3C09463-B9B9-44DF-8226-86995AB64EF1/`
+- **Main agent model**: claude-fable-5
+- **Effort**: max
+- **Larch version**: unknown
+
+<!-- larch:run-summary v=1 -->
+
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 8 | 8 | 8 | 0 | 13m 59s | $9.85 | 10 |
+| 2 | 2 | 1 | 6 | 0 | 10m 33s | $6.69 | 7 |
+| **Total (round-sum)** | **10** | **9** | **14** | **0** | **24m 32s** | **$16.54** | **17** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-13:59 (839s)
+                                       0:00                                    13:59
+                                      ┌─────────────────────────────────────────────┐
+codex/codex-plan-pragmatic            │██████                                       │ 118s
+codex/codex-plan-innovation           │██████                                       │ 119s
+codex/codex-plan-arch                 │███████                                      │ 122s
+cursor/cursor-plan-arch               │███████                                      │ 137s
+cursor/cursor-plan-innovation         │████████                                     │ 138s
+cursor/dyn-cursor-plan-process-safety │████████                                     │ 141s
+codex/dyn-codex-plan-process-safety   │█████████                                    │ 158s
+cursor/cursor-plan-pragmatic          │█████████                                    │ 161s
+cursor/cursor-plan-requirements       │█████████                                    │ 161s
+codex/codex-plan-requirements         │███████████                                  │ 194s
+aggregator                            │           █████                             │  95s
+cursor/vote                           │                ████                         │  70s
+codex/vote                            │                ██████                       │ 105s
+claude/vote                           │                ████████████████             │ 298s
+                                      └─────────────────────────────────────────────┘
+```
+
+### Round 2 reviewer timing
+
+```
+Round 2 reviewer timing  ·  window 0:00-10:33 (633s)
+                                 0:00                                          10:33
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-requirements   │█████████                                          │ 109s
+cursor/cursor-plan-arch         │█████████                                          │ 113s
+cursor/cursor-plan-requirements │██████████                                         │ 119s
+codex/codex-plan-innovation     │██████████                                         │ 126s
+cursor/cursor-plan-innovation   │███████████                                        │ 133s
+codex/codex-plan-arch           │████████████                                       │ 143s
+codex/codex-plan-pragmatic      │█████████████                                      │ 159s
+aggregator                      │             ██                                    │  24s
+cursor/vote                     │               █████                               │  59s
+codex/vote                      │               ███████                             │  82s
+claude/vote                     │               ███████████████████████████         │ 337s
+                                └───────────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+1. Cursor-Innovation — 10
+2. Codex-Arch — 6
+3. Codex-dyn-Process Safety — 6
+4. Codex-Innovation — 4
+5. Codex-Pragmatic — 4
+6. Cursor-Arch — 4
+7. Cursor-Pragmatic — 4
+
+**Reviewer slot failures**: 0
+REPORT_GATE_SIDECARS_FILE=<TMPDIR>/design-report-gate-sidecars.md

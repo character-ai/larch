@@ -1,0 +1,33 @@
+### FINDING_1: Step 3 identity capture must happen after the new process group exists
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Codex-Innovation
+- **Severity**: important
+- **Concern**: Step 3 is still capturing/publishing loop identity too early and too close to the Bash launcher, so the retained pgid can differ from the child’s real process-group identity and teardown can validate or signal the wrong target.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a pinned write path (e.g. `plan-review write-loop-identity --design-tmpdir … --pid "$_loop_pid"`) implemented in Python via `process_identity.py`, called immediately after `_loop_pid=$!`; keep Bash to launch, wait, trap dispatch, and sidecar unlink only.
+  - From Codex-Arch: Require the sidecar writer and teardown helper to accept only `pgid == pid == _loop_pid` for Step 3. If that is not true yet, do not publish a sidecar or signal; rely on the existing tmpdir-scoped fallback.
+  - From Codex-Innovation: Write the Step 3 sidecar from `python/larch/review/plan_review.py` immediately after `_apply_new_process_group()` succeeds, or make the recorder refuse to publish until the child identity shows `pgid == pid`; add that file to the plan.
+
+### FINDING_2: Step 3 teardown helper CLI contract needs canonical dispatcher pinning
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The plan still leaves the Step 3 teardown helper’s CLI surface underspecified and may register it in the wrong layer, so the Bash fence cannot deterministically call the identity-validated helper from the canonical dispatcher.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pin one contract in the plan: verb (e.g. `plan-review teardown-loop`), required flags (`--design-tmpdir`, optional `--pid`), handler module/function, `cli.py` dispatch row, the exact `design-step3-review.sh` invocation for trap-only cleanup, and quiet stdout/stderr rules so the existing KV envelope stays stable.
+  - From Cursor-Innovation: Pin one registration row (for example plan-review kill-loop-group -> larch.review.plan_review.kill_loop_group_main or a thin process_identity wrapper) with required flags (--design-tmpdir, sidecar path from config), exit codes, and no-envelope stdout; mirror it in design-step3-review.sh and test-design-step3-review.sh pins.
+  - From Codex-Innovation: Update the plan's file list and registration step to modify `python/larch/cli.py` for the new helper verb, leaving `python/cli.py` unchanged unless a shim-facing test must change.
+  - From Codex-Pragmatic: Add `### UPDATED: python/larch/cli.py` for the new registry entry and leave `python/cli.py` unchanged unless the shim itself needs a real change
+
+### FINDING_3: Live timeout cleanup must stay off the validated persisted-teardown path
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: Live `Popen` timeout cleanup should keep using the existing live-handle escalation path; if it is routed through the same identity-validated persisted-teardown helper, normal timeout termination can fail or regress.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Split process_identity into validated persisted teardown versus live-handle teardown that only logs targets then reuses existing SIGTERM/SIGKILL escalation. State explicitly in dispatch_leg that timeout cleanup uses the live path only.
+
+### FINDING_4:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/design/scripts/design-step3-review.sh:421-427
+- **Concern**: [SCOPE-REDUCTION] Step 3 launch identity capture still lands in Bash. Scenario: The plan says move retained-pid checks into Python, but also assigns Bash to write a sidecar with ps start time and command signature right after _loop_pid=$!. That reintroduces fragile Bash 3.2 ps parsing the plan explicitly avoids, and duplicates logic process_identity.py will own.
+- **Proposed resolution**: After background launch, call one quiet Python helper to capture ps identity and atomically write the sidecar (for example plan-review write-loop-identity --design-tmpdir ... --pid $_loop_pid with expected needle derived from the launch argv). Keep Bash to pid bookkeeping, wait, and trap gating only.

@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already requires a Step 3 teardown helper and wrapper wiring; exact larch/cli.py registration is inferable from existing plan-review verbs and harness pins.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Plan already keeps live Popen timeout cleanup off persisted identity validation and limits live-handle sites to logging-only audit changes.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate hardening item; malformed or torn JSON is refused without signaling, not a demonstrated cross-clone kill path.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Skipping kill-active-leg when no artifact exists is hot-path optimization, not required to stop stale-pgid or owner-mismatch kills.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Capturing identity inside plan-review run is an optional design simplification, not necessary for the scoped fix.
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of OOS_1; atomic publish is hardening beyond the demonstrated stale-pgid kill mechanism.
