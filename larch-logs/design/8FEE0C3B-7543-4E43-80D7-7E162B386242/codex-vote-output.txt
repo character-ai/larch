@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deduping pool sidecars is a robustness refinement, not required for the filing feature to work.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the retry boundary concern is real, but a durable once-only marker is not necessary for the feature path.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- explicit session-path plumbing is not clearly required; the existing review tmpdir/session env inputs can carry the needed context.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=weak UNCERTAIN=true -- there is not enough evidence that the proposed pool sidecar survives cleanup in a way that blocks the feature.
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- filing-time promotion is an alternate architecture, not a necessary requirement for the aggregate-filing feature.
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- updating the canonical dispatch reference is useful, but it is not necessary for the feature path.

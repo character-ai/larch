@@ -1,0 +1,143 @@
+## Summary
+
+The combined out-of-scope (OOS) issue that `/design` and `/implement` file at the end of a run rarely gets filed. The filer is not the bottleneck. Once an OOS item is eligible, `/design` files it 87 to 96 percent of the time. The bottleneck is upstream: an OOS observation becomes eligible only if the review panel votes it `accepted`. Most OOS observations draw a `neutral` or `rejected` vote, so 75.5 percent of `/design` runs end with nothing to file. This issue proposes decoupling OOS filing from the per-item acceptance vote and gating on aggregate severity instead, plus two smaller filing-process fixes.
+
+## Original report
+
+The owner reported that `/design` and `/implement` collect a set of OOS items and are supposed to file one combined OOS issue at the end, but lately it does not seem to get filed most of the time. The owner asked to review the decision mechanism that determines whether the issue gets filed, and to make filing more liberal, because `/combine-issues --oos` can triage and drop invalid items later. Catching problems early is better than losing them.
+
+Approved rule: file the combined OOS issue whenever either condition holds.
+
+- At least one collected OOS item has severity `important` or above (`important` or `blocking`).
+- There are at least three `latent` items.
+
+Approved decisions:
+
+1. Augment, do not replace. Keep filing vote-accepted OOS exactly as today. Additionally promote collected-but-unaccepted OOS into the filing batch when the trigger fires.
+2. When the trigger fires, file all non-security collected OOS, not only the qualifying-severity items. Security-classed OOS stays on the private SECURITY.md path and is never filed publicly.
+3. Trigger scope is the per-run collected OOS pool: OOS-tagged items with any vote outcome, plus `latent` and neutral-rescued in-scope findings (the population currently written to `oos.md` only).
+
+The owner accepts higher filed-issue volume as the intended effect. Apply the change symmetrically to `/design` and `/implement`.
+
+## Reproduction scenario
+
+1. Run `/design <issue>` on a plan where reviewers surface OOS observations that draw fewer than 2 YES votes (a `neutral` result), or that carry `latent` severity.
+2. Inspect the run log. `oos.md` holds the surfaced observations, but `oos-accepted-design.md` is empty.
+3. Observe `oos-filing-prepare.env` reports `FILE_DESIGN_OOS_STATUS=skip-no-items`. No `[OOS]` issue is filed.
+
+Empirical confirmation from committed run logs (690 `/design` runs, 1417 `/implement` runs):
+
+- 521 of 690 `/design` runs (75.5 percent) end in `skip-no-items`.
+- Across the 209 `/design` runs that surfaced neutral-rescued OOS, 137 (65.6 percent, 451 observation blocks) filed nothing.
+- `/design` collected roughly 1,623 OOS blocks total but recorded only about 213 filed issue URLs.
+
+Bug B is inferred from code reading and is not yet reproduced at runtime.
+
+## Expected behavior
+
+A run that surfaces at least one `important`-or-above OOS item, or at least three `latent` items, files the combined `[OOS]` issue. That issue includes the currently-dropped observations. Vote-accepted OOS continues to file as it does today. Security-classed OOS stays private.
+
+## Observed behavior
+
+Only OOS items that win an acceptance vote reach the filing batch (`oos-accepted-review.md` for `/implement`, `oos-accepted-design.md` for `/design`). Everything else goes to `oos.md` only and is surfaced as a PR observation, never filed:
+
+- OOS-tagged items voted `neutral` or `rejected`.
+- In-scope findings with `latent` severity.
+- Neutral-rescued in-scope findings (a `neutral` result with a high-severity YES vote).
+
+The acceptance bar is also harder on degraded panels. A full 3-judge panel needs 2 or more YES votes. A degraded 2-judge panel needs both votes YES (unanimous). So whenever a reviewer slot drops, OOS items almost never clear the bar. There is no severity or weight logic in the filing decision today. Severity only drives the post-hoc `oos-correctness` priority label.
+
+## Root cause analysis
+
+There is no aggregate "should we file this batch" decision anywhere. Filing is emergent from per-item classification in the review tallies, and the effective gate is the per-item acceptance vote.
+
+- `/implement`: `python/larch/review/review_tally.py:878-904`. An item reaches `oos-accepted-review.md` only when `kind == "oos"` and `result == "accepted"` and it is not security. Reroute cases (`latent`, neutral-rescued) go to `oos.md` only and are counted as `oos_rejected` (`review_tally.py:883-886`).
+- `/design`: `python/larch/review/plan_review_tally.py`. `kind` is set at line 781; the filed track `oos_accepted_chunks.append(...)` at line 815 is reachable only for `OOS_`-typed items with `result == "accepted"`; the round accumulator writes at line 833. Non-accepted plus `latent`/neutral-rescued items go to `oos.md` only.
+- Acceptance threshold: `python/larch/review/voting.py:838` (`accept_finding`) and `:856` (`classify_result`). Severity to weight tiers: `python/larch/review/plan_review_gate_b.py:12-17` (`blocking`/`important` = High, `latent` = Medium, `nit` = Low); `HIGH_SEVERITIES = {blocker, major}` at `voting.py:83`.
+- The filers themselves file whenever the accepted-OOS batch is non-empty, and roll all items into one aggregated `[OOS]` issue (`OOS_ISSUES_PER_RUN_CAP` defaults to `1` at `python/larch/issue/file_oos.py:744`): `python/larch/design/design_oos.py:429-447` and `python/larch/issue/oos_filer.py:1119`.
+
+Two secondary filing-process defects also strand accepted OOS:
+
+- Bug A, `ready` but no issue URL. About 6 `/design` runs reached `FILE_DESIGN_OOS_STATUS=ready` (accepted and prepared) but recorded no issue URL: no `oos-issue.stdout.txt` and no `oos-issues-created.md`. Likely the empty-stdout annotate path at `python/larch/design/design_oos.py:790-797`, where `/issue` stdout was lost, leaving accepted blocks un-annotated and unfiled. Spot-checked run-ids: `FB938DE4-2E6D-42C4-BB3C-D09505943533` (6 accepted blocks) and `BAC8D1D1-CE28-4B72-B482-0A3CA5B3BD4F` (13 blocks).
+- Bug B, cross-session cache freshness. On a same-issue `/design` re-run, `python/larch/design/design_oos.py:403-414` restores `~/.cache/larch/design-oos-filed/<issue>.md` and, via `_recover_accepted_from_sentinel` (`design_oos.py:291-330`), emits `skip-sentinel` when all previously-filed `OOS_` blocks still map. It does not check for newly-accepted unfiled blocks in the superset case, so it can suppress filing of new OOS items on a re-run. The normal Step 5b path never passes `--clear-cross-session-cache` (only manual invocation reaches `design_oos.py:371-381`). Inferred from code reading, not reproduced.
+
+Prior context, do not reopen: a related regression was fixed on 2026-07-03 by #6116 (`oos-accepted-design.md` was truncated on every plan-review round, wiping round-1 OOS on multi-round designs). It is now cumulative. This issue does not include that fix.
+
+Related closed work (lineage, not duplicates): #5641 added the high-severity neutral-rescue but routes rescued findings to `oos.md` only, not to a filed issue; this issue completes that intent by filing them. #6028 surfaced pre-vote dropped OOS as closeout candidates, a different class than the post-vote gate addressed here. #5642 added severity-aware OOS triage labeling. OOS filing remains rare after all three, so this issue targets the remaining post-vote gate.
+
+## Evidence
+
+- Filing funnel (design): `skip-no-items` in 521 of 690 runs (75.5 percent); once accepted, filed in 136 of 156 runs (87.2 percent, and 95.7 percent for `status=ready`).
+- Dropped observations (design): 137 of 209 runs that surfaced neutral-rescued OOS filed nothing (451 blocks).
+- Per-item routing verified by direct reads: `review_tally.py:878-904`, `plan_review_tally.py:781,815,833`.
+- Acceptance threshold verified: `voting.py:838` (`accept_finding` returns `yes == eligible` for `eligible <= 2`, else `yes >= 2`), `voting.py:856` (`classify_result`).
+- Filer non-empty gate and single-issue cap verified: `design_oos.py:429-447`, `oos_filer.py:1119`, `file_oos.py:744`.
+- Bug A run-ids spot-checked to have the prepare env but no `oos-issue.stdout.txt` and no `oos-issues-created.md`.
+
+## Affected files
+
+- `python/larch/review/plan_review_tally.py`: `/design` per-item OOS routing; primary site to add the weight-based promotion.
+- `python/larch/review/review_tally.py`: `/implement` per-item OOS routing; symmetric change.
+- `python/larch/review/voting.py`: acceptance threshold and `HIGH_SEVERITIES`; reference for the severity read used by the new trigger.
+- `python/larch/review/plan_review_gate_b.py`: severity-to-weight tier map; source of truth for `important`/`latent` bucketing.
+- `python/larch/design/design_oos.py`: `/design` filer gate (Bug A at 790-797, Bug B at 403-414 and 291-330).
+- `python/larch/issue/oos_filer.py`, `python/larch/issue/file_oos.py`: downstream filers; expected to need no change because they already file any non-empty non-security batch.
+- Test suites: `python/tests/review/test_review_tally.py`, `python/tests/review/test_plan_review.py`, `python/tests/issue/test_oos_filer.py`, `python/tests/issue/test_file_oos.py`, `python/tests/design/test_design_oos.py`.
+
+## Suggested fix(es)
+
+Primary change (both tallies):
+
+- Read each collected OOS observation's declared severity from its `- **Severity**: X` block line (panel vocabulary: `blocking`/`important`/`latent`/`nit`).
+- Build the per-run collected OOS pool: OOS-tagged items with any vote outcome, plus `latent` and neutral-rescued in-scope findings. Exclude security-classed items.
+- Evaluate the trigger: at least one item with severity `important` or `blocking`, OR at least three `latent` items.
+- When the trigger fires, promote all non-security pool items into `oos-accepted-*.md` (in addition to the existing vote-accepted items), so the existing filer files them unchanged.
+- Keep the vote-accepted path intact when the trigger does not fire (augment, not replace).
+
+Bug A: make the `ready` to file to annotate handoff robust to lost or empty `/issue` stdout. Detect the empty-stdout case, surface it loudly, and allow a clean retry rather than silently stranding accepted OOS.
+
+Bug B: on a same-issue `/design` re-run, recover and annotate already-filed OOS but do not emit `skip-sentinel` when unfiled non-security blocks remain. File the newly-accepted items.
+
+Verification:
+
+- Unit tests for the trigger in the tally suites: at least one `important`-or-above files; at least three `latent` files; one or two `latent`-only does not file; security items excluded from public filing.
+- End-to-end: a run that surfaces qualifying OOS with zero vote-accepted items now produces a filed `[OOS]` issue.
+- Regression tests for Bug A (`ready` plus empty issue stdout produces a loud, retryable failure, not a silent strand) and Bug B (same-issue re-run with newly-accepted OOS files the new items, not `skip-sentinel`).
+
+## Open questions
+
+- Does the `latent` count of three combine `latent` OOS-tagged items and `latent`/neutral-rescued in-scope findings into one pool, or count them separately? This issue assumes one combined pool.
+- Should the trigger also consider `/implement` main-agent OOS (`oos-accepted-main-agent.md`) toward the counts, or only reviewer-surfaced OOS? This issue assumes all non-security collected OOS counts.
+- Should the counts be per-run only, or de-duplicated against OOS already filed earlier in the same session to avoid re-triggering on a re-run? Bug B touches the same area and may share a fix.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add an aggregate-severity trigger to both tally functions so unaccepted OOS items promote to the filing batch when ≥1 `important`/`blocking` or ≥3 `latent` pool items exist.
+- Fix Bug A: make the annotate handoff resilient to empty `/issue` stdout by emitting a retryable error state instead of silently stranding accepted OOS.
+- Fix Bug B: on same-issue `/design` re-runs, skip filing only when the sentinel fully covers all accepted blocks; file new unfiled blocks otherwise.
+
+### Non-goals
+- No change to the vote-accepted path; this augments it.
+- No changes to downstream filers (`oos_filer.py`, `file_oos.py`); they already handle non-empty batches.
+- Security-classed OOS stays private regardless of the trigger.
+- No changes to `/implement` main-agent OOS routing; the trigger evaluates only reviewer-surfaced items in the current ballot.
+
+### Approach sketch
+- In `plan_review_tally.py._render`: collect a `pool_chunks` list (non-security, non-accepted OOS + rerouted findings) and their severity during the item loop; evaluate the trigger at end of loop; append pool items to `oos_accepted_chunks` when trigger fires.
+- In `review_tally.py.tally_code_votes`: mirror the same pool collection and trigger evaluation before writing final outputs; write qualifying pool items to `oos_accepted_file` (and `oos_accepted_out` when different).
+- In `design_oos.py.file_oos_annotate_main` (line 790-797): on empty stdout, emit a louder WARN with a `NEXT_ACTION` that allows orchestrator retry, rather than returning rc=1 with no retry path.
+- In `design_oos.py.file_oos_prepare_main` (line 403-414): after recovering sentinel URLs into `oos-accepted-design.md`, extract unfiled blocks from the updated accepted text; emit `skip-sentinel` only when no unfiled blocks remain, else fall through to normal prepare and file.
+
+### Surfaces in scope
+- `python/larch/review/plan_review_tally.py`
+- `python/larch/review/review_tally.py`
+- `python/larch/design/design_oos.py`
+- `python/tests/review/test_plan_review.py`
+- `python/tests/review/test_review_tally.py`
+- `python/tests/design/test_design_oos.py`
+
+### Open questions
+- None.
