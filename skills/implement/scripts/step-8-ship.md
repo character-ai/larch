@@ -14,7 +14,7 @@ At entry, the wrapper clears stale `.step-8-ship-handoff.rc` and `.step-8-ship-h
 
 The wrapper writes `$IMPLEMENT_TMPDIR/.bg-wait-active` with `STEP=implement-step8-ship`, `TIMEOUT_S=21600`, and `CLONE_PATH` copied from `$IMPLEMENT_TMPDIR/.larch-keepalive` when available before the guard and driver calls. Entry clears `no-progress-turns.count`, `no-progress-circuit-breaker-armed`, and `bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count` so reused tmpdirs do not inherit stale no-progress or rc-probe clamp state. `persist_handoff` writes rc/json first and removes `.bg-wait-active` last on all exits. Handoff sidecar writes are fail-open so marker cleanup still runs. The hook release sentinel is the root-level `$IMPLEMENT_TMPDIR/.step-8-ship-handoff.rc`, not a `.completed/` file.
 
-`python/cli.py ship route-exit` consumes the `.rc` and `.json` sidecars. It does not consume live task-notification stdout.
+`python/cli.py ship route-exit` consumes the `.rc` and `.json` sidecars. It does not consume live task-notification stdout. `persist_handoff` records rc `143` when `SIGTERM` stops the wrapper, and `.step-8-ship-handoff.rc` is the hook release sentinel that lets `ship route-exit` own recovery on the next invocation. Step 8 is persist-and-resume by design; it does not use the Step 3/Step 5 detach-and-reattach pattern.
 
 ## Invariants
 

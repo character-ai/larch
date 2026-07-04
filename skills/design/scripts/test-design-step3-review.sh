@@ -899,4 +899,16 @@ grep -Fq 'STEP3_LOOP_STDERR_SENTINEL_5511' "$D_REDIRECT/plan-review-loop-stderr.
 rm -rf "$D_REDIRECT"
 pass 'Step 3 wrapper redirects plan-review loop stderr off the task output stream (#5511)'
 
+grep -Fq -- '--orphan-timeout-s 7200' "$WRAPPER" || fail 'Step 3 wrapper must pass orphan timeout to plan-review run'
+grep -Fq '.step3-reattach-active' "$WRAPPER" || fail 'Step 3 wrapper must mark active reattach handshakes'
+grep -Fq -- '--reattach' "$WRAPPER" || fail 'Step 3 wrapper must await detached loops through reattach mode'
+python3 - "$ROOT" <<'PYTEST' || fail 'Step 3 orphan-timeout normalization contract missing'
+import sys
+sys.path.insert(0, sys.argv[1] + '/python')
+from larch.review.plan_review_normalize import _step3_next_action
+if _step3_next_action("panel-failed", loop_status="panel-failed", tally_status="panel-failed") != "step3b-bypass":
+    raise SystemExit(1)
+PYTEST
+pass 'Step 3 wrapper forwards orphan timeout and reattach handshake guards'
+
 pass 'design-step3-review.sh checks passed'

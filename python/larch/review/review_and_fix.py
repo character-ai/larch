@@ -205,6 +205,12 @@ def _step5_probe_prior_round_env(*, implement_tmpdir: Path, prior_round: int) ->
     return expected.is_file()
 
 
+def _step5_write_terminal_sentinel(*, implement_tmpdir: Path) -> None:
+    completed = implement_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-5-terminal").touch()
+
+
 @contextlib.contextmanager
 def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -300,6 +306,8 @@ def _build_step5_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dynamic-archetypes", default="")
     parser.add_argument("--no-dynamic-archetypes", action="store_true")
     parser.add_argument("--pre-scouted-manifest", default="")
+    parser.add_argument("--new-process-group", action="store_true")
+    parser.add_argument("--orphan-timeout-s", default="")
     return parser
 
 
@@ -632,6 +640,120 @@ def _finish_step5_terminal_success(*,
     return 0
 
 
+def _apply_step5_new_process_group(parser: argparse.ArgumentParser) -> None:
+    if not hasattr(os, "setsid"):
+        parser.exit(2, "cli.py review-and-fix step5: --new-process-group failed: os.setsid is unavailable\n")
+    try:
+        os.setsid()
+    except OSError as exc:
+        parser.exit(2, f"cli.py review-and-fix step5: --new-process-group failed: {exc}\n")
+
+
+def _parse_optional_positive_float(value: str, *, label: str) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"{label} must be positive") from exc
+    if parsed <= 0:
+        raise ValueError(f"{label} must be positive")
+    return parsed
+
+
+def _step5_parse_optional_epoch(value: str) -> float | None:
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _step5_detached_marker_value(*, implement_tmpdir: Path, key: str) -> str:
+    marker = implement_tmpdir / config.IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE
+    if marker.is_symlink() or not marker.is_file():
+        return ""
+    prefix = f"{key}="
+    try:
+        for line in marker.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(prefix):
+                return line.partition("=")[2]
+    except OSError:
+        return ""
+    return ""
+
+
+def _step5_orphan_timeout_elapsed(*, implement_tmpdir: Path, timeout_s: float | None) -> bool:
+    if timeout_s is None:
+        return False
+    if (implement_tmpdir / config.IMPLEMENT_STEP5_REATTACH_ACTIVE_FILE).is_file():
+        return False
+    marker = implement_tmpdir / config.IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE
+    if marker.is_symlink() or not marker.is_file():
+        return False
+    detached_at = _step5_parse_optional_epoch(_step5_detached_marker_value(implement_tmpdir=implement_tmpdir, key="DETACHED_AT_EPOCH"))
+    if detached_at is not None:
+        return time.time() - detached_at >= timeout_s
+    try:
+        age_s = time.time() - marker.stat().st_mtime
+    except OSError:
+        return False
+    return age_s >= timeout_s
+
+
+def _emit_step5_orphan_timeout(*, rounds_completed: int, final_round: int, effective_cap: int) -> int:
+    _emit_step5_envelope(
+        status="stall",
+        stall_tracking=True,
+        stall_reason="orphan-timeout",
+        rounds_completed=rounds_completed,
+        final_round=final_round,
+        final_irf="orphan-timeout",
+        coder_status="",
+        files_hint="",
+        effective_cap=effective_cap,
+    )
+    return 2
+
+
+def normalize_status(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix normalize-status")
+    parser.add_argument("--implement-tmpdir", required=True)
+    parser.add_argument("--stdout-file", required=True)
+    parser.add_argument("--loop-rc", default="0")
+    try:
+        args = parser.parse_args(argv)
+    except SystemExit as exc:
+        return int(exc.code)
+    implement_tmpdir = Path(args.implement_tmpdir)
+    stdout_file = Path(args.stdout_file)
+    if stdout_file.is_symlink() or not stdout_file.is_file():
+        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        return 2
+    try:
+        text = stdout_file.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        return 2
+    has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
+    if has_envelope:
+        _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
+        sys.stdout.write(text)
+        if text and not text.endswith("\n"):
+            sys.stdout.write("\n")
+        try:
+            loop_rc = int(str(args.loop_rc))
+        except ValueError:
+            loop_rc = 0
+        return loop_rc
+    _ = implement_tmpdir
+    _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+    return 2
+
+
 # --- public entry points ---
 
 def step5(argv: list[str] | None = None) -> int:
@@ -639,8 +761,14 @@ def step5(argv: list[str] | None = None) -> int:
     parser = _build_step5_parser()
     try:
         args = parser.parse_args(argv)
+        if args.new_process_group:
+            _apply_step5_new_process_group(parser)
+        orphan_timeout_s = _parse_optional_positive_float(args.orphan_timeout_s, label="--orphan-timeout-s")
     except SystemExit as exc:
         return int(exc.code)
+    except ValueError as exc:
+        _err(f"review-and-fix step5: {exc}")
+        return 2
     loop_mode = args.mode == "loop" or (not args.mode and not args.round_num)
     default_cap = _positive_int(value=str(args.round_cap), label="--round-cap") if str(args.round_cap).isdigit() else 2
     progress_done: Path | None = None
@@ -709,6 +837,10 @@ def step5(argv: list[str] | None = None) -> int:
         last: RoundResult | None = None
         round_num = starting_round
         while True:
+            if _step5_orphan_timeout_elapsed(implement_tmpdir=implement_tmpdir, timeout_s=orphan_timeout_s):
+                _flush_review_batches_for_result(implement_tmpdir=implement_tmpdir, run_id=args.run_id, rounds_completed=rounds_completed, result=last)
+                final_round = last.round_num if last else max(0, round_num - 1)
+                return _emit_step5_orphan_timeout(rounds_completed=rounds_completed, final_round=final_round, effective_cap=round_cap)
             if round_num > round_cap:
                 prior = round_num - 1
                 final_irf = last.status if last else "complete"

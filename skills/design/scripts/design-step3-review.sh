@@ -406,16 +406,17 @@ _step3_review_signal_exit() {
 }
 
 _step3_review_write_detached_marker() {
-  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _marker _tmp
+  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _detached_at_epoch="${4:-}" _marker _tmp
   [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
   [[ -n "$_pid" ]] || return 0
   _marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
   _tmp="${_marker}.tmp.$$"
+  [[ -n "$_detached_at_epoch" ]] || _detached_at_epoch="$(date +%s)"
   if {
     printf 'PID=%s\n' "$_pid"
     printf 'SIGNAL=%s\n' "$_signal"
     printf 'STDOUT_FILE=%s\n' "$_stdout_file"
-    printf 'DETACHED_AT_EPOCH=%s\n' "$(date +%s)"
+    printf 'DETACHED_AT_EPOCH=%s\n' "$_detached_at_epoch"
   } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null && [ -f "$_marker" ]; then
     return 0
   fi
@@ -476,25 +477,36 @@ _step3_review_cleanup_detached_marker() {
 }
 
 _step3_review_reattach_detached_loop() {
-  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _normalize_stdout="" _rc=0 _await_rc=0
+  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _signal="" _detached_at_epoch="" _normalize_stdout="" _rc=0 _await_rc=0 _active="$DESIGN_TMPDIR/.step3-reattach-active"
   [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
   _pid="$(_step3_review_marker_value PID || true)"
   _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
+  _signal="$(_step3_review_marker_value SIGNAL || true)"
+  _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
   case "$_pid" in
     ''|*[!0-9]*)
       _step3_review_cleanup_detached_marker "$_stdout_file"
       return 1
       ;;
   esac
+  _loop_pid="$_pid"
+  _step3_review_loop_identity_ready=true
+  : >"$_active" 2>/dev/null || true
+  rm -f "$_marker" 2>/dev/null || true
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
     --design-tmpdir "$DESIGN_TMPDIR" \
-    --pid "$_pid" >/dev/null 2>&1 || _await_rc=$?
+    --pid "$_pid" \
+    --reattach >/dev/null 2>&1 || _await_rc=$?
   if [ "$_await_rc" -ne 0 ]; then
-    _step3_review_cleanup_detached_marker "$_stdout_file"
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
+    rm -f "$_active" 2>/dev/null || true
+    _loop_pid=""
     return 1
   fi
+  rm -f "$_active" 2>/dev/null || true
   if ! _step3_review_result_env_present; then
-    _step3_review_cleanup_detached_marker "$_stdout_file"
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
+    _loop_pid=""
     return 1
   fi
   _step3_review_kill_tmpdir_processes
@@ -503,10 +515,17 @@ _step3_review_reattach_detached_loop() {
     --design-tmpdir "$DESIGN_TMPDIR" \
     --stdout-file "$_normalize_stdout" \
     --loop-rc 0 || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
+    rm -f "$_active" 2>/dev/null || true
+    _loop_pid=""
+    exit "$_rc"
+  fi
   _step3_review_cleanup_detached_marker "$_stdout_file"
   _step3_review_cleanup_detached_marker "$_normalize_stdout"
-  rm -f "$_plan_review_stdout_file" 2>/dev/null || true
-  exit "$_rc"
+  rm -f "$_plan_review_stdout_file" "$_active" 2>/dev/null || true
+  _loop_pid=""
+  exit 0
 }
 
 # #6258: The detach gate below normally reads the cached
@@ -523,14 +542,15 @@ _step3_review_loop_identity_on_disk() {
 }
 
 _step3_review_cleanup() {
-  local _rc=$?
+  local _rc=$? _detached_at_epoch=""
   trap - EXIT TERM HUP INT
-  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" "$DESIGN_TMPDIR/.step3-reattach-active" 2>/dev/null || true
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then
+      _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
       if [ "${_step3_review_loop_identity_ready:-false}" = true ] || _step3_review_loop_identity_on_disk; then
-        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"; then
+        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file" "$_detached_at_epoch"; then
           disown -h "$_loop_pid" 2>/dev/null || true
           exit "$_rc"
         fi
@@ -576,12 +596,14 @@ if [ -n "$STARTING_ROUND" ]; then
     --mode loop \
     --starting-round "$STARTING_ROUND" \
     --new-process-group \
+    --orphan-timeout-s 7200 \
     >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
 else
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --new-process-group \
+    --orphan-timeout-s 7200 \
     >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
 fi
 _loop_pid=$!

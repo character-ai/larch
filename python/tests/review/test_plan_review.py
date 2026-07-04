@@ -119,6 +119,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
         "ACCEPTED_COUNT=3",
         "DEGRADED_PANEL_WARNING=panel degraded",
         "INVALID_SLOT_PANEL_WARNING=invalid slot dropped",
+        "REASON=",
     ]
 
     result_env.unlink()
@@ -134,6 +135,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
         "ACCEPTED_COUNT=",
         "DEGRADED_PANEL_WARNING=",
         "INVALID_SLOT_PANEL_WARNING=",
+        "REASON=",
     ]
 
     target = tmp_path / "target.env"
@@ -1264,6 +1266,33 @@ def test_degraded_empty_collector_rollback_review_round_count(tmp_path: Path) ->
     assert "LOOP_STATUS=panel-failed" not in proc.stdout
     assert "LOOP_STATUS=tally-error" not in proc.stdout
     assert (tmp_path / "review-round-count.txt").read_text(encoding="utf-8") == "1\n"
+
+
+def test_orphan_timeout_uses_detached_epoch_not_marker_mtime(tmp_path: Path) -> None:
+    _write_run_params(tmp_path)
+    _ = (tmp_path / "plan-review-scope-anchor.txt").write_text("anchor\n", encoding="utf-8")
+    marker = tmp_path / ".step3-wrapper-detached"
+    _ = marker.write_text(
+        "PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/out\nDETACHED_AT_EPOCH=1\n",
+        encoding="utf-8",
+    )
+    future_mtime = 2_000_000_000
+    os.utime(marker, (future_mtime, future_mtime))
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        "--orphan-timeout-s",
+        "1",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "REASON=orphan-timeout" in proc.stdout
+    assert "STEP3_REVIEW_LOOP_STATUS=panel-failed" in proc.stdout
+    assert "NEXT_ACTION=step3b-bypass" in proc.stdout
 
 
 def _write_gate_b_plan(tmp_path: Path, body: str) -> None:

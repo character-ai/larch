@@ -366,6 +366,19 @@ def _validated_design_tmpdir(raw: str) -> Path | None:
     return path
 
 
+def _validated_implement_tmpdir(raw: str) -> Path | None:
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute() or path.is_symlink() or not path.is_dir():
+        return None
+    return path
+
+
+def _regular_nonsymlink(path: Path) -> bool:
+    return path.is_file() and not path.is_symlink()
+
+
 def _result_env_has_step3_status(*, tmpdir: Path, since_mtime_ns: int = 0) -> bool:
     result_env = tmpdir / ".step3-review-result.env"
     if result_env.is_symlink() or not result_env.is_file():
@@ -409,6 +422,7 @@ def _await_loop_poll(
     tmpdir: Path,
     identity_mtime_ns: int,
     timeout_s: float,
+    require_step3_result_env: bool,
 ) -> int:
     missing_pid_since: float | None = None
     deadline = time.monotonic() + timeout_s
@@ -419,6 +433,13 @@ def _await_loop_poll(
             time.sleep(0.2)
             continue
         if validation.reason == "missing-pid":
+            if not require_step3_result_env:
+                if missing_pid_since is None:
+                    missing_pid_since = time.monotonic()
+                elif time.monotonic() - missing_pid_since >= DESIGN_STEP3_MISSING_PID_GRACE_S:
+                    return 0
+                time.sleep(0.2)
+                continue
             if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=identity_mtime_ns):
                 return 0
             if missing_pid_since is None:
@@ -436,6 +457,7 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
     _ = parser.add_argument("--design-tmpdir", required=True)
     _ = parser.add_argument("--pid", required=True)
     _ = parser.add_argument("--timeout-s", default="21600")
+    _ = parser.add_argument("--reattach", action="store_true")
     args = parser.parse_args(argv)
     tmpdir = _validated_design_tmpdir(args.design_tmpdir)
     try:
@@ -449,7 +471,7 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
     if recorded is None or recorded.pid != int(args.pid):
         return 1
     detached_marker = tmpdir / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
-    if not detached_marker.is_file() or detached_marker.is_symlink():
+    if not args.reattach and not _regular_nonsymlink(detached_marker):
         return 1
     identity_mtime_ns = 0
     try:
@@ -463,6 +485,7 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
         tmpdir=tmpdir,
         identity_mtime_ns=identity_mtime_ns,
         timeout_s=timeout_s,
+        require_step3_result_env=True,
     )
 
 
@@ -483,6 +506,88 @@ def teardown_loop_identity_main(argv: list[str] | None = None) -> int:
         log_path=tmpdir / config.DESIGN_STEP3_KILL_LOG_FILE,
         caller="design-step3-review",
         reason="step3-trap-cleanup",
+    )
+    if validation.ok:
+        with contextlib.suppress(OSError):
+            sidecar.unlink(missing_ok=True)
+    return 0
+
+
+
+def write_step5_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-loop-identity")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    _ = parser.add_argument("--expected-signature", default="review-and-fix step5")
+    args = parser.parse_args(argv)
+    tmpdir = _validated_implement_tmpdir(args.implement_tmpdir)
+    if tmpdir is None or not str(args.pid).isdigit():
+        return 0
+    identity = _read_stable_process_identity(
+        pid=int(args.pid),
+        expected_signature=args.expected_signature,
+        require_pgid_match=True,
+    )
+    if identity is None:
+        return 0
+    write_identity_record(path=tmpdir / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE, recorded=identity)
+    return 0
+
+
+def await_step5_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix await-loop-identity")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    _ = parser.add_argument("--timeout-s", default="21600")
+    _ = parser.add_argument("--reattach", action="store_true")
+    args = parser.parse_args(argv)
+    tmpdir = _validated_implement_tmpdir(args.implement_tmpdir)
+    try:
+        timeout_s = float(args.timeout_s)
+    except (TypeError, ValueError):
+        timeout_s = 0.0
+    if tmpdir is None or not str(args.pid).isdigit() or timeout_s <= 0:
+        return 1
+    sidecar = tmpdir / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE
+    recorded = read_identity_record(path=sidecar)
+    if recorded is None or recorded.pid != int(args.pid):
+        return 1
+    detached_marker = tmpdir / config.IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE
+    if not args.reattach and not _regular_nonsymlink(detached_marker):
+        return 1
+    identity_mtime_ns = 0
+    try:
+        identity_mtime_ns = sidecar.stat().st_mtime_ns
+    except OSError:
+        identity_mtime_ns = 0
+    if identity_mtime_ns <= 0:
+        return 1
+    return _await_loop_poll(
+        recorded=recorded,
+        tmpdir=tmpdir,
+        identity_mtime_ns=identity_mtime_ns,
+        timeout_s=timeout_s,
+        require_step3_result_env=False,
+    )
+
+
+def teardown_step5_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py review-and-fix teardown-loop-identity")
+    _ = parser.add_argument("--implement-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    args = parser.parse_args(argv)
+    tmpdir = _validated_implement_tmpdir(args.implement_tmpdir)
+    if tmpdir is None or not str(args.pid).isdigit():
+        return 0
+    sidecar = tmpdir / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE
+    recorded = read_identity_record(path=sidecar)
+    if recorded is None or recorded.pid != int(args.pid):
+        return 0
+    validation = terminate_validated_process_group(
+        recorded=recorded,
+        log_path=tmpdir / config.IMPLEMENT_STEP5_KILL_LOG_FILE,
+        caller="implement-step5-review",
+        reason="step5-trap-cleanup",
     )
     if validation.ok:
         with contextlib.suppress(OSError):

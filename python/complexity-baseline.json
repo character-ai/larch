@@ -5163,25 +5163,25 @@
     "file": "larch/review/plan_review.py",
     "code": "C901",
     "qualified_symbol": "run_step3_review",
-    "metric": 34
+    "metric": 35
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0911",
     "qualified_symbol": "run_step3_review",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0912",
     "qualified_symbol": "run_step3_review",
-    "metric": 34
+    "metric": 35
   },
   {
     "file": "larch/review/plan_review.py",
     "code": "PLR0915",
     "qualified_symbol": "run_step3_review",
-    "metric": 130
+    "metric": 133
   },
   {
     "file": "larch/review/plan_review_loop.py",
@@ -5247,7 +5247,7 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0915",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 64
+    "metric": 65
   },
   {
     "file": "larch/review/plan_review_panel.py",
@@ -5517,13 +5517,13 @@
     "file": "larch/review/review_and_fix.py",
     "code": "C901",
     "qualified_symbol": "step5",
-    "metric": 29
+    "metric": 32
   },
   {
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0911",
     "qualified_symbol": "step5",
-    "metric": 12
+    "metric": 14
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5541,7 +5541,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0912",
     "qualified_symbol": "step5",
-    "metric": 31
+    "metric": 34
   },
   {
     "file": "larch/review/review_and_fix.py",
@@ -5565,7 +5565,7 @@
     "file": "larch/review/review_and_fix.py",
     "code": "PLR0915",
     "qualified_symbol": "step5",
-    "metric": 146
+    "metric": 155
   },
   {
     "file": "larch/review/review_collect.py",
@@ -6416,12 +6416,6 @@
   {
     "file": "larch/state/finalize.py",
     "code": "C901",
-    "qualified_symbol": "kill_background_processes_main",
-    "metric": 13
-  },
-  {
-    "file": "larch/state/finalize.py",
-    "code": "C901",
     "qualified_symbol": "postbump",
     "metric": 16
   },
@@ -6434,14 +6428,20 @@
   {
     "file": "larch/state/finalize.py",
     "code": "PLR0911",
+    "qualified_symbol": "_parse_kill_background_processes_argv",
+    "metric": 7
+  },
+  {
+    "file": "larch/state/finalize.py",
+    "code": "PLR0911",
     "qualified_symbol": "_title_matches",
     "metric": 7
   },
   {
     "file": "larch/state/finalize.py",
     "code": "PLR0911",
-    "qualified_symbol": "kill_background_processes_main",
-    "metric": 13
+    "qualified_symbol": "_validate_kill_tmpdir_path",
+    "metric": 9
   },
   {
     "file": "larch/state/finalize.py",
