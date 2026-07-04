@@ -360,12 +360,12 @@ def _required_reviewer_slots_prompt_section(input_text: str) -> str:
     lines.extend(
         [
             "",
-            "Apply these rules to the merged output:",
+            "Rules for the merged output:",
             "",
-            "- Every slot listed above must appear in at least one `- **Reviewer(s)**:` line. Dropping an input reviewer fails validation.",
-            "- Use only slots from this inventory for `- **Reviewer(s)**:` and `- From <slot>:` labels. Do not invent, rename, or merge slot names.",
-            "- Each `- From <slot>:` revision bullet must quote that slot's fix text verbatim from its own scoped input finding.",
-            "- A slot marked `out-of-scope-only` may appear only inside an `[OUT_OF_SCOPE]`-tagged output block.",
+            "- Every listed slot must appear in at least one `- **Reviewer(s)**:` line; dropping it fails validation.",
+            "- Use only slots from this inventory for `- **Reviewer(s)**:`/`- From <slot>:` labels; never invent, rename, or merge names.",
+            "- Each `- From <slot>:` bullet must quote that slot's own fix text verbatim.",
+            "- An `out-of-scope-only` slot may appear only inside an `[OUT_OF_SCOPE]`-tagged output block.",
         ]
     )
     return "\n".join(lines) + "\n"
@@ -862,7 +862,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     payload_base_bytes = len(source_text.encode("utf-8")) + sum(len(part.encode("utf-8")) for part in required_slot_parts)
     prompt_parts = [
         _strip_agent_frontmatter(agent),
-        "\n\n## Raw reviewer findings (input)\n\n",
+        "\n\n## Reviewer findings\n\n",
         source_text,
         *required_slot_parts,
     ]
@@ -877,7 +877,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
         else:
             _append_warning(review_tmpdir=review_tmpdir, session_env_path=args.session_env_path, entry="- **findings aggregator**: invalid or stale scope-anchor path omitted from aggregation prompt.")
     if args.input_mode == "plan" and tagged_count > 0:
-        prompt_parts.append("\n\nScope-reduction findings with a leading [SCOPE-REDUCTION] marker were withheld from LLM aggregation and will be appended verbatim after validation. Do not recreate or merge them.\n")
+        prompt_parts.append("\n\n[SCOPE-REDUCTION]-marked findings were withheld from aggregation and are appended verbatim after validation; do not recreate or merge them.\n")
     base_prompt = "".join(prompt_parts)
     slots_file = review_tmpdir / "aggregator-slots.ndjson"
     output_file = review_tmpdir / "aggregator-output.txt"
