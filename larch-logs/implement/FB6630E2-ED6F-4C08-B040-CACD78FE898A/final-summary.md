@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:19:26
-- **Cost**: 💰 TOTAL ~$6.32: Claude $0.49, Codex-5.5 $2.57, Codex-mini $0.85, Cursor $2.15, Claude (subprocess) $0.26  |  Tokens: 12184k
+- **Cost**: 💰 TOTAL ~$6.64: Claude $0.81, Codex-5.5 $2.57, Codex-mini $0.85, Cursor $2.15, Claude (subprocess) $0.26  |  Tokens: 13003k
 - **Issue**: #6308: https://github.com/character-ai/larch/issues/6308
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (important): Mixed prose+TSV bodies still pass validation. Concern: TSV validation still runs before the prose no-findings matcher, so a body that combines prose no-findings with substantive TSV rows can still pass as valid. That leaves mixed/contradictory output under-specified.
 - **Round 1 OOS_3** (latent): Collector parity for prose no-findings is missing. Concern: The collector-side no-findings sentinel helper still does not recognize the prose empty shape, so prose-only empty reviews can still be recorded as NOT_SUBSTANTIVE even though validation-mode accepts them elsewhere.
 - **Round 1 OOS_4** (latent): Prompt surface still contradicts the prose empty shape. Concern: The specialist prompt surface still tells models to output exactly `NO_ISSUES_FOUND` for empty reviews, while the reviewer templates and validator now accept the prose empty form. That mismatch can still steer models toward shapes that the active validator do…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
