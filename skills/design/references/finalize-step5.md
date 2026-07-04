@@ -46,17 +46,17 @@ If `FILE_DESIGN_OOS_DEPS_AVAILABLE=true` **and** `FILE_DESIGN_OOS_DEPS_TSV` poin
 
 Capture **stdout only** from the Skill tool to `$DESIGN_TMPDIR/oos-issue.stdout.txt`. **This write is MANDATORY** for every `/issue` invocation. If the Skill tool returns output inline, use the Write tool to write the exact captured `/larch:issue` stdout to that file before `annotate`. Never skip or reorder annotate relative to this write: `cmd_annotate` is the only writer of `oos-issues-created.md`, and `python/cli.py design render-final-summary` reads OOS count only from that file.
 
-Run annotate and capture stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`. On exit 0 with `FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout`, parse `WARN=`; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` with site `design Step 5b annotate-skip`, tool `python/cli.py design file-oos-annotate`, category `Warnings`, and exit code 0. Print `**⚠ /design: annotate skipped (empty issue stdout) — OOS filing status unclear; see execution-issues**` and continue to Step 5b.5.
+Run annotate and capture stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`. On exit 0 with `FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout`, parse `WARN=`; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` with site `design Step 5b annotate-skip`, tool `python/cli.py design file-oos-annotate`, category `Warnings`, and exit code 0. Print `**⚠ /design: annotate skipped (empty issue stdout): OOS filing status unclear; see execution-issues**` and continue to Step 5b.5.
 
 On non-zero `_oos_ann_rc` with `FILE_DESIGN_OOS_STATUS=annotate-label-failed` or `.oos-priority-label-pending`, append under `Tool Failures`, print the label-failure status, and stop before Step 5b.5. Do not write `.completed/step-5b`. The next retry must run label-only annotate or re-prepare to get `NEXT_ACTION=label-only`.
 
-On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt`, append under `Tool Failures` via `run-log append-failure`, including stderr. Print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**`, then continue to Step 5b.5. Per-block `Filed URL` lines are written only for successful items.
+On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt`, append under `Tool Failures` via `run-log append-failure`, including stderr. Print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0: see execution-issues and oos-issue.stdout.txt**`, then continue to Step 5b.5. Per-block `Filed URL` lines are written only for successful items.
 
 On non-zero `_oos_ann_rc` without a partial-failure contract, treat it as annotate or parse failure: append `Tool Failures` and continue to Step 5b.5.
 
 **Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5:
 
-1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"` — do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
+1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
 2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
 3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
 4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
@@ -71,7 +71,7 @@ Do not call `/larch:issue`. Run `design-step5b-annotate.sh` in label-only mode. 
 
 If `DIAGRAM_REQUIRED=true`, the wrapper removed stale diagram files and exited for orchestrator authoring. Generate a Mermaid Architecture Diagram from the finalized approved plan, obey `${CLAUDE_PLUGIN_ROOT}/skills/shared/mermaid-safe-content.md`, and write `$DESIGN_TMPDIR/architecture-diagram.candidate.md` with a `## Architecture Diagram` heading and Mermaid fence. Do not print candidate or final diagram bodies to chat.
 
-On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies.
+On generation failure before a candidate is written, print `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`. Optional full capture may be written to `$DESIGN_TMPDIR/architecture-diagram-generation.failure.log` for local repair only. Append only a bounded warning to `execution-issues.md` via `design_diagram_log.write_bounded_diagram_failure_log`; never append raw Mermaid, generator stdout/stderr, sanitizer stdout, or candidate bodies.
 
 Step 5b.5 diagram generation paths append bounded warnings only. Step 5c sanitizes the candidate before publish. It silently promotes accepted candidates to `architecture-diagram.md` and writes `.completed/step-5b.5`. On missing candidate or rejection, it deletes stale accepted/candidate files, writes `architecture-diagram.skipped`, appends a bounded warning for Step 5c warning replay, writes `.completed/step-5b.5`, and continues without emitting diagram bodies.
 
@@ -95,14 +95,14 @@ When `_publish_rc` is in `{0, 1, 3, 4}`, the Step 5c entrypoint parses through t
 
 Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed from file and/or stdout: on `PLAN_WRITE_OK=true`, print `⏩ 5c.5: status=${UPSERT_STATUS:-unknown} arch=${ARCHITECTURE_SOURCE:-unknown}`. The `python/cli.py design step5c` fence already wrote `step-5c` under the `PLAN_WRITE_OK=true` gate before leaving the fence. Rename (`RENAMED`) and Step 6 cleanup remain gated on `PUBLISH_OK` separately.
 
-Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed, or stdout fallback populated `PLAN_WRITE_OK`: when `PLAN_WRITE_OK=false`, print `**⚠ 5: plan-block-write failed — preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup. Do not write `step-5c`.
+Only when `_publish_rc` is 0, 1, or 3 and driver output was parsed, or stdout fallback populated `PLAN_WRITE_OK`: when `PLAN_WRITE_OK=false`, print `**⚠ 5: plan-block-write failed: preserving $DESIGN_TMPDIR**` and skip Step 6 cleanup. Do not write `step-5c`.
 
 ## Step 5d warning replay and footer
 
 Repeat any external reviewer warnings from earlier steps, including Step 0 reviewer-availability checks via `session setup`, Step 3 runtime failures, Step 5b.5 diagram generation failure, and driver WARN bodies replayed from Step 5c, so they are visible at the end of the workflow. Examples:
 
 - `**⚠ Codex not available: <reason>**`
-- `**⚠ 5b.5: arch diagram — generation failed, proceeding without diagram (<elapsed>)**`
+- `**⚠ 5b.5: arch diagram: generation failed, proceeding without diagram (<elapsed>)**`
 
 The rigid `larch:final-summary` body is produced by `python/cli.py design render-final-summary` inside `python/cli.py design step5c` after the publish outcome is known. Step 5c owns the once-per-handoff orchestrator emit through the shared Read-always readiness profile. Do not add token/timing chat tails, extra recap prose, or farewell wording outside that rendered block and the machine footer.
 
