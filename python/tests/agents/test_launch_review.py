@@ -345,6 +345,93 @@ def test_render_specialist_payload_sidecar_threads_into_panel_telemetry(
     assert captured[0]["output"] == Path(args.output)
 
 
+def test_render_specialist_payload_sidecar_unlink_failure_is_best_effort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    output = tmp_path / "out.txt"
+    sidecar = tmp_path / "payload.txt"
+    args = argparse.Namespace(
+        output=str(output),
+        agent_file="agents/reviewer-structure.md",
+        mode="description",
+        description_text="payload description",
+        scope_files=str(tmp_path / "scope.txt"),
+        competition_notice=False,
+        competition_notice_file="",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        findings_ledger_file="",
+        session_env_path="",
+        site="review Step 2",
+        tool="cursor",
+    )
+    (tmp_path / "scope.txt").write_text("python/foo.py\n", encoding="utf-8")
+
+    def fake_render(argv: list[str], **_kwargs: object) -> object:
+        sidecar_idx = argv.index("--payload-bytes-output") + 1
+        assert Path(argv[sidecar_idx]) == sidecar
+        sidecar.write_text("19\n", encoding="utf-8")
+        return type("R", (), {"stdout": "rendered prompt body\n", "stderr": "", "returncode": 0})()
+
+    original_unlink = Path.unlink
+
+    def fake_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        fd = os.open(sidecar, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+        return fd, str(sidecar)
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self == sidecar:
+            raise OSError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(_review_launcher.proc, "run", fake_render)
+    monkeypatch.setattr(_review_launcher.tempfile, "mkstemp", fake_mkstemp)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    rc, prompt, payload_bytes = _review_launcher._review_render_specialist_prompt_with_payload(args)  # pyright: ignore[reportPrivateUsage]
+
+    assert rc == 0
+    assert prompt == "rendered prompt body\n"
+    assert payload_bytes == 19
+    assert sidecar.exists()
+
+
+def test_prompt_file_launch_uses_panel_payload_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("prompt body", encoding="utf-8")
+    monkeypatch.delenv("LARCH_PANEL_PAYLOAD_BYTES", raising=False)
+
+    rc, rendered, payload_bytes = _review_launcher._review_resolve_prompt(  # pyright: ignore[reportPrivateUsage]
+        argparse.Namespace(
+            prompt=None,
+            prompt_file=str(prompt),
+            agent_file="",
+            tool="cursor",
+        )
+    )
+
+    assert rc == 0
+    assert rendered == "prompt body"
+    assert payload_bytes == 0
+
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "17")
+    rc, rendered, payload_bytes = _review_launcher._review_resolve_prompt(  # pyright: ignore[reportPrivateUsage]
+        argparse.Namespace(
+            prompt=None,
+            prompt_file=str(prompt),
+            agent_file="",
+            tool="cursor",
+        )
+    )
+
+    assert rc == 0
+    assert rendered == "prompt body"
+    assert payload_bytes == 17
+
+
 def test_cursor_launch_writes_sidecar_ok_status(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,

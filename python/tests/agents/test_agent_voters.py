@@ -1202,6 +1202,38 @@ def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypa
     assert sorted(manifest["payload_files"]) == ["claude", "codex", "cursor"]
 
 
+def test_build_voter_prompt_files_tracks_distinct_payload_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    opts = _opts(ballot, review)
+    payloads = {"codex": 7, "cursor": 11, "claude": 13}
+
+    def fake_make_voter_prompt_file(
+        *,
+        voter_tool: str | None = None,
+        label: str = "",
+        **_kwargs: object,
+    ) -> agent_voters.VoterPromptResult:
+        tool = voter_tool or "claude"
+        return agent_voters.VoterPromptResult(prompt_file=str(review / f"{label}-{tool}.txt"), payload_bytes=payloads[tool])
+
+    monkeypatch.setattr(agent_voters, "_make_voter_prompt_file", fake_make_voter_prompt_file)
+
+    prompt_files, payload_files = agent_voters._build_voter_prompt_files(  # pyright: ignore[reportPrivateUsage]
+        opts=opts,
+        review_tmpdir=review,
+        policies=agent_voters.VOTER_SLOT_POLICIES[:2],
+        availability=(True, True),
+        calibration_stats_file=None,
+    )
+
+    assert payload_files[agent_voters.VOTER_SLOT_POLICIES[0].prompt_label]["codex"] == 7
+    assert payload_files[agent_voters.VOTER_SLOT_POLICIES[0].prompt_label]["cursor"] == 11
+    assert prompt_files[agent_voters.VOTER_SLOT_POLICIES[1].prompt_label]["codex"].endswith("codex.txt")
+
+
 def test_voter_dispatch_resolves_round_subdir_for_panel_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     run_root = tmp_path / "impl"
     round_dir = run_root / "round-5"

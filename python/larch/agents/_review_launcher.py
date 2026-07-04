@@ -214,7 +214,7 @@ def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> t
     fd, sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(output_parent))
     os.close(fd)
     sidecar = Path(sidecar_name)
-    with contextlib.suppress(FileNotFoundError):
+    with contextlib.suppress(OSError):
         sidecar.unlink()
     result = proc.run(
         [
@@ -229,7 +229,7 @@ def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> t
         check=False,
     )
     payload_bytes = read_panel_payload_bytes(sidecar)
-    with contextlib.suppress(FileNotFoundError):
+    with contextlib.suppress(OSError):
         sidecar.unlink()
     if result.returncode != 0:
         _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")

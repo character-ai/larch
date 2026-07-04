@@ -835,6 +835,49 @@ def test_skip_invalid_slots_sidecar_failure_happens_before_launch(
     assert not Path(str(manifest) + ".output-files").exists()
 
 
+def test_skip_invalid_slots_drops_bad_payload_rows(tmp_path: Path, stub_env: dict[str, str]) -> None:
+    prompt = tmp_path / "valid.prompt"
+    prompt.write_text("review\n", encoding="utf-8")
+    valid_out = tmp_path / "valid.txt"
+    invalid_out = tmp_path / "invalid.txt"
+    manifest = tmp_path / "payload-invalid.ndjson"
+    manifest.write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "slot": "valid-slot",
+                        "tool": "codex",
+                        "output": str(valid_out),
+                        "prompt_file": str(prompt),
+                        "payload_bytes": 7,
+                    }
+                ),
+                json.dumps(
+                    {
+                        "slot": "bad-payload",
+                        "tool": "codex",
+                        "output": str(invalid_out),
+                        "prompt_file": str(prompt),
+                        "payload_files": {"codex": -1},
+                    }
+                ),
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    proc = _run(manifest, stub_env, "--skip-invalid-slots")
+
+    assert proc.returncode == 0, proc.stderr
+    assert valid_out.read_text(encoding="utf-8").strip() == "codex ok"
+    assert not invalid_out.exists()
+    kvs = _kv(proc.stdout)
+    assert kvs["INVALID_SLOT_DROP_COUNT"] == "1"
+    assert "payload_files.codex" in Path(kvs["INVALID_SLOT_DROPS_FILE"]).read_text(encoding="utf-8")
+
+
 def test_load_slots_accepts_missing_prompt_file_until_launch_time(tmp_path: Path) -> None:
     manifest = tmp_path / "missing-prompt.ndjson"
     missing_prompt = tmp_path / "does-not-exist.prompt"
@@ -1683,6 +1726,45 @@ def test_launch_slot_threads_panel_env(tmp_path: Path, monkeypatch: pytest.Monke
     assert captured_env["LARCH_PANEL_SLOT"] == "correctness"
     assert captured_env["LARCH_PANEL_ROUND_NUM"] == "7"
     assert captured_env["LARCH_PANEL_PAYLOAD_BYTES"] == "9"
+
+
+def test_launch_slot_threads_payload_files_by_tool(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    captured_envs: list[dict[str, str]] = []
+
+    class _FakePopen:
+        def __init__(self, _argv: Sequence[str], **kwargs: object) -> None:
+            env = kwargs.get("env")
+            captured_envs.append({str(k): str(v) for k, v in env.items()})  # type: ignore[union-attr]
+            self.pid = 1234
+
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
+    monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
+    artifact_dir = tmp_path / "round-7"
+    opts = agent_waterfall.Options(
+        slots_file=str(tmp_path / "slots.ndjson"),
+        codex_present=True,
+        cursor_present=True,
+        mode="description",
+        site="review Step 2",
+        panel_artifact_dir=str(artifact_dir),
+    )
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("prompt\n", encoding="utf-8")
+    slot = agent_waterfall.Slot(
+        "correctness",
+        "cursor",
+        str(tmp_path / "out.txt"),
+        "",
+        str(prompt),
+        payload_bytes=99,
+        payload_files={"codex": 3, "cursor": 11},
+    )
+
+    agent_waterfall._launch_slot(idx=0, phase="phase1", tool="codex", output=str(tmp_path / "out-codex.txt"), slots=[slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
+    agent_waterfall._launch_slot(idx=0, phase="phase1", tool="cursor", output=str(tmp_path / "out-cursor.txt"), slots=[slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
+
+    assert [env["LARCH_PANEL_PAYLOAD_BYTES"] for env in captured_envs] == ["3", "11"]
 
 
 def _tsv_rows(path: Path) -> list[dict[str, str]]:

@@ -97,6 +97,24 @@ def test_prompt_section_roles_neutral_knob_and_truncation(tmp_path: Path, monkey
     assert "Ledger truncated to the most recent rows" in findings_ledger.prompt_section(tmp_path, role="judge")
 
 
+def test_prompt_section_truncates_large_default_budget_ledger(tmp_path: Path) -> None:
+    rows = [
+        {
+            "finding_id": f"FINDING_{idx}",
+            "title": "x" * 1200,
+            "outcome": "rejected",
+        }
+        for idx in range(1, 41)
+    ]
+    findings_ledger.write_round(tmp_path, 1, rows)
+
+    section = findings_ledger.prompt_section(tmp_path, role="reviewer")
+
+    assert "Ledger truncated to the most recent rows that fit the prompt budget." in section
+    assert "\n1\tFINDING_19\t" in section
+    assert "\n1\tFINDING_1\t" not in section
+
+
 def test_sanitize_cell_strips_triple_backticks(tmp_path: Path) -> None:
     findings_ledger.write_round(
         tmp_path,

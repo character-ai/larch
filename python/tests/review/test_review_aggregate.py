@@ -457,7 +457,9 @@ printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUT
     assert result.returncode == 0, result.stderr
     payload_env = [int(line) for line in env_log.read_text(encoding="utf-8").splitlines() if line.strip()]
     assert len(payload_env) == 2
-    assert payload_env[0] > 0
+    source_text = _OOS_ATTR_INPUT
+    inventory_bytes = sum(len(part.encode("utf-8")) for part in review_aggregate._required_reviewer_slots_prompt_parts(source_text))  # pyright: ignore[reportPrivateUsage]
+    assert payload_env[0] == len(source_text.encode("utf-8")) + inventory_bytes
     assert payload_env[1] > payload_env[0]
     rows = [json.loads(line) for line in (tmp_path / "aggregator-slots.ndjson").read_text(encoding="utf-8").splitlines() if line.strip()]
     assert rows[-1]["payload_bytes"] == payload_env[1]

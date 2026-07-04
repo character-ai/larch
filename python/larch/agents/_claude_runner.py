@@ -525,7 +525,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         fd, payload_sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(prompt_tmpdir))
         os.close(fd)
         payload_sidecar = Path(payload_sidecar_name)
-        with contextlib.suppress(FileNotFoundError):
+        with contextlib.suppress(OSError):
             payload_sidecar.unlink()
         render_args.extend(["--payload-bytes-output", str(payload_sidecar)])
         rendered = proc.run(render_args)
@@ -533,7 +533,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
             _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")
             return 2
         payload_bytes = read_panel_payload_bytes(payload_sidecar)
-        with contextlib.suppress(FileNotFoundError):
+        with contextlib.suppress(OSError):
             payload_sidecar.unlink()
         body = rendered.stdout
         fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-agent-", dir=str(prompt_tmpdir))

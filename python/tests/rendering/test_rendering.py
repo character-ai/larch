@@ -283,6 +283,35 @@ def test_write_payload_bytes_sidecar_swallows_write_failures(
     assert not sidecar.exists()
 
 
+def test_write_payload_bytes_sidecar_removes_stale_content_on_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+    sidecar.write_text("stale\n", encoding="utf-8")
+    original_unlink = Path.unlink
+    unlink_calls = 0
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        nonlocal unlink_calls
+        if self == sidecar and unlink_calls == 0:
+            unlink_calls += 1
+            raise OSError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        _ = self
+        _ = target
+        raise OSError("replace boom")
+
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
 def test_write_payload_bytes_sidecar_swallows_unlink_permission_errors(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -342,6 +371,98 @@ def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path:
     assert str(diff_file) in text
     assert "<feature_description" in text
     assert "<implementation_plan" in text
+
+
+def test_render_specialist_payload_sidecar_counts_inline_diff_context(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    agent = _specialist_agent(tmp_path)
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    diff = tmp_path / "diff.txt"
+    sidecar = tmp_path / "payload.txt"
+    plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
+
+    base_args = [
+        "--agent-file",
+        str(agent),
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(diff),
+        "--plan-file",
+        str(plan),
+        "--feature-file",
+        str(feature),
+        "--payload-bytes-output",
+        str(sidecar),
+    ]
+
+    assert rendering.render_specialist_main(base_args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
+
+    sidecar.write_text("stale\n", encoding="utf-8")
+    assert rendering.render_specialist_main([*base_args, "--diff-mode", "test-only"]) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
+def test_render_voter_calibration_feedback_contributes_payload_bytes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ballot = tmp_path / "ballot.md"
+    stats = tmp_path / "stats.tsv"
+    sidecar = tmp_path / "payload.txt"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    assert voting.write_voter_calibration_stats(
+        path=stats,
+        stats=[
+            voting.VoterCalibrationStat(
+                tool="codex",
+                yes_votes=3,
+                valid_yes_severity_count=2,
+                blocker=1,
+                major=0,
+                minor=1,
+                nit=0,
+                uncertain=0,
+                missing_severity=0,
+                high_rate=0.5,
+                calibration_score=0.25,
+                uncalibrated=False,
+            )
+        ],
+    )
+
+    rc = rendering.render_voter_main(
+        [
+            "--ballot-file",
+            str(ballot),
+            "--panel-role",
+            "judge",
+            "--id-grammar",
+            "finding-oos",
+            "--verification-context",
+            "code",
+            "--calibration-stats-file",
+            str(stats),
+            "--voter-tool",
+            "codex",
+            "--payload-bytes-output",
+            str(sidecar),
+        ],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    expected = rendering._voter_calibration_feedback_block(stats_file=str(stats), voter_tool="codex")  # pyright: ignore[reportPrivateUsage]
+    assert expected in out
+    assert sidecar.read_text(encoding="utf-8") == f"{len(expected.encode('utf-8'))}\n"
 
 
 def test_render_specialist_cache_setup_failure_falls_back_uncached(
