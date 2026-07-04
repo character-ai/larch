@@ -956,6 +956,55 @@ def test_panel_dispatch_dynamic_render_failures_warn_and_keep_fallback_rows(
     )
 
 
+def test_dynamic_slot_rows_thread_payload_bytes_from_render(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    design = tmp_path / "design-dynamic-payload"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check dynamic rendering.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "plan-review"):
+            sidecar = Path(a[a.index("--payload-bytes-output") + 1])
+            sidecar.write_text("27\n", encoding="utf-8")
+            return cp(a, 0, stdout="rendered dynamic prompt\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+
+    rows, failures = plan_review_panel._dynamic_slot_rows(  # pyright: ignore[reportPrivateUsage]
+        design=design,
+        round_dir=round_dir,
+        dynamic=[("cursor", "dyn-cursor-plan-alpha", "correctness", "Check dynamic rendering.")],
+        plan_file=str(design / "plan.txt"),
+        feature_file=str(design / "feature-description.txt"),
+    )
+
+    assert failures == []
+    assert rows[0]["payload_bytes"] == 27
+    assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == "rendered dynamic prompt\n"
+
+
 def test_filter_pruned_round_two_prunes_unproductive_rows(tmp_path: Path) -> None:
     design = tmp_path / "design-r2-prune"
     design.mkdir()

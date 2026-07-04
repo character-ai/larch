@@ -301,6 +301,50 @@ def test_render_specialist_failure_fails_closed(monkeypatch: pytest.MonkeyPatch)
     assert prompt == ""
 
 
+def test_render_specialist_payload_sidecar_threads_into_panel_telemetry(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    args = argparse.Namespace(
+        output=str(tmp_path / "out.txt"),
+        agent_file="agents/reviewer-structure.md",
+        mode="description",
+        description_text="payload description",
+        scope_files=str(tmp_path / "scope.txt"),
+        competition_notice=False,
+        competition_notice_file="",
+        diff_file="",
+        commit_count="",
+        plan_file="",
+        feature_file="",
+        findings_ledger_file="",
+        session_env_path="",
+        site="review Step 2",
+        tool="cursor",
+    )
+    (tmp_path / "scope.txt").write_text("python/foo.py\n", encoding="utf-8")
+
+    def fake_render(argv: list[str], **_kwargs: object) -> object:
+        sidecar_idx = argv.index("--payload-bytes-output") + 1
+        Path(argv[sidecar_idx]).write_text("19\n", encoding="utf-8")
+        return type("R", (), {"stdout": "rendered prompt body\n", "stderr": "", "returncode": 0})()
+
+    captured: list[dict[str, object]] = []
+    monkeypatch.setattr(_review_launcher.proc, "run", fake_render)
+    monkeypatch.setattr(_review_launcher, "_panel_logging_enabled", lambda: True)
+    monkeypatch.setattr(_review_launcher, "append_panel_prompt_size", lambda **kwargs: captured.append(kwargs))
+
+    rc, prompt, payload_bytes = _review_launcher._review_render_specialist_prompt_with_payload(args)  # pyright: ignore[reportPrivateUsage]
+    assert rc == 0
+    assert prompt == "rendered prompt body\n"
+    assert payload_bytes == 19
+
+    _review_launcher._review_log_panel_prompt_size(args=args, output=Path(args.output), prompt=prompt, payload_bytes=payload_bytes)  # pyright: ignore[reportPrivateUsage]
+    assert captured[0]["payload_bytes"] == 19
+    assert captured[0]["site"] == "review Step 2"
+    assert captured[0]["output"] == Path(args.output)
+
+
 def test_cursor_launch_writes_sidecar_ok_status(tmp_path: Path) -> None:
     bin_dir = _stub_bin(
         tmp_path,

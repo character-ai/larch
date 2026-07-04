@@ -94,6 +94,20 @@ _PANEL_PROMPT_SIZE_FIELDS = (
     "agent_bytes",
     "agent_tokens",
 )
+_PANEL_PROMPT_SIZE_LEGACY_FIELDS = (
+    "site",
+    "phase",
+    "round_num",
+    "slot",
+    "slot_kind",
+    "tool",
+    "output",
+    "prompt_bytes",
+    "prompt_tokens",
+    "agent_file",
+    "agent_bytes",
+    "agent_tokens",
+)
 _PANEL_SLOT_KINDS = frozenset({"specialist", "plan-review", "voter", "aggregator", "implementer"})
 _PANEL_SPECIALIST_SLOT_NAMES = frozenset({"correctness", "edge-cases", "testing", "generalist"})
 _PANEL_ROUND_RE = re.compile(r"^round-([0-9]+)$")
@@ -443,12 +457,60 @@ def _locked_tsv_append(path: Path, write_fn: Any) -> None:
                         return
                     time.sleep(0.05)
             try:
+                handle.seek(0)
+                text = handle.read()
+                if _migrate_panel_prompt_size_legacy_header(handle, text):
+                    handle.seek(0, os.SEEK_END)
                 handle.seek(0, os.SEEK_END)
                 write_fn(handle, handle.tell() == 0)
             finally:
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
     with contextlib_suppress_oserror():
         path.chmod(0o600)
+
+
+def _migrate_panel_prompt_size_legacy_header(handle: Any, text: str) -> bool:
+    if not text:
+        return False
+    lines = text.splitlines()
+    if not lines:
+        return False
+    if tuple(lines[0].split("\t")) != _PANEL_PROMPT_SIZE_LEGACY_FIELDS:
+        return False
+    migrated_lines = ["\t".join(_PANEL_PROMPT_SIZE_FIELDS)]
+    for line in lines[1:]:
+        if not line.strip():
+            continue
+        cells = line.split("\t")
+        if len(cells) < len(_PANEL_PROMPT_SIZE_LEGACY_FIELDS):
+            cells.extend([""] * (len(_PANEL_PROMPT_SIZE_LEGACY_FIELDS) - len(cells)))
+        migrated_lines.append(
+            "\t".join(
+                [
+                    cells[0],
+                    cells[1],
+                    cells[2],
+                    cells[3],
+                    cells[4],
+                    cells[5],
+                    cells[6],
+                    cells[7],
+                    cells[8],
+                    cells[7],
+                    cells[8],
+                    "0",
+                    "0",
+                    cells[9],
+                    cells[10],
+                    cells[11],
+                ]
+            )
+        )
+    handle.seek(0)
+    handle.truncate()
+    handle.write("\n".join(migrated_lines) + "\n")
+    handle.flush()
+    return True
 
 
 def _parse_panel_payload_bytes(value: object) -> int | None:
@@ -465,9 +527,9 @@ def _parse_panel_payload_bytes(value: object) -> int | None:
 
 
 def _panel_payload_bytes(explicit: object = None) -> int:
-    parsed = _parse_panel_payload_bytes(explicit)
-    if parsed is not None:
-        return parsed
+    if explicit is not None:
+        parsed = _parse_panel_payload_bytes(explicit)
+        return parsed if parsed is not None else 0
     parsed = _parse_panel_payload_bytes(os.environ.get("LARCH_PANEL_PAYLOAD_BYTES"))
     return parsed if parsed is not None else 0
 

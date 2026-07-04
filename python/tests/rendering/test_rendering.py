@@ -259,6 +259,30 @@ def test_render_specialist_cache_hit(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert capsys.readouterr().out == "CACHE HIT SENTINEL\n"
 
 
+def test_write_payload_bytes_sidecar_clamps_negative_payload_bytes(tmp_path: Path) -> None:
+    sidecar = tmp_path / "payload.txt"
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), -7)  # pyright: ignore[reportPrivateUsage]
+
+    assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
+def test_write_payload_bytes_sidecar_swallows_write_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+
+    def fail_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        raise OSError("boom")
+
+    monkeypatch.setattr(rendering.tempfile, "mkstemp", fail_mkstemp)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
 def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path: Path) -> None:
     diff_file = tmp_path / "changes.diff"
     feature_file = tmp_path / "feature.md"
@@ -1295,6 +1319,47 @@ def test_render_plan_review_payload_sidecar_counts_cursor_plan_and_feature(
     assert rc == 0
     _ = capsys.readouterr()
     assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
+
+
+def test_render_plan_review_body_file_payload_sidecar_counts_body_feature_and_plan(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    feature = design_tmpdir / "feature.txt"
+    body = design_tmpdir / "body.txt"
+    sidecar = tmp_path / "payload.txt"
+    _ = plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    _ = feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    _ = body.write_text("ROLE LINE\n", encoding="utf-8")
+
+    rc = rendering.render_plan_review_main(
+        [
+            "--body-file",
+            str(body),
+            "--body-file-payload",
+            "--archetype",
+            "alpha",
+            "--vendor",
+            "cursor",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--feature-file",
+            str(feature),
+            "--payload-bytes-output",
+            str(sidecar),
+        ],
+    )
+
+    assert rc == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(body.read_bytes()) + len(feature.read_bytes()) + len(plan.read_bytes())}\n"
 
 
 def test_render_voter_payload_sidecar_counts_scope_anchor(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

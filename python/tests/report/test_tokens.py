@@ -1360,6 +1360,41 @@ def test_panel_prompt_size_malformed_payload_falls_back_to_zero(tmp_path: Path, 
     assert row["payload_bytes"] == "0"
     assert row["scaffold_bytes"] == "3"
 
+
+def test_panel_prompt_size_explicit_malformed_does_not_fall_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "4")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abc", payload_bytes="not-an-int")
+
+    row = _tsv_rows(out)[0]
+    assert row["payload_bytes"] == "0"
+    assert row["scaffold_bytes"] == "3"
+
+
+def test_panel_prompt_size_migrates_legacy_header_on_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    out.write_text(
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+        "review\t\t1\tcorrectness\tspecialist\tcursor\told.txt\t12\t3\tagents/reviewer-testing.md\t8\t2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="xyz", payload_bytes=1)
+
+    rows = _tsv_rows(out)
+    assert rows[0]["scaffold_bytes"] == "12"
+    assert rows[0]["payload_bytes"] == "0"
+    assert rows[0]["agent_file"] == "agents/reviewer-testing.md"
+    assert rows[1]["scaffold_bytes"] == "2"
+    assert rows[1]["payload_bytes"] == "1"
+    assert rows[1]["agent_file"] == ""
+
 def test_panel_prompt_size_skips_without_panel_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
     out = tmp_path / "panel-prompt-sizes.tsv"
@@ -1503,6 +1538,33 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     assert data[0]["payload_bytes"] == "0"
     assert data[0]["realized_bytes"] == "100"
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
+
+
+def test_measure_panel_cost_ranks_by_scaffold_bytes_before_realized_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-01")  # pyright: ignore[reportPrivateUsage]
+    header = (
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tscaffold_bytes\t"
+        "scaffold_tokens\tpayload_bytes\tpayload_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+    )
+    rows = [
+        tmp_path / "larch-logs" / "design" / "d1" / "plan-review" / "round-1" / "panel-prompt-sizes.tsv",
+        tmp_path / "larch-logs" / "review" / "r1" / "panel-prompt-sizes.tsv",
+    ]
+    rows[0].parent.mkdir(parents=True)
+    rows[0].write_text(header + "design\t\t\tcorrectness\tspecialist\tcursor\tlow.txt\t150\t38\t100\t25\t0\t0\ta-agent.md\t20\t5\n", encoding="utf-8")
+    rows[1].parent.mkdir(parents=True)
+    rows[1].write_text(header + "review\t\t\taggregator\taggregator\tcodex\thigh.txt\t150\t38\t200\t50\t0\t0\tz-agent.md\t20\t5\n", encoding="utf-8")
+
+    out = tokens.measure_panel_cost()
+    data = _tsv_rows(out)
+
+    assert data[0]["agent_file"] == "z-agent.md"
+    assert data[0]["scaffold_bytes"] == "200"
+    assert data[1]["agent_file"] == "a-agent.md"
 
 
 def test_measure_panel_cost_skips_symlinked_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

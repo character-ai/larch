@@ -130,7 +130,13 @@ def _static_slot_rows(
         )
         prompt = proc.stdout if proc.returncode == 0 else ""
         row = _slot_row(
-            tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt, payload_bytes=read_panel_payload_bytes(payload_sidecar),
+            tool=slot.tool,
+            slot=slot.slot,
+            focus=slot.focus_area or archetype,
+            output=round_dir / slot.output,
+            prompt_file=prompt_path,
+            prompt=prompt,
+            payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 else 0,
         )
         if slot.tool == "codex":
             role = difficulty.codex_review_model_role(tier)
