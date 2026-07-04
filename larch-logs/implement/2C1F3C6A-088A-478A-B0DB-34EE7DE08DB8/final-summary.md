@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:07:25
-- **Cost**: 💰 TOTAL ~$2.22 — Claude $1.30, Codex-5.5 $0.45, Codex-mini $0.17, Cursor $0.00, Claude (subprocess) $0.30  |  Tokens: 2770k
+- **Cost**: 💰 TOTAL ~$3.15 — Claude $2.21, Codex-5.5 $0.45, Codex-mini $0.17, Cursor $0.00, Claude (subprocess) $0.32  |  Tokens: 4041k
 - **Issue**: #6176 — https://github.com/character-ai/larch/issues/6176
 - **Plan review**: N/A
 - **Difficulty**: predicted TRIVIAL; applied TRIVIAL
@@ -50,3 +50,7 @@ codex/dyn-dyn-payload-accounting-codex │   ███████████�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
