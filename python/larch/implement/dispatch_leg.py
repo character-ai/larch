@@ -346,8 +346,13 @@ def _kill_active_leg_json(*, implement_tmpdir: str, owner_token: str) -> None:
             payload=payload,
         )
         return
-    with contextlib.suppress(OSError):
-        json_path.unlink(missing_ok=True)
+    try:
+        current = json.loads(json_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return
+    if isinstance(current, dict) and _record_matches_current(current=current, expected=payload):
+        with contextlib.suppress(OSError):
+            json_path.unlink(missing_ok=True)
 
 
 def _cleanup_legacy_active_leg_pgid(implement_tmpdir: str) -> None:
@@ -430,6 +435,14 @@ def _run_leg_with_timeout(
     _LEG_STATE.active = process
     _LEG_STATE.active_record = _publish_active_leg_record(process.pid, argv=full_cmd, env=env)
     if _LEG_STATE.active_record is None:
+        if process.poll() is not None:
+            stdout, stderr = _drain_leg_pipes(process)
+            return subprocess.CompletedProcess(
+                full_cmd,
+                process.returncode if process.returncode is not None else 0,
+                stdout or "",
+                stderr or "",
+            )
         _kill_leg_process_group(process)
         stdout, stderr = _drain_leg_pipes(process)
         return subprocess.CompletedProcess(

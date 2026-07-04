@@ -254,12 +254,52 @@ def test_terminate_validated_process_group_cleans_live_members_when_leader_missi
         reason="unit",
     )
 
+    assert not result.ok
+    assert result.reason == "missing-pid"
+    assert kills == []
+
+
+def test_terminate_validated_process_group_cleans_live_members_when_leader_missing_and_members_validate(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(process_identity.os, "killpg", lambda _pgid, sig: kills.append((-1, sig)))
+    monkeypatch.setattr(process_identity.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+    identity = process_identity.RecordedProcessIdentity(
+        123,
+        123,
+        "Fri Jul 3 17:01:02 2026",
+        "/usr/bin/python3 /repo/python/cli.py plan-review run",
+        "plan-review run",
+    )
+
+    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
+        pid = int(_kwargs["pid"])
+        if pid == 123:
+            return None
+        if pid in {10, 11}:
+            return identity
+        return None
+
+    monkeypatch.setattr(process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(process_identity, "collect_process_group_members", lambda **_kwargs: (10, 11))
+
+    result = process_identity.terminate_validated_process_group(
+        recorded=identity,
+        log_path=tmp_path / "kill.jsonl",
+        caller="test",
+        reason="unit",
+    )
+
     assert result.ok
     assert kills == [
         (-1, process_identity.signal.SIGTERM),
         (10, process_identity.signal.SIGTERM),
         (11, process_identity.signal.SIGTERM),
         (-1, process_identity.signal.SIGKILL),
+        (10, process_identity.signal.SIGKILL),
         (11, process_identity.signal.SIGKILL),
     ]
 

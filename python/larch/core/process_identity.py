@@ -225,12 +225,23 @@ def terminate_validated_process_group(
     if not validation.ok and validation.reason != "missing-pid":
         return validation
     current = validation.current or recorded
-    descendants = collect_descendants(pid=recorded.pid, runner=active_runner) if validation.ok else collect_process_group_members(
-        pgid=recorded.pgid,
-        runner=active_runner,
-    )
-    if not descendants and not validation.ok:
-        return validation
+    if validation.ok:
+        descendants = collect_descendants(pid=recorded.pid, runner=active_runner)
+    else:
+        descendants = collect_process_group_members(pgid=recorded.pgid, runner=active_runner)
+        if not descendants:
+            return validation
+        validated_members: list[int] = []
+        for child in descendants:
+            child_identity = read_process_identity(
+                pid=child,
+                runner=active_runner,
+                expected_signature=recorded.expected_signature,
+            )
+            if child_identity is None or child_identity.pgid != recorded.pgid:
+                return validation
+            validated_members.append(child)
+        descendants = tuple(validated_members)
     snapshot = KillTargetSnapshot(
         pid=recorded.pid,
         pgid=recorded.pgid,

@@ -3967,6 +3967,40 @@ def test_run_leg_with_timeout_fails_closed_when_active_leg_publish_missing(monke
     assert killed == [4242]
 
 
+def test_run_leg_with_timeout_returns_child_result_when_publication_fails_after_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    killed: list[int] = []
+
+    class FakeProcess:
+        pid = 4242
+        returncode = 0
+        stdout = None
+        stderr = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:  # pylint: disable=unused-argument
+            return 0
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, *, timeout_s=2: ("child stdout\n", "child stderr\n"))
+
+    result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
+
+    assert isinstance(result, subprocess.CompletedProcess)
+    assert result.returncode == 0
+    assert result.stdout == "child stdout\n"
+    assert result.stderr == "child stderr\n"
+    assert killed == []
+
+
 def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     record = {
         "pid": 123,
@@ -3990,6 +4024,45 @@ def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypat
 
     assert [call.pid for call in calls] == [123]
     assert not path.exists()
+
+
+def test_kill_active_leg_owner_match_refuses_to_unlink_replaced_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = {
+        "pid": 123,
+        "pgid": 123,
+        "start_time": "Fri Jul 3 17:01:02 2026",
+        "command_signature": "python cli.py checks run-relevant",
+        "expected_signature": "checks run-relevant",
+        "owner_token": "owner-1",
+        "writer_pid": 1,
+    }
+    foreign = {
+        "pid": 456,
+        "pgid": 456,
+        "start_time": "Fri Jul 3 17:02:02 2026",
+        "command_signature": "python cli.py checks other",
+        "expected_signature": "checks other",
+        "owner_token": "owner-2",
+        "writer_pid": 2,
+    }
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(record), encoding="utf-8")
+    calls: list[process_identity.RecordedProcessIdentity] = []
+
+    def fake_terminate(*, recorded: process_identity.RecordedProcessIdentity, **_kwargs: object) -> process_identity.ValidationResult:
+        calls.append(recorded)
+        path.write_text(json.dumps(foreign), encoding="utf-8")
+        return process_identity.ValidationResult(ok=True, reason="ok", current=recorded)
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
+
+    assert [call.pid for call in calls] == [123]
+    assert json.loads(path.read_text(encoding="utf-8"))["owner_token"] == "owner-2"
 
 
 def test_kill_active_leg_owner_mismatch_noops_without_unlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
