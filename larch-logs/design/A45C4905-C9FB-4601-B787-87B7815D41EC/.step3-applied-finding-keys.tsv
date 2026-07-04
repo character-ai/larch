@@ -1,0 +1,1 @@
+1	criterion c’s “issue run-summary metadata comment” wording points verifiers at the slim `larch:metadata` comment, but the `code review` line lives on `larch:final-summary`; that can make validation inspect the wrong github comment surface.

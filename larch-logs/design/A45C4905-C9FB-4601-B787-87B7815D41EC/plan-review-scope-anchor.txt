@@ -1,0 +1,81 @@
+## Summary
+
+The difficulty-tiers field-verification spec in #6261 (and the #5993 close condition it feeds) has three factual errors in its preconditions and acceptance criteria. The version floor is the consequential one: it names a build that lacks one of the two required fixes. The other two are cosmetic. No larch runtime code is affected. These are corrections to the issue text.
+
+Found while running the #6261 verification. Two committed v52.4.7 runs now satisfy criteria A, B, C, and D, so the corrections below unblock a clean close of #5993:
+
+- `C2D2B239-B9A5-402F-A63C-CAA1F93B3F02` (issue #6267, PR #6285)
+- `191D1ACD-D26F-4BAA-BFF5-49C692CF5B3E` (issue #6268, PR #6284)
+
+## 1. Precondition version floor is wrong (HIGH)
+
+#6261 Preconditions say a qualifying build is "a release `>= v52.4.6`". That is off by one.
+
+- #6229 landed in v52.4.6 and v52.4.7.
+- #6259 landed in **v52.4.7 only**.
+- A v52.4.6 build has #6229 but not #6259. It cannot pass criteria B or C.
+
+Evidence via `git tag --contains <fix-commit>`:
+
+- #6229 (`541b88803`): v52.4.6, v52.4.7.
+- #6259 (`8e8f215ff`): v52.4.7.
+
+Confirmed in the field: the three committed v52.4.6 runs (`CC1E5F04` #6265, `B940B2F4` #6259, `C9137FFA` #6262) all show resolved ratings (#6229 works), but each carries a `code-review-tally.flush.err` and no run-root `code-review-tally.json` (#6259 absent), failing B and C.
+
+Fix: change the floor to `>= v52.4.7`, or state "a build containing both #6229 and #6259", in #6261 Preconditions and any mirrored text in #5993.
+
+## 2. Criterion C names the wrong surface (LOW)
+
+Criterion C says `final-summary.md` **and the PR body** render `Code review: N/M accepted`. The PR body never carries that line.
+
+- `ship.py:_compose_pr_body_for_pr_create` builds the PR body from summary bullets, mermaid, test plan, architectural-guidelines note, and `Closes`. It passes no code-review line.
+- The `- **Code review**: N/M accepted` render comes from `render_run_summary` (`python/larch/git/pr_body.py:584`). It writes the `larch:run-summary` block into `final-summary.md` and the issue run-summary metadata comment, not the PR body.
+
+So the render is real and present, just not in the PR body. This is working as intended in the code; only the criterion text is wrong.
+
+Evidence, run `C2D2B239` (#6267, v52.4.7): tally `{accepted_count:0, rejected_count:1}`; `final-summary.md` shows `Code review: 0/1 accepted`; PR #6285 body has no code-review line.
+
+Fix: reword criterion C to check `final-summary.md` (and optionally the issue run-summary metadata comment), not the PR body.
+
+## 3. Baseline contrast claim is inaccurate (LOW)
+
+#6261 says baseline run `04CEC3D3-EFE7-4D2C-9571-4400CBDDAAF0` shows `rater: "fallback"`, `rater_tool: "bootstrap"`. Its committed `difficulty-rating.json` actually shows `rater: "implement"`, `rater_tool: "codex"`. Only `audit_evaluated: null` and `rater_model: "unknown"` are the true pre-#6229 markers.
+
+Fix: correct the baseline field list in #6261 to `audit_evaluated: null` and `rater_model: "unknown"`; drop the `fallback` / `bootstrap` claim.
+
+## Affected
+
+- GitHub issues #6261 (Preconditions, Acceptance criteria A and C) and #5993 (mirrored close condition).
+- No repo code changes. The referenced code is correct as-is: `python/larch/git/pr_body.py`, `python/larch/implement/ship.py`.
+
+## Open questions
+
+- Should criterion C also require the issue run-summary metadata comment as a checked surface, or is `final-summary.md` sufficient proof of the tally-driven render?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Correct the version floor in #6261 Preconditions from `>= v52.4.6` to `>= v52.4.7`.
+- Reword criterion C in #6261 to name `final-summary.md` and the issue run-summary metadata comment as verification surfaces.
+- Correct the baseline field list in #6261 (drop `rater: "fallback"` / `rater_tool: "bootstrap"`; keep `audit_evaluated: null` and `rater_model: "unknown"`).
+- Mirror the version floor fix in #5993 wherever it echoes #6261 Preconditions.
+
+### Non-goals
+- No changes to larch runtime code (`ship.py`, `pr_body.py`, or any Python module).
+- No changes to `docs/`, `README.md`, or other markdown files in the repo.
+- No automated test additions.
+
+### Approach sketch
+- Read the current body of #6261 via `gh issue view`.
+- Apply all three text corrections via `gh issue edit --body`.
+- Read #5993 body; locate the mirrored version-floor text and apply the floor fix.
+- Verify each edit with `gh issue view`.
+
+### Surfaces in scope
+- GitHub issue #6261 (Preconditions section, criteria A and C, baseline contrast note)
+- GitHub issue #5993 (mirrored close condition referencing the version floor)
+
+### Open questions
+- None.

@@ -1,0 +1,15 @@
+### FINDING_1: Wrong tracking-issue comment in criterion C
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: Criterion C’s “issue run-summary metadata comment” wording points verifiers at the slim `larch:metadata` comment, but the `Code review` line lives on `larch:final-summary`; that can make validation inspect the wrong GitHub comment surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: #6261 criterion C could instruct verifiers to check `larch:metadata`, which never carries the Code review line, while the real second surface is the `larch:final-summary` tracking comment. The doc fix would stay wrong and #5993 field verification could still fail or chase the wrong GitHub comment. In the #6261 criterion C edit bullet and testing checklist, name the tracking-issue `<!-- larch:final-summary v1 runid=... -->` comment explicitly and state it is not the `<!-- larch:metadata v1 runid=... -->` comment.
+  - From Cursor-Innovation: Reword criterion C and the testing checklist to name the larch:final-summary tracking-issue comment (marker <!-- larch:final-summary v1 runid=... -->) explicitly; state it is not larch:metadata.
+  - From Cursor-Pragmatic: In #6261 criterion C and the testing checklist, name the tracking-issue `larch:final-summary` comment (same `render_run_summary` body as committed `final-summary.md`). Explicitly exclude the early `larch:metadata` adopt comment.
+
+### FINDING_2: Testing only checks the surface names, not the required render content
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The verification plan checks that criterion C names the right files/comments, but it does not explicitly require the `Code review: N/M accepted` render itself on those surfaces, so the original defect could reappear under new names.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add post-edit checks that criterion C still requires Code review: N/M accepted (or equivalent) on final-summary.md and on the larch:final-summary comment, and that no PR-body requirement remains.
