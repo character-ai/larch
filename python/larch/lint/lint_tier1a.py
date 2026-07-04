@@ -11,7 +11,7 @@ from typing import Final
 TIER1A_LINE_CAPS: Final[dict[str, int]] = {
     "AGENTS.md": 89,
     "KARPATHY_CLAUDE.md": 54,
-    "BASH_AUTHORING.md": 97,
+    "BASH_AUTHORING.md": 105,
 }
 
 

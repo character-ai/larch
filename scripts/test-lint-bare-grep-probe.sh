@@ -343,6 +343,32 @@ assert_fence_line_allowed "quoted pipe pattern with path" "rg '|' python/"
 assert_fence_line_violation "rg -j without path rejected" 'rg -j 4 PATTERN' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_allowed "rg -j with path allowed" 'rg -j 4 PATTERN python/'
+assert_fence_line_violation "parent ascent command grep" 'command grep -r PATTERN "$IMPLEMENT_TMPDIR/../../../.."' \
+    "parent-directory ascent in grep-family path operand" \
+    "use an absolute path or known bounded root"
+assert_fence_line_violation "parent ascent subshell command grep" '( command grep -rn PATTERN "$IMPLEMENT_TMPDIR/../../../.." ) || true' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent rg relative" 'rg -n PATTERN ../python' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent ripgrep middle segment" 'ripgrep -n PATTERN skills/../python' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent rg trailing segment" 'rg -n PATTERN python/..' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent rg after terminator" 'rg -n PATTERN -- ../python' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent before devnull" 'rg -n PATTERN ../python < /dev/null' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "parent ascent later path" 'rg -n PATTERN "$CLAUDE_PLUGIN_ROOT/python" ../python' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_allowed "bounded command grep root" 'command grep -r PATTERN "$CLAUDE_PLUGIN_ROOT/python"'
+assert_fence_line_allowed "bounded rg root" 'rg -n PATTERN "$CLAUDE_PLUGIN_ROOT/python"'
+assert_fence_line_allowed "rg pattern parent ascent allowed" 'rg -e "../pattern" python/'
+assert_fence_line_allowed "command grep pattern parent ascent allowed" 'command grep -e "../pattern" python/file.py'
+assert_fence_line_allowed "rg dot path allowed" 'rg -n PATTERN .'
+assert_fence_line_allowed "rg include parent ascent option allowed" 'rg --include="../*.py" PATTERN python/'
+assert_fence_line_allowed "rg parent-like hidden path allowed" 'rg -n PATTERN ..hidden'
+assert_fence_line_allowed "rg parent-like version path allowed" 'rg -n PATTERN v1..2'
+assert_fence_line_allowed "parent ascent pragma suppression" 'rg -n PATTERN ../fixture # lint-bare-grep-probe: ok reviewed parent-ascent fixture'
 
 # 9. Same-line pragma suppression.
 reset_tree

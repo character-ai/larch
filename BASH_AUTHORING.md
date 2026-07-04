@@ -31,6 +31,14 @@ Use `< /dev/null` only for intentional empty stdin. A no-path grep-family probe 
 
 The same `# lint-bare-grep-probe: ok <reason>` pragma covers rare intentional stdin-search fixtures.
 
+### Bounded search roots
+
+Background grep-family probes must use absolute paths or known bounded roots. Do not derive search roots with `../` or `..` segments from tmpdir variables such as `$IMPLEMENT_TMPDIR`.
+
+Prefer direct bounded commands over discovery greps when a CLI can answer the question, such as `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" ... --help`.
+
+The same `# lint-bare-grep-probe: ok <reason>` pragma is only for rare fixtures or reviewed exceptions.
+
 ### Probe stdout guards (still required after the safe form is chosen)
 
 For expected no-match probes, keep Bash transcripts clean:

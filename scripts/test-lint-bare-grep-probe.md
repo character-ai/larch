@@ -10,6 +10,12 @@ the lint contract, including:
 - Bare `grep ... || X`, bare `grep ... > tmp`, `if grep ...; then`,
   `if ! grep ...; then` → exit 1 with the expected violation lines.
 - No-path `rg` / `ripgrep` violations.
+- Parent-ascent path violations for `command grep`, `rg`, and `ripgrep`,
+  including `../path`, `path/../child`, trailing `path/..`, and `$TMP/../../../..`
+  shapes.
+- Multi-path parent-ascent violations where the first path is safe and a later
+  path contains `../`.
+- Parent-ascent checks before `< /dev/null` short-circuit.
 - No-path `if rg`, `if ripgrep`, `if ! rg`, `if ! ripgrep`,
   `if ! command rg`, and other `if` / `if !` grep-family violations.
 - Allowed path-bearing `if rg ... path`, `if ! ripgrep ... path`,
@@ -33,11 +39,14 @@ the lint contract, including:
 - Indented no-path `rg` / `ripgrep` inside fence bodies.
 - Option-value handling for `--type py`, `--type=py`, `--regexp=...`, `-e`,
   attached short forms like `-A3`, and `--regexp`.
+- Parent-ascent false-positive guards for pattern operands and option values,
+  including `-e "../pattern"` and `--include="../*.py"`.
 - Allowed `command grep ... FILE > tmp || true` producer shape.
 - Safe path-bearing forms (`command grep ...`, explicit `( grep ... path )`
   subshell wrap, piped grep) → exit 0.
 - Same-line `# lint-bare-grep-probe: ok <reason>` suppression and full-line
-  comments inside the bash fence → exit 0.
+  comments inside the bash fence → exit 0, including a reviewed parent-ascent
+  fixture.
 - Non-bash fences (`python`, untagged) and out-of-fence prose `grep` → exit 0.
 - `sh` and `shell` info-strings count as bash fences.
 - `.claude/skills/**/*.md` and `.claude/rules/*.md` are scanned.
