@@ -19,6 +19,7 @@ PS_LSTART_FIELD_COUNT = 5
 COMMAND_LOG_LIMIT = 500
 PROCESS_IDENTITY_CAPTURE_ATTEMPTS = 10
 PROCESS_IDENTITY_CAPTURE_SLEEP_S = 0.05
+DESIGN_STEP3_MISSING_PID_GRACE_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -365,6 +366,23 @@ def _validated_design_tmpdir(raw: str) -> Path | None:
     return path
 
 
+def _result_env_has_step3_status(*, tmpdir: Path, since_mtime_ns: int = 0) -> bool:
+    result_env = tmpdir / ".step3-review-result.env"
+    if result_env.is_symlink() or not result_env.is_file():
+        return False
+    try:
+        if since_mtime_ns > 0 and result_env.stat().st_mtime_ns < since_mtime_ns:
+            return False
+        for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("STEP3_REVIEW_LOOP_STATUS=") and line.partition("=")[2]:
+                return True
+            if line.startswith("LOOP_STATUS=zero-findings-degraded-panel"):
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def write_loop_identity_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review write-loop-identity")
     _ = parser.add_argument("--design-tmpdir", required=True)
@@ -383,6 +401,69 @@ def write_loop_identity_main(argv: list[str] | None = None) -> int:
         return 0
     write_identity_record(path=tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE, recorded=identity)
     return 0
+
+
+def _await_loop_poll(
+    *,
+    recorded: RecordedProcessIdentity,
+    tmpdir: Path,
+    identity_mtime_ns: int,
+    timeout_s: float,
+) -> int:
+    missing_pid_since: float | None = None
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        validation = validate_process_identity(recorded=recorded)
+        if validation.ok:
+            missing_pid_since = None
+            time.sleep(0.2)
+            continue
+        if validation.reason == "missing-pid":
+            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=identity_mtime_ns):
+                return 0
+            if missing_pid_since is None:
+                missing_pid_since = time.monotonic()
+            elif time.monotonic() - missing_pid_since >= DESIGN_STEP3_MISSING_PID_GRACE_S:
+                return 1
+            time.sleep(0.2)
+            continue
+        break
+    return 1
+
+
+def await_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review await-loop-identity")
+    _ = parser.add_argument("--design-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    _ = parser.add_argument("--timeout-s", default="21600")
+    args = parser.parse_args(argv)
+    tmpdir = _validated_design_tmpdir(args.design_tmpdir)
+    try:
+        timeout_s = float(args.timeout_s)
+    except (TypeError, ValueError):
+        timeout_s = 0.0
+    if tmpdir is None or not str(args.pid).isdigit() or timeout_s <= 0:
+        return 1
+    sidecar = tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
+    recorded = read_identity_record(path=sidecar)
+    if recorded is None or recorded.pid != int(args.pid):
+        return 1
+    detached_marker = tmpdir / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
+    if not detached_marker.is_file() or detached_marker.is_symlink():
+        return 1
+    identity_mtime_ns = 0
+    try:
+        identity_mtime_ns = sidecar.stat().st_mtime_ns
+    except OSError:
+        identity_mtime_ns = 0
+    if identity_mtime_ns <= 0:
+        return 1
+    return _await_loop_poll(
+        recorded=recorded,
+        tmpdir=tmpdir,
+        identity_mtime_ns=identity_mtime_ns,
+        timeout_s=timeout_s,
+    )
 
 
 def teardown_loop_identity_main(argv: list[str] | None = None) -> int:

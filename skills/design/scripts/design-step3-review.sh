@@ -282,18 +282,29 @@ else
   [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 fi
 # Marker step id: STEP=design-step3-review
-if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
+_step3_review_detached_marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
+_step3_review_has_detached_marker=false
+if [ -f "$_step3_review_detached_marker" ] && [ ! -L "$_step3_review_detached_marker" ]; then
+  _step3_review_has_detached_marker=true
+fi
+if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ] && [ "$_step3_review_has_detached_marker" = false ]; then
   rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-else
+elif [ "$_step3_review_has_detached_marker" = false ]; then
   rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
 fi
-rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" "$DESIGN_TMPDIR"/bg-poll-guard-probe-denials.*.count 2>/dev/null || true
+if [ "$_step3_review_has_detached_marker" = false ]; then
+  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+fi
+rm -f "$DESIGN_TMPDIR"/bg-poll-guard-probe-denials.*.count 2>/dev/null || true
 design_bg_wait_marker_start design-step3-review || true
 _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
   printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
   exit 1
 }
 _loop_pid=""
+_step3_review_loop_identity_ready=false
+_step3_review_external_signal=""
+_step3_review_external_signal_rc=0
 
 _step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 
@@ -380,11 +391,130 @@ _step3_review_kill_tmpdir_processes() {
   python3 "$_cli" session kill-background-processes --design-tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1 || true
 }
 
+_step3_review_signal_exit() {
+  _step3_review_external_signal="${1:-signal}"
+  _step3_review_external_signal_rc="${2:-143}"
+  exit "$_step3_review_external_signal_rc"
+}
+
+_step3_review_write_detached_marker() {
+  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _marker _tmp
+  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
+  [[ -n "$_pid" ]] || return 0
+  _marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
+  _tmp="${_marker}.tmp.$$"
+  if {
+    printf 'PID=%s\n' "$_pid"
+    printf 'SIGNAL=%s\n' "$_signal"
+    printf 'STDOUT_FILE=%s\n' "$_stdout_file"
+    printf 'DETACHED_AT_EPOCH=%s\n' "$(date +%s)"
+  } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null && [ -f "$_marker" ]; then
+    return 0
+  fi
+  rm -f "$_tmp" "$_marker" 2>/dev/null || true
+  return 1
+}
+
+_step3_review_marker_value() {
+  local _key="$1" _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _line
+  [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
+  while IFS= read -r _line || [[ -n "$_line" ]]; do
+    case "$_line" in
+      "$_key="*) printf '%s\n' "${_line#*=}"; return 0 ;;
+    esac
+  done <"$_marker"
+  return 1
+}
+
+_step3_review_file_mtime_ns() {
+  local _path="$1"
+  [ -f "$_path" ] && [ ! -L "$_path" ] || return 1
+  python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_mtime_ns)' "$_path" 2>/dev/null
+}
+
+_step3_review_result_env_present() {
+  local _identity="$DESIGN_TMPDIR/.step3-loop-identity.json" _since_ns="" _mtime_ns=""
+  [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ] && [ ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ] || return 1
+  command grep -Eq '^(STEP3_REVIEW_LOOP_STATUS=.+|LOOP_STATUS=zero-findings-degraded-panel)$' "$DESIGN_TMPDIR/.step3-review-result.env" || return 1
+  _since_ns="$(_step3_review_file_mtime_ns "$_identity" || true)"
+  [ -n "$_since_ns" ] || return 1
+  _mtime_ns="$(_step3_review_file_mtime_ns "$DESIGN_TMPDIR/.step3-review-result.env" || true)"
+  [ -n "$_mtime_ns" ] || return 1
+  [ "$_mtime_ns" -ge "$_since_ns" ] || return 1
+}
+
+_step3_review_detached_stdout_file() {
+  local _stdout_file="${1:-}" _fallback="$2" _empty_tmp=""
+  if [ -n "$_stdout_file" ] && [ -f "$_stdout_file" ] && [ ! -L "$_stdout_file" ]; then
+    printf '%s\n' "$_stdout_file"
+    return 0
+  fi
+  _empty_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-step3-reattach-stdout.XXXXXX")" || {
+    printf '%s\n' "$_fallback"
+    return 0
+  }
+  printf '%s\n' "$_empty_tmp"
+}
+
+_step3_review_cleanup_detached_marker() {
+  local _stdout_file="${1:-}" _base
+  rm -f "$DESIGN_TMPDIR/.step3-wrapper-detached" "$DESIGN_TMPDIR/.step3-loop-identity.json" 2>/dev/null || true
+  if [ -n "$_stdout_file" ] && [ -f "$_stdout_file" ] && [ ! -L "$_stdout_file" ]; then
+    _base="$(basename "$_stdout_file")"
+    case "$_base" in
+      larch-step3-review-stdout.*|larch-step3-reattach-stdout.*) rm -f "$_stdout_file" 2>/dev/null || true ;;
+    esac
+  fi
+}
+
+_step3_review_reattach_detached_loop() {
+  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _normalize_stdout="" _rc=0 _await_rc=0
+  [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
+  _pid="$(_step3_review_marker_value PID || true)"
+  _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
+  case "$_pid" in
+    ''|*[!0-9]*)
+      _step3_review_cleanup_detached_marker "$_stdout_file"
+      return 1
+      ;;
+  esac
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --pid "$_pid" >/dev/null 2>&1 || _await_rc=$?
+  if [ "$_await_rc" -ne 0 ]; then
+    _step3_review_cleanup_detached_marker "$_stdout_file"
+    return 1
+  fi
+  if ! _step3_review_result_env_present; then
+    _step3_review_cleanup_detached_marker "$_stdout_file"
+    return 1
+  fi
+  _step3_review_kill_tmpdir_processes
+  _normalize_stdout="$(_step3_review_detached_stdout_file "$_stdout_file" "$_plan_review_stdout_file")"
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --stdout-file "$_normalize_stdout" \
+    --loop-rc 0 || _rc=$?
+  _step3_review_cleanup_detached_marker "$_stdout_file"
+  _step3_review_cleanup_detached_marker "$_normalize_stdout"
+  rm -f "$_plan_review_stdout_file" 2>/dev/null || true
+  exit "$_rc"
+}
+
 _step3_review_cleanup() {
   local _rc=$?
-  trap - EXIT
+  trap - EXIT TERM HUP INT
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
+    if [[ -n "${_step3_review_external_signal:-}" ]]; then
+      if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then
+        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"; then
+          disown -h "$_loop_pid" 2>/dev/null || true
+          exit "$_rc"
+        fi
+      fi
+    fi
     _step3_review_teardown_loop_group "$_loop_pid"
     _step3_review_kill_tmpdir_processes
     wait "$_loop_pid" 2>/dev/null || true
@@ -404,6 +534,17 @@ if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
 fi
 
 trap _step3_review_cleanup EXIT
+trap '_step3_review_signal_exit TERM 143' TERM
+trap '_step3_review_signal_exit HUP 129' HUP
+trap '_step3_review_signal_exit INT 130' INT
+_step3_review_reattach_rc=0
+if [ "$_step3_review_has_detached_marker" = true ]; then
+  _step3_review_reattach_detached_loop || _step3_review_reattach_rc=$?
+  if [ "$_step3_review_reattach_rc" -ne 0 ]; then
+    exit "$_step3_review_reattach_rc"
+  fi
+fi
+rm -f "$DESIGN_TMPDIR/.step3-wrapper-detached" 2>/dev/null || true
 # Python owns the process-group setup.
 # Bash owns wait, status capture, identity-validated teardown delegation, and fallback tmpdir cleanup.
 # The dedicated loop stderr log remains the only stderr quarantine for the worker and children.
@@ -427,6 +568,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review write-loop-identity \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --pid "$_loop_pid" \
   --expected-signature "plan-review run" >/dev/null 2>&1 || true
+if [ -f "$DESIGN_TMPDIR/.step3-loop-identity.json" ] && [ ! -L "$DESIGN_TMPDIR/.step3-loop-identity.json" ]; then
+  _step3_review_loop_identity_ready=true
+fi
 wait "$_loop_pid"
 _plan_review_rc=$?
 set -e

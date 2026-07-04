@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-signal-lifecycle-codex	specialist	codex	dyn-dyn-signal-lifecycle-codex-output.txt	33600	8400	10516	2629	23084	5771		0	0
+implement Step 5	phase1	1	dyn-dyn-signal-lifecycle	specialist	cursor	dyn-dyn-signal-lifecycle-output.txt	33600	8400	10516	2629	23084	5771		0	0
+implement Step 5	phase1	1	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	36447	9112	14018	3505	22429	5608	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	36447	9112	14018	3505	22429	5608	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	36155	9039	13726	3432	22429	5608	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	36713	9179	14284	3571	22429	5608	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	cursor	cursor-specialist-testing-output.txt	36155	9039	13726	3432	22429	5608	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	36713	9179	14284	3571	22429	5608	agents/reviewer-edge-cases.md	5985	1497
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	25785	6447	4186	1047	21599	5400	agents/orchestrator-aggregator.md	4397	1100
+implement Step 5	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	10045	2512	9781	2446	264	66		0	0
+implement Step 5	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	9288	2322	9024	2256	264	66		0	0
+implement Step 5	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	9315	2329	9051	2263	264	66		0	0
+review.fix_coder	review.fix_coder	1	implementer	implementer	codex	coder-output.log	1746	437	0	0	2306	577		0	0

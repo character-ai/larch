@@ -112,6 +112,16 @@ grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper mu
 grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper must delegate loop teardown to identity helper'
 # shellcheck disable=SC2016
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json"' "$WRAPPER" || fail 'Step 3 wrapper must clear loop identity sidecar after wait'
+python3 - "$WRAPPER" <<'PY' || fail 'Step 3 detach marker write must be guarded by loop identity publication'
+from pathlib import Path
+import sys
+
+body = Path(sys.argv[1]).read_text(encoding="utf-8")
+guard = body.index('if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then')
+marker = body.index('_step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"')
+if guard > marker:
+    raise SystemExit("detach marker write must be guarded by loop identity publication")
+PY
 pass 'Step 3 wrapper uses identity-validated loop teardown'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
@@ -407,6 +417,199 @@ if ! awk 'BEGIN { loop=0; helper=0 } $0=="loop" { loop=NR } /^helper / { helper=
 fi
 rm -rf "$D_KILL"
 pass 'Step 3 wrapper invokes tmpdir kill helper after loop and ignores helper failure'
+
+D_DETACH=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-detach.XXXXXX")
+FAKE_DETACH="$D_DETACH/fake-plugin"
+mkdir -p "$FAKE_DETACH/skills/design/scripts" "$FAKE_DETACH/python"
+cat >"$FAKE_DETACH/skills/design/scripts/plan-review-loop-stub.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' start >>"$DESIGN_TMPDIR/round-starts.log"
+: >"$DESIGN_TMPDIR/body-entered"
+waited=0
+while [[ ! -f "$DESIGN_TMPDIR/release-body" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+printf '%s\n' 'LOOP_STATUS=complete' 'TALLY_PLAN_REVIEW_STATUS=ok' 'ACCEPTED_COUNT=0'
+SH
+chmod +x "$FAKE_DETACH/skills/design/scripts/plan-review-loop-stub.sh"
+cat >"$D_DETACH/continuation.sh" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' 'PLAN_REVIEW_CONTINUE=false' 'ACCEPTED_COUNT=0' 'DEGRADED_PANEL=0'
+SH
+chmod +x "$D_DETACH/continuation.sh"
+cat >"$FAKE_DETACH/python/cli.py" <<'PYEOF'
+from __future__ import annotations
+
+import json
+import os
+import subprocess
+import sys
+import time
+from pathlib import Path
+
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run":
+    if "--new-process-group" in sys.argv[3:]:
+        os.setsid()
+    run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
+    proc = subprocess.run(["/bin/bash", run_sh], text=True, capture_output=True, check=False)
+    sys.stdout.write(proc.stdout)
+    sys.stderr.write(proc.stderr)
+    if "LOOP_STATUS=complete" in proc.stdout:
+        tmpdir = Path(os.environ["DESIGN_TMPDIR"])
+        (tmpdir / ".step3-review-result.env").write_text(
+            "\n".join(
+                [
+                    "STEP3_REVIEW_LOOP_STATUS=complete",
+                    "LOOP_STATUS=complete",
+                    "TALLY_PLAN_REVIEW_STATUS=ok",
+                    "STEP3_REVIEW_CAP_REACHED=false",
+                    "ROUNDS_COMPLETED=1",
+                    "REVIEW_ROUND_COUNT=1",
+                    "",
+                ]
+            ),
+            encoding="utf-8",
+        )
+        completed = tmpdir / ".completed"
+        completed.mkdir(exist_ok=True)
+        (completed / "step-3").touch()
+        (completed / "step-3-terminal").touch()
+        (tmpdir / ".step3-terminal-persisted-this-run").touch()
+    raise SystemExit(proc.returncode)
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "write-loop-identity":
+    tmpdir = Path(sys.argv[sys.argv.index("--design-tmpdir") + 1])
+    pid = int(sys.argv[sys.argv.index("--pid") + 1])
+    (tmpdir / ".step3-loop-identity.json").write_text(
+        json.dumps({"pid": pid, "pgid": pid, "start_time": "stub", "command_signature": "plan-review run", "expected_signature": "plan-review run"}),
+        encoding="utf-8",
+    )
+    raise SystemExit(0)
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "await-loop-identity":
+    tmpdir = Path(sys.argv[sys.argv.index("--design-tmpdir") + 1])
+    for _ in range(100):
+        result_env = tmpdir / ".step3-review-result.env"
+        if result_env.is_file() and not result_env.is_symlink() and "STEP3_REVIEW_LOOP_STATUS=" in result_env.read_text(encoding="utf-8"):
+            raise SystemExit(0)
+        time.sleep(0.1)
+    raise SystemExit(1)
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] != "run":
+    real_root = os.environ.get("LARCH_TEST_REAL_REPO_ROOT") or "__LARCH_TEST_REAL_ROOT__"
+    real_cli = os.path.join(real_root, "python", "cli.py")
+    sys.exit(subprocess.call([sys.executable, real_cli, *sys.argv[1:]]))
+if len(sys.argv) >= 3 and sys.argv[1] == "scope-anchor" and sys.argv[2] == "validate":
+    raise SystemExit(0)
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "validate-design-tmpdir":
+    raise SystemExit(0)
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] == "kill-background-processes":
+    with open(os.environ["DESIGN_TMPDIR"] + "/unexpected-kill-helper", "a", encoding="utf-8") as handle:
+        handle.write("kill\n")
+    raise SystemExit(0)
+raise SystemExit(0)
+PYEOF
+python3 - "$FAKE_DETACH/python/cli.py" "$ROOT" <<'PY'
+from pathlib import Path
+import sys
+path = Path(sys.argv[1])
+path.write_text(path.read_text(encoding="utf-8").replace("__LARCH_TEST_REAL_ROOT__", sys.argv[2]), encoding="utf-8")
+path.chmod(0o755)
+PY
+printf '{"schema_version":3}\n' >"$D_DETACH/run-params.json"
+printf '# Plan\n\ndiff_lines: 1\n' >"$D_DETACH/plan.txt"
+printf 'feature\n' >"$D_DETACH/feature-description.txt"
+printf 'anchor\n' >"$D_DETACH/plan-review-scope-anchor.txt"
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_DETACH" DESIGN_TMPDIR="$D_DETACH" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" RUN_STEP3_CONTINUATION_SH="$D_DETACH/continuation.sh" \
+  "$WRAPPER" >"$D_DETACH/first.out" 2>"$D_DETACH/first.err" &
+detach_wrapper_pid=$!
+cleanup_detach_harness() {
+  touch "$D_DETACH/release-body" 2>/dev/null || true
+  if kill -0 "$detach_wrapper_pid" 2>/dev/null; then
+    kill "$detach_wrapper_pid" 2>/dev/null || true
+  fi
+  wait "$detach_wrapper_pid" 2>/dev/null || true
+  rm -rf "$D_DETACH" 2>/dev/null || true
+}
+trap cleanup_detach_harness EXIT
+waited=0
+while [[ ! -f "$D_DETACH/body-entered" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH/body-entered" ]] || fail "detach loop body did not start; stderr=$(cat "$D_DETACH/first.err")"
+waited=0
+while [[ ! -f "$D_DETACH/.step3-loop-identity.json" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH/.step3-loop-identity.json" ]] || fail 'detach path must write loop identity before signal'
+kill -TERM "$detach_wrapper_pid" 2>/dev/null || true
+wait "$detach_wrapper_pid" 2>/dev/null || true
+[[ -f "$D_DETACH/.step3-wrapper-detached" ]] || fail 'external TERM must write detached wrapper marker'
+if [[ -f "$D_DETACH/design-step3-kill.log.jsonl" ]]; then
+  fail 'external TERM must not run identity teardown kill log'
+fi
+[[ ! -f "$D_DETACH/unexpected-kill-helper" ]] || fail 'external TERM must not run tmpdir kill helper'
+touch "$D_DETACH/release-body"
+set +e
+detach_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_DETACH" DESIGN_TMPDIR="$D_DETACH" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" RUN_STEP3_CONTINUATION_SH="$D_DETACH/continuation.sh" \
+  "$WRAPPER" 2>"$D_DETACH/reattach.err")
+detach_rc=$?
+set -e
+[[ "$detach_rc" -eq 0 ]] || fail "reattach wrapper rc=$detach_rc stdout=$detach_out stderr=$(cat "$D_DETACH/reattach.err")"
+grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$detach_out" || fail 'reattach path must normalize the detached loop result'
+[[ "$(wc -l <"$D_DETACH/round-starts.log" | tr -d '[:space:]')" = "1" ]] || fail 'reattach path must not dispatch a second review round'
+[[ -f "$D_DETACH/.completed/step-3" ]] || fail 'reattach path must preserve detached loop completion sentinel'
+[[ ! -f "$D_DETACH/.step3-wrapper-detached" ]] || fail 'reattach path must clear detached marker after normalization'
+[[ -f "$D_DETACH/unexpected-kill-helper" ]] || fail 'reattach path must run tmpdir kill helper before normalization'
+[ ! -f "$D_DETACH/.bg-wait-active" ] || fail 'reattach path must clear bg-wait marker after normalization'
+pass 'Step 3 wrapper detaches live loop on external signal and reattaches without re-dispatch'
+
+# Marker publication failure must fall back to identity-validated teardown instead
+# of leaving a detached loop with no marker.
+D_DETACH_FAIL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-detach-write-fail.XXXXXX")
+FAKE_BIN_FAIL="$D_DETACH_FAIL/fake-bin"
+mkdir -p "$FAKE_BIN_FAIL"
+cat >"$FAKE_BIN_FAIL/mv" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "mv $*" >>"$DESIGN_TMPDIR/mv-called.log"
+exit 1
+SH
+chmod +x "$FAKE_BIN_FAIL/mv"
+printf 'anchor\n' >"$D_DETACH_FAIL/plan-review-scope-anchor.txt"
+printf '{"schema_version":3}\n' >"$D_DETACH_FAIL/run-params.json"
+printf '# Plan\n\ndiff_lines: 1\n' >"$D_DETACH_FAIL/plan.txt"
+printf 'feature\n' >"$D_DETACH_FAIL/feature-description.txt"
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 PATH="$FAKE_BIN_FAIL:$PATH" CLAUDE_PLUGIN_ROOT="$FAKE_DETACH" DESIGN_TMPDIR="$D_DETACH_FAIL" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" \
+  "$WRAPPER" >"$D_DETACH_FAIL/first.out" 2>"$D_DETACH_FAIL/first.err" &
+detach_fail_wrapper_pid=$!
+waited=0
+while [[ ! -f "$D_DETACH_FAIL/body-entered" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH_FAIL/body-entered" ]] || fail "detach write-fail loop body did not start; stderr=$(cat "$D_DETACH_FAIL/first.err")"
+waited=0
+while [[ ! -f "$D_DETACH_FAIL/.step3-loop-identity.json" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH_FAIL/.step3-loop-identity.json" ]] || fail 'detach write-fail path must write loop identity before signal'
+kill -TERM "$detach_fail_wrapper_pid" 2>/dev/null || true
+wait "$detach_fail_wrapper_pid" 2>/dev/null || true
+[[ ! -f "$D_DETACH_FAIL/.step3-wrapper-detached" ]] || fail 'detach write-fail path must not leave detached wrapper marker'
+[[ -f "$D_DETACH_FAIL/unexpected-kill-helper" ]] || fail 'detach write-fail path must fall back to identity teardown'
+grep -Fq 'mv -f ' "$D_DETACH_FAIL/mv-called.log" || fail 'detach write-fail path must attempt detached marker publication'
+rm -rf "$D_DETACH_FAIL"
+pass 'Step 3 wrapper falls back to identity-validated teardown when detached marker publication fails'
+
+trap - EXIT
+rm -rf "$D_DETACH"
 
 # #4489 / #5418: the wrapper clears stale terminal sentinels at entry; normalize-status
 # writes step-3-terminal before emitting KV when the resolved status is terminal
