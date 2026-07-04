@@ -3924,6 +3924,12 @@
     "metric": 13
   },
   {
+    "file": "larch/lint/lint_readability_preamble.py",
+    "code": "C901",
+    "qualified_symbol": "main",
+    "metric": 11
+  },
+  {
     "file": "larch/lint/lint_skill_invocations.py",
     "code": "C901",
     "qualified_symbol": "allowed_tools_contains_skill",
