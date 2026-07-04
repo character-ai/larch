@@ -82,7 +82,7 @@ def _has_clone_path_emission(text: str) -> bool:
         and _has_write_context(lines, index)
     ]
     if not marker_write_indexes:
-        return any(_non_comment_has_clone_path(line) for line in lines)
+        return False
     return all(_has_nearby_clone_path(lines, index) for index in marker_write_indexes)
 
 

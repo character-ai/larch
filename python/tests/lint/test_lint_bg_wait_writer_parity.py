@@ -141,7 +141,9 @@ def test_cleanup_only_marker_mention_does_not_shadow_clone_path(
 
     rc, err = run(tmp_path, capsys)
 
-    assert rc == 0, err
+    assert rc == 1
+    assert cleanup_only in err
+    assert "does not emit CLONE_PATH=" in err
 
 
 def test_rejects_inventory_file_without_writer_evidence(
