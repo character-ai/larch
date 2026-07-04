@@ -1,0 +1,13 @@
+### FINDING_1: OOS prose compression conflicts with shared helper boundary
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan asks implementers to shorten OOS prose in `render_plan_review_main()` while also forbidding edits to `_oos_proposal_instruction()` / `oos_proposal_instruction()`. The plan-review OOS cap and materiality text is injected only through the shared helper, so the compression step is not executable within the stated boundary and could also spill into shared implement/voter surfaces.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: `Remove OOS from the compressible-prose list in the \`render_plan_review_main()\` section. Limit compression to the inline [OUT_OF_SCOPE] prefix line in the f-string; keep the shared OOS helper byte-stable`
+
+### FINDING_2: TSV compression misses additional pinned harness strings
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan allows shortening TSV instructional prose but only names a small subset of harness-pinned phrases. Existing pytest and prompt-template checks also require additional exact substrings, so a prose-only compression pass can still fail CI unless those assertions are updated in the same change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: `In the \`render_plan_review_main()\` and Testing strategy sections, state that all substrings asserted by \`test_render_plan_review_tsv_contract_hardening\` and the plan-reviewer block in \`scripts/test-prompt-template-invariants.sh\` stay byte-identical unless those assertions are updated in the same PR`

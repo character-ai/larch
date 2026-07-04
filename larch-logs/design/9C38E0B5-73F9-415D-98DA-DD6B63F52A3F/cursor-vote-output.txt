@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Plan already forbids helper edits and line 75 preserves shared OOS cap; only the inline [OUT_OF_SCOPE] prefix in render_plan_review_main is compressible.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Plan already pins key harness/TSV substrings, mandates make test-prompt-template-invariants, and warns that pytest-only passes can still fail CI.

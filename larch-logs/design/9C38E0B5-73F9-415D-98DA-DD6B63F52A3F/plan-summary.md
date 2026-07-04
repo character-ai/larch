@@ -1,0 +1,1 @@
+Compress only design plan-review reviewer scaffold prose in the plan-review render path. Preserve grammar tokens, payload accounting, dispatch, topology, OOS helpers, readability token wiring, and shared prompt helpers.
