@@ -1,0 +1,103 @@
+## /design run E9CB7EE4-0F9E-4D9F-AA2D-3BFAD83C2617 — approved
+
+- **Duration**: 00:58:28
+- **Cost**: 💰 TOTAL ~$43.87 — Claude $21.29, Codex-5.5 $7.33, Codex-mini $1.09, Cursor $10.19, Claude (subprocess) $3.97  |  Tokens: 60611k
+- **Issue**: #6211 — https://github.com/character-ai/larch/issues/6211
+- **Plan review**: complete (3 rounds)
+- **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD escalated-high-accepted
+- **Dynamic archetypes**: static-only, drafter filter_failed
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/E9CB7EE4-0F9E-4D9F-AA2D-3BFAD83C2617/`
+- **Main agent model**: claude-sonnet-5
+- **Effort**: max
+- **Larch version**: unknown
+
+<!-- larch:run-summary v=1 -->
+
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 6 | 4 | 3 | 0 | 17m 09s | $5.21 | 8 |
+| 2 | 3 | 2 | 0 | 0 | 16m 58s | $7.02 | 8 |
+| 3 | 2 | 2 | 1 | 0 | 20m 08s | $7.92 | 8 |
+| **Total (round-sum)** | **11** | **8** | **4** | **0** | **54m 15s** | **$20.15** | **24** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-17:09 (1029s)
+                                 0:00                                          17:09
+                                ┌───────────────────────────────────────────────────┐
+cursor/cursor-plan-requirements │█████                                              │ 103s
+codex/codex-plan-arch           │██████                                             │ 125s
+codex/codex-plan-innovation     │███████                                            │ 136s
+codex/codex-plan-pragmatic      │███████                                            │ 143s
+cursor/cursor-plan-pragmatic    │███████                                            │ 145s
+codex/codex-plan-requirements   │███████                                            │ 148s
+cursor/cursor-plan-arch         │████████                                           │ 156s
+cursor/cursor-plan-innovation   │████████                                           │ 168s
+aggregator                      │         ███                                       │  64s
+cursor/vote                     │            ███                                    │  62s
+codex/vote                      │            ██████                                 │ 128s
+claude/vote                     │            ████████████████████                   │ 406s
+                                └───────────────────────────────────────────────────┘
+```
+
+### Round 2 reviewer timing
+
+```
+Round 2 reviewer timing  ·  window 0:00-16:58 (1018s)
+                                 0:00                                          16:58
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-pragmatic      │███                                                │  48s
+codex/codex-plan-arch           │████                                               │  73s
+codex/codex-plan-requirements   │██████                                             │ 108s
+codex/codex-plan-innovation     │███████                                            │ 129s
+cursor/cursor-plan-requirements │███████                                            │ 138s
+cursor/cursor-plan-arch         │████████                                           │ 153s
+cursor/cursor-plan-innovation   │████████                                           │ 161s
+cursor/cursor-plan-pragmatic    │█████████                                          │ 182s
+aggregator                      │         █                                         │  20s
+cursor/vote                     │          ████                                     │  72s
+codex/vote                      │          ████                                     │  78s
+claude/vote                     │          ████████████████████████████             │ 542s
+                                └───────────────────────────────────────────────────┘
+```
+
+### Round 3 reviewer timing
+
+```
+Round 3 reviewer timing  ·  window 0:00-20:08 (1208s)
+                                 0:00                                          20:08
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-innovation     │█████                                              │ 116s
+codex/codex-plan-pragmatic      │█████                                              │ 117s
+codex/codex-plan-arch           │█████                                              │ 124s
+codex/codex-plan-requirements   │█████                                              │ 124s
+cursor/cursor-plan-innovation   │██████                                             │ 139s
+cursor/cursor-plan-requirements │██████                                             │ 143s
+cursor/cursor-plan-pragmatic    │███████                                            │ 157s
+cursor/cursor-plan-arch         │███████████                                        │ 263s
+aggregator                      │           ██                                      │  38s
+codex/vote                      │             ██                                    │  42s
+cursor/vote                     │             ████                                  │ 100s
+claude/vote                     │             ████████████████████████████          │ 662s
+                                └───────────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+1. Cursor-Arch — 11
+2. Codex-Arch — 6
+3. Cursor-Innovation — 6
+4. Codex-Requirements — 5
+5. Codex-Pragmatic — 4
+6. Cursor-Pragmatic — 4
+7. Cursor-Requirements — 4
+
+**Reviewer slot failures**: 0
+REPORT_GATE_SIDECARS_FILE=<TMPDIR>/design-report-gate-sidecars.md

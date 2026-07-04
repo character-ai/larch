@@ -1,0 +1,1 @@
+Add a narrow `plan_difficulty()` fallback that finds the last valid `difficulty:` line when the trailing metadata block lacks one. Add regression tests for the fallback and for Step 5c publish preserving difficulty in the final trailer.
