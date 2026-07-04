@@ -1,14 +1,16 @@
-## /implement run FC7BF47D-44C7-4A02-B38B-A7A038D776B1 — shipping
+## /implement run FC7BF47D-44C7-4A02-B38B-A7A038D776B1 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:11:26
 - **Cost**: 💰 TOTAL ~$6.09 — Claude $1.22, Codex-5.5 $1.84, Codex-mini $0.36, Cursor $2.46, Claude (subprocess) $0.21  |  Tokens: 11374k
 - **Issue**: #6295 — https://github.com/character-ai/larch/issues/6295
+- **PR**: #6313 — https://github.com/character-ai/larch/pull/6313
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +115/-13, larch-logs +536/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
