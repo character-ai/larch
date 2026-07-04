@@ -1,0 +1,1 @@
+Add a read-only `skill-closure ledger` CLI that walks git history for `python/skill-closure-baseline.json`, reports per-target eager closure deltas, supports `--window` and `--since-tag` summary modes, and stays informational only.

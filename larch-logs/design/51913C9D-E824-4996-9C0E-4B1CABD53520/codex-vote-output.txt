@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- useful verification, but the cwd-isolation test is not explicitly mandated by the plan and is not necessary for feature completeness.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- same non-ancestor-tag issue was already ruled OOS in the prior round; no new evidence clears the scope gate.
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- broad make py-lint/py-test steps are process-only and outside the feature scope.

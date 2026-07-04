@@ -1,0 +1,16 @@
+# md-to-py-XII: per-merge closure-growth attribution ledger
+
+**Context.** During round XI, eager closure grew +2,027 tokens (implement) and +1,729 (review) in two days of ordinary merges, diffuse across the bug-fix stream. The largest single deltas were legitimate (#6029 classifier-honesty +2,763 on design; #5991 tier features), but nothing surfaces them: every PR regenerates `python/skill-closure-baseline.json`, lint passes, and the raise is silent. Compression rounds race invisible re-inflation. Round-XI audit reconstructed the ledger by hand from git history.
+
+**Scope.**
+
+- A report verb that attributes per-merge eager-token deltas per target from the git history of `python/skill-closure-baseline.json`: commit, PR, per-target delta.
+- A summary mode (window or since-tag) for release notes and round planning.
+- Optionally a visible marker when a merge raises any eager baseline. No hard gate; do not block feature merges.
+
+**Acceptance.**
+
+- The verb reproduces the round-XI trajectory (66,043 to 44,124 panel-tier; the design decomposition) from history alone.
+- Documented in `docs/run-log-cli.md`; unit-tested on fixture history.
+
+Part of md-to-py-XII (round XI: #5986). Blocked by the demoted-reference classifier child (same module).

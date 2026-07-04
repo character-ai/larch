@@ -1,0 +1,32 @@
+### [Plan Review] FINDING_2
+
+### FINDING_2: Missing test for `--root` decoupled from process cwd
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The test suite does not prove that `--root` is honored independently of the current process directory, so a cwd-sensitive tag lookup could slip through unnoticed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add one ledger test that keeps the process cwd outside the fixture repo, passes --root to the repo path, and asserts correct history or a since-tag failure for a tag that exists only in that repo.
+
+
+### [Plan Review] FINDING_3
+
+### FINDING_3: `--since-tag` accepts non-ancestor tags
+- **Reviewer(s)**: Codex-Innovation, Cursor-Requirements, Codex-Requirements
+- **Severity**: important
+- **Concern**: After a tag resolves to a commit, the code still lacks an ancestry check against `HEAD`, so a sibling or unrelated tag can make `TAG..HEAD` report a misleading baseline instead of rejecting an invalid release anchor.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: After resolving `TAG^{commit}`, reject when the peeled commit is not an ancestor of `HEAD`, then build the rev range from the peeled SHA, for example `peeled..HEAD`; reuse existing git ancestry plumbing rather than adding broader machinery
+  - From Cursor-Requirements: After resolving the peeled SHA, call existing `git.is_ancestor(runner, peeled_sha, "HEAD", cwd=root)`; exit 2 with a stderr message naming the tag when false. Add a fixture where the tag points at a non-ancestor commit and assert exit 2.
+  - From Codex-Requirements: After peeling the tag with rev-parse TAG^{commit}, verify the peeled commit is an ancestor of HEAD via existing git.is_ancestor or merge-base --is-ancestor, then build the rev range from the peeled commit.
+
+
+### [Plan Review] FINDING_4
+
+### FINDING_4:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: important
+- **Focus area**: code-quality
+- **Location**: <TMPDIR>/plan.txt:184-188
+- **Concern**: [SCOPE-REDUCTION] Broad Python validation conflicts with changed-files-only constraint. Scenario: The plan already lists focused pytest coverage for the new ledger, git helper, and registry import. Requiring make py-lint and make py-test runs whole-tree pylint, pyright, and pytest despite AGENTS.md limiting local lint/test to changed files and leaving full sweeps to CI.
+- **Proposed resolution**: Drop the broad make py-lint and make py-test step; keep the focused pytest commands and use the repo's changed-file validation path only if a general changed-file check is needed.
+
