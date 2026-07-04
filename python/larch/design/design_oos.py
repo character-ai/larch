@@ -257,7 +257,11 @@ def _prepare_sentinel_handled(
             else ()
         )
         current_signature = _aggregate_identity_signature(accepted.read_text(encoding="utf-8", errors="replace"))
-        if not cached_signature or current_signature != cached_signature:
+        if (
+            not cached_signature
+            or len(current_signature) < len(cached_signature)
+            or current_signature[: len(cached_signature)] != cached_signature
+        ):
             sentinel.unlink(missing_ok=True)
             return False
         try:

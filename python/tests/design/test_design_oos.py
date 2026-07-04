@@ -625,9 +625,10 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
 
     def fake_annotate(_argv: Sequence[str]) -> int:
-        print("FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout")
+        print("FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout")
+        print("NEXT_ACTION=retry-file-and-annotate")
         print("WARN=empty issue stdout")
-        return 0
+        return 1
 
     monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
 
@@ -635,6 +636,8 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     first = capsys.readouterr().out
 
     assert rc_first == 1
+    assert "FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout" in first
+    assert "NEXT_ACTION=retry-file-and-annotate" in first
     assert (tmp_path / ".oos-issue-retry-used").is_file()
     assert not (tmp_path / ".completed" / "step-5b").exists()
     assert "status unclear" in first
@@ -645,6 +648,158 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     assert rc_second == 1
     assert not (tmp_path / ".completed" / "step-5b").exists()
     assert "after retry sentinel" in second
+
+
+def test_prepare_promotes_important_pool_item(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: important one
+- **Severity**: important
+- **Concern**: one.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert "### OOS_1: important one" in accepted
+    assert "### OOS_1: important one" in combined
+
+
+def test_prepare_promotes_pool_before_skip_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-accepted-design.md").write_text(
+        "### OOS_1: already filed\n- **Severity**: latent\n- **Filed URL**: https://github.com/acme/repo/issues/11\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-issues-created.md").write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/11\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: pool item
+- **Severity**: important
+- **Concern**: promote before skip.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert "https://github.com/acme/repo/issues/11" in accepted
+    assert "### OOS_2: pool item" in accepted
+    assert "### OOS_2: pool item" in combined
+
+
+def test_prepare_counts_accepted_and_pool_latent_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-accepted-design.md").write_text(
+        """### OOS_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### OOS_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent three
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 3
+    assert combined.count("### OOS_") == 3
+    assert "latent three" in accepted
+
+
+def test_prepare_multi_round_pool_accumulates_latent_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    pool = tmp_path / "oos-aggregate-pool.md"
+    _ = pool.write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+
+    rc_first = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+    first = _kv(capsys.readouterr().out)
+
+    assert rc_first == 0
+    assert first["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+
+    _ = pool.write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+
+### FINDING_3: latent three
+- **Severity**: latent
+- **Concern**: three.
+
+### FINDING_4: latent four
+- **Severity**: latent
+- **Concern**: four.
+""",
+        encoding="utf-8",
+    )
+
+    rc_second = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+    second = _kv(capsys.readouterr().out)
+
+    assert rc_second == 0
+    assert second["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 4
+    assert "latent four" in accepted
 
 
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
