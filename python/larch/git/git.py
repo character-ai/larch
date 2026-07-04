@@ -221,7 +221,7 @@ def log_path_commits(
     for line in result.stdout.splitlines():
         if not line:
             continue
-        parts = line.split("\x00")
+        parts = line.split("\x00", 1)
         if len(parts) != _PATH_LOG_FIELDS or not parts[0]:
             msg = f"git log path history returned malformed line: {line!r}"
             raise ShipError(msg)

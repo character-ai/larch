@@ -106,10 +106,86 @@ def _fixture_history_with_panel_tier_removed(repo: Path) -> dict[str, str]:
     return commits
 
 
+def _fixture_history_with_panel_tier_gap(repo: Path) -> dict[str, str]:
+    commits = _fixture_history_with_panel_tier_removed(repo)
+    commits["panel_reappeared"] = _commit_baseline(
+        repo,
+        "Restore panel tier (#6031)",
+        [_row("panel-tier", 45000, extra=True), _row("design", 12600, extra=True)],
+    )
+    return commits
+
+
 def _tsv_rows(text: str) -> list[dict[str, str]]:
     lines = text.strip().splitlines()
     header = lines[0].split("\t")
     return [dict(zip(header, line.split("\t"), strict=True)) for line in lines[1:]]
+
+
+def test_invalid_root_exits_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    rc = ledger.ledger_main(["--root", str(tmp_path / "missing")])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "skill-closure ledger: --root is not a directory" in captured.err
+
+
+def test_unresolved_since_tag_exits_2(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    _fixture_history(repo)
+
+    rc = ledger.ledger_main(["--root", str(repo), "--since-tag", "missing-tag"])
+
+    captured = capsys.readouterr()
+    assert rc == 2
+    assert "--since-tag does not resolve to a commit: missing-tag" in captured.err
+
+
+def test_parse_snapshot_warns_and_skips_float_tokens(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    snapshot = ledger._parse_snapshot(  # pylint: disable=protected-access
+        json.dumps(
+            [
+                _row("design", 10000),
+                {"skill": "review", "closure_estimated_tokens": 1.5},
+            ],
+        ),
+        label="fixture-label",
+    )
+
+    captured = capsys.readouterr()
+    assert snapshot == ledger.BaselineSnapshot(
+        values=(ledger.TargetValue("design", 10000),),
+    )
+    assert "skill-closure ledger:" in captured.err
+    assert "fixture-label" in captured.err
+    assert "review" in captured.err
+    assert "closure_estimated_tokens" in captured.err
+
+
+def test_parse_snapshot_warns_and_keeps_last_duplicate_value(
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    snapshot = ledger._parse_snapshot(  # pylint: disable=protected-access
+        json.dumps([_row("design", 10000), _row("design", 11000)]),
+        label="fixture-label",
+    )
+
+    captured = capsys.readouterr()
+    assert snapshot == ledger.BaselineSnapshot(
+        values=(ledger.TargetValue("design", 11000),),
+    )
+    assert "skill-closure ledger:" in captured.err
+    assert "fixture-label" in captured.err
+    assert "design" in captured.err
+    assert "duplicate skill row" in captured.err
 
 
 def test_detailed_ledger_marks_real_deltas_and_first_seen_rows(
@@ -142,6 +218,28 @@ def test_detailed_ledger_marks_real_deltas_and_first_seen_rows(
     assert pr5980["previous"] == "50711"
     assert pr5980["current"] == "44124"
     assert pr5980["delta"] == "-6587"
+
+
+def test_detailed_ledger_clears_stale_target_after_gap(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    commits = _fixture_history_with_panel_tier_gap(repo)
+
+    rc = ledger.ledger_main(["--root", str(repo)])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    rows = _tsv_rows(captured.out)
+    reappeared = next(
+        row
+        for row in rows
+        if row["commit"] == commits["panel_reappeared"] and row["target"] == "panel-tier"
+    )
+    assert reappeared["previous"] == ""
+    assert reappeared["delta"] == ""
+    assert reappeared["raise"] == "false"
 
 
 def test_window_uses_predecessor_outside_selected_range(

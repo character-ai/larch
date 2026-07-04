@@ -159,9 +159,23 @@ def _parse_snapshot(text: str, *, label: str) -> BaselineSnapshot:
         tokens = row.get("closure_estimated_tokens")
         if not isinstance(target, str):
             continue
+        if isinstance(tokens, float):
+            # Keep historical floats skipped rather than inventing integer token values.
+            print(
+                f"skill-closure ledger: {label}: skipping {target}: "
+                "closure_estimated_tokens is not an integer",
+                file=sys.stderr,
+            )
+            continue
         if not isinstance(tokens, int) or isinstance(tokens, bool):
             continue
-        if target not in values_by_target:
+        if target in values_by_target:
+            # Retain last-wins compatibility for duplicate historical rows, but warn.
+            print(
+                f"skill-closure ledger: {label}: duplicate skill row for {target}; keeping last value",
+                file=sys.stderr,
+            )
+        else:
             order.append(target)
         values_by_target[target] = tokens
     return BaselineSnapshot(
@@ -183,6 +197,7 @@ def _build_revisions(commits: Iterable[git.PathCommit], snapshots: dict[str, Bas
     revisions: list[BaselineRevision] = []
     for commit in commits:
         snapshot = snapshots[commit.sha]
+        current_targets = {value.target for value in snapshot.values}
         deltas: list[TargetDelta] = []
         for value in snapshot.values:
             previous = last_values.get(value.target)
@@ -200,6 +215,9 @@ def _build_revisions(commits: Iterable[git.PathCommit], snapshots: dict[str, Bas
                 ),
             )
             last_values[value.target] = value.closure_estimated_tokens
+        for target in tuple(last_values):
+            if target not in current_targets:
+                del last_values[target]
         revisions.append(BaselineRevision(commit=commit, snapshot=snapshot, deltas=tuple(deltas)))
     return tuple(revisions)
 
