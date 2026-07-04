@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- bash does not recurse into an EXIT trap when the trap body calls exit, so this is not a required fix.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- avoiding an explicit exit wrapper is a style preference, not a feature-blocking defect.

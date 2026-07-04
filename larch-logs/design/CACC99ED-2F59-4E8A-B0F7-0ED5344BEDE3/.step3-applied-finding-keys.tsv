@@ -1,0 +1,1 @@
+1	`_step3_review_guarantee_post_loop_exit` ends with `exit "$_rc"` while the replacement exit handler does not first disarm the active trap. that can re-enter the handler on nested `exit`, risking recursive trap execution or an incorrect terminal status.

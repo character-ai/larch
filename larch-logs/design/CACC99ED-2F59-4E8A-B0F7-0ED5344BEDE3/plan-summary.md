@@ -1,0 +1,1 @@
+Fix the Step 3 review wrapper's post-loop `EXIT` trap so it removes `.bg-wait-active` as well as preserving terminal sentinels. Add a regression assertion to the Step 3 wrapper harness and update the sibling script doc.
