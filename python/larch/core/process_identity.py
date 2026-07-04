@@ -403,6 +403,34 @@ def write_loop_identity_main(argv: list[str] | None = None) -> int:
     return 0
 
 
+def _await_loop_poll(
+    *,
+    recorded: RecordedProcessIdentity,
+    tmpdir: Path,
+    identity_mtime_ns: int,
+    timeout_s: float,
+) -> int:
+    missing_pid_since: float | None = None
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        validation = validate_process_identity(recorded=recorded)
+        if validation.ok:
+            missing_pid_since = None
+            time.sleep(0.2)
+            continue
+        if validation.reason == "missing-pid":
+            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=identity_mtime_ns):
+                return 0
+            if missing_pid_since is None:
+                missing_pid_since = time.monotonic()
+            elif time.monotonic() - missing_pid_since >= DESIGN_STEP3_MISSING_PID_GRACE_S:
+                return 1
+            time.sleep(0.2)
+            continue
+        break
+    return 1
+
+
 def await_loop_identity_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review await-loop-identity")
     _ = parser.add_argument("--design-tmpdir", required=True)
@@ -430,25 +458,12 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
         identity_mtime_ns = 0
     if identity_mtime_ns <= 0:
         return 1
-    missing_pid_since: float | None = None
-    deadline = time.monotonic() + timeout_s
-    while time.monotonic() < deadline:
-        validation = validate_process_identity(recorded=recorded)
-        if validation.ok:
-            missing_pid_since = None
-            time.sleep(0.2)
-            continue
-        if validation.reason == "missing-pid":
-            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=identity_mtime_ns):
-                return 0
-            if missing_pid_since is None:
-                missing_pid_since = time.monotonic()
-            elif time.monotonic() - missing_pid_since >= DESIGN_STEP3_MISSING_PID_GRACE_S:
-                return 1
-            time.sleep(0.2)
-            continue
-        break
-    return 1
+    return _await_loop_poll(
+        recorded=recorded,
+        tmpdir=tmpdir,
+        identity_mtime_ns=identity_mtime_ns,
+        timeout_s=timeout_s,
+    )
 
 
 def teardown_loop_identity_main(argv: list[str] | None = None) -> int:

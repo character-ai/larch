@@ -391,7 +391,7 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
         expected_signature="plan-review run",
     )
     sidecar = tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
-    sidecar.write_text(
+    _ = sidecar.write_text(
         json.dumps(
             {
                 "pid": identity.pid,
@@ -406,11 +406,11 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
     identity_mtime_ns = 1_000_000_000
     os.utime(sidecar, ns=(identity_mtime_ns, identity_mtime_ns))
     marker = tmp_path / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
-    marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
+    _ = marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
     detached_mtime_ns = identity_mtime_ns + 2_000_000
     os.utime(marker, ns=(detached_mtime_ns, detached_mtime_ns))
     result_env = tmp_path / ".step3-review-result.env"
-    result_env.write_text("STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\n", encoding="utf-8")
+    _ = result_env.write_text("STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\n", encoding="utf-8")
     stale_mtime_ns = identity_mtime_ns - 1000
     os.utime(result_env, ns=(stale_mtime_ns, stale_mtime_ns))
     monkeypatch.setattr(
@@ -458,7 +458,7 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
 
 def test_await_loop_identity_main_missing_pid_grace_without_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sidecar = tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
-    sidecar.write_text(
+    _ = sidecar.write_text(
         json.dumps(
             {
                 "pid": 123,
@@ -471,7 +471,7 @@ def test_await_loop_identity_main_missing_pid_grace_without_result(tmp_path: Pat
         encoding="utf-8",
     )
     marker = tmp_path / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
-    marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
+    _ = marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
     monkeypatch.setattr(
         process_identity,
         "validate_process_identity",
