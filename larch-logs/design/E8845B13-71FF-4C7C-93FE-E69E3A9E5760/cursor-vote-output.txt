@@ -1,0 +1,8 @@
+Reading the ballot and verifying findings against the codebase.
+
+
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of round-1 neutral item; plan already mandates input-path wiring, not on-disk staged JSON content
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- peer exclusion still keys on audited, so audit_evaluated-only runs are wrongly excluded after upgrade-only row filter
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- session-env tier is dead code but harmless; not required to restore committed difficulty resolution
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- rater_model capture is bundled polish and does not fix stale audit_evaluated or escalations in committed implement records
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_4 with no materially new evidence

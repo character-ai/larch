@@ -1,0 +1,25 @@
+Reviewing the plan against the codebase: tracing Step 5 terminal paths, difficulty re-staging, calibration predicates, and ship fallback behavior.
+Checking how `flush_review_batches` handles failures and whether the plan's restage helper should mirror that pattern.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/larch/review/review_and_fix.py:526-548	Plan requires fail-open handling for non-zero run-log write exit but not for Python exceptions from `_restage_difficulty_batch`	`_flush_review_batches_for_result` wraps `flush_review_batches` in `except Exception` (lines 537-548) so tally failures cannot change Step 5 terminal status; if restage is added after that block with only returncode checks, an OSError or subprocess failure could propagate to `step5` (lines 777-781) and turn a `complete`/`cap-hit` exit into `stall`/`internal-error`	Wrap `_restage_difficulty_batch` in the same fail-open `try`/`except Exception` contract as the code-review flush (stderr warning + execution-issues Warning), matching the plan edge case "Run-log write failure: warn ... do not fail Step 5"
+
+### 1. [risk-integration] `python/larch/review/review_and_fix.py:526-548` — Restage helper needs explicit fail-open exception handling
+
+The plan correctly places difficulty re-staging in `_flush_review_batches_for_result` after the existing `flush_review_batches` try/except, calls it only from terminal flush sites (`_finish_step5_terminal_success`, `self-review-required`, `mav-resume-past-cap`, stall), and keeps it after `_resolve_step5_tier` (line 597) and in-loop `append_escalation` (lines 722-728). That ordering matches the issue root cause and the design-publish mirror in `python/larch/design/design_publish.py:873-881`.
+
+The gap is exception safety. Today’s code-review flush path swallows all exceptions so Step 5 terminal status is unchanged (`review_and_fix.py:537-548`). The plan’s `### UPDATED: python/larch/review/review_and_fix.py` section only mandates warning on non-zero CLI exit. Without an explicit `except Exception` around restage, a raised error could hit the outer `step5` handler (`review_and_fix.py:777-781`) and flip a successful terminal path.
+
+**Suggested revision:** Add to the plan that `_restage_difficulty_batch` (or its call site) uses the same fail-open exception envelope as the code-review flush, not only non-zero `run-log write` exit codes.
+
+---
+
+**Plan areas verified (no in-scope gaps):**
+
+- **Step 5 terminal coverage:** Hooking restage into `_flush_review_batches_for_result` covers `complete`, `cap-hit` (via `_finish_step5_terminal_success`), `self-review-required`, `mav-resume-past-cap`, and stall paths that already flush (`review_and_fix.py:558-563`, `641`, `660`, `683`, `771`, `774`). MAV handoff statuses (`main-agent-vote-required`, `coder-main-agent-required`) intentionally omit flush today; resume-then-complete still restages on the final terminal flush.
+- **Ship fallback unchanged:** Plan explicitly leaves `python/larch/report/run_log_flush.py:_refresh_difficulty_record` (lines 457-524) untouched. After restage, ship refresh reads the updated staged copy; `test_refresh_difficulty_record_merges_resolution_fields` shows merge preserves resolution fields.
+- **Final-summary consumers:** `python/larch/report/final_report.py:92-100` reads `run_dir/difficulty-rating.json`; `python/larch/calibration/difficulty.py:690-721` `difficulty_line` already renders `audit_upgrade` and `escalations` when present. Restaging the tmpdir record before ship is sufficient; no PR-body changes needed.
+- **Calibration predicate:** Plan changes `_render_audit_deltas` (`difficulty_calibration.py:844-846`) to filter on `audit_upgrade` only while keeping `RunRecord.audited` (`lines 108-111`) for other semantics. Tests in `### UPDATED: python/tests/calibration/test_difficulty_calibration.py` align with excluding `audit_evaluated: true` / `audit_upgrade: null` (current `test_audit_deltas_render_na_without_source_or_floor_tiers` at lines 430-461).
+- **Rater model scope:** `dispatch_step2.py:323-324` hardcodes `unknown`; plan’s env/session/default resolution matches `python/larch/agents/_launch_failure.py` and is appropriately limited to external implementer dispatch (minimum-change vs main-agent paths).
+- **Batch flush failure ordering:** Plan failure modes correctly require restage outside the `flush_review_batches` try block so tally exceptions do not skip difficulty write.
+
+**[OUT_OF_SCOPE]** Extend rater-model capture to main-agent (`claude_fallback`) `difficulty write-record` paths outside `dispatch_step2.py` — issue bundled polish targets dispatcher-known models only; plan already matches that narrower scope.

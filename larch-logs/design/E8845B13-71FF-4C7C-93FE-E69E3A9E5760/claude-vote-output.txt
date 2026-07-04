@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 neutral FINDING_1 with no materially new evidence; plan's argv/input-file wiring test is a reasonable implementation of the issue regression requirement and content verification is additional robustness beyond the necessity gate
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round-1 neutral FINDING_7 with no materially new evidence; dead tier does not break rater-model resolution since process-env is checked first and the feature still delivers correctly
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- oos duplicate of round-1 OOS_1/2/3 and FINDING_6; per rubric oos duplicates vote NO regardless of merit
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- oos duplicate of round-1 OOS_1/2/3 and FINDING_6; same scope-reduction argument already routed to oos in round 1

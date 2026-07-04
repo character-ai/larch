@@ -1,0 +1,55 @@
+# difficulty-tiers [BUG]: committed implement difficulty-rating is pre-resolution; audit and escalation state never reaches run logs
+
+## Summary
+
+The implement `difficulty-rating` run-log batch is staged once at Step 2, before panel resolution. Step 5 resolution and escalation write only the tmpdir record. The ship-time refresh rebuilds the staged copy from itself. As a result every committed implement `difficulty-rating.json` shows `audit_evaluated: null`, `audit_upgrade: null`, `escalations: []`, `escalated_round: null`, even when a run escalated live. The #5992 calibration analyzer therefore reports a structural implement escalation rate of 0.00 and can never observe a 1:30 audit upgrade. This starves the two signals umbrella #5993 exists to measure.
+
+Design is unaffected: `design_publish.py` re-stages the batch at publish time, after resolution, and committed design records carry `audit_evaluated` booleans (19 of 35).
+
+## Reproduction scenario
+
+1. Aggregate `larch-logs/implement/*/difficulty-rating.json` at HEAD `d7986bce9`: all 46 rated runs have `audit_evaluated: null` and empty `escalations`.
+2. Inspect run `larch-logs/implement/1FA74504-BB66-41A8-86CB-731D2870A139` (the #5992 run, v52.3.0). Its committed rating says applied MODERATE with `escalations: []`, and its final summary renders `Difficulty: predicted MODERATE; applied MODERATE`.
+3. Inspect the same run's `round-2/panel-manifest.ndjson`: the panel ran gpt-5.5 plus composer-2.5 pairs, the HARD shape. Round 1 ran the MODERATE shape. The run escalated live between rounds and the committed record hides it.
+4. Run `python3 python/cli.py difficulty-calibration analyze`: Escalation Statistics shows implement 0/46 while design shows 7/35.
+
+## Expected behavior
+
+Committed implement `difficulty-rating.json` carries the resolved state: boolean `audit_evaluated`, `audit_upgrade`, populated `escalations` and `escalated_round`, and the resolved `override_source`. The final-summary difficulty line shows the escalation and audit segments when present (the `difficulty_line` renderer already supports them). The calibration analyzer sees real escalation and audit data for implement runs.
+
+## Root cause analysis
+
+Three coordinates, all at HEAD `d7986bce9`:
+
+- `python/larch/implement/dispatch_step2.py` (`_write_step2_difficulty_record`) writes the tmpdir record and stages the `difficulty-rating` batch at Step 2 capture time, before any resolution.
+- `python/larch/review/review_and_fix.py` (`_resolve_step5_tier`, `_record_escalation_if_needed`) calls `difficulty.resolve_panel_tier` and `difficulty.append_escalation`, which persist `audit_evaluated`, `audit_upgrade`, `escalations`, and `escalated_round` into `$IMPLEMENT_TMPDIR/difficulty-rating.json` only. No re-staging follows.
+- `python/larch/report/run_log_flush.py` (`_refresh_difficulty_record`) reads the staged copy at `log_root/implement/<run-id>/difficulty-rating.json`, rebuilds it via `build_record` plus `_merge_existing_record_fields`, and re-stages it. The merge preserve-list includes the resolved fields, but the input is the stale staged copy, so nulls persist. The tmpdir record is never consulted.
+
+## Evidence
+
+- 46 of 46 committed implement ratings: `audit_evaluated: null`, `escalations: []`.
+- Run `1FA74504` cross-check above: live MODERATE-to-HARD escalation invisible in the committed record and summary.
+- Design-side contrast: 19 of 35 committed design ratings carry `audit_evaluated` booleans; `python/larch/design/design_publish.py` re-stages the batch at publish.
+- Replaying `difficulty.resolve_panel_tier` against a copy of a committed record writes `audit_evaluated` as a boolean, confirming resolution persists when it runs; the value is lost between the tmpdir record and the committed batch.
+
+## Affected files
+
+- `python/larch/report/run_log_flush.py` (`_refresh_difficulty_record`): reads the stale staged copy.
+- `python/larch/review/review_and_fix.py`: Step 5 terminal exits do not re-stage the batch.
+- `python/larch/calibration/difficulty_calibration.py`: consumes the stale committed records; implement escalation and audit sections degrade silently.
+- `python/larch/report/final_report.py`, `python/larch/git/pr_body.py`: `difficulty_line` audit and escalation segments never render for implement runs.
+
+## Suggested fix(es)
+
+1. Re-stage the `difficulty-rating` batch from `$IMPLEMENT_TMPDIR/difficulty-rating.json` on every Step 5 loop terminal exit, mirroring the design publish pattern. The flush already runs `run-log write` for the tally batches; add the rating batch beside them.
+2. Alternatively (or additionally), make `_refresh_difficulty_record` prefer the tmpdir record when the ship context still has one, falling back to the staged copy for resumed or detached flushes.
+3. Add a regression test asserting that after a `complete` or `cap-hit` step5 loop exit, the staged batch carries boolean `audit_evaluated` and any recorded escalations.
+
+## Bundled analyzer polish (same audit, low priority)
+
+- `difficulty-calibration analyze` "Audit-run Deltas" currently lists audit-evaluated runs (14 design rows, all deltas n/a). It should list only `audit_upgrade=true` runs; that set is empty today. Fix the selection predicate in `python/larch/calibration/difficulty_calibration.py`.
+- `rater_model` is always `unknown`: `dispatch_step2.py` passes `--rater-model unknown`. Capture the real rater model when the dispatcher knows it, so the per-rater confusion matrices can key on model.
+
+## Context
+
+Found in the 2026-07-03 post-v1 verification of umbrella #5993 (difficulty-adaptive review spend). Blocks the umbrella's audit-miss estimate and escalation-rate reporting; the first calibration report is otherwise sane. No file overlap with the write-tally bug filed alongside this issue, except shared read-only interest in `review_and_fix.py` step5 terminal exits; land this one second if both queue together.
