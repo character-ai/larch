@@ -141,13 +141,14 @@ _step5_cleanup_stdout_if_temp() {
 }
 
 _step5_cleanup() {
-  local _rc=$?
+  local _rc=$? _detached_at_epoch=""
   trap - EXIT TERM HUP INT
   rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
   if [ -n "${_loop_pid:-}" ]; then
     if [ -n "${_step5_external_signal:-}" ]; then
+      _detached_at_epoch="$(_step5_marker_value DETACHED_AT_EPOCH || true)"
       if [ "${_step5_loop_identity_ready:-false}" = true ] || _step5_loop_identity_on_disk; then
-        if _step5_write_detached_marker "$_loop_pid" "$_step5_external_signal" "$_step5_stdout_file"; then
+        if _step5_write_detached_marker "$_loop_pid" "$_step5_external_signal" "$_step5_stdout_file" "$_detached_at_epoch"; then
           rm -f "$_step5_reattach_active" 2>/dev/null || true
           disown -h "$_loop_pid" 2>/dev/null || true
           exit "$_rc"

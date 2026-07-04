@@ -505,7 +505,7 @@ _step3_review_reattach_detached_loop() {
   fi
   rm -f "$_active" 2>/dev/null || true
   if ! _step3_review_result_env_present; then
-    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" || true
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
     _loop_pid=""
     return 1
   fi
@@ -542,14 +542,15 @@ _step3_review_loop_identity_on_disk() {
 }
 
 _step3_review_cleanup() {
-  local _rc=$?
+  local _rc=$? _detached_at_epoch=""
   trap - EXIT TERM HUP INT
   rm -f "$DESIGN_TMPDIR/.bg-wait-active" "$DESIGN_TMPDIR/.step3-reattach-active" 2>/dev/null || true
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then
+      _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
       if [ "${_step3_review_loop_identity_ready:-false}" = true ] || _step3_review_loop_identity_on_disk; then
-        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"; then
+        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file" "$_detached_at_epoch"; then
           disown -h "$_loop_pid" 2>/dev/null || true
           exit "$_rc"
         fi

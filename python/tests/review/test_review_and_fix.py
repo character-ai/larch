@@ -542,6 +542,31 @@ def test_step5_normalize_status_writes_terminal_sentinel_for_nonzero_loop_rc(tmp
 
 @MARK_STEP5
 @pytest.mark.parametrize(
+    ("stdout_contents", "expected_reason"),
+    [
+        pytest.param(None, "missing-captured-stdout", id="missing-file"),
+        pytest.param("ROUNDS_COMPLETED=1\n", "missing-step5-envelope", id="missing-envelope"),
+    ],
+)
+def test_step5_normalize_status_failure_sets_stall_tracking_true(
+    tmp_path,
+    capsys,
+    stdout_contents: str | None,
+    expected_reason: str,
+) -> None:
+    impl = _tmp_impl(tmp_path)
+    stdout_file = tmp_path / "stdout.txt"
+    if stdout_contents is not None:
+        stdout_file.write_text(stdout_contents, encoding="utf-8")
+    rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STALL_TRACKING=true" in out
+    assert f"STALL_REASON={expected_reason}" in out
+
+
+@MARK_STEP5
+@pytest.mark.parametrize(
     ("wrapper_name", "wrapper_args", "expected_starting_round", "include_run_flags"),
     [
         pytest.param("step-5-review.sh", [], "1", True, id="review-difficulty-override"),

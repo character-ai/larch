@@ -731,12 +731,12 @@ def normalize_status(argv: list[str] | None = None) -> int:
     implement_tmpdir = Path(args.implement_tmpdir)
     stdout_file = Path(args.stdout_file)
     if stdout_file.is_symlink() or not stdout_file.is_file():
-        _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
         return 2
     try:
         text = stdout_file.read_text(encoding="utf-8", errors="replace")
     except OSError:
-        _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+        _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="unreadable-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
         return 2
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
@@ -750,7 +750,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
             loop_rc = 0
         return loop_rc
     _ = implement_tmpdir
-    _emit_step5_envelope(status="stall", stall_tracking=False, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
+    _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-step5-envelope", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)
     return 2
 
 
