@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Step 3 uses the same title pattern without a /design prefix; $IMPLEMENT_TMPDIR and .step5-wrapper-detached already disambiguate from /design finalize.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already requires reattach-to-recorded-identity; adding "wrapper entry" mirrors Step 3 polish but is not required for correct operator guidance.

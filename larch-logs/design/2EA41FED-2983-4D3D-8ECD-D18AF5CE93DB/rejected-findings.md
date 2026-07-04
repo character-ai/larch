@@ -1,0 +1,20 @@
+### [Plan Review] FINDING_1
+
+### FINDING_1: Disambiguate Step 5 recovery from /design finalize
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The new Step 5 recovery bullet is ambiguous next to the existing /design Step 5 finalize note, so operators may read it as design finalize recovery instead of /implement code-review detach/reattach.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Title the new bullet /implement Step 5 external-stop recovery and open with code-review or review-and-fix context like the Step 3 plan-review anchor
+  - From Cursor-Requirements: Title the bullet /implement Step 5 external-stop recovery and open with the same harness framing as the Step 3 bullet: immediate-background /implement Step 5 code-review wrapper, detached review-and-fix loop, .step5-wrapper-detached, withheld .completed/step-5-terminal, and reattach normalization.
+
+
+### [Plan Review] FINDING_2
+
+### FINDING_2: Use wrapper-entry wording for Step 5 recovery
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The lifecycle text mirrors the Step 3 recovery pattern incompletely: saying "next Step 5 entry" can sound like a fresh rerun instead of the same-session wrapper reattach after exit 143.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Mirror Step 3 wording: the next Step 5 wrapper entry reattaches to the recorded identity
+
