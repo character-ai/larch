@@ -700,6 +700,19 @@ def test_render_run_summary_includes_dynamic_archetypes_line() -> None:
     assert "- **Dynamic archetypes**: static-only, pre-scouted-empty" in body
 
 
+@pytest.mark.parametrize("skill", ["implement", "design"])
+def test_render_run_summary_never_emits_em_dash_in_bounded_block(skill: str) -> None:
+    body = pr_body.render_run_summary(
+        skill=skill,
+        outcome="completed",
+        run_id="run1",
+        cost_unavailable=True,
+    )
+    block, sentinel, _tail = body.partition("<!-- larch:run-summary v=1 -->")
+    assert sentinel == "<!-- larch:run-summary v=1 -->"
+    assert "—" not in block
+
+
 def test_final_report_dynamic_archetypes_line_ok_count(tmp_path: Path) -> None:
     _ = (tmp_path / "step2-scout-coder-status.env").write_text("SCOUT_CODER_STATUS=ok\n", encoding="utf-8")
     _ = (tmp_path / "step2-external-scout-eligible.txt").write_text("eligible\n", encoding="utf-8")
