@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:15:35
-- **Cost**: 💰 TOTAL ~$5.56 — Claude $1.87, Codex-5.5 $1.85, Codex-mini $0.35, Cursor $1.26, Claude (subprocess) $0.23  |  Tokens: 8381k
+- **Cost**: 💰 TOTAL ~$7.25 — Claude $3.54, Codex-5.5 $1.85, Codex-mini $0.35, Cursor $1.26, Claude (subprocess) $0.25  |  Tokens: 10695k
 - **Issue**: #6188 — https://github.com/character-ai/larch/issues/6188
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (latent): Missing resume-mode coverage in shell-wrapper regression. Concern: The new shell-wrapper regression only covers the normal review-loop branch. The resume short-circuit modes (`--ready-to-commit` / `--record-only`) could regress without this test failing.
 - **Round 1 OOS_2** (nit): Brittle ordering assertion in dynamic-archetypes validation test. Concern: The static source-order test for dynamic-archetypes validation is brittle and could fail on harmless shell refactors, such as reordering validation/export/banner lines without changing behavior.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
