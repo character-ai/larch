@@ -50,6 +50,18 @@ def test_validation_mode_sentinels_and_thresholds(tmp_path: Path) -> None:
     assert research_eval.validate_research_output(write(tmp_path / "json.txt", '{"no_issues_found": true}\ntrailing\n'), validation_mode=True) == 0
     assert research_eval.validate_research_output(write(tmp_path / "last.txt", "narration\nNO_ISSUES_FOUND\n"), validation_mode=True) == 0
     assert research_eval.validate_research_output(write(tmp_path / "vote.txt", "FINDING_1: YES\n"), validation_mode=True) == 0
+    reviewer_no_findings = write(tmp_path / "reviewer-no-findings.md", "### In-Scope Findings\nNo in-scope issues found.\n")
+    assert research_eval.validate_research_output(reviewer_no_findings, validation_mode=True) == 0
+    reviewer_no_oos = write(
+        tmp_path / "reviewer-no-oos.md",
+        "### In-Scope Findings\nNo in-scope issues found.\n### Out-of-Scope Observations\nNo out-of-scope observations.\n",
+    )
+    assert research_eval.validate_research_output(reviewer_no_oos, validation_mode=True) == 0
+    assert research_eval.validate_research_output(write(tmp_path / "reviewer-bare.md", "No in-scope issues found.\n"), validation_mode=True) == 2
+    mixed = write(tmp_path / "reviewer-mixed.md", "### In-Scope Findings\nNo in-scope issues found. I kept reviewing.\n")
+    assert research_eval.validate_research_output(mixed, validation_mode=True) == 2
+    bullet = write(tmp_path / "reviewer-bullet.md", "### In-Scope Findings\nNo in-scope issues found.\n- A finding after all.\n")
+    assert research_eval.validate_research_output(bullet, validation_mode=True) == 2
     degraded = write(tmp_path / "deg.txt", "CURSOR_DEGRADED_RESPONSE\n")
     cp = run_cli("eval", "validate-research-output", "--validation-mode", str(degraded))
     assert cp.returncode == 5

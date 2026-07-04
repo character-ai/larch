@@ -271,6 +271,20 @@ def test_non_substantive_validation_warns_without_retry(capsys: pytest.CaptureFi
     assert "basename=cursor-specialist-output.txt" in captured.err
 
 
+def test_validation_mode_accepts_reviewer_no_findings_prose(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    _reset(monkeypatch)
+    output = tmp_path / "cursor-edge-cases-output.txt"
+    _ = output.write_text("### In-Scope Findings\nNo in-scope issues found.\n", encoding="utf-8")
+    _write_done(output)
+
+    assert collect_results.collect_results_main(["--timeout", "2", "--substantive-validation", "--validation-mode", str(output)]) == 0
+    blocks = _parse_blocks(capsys.readouterr().out)
+    assert blocks[0]["REVIEWER_FILE"] == str(output)
+    assert blocks[0]["STATUS"] == "OK"
+    assert "NS_RETRY_MODE" not in blocks[0]
+    assert "NS_RETRY_REASON" not in blocks[0]
+
+
 def test_structured_validation_not_substantive_no_retry(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     _reset(monkeypatch)
     output = tmp_path / "codex-plan-generic-output.txt"
