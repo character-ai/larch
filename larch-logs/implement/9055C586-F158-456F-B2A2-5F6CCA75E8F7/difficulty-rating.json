@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "codex",
+  "rationale": "Cross-cutting process lifecycle safety change across implement cleanup, design Step 3 teardown, finalize logging, CLI wiring, docs, and harness coverage.",
+  "round_cap": 3,
+  "schema_version": 1
+}
