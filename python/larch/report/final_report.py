@@ -25,6 +25,7 @@ from larch.git import pr_body
 from larch.git import repo_roots
 from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
+from larch.review.batch_report import _count_code_review_findings
 from larch.state import stall_recovery
 from larch.report import tokens
 from larch.calibration import difficulty
@@ -497,9 +498,19 @@ def _derive_pr_line_counts(*, repo: str, repo_unavailable: bool, pr_number: str,
     return "", "", "", ""
 
 
+def _derive_review_line_from_findings(run_dir: Path) -> str:
+    accepted, rejected, seen_code_review = _count_code_review_findings(run_dir / "review-findings-full.jsonl")
+    total = accepted + rejected
+    if total > 0:
+        return f"{accepted}/{total} accepted"
+    return "0 findings" if seen_code_review else "N/A"
+
+
 def _derive_review_line(*, run_dir: Path, filename: str) -> str:
     tally = run_dir / filename
     if not tally.is_file():
+        if filename == "code-review-tally.json":
+            return _derive_review_line_from_findings(run_dir)
         return "N/A"
     try:
         data_obj = json.loads(tally.read_text(encoding="utf-8"))

@@ -169,23 +169,75 @@ def _compose_review_findings_output(*, impl_tmpdir: Path, output: Path) -> bool:
     return result.returncode == 0 and output.is_file()
 
 
-def _derive_code_review_tally(findings_file: Path) -> tuple[int, int]:
+def _count_code_review_findings(findings_file: Path) -> tuple[int, int, bool]:
     if not findings_file.is_file():
-        return 0, 0
+        return 0, 0, False
+    try:
+        text = _read_text(findings_file)
+    except OSError:
+        return 0, 0, False
     accepted = rejected = 0
-    for line in _read_text(findings_file).splitlines():
+    seen_code_review = False
+    for line in text.splitlines():
         if not line.strip():
             continue
         try:
             record = json.loads(line)
         except json.JSONDecodeError:
             continue
-        if record.get("phase") == "code-review":
-            if record.get("outcome") == "accepted":
-                accepted += 1
-            elif record.get("outcome") == "rejected":
-                rejected += 1
+        if not isinstance(record, dict):
+            continue
+        if record.get("phase") != "code-review":
+            continue
+        seen_code_review = True
+        if record.get("outcome") == "accepted":
+            accepted += 1
+        elif record.get("outcome") == "rejected":
+            rejected += 1
+    return accepted, rejected, seen_code_review
+
+
+def _derive_code_review_tally(findings_file: Path) -> tuple[int, int]:
+    accepted, rejected, _seen_code_review = _count_code_review_findings(findings_file)
     return accepted, rejected
+
+
+def _tally_flush_sidecar_text(result: object) -> str:
+    return (
+        f"voting write-tally failed (returncode={getattr(result, 'returncode', '')})\n"
+        "--- stderr ---\n"
+        f"{getattr(result, 'stderr', '') or ''}"
+        "\n--- stdout ---\n"
+        f"{getattr(result, 'stdout', '') or ''}"
+        "\n"
+    )
+
+
+def observe_code_review_tally_flush(*, impl_tmpdir: Path, run_id: str, result: object) -> None:
+    sidecar = impl_tmpdir / "code-review-tally.flush.err"
+    run_root = impl_tmpdir / "larch-logs" / "implement" / run_id
+    run_root_sidecar = run_root / "code-review-tally.flush.err"
+    if getattr(result, "returncode", 0) == 0:
+        with contextlib.suppress(FileNotFoundError):
+            sidecar.unlink()
+        with contextlib.suppress(FileNotFoundError):
+            run_root_sidecar.unlink()
+        return
+
+    content = _tally_flush_sidecar_text(result)
+    with contextlib.suppress(OSError):
+        _write_text(path=sidecar, text=content)
+    with contextlib.suppress(OSError):
+        run_root.mkdir(parents=True, exist_ok=True)
+        _write_text(path=run_root_sidecar, text=content)
+    rel_sidecar = f"larch-logs/implement/{run_id}/code-review-tally.flush.err"
+    entry = (
+        "\n## Larch-log batch — `code-review-tally` write failed\n\n"
+        f"`voting write-tally` exited with rc={getattr(result, 'returncode', '')}. "
+        f"See `{rel_sidecar}` for stderr/stdout.\n"
+    )
+    with contextlib.suppress(OSError):
+        run_logs.append_execution_issue(log_file=impl_tmpdir / "execution-issues.md", category="Warnings", entry=entry)
 
 
 def _sorted_round_dirs(impl_tmpdir: Path) -> list[tuple[int, Path]]:
@@ -334,6 +386,7 @@ def flush_review_batches(*,
         "--exonerated", str(exonerated),
         "--body-file", str(body_file),
     ])
+    observe_code_review_tally_flush(impl_tmpdir=impl_tmpdir, run_id=run_id, result=tally_result)
     if tally_result.returncode != 0:
         _err("⚠ review-and-fix: failed to flush code-review-tally batch")
         if tally_result.stderr:

@@ -1410,8 +1410,65 @@ def _write_tally(run_dir: Path, filename: str, payload: object) -> None:
     _ = (run_dir / filename).write_text(text, encoding="utf-8")
 
 
+def _write_findings(run_dir: Path, records: list[object]) -> None:
+    _ = (run_dir / "review-findings-full.jsonl").write_text(
+        "".join((record if isinstance(record, str) else json.dumps(record)) + "\n" for record in records),
+        encoding="utf-8",
+    )
+
+
 def test_derive_review_line_absent_tally_returns_na(tmp_path: Path) -> None:
     assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
+
+
+def test_derive_review_line_absent_tally_uses_findings_counts(tmp_path: Path) -> None:
+    _write_findings(
+        tmp_path,
+        [
+            {"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"},
+            {"id": "FINDING_2", "phase": "code-review", "outcome": "rejected"},
+        ],
+    )
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "1/2 accepted"
+
+
+def test_derive_review_line_absent_tally_uses_self_review_findings_counts(tmp_path: Path) -> None:
+    _write_findings(
+        tmp_path,
+        [
+            {"schema_version": "2", "id": "SELF_REVIEW_ACCEPTED_1", "phase": "code-review", "outcome": "accepted", "round_num": "1"},
+            {"schema_version": "2", "id": "SELF_REVIEW_REJECTED_1", "phase": "code-review", "outcome": "rejected", "round_num": "1"},
+            {"schema_version": "2", "id": "SELF_REVIEW_REJECTED_2", "phase": "code-review", "outcome": "rejected", "round_num": "1"},
+        ],
+    )
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "1/3 accepted"
+
+
+def test_derive_review_line_absent_tally_zero_code_review_records_returns_zero_findings(tmp_path: Path) -> None:
+    _write_findings(tmp_path, [{"id": "FINDING_1", "phase": "code-review", "outcome": "neutral"}])
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "0 findings"
+
+
+def test_derive_review_line_absent_tally_empty_findings_returns_na(tmp_path: Path) -> None:
+    _write_findings(tmp_path, [])
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "N/A"
+
+
+def test_derive_review_line_existing_tally_wins_over_findings(tmp_path: Path) -> None:
+    _write_tally(tmp_path, "code-review-tally.json", {"phase": "code-review", "mode": "hard", "accepted_count": 2, "rejected_count": 0})
+    _write_findings(tmp_path, [{"id": "FINDING_1", "phase": "code-review", "outcome": "rejected"}])
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="code-review-tally.json") == "2/2 accepted"
+
+
+def test_derive_review_line_plan_review_does_not_use_findings_fallback(tmp_path: Path) -> None:
+    _write_findings(tmp_path, [{"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}])
+
+    assert final_report._derive_review_line(run_dir=tmp_path, filename="plan-review-tally.json") == "N/A"
 
 
 def test_derive_review_line_malformed_tally_returns_na(tmp_path: Path) -> None:
