@@ -38,8 +38,8 @@ _DISPATCH_LABEL = "plan-review voter-dispatch"
 _PLAN_VOTER_PANEL_SIZE = 3
 _SLOT_LABEL_MAX_LEN = 200
 _GENERIC_CODEX_PLAN_REVIEW_ROLE = (
-    "You are a senior code reviewer for this project. Review code, plans, or conflict resolutions across "
-    "five focus areas: code quality, risk/integration, correctness, architecture, and security."
+    "You are a senior reviewer for this project. Review code, plans, or conflict resolutions across "
+    "code quality, risk/integration, correctness, architecture, and security."
 )
 # launch-claude-review is spawned via PATH `python3`, not sys.executable, to match
 # the legacy dispatch-plan-voters.sh `python3 cli.py ...` contract and the panel
