@@ -1,0 +1,1 @@
+Review whether every signal path validates process identity before signaling. Check owner-token semantics for same-session bystander wrappers and stale active-leg records. Verify that SIGKILL escalation cannot run after a failed identity check. Cite specific file paths and line ranges for any issues found, and follow the output-format rules from your outer wrapper exactly.

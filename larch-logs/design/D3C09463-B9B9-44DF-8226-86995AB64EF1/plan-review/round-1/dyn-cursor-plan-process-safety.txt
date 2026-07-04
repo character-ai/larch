@@ -1,0 +1,42 @@
+Reviewing signal paths and owner-token semantics against the plan. Searching the codebase for kill/signaling sites.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/state/bootstrap.py:167-177	python/larch/implement/dispatch_leg.py:UPDATED	Owner-token propagation is contradictory between bootstrap and dispatch_leg	The bootstrap template says to pass the owner token only to the active-leg cleanup command, while dispatch_leg must store owner_token from the environment in the JSON record. If the token is not exported to the `.py` child before `implement run-dispatch` runs, the record will be missing or wrong, bystander exits cannot distinguish ownership, and the same-session friendly-fire race remains.	In bootstrap `_write_larch_run_sh`, generate the token once per invocation, export it under the config constant env var before the `python3 …` target line, and pass the same value to `implement kill-active-leg --owner-token`. State explicitly that both the publisher and cleanup consumer read the same env/CLI value.
+1	in_scope	important	completeness	python/larch/implement/dispatch_leg.py:142-157	`kill_active_leg_main` contract omits required `--owner-token` handling	Bootstrap/tests pin `--owner-token` forwarding, but the dispatch_leg UPDATED section never requires argparse for it, mandatory presence, or owner match before consume/kill. An implementer can ship forwarding without enforcement, leaving stale JSON killable by any caller or by missing-token fail-open behavior.	Add required changes: parse `--owner-token`, refuse non-legacy kills when absent, compare to `owner_token` in the JSON record, no-op without unlink on mismatch for live records, and add tests beyond bootstrap string pins.
+1	in_scope	important	correctness	skills/design/scripts/design-step3-review.sh:363-427	python/cli.py:UPDATED	Step 3 Python teardown lacks an identity-validation contract	The plan moves teardown to a CLI helper that kills by recorded identity, but only specifies Bash `_loop_pid` lifetime. It does not define helper argv, expected command signature (e.g. `plan-review run` + `--design-tmpdir`), whether `lstart` is captured at spawn or read at trap time, or fail-closed behavior when `ps` is missing. Without that contract, trap cleanup may remain a raw `kill --` equivalent with logging only.	Specify the new CLI surface (verb, args, stdout/stderr silence) and validation inputs: `--pid`, `--design-tmpdir`, optional `--expected-start` or spawn-time identity capture, command-signature rules, and explicit no-signal + no-SIGKILL-on-failure semantics matching `process_identity.py`.
+
+## Findings
+
+### 1. Owner-token propagation is contradictory (correctness / risk-integration)
+
+The plan’s bootstrap and dispatch_leg sections disagree on how the owner token reaches the JSON publisher.
+
+```167:177:python/larch/state/bootstrap.py
+_larch_cleanup_active_leg() {
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null || true
+}
+
+case "$script" in
+  *.py)
+    trap _larch_cleanup_active_leg EXIT INT TERM
+    python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
+```
+
+Bootstrap requires generating a token and passing it only to cleanup, while `dispatch_leg` must store `owner_token` from the environment when publishing after `Popen` (today’s publisher is `_publish_active_leg_pgid` at ```86:93:python/larch/implement/dispatch_leg.py```). If the child never receives the token, bystander no-ops and owner matching cannot work.
+
+**Suggested revision:** Export the config-named env var before the `python3` target line and pass the same value to `--owner-token` on cleanup.
+
+### 2. `kill_active_leg_main` omits required `--owner-token` handling (completeness)
+
+Bootstrap/tests are pinned to forward `--owner-token`, but the `dispatch_leg` UPDATED list never requires argparse, mandatory presence, or match logic in `kill_active_leg_main` (```142:157:python/larch/implement/dispatch_leg.py``` still reads only `--implement-tmpdir`, unlinks, then signals without validation).
+
+**Suggested revision:** Add explicit required changes for `--owner-token` parsing, fail-closed behavior when missing, owner match before consume/kill, and no unlink on live owner mismatch.
+
+### 3. Step 3 Python teardown lacks an identity-validation contract (correctness)
+
+The plan fixes the post-`wait` recycle bug (```421:427:skills/design/scripts/design-step3-review.sh``` still tears down after `wait`), but the replacement Python helper has no wire contract for how “recorded identity” is obtained or compared at trap time.
+
+**Suggested revision:** Name the CLI verb and document validation inputs, expected command signature rules, `ps` fail-closed behavior, and the same no-SIGKILL-after-failed-validation rule as the shared helper.
+
+---
+
+**Review note:** The plan correctly targets the confirmed root paths (unvalidated `.active-leg-pgid` consumption at ```142:157:python/larch/implement/dispatch_leg.py```, post-`wait` Step 3 `kill --`, and explicit no-SIGKILL-after-failed-validation language). `kill_session_background_processes` logging-only treatment matches issue scope (tmpdir-scoped, not cross-session). I did not treat research-only `Popen.kill` paths or descendant re-snapshot at SIGKILL as in-scope gaps under the minimum-change necessity gate.

@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- the timing concern may be a real implementation detail, but it is not shown to be necessary for the feature to work.
+FINDING_2: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- underspecified helper wiring is possible, but this does not clearly block the feature.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Bash-side identity capture is a plausible concern, but it reads as an architecture preference rather than a necessity-gate defect.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- atomic-write hardening is real, but it is not backlog-material for this issue.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- skipping a no-op cleanup on empty exits is an optimization, not a material defect.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- moving capture into setsid is plausible, but it is not necessary to ship the fix.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1.

@@ -1,0 +1,27 @@
+{"type":"mark","step":"design Step 0 \u2014 session setup","ts":"2026-07-04T00:15:36Z"}
+{"type":"vendor","vendor":"codex","input":81088,"output":7181,"cache_read":481664,"cache_create":0,"total":569933,"raw":"codex_plan_draft","ts":"2026-07-04T00:20:52Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":69008,"output":8720,"cache_read":411008,"cache_create":0,"total":488736,"raw":"codex_review","ts":"2026-07-04T00:23:35Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":70147,"output":7693,"cache_read":605184,"cache_create":0,"total":683024,"raw":"codex_review","ts":"2026-07-04T00:23:36Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":61776,"output":7817,"cache_read":668288,"cache_create":0,"total":737881,"raw":"codex_review","ts":"2026-07-04T00:23:39Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":105526,"output":11183,"cache_read":1156304,"cache_create":0,"total":1273013,"raw":"cursor_review","ts":"2026-07-04T00:23:52Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":106229,"output":11609,"cache_read":1332170,"cache_create":0,"total":1450008,"raw":"cursor_review","ts":"2026-07-04T00:23:55Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":192951,"output":11675,"cache_read":898319,"cache_create":0,"total":1102945,"raw":"cursor_review","ts":"2026-07-04T00:23:57Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":86789,"output":10717,"cache_read":1008000,"cache_create":0,"total":1105506,"raw":"codex_review","ts":"2026-07-04T00:24:15Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":112618,"output":12599,"cache_read":1667623,"cache_create":0,"total":1792840,"raw":"cursor_review","ts":"2026-07-04T00:24:17Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":110220,"output":12651,"cache_read":1185617,"cache_create":0,"total":1308488,"raw":"cursor_review","ts":"2026-07-04T00:24:17Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":182557,"output":11264,"cache_read":926848,"cache_create":0,"total":1120669,"raw":"codex_review","ts":"2026-07-04T00:24:51Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":20363,"output":17311,"cache_read":0,"cache_create":0,"total":37674,"raw":"codex_review","ts":"2026-07-04T00:26:30Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":90629,"output":4557,"cache_read":494345,"cache_create":0,"total":589531,"raw":"cursor_review","ts":"2026-07-04T00:27:40Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":46626,"output":15372,"cache_read":405376,"cache_create":0,"total":467374,"raw":"codex_review","ts":"2026-07-04T00:28:17Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"claude_sub","input":6,"output":12468,"cache_read":95431,"cache_create":28937,"total":136842,"raw":"claude_vote","ts":"2026-07-04T00:31:30Z","model":"claude-sonnet-4-6"}
+{"type":"vendor","vendor":"codex","input":67577,"output":6721,"cache_read":442624,"cache_create":0,"total":516922,"raw":"codex_review","ts":"2026-07-04T00:37:25Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":101202,"output":8441,"cache_read":1242418,"cache_create":0,"total":1352061,"raw":"cursor_review","ts":"2026-07-04T00:37:28Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"cursor","input":111297,"output":12398,"cache_read":1160241,"cache_create":0,"total":1283936,"raw":"cursor_review","ts":"2026-07-04T00:37:35Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":74135,"output":8132,"cache_read":761984,"cache_create":0,"total":844251,"raw":"codex_review","ts":"2026-07-04T00:37:42Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"cursor","input":102326,"output":8632,"cache_read":1031630,"cache_create":0,"total":1142588,"raw":"cursor_review","ts":"2026-07-04T00:37:47Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":89258,"output":10343,"cache_read":678528,"cache_create":0,"total":778129,"raw":"codex_review","ts":"2026-07-04T00:38:00Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":83039,"output":8868,"cache_read":980992,"cache_create":0,"total":1072899,"raw":"codex_review","ts":"2026-07-04T00:38:16Z","model":"gpt-5.5"}
+{"type":"vendor","vendor":"codex","input":16266,"output":4441,"cache_read":0,"cache_create":0,"total":20707,"raw":"codex_review","ts":"2026-07-04T00:38:42Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"cursor","input":84710,"output":4328,"cache_read":313192,"cache_create":0,"total":402230,"raw":"cursor_review","ts":"2026-07-04T00:39:42Z","model":"composer-2.5"}
+{"type":"vendor","vendor":"codex","input":40465,"output":12548,"cache_read":314624,"cache_create":0,"total":367637,"raw":"codex_review","ts":"2026-07-04T00:40:06Z","model":"gpt-5.4-mini"}
+{"type":"vendor","vendor":"claude_sub","input":6,"output":18921,"cache_read":187710,"cache_create":28279,"total":234916,"raw":"claude_vote","ts":"2026-07-04T00:44:21Z","model":"claude-sonnet-4-6"}
