@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:07:20
-- **Cost**: 💰 TOTAL ~$1.92: Claude $0.51, Codex-5.5 $0.83, Codex-mini $0.19, Cursor $0.00, Claude (subprocess) $0.39  |  Tokens: 3514k
+- **Cost**: 💰 TOTAL ~$2.23: Claude $0.82, Codex-5.5 $0.83, Codex-mini $0.19, Cursor $0.00, Claude (subprocess) $0.39  |  Tokens: 4320k
 - **Issue**: #6303: https://github.com/character-ai/larch/issues/6303
 - **Plan review**: N/A
 - **Difficulty**: predicted TRIVIAL; applied TRIVIAL
@@ -44,3 +44,7 @@ codex/correctness │   ██████████████████�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
