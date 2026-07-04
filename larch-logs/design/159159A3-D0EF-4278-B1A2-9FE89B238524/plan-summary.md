@@ -1,0 +1,1 @@
+Plan extracts shared bg-wait marker writing, arms the legacy Python checks path, hardens lint and write_tally staging, and extends the hook parity harness for nested braces plus renamed helper pairs. Difficulty is MODERATE because this touches hook-adjacent and bg-wait lifecycle infrastructure.
