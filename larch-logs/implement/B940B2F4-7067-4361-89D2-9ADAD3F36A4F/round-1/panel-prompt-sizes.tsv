@@ -1,0 +1,10 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-run-log-paths-codex	specialist	codex	dyn-dyn-run-log-paths-codex-output.txt	30837	7710	9967	2492	20870	5218		0	0
+implement Step 5	phase1	1	dyn-dyn-run-log-paths	specialist	cursor	dyn-dyn-run-log-paths-output.txt	30837	7710	9967	2492	20870	5218		0	0
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	34337	8585	13870	3468	20467	5117	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	34071	8518	13604	3401	20467	5117	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	34071	8518	13604	3401	20467	5117	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	testing	specialist	cursor	cursor-specialist-testing-output.txt	33779	8445	13312	3328	20467	5117	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	33779	8445	13312	3328	20467	5117	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	34337	8585	13870	3468	20467	5117	agents/reviewer-edge-cases.md	5985	1497
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	10337	2585	4174	1044	6163	1541	agents/orchestrator-aggregator.md	4397	1100
