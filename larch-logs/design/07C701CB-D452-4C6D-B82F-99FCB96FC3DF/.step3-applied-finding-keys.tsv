@@ -1,0 +1,4 @@
+1	the parent-ascent grep lint only checks the first detected path operand, so commands with a safe first path and a later `../` path can still evade detection.
+1	the regression harness does not cover a command with multiple path operands and a later `../` ascent, so a first-path-only implementation could still pass tests.
+1	the new stall-recovery bounded-probe guidance is limited to sub-step 5 retry dispatch, but the reported runaway grep happened during sub-step 6 token discovery, leaving that failure mode unaddressed in the docs operators read for step 18a.
+2	the proposed bash_authoring.md addition risks pushing the file over its tier-1a line cap unless the plan explicitly budgets for the growth or validates the cap update.
