@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:17:37
-- **Cost**: 💰 TOTAL ~$5.53 — Claude $0.50, Codex-5.5 $2.21, Codex-mini $0.88, Cursor $1.73, Claude (subprocess) $0.21  |  Tokens: 11241k
+- **Cost**: 💰 TOTAL ~$5.86 — Claude $0.82, Codex-5.5 $2.21, Codex-mini $0.88, Cursor $1.73, Claude (subprocess) $0.22  |  Tokens: 12107k
 - **Issue**: #6161 — https://github.com/character-ai/larch/issues/6161
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -75,3 +75,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): Rules block still preserves the required constraints. Concern: The rules block still preserves the required test substrings (`must appear in at least one`, `Use only slots from this inventory`), and `agents/orchestrator-aggregator.md` still carries the cross-attribution rules.
 - **Round 1 OOS_3** (nit): Scope-reduction marker remains accurate. Concern: `_run_scope_marker()` still delegates to `has_scope_reduction_marker()`, which keys off leading `[SCOPE-REDUCTION]` in the heading, Concern, and what fields.
 - **Round 1 OOS_4** (nit): Validation surfaces remain unchanged. Concern: The plan leaves `_validation_retry_prompt()`, the `payload_base_bytes` formula, the agent file, and the scope-anchor wrappers unchanged, so mechanical validation (`_validate_aggregate_output`, `_check_revision_traceability`) is still enforced in code.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
