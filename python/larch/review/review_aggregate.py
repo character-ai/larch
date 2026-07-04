@@ -883,7 +883,7 @@ def aggregate_findings(argv: list[str]) -> int:  # noqa: PLR0915,RUF100
     output_file = review_tmpdir / "aggregator-output.txt"
     role_id = "design.plan_findings_aggregator" if args.input_mode == "plan" else "review.findings_aggregator"
     slot = external_defaults.slot_defaults(role_id)[0]
-    slot_row_base = {"slot": slot.slot, "tool": slot.tool, "output": str(output_file), "prompt_file": str(prompt_file)}
+    slot_row_base: dict[str, object] = {"slot": slot.slot, "tool": slot.tool, "output": str(output_file), "prompt_file": str(prompt_file)}
     if slot.model_role:
         slot_row_base["model_role"] = slot.model_role
     round_num = args.round_num if args.round_num > 0 else None

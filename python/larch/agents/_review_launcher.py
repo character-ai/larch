@@ -237,7 +237,7 @@ def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> t
     return 0, result.stdout, payload_bytes
 
 
-def _review_render_specialist_prompt(args: argparse.Namespace) -> tuple[int, str]:
+def _review_render_specialist_prompt(args: argparse.Namespace) -> tuple[int, str]:  # pyright: ignore[reportUnusedFunction]  # used by agents.py
     rc, prompt, _payload_bytes = _review_render_specialist_prompt_with_payload(args)
     return rc, prompt
 

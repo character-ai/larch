@@ -266,7 +266,7 @@ def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Pa
     # first row and the panel launched zero reviewers (#4765).
     prompt_text = prompt or f"Review the design plan with a {focus} lens."
     _ = prompt_file.write_text(prompt_text, encoding="utf-8")
-    row = {
+    row: dict[str, object] = {
         "tool": tool,
         "slot": slot,
         "name": slot,
