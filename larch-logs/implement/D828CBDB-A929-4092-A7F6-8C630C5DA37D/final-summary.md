@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 01:02:53
-- **Cost**: 💰 TOTAL ~$38.65 — Claude $1.57, Codex-5.5 $27.55, Codex-mini $1.41, Cursor $6.33, Claude (subprocess) $1.79  |  Tokens: 59238k
+- **Cost**: 💰 TOTAL ~$39.49 — Claude $2.41, Codex-5.5 $27.55, Codex-mini $1.41, Cursor $6.33, Claude (subprocess) $1.79  |  Tokens: 61608k
 - **Issue**: #6291 — https://github.com/character-ai/larch/issues/6291
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -99,3 +99,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_1** (latent): Gate C reentry pool reset lacks regression test. Concern: The Gate C reentry pool reset has no automated regression test, so stale pool state could re-trigger promotion after review re-entry.
 - **Round 2 OOS_2** (nit): Dead annotate-skipped-empty-stdout branch appears unreachable after status rename. Concern: The `annotate-skipped-empty-stdout` branch appears unreachable after the annotate status rename, so the branch is dead code unless the status vocabulary is aligned again.
 - **Round 2 OOS_3** (latent): Once-only retry sentinel lacks end-to-end harness. Concern: The once-only retry sentinel is prompt-orchestrator owned without an end-to-end harness, so double retry or silent Step 5b advance may only surface in live `/design` runs.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
