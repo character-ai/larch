@@ -1,0 +1,35 @@
+v1	mark	1783200647	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1783200736	implement	-	codex	codex-plan-draft	1783200649	1783200735	86	step2b-codex-raw.60927.txt	0	complete
+v1	mark	1783200761	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783200863	implement	-	codex	codex-phase1-codex-plan-requirements	1783200772	1783200860	88	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783200883	implement	-	codex	codex-phase1-codex-plan-innovation	1783200772	1783200881	109	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783200899	implement	-	codex	codex-phase1-codex-plan-arch	1783200772	1783200898	126	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783200951	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783200772	1783200950	178	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783200954	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783200772	1783200954	182	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783200985	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783200772	1783200985	213	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783201021	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783200772	1783201021	249	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783201042	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783200772	1783201042	270	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783201110	implement	-	codex	codex-phase1-aggregator	1783201044	1783201110	66	aggregator-output.txt	0	complete
+v1	vendor	1783201157	implement	-	cursor	cursor-phase1-voter-3	1783201112	1783201157	45	cursor-vote-output.txt	0	complete
+v1	vendor	1783201188	implement	-	codex	codex-phase1-voter-2	1783201112	1783201188	76	codex-vote-output.txt	0	complete
+v1	vendor	1783201420	implement	-	claude	claude-plan-voter	1783201111	1783201420	309	claude-vote-output.txt	0	complete
+v1	mark	1783201484	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	round	1783201599	design	design Step 3 — plan review	1	1783200770	1783201599	829	0	0	-	1
+v1	vendor	1783201697	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783201602	1783201697	95	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783201698	implement	-	codex	codex-phase1-codex-plan-arch	1783201601	1783201698	97	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783201712	implement	-	codex	codex-phase1-codex-plan-innovation	1783201601	1783201712	111	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783201736	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783201601	1783201736	135	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783201743	implement	-	codex	codex-phase1-codex-plan-requirements	1783201601	1783201743	142	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783201751	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783201602	1783201751	149	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783201775	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783201602	1783201774	172	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783201826	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783201601	1783201826	225	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783201846	implement	-	codex	codex-phase1-voter-2	1783201831	1783201846	15	codex-vote-output.txt	0	complete
+v1	vendor	1783201886	implement	-	cursor	cursor-phase1-voter-3	1783201831	1783201886	55	cursor-vote-output.txt	0	complete
+v1	vendor	1783201961	implement	-	claude	claude-plan-voter	1783201831	1783201960	129	claude-vote-output.txt	0	complete
+v1	round	1783201961	design	design Step 3 — plan review	2	1783201599	1783201961	362	0	0	-	1
+v1	mark	1783201977	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783201982	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1783201982	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1783202014	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783202386	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-
+v1	vendor	1783202439	implement	-	claude	exec-issue-assessment	1783202426	1783202439	13	output.txt	124	signal

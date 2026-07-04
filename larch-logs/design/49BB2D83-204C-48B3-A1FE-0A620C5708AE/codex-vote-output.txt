@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the harness already pins the em-dash warning literals, so a conditional MAY_UPDATE is unnecessary

@@ -1,0 +1,43 @@
+### FINDING_1: Preserve the renderer contract example in write-final-report
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The no-em-dash verification around `skills/implement/scripts/write-final-report.md:7` would push the documented renderer example to be restyled, but that file is meant to preserve the live `pr_body.py` heading contract. Rewording the example risks misdocumenting the actual output while the renderer itself remains unchanged.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an Approach bullet: replace the inline heading example with an indirect reference (for example, "the `render run-summary` heading from pr_body.py") and do not show restyled punctuation that the renderer still emits
+  - From Cursor-Innovation: Narrow acceptance to user-facing print literals and non-code-reference template prose, matching issue acceptance; exclude backticked renderer-contract examples from the grep, or document explicit keep-list exemptions before the terminal grep step
+  - From Cursor-Pragmatic: Limit line 7 edits to surrounding prose; explicitly preserve the backticked heading example exactly as the renderer contract
+
+### FINDING_2: Scope finalize-step5 cleanup around the pinned harness line
+- **Reviewer(s)**: Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: `skills/design/references/finalize-step5.md` still contains em-dashes in the mandatory-read banner and other prose, and `scripts/test-design-structure.sh` pins at least the banner text. A blanket zero-em-dash grep or a prose-only edit plan will either leave violations behind or break the harness.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Explicitly classify the MANDATORY readability line as preserved (and keep grep scoped), or promote `scripts/test-design-structure.sh` to firm UPDATED when line 13 punctuation changes
+  - From Codex-Innovation: Broaden the file pass to replace every remaining user-facing prose em dash, including the load banner and the manual recovery list item, with colon, comma, or parenthetical punctuation.
+  - From Cursor-Pragmatic: Scope the verification grep to user-facing print literals and template prose only (or maintain an explicit allowlist); do not edit MANDATORY — READ lines to satisfy grep
+  - From Cursor-Requirements: Align acceptance with issue scope: grep only user-facing print literals and template prose, and add an explicit carve-out for unchanged `**MANDATORY — READ ENTIRE FILE**` directives in all three files; do not list `scripts/test-design-structure.sh` as MAY_UPDATE unless that carve-out is dropped.
+
+### FINDING_3: Update the Step 5b Python emitters too
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Changing `finalize-step5.md` alone does not change the live Step 5b warning output, so the old em-dash literals will still appear in user-visible runtime messages.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add ### UPDATED: python/larch/design/design_step5b.py with paired literal changes for the annotate-skipped and ISSUES_FAILED>0 warnings (or document that Python pairing is required for user-visible effect)
+
+### OOS_1: [OUT_OF_SCOPE] Skip-approve path still emits an em-dash
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: `skills/design/SKILL.md:249` duplicates the `--skip-approve` outline status outside the three-file scope, so that path can still echo an em-dash even after the scoped files are fixed.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_2: [OUT_OF_SCOPE] Step 5b emitter remains outside scope
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: `python/larch/design/design_step5b.py:269` hardcodes the annotate-skipped warning with an em-dash, so editing `finalize-step5.md` alone does not change runtime output on that path.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### OOS_3: [OUT_OF_SCOPE] run-summary renderer still uses the em-dash heading
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: `python/larch/git/pr_body.py:554` still renders the run-summary heading with an em-dash; the plan intentionally defers renderer changes, so em-dashes remain in committed final-summary bodies until a follow-up.
+- **Suggested revisions (informational for voters; coder decides)**:

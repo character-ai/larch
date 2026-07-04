@@ -1,0 +1,53 @@
+**Problem**
+
+Skill markdown hard-codes em-dashes in literal status strings that the orchestrator echoes to the user, and in report templates. These violate the readability rule (no em-dashes) the same way the Python layer does, and the outline template also models an em-dash-as-separator list format that the model then copies into composed plans.
+
+**Evidence**
+
+- `skills/design/references/design-outline.md`: status prints such as `⏩ 1d.7: outline — skipped ...` and `✅ ... — proceeding ...` (lines ~17-19, 79, 86), plus the `` `path` — description `` file-list format the model mirrors.
+- `skills/design/references/finalize-step5.md`: warning prints such as `⚠ 5b.5: arch diagram — generation failed ...` (lines ~49, 53, 74, 98, 105).
+- `skills/implement/scripts/write-final-report.md`: template prose carries em-dashes (about 11).
+
+Observed impact: recent `design-outline.md` and `composed-plan.md` run logs contain em-dashes, created after the rule landed. Example: one recent `design-outline.md` had 8, its `composed-plan.md` had 2.
+
+**Fix**
+
+Replace em-dashes with compliant punctuation in literal user-facing status strings and in report-template prose under these skill files. Change the outline file-list format to a colon or a plain space so the template stops modeling the banned separator.
+
+**Scope and risk**
+
+Status strings are printed verbatim. Do not touch machine-parsed tokens, sentinels, or code fences (the readability Precision Contract). Only restyle user-facing prose and the print literals.
+
+**Acceptance**
+
+- No em-dash in user-facing print literals or template prose under `skills/design/references/design-outline.md`, `skills/design/references/finalize-step5.md`, and `skills/implement/scripts/write-final-report.md`.
+- Any structural harness that pins these files updated and green.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Remove em-dashes from user-facing print literals in design-outline.md and finalize-step5.md.
+- Remove em-dashes from report template prose in write-final-report.md.
+- Stop the outline file-list format from modeling the banned `path — description` separator.
+
+### Non-goals
+- Do not edit machine-parsed tokens, sentinels, KEY=value grammars, or code fences.
+- Do not scrub em-dashes in files outside the three named surfaces.
+- Do not change any behavioral logic, only prose and print-literal text.
+
+### Approach sketch
+- Read each of the three files and identify every em-dash in user-facing prose or print literals.
+- Replace each em-dash with the appropriate compliant punctuation (period, colon, or comma depending on context).
+- Change the file-list format in design-outline.md from `` `path` — description `` to `` `path`: description ``.
+- Check for any structural test harnesses that pin line content in these files and update them.
+
+### Surfaces in scope
+- skills/design/references/design-outline.md
+- skills/design/references/finalize-step5.md
+- skills/implement/scripts/write-final-report.md
+- Any test files that assert line-level content in the above files.
+
+### Open questions
+- None.

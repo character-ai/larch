@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan already keeps the pinned mandatory-read banner byte-stable and limits harness edits to assertions that actually change; warning prints are not pinned, so demoting to MAY_UPDATE is plan polish, not required for acceptance.
