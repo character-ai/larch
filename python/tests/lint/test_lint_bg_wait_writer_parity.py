@@ -74,7 +74,7 @@ def test_accepts_clean_current_writer_inventory(tmp_path: Path, capsys: pytest.C
 def test_live_repo_writer_inventory_passes() -> None:
     repo_root = Path(__file__).resolve().parents[3]
 
-    assert lint_writers(repo_root) == []
+    assert not lint_writers(repo_root)
 
 
 def test_inventory_uses_shared_implement_bg_wait_helper() -> None:
