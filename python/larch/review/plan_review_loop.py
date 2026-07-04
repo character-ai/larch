@@ -813,7 +813,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
         reason = "structural-or-large-change"
     no_new_material_findings = high_new == 0 and non_nit_new <= NON_NIT_CONTINUE_THRESHOLD
     has_material_findings = high > 0 or non_nit > NON_NIT_CONTINUE_THRESHOLD
-    if not cont and duplicate_accepted > 0 and no_new_material_findings and has_material_findings:
+    if not cont and reason == "small-clean" and duplicate_accepted > 0 and no_new_material_findings and has_material_findings:
         reason = "converged-no-new-findings"
     _record_applied_finding_keys(tmpdir=tmpdir, round_num=review_count, keys=block_keys)
     _record_already_addressed_finding_keys(tmpdir=tmpdir, keys=_already_addressed_keys_in_rejected(tmpdir))

@@ -2929,7 +2929,7 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
     # Totals stay reported for backward compatibility.
@@ -3166,7 +3166,7 @@ def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
 

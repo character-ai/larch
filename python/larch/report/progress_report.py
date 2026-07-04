@@ -1717,6 +1717,8 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
         round_cap = record.get("round_cap")
         if not isinstance(round_cap, int):
             round_cap = difficulty.tier_ceiling(panel_tier) if panel_tier else None
+        elif panel_tier:
+            round_cap = min(round_cap, difficulty.tier_ceiling(panel_tier))
         escalations = record.get("escalations")
         object_data.update(
             {

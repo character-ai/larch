@@ -3009,7 +3009,7 @@ def test_write_implement_round_meta_records_difficulty(tmp_path: Path) -> None:
                 "escalations": [{"round": 2, "from_tier": "MODERATE", "to_tier": "HARD", "trigger": "escalated-high-accepted"}],
                 "panel_skipped": None,
                 "panel_tier": "HARD",
-                "round_cap": 2,
+                "round_cap": 3,
                 "codex_model_role": "default",
                 "audit_evaluated": True,
                 "escalated_round": True,
