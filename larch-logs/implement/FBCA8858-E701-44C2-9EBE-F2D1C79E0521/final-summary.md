@@ -1,16 +1,15 @@
-## /implement run FBCA8858-E701-44C2-9EBE-F2D1C79E0521 — stalled
+## /implement run FBCA8858-E701-44C2-9EBE-F2D1C79E0521 — pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 02:37:55
-- **Cost**: 💰 TOTAL ~$65.69 — Claude $18.44, Codex-5.5 $31.49, Codex-mini $3.03, Cursor $11.15, Claude (subprocess) $1.58  |  Tokens: 107740k
+- **Cost**: 💰 TOTAL ~$67.24 — Claude $19.99, Codex-5.5 $31.49, Codex-mini $3.03, Cursor $11.15, Claude (subprocess) $1.58  |  Tokens: 110529k
 - **Issue**: #6158 — https://github.com/character-ai/larch/issues/6158
 - **PR**: #6223 — https://github.com/character-ai/larch/pull/6223
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +1511/-79, larch-logs +1523/-0
+- **Lines (PR diff)**: code +1544/-100, larch-logs +1546/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 6
@@ -133,4 +132,6 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; one minor deviation identified.
+
+- **G-IO-1** (route reads/writes of larch wire files through `larch.io` helpers instead of re-implementing bare tmp+replace): `python/larch/rendering/rendering.py`'s new `_write_payload_bytes_sidecar()` hand-rolls mkstemp+fdopen+replace with pre-clear and on-failure-cleanup semantics instead of calling `larch_io.atomic_write()`, and `python/larch/report/tokens.py`'s new `read_panel_payload_bytes()` hand-rolls a try/except-OSError read instead of `larch_io.read_text(..., default=...)`. Both modules already `from larch import io as larch_io` for other calls. The payload sidecars are small cross-process handoff files (written by a rendering subprocess, read back by the launching parent), so this isn't a pure throwaway-internal-file carve-out. Not blocking: the code correctly guarantees "never read a stale sidecar" (pre-clear before write, delete-on-failure), a property `atomic_write` alone doesn't provide, so a full switch would still need a thin wrapper around it rather than a drop-in replacement.
