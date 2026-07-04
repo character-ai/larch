@@ -9,6 +9,7 @@ Offline harness for token telemetry propagation across `/implement` Step 5's `re
 - Asserts `LARCH_TIMING_LEDGER` survives the same caller-env to writer round-trip only when it is under an accepted root.
 - Asserts `LARCH_TIMING_LEDGER` does not appear on `session-setup.sh` stdout.
 - Rehydrates the keys with `python/cli.py session read-key`, runs `python/cli.py review-and-fix apply-findings --implement-tmpdir` with a stubbed `review core`, and asserts the review-core subprocess sees the parent token session id, Claude source file, timing ledger, and implement session-env path.
+- Asserts each starting difficulty keeps the expected panel shape and fixed round cap of 2.
 
 ## Edit-in-sync
 

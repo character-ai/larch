@@ -223,19 +223,19 @@ run_driver "$D5" "$stub" >/dev/null
 driver_out=$(run_driver "$D5" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'expected cap-reached loop status'
 
-echo "=== HARD round 3 reachable with recorded escalation ==="
-D6="$TMPROOT/hard-round-3-reachable"
+echo "=== HARD escalation does not extend past the fixed cap ==="
+D6="$TMPROOT/hard-escalation-fixed-cap"
 write_common_inputs "$D6"
 printf '2\n' >"$D6/review-round-count.txt"
 write_difficulty_record "$D6" HARD '[{"round":3,"from_tier":"MODERATE","to_tier":"HARD","trigger":"escalated-high-accepted"}]'
-stub="$(write_loop_stub "$D6" "round_num=''; while [[ \$# -gt 0 ]]; do case \"\$1\" in --round-num) round_num=\"\${2:?}\"; shift 2 ;; *) shift ;; esac; done; printf '%s\n' \"\$round_num\" >\"$D6/launched-round.txt\"; [[ \"\$round_num\" == '3' ]] || exit 98; mkdir -p \"$D6/plan-review/round-\$round_num\"; printf 'launched\n' >\"$D6/plan-review/round-\$round_num/launched.txt\"; printf 'LOOP_STATUS=complete\nACCEPTED_COUNT=0\nIMPORTANT_ACCEPTED_COUNT=0\nDEGRADED_PANEL=0\nROUNDS_COMPLETED=%s\nTALLY_PLAN_REVIEW_STATUS=ok\nAGGREGATOR_STATUS=ok\nVOTING_TALLY_FILE=\n' \"\$round_num\"")"
+stub="$(write_loop_stub "$D6" "printf 'launched\n' >\"$D6/third-should-not-launch.txt\"; exit 97")"
 driver_out=$(run_driver "$D6" "$stub")
-[[ "$(cat "$D6/launched-round.txt")" == "3" ]] || fail 'HARD escalation should dispatch round 3'
-[[ "$(cat "$D6/review-round-count.txt")" == "3" ]] || fail 'HARD escalation should consume round 3'
-[[ -f "$D6/plan-review/round-3/launched.txt" ]] || fail 'HARD escalation should leave round-3 launch artifact'
-printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' && fail 'HARD escalation should not stop at cap before launching round 3'
+printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'HARD escalation should stop at the fixed cap'
+[[ "$(cat "$D6/review-round-count.txt")" == "2" ]] || fail 'HARD escalation should leave counter at the fixed cap'
+[[ ! -e "$D6/third-should-not-launch.txt" ]] || fail 'HARD escalation should not launch after the fixed cap'
+[[ ! -e "$D6/plan-review/round-3" ]] || fail 'HARD escalation should not create third-round artifacts'
 
-echo "=== Gate-C authorized cap blocks HARD round 3 without escalation ==="
+echo "=== Gate-C authorized cap blocks the third HARD review round without escalation ==="
 DGATE="$TMPROOT/gate-c-authorized-cap"
 write_common_inputs "$DGATE"
 printf '2\n' >"$DGATE/review-round-count.txt"
@@ -244,7 +244,7 @@ stub="$(write_loop_stub "$DGATE" "printf 'launched\n' >\"$DGATE/round-3-should-n
 driver_out=$(run_driver "$DGATE" "$stub")
 printf '%s\n' "$driver_out" | grep -q 'LOOP_STATUS=cap-reached' || fail 'Gate-C cap should stop at round 2 without escalation'
 [[ "$(cat "$DGATE/review-round-count.txt")" == "2" ]] || fail 'Gate-C cap should leave counter at 2'
-[[ ! -e "$DGATE/round-3-should-not-launch.txt" ]] || fail 'Gate-C cap should not launch round 3'
+[[ ! -e "$DGATE/round-3-should-not-launch.txt" ]] || fail 'Gate-C cap should not launch after the fixed cap'
 [[ ! -e "$DGATE/plan-review/round-3" ]] || fail 'Gate-C cap should not create round-3 artifacts'
 
 run_continuation() {
@@ -336,7 +336,7 @@ printf '%s\n' "$cont_out" | grep -q '^HIGH_ACCEPTED_COUNT=1$' || fail 'structure
 echo "=== continuation helper escalates two new high findings to HARD ==="
 DESC="$TMPROOT/continuation-escalates-high"
 write_common_inputs "$DESC"
-printf '2\n' >"$DESC/review-round-count.txt"
+printf '1\n' >"$DESC/review-round-count.txt"
 write_difficulty_record "$DESC" MODERATE '[]'
 cat >"$DESC/.step3-review-result.env" <<'EOF'
 LOOP_STATUS=complete
@@ -355,7 +355,7 @@ EOF
 cont_out=$(run_continuation "$DESC" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'two new high findings should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted$' || fail 'two new high findings should escalate'
-printf '%s\n' "$cont_out" | grep -q '^REVIEW_ROUND_CAP=3$' || fail 'escalation should raise cap to 3'
+printf '%s\n' "$cont_out" | grep -q '^REVIEW_ROUND_CAP=2$' || fail 'escalation should keep the fixed cap'
 printf '%s\n' "$cont_out" | grep -q '^PANEL_TIER=HARD$' || fail 'escalation should set panel tier HARD'
 if ! PYTHONPATH="$ROOT/python" python3 - "$DESC/difficulty-rating.json" <<'PY'
 import json
@@ -366,7 +366,7 @@ data = json.loads(Path(sys.argv[1]).read_text(encoding="utf-8"))
 escalations = data.get("escalations")
 if not isinstance(escalations, list) or not escalations:
     raise SystemExit(1)
-if data.get("panel_tier") != "HARD" or data.get("round_cap") != 3:
+if data.get("panel_tier") != "HARD" or data.get("round_cap") != 2:
     raise SystemExit(1)
 PY
 then

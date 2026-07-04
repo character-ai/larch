@@ -108,7 +108,7 @@ done
 case "$tier" in
     TRIVIAL) panel_shape="singles"; effective_cap="2" ;;
     MODERATE) panel_shape="pairs"; effective_cap="2" ;;
-    HARD) panel_shape="pairs"; effective_cap="3" ;;
+    HARD) panel_shape="pairs"; effective_cap="2" ;;
     *) panel_shape="unknown"; effective_cap="0" ;;
 esac
 mkdir -p "$out"
@@ -252,6 +252,6 @@ run_difficulty_case() {
 
 run_difficulty_case TRIVIAL simple singles 2
 run_difficulty_case MODERATE hard pairs 2
-run_difficulty_case HARD hard pairs 3
+run_difficulty_case HARD hard pairs 2
 
 echo "PASS: test-implement-review-token-propagation.sh"
