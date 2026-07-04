@@ -1,0 +1,79 @@
+## Summary
+
+The `voting write-tally` leg of the Step 5 batch flush fails in every live run since about v52.2.4, including runs at v52.4.1 and v52.4.2 that contain the #6169 fix, and including `--self-review` runs that #6169 classified as unaffected. Run-root `review-findings-full.jsonl` (written by a direct `run-log write` in the same flush call) lands correctly post-#6169; run-root `code-review-tally.json` never does. Final summaries and PR bodies still render `Code review: N/A`. The failure is silent: a nonzero `write-tally` exit is logged to stderr only, after the round stderr sidecar has closed, so no committed artifact records it.
+
+#6169's code fix is correct and merged (terminal `complete` and `cap-hit` exits now flush; flush exceptions surface to execution-issues). Its field acceptance criterion (both run-root files exist; summaries render real values) is not met. This issue carries the remainder.
+
+## Reproduction scenario
+
+1. Inspect the 7 implement runs at v52.4.1/v52.4.2 committed on 2026-07-03/04 (for example `FBCA8858-E701-44C2-9EBE-F2D1C79E0521`, v52.4.2, a genuine 3-round HARD cap-hit): each has run-root `review-findings-full.jsonl` and round artifacts, and none has `code-review-tally.json`. Every final summary renders `Code review: N/A`.
+2. Inspect the 3 `--self-review` runs at v52.3.1/v52.4.1 (`6997FE71`, `794A997E`, `CCE0AD91`): same pattern, findings file present, tally absent, despite `write_self_review_tally` using a separate call path with no `--body-file`.
+3. Contrast v52.2.3 runs (`EA8219BE-7FA8-4610-B810-F9CA3A152B23`): both files present, summaries render real values.
+
+## Expected behavior
+
+Every Step 5 flush stages both `code-review-tally.json` and `review-findings-full.jsonl`; summaries and PR bodies render lines like `Code review: 1/2 accepted`; a failing tally write leaves a committed trace.
+
+## Root cause analysis
+
+Mechanism unknown; the failing component is isolated. Both failing paths (`flush_review_batches` in `python/larch/review/batch_report.py`, `write_self_review_tally` in `python/larch/review/review_and_fix.py`) invoke `python3 cli.py voting write-tally`, which composes a record and runs the inner `run-log write`. The adjacent direct `run-log write` for the findings batch succeeds in the same flush call, so staging, the batch registry, and the ship-time tree copy are healthy.
+
+Ruled out by offline reproduction at HEAD `d7986bce9` (all attempts wrote the tally successfully):
+
+- Replaying `flush_review_batches` against a copy of the committed `FBCA8858` run data (repo HEAD code and installed v52.4.3 plugin code; the review-pipeline files are byte-identical to v52.4.2).
+- The `rounds=0`, `result=None` shape used by `mav-resume-past-cap`.
+- Double-flush over an existing staged tree (replace semantics, permissions).
+- `voting write-tally` in a background shell, self-review shape, no `--body-file`.
+- Ship-side drops: `_safe_copy_run_tree` copies the whole staged tree; the round allow/deny lists apply to round dirs only; no ship-time findings composer exists that could mask a fully failed flush.
+
+Remaining locus: the `voting write-tally` subprocess returns nonzero in the live orchestrated environment only. Candidate differences (unverified): environment variables of the step5 loop process, tempfile creation in `write_tally_main` (`tempfile.NamedTemporaryFile` under the live `TMPDIR`), or an uncaught exception before the inner `run-log write`. Nothing in committed logs can distinguish these because the error text is discarded.
+
+## Observed behavior
+
+- Post-fix runs: 7 of 7 findings-yes, tally-no.
+- Self-review runs: 3 of 3 findings-yes, tally-no.
+- All 2026-07-03/04 summaries: `Code review: N/A`.
+- No execution-issues entry, no committed stderr, no `.flush.err` sidecar for the tally leg.
+
+## Suggested fix(es)
+
+1. Observability first: persist `tally_result` stderr and stdout to `code-review-tally.flush.err` under the implement tmpdir on nonzero rc, mirroring the findings leg's `review-findings-full.flush.err` handling in `batch_report.py`, and stage it so it ships with the run log.
+2. Append an execution-issues Warnings entry on nonzero `write-tally` rc in both `flush_review_batches` and `write_self_review_tally`. The #6169 fix surfaces exceptions only; nonzero exits stay invisible.
+3. After the next live run, read the captured error and fix the actual mechanism.
+4. Optional resilience: derive the final-report `Code review` line from `review-findings-full.jsonl` when the tally is absent, so summaries stop rendering `N/A` while the tally path is broken. This also restores the #5992 calibration accepted-count fallback.
+
+## Open questions
+
+- Is back-filling `code-review-tally.json` for the v52.2.4..v52.4.2 window worth a one-off log-only PR once the mechanism is fixed? The committed round artifacts contain everything needed.
+- Should `final_report.py`'s dead `CODE_REVIEW_LINE` ship-handoff branch (no producer exists) be removed as part of the derivation cleanup flagged in #6169's optional item 4?
+
+## Context
+
+Follow-up of #6169 and umbrella #5993 (difficulty-adaptive review spend). Blocks #5993: the calibration corpus loses its per-run accepted-count fallback source for exactly the tiered runs it needs. Touches `python/larch/review/batch_report.py` and `python/larch/review/review_and_fix.py`; no overlap with the difficulty-rating staging bug filed alongside this issue beyond shared read-only interest in step5 terminal exits.
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make the `voting write-tally` failure visible: capture subprocess stderr/stdout to `code-review-tally.flush.err` in both call sites, and surface the nonzero rc as an execution-issues Warnings entry (serves G-Py-4).
+- Stop summaries and PR bodies rendering `Code review: N/A`: derive the line from `review-findings-full.jsonl` when `code-review-tally.json` is absent.
+- Leave a committed trace so the next live run reveals the mechanism.
+
+### Non-goals
+- Fixing the actual write-tally failure mechanism. It is unknown and deferred until a live `.flush.err` capture reveals it.
+- Back-filling `code-review-tally.json` for the v52.2.4..v52.4.2 window (separate follow-up PR).
+- Removing a `CODE_REVIEW_LINE` ship-handoff branch. None exists in `final_report.py` today.
+
+### Approach sketch
+- `batch_report.py::flush_review_batches`: mirror the findings leg. Write `code-review-tally.flush.err` on nonzero rc, unlink on success. Add an execution-issues Warnings entry.
+- `review_and_fix.py::write_self_review_tally`: add the same `.flush.err` capture. Keep its existing Warnings entry.
+- `final_report.py`: when `code-review-tally.json` is missing, fall back to counting `review-findings-full.jsonl` code-review records, reusing the existing `_derive_code_review_tally` counting shape.
+
+### Surfaces in scope
+- `python/larch/review/batch_report.py`
+- `python/larch/review/review_and_fix.py`
+- `python/larch/report/final_report.py`
+- Their tests under `python/tests/`.
+
+### Open questions
+- None.

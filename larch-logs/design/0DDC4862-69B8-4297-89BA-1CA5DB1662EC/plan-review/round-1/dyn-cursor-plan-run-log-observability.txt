@@ -1,0 +1,28 @@
+Reviewing the plan against the codebase for run-log integration, Step 5 status behavior, and sidecar handling.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/review/batch_report.py:301-373	Observability helper must not let execution-issues append break best-effort Step 5 exits	Plan bullet "Treat voting write-tally nonzero exits as observable warnings, not Step 5 blockers" and write_self_review_tally bullet "Return 0 after warning emission, as today" require warning-only behavior, but the helper spec only says "append an execution-issues Warnings entry" without suppressing OSError. Today write_self_review_tally calls append_execution_issue bare at review_and_fix.py:1106-1110; lock failure raises and the verb never reaches return 0, unlike _flush_review_batches_for_result which wraps append in contextlib.suppress(OSError) at review_and_fix.py:541-546.	Wrap execution-issues append inside the new helper with contextlib.suppress(OSError), matching _flush_review_batches_for_result and _append_scout_flush_warning.
+1	in_scope	important	code-quality	python/larch/report/final_report.py:500-529	[SCOPE-REDUCTION] Duplicate JSONL tally derivation instead of reusing existing helper	Plan UPDATED final_report.py bullet adds a new review-findings-full.jsonl counting loop "matching the current batch tally derivation style", but identical logic already lives in _derive_code_review_tally at batch_report.py:172-188. Two copies can drift and yield different Code review lines vs flush-time derived counts.	Call _derive_code_review_tally from batch_report (or extract one shared helper) inside _derive_review_line fallback instead of duplicating the loop.
+
+## Findings
+
+### 1. correctness — `python/larch/review/batch_report.py` / `python/larch/review/review_and_fix.py`
+
+**Plan bullets relied on:** Approach — "Treat `voting write-tally` nonzero exits as observable warnings, not Step 5 blockers"; `review_and_fix.py` UPDATED — "Keep the command best-effort. Return `0` after warning emission, as today."
+
+The plan adds Warnings append to a new helper but does not require `contextlib.suppress(OSError)` around it. `_flush_review_batches_for_result` already suppresses append failures (`review_and_fix.py:541-546`). `write_self_review_tally` does not (`review_and_fix.py:1106-1110`): a lock error on `execution-issues.md` can propagate and block the launcher despite the plan’s best-effort contract.
+
+### 2. code-quality — `python/larch/report/final_report.py:500-529`
+
+**Plan bullets relied on:** `final_report.py` UPDATED — fallback counts from `review-findings-full.jsonl`; Edge cases — "Malformed JSONL lines … ignored, matching the current batch tally derivation style."
+
+`_derive_code_review_tally` in `batch_report.py:172-188` already implements that derivation. Re-implementing it in `final_report.py` adds surface area without new behavior and risks count drift against the flush path and #5993 calibration.
+
+## Review summary (areas checked)
+
+**Committed tally failure evidence:** Sound. Run-root path `impl_tmpdir/larch-logs/implement/<run_id>/code-review-tally.flush.err` sits under the tree that `_safe_copy_run_tree` copies at commit time (`run_log_commit.py:279-304`, `307-341`). That improves on today’s findings leg, which only writes `review-findings-full.flush.err` at the tmpdir root (`batch_report.py:341-352`), not under `larch-logs/`.
+
+**Warnings vs terminal Step 5 status:** Aligned. `_flush_review_batches_for_result` ignores `flush_review_batches` return value and catches exceptions without changing terminal envelope (`review_and_fix.py:524-546`, `549-573`). `flush_review_batches` already returns `tally_result.returncode == 0` (`batch_report.py:373`) without raising on nonzero tally alone. Finding 1 is the remaining gap on the self-review path.
+
+**Stale sidecars:** Aligned. Plan Approach — "Remove stale tally sidecars after a later successful tally write"; helper On success — unlink both paths with `contextlib.suppress(FileNotFoundError)`. `final_report._derive_review_line` reads only `code-review-tally.json`, not `.flush.err` (`final_report.py:500-503`), so a leftover sidecar cannot override the summary when tally or fallback findings are present.
+
+No other in-scope defects found on run-log integration for this narrow fix.

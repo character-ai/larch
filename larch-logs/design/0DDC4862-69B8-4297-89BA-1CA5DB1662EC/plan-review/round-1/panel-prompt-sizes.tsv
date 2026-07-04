@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	25921	6481	14735	3684	11186	2797		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19922	4981	14337	3585	5585	1397		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	26038	6510	14852	3713	11186	2797		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19864	4966	14279	3570	5585	1397		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	20026	5007	14441	3611	5585	1397		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	25876	6469	14690	3673	11186	2797		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19909	4978	14324	3581	5585	1397		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	25934	6484	14748	3687	11186	2797		0	0
+design Step 3	phase1	1	dyn-codex-plan-run-log-observability	plan-review	codex	dyn-codex-plan-run-log-observability.txt	20141	5036	14117	3530	6024	1506		0	0
+design Step 3	phase1	1	dyn-cursor-plan-run-log-observability	plan-review	cursor	dyn-cursor-plan-run-log-observability.txt	26153	6539	14528	3632	11625	2907		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	26623	6656	4686	1172	21937	5485	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	16493	4124	9475	2369	7018	1755		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	16493	4124	9475	2369	7018	1755		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	16493	4124	9475	2369	7018	1755		0	0
