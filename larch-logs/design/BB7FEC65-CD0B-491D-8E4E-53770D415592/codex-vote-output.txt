@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- different-path interleave still detects shared generic-read state, so same-path beta coverage is not required for this regression.

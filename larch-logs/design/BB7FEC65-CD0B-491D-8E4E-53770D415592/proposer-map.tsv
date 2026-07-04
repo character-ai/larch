@@ -1,0 +1,4 @@
+# attributed_ballot_sha256=e3353e52a5345227077fd9addc1e9685c2999b3940a622d5a217ed8b0eae4871
+# neutral_ballot_sha256=46faa009317f12c64974a56891e2fd5b7417060c945e7818df98dbbf381ecd6d
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Requirements, Cursor-dyn-Hook State Isolation, Codex-dyn-Hook State Isolation	- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Requirements, Cursor-dyn-Hook State Isolation, Codex-dyn-Hook State Isolation

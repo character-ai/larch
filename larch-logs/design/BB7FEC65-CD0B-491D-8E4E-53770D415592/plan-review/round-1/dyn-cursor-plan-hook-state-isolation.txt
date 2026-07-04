@@ -1,0 +1,23 @@
+Reviewing the implementation against the plan: inspecting the hook script, tests, and documentation.
+The plan’s one-line hook change and doc/test updates look sound; I’m checking whether the proposed regression fully covers the same-path misfire vector described in the bug report.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-hook-anti-read-poll.sh:262-268	Proposed generic-read session regression interleaves only a different-path beta read; it does not exercise same-path misfire	The plan's Failure modes require proving both suppression reset and inherited-count misfire. With only session-beta reading a different path, beta staying silent is true even under the old cwd-only key (different path resets the shared file). The bug-report misfire vector needs session-alpha to reach count 2 on path X, then session-beta's first read of the same X@offset; under the old key that increments the shared counter to 3 and can fire a spurious reminder while beta has read X only once.	Add to the plan's regression section: after alpha's two reads of the same generic path, beta reads that same path once with assert_silent; then run the different-path interleave and alpha's third read assert_reminder. Optionally assert separate state-${session_hash}-${cwd_hash}.tsv files and counts.
+
+## Findings
+
+### 1. `correctness` — `scripts/test-hook-anti-read-poll.sh:262-268` (plan regression gap)
+
+The hook change is appropriately minimal: `session_hash` is already derived at `scripts/hook-anti-read-poll.sh:39-50` and task-output keying at `scripts/hook-anti-read-poll.sh:309` stays untouched; the plan’s one-line generic key change to `state-${session_hash}-${cwd_hash}.tsv` at `scripts/hook-anti-read-poll.sh:356` correctly scopes generic reads without altering task-output behavior.
+
+The plan’s suppression scenario (alpha reads same path twice, beta reads a different path, alpha’s third matching read fires) matches the bug’s primary token-burn vector and mirrors the structure of the existing task-output isolation test at `scripts/test-hook-anti-read-poll.sh:262-268`.
+
+The misfire half is under-specified. The plan says to verify “session-beta does not inherit session-alpha count,” but the only interleaved beta action described is a **different-path** read. Under the current cwd-only key (`scripts/hook-anti-read-poll.sh:356`, `374-377`), a different-path beta read already resets the shared counter; beta staying silent does not prove misfire prevention. The bug report’s misfire case requires both sessions to read the **same** path: after alpha reaches count 2 on `X@offset0`, beta’s first read of `X@offset0` would bump the shared file to count 3 and can emit a spurious reminder (`scripts/hook-anti-read-poll.sh:389`) even though beta has only polled once.
+
+**Suggested revision:** Extend the planned regression with an explicit same-path step (alpha ×2 on `X`, beta ×1 on `X` with `assert_silent`, then continue with the different-path interleave and alpha’s third read). The plan’s own Failure modes section already flags this risk; the test design should match it.
+
+## Verified (no finding)
+
+- **Session+cwd keying:** Plan correctly adds `session_hash` to the generic state file while leaving task-output thresholds, windows, and `state-taskout-${session_hash}-${cwd_hash}-${task_id}.tsv` unchanged.
+- **Harness path updates:** Plan covers the three harness literals that hardcode `state-$(cwd_hash).tsv` (`scripts/test-hook-anti-read-poll.sh:362`, `387`, `441`) and the `nosession_hash` helper aligned with `session_key="nosession"` at `scripts/hook-anti-read-poll.sh:48`.
+- **Missing-metadata fallback:** Plan doc bullets require documenting the shared chain `session_id` → `conversation_id` → `HOOK_ANTI_READ_POLL_DISCRIMINATOR` → `nosession`, matching `scripts/hook-anti-read-poll.sh:39-49`. That closes the current asymmetry where `scripts/hook-anti-read-poll.md:21` documents cwd-only generic state while `scripts/hook-anti-read-poll.md:24-29` describes session scoping only for task-output.
+- **Scope:** No unnecessary files or logic beyond the one-line key change, harness literal fixes, one regression block, and doc State-section update.
