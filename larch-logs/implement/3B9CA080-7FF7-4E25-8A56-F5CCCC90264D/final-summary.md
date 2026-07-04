@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:58:10
-- **Cost**: 💰 TOTAL ~$30.92 — Claude $1.42, Codex-5.5 $21.70, Codex-mini $1.98, Cursor $4.03, Claude (subprocess) $1.79  |  Tokens: 50558k
+- **Cost**: 💰 TOTAL ~$31.46 — Claude $1.95, Codex-5.5 $21.70, Codex-mini $1.98, Cursor $4.03, Claude (subprocess) $1.80  |  Tokens: 52057k
 - **Issue**: #6264 — https://github.com/character-ai/larch/issues/6264
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -96,3 +96,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_2** (latent): Broad argv substring matching still widens kill scope. Concern: Broad argv substring matching leaves the tmpdir kill scope wider than intended.
 - **Round 2 OOS_3** (nit): Pre-identity TERM harness lacks child-exit assertion. Concern: The pre-identity TERM harness does not assert that the fake child process exits.
 - **Round 2 OOS_4** (latent): Orphan cap is only checked at loop boundaries. Concern: The orphan cap is only checked at loop boundaries, so a long in-flight round can run past 7200 seconds until the next boundary.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
