@@ -458,7 +458,7 @@ check_context "$IMPL_MD" \
     'do not use `ps`, Monitor, TaskOutput, task-output reads, or background recovery waiters'
 check "$IMPL_MD" \
     "SKILL.md NEVER list lazy-loads orchestrator-never only for premature recovery" \
-    'On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` before acting.'
+    'On premature notification while the child is still running, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/orchestrator-never.md` only when that recovery condition is active.'
 check_absent "$IMPL_MD" \
     "SKILL.md NEVER list removes routine orchestrator-never wait pointer" \
     'See `skills/implement/references/step2-dispatch.md` orchestrator wait contract and `skills/shared/orchestrator-never.md`.'
