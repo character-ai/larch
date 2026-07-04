@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"f586ac7db8cc4297f731e09868d600a10c97de14c6195415483fd6a3f9a6cb64","body":"\n- **Step 7a.1 \u2014 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: scripts/design-step3-entry.sh\n"}
