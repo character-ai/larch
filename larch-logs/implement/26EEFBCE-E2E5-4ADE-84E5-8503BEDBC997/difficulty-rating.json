@@ -1,0 +1,22 @@
+{
+  "applied_tier": "TRIVIAL",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "TRIVIAL",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "TRIVIAL",
+  "predicted_tier": "TRIVIAL",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Localized markdown wording changes with targeted structural and report harness coverage.",
+  "round_cap": 2,
+  "schema_version": 1
+}
