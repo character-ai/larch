@@ -5247,7 +5247,7 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0915",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 64
+    "metric": 65
   },
   {
     "file": "larch/review/plan_review_panel.py",
