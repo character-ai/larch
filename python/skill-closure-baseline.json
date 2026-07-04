@@ -1,19 +1,23 @@
 [
   {
-    "closure_content_estimated_tokens": 52930,
-    "closure_estimated_tokens": 53095,
+    "closure_content_estimated_tokens": 52988,
+    "closure_estimated_tokens": 53152,
     "closure_lines": 1846,
-    "conditional_content_estimated_tokens": 12918,
-    "conditional_estimated_tokens": 12974,
+    "conditional_content_estimated_tokens": 17942,
+    "conditional_estimated_tokens": 18016,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
+      "skills/shared/final-summary-emit.md",
+      "skills/design/references/sentinel-host-table.md",
       "skills/design/references/settle-rc-dispatch.md",
+      "skills/design/references/step2b-drafter-failsafe.md",
       "skills/design/references/step2b5-rc-handling.md",
       "skills/design/references/decompose-panel.md",
+      "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 584,
+    "conditional_lines": 793,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
@@ -28,29 +32,33 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25238,
-    "skill_md_estimated_tokens": 25293,
+    "skill_md_content_estimated_tokens": 25296,
+    "skill_md_estimated_tokens": 25350,
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 38474,
-    "closure_estimated_tokens": 38588,
+    "closure_content_estimated_tokens": 38472,
+    "closure_estimated_tokens": 38586,
     "closure_lines": 1224,
-    "conditional_content_estimated_tokens": 19396,
-    "conditional_estimated_tokens": 19440,
+    "conditional_content_estimated_tokens": 25954,
+    "conditional_estimated_tokens": 26012,
     "conditional_files": [
+      "skills/shared/orchestrator-never.md",
+      "skills/implement/references/extracted-script-registry.md",
       "skills/implement/references/bootstrap-recovery.md",
       "skills/implement/references/rebase-checkpoint-routing.md",
-      "skills/implement/references/force-mode.md",
-      "skills/implement/references/execution-issues-tracking.md",
+      "skills/implement/references/checks-repair-loop.md",
       "skills/implement/references/step5-review-branches.md",
+      "skills/implement/references/force-mode.md",
+      "skills/implement/references/phantom-probe.md",
+      "skills/implement/references/execution-issues-tracking.md",
       "skills/implement/references/architectural-guidelines-present.md",
       "skills/implement/references/ship-pr-oos-checkpoint-router.md",
       "skills/implement/references/ship-pr-ci-fix.md",
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 533,
+    "conditional_lines": 728,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -62,8 +70,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 29598,
-    "skill_md_estimated_tokens": 29676,
+    "skill_md_content_estimated_tokens": 29596,
+    "skill_md_estimated_tokens": 29674,
     "skill_md_lines": 801
   },
   {
@@ -97,16 +105,17 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 10056,
-    "closure_estimated_tokens": 10090,
+    "closure_content_estimated_tokens": 10061,
+    "closure_estimated_tokens": 10095,
     "closure_lines": 402,
-    "conditional_content_estimated_tokens": 3384,
-    "conditional_estimated_tokens": 3395,
+    "conditional_content_estimated_tokens": 3498,
+    "conditional_estimated_tokens": 3510,
     "conditional_files": [
+      "skills/shared/run-id-flag.md",
       "skills/review/references/heavy-worker.md",
       "skills/review/references/self-review.md"
     ],
-    "conditional_lines": 145,
+    "conditional_lines": 156,
     "files": [
       "skills/review/SKILL.md",
       "skills/shared/readability-style.md",
@@ -116,8 +125,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 5624,
-    "skill_md_estimated_tokens": 5634,
+    "skill_md_content_estimated_tokens": 5629,
+    "skill_md_estimated_tokens": 5639,
     "skill_md_lines": 124
   }
 ]
