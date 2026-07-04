@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan already lists "Known likely updates" with the exact new forms, so the implementer has the information; MAY_UPDATE-with-condition is adequate, not broken
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the approved design outline explicitly includes _STEP5B_SKIP_BREADCRUMBS lines 69-73; FINDING_2 tries to strip something already approved in the outline
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan's non-goals explicitly say design-outline.md is coordinated with #6294; filing a new issue would be redundant

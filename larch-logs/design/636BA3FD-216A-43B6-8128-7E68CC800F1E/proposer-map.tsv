@@ -1,0 +1,6 @@
+# attributed_ballot_sha256=023bb15e7c91fb87c2448d40e299f03544756f6c913521153e0a37e9faedc94b
+# neutral_ballot_sha256=47aa564f8ab28db0d4538a6d81a4a827158df6625d985ea8ec2c0d08fdc0701e
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Innovation	- **Reviewer(s)**: Cursor-Innovation
+FINDING_2	Cursor-Requirements	- **Reviewer(s)**: Cursor-Requirements
+OOS_1	Cursor-Requirements	- **Reviewer**: Cursor-Requirements

@@ -1,0 +1,27 @@
+# Scrub em-dashes from SKILL.md outline auto-approve breadcrumb and design_step5b.py warning strings
+
+**Problem**
+
+Issue #6294 scrubs em-dashes from three skill markdown files. Two related surfaces also emit em-dashes to operators; they were flagged as out-of-scope during plan review.
+
+**Surface 1: skills/design/SKILL.md:249**
+
+Step 1d.7 in SKILL.md contains a hardcoded `⏩ 1d.7: outline — auto-approved (--skip-approve)` breadcrumb literal, printed before `design-outline.md` runs. Updating `design-outline.md` line 79 alone leaves this path still emitting the em-dash literal.
+
+**Surface 2: python/larch/design/design_step5b.py:168-269**
+
+Step 5b warning and skip breadcrumbs are hardcoded in Python. Updating `finalize-step5.md` print literals without touching `design_step5b.py` leaves runtime warnings still using em-dashes, so the markdown grep passes while operator-visible output is unchanged.
+
+**Fix**
+
+- Replace `— auto-approved` in the SKILL.md:249 breadcrumb with a colon or comma form.
+- Replace em-dashes in the relevant warning strings in `design_step5b.py` with compliant punctuation.
+
+**Scope and risk**
+
+Prose-only changes. Do not touch machine-parsed tokens, sentinels, KEY=value grammars, or code fences. Coordinate with issue #6294 to avoid conflicts.
+
+**Acceptance**
+
+- No em-dash in the `skills/design/SKILL.md:249` breadcrumb literal.
+- No em-dash in operator-visible warning strings in `python/larch/design/design_step5b.py:168-269`.

@@ -1,0 +1,12 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	17540	4385	13357	3340	4183	1046		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	14527	3632	13060	3265	1467	367		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14549	3638	13082	3271	1467	367		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	14536	3634	13069	3268	1467	367		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	17531	4383	13348	3337	4183	1046		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14551	3638	13084	3271	1467	367		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	17553	4389	13370	3343	4183	1046		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	17555	4389	13372	3343	4183	1046		0	0
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	11508	2877	9049	2263	2459	615		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	11508	2877	9049	2263	2459	615		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	11508	2877	9049	2263	2459	615		0	0
