@@ -290,17 +290,21 @@ def _print_detailed(revisions: Iterable[BaselineRevision]) -> None:
 def _summarize(revisions: Iterable[BaselineRevision]) -> tuple[SummaryRow, ...]:
     accumulators: dict[str, _SummaryAccumulator] = {}
     order: list[str] = []
+    final_snapshot_values: dict[str, int] = {}
+    final_commit_sha = ""
     for revision in revisions:
         snapshot_values = {value.target: value.closure_estimated_tokens for value in revision.snapshot.values}
+        final_snapshot_values = snapshot_values
+        final_commit_sha = revision.commit.sha
         reappearing_targets = {
             delta.target
             for delta in revision.deltas
             if delta.previous is None and delta.target in accumulators
         }
         for target, accumulator in accumulators.items():
-            if target in reappearing_targets:
+            if target in reappearing_targets or target not in snapshot_values:
                 continue
-            accumulator.advance(commit=revision.commit.sha, current=snapshot_values.get(target, 0))
+            accumulator.advance(commit=revision.commit.sha, current=snapshot_values[target])
         for delta in revision.deltas:
             if delta.previous is None:
                 if delta.target in reappearing_targets:
@@ -312,6 +316,10 @@ def _summarize(revisions: Iterable[BaselineRevision]) -> tuple[SummaryRow, ...]:
             if delta.target not in accumulators:
                 order.append(delta.target)
                 accumulators[delta.target] = _new_summary_accumulator(target_delta=delta)
+    if final_commit_sha == "":
+        return ()
+    for target in accumulators.keys() - final_snapshot_values.keys():
+        accumulators[target].advance(commit=final_commit_sha, current=0)
     return tuple(
         SummaryRow(
             target=target,

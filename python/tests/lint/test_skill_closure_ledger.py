@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
+from unittest.mock import patch
 from typing import TYPE_CHECKING
 
 from larch.lint import skill_closure_ledger as ledger
@@ -326,6 +327,53 @@ def test_since_tag_summary_aggregates_after_tag(
         "largest_raise_commit": commits["pr6029"],
         "largest_raise_delta": "2763",
     }
+
+
+def test_summarize_skips_absent_and_drives_removed_to_zero() -> None:
+    commits = (
+        ledger.git.PathCommit("c1", "Initial baseline"),
+        ledger.git.PathCommit("c2", "Raise target"),
+        ledger.git.PathCommit("c3", "Temporary gap"),
+        ledger.git.PathCommit("c4", "Restore target"),
+        ledger.git.PathCommit("c5", "Lower target"),
+        ledger.git.PathCommit("c6", "Remove target"),
+    )
+    snapshots = {
+        "c1": ledger.BaselineSnapshot((ledger.TargetValue("target", 100),)),
+        "c2": ledger.BaselineSnapshot((ledger.TargetValue("target", 120),)),
+        "c3": ledger.BaselineSnapshot(()),
+        "c4": ledger.BaselineSnapshot((ledger.TargetValue("target", 130),)),
+        "c5": ledger.BaselineSnapshot((ledger.TargetValue("target", 90),)),
+        "c6": ledger.BaselineSnapshot(()),
+    }
+    revisions = ledger._build_revisions(commits, snapshots)  # type: ignore[reportPrivateUsage]
+    advance_calls: list[tuple[str, int]] = []
+    original_advance = ledger._SummaryAccumulator.advance  # type: ignore[reportPrivateUsage]
+
+    def tracking_advance(
+        self: ledger._SummaryAccumulator,  # type: ignore[reportPrivateUsage]
+        *,
+        commit: str,
+        current: int,
+    ) -> None:
+        advance_calls.append((commit, current))
+        original_advance(self, commit=commit, current=current)
+
+    with patch.object(ledger._SummaryAccumulator, "advance", tracking_advance):  # type: ignore[reportPrivateUsage]
+        rows = ledger._summarize(revisions)  # type: ignore[reportPrivateUsage]
+
+    assert ("c3", 0) not in advance_calls
+    assert rows == (
+        ledger.SummaryRow(
+            target="target",
+            start=130,
+            end=0,
+            delta=-130,
+            raises=0,
+            largest_raise_commit="",
+            largest_raise_delta=None,
+        ),
+    )
 
 
 def test_since_tag_summary_reflects_removed_target_in_final_snapshot(
