@@ -10,6 +10,7 @@ import shutil
 import subprocess
 import sys
 import threading
+import time
 from pathlib import Path
 from unittest import mock
 
@@ -71,6 +72,7 @@ fi
 if [ "${2:-}" = "review-and-fix" ] && [ "${3:-}" = "step5" ]; then
   : "${CAPTURE_ARGV_FILE:?CAPTURE_ARGV_FILE required}"
   printf '%s\n' "$@" >"$CAPTURE_ARGV_FILE"
+  printf '%s\n' 'STEP5_REVIEW_STATUS=complete' 'STALL_TRACKING=false' 'STALL_REASON=' 'ROUNDS_COMPLETED=1' 'FINAL_ROUND_NUM=1' 'FINAL_REVIEW_AND_FIX_STATUS=complete' 'CODER_STATUS=' 'FILES_CHANGED_HINT=' 'EFFECTIVE_ROUND_CAP=2'
   exit 0
 fi
 exec "$REAL_PYTHON3" "$@"
@@ -459,6 +461,50 @@ def test_step5_shell_exports_validated_dynamic_cap_before_python_call() -> None:
 
 
 @MARK_STEP5
+def test_step5_new_process_group_invokes_setsid(monkeypatch, tmp_path):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    called = []
+    monkeypatch.setattr(review_and_fix.os, "setsid", lambda: called.append("setsid"))
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--new-process-group", "--orphan-timeout-s", "0"])
+    assert called == ["setsid"]
+    assert rc == 2
+
+
+@MARK_STEP5
+def test_step5_invalid_orphan_timeout_fails_closed(tmp_path, capsys):
+    impl = _tmp_impl(tmp_path)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--orphan-timeout-s", "0"])
+    assert rc == 2
+    assert "--orphan-timeout-s must be positive" in capsys.readouterr().err
+
+
+@MARK_STEP5
+def test_step5_orphan_timeout_emits_stall(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    marker = impl / ".step5-wrapper-detached"
+    marker.write_text("PID=123\nSTDOUT_FILE=/tmp/out\n", encoding="utf-8")
+    old = time.time() - 10
+    os.utime(marker, (old, old))
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--orphan-timeout-s", "1"])
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "STEP5_REVIEW_STATUS=stall" in out
+    assert "STALL_REASON=orphan-timeout" in out
+
+
+@MARK_STEP5
+def test_step5_normalize_status_replays_envelope(tmp_path, capsys):
+    impl = _tmp_impl(tmp_path)
+    stdout_file = tmp_path / "stdout.txt"
+    stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
+
+
+@MARK_STEP5
 @pytest.mark.parametrize(
     ("wrapper_name", "wrapper_args", "expected_starting_round", "include_run_flags"),
     [
@@ -489,6 +535,9 @@ def test_step5_shell_wrappers_forward_difficulty_override(
     assert _arg_value(argv, "--implement-tmpdir") == str(impl)
     assert _arg_value(argv, "--mode") == "loop"
     assert _arg_value(argv, "--starting-round") == expected_starting_round
+    if wrapper_name == "step-5-review.sh":
+        assert "--new-process-group" in argv
+        assert _arg_value(argv, "--orphan-timeout-s") == "7200"
     if include_run_flags:
         assert _arg_value(argv, "--difficulty") == "HARD"
     else:

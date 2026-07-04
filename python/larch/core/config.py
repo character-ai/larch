@@ -162,6 +162,12 @@ ACTIVE_LEG_LEGACY_PGID_FILE: Final = ".active-leg-pgid"
 ENV_ACTIVE_LEG_OWNER_TOKEN: Final = "LARCH_ACTIVE_LEG_OWNER_TOKEN"
 DESIGN_STEP3_LOOP_IDENTITY_FILE: Final = ".step3-loop-identity.json"
 DESIGN_STEP3_WRAPPER_DETACHED_FILE: Final = ".step3-wrapper-detached"
+DESIGN_STEP3_REATTACH_ACTIVE_FILE: Final = ".step3-reattach-active"
+IMPLEMENT_STEP5_LOOP_IDENTITY_FILE: Final = ".step5-loop-identity.json"
+IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE: Final = ".step5-wrapper-detached"
+IMPLEMENT_STEP5_REATTACH_ACTIVE_FILE: Final = ".step5-reattach-active"
+IMPLEMENT_STEP5_KILL_LOG_FILE: Final = "implement-step5-kill.log.jsonl"
+DETACHED_REVIEW_ORPHAN_TIMEOUT_DEFAULT_S: Final = 7200
 STEP3_ESCALATION_FAILURE_STATUSES: Final[tuple[str, ...]] = (
     "panel-failed",
     "panel-init-failed",

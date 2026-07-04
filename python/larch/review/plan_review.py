@@ -24,6 +24,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from larch.core import logging_util
+from larch.core import config
 from larch.design.design_lifecycle import (
     json_get_bool_main as design_json_get_bool_main,
     phase_driver_read_result_env,
@@ -326,6 +327,47 @@ def _apply_new_process_group(parser: argparse.ArgumentParser) -> None:
         parser.exit(2, f"cli.py plan-review run: --new-process-group failed: {exc}\n")
 
 
+def _parse_orphan_timeout(parser: argparse.ArgumentParser, value: str) -> float | None:
+    if not value:
+        return None
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError):
+        parser.exit(2, "cli.py plan-review run: --orphan-timeout-s must be positive\n")
+    if parsed <= 0:
+        parser.exit(2, "cli.py plan-review run: --orphan-timeout-s must be positive\n")
+    return parsed
+
+
+def _step3_orphan_timeout_elapsed(*, tmpdir: Path, timeout_s: float | None) -> bool:
+    if timeout_s is None:
+        return False
+    if (tmpdir / config.DESIGN_STEP3_REATTACH_ACTIVE_FILE).is_file():
+        return False
+    marker = tmpdir / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
+    if marker.is_symlink() or not marker.is_file():
+        return False
+    try:
+        age_s = time.time() - marker.stat().st_mtime
+    except OSError:
+        return False
+    return age_s >= timeout_s
+
+
+def _emit_step3_orphan_timeout(*, tmpdir: Path, round_num: int) -> int:
+    values = {"REASON": "orphan-timeout", "LOOP_STATUS": "panel-failed", "TALLY_PLAN_REVIEW_STATUS": "panel-failed"}
+    step3_wrapper_write_completed_step3_only(tmpdir)
+    step3_loop_emit_envelope(
+        tmpdir=tmpdir,
+        status="panel-failed",
+        round_num=round_num,
+        rounds_completed=max(0, round_num - 1),
+        final_round=round_num,
+        values=values,
+    )
+    return 0
+
+
 def run_step3_review(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review run")
     parser.add_argument("--design-tmpdir", required=True)  # pyright: ignore[reportUnusedCallResult]
@@ -334,8 +376,10 @@ def run_step3_review(argv: Sequence[str]) -> int:
     parser.add_argument("--read-result-env", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--no-preview", action="store_true")  # pyright: ignore[reportUnusedCallResult]
     parser.add_argument("--new-process-group", action="store_true")  # pyright: ignore[reportUnusedCallResult]
+    parser.add_argument("--orphan-timeout-s", default="")  # pyright: ignore[reportUnusedCallResult]
     ns, _extra = parser.parse_known_args(list(argv))
     tmpdir = _require_tmpdir(parser=parser, design_tmpdir=ns.design_tmpdir)
+    orphan_timeout_s = _parse_orphan_timeout(parser, ns.orphan_timeout_s)
     if ns.read_result_env:
         result = tmpdir / ".step3-review-result.env"
         for key, value in phase_driver_read_result_env(path=result, allow_keys=[
@@ -361,6 +405,8 @@ def run_step3_review(argv: Sequence[str]) -> int:
     degraded_values: dict[str, str] = {}
 
     while True:
+        if _step3_orphan_timeout_elapsed(tmpdir=tmpdir, timeout_s=orphan_timeout_s):
+            return _emit_step3_orphan_timeout(tmpdir=tmpdir, round_num=round_num)
         phase = _read_phase(tmpdir=tmpdir, round_num=round_num)
         if not phase:
             review_count = _read_count(tmpdir)

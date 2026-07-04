@@ -188,6 +188,23 @@ for name in wrappers:
 
 # Existing wrappers that gained behavior.
 require('skills/implement/scripts/step-5-review.sh', 'review-and-fix step5', 'step-5-review calls review-and-fix step5')
+for needle, label in [
+    ('review-and-fix write-loop-identity', 'step-5-review writes loop identity sidecar'),
+    ('review-and-fix await-loop-identity', 'step-5-review awaits detached loop identity'),
+    ('review-and-fix normalize-status', 'step-5-review normalizes captured stdout'),
+    ('review-and-fix teardown-loop-identity', 'step-5-review delegates teardown to identity helper'),
+    ("trap '_step5_signal_exit TERM 143' TERM", 'step-5-review traps TERM'),
+    ("trap '_step5_signal_exit HUP 129' HUP", 'step-5-review traps HUP'),
+    ("trap '_step5_signal_exit INT 130' INT", 'step-5-review traps INT'),
+]:
+    require('skills/implement/scripts/step-5-review.sh', needle, label)
+step5_text = Path('skills/implement/scripts/step-5-review.sh').read_text()
+cleanup_start = step5_text.find('_step5_cleanup()')
+cleanup_end = step5_text.find('}', cleanup_start) if cleanup_start >= 0 else -1
+if cleanup_start < 0 or cleanup_end < 0:
+    checks.append('step-5-review cleanup function missing')
+elif '.completed/step-5-terminal' in step5_text[cleanup_start:cleanup_end]:
+    checks.append('step-5-review must not write terminal sentinel from bare EXIT cleanup')
 retired_step5_entry_sh = 'skills/implement/scripts/' + 'step-5-entry.sh'
 retired_step5_entry_md = 'step-5-' + 'entry.md'
 forbid(skill, retired_step5_entry_sh, 'retired step-5-entry.sh call removed from SKILL')

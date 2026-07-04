@@ -874,55 +874,74 @@ def _kill_background_processes_error(message: str) -> int:
     return 2
 
 
-def _parse_kill_background_processes_argv(argv: list[str]) -> tuple[int, str]:
+def _parse_kill_background_processes_argv(argv: list[str]) -> tuple[int, str, str]:
     design_tmpdir = ""
+    implement_tmpdir = ""
     idx = 0
     while idx < len(argv):
         arg = argv[idx]
         if arg == "--design-tmpdir":
             if idx + 1 >= len(argv):
-                return 2, "--design-tmpdir requires a value"
+                return 2, "", "--design-tmpdir requires a value"
             design_tmpdir = argv[idx + 1]
             idx += 2
+        elif arg == "--implement-tmpdir":
+            if idx + 1 >= len(argv):
+                return 2, "", "--implement-tmpdir requires a value"
+            implement_tmpdir = argv[idx + 1]
+            idx += 2
         elif arg in {"-h", "--help"}:
-            print("Usage: session kill-background-processes --design-tmpdir PATH")
-            return 0, ""
+            print("Usage: session kill-background-processes (--design-tmpdir PATH | --implement-tmpdir PATH)")
+            return 0, "", ""
         else:
-            return 2, f"unknown argument: {arg}"
-    return 1, design_tmpdir
+            return 2, "", f"unknown argument: {arg}"
+    if design_tmpdir and implement_tmpdir:
+        return 2, "", "pass only one of --design-tmpdir or --implement-tmpdir"
+    if implement_tmpdir:
+        return 1, "implement", implement_tmpdir
+    return 1, "design", design_tmpdir
 
 
-def kill_background_processes_main(argv: list[str]) -> int:
-    parse_status, design_tmpdir = _parse_kill_background_processes_argv(argv)
-    if parse_status == 0:
-        return 0
-    if parse_status == KILL_BACKGROUND_PARSE_ERROR_STATUS:
-        return _kill_background_processes_error(design_tmpdir)
-    if not design_tmpdir:
-        return _kill_background_processes_error("--design-tmpdir is required")
-    path = Path(design_tmpdir)
+def _validate_kill_tmpdir_path(*, raw: str, kind: str) -> tuple[Path | None, str]:
+    label = f"{kind}-tmpdir"
+    if not raw:
+        return None, f"--{label} is required"
+    path = Path(raw)
     if not path.is_absolute():
-        return _kill_background_processes_error("--design-tmpdir must be an absolute path")
+        return None, f"--{label} must be an absolute path"
     if ".." in path.parts:
-        return _kill_background_processes_error("--design-tmpdir must not contain '..' segments")
-    ok, message = session_env.validate_design_tmpdir(design_tmpdir)
+        return None, f"--{label} must not contain '..' segments"
+    ok, message = session_env.validate_design_tmpdir(raw)
     if not ok:
-        return _kill_background_processes_error(message)
+        return None, message.replace("design-tmpdir", label)
     if path.is_symlink():
-        return _kill_background_processes_error("design-tmpdir must not be a symlink")
+        return None, f"{label} must not be a symlink"
     if not path.is_dir():
-        return _kill_background_processes_error("design-tmpdir must be a directory")
+        return None, f"{label} must be a directory"
     try:
         resolved = path.resolve(strict=False)
     except OSError:
-        return _kill_background_processes_error("design-tmpdir resolution failed")
+        return None, f"{label} resolution failed"
     if not resolved.exists() or not resolved.is_dir():
-        return _kill_background_processes_error("design-tmpdir must exist and be a directory")
-    if not resolved.name.startswith("claude-design-"):
-        return _kill_background_processes_error("design-tmpdir basename must start with claude-design-")
-    marker = resolved / "source-env.sh"
-    if marker.is_symlink() or not marker.is_file():
-        return _kill_background_processes_error("design-tmpdir missing regular source-env.sh marker")
+        return None, f"{label} must exist and be a directory"
+    return resolved, ""
+
+
+def kill_background_processes_main(argv: list[str]) -> int:
+    parse_status, kind, value = _parse_kill_background_processes_argv(argv)
+    if parse_status == 0:
+        return 0
+    if parse_status == KILL_BACKGROUND_PARSE_ERROR_STATUS:
+        return _kill_background_processes_error(value)
+    resolved, error = _validate_kill_tmpdir_path(raw=value, kind=kind)
+    if resolved is None:
+        return _kill_background_processes_error(error)
+    if kind == "design":
+        if not resolved.name.startswith("claude-design-"):
+            return _kill_background_processes_error("design-tmpdir basename must start with claude-design-")
+        marker = resolved / "source-env.sh"
+        if marker.is_symlink() or not marker.is_file():
+            return _kill_background_processes_error("design-tmpdir missing regular source-env.sh marker")
     env = dict(os.environ)
     env["IMPLEMENT_TMPDIR"] = str(resolved)
     ctx = RunContext.from_env(env=env)

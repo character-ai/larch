@@ -531,3 +531,51 @@ def test_teardown_loop_identity_main_clears_sidecar_after_validated_cleanup(tmp_
     assert rc == 0
     assert recorded_calls == [123]
     assert not sidecar.exists()
+
+
+def test_step5_write_loop_identity_uses_implement_sidecar(monkeypatch, tmp_path: Path) -> None:
+    recorded = process_identity.RecordedProcessIdentity(
+        123,
+        123,
+        "Fri Jul 3 17:01:02 2026",
+        "/usr/bin/python3 /repo/python/cli.py review-and-fix step5",
+        "review-and-fix step5",
+    )
+    monkeypatch.setattr(process_identity, "_read_stable_process_identity", lambda **_kwargs: recorded)
+
+    rc = process_identity.write_step5_loop_identity_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--pid", "123",
+        "--expected-signature", "review-and-fix step5",
+    ])
+
+    assert rc == 0
+    assert (tmp_path / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE).is_file()
+    assert not (tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE).exists()
+
+
+def test_step5_await_requires_detached_marker(tmp_path: Path) -> None:
+    recorded = process_identity.RecordedProcessIdentity(123, 123, "start", "review-and-fix step5", "review-and-fix step5")
+    process_identity.write_identity_record(path=tmp_path / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE, recorded=recorded)
+
+    rc = process_identity.await_step5_loop_identity_main(["--implement-tmpdir", str(tmp_path), "--pid", "123", "--timeout-s", "1"])
+
+    assert rc == 1
+
+
+def test_step5_teardown_uses_implement_kill_log(monkeypatch, tmp_path: Path) -> None:
+    recorded = process_identity.RecordedProcessIdentity(123, 123, "start", "review-and-fix step5", "review-and-fix step5")
+    process_identity.write_identity_record(path=tmp_path / config.IMPLEMENT_STEP5_LOOP_IDENTITY_FILE, recorded=recorded)
+    seen: dict[str, Path] = {}
+
+    def fake_terminate(**kwargs: object) -> process_identity.ValidationResult:
+        seen["log_path"] = kwargs["log_path"]  # type: ignore[assignment]
+        return process_identity.ValidationResult(ok=True, reason="ok")
+
+    monkeypatch.setattr(process_identity, "terminate_validated_process_group", fake_terminate)
+
+    rc = process_identity.teardown_step5_loop_identity_main(["--implement-tmpdir", str(tmp_path), "--pid", "123"])
+
+    assert rc == 0
+    assert seen["log_path"] == tmp_path / config.IMPLEMENT_STEP5_KILL_LOG_FILE
+    assert not (tmp_path / config.DESIGN_STEP3_KILL_LOG_FILE).exists()
