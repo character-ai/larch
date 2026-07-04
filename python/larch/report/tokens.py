@@ -420,7 +420,7 @@ def _locked_tsv_append(path: Path, write_fn: Any) -> None:
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
                         print(
-                            f"panel prompt size: WARNING: flock lock acquisition failed; skipping append for {path}",
+                            f"locked tsv append: WARNING: flock lock acquisition failed; skipping append for {path}",
                             file=sys.stderr,
                         )
                         return
