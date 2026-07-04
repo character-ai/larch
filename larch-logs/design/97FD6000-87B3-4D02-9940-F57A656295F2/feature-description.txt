@@ -1,0 +1,14 @@
+# [OOS] Specialist payload accounting omits inlined competition notice
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Innovation
+**Phase**: design
+**Vote tally**:
+
+## Description
+
+Specialist payload accounting omits inlined competition notice. Scenario: `render specialist` inlines `competition_notice_file` content when `--competition-notice` is set, but the plan’s payload helpers only name description/plan/feature text. Implement review rounds with competition notices will show inflated scaffold in `measure-panel-cost` rankings.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
