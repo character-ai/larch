@@ -88,6 +88,87 @@ def _session(tmp_path: Path) -> Path:
     return tmp
 
 
+def _clear_rater_model_env(monkeypatch: pytest.MonkeyPatch) -> None:
+    for key in (
+        config.ENV_LARCH_CODEX_MODEL,
+        config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL,
+        config.ENV_LARCH_CURSOR_MODEL,
+        config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL,
+    ):
+        monkeypatch.delenv(key, raising=False)
+
+
+def test_resolve_implement_rater_model_prefers_codex_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "codex-env-model")
+    with (tmp / "session-env.sh").open("a", encoding="utf-8") as handle:
+        handle.write("LARCH_CODEX_MODEL=codex-session-model\n")
+
+    model = dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh")
+
+    assert model == "codex-env-model"
+
+
+def test_resolve_implement_rater_model_uses_cursor_plugin_option_from_session(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    with (tmp / "session-env.sh").open("a", encoding="utf-8") as handle:
+        handle.write("CLAUDE_PLUGIN_OPTION_CURSOR_MODEL=cursor-plugin-model\n")
+
+    model = dispatch_step2._resolve_implement_rater_model(tool="cursor", session_env=tmp / "session-env.sh")
+
+    assert model == "cursor-plugin-model"
+
+
+def test_resolve_implement_rater_model_uses_default_and_rejects_control_chars(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+
+    assert dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh") == config.CODEX_DEFAULT_MODEL
+
+    monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "bad\x1fmodel")
+    assert dispatch_step2._resolve_implement_rater_model(tool="codex", session_env=tmp / "session-env.sh") == "unknown"
+
+
+def test_write_step2_difficulty_record_passes_resolved_rater_model(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    _clear_rater_model_env(monkeypatch)
+    monkeypatch.setenv(config.ENV_LARCH_CODEX_MODEL, "codex-env-model")
+    calls: list[list[str]] = []
+
+    def fake_invoke_cli(args: Sequence[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+        _ = cwd
+        argv = list(args)
+        calls.append(argv)
+        if argv[:2] == ["difficulty", "write-record"]:
+            output = Path(argv[argv.index("--output") + 1])
+            output.write_text("{}\n", encoding="utf-8")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(dispatch_step2, "_invoke_cli", fake_invoke_cli)
+    st = SimpleNamespace(tmpdir=tmp, repo_root=repo, tool_tag="codex")
+
+    dispatch_step2._write_step2_difficulty_record(
+        st=cast("dispatch_step2.DispatchState", st),
+        manifest={"difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"}},
+        changed_paths={"README.md"},
+    )
+
+    write_call = next(call for call in calls if call[:2] == ["difficulty", "write-record"])
+    assert write_call[write_call.index("--rater-model") + 1] == "codex-env-model"
+
+
 def _mock_disposition_checkpoint_only(monkeypatch: pytest.MonkeyPatch, *, stdout: str = "", rc: int = 0) -> None:
     original = subprocess.run
 

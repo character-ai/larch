@@ -60,6 +60,9 @@ from larch.implement.dispatch_manifest import (
     _write_prelaunch_baseline,
 )
 
+_ASCII_CONTROL_MAX = 31
+_ASCII_DELETE = 127
+
 
 def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
     logging_util.quiet_init(argv0="cli.py")
@@ -301,6 +304,42 @@ def _step2_panel_skipped(tmpdir: Path) -> str:
     return "self-review" if requested == "true" else ""
 
 
+def _model_value_safe(value: str) -> str:
+    text = value.strip()
+    if not text or any(ord(char) <= _ASCII_CONTROL_MAX or ord(char) == _ASCII_DELETE for char in text):
+        return "unknown"
+    return text
+
+
+def _first_model_value(*, session_env: Path, keys: tuple[str, ...], default: str) -> str:
+    for key in keys:
+        if key in os.environ and os.environ[key].strip():
+            return os.environ[key]
+    for key in keys:
+        value = _session_get(file=session_env, key=key, default="").strip()
+        if value:
+            return value
+    return default
+
+
+def _resolve_implement_rater_model(*, tool: str, session_env: Path) -> str:
+    if tool == "cursor":
+        value = _first_model_value(
+            session_env=session_env,
+            keys=(config.ENV_LARCH_CURSOR_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CURSOR_MODEL),
+            default=config.CURSOR_DEFAULT_MODEL,
+        )
+    elif tool == "codex":
+        value = _first_model_value(
+            session_env=session_env,
+            keys=(config.ENV_LARCH_CODEX_MODEL, config.ENV_CLAUDE_PLUGIN_OPTION_CODEX_MODEL),
+            default=config.CODEX_DEFAULT_MODEL,
+        )
+    else:
+        value = "unknown"
+    return _model_value_safe(value)
+
+
 def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, object], changed_paths: set[str] | None) -> None:
     rating = manifest.get("difficulty")
     if not isinstance(rating, dict):
@@ -321,7 +360,7 @@ def _write_step2_difficulty_record(*, st: DispatchState, manifest: dict[str, obj
         "--rater-tool",
         st.tool_tag,
         "--rater-model",
-        "unknown",
+        _resolve_implement_rater_model(tool=st.tool_tag, session_env=st.tmpdir / "session-env.sh"),
         "--raw-rating-file",
         str(raw),
         "--implement-raw-rating-file",

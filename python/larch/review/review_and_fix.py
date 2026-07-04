@@ -487,6 +487,11 @@ def _record_escalation_if_needed(*, implement_tmpdir: Path, review_status: str, 
         _emit_kv(key="STEP5_REVIEW_LEDGER_FAILURE_DETAIL_LOG", value=str(stderr_path))
 
 
+def _record_handoff_escalation_and_restage(*, implement_tmpdir: Path, review_status: str, review_rc: int, stderr_path: Path, run_id: str) -> None:
+    _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=review_status, review_rc=review_rc, stderr_path=stderr_path)
+    _restage_difficulty_batch_fail_open(implement_tmpdir=implement_tmpdir, run_id=run_id)
+
+
 def _record_step5_round_timing(
     *,
     implement_tmpdir: Path,
@@ -546,6 +551,58 @@ def _flush_review_batches_for_result(*, implement_tmpdir: Path, run_id: str, rou
                 category="Warnings",
                 entry=entry,
             )
+    _restage_difficulty_batch_fail_open(implement_tmpdir=implement_tmpdir, run_id=run_id)
+
+
+def _append_difficulty_restage_warning(*, implement_tmpdir: Path, reason: str) -> None:
+    _err(f"⚠ review-and-fix: difficulty-rating batch restage failed: {reason}")
+    entry = (
+        "\n## Larch-log batch — `difficulty-rating` restage failed\n\n"
+        f"Step 5 could not restage the resolved difficulty-rating run-log batch: `{reason}`\n"
+    )
+    with contextlib.suppress(OSError):
+        run_logs.append_execution_issue(
+            log_file=implement_tmpdir / "execution-issues.md",
+            category="Warnings",
+            entry=entry,
+        )
+
+
+def _restage_difficulty_batch_fail_open(*, implement_tmpdir: Path, run_id: str) -> None:
+    try:
+        _restage_difficulty_batch(implement_tmpdir=implement_tmpdir, run_id=run_id)
+    except Exception as exc:  # observability only: do not change terminal Step 5 status
+        _append_difficulty_restage_warning(implement_tmpdir=implement_tmpdir, reason=str(exc))
+
+
+def _restage_difficulty_batch(*, implement_tmpdir: Path, run_id: str) -> None:
+    clean_run_id = run_id.strip()
+    if not clean_run_id:
+        return
+    record = implement_tmpdir / difficulty.DIFFICULTY_RECORD_BASENAME
+    if record.is_symlink() or not record.is_file():
+        return
+    result = _run([
+        sys.executable,
+        str(_plugin_root() / "python" / "cli.py"),
+        "run-log",
+        "write",
+        "--log-root",
+        str(implement_tmpdir / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        clean_run_id,
+        "--batch",
+        "difficulty-rating",
+        "--input-file",
+        str(record),
+    ])
+    if result.returncode == 0:
+        return
+    detail = (result.stderr or result.stdout or "").strip()
+    reason = f"helper-exit-{result.returncode}" + (f": {detail}" if detail else "")
+    _append_difficulty_restage_warning(implement_tmpdir=implement_tmpdir, reason=reason)
 
 
 def _finish_step5_terminal_success(*,
@@ -671,7 +728,7 @@ def step5(argv: list[str] | None = None) -> int:
             if result.status in {"main-agent-vote-required", "coder-main-agent-required"}:
                 _persist_round_start(implement_tmpdir=implement_tmpdir, round_num=round_num, start_s=start_s)
                 _emit_step5_envelope(status=result.status, stall_tracking=False, stall_reason="", rounds_completed=rounds_completed, final_round=round_num, final_irf=result.status, coder_status=result.coder.status, files_hint=result.coder.commit_sha, effective_cap=round_cap)
-                _record_escalation_if_needed(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path)
+                _record_handoff_escalation_and_restage(implement_tmpdir=implement_tmpdir, review_status=result.status, review_rc=0, stderr_path=stderr_path, run_id=args.run_id)
                 return 0
             if result.status == "self-review-required":
                 _record_step5_round_timing_before_gates(

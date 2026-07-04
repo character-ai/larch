@@ -111,6 +111,12 @@ class RunRecord:
         return _truthy(self.rating.get("audit_evaluated")) or _truthy(self.rating.get("audit_upgrade"))
 
     @property
+    def audit_upgraded(self) -> bool:
+        if self.rating is None:
+            return False
+        return _truthy(self.rating.get("audit_upgrade"))
+
+    @property
     def pre_audit_tier(self) -> str | None:
         if self.rating is None:
             return None
@@ -843,12 +849,12 @@ def _mean(values: Sequence[int]) -> float | None:
 
 def _render_audit_deltas(records: Sequence[RunRecord]) -> list[str]:
     lines = ["## Audit-run Deltas", "", "| Skill | Run | Month | Pre-audit tier | Peer count | Token delta | Latency delta seconds |", "|---|---|---|---|---:|---:|---:|"]
-    audited = [record for record in records if record.audited]
-    if not audited:
+    upgraded = [record for record in records if record.audit_upgraded]
+    if not upgraded:
         lines.append("| n/a | n/a | n/a | n/a | 0 | n/a | n/a |")
         lines.append("")
         return lines
-    for record in sorted(audited, key=lambda item: (item.skill, item.run_id)):
+    for record in sorted(upgraded, key=lambda item: (item.skill, item.run_id)):
         month = record.started_month
         pre_tier = record.pre_audit_tier
         if month is None or pre_tier is None:
@@ -857,7 +863,7 @@ def _render_audit_deltas(records: Sequence[RunRecord]) -> list[str]:
         peers = [
             peer
             for peer in records
-            if not peer.audited and peer.skill == record.skill and peer.started_month == month and peer.pre_audit_tier == pre_tier
+            if not peer.audit_upgraded and peer.skill == record.skill and peer.started_month == month and peer.pre_audit_tier == pre_tier
         ]
         if not peers:
             lines.append(f"| {record.skill} | {record.run_id} | {month} | {pre_tier} | 0 | n/a | n/a |")

@@ -1025,6 +1025,84 @@ def test_step5_main_agent_vote_emits_ledger_kvs(tmp_path, monkeypatch, capsys):
 
 
 @MARK_STEP5
+@pytest.mark.parametrize("handoff_status", ["main-agent-vote-required", "coder-main-agent-required"])
+def test_step5_handoff_restages_difficulty_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    handoff_status: str,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    record = impl / "difficulty-rating.json"
+    record.write_text(json.dumps({"audit_evaluated": True}), encoding="utf-8")
+    events: list[str] = []
+    run_log_calls: list[list[str]] = []
+
+    def fake_round(args, *, suppress_emit, review_core_impl=None):
+        del args, suppress_emit, review_core_impl
+        return review_and_fix.RoundResult(
+            0,
+            handoff_status,
+            handoff_status,
+            1,
+            1,
+            0,
+            0,
+            0,
+            1,
+            0,
+            0,
+            0,
+            impl / "round-1" / "accepted-findings.md",
+            impl / "round-1" / "rejected-findings.md",
+            impl / "round-1",
+            impl / "review-and-fix-summary.json",
+            impl / "accumulated-oos.jsonl",
+            review_and_fix.CoderResult(4 if handoff_status == "coder-main-agent-required" else 0, status="main-agent-required"),
+        )
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if "stall-recovery" in argv and "record-escalation" in argv:
+            events.append("record-escalation")
+        if "run-log" in argv and "write" in argv and "--batch" in argv and argv[argv.index("--batch") + 1] == "difficulty-rating":
+            events.append("restage")
+            run_log_calls.append(argv)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run_round", fake_round)
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir",
+        str(impl),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        "--round-cap",
+        "1",
+        "--run-id",
+        "run-1",
+        "--codex-available",
+        "false",
+        "--cursor-available",
+        "false",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert f"STEP5_REVIEW_STATUS={handoff_status}" in out
+    expected_events = ["record-escalation", "restage"] if handoff_status == "coder-main-agent-required" else ["restage"]
+    assert events == expected_events
+    assert len(run_log_calls) == 1
+    call = run_log_calls[0]
+    assert call[call.index("--run-id") + 1] == "run-1"
+    assert call[call.index("--input-file") + 1] == str(record)
+
+
+@MARK_STEP5
 def test_step5_handoff_returns_zero_when_core_rc_nonzero(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
@@ -2559,6 +2637,118 @@ def test_step5_terminal_flushes_review_batches_with_counts(
     assert call["_rejected"] == 6
     assert call["exonerated"] == 7
     assert call["_neutral"] == 8
+
+
+@MARK_STEP5
+@pytest.mark.parametrize(
+    ("round_status", "gate_status", "expected_status"),
+    [
+        ("complete", "", "complete"),
+        ("fix-applied", "cap-hit", "cap-hit"),
+    ],
+)
+def test_step5_terminal_restages_resolved_difficulty_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    round_status: str,
+    gate_status: str,
+    expected_status: str,
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    record = impl / "difficulty-rating.json"
+    record.write_text(json.dumps({"audit_evaluated": True, "audit_upgrade": False}), encoding="utf-8")
+    stale = impl / "larch-logs" / "implement" / "run-1" / "difficulty-rating.json"
+    stale.parent.mkdir(parents=True, exist_ok=True)
+    stale.write_text(json.dumps({"audit_evaluated": None}), encoding="utf-8")
+    run_log_calls: list[list[str]] = []
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if "run-log" in argv and "write" in argv and "--batch" in argv and argv[argv.index("--batch") + 1] == "difficulty-rating":
+            run_log_calls.append(argv)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status=round_status))
+    if gate_status:
+        monkeypatch.setattr(review_and_fix, "_step5_post_round_gates", lambda **_kw: (gate_status, "", False))
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda **_kwargs: True)
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir",
+        str(impl),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        "--round-cap",
+        "1",
+        "--run-id",
+        "run-1",
+        "--codex-available",
+        "false",
+        "--cursor-available",
+        "false",
+    ])
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert f"STEP5_REVIEW_STATUS={expected_status}" in out
+    assert len(run_log_calls) == 1
+    call = run_log_calls[0]
+    assert call[call.index("--log-root") + 1] == str(impl / "larch-logs")
+    assert call[call.index("--run-id") + 1] == "run-1"
+    assert call[call.index("--input-file") + 1] == str(record)
+    assert call[call.index("--input-file") + 1] != str(stale)
+
+
+@MARK_STEP5
+def test_step5_difficulty_restage_warning_preserves_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    (impl / "difficulty-rating.json").write_text(json.dumps({"audit_evaluated": True}), encoding="utf-8")
+
+    def fake_run(argv: list[str], **_kwargs: object) -> review_and_fix.proc.CommandResult:
+        if "run-log" in argv and "write" in argv:
+            return review_and_fix.proc.CommandResult(tuple(argv), 1, "", "write boom", 0.0)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+
+    monkeypatch.setattr(review_and_fix, "_run_round", lambda *_a, **_k: _step5_round_result(impl, status="complete"))
+    monkeypatch.setattr(review_and_fix, "record_round_timing", lambda _argv: 0)
+    monkeypatch.setattr(review_and_fix, "flush_review_batches", lambda **_kwargs: True)
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    rc = review_and_fix.step5([
+        "--implement-tmpdir",
+        str(impl),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        "--round-cap",
+        "1",
+        "--run-id",
+        "run-1",
+        "--codex-available",
+        "false",
+        "--cursor-available",
+        "false",
+    ])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in captured.out
+    assert "difficulty-rating batch restage failed: helper-exit-1: write boom" in captured.err
+    issues = (impl / "execution-issues.md").read_text(encoding="utf-8")
+    assert "### Warnings" in issues
+    assert "difficulty-rating` restage failed" in issues
+    assert "helper-exit-1: write boom" in issues
 
 
 @MARK_STEP5
