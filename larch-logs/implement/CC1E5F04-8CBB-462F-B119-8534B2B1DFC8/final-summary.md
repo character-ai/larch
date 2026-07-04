@@ -1,14 +1,15 @@
-## /implement run CC1E5F04-8CBB-462F-B119-8534B2B1DFC8 — shipping
+## /implement run CC1E5F04-8CBB-462F-B119-8534B2B1DFC8 — pr-created
 
 - **Mode**: N/A
 - **Duration**: 00:09:29
-- **Cost**: 💰 TOTAL ~$2.41 — Claude $0.74, Codex-5.5 $0.54, Codex-mini $0.14, Cursor $0.89, Claude (subprocess) $0.10  |  Tokens: 4466k
+- **Cost**: 💰 TOTAL ~$2.44 — Claude $0.74, Codex-5.5 $0.54, Codex-mini $0.14, Cursor $0.89, Claude (subprocess) $0.13  |  Tokens: 4532k
 - **Issue**: #6265 — https://github.com/character-ai/larch/issues/6265
+- **PR**: #6272 — https://github.com/character-ai/larch/pull/6272
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE; override operator
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +5/-2, larch-logs +453/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
