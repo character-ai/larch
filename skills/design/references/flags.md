@@ -87,4 +87,4 @@ These are **not** public `/design` argv surfaces after issue #2485; they remain 
 
 ### Difficulty override
 
-`--difficulty <TRIVIAL|MODERATE|HARD>` persists `difficulty_override` in `run-params.json`. The override sets the starting plan-review tier, beats rating and floors, and is logged `override_source=operator`. No environment knob disables the 1:30 audit; the audit is orthogonal to the override and may still upgrade a below-HARD run while preserving both fields. Tier caps are TRIVIAL=2, MODERATE=2, HARD=3.
+`--difficulty <TRIVIAL|MODERATE|HARD>` persists `difficulty_override` in `run-params.json`. The override sets the starting plan-review tier, beats rating and floors, and is logged `override_source=operator`. No environment knob disables the 1:30 audit; the audit is orthogonal to the override and may still upgrade a below-HARD run while preserving both fields. All tiers use a fixed cap of 2.

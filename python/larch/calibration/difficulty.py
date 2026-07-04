@@ -382,7 +382,8 @@ def _resolution_from_data(data: dict[str, object], *, round_num: int | None = No
         return None
     round_escalations = _record_escalations_for_round(data, round_num) if round_num is not None else ()
     raw_round_cap = data.get("round_cap")
-    round_cap = raw_round_cap if isinstance(raw_round_cap, int) else tier_ceiling(panel_tier)
+    tier_cap = tier_ceiling(panel_tier)
+    round_cap = min(raw_round_cap, tier_cap) if isinstance(raw_round_cap, int) else tier_cap
     return TierResolution(
         panel_tier=panel_tier,
         round_cap=round_cap,
@@ -642,7 +643,8 @@ def build_record(
         applied = HARD
     derived_override = "operator" if explicit_override else "floor" if floors.matches and _TIER_RANK[floors.tier] > _TIER_RANK[model_tier] else "none"
     effective_panel_tier = normalize_tier(panel_tier) or applied
-    effective_round_cap = round_cap if round_cap is not None else tier_ceiling(effective_panel_tier)
+    tier_cap = tier_ceiling(effective_panel_tier)
+    effective_round_cap = min(round_cap, tier_cap) if round_cap is not None else tier_cap
     effective_codex_role = codex_model_role or codex_review_model_role(effective_panel_tier)
     return DifficultyRecord(
         schema_version=SCHEMA_VERSION,
@@ -808,6 +810,9 @@ def _merge_existing_record_fields(record: DifficultyRecord, existing: dict[str, 
         value = existing.get(key)
         if value not in (None, "", []):
             data[key] = value
+    if isinstance(data.get("round_cap"), int):
+        cap_tier = normalize_tier(data.get("panel_tier")) or normalize_tier(data.get("applied_tier"), MODERATE)
+        data["round_cap"] = min(cast("int", data["round_cap"]), tier_ceiling(cap_tier))
     return DifficultyRecord(**data)
 
 

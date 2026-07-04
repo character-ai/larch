@@ -1,10 +1,10 @@
 [
   {
-    "closure_content_estimated_tokens": 52988,
-    "closure_estimated_tokens": 53152,
+    "closure_content_estimated_tokens": 52943,
+    "closure_estimated_tokens": 53107,
     "closure_lines": 1846,
-    "conditional_content_estimated_tokens": 17942,
-    "conditional_estimated_tokens": 18016,
+    "conditional_content_estimated_tokens": 17939,
+    "conditional_estimated_tokens": 18013,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
@@ -32,13 +32,13 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25296,
-    "skill_md_estimated_tokens": 25350,
+    "skill_md_content_estimated_tokens": 25298,
+    "skill_md_estimated_tokens": 25352,
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 38472,
-    "closure_estimated_tokens": 38586,
+    "closure_content_estimated_tokens": 38447,
+    "closure_estimated_tokens": 38561,
     "closure_lines": 1224,
     "conditional_content_estimated_tokens": 25954,
     "conditional_estimated_tokens": 26012,
@@ -70,8 +70,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 29596,
-    "skill_md_estimated_tokens": 29674,
+    "skill_md_content_estimated_tokens": 29571,
+    "skill_md_estimated_tokens": 29649,
     "skill_md_lines": 801
   },
   {
@@ -105,11 +105,11 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 10061,
-    "closure_estimated_tokens": 10095,
+    "closure_content_estimated_tokens": 10093,
+    "closure_estimated_tokens": 10127,
     "closure_lines": 402,
-    "conditional_content_estimated_tokens": 3498,
-    "conditional_estimated_tokens": 3510,
+    "conditional_content_estimated_tokens": 3497,
+    "conditional_estimated_tokens": 3508,
     "conditional_files": [
       "skills/shared/run-id-flag.md",
       "skills/review/references/heavy-worker.md",
@@ -125,8 +125,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 5629,
-    "skill_md_estimated_tokens": 5639,
+    "skill_md_content_estimated_tokens": 5661,
+    "skill_md_estimated_tokens": 5671,
     "skill_md_lines": 124
   }
 ]

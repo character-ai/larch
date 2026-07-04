@@ -3,4 +3,4 @@
 
 ## Difficulty-tiered plan review
 
-Plan review uses tier caps 2/2/3. Design panels do not shed a vendor by tier. A round with at least two accepted in-scope high-severity findings escalates directly to HARD, skips pruning on the escalated round, and can authorize round 3.
+Plan review uses a fixed cap of 2 for every tier. Design panels do not shed a vendor by tier. A round with at least two accepted in-scope high-severity findings escalates directly to HARD and skips pruning on the escalated round, but it does not add a review round.

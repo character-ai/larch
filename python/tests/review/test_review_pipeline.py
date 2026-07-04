@@ -4509,7 +4509,7 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert {row["tool"] for row in rows} == {"codex", "cursor"}
     assert {row.get("model_role") for row in rows if row["tool"] == "codex"} == {"default"}
     assert "PANEL_SHAPE=pairs" in proc.stdout
-    assert "PANEL_ROUND_CAP=3" in proc.stdout
+    assert "PANEL_ROUND_CAP=2" in proc.stdout
 
 
 def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
@@ -4531,5 +4531,5 @@ def test_review_core_tier_cap_controls_fix_required(tmp_path: Path) -> None:
             TEST_ROUND_NUM="2",
         ),
     )
-    assert "REVIEW_CORE_STATUS=fix-required" in hard.stdout
-    assert "EFFECTIVE_ROUND_CAP=3" in hard.stdout
+    assert "REVIEW_CORE_STATUS=cap-reached" in hard.stdout
+    assert "EFFECTIVE_ROUND_CAP=2" in hard.stdout

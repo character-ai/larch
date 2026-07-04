@@ -3027,12 +3027,12 @@ def test_write_implement_round_meta_records_difficulty(tmp_path: Path) -> None:
     data = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
 
     assert data["difficulty"]["tier_in_effect"] == "HARD"
-    assert data["difficulty"]["ceiling_in_effect"] == 3
+    assert data["difficulty"]["ceiling_in_effect"] == 2
     assert data["difficulty"]["override_source"] == "operator"
     assert data["difficulty"]["audit_upgrade"] == "true"
     assert data["difficulty"]["codex_model_role"] == "default"
     assert data["difficulty"]["panel_tier"] == "HARD"
-    assert data["difficulty"]["round_cap"] == 3
+    assert data["difficulty"]["round_cap"] == 2
     assert data["difficulty"]["escalations"]
     assert data["difficulty"]["scout"]["confidence"] == "low"
 

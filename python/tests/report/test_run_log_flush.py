@@ -31,7 +31,7 @@ def test_refresh_difficulty_record_merges_resolution_fields(
             {"round": 2, "from_tier": "MODERATE", "to_tier": "HARD", "trigger": "bulk-skip"},
         ),
         panel_tier="HARD",
-        round_cap=3,
+        round_cap=2,
         codex_model_role="default",
         audit_evaluated=True,
         escalated_round=True,
@@ -54,7 +54,7 @@ def test_refresh_difficulty_record_merges_resolution_fields(
 
     assert data["override_source"] == "operator"
     assert data["panel_tier"] == "HARD"
-    assert data["round_cap"] == 3
+    assert data["round_cap"] == 2
     assert data["codex_model_role"] == "default"
     assert data["audit_evaluated"] is True
     assert data["escalated_round"] is True

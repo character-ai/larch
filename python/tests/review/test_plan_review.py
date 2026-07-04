@@ -608,7 +608,7 @@ def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: 
     _seed_step3_downstream(tmp_path)
     (tmp_path / ".step3-reentry").touch()
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
-    # Settled round artifacts (<= round 2) plus a future round 3 that must survive.
+    # Settled round artifacts (<= round 2) plus a future round-3 artifact that must survive.
     for n in (1, 2, 3):
         _ = (tmp_path / f".step3-round-{n}.phase").write_text("done\n", encoding="utf-8")
         _ = (tmp_path / f"plan-pre-apply-round-{n}.txt").write_text("x\n", encoding="utf-8")
@@ -632,7 +632,7 @@ def test_step3_state_direct_review_entry_clears_restores_and_consumes(tmp_path: 
     # Upstream package restored.
     for name in ("step-1e", "step-2a", "step-2b", "step-2b.5"):
         assert (tmp_path / ".completed" / name).is_file()
-    # Settled rounds (<= 2) dropped, future round 3 preserved.
+    # Settled rounds (<= 2) dropped, future round-3 artifact preserved.
     assert not (tmp_path / ".step3-round-1.phase").exists()
     assert not (tmp_path / ".step3-round-2.phase").exists()
     assert not (tmp_path / "plan-pre-apply-round-2.txt").exists()
@@ -2916,8 +2916,7 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     # Both findings are high-severity and new -> round-total escalates to HARD.
     assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc1.stdout
 
-    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop,
-    # even though escalation raised the cap to HARD's 3 rounds.
+    # Round 2: re-raises the same findings byte-for-byte -> nothing new -> stop.
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     proc2 = run_cli(
         "plan-review",
@@ -2930,7 +2929,7 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     )
     assert proc2.returncode == 0, proc2.stderr
     assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=converged-no-new-findings" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=0" in proc2.stdout
     # Totals stay reported for backward compatibility.
@@ -2964,6 +2963,26 @@ def test_continuation_escalates_on_cumulative_highs_with_one_new_finding(tmp_pat
     assert proc1.returncode == 0, proc1.stderr
     assert "PLAN_REVIEW_CONTINUE_REASON=high-accepted" in proc1.stdout
 
+    round1_escalation = tmp_path / "round1-escalation"
+    round1_escalation.mkdir()
+    _ = (round1_escalation / "accepted-plan-findings.md").write_text(finding1 + finding2, encoding="utf-8")
+    _ = (round1_escalation / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc_escalation = run_cli(
+        "plan-review",
+        "continuation",
+        "--design-tmpdir",
+        str(round1_escalation),
+        "--approve-requested",
+        "false",
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert proc_escalation.returncode == 0, proc_escalation.stderr
+    assert "PLAN_REVIEW_CONTINUE=true" in proc_escalation.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc_escalation.stdout
+    assert "REVIEW_ROUND_CAP=2" in proc_escalation.stdout
+    escalated_record = json.loads((round1_escalation / difficulty.DIFFICULTY_RECORD_BASENAME).read_text(encoding="utf-8"))
+    assert escalated_record["round_cap"] == 2
+
     _ = (tmp_path / "accepted-plan-findings.md").write_text(finding1 + finding2, encoding="utf-8")
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
     proc2 = run_cli(
@@ -2976,9 +2995,9 @@ def test_continuation_escalates_on_cumulative_highs_with_one_new_finding(tmp_pat
         env={"LARCH_QUIET_DISABLE": "1"},
     )
     assert proc2.returncode == 0, proc2.stderr
-    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc2.stdout
-    assert "REVIEW_ROUND_CAP=3" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
+    assert "REVIEW_ROUND_CAP=2" in proc2.stdout
     assert "HIGH_ACCEPTED_COUNT=2" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
 
@@ -2995,6 +3014,21 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
     )
     assert "PLAN_REVIEW_CONTINUE=true" in proc1.stdout
 
+    round1_escalation = tmp_path / "round1-escalation"
+    round1_escalation.mkdir()
+    _ = (round1_escalation / "accepted-plan-findings.md").write_text(
+        round1 + _high_finding_block(2, severity="blocking", location="b.py:2", concern="beta. Scenario: y."),
+        encoding="utf-8",
+    )
+    _ = (round1_escalation / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    proc_escalation = run_cli(
+        "plan-review", "continuation", "--design-tmpdir", str(round1_escalation),
+        "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    assert "PLAN_REVIEW_CONTINUE=true" in proc_escalation.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc_escalation.stdout
+    assert "REVIEW_ROUND_CAP=2" in proc_escalation.stdout
+
     # Round 2: re-raises round-1 finding (duplicate) plus a brand-new high one.
     round2 = round1 + _high_finding_block(
         2, severity="blocking", location="b.py:2", concern="beta. Scenario: y."
@@ -3005,9 +3039,9 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
         "plan-review", "continuation", "--design-tmpdir", str(tmp_path),
         "--approve-requested", "false", env={"LARCH_QUIET_DISABLE": "1"},
     )
-    assert "PLAN_REVIEW_CONTINUE=true" in proc2.stdout
-    assert "PLAN_REVIEW_CONTINUE_REASON=escalated-high-accepted" in proc2.stdout
-    assert "REVIEW_ROUND_CAP=3" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE=false" in proc2.stdout
+    assert "PLAN_REVIEW_CONTINUE_REASON=cap-reached" in proc2.stdout
+    assert "REVIEW_ROUND_CAP=2" in proc2.stdout
     assert "DUPLICATE_ACCEPTED_COUNT=1" in proc2.stdout
     assert "NEW_HIGH_ACCEPTED_COUNT=1" in proc2.stdout
 

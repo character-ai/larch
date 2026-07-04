@@ -12,7 +12,7 @@
 
 ## Review-round cap
 
-Gate C option shaping comes from `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. Consume `REVIEW_ROUND_CAP`, option rows, and optional `REVIEW_ROUND_COUNT_WARN`. Do not restate renderer cap math. Step 3 is the counter authority and enforces the cap on every entry, including Gate C re-runs and Gate A **Ready for review** re-entry. Gate A **Discuss more** loops remain uncapped. Round 3 is offered only when escalation or substantiality has been recorded; a HARD-rated run with two non-substantial rounds does not surface another review option.
+Gate C option shaping comes from `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR"`. Consume `REVIEW_ROUND_CAP`, option rows, and optional `REVIEW_ROUND_COUNT_WARN`. Do not restate renderer cap math. Step 3 is the counter authority and enforces the fixed cap of 2 on every entry, including Gate C re-runs and Gate A **Ready for review** re-entry. Gate A **Discuss more** loops remain uncapped. Escalation changes panel tier and model role only; it does not add review rounds.
 
 ## Renderer parsing contract
 

@@ -182,7 +182,7 @@ def test_resolve_panel_tier_recomputes_on_new_override_after_persisted_override(
 def test_tier_helpers_and_escalation_round_specific(tmp_path: Path) -> None:
     assert difficulty.tier_ceiling(difficulty.TRIVIAL) == 2
     assert difficulty.tier_ceiling(difficulty.MODERATE) == 2
-    assert difficulty.tier_ceiling(difficulty.HARD) == 3
+    assert difficulty.tier_ceiling(difficulty.HARD) == 2
     assert difficulty.panel_shape_for_tier(difficulty.TRIVIAL) == "singles"
     assert difficulty.threshold_panel_for_tier(difficulty.MODERATE) == "hard"
     assert difficulty.maybe_audit_upgrade(difficulty.HARD, 1).evaluated is False
@@ -199,6 +199,7 @@ def test_tier_helpers_and_escalation_round_specific(tmp_path: Path) -> None:
     data = json.loads(out.read_text(encoding="utf-8"))
 
     assert data["applied_tier"] == difficulty.HARD
+    assert data["round_cap"] == 2
     assert data["escalations"][0]["round"] == 2
     assert difficulty.resolve_panel_tier(out, audit_enabled=False, round_num=2).escalated_round is True
     assert difficulty.resolve_panel_tier(out, audit_enabled=False, round_num=3).escalated_round is False
@@ -243,8 +244,41 @@ def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
     assert data["override_source"] == "operator"
     assert data["audit_upgrade"] == "true"
     assert data["panel_tier"] == "HARD"
-    assert data["round_cap"] == 3
+    assert data["round_cap"] == 2
     assert data["escalations"] == existing["escalations"]
+
+
+def test_resolve_panel_tier_clamps_stale_hard_round_cap(tmp_path: Path) -> None:
+    out = tmp_path / "difficulty-rating.json"
+    existing = {
+        "schema_version": 1,
+        "rater": "implement",
+        "rater_tool": "bootstrap",
+        "rater_model": "unknown",
+        "predicted_tier": "HARD",
+        "confidence": "medium",
+        "rationale": "old",
+        "design_tier": None,
+        "implement_tier": None,
+        "applied_tier": "HARD",
+        "override_source": "operator",
+        "floors_applied": [],
+        "audit_upgrade": "true",
+        "escalations": [{"round": 2, "from_tier": "MODERATE", "to_tier": "HARD", "trigger": "bulk-skip"}],
+        "panel_skipped": None,
+        "panel_tier": "HARD",
+        "round_cap": 3,
+        "codex_model_role": "default",
+        "audit_evaluated": True,
+        "escalated_round": True,
+    }
+    _ = out.write_text(json.dumps(existing), encoding="utf-8")
+
+    resolution = difficulty.resolve_panel_tier(out, audit_enabled=False)
+    data = json.loads(out.read_text(encoding="utf-8"))
+
+    assert resolution.round_cap == 2
+    assert data["round_cap"] == 3
 
 
 def test_write_record_merge_recomputes_unresolved_bootstrap_tiers(tmp_path: Path) -> None:
