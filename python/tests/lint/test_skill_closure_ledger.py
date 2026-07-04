@@ -138,7 +138,7 @@ def test_unresolved_since_tag_exits_2(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     repo = tmp_path / "repo"
-    _fixture_history(repo)
+    _ = _fixture_history(repo)
 
     rc = ledger.ledger_main(["--root", str(repo), "--since-tag", "missing-tag"])
 
@@ -150,7 +150,7 @@ def test_unresolved_since_tag_exits_2(
 def test_parse_snapshot_warns_and_skips_float_tokens(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    snapshot = ledger._parse_snapshot(  # pylint: disable=protected-access
+    snapshot = ledger._parse_snapshot(  # type: ignore[reportPrivateUsage]
         json.dumps(
             [
                 _row("design", 10000),
@@ -173,7 +173,7 @@ def test_parse_snapshot_warns_and_skips_float_tokens(
 def test_parse_snapshot_warns_and_keeps_last_duplicate_value(
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    snapshot = ledger._parse_snapshot(  # pylint: disable=protected-access
+    snapshot = ledger._parse_snapshot(  # type: ignore[reportPrivateUsage]
         json.dumps([_row("design", 10000), _row("design", 11000)]),
         label="fixture-label",
     )
