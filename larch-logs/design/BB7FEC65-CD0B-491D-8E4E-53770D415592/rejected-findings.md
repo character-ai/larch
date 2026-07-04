@@ -1,0 +1,13 @@
+### [Plan Review] FINDING_1
+
+### FINDING_1: Generic-read regression needs same-path beta coverage
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Requirements, Cursor-dyn-Hook State Isolation, Codex-dyn-Hook State Isolation
+- **Severity**: important
+- **Concern**: The planned generic-read regression only interleaves a different-path beta read, so it does not exercise same-path shared-counter inheritance or misfire prevention. That means the test can still pass even if generic-read state remains cross-session.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add explicit same-path steps to the new regression section: session-alpha read generic path once (silent), session-beta read the same path+offset once (silent), session-alpha read again (silent at count 2), session-alpha third read fires; optionally keep the different-path interleave as a second case for the suppression vector.
+  - From Codex-Arch: Make session-beta read the same generic path and offset as session-alpha after alpha’s first two reads, then assert beta stays silent and alpha still fires on its third own read.
+  - From Cursor-Requirements: Add an explicit harness step after alpha's two reads of path X: beta reads the same path X once with assert_silent (beta count must start at 1, not 2), then finish alpha's third X read with assert_reminder; keep the different-path interleave step to cover the suppression vector from the issue
+  - From Cursor-dyn-Hook State Isolation: Add to the plan's regression section: after alpha's two reads of the same generic path, beta reads that same path once with assert_silent; then run the different-path interleave and alpha's third read assert_reminder. Optionally assert separate state-${session_hash}-${cwd_hash}.tsv files and counts.
+  - From Codex-dyn-Hook State Isolation: Change the beta case to read the same generic path and offset as alpha. Assert beta stays silent on its first two same-path reads and only fires on its own third read, so the regression covers both suppression and misfire.
+

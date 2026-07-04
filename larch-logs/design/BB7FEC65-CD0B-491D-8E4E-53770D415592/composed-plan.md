@@ -1,0 +1,105 @@
+## Plan
+
+## Scope
+
+Implement the approved narrow fix. The approach synthesis is `NO_SKETCHES`, so this plan is based on direct repo inspection plus the provided outline and discussion.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-anti-read-poll.sh
+
+Change `handle_generic_read_poll` so the generic-read state file includes `session_hash`:
+
+- From `state-${cwd_hash}.tsv`
+- To `state-${session_hash}-${cwd_hash}.tsv`
+
+Do not change thresholds, windows, reminder text, task-output keying, or fail-open behavior.
+
+### UPDATED: scripts/test-hook-anti-read-poll.sh
+
+Update generic-read tests that directly construct state paths.
+
+- Add a shared `nosession_hash` helper near the existing test setup, computed from `printf '%s' "nosession" | cksum | awk '{print $1}'`.
+- Update existing direct `state-$(cwd_hash).tsv` expectations for generic reads to `state-${nosession_hash}-${cwd_hash}.tsv`.
+- Add a regression section for generic-read session isolation:
+  - Use the same `cwd`.
+  - Read the same generic path twice in `session-alpha`.
+  - Interleave a different-path read from `session-beta`.
+  - Verify `session-alpha` still fires on its third own matching read.
+  - Verify `session-beta` does not inherit `session-alpha` count.
+- Keep the existing task-output session isolation test unchanged except for any naming needed to avoid confusion.
+
+### UPDATED: scripts/hook-anti-read-poll.md
+
+Update the State section.
+
+- Document generic Read state as `state-<session_hash>-<cwd_hash>.tsv`.
+- State that both generic-read and task-output counters use the same `session_id`, `conversation_id`, `HOOK_ANTI_READ_POLL_DISCRIMINATOR`, then `nosession` fallback.
+- Keep the task-output-specific `task_id` distinction clear.
+- Note that legacy cwd-only files may remain in tmp but are ignored after the key change.
+
+## Approach
+
+1. Apply the one-line key change in `handle_generic_read_poll`.
+2. Adjust harness literals that inspect generic-read state files.
+3. Add the new same-cwd, different-session generic-read regression.
+4. Update the sibling doc so the contract matches the implementation.
+5. Run only changed-file checks.
+
+## Edge cases
+
+- Missing `session_id` must still use the existing `nosession` fallback through `session_hash`.
+- `HOOK_ANTI_READ_POLL_DISCRIMINATOR` must continue to split no-session harness buckets.
+- Old `state-<cwd_hash>.tsv` files become orphaned tmp files. They should not be migrated.
+- Distinct offsets and paths must still reset only within one session bucket.
+
+## Failure modes
+
+- If tests keep using the old state filename, they will fail even though hook behavior is correct.
+- If the new regression only checks reminder firing, it may miss false sharing. It should prove both isolation from reset and isolation from inherited counts.
+- If documentation mentions task-output only, future readers may reintroduce the asymmetry.
+
+## Testing strategy
+
+Run:
+
+```bash
+bash scripts/test-hook-anti-read-poll.sh
+```
+
+Optionally run the Make target wrapper:
+
+```bash
+make test-hook-anti-read-poll
+```
+
+For changed files, also run shell lint if available through the repo’s normal relevant checks path:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+## Acceptance
+
+Run:
+
+```bash
+bash scripts/test-hook-anti-read-poll.sh
+```
+
+Optionally run the Make target wrapper:
+
+```bash
+make test-hook-anti-read-poll
+```
+
+For changed files, also run shell lint if available through the repo’s normal relevant checks path:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+review_status: complete
+rounds_completed: 1
+difficulty: MODERATE
+diff_lines: 32

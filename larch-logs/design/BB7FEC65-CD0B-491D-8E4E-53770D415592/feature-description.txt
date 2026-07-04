@@ -1,0 +1,73 @@
+# [BUG] hook-anti-read-poll.sh generic-read counter omits session_hash
+
+## Summary
+
+The `PostToolUse` anti-read-poll hook keys its **generic-read** counter file by cwd hash only — `state-${cwd_hash}.tsv` (`scripts/hook-anti-read-poll.sh:356`) — while its **task-output** counter is keyed by session hash *and* cwd hash — `state-taskout-${session_hash}-${cwd_hash}-${task_id}.tsv` (line 309). `session_hash` is already computed (line 50) but is not used in the generic key. When two Claude Code sessions share the same cwd, they share the single generic-read counter file, which can (a) **suppress** a legitimate anti-poll reminder for a session that really is polling — letting the model keep polling and burn turns/tokens — and (b) **misfire** a spurious reminder against a session that was not polling. Low severity and narrow (it cannot happen across distinct repo clones), but a genuine token-cost bug, filed on that basis.
+
+## Original report
+
+Surfaced while auditing the recent cross-session hardening work. A prior review flagged this counter's session-scoping omission as "spurious reminder only." On closer inspection the more significant vector is **suppression**, not misfire: because the generic counter increments only on a matching consecutive path+offset and otherwise resets, a foreign same-cwd session's interleaved reads reset the shared counter, so a genuinely-polling session never crosses the fire threshold and its polling is never nudged — which is exactly the token burn the hook exists to prevent.
+
+## Reproduction scenario
+
+Static analysis; the concrete misbehavior requires two Claude Code sessions with the same cwd, which is off larch's normal single-runner-per-repo path. To demonstrate the mechanism:
+
+Suppression (the token-burn vector):
+1. Two sessions A and B run with the same cwd (same `cwd_hash`), so both use `state-${cwd_hash}.tsv`.
+2. A polls file X (reads `X@offset0` repeatedly, intending to wait for it to change). Left alone, A's count would reach 3 within 30s and fire the reminder.
+3. Between A's reads, B reads any different path Y. That write stores `(Y, …, count=1)` — resetting the shared counter (`else` branch, lines 374-377).
+4. A's next read of X sees `last_path=Y`, so it too resets to count=1. A never reaches the exact-match fire guard `[ "$count" -eq "$POLL_THRESHOLD" ]` (line 389). A keeps polling un-nudged → continued turns/tokens.
+
+Misfire:
+1. Same setup; A and B both read the identical `X@offset0` interleaved.
+2. The shared counter climbs across the two sessions and hits 3 while neither read X three times on its own; the reminder fires (mis-attributed) on whichever session's read hit count==3 → one spurious `[system-reminder]` injected.
+
+The existing regression test `scripts/test-hook-anti-read-poll.sh:262` ("distinct session_id buckets do not share counters") demonstrates the intended isolation — but exercises only the task-output path.
+
+## Expected behavior
+
+The generic-read poll counter should be scoped per session (as the task-output counter already is), so one session's reads can neither reset nor advance another session's consecutive-read streak. Each session's anti-poll reminder should fire based solely on that session's own reads.
+
+## Observed behavior
+
+The generic-read counter is shared by all sessions with the same cwd. A concurrent same-cwd session can reset the streak (suppressing a deserved reminder, so real polling continues) or advance it (firing a spurious reminder). The task-output counter does not have this problem because its key includes `session_hash`.
+
+## Root cause analysis
+
+`handle_generic_read_poll` builds `state_file="$state_dir/state-${cwd_hash}.tsv"` (line 356), omitting the `session_hash` that is computed at line 50 and used by the task-output path (line 309). The counter stores only the last `(path, offset, count, first_ts)` and increments only when the new read matches that stored `path+offset` (line 366), resetting to 1 otherwise (lines 374-377). With a shared file, interleaved reads from a second same-cwd session perturb the streak. This is a straightforward keying inconsistency, not a subtle logic error; the fix is to add `session_hash` to the key.
+
+Reachability bound (observation, high confidence): the key still includes `cwd_hash`, and distinct larch clones are separate checkouts at distinct paths, so their `cwd_hash` values differ and their state files are disjoint. The bug therefore cannot occur across distinct clones — only between two sessions sharing one cwd (e.g., two Claude Code sessions started in the same clone directory). larch's single-`/implement` and single-`/design` invariants discourage that, but they are detected, not serialized.
+
+## Evidence
+
+- `scripts/hook-anti-read-poll.sh:50` — `session_hash` is computed from `session_id` (with a `HOOK_ANTI_READ_POLL_DISCRIMINATOR` / `nosession` fallback at lines 43-49).
+- `scripts/hook-anti-read-poll.sh:309` — task-output counter key includes `${session_hash}`: `state-taskout-${session_hash}-${cwd_hash}-${task_id}.tsv`.
+- `scripts/hook-anti-read-poll.sh:356` — generic-read counter key omits it: `state-${cwd_hash}.tsv`.
+- `scripts/hook-anti-read-poll.sh:366-377` — increment-on-match / reset-otherwise logic that a foreign session's reads can perturb.
+- `scripts/hook-anti-read-poll.sh:389` — exact-match fire guard `[ "$count" -eq "$POLL_THRESHOLD" ]` (threshold 3); it bounds firing to at most once per burst.
+- `scripts/hook-anti-read-poll.sh:63-68` — the hook emits `additionalContext` (advisory reminder), never a `deny`, so it cannot force a turn.
+- `scripts/test-hook-anti-read-poll.sh:262-263` — an existing test asserts session-bucket isolation, but only for the task-output path (`run_bash_hook … "session-alpha"`). No equivalent test exists for the generic-read path.
+
+## Token-burn bounds (honest)
+
+- Advisory `additionalContext` only — no deny, no forced turn. A misfire costs roughly one reminder line (~50 tokens).
+- The exact-match fire guard limits firing to once per polling burst; it cannot spam every turn.
+- The suppression vector's downside (uncaught polling that keeps costing turns) is partially backstopped by the separate `PreToolUse` `hook-bg-poll-guard.sh`, which hard-denies progress/task-output polling during background waits. anti-read-poll is the softer, generic backstop this bug degrades.
+- Zero possibility across distinct clones.
+
+## Affected files
+
+- `scripts/hook-anti-read-poll.sh` — line 356 state key (add `session_hash`).
+- `scripts/hook-anti-read-poll.md` — sibling contract doc; note that the generic-read counter is keyed by session + cwd.
+- `scripts/test-hook-anti-read-poll.sh` — add a generic-read session-isolation regression test mirroring the task-output one at line 262.
+
+## Suggested fix(es)
+
+1. Key the generic-read counter by session as well: `state_file="$state_dir/state-${session_hash}-${cwd_hash}.tsv"` (mirror line 309). `session_hash` is already computed at line 50, so this is a one-line change.
+2. Add a regression test asserting distinct `session_id` buckets do not share the generic-read counter, mirroring the existing task-output isolation test (`scripts/test-hook-anti-read-poll.sh:262`).
+3. Update `scripts/hook-anti-read-poll.md` to document the session+cwd keying for both counters.
+
+## Open questions
+
+- Should the generic-read counter reuse the same `HOOK_ANTI_READ_POLL_DISCRIMINATOR` / `nosession` fallback (lines 43-49) that the task-output path already relies on when `session_id` is absent, so the two counters behave symmetrically if the harness ever omits `session_id`?
+- Is there any intended reason the generic-read counter was left cwd-only (e.g., a deliberate cross-turn/cross-tab dedup), or is it simply an oversight relative to the task-output counter? Nothing in the code or the sibling doc suggests intent, but a maintainer should confirm before changing the key.

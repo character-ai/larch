@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the planned different-path interleave already fails without per-session keys (alpha's third read never reaches threshold), so same-path beta steps add misfire coverage but are not necessary to verify the fix.

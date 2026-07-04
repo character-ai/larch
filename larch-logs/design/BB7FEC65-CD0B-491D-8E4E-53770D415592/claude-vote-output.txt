@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan mandates "verify they don't share the counter" without specifying test steps; same-path coverage is an implementation detail the coder can include; test-design adequacy is OOS by default-deny.
