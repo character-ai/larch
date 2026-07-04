@@ -1,0 +1,44 @@
+v1	mark	1783136639	design	design Step 2b — plan	-	-	-	-	-	-	-	-
+v1	vendor	1783136709	implement	-	codex	codex-plan-draft	1783136640	1783136708	68	step2b-codex-raw.21738.txt	0	complete
+v1	mark	1783136754	design	design Step 3 — plan review	-	-	-	-	-	-	-	-
+v1	vendor	1783136857	implement	-	codex	codex-phase1-codex-plan-arch	1783136779	1783136857	78	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783136877	implement	-	cursor	cursor-phase1-dyn-cursor-plan-history-parser-correctness	1783136780	1783136877	97	dyn-cursor-plan-history-parser-correctness.txt	0	complete
+v1	vendor	1783136881	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783136780	1783136881	101	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783136881	implement	-	codex	codex-phase1-codex-plan-innovation	1783136779	1783136881	102	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783136888	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783136780	1783136888	108	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783136889	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783136780	1783136889	109	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783136897	implement	-	codex	codex-phase1-codex-plan-requirements	1783136780	1783136896	116	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783136900	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783136779	1783136900	121	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783136907	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783136779	1783136907	128	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783136939	implement	-	codex	codex-phase1-dyn-codex-plan-history-parser-correctness	1783136780	1783136939	159	dyn-codex-plan-history-parser-correctness.txt	0	complete
+v1	vendor	1783136990	implement	-	codex	codex-phase1-aggregator	1783136942	1783136990	48	aggregator-output.txt	0	complete
+v1	vendor	1783137069	implement	-	cursor	cursor-phase1-voter-3	1783136992	1783137069	77	cursor-vote-output.txt	0	complete
+v1	vendor	1783137104	implement	-	codex	codex-phase1-voter-2	1783136992	1783137104	112	codex-vote-output.txt	0	complete
+v1	vendor	1783137274	implement	-	claude	claude-plan-voter	1783136992	1783137274	282	claude-vote-output.txt	0	complete
+v1	mark	1783137346	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	round	1783137588	design	design Step 3 — plan review	1	1783136777	1783137588	811	0	0	-	1
+v1	vendor	1783137645	implement	-	codex	codex-phase1-codex-plan-requirements	1783137590	1783137645	55	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783137660	implement	-	codex	codex-phase1-codex-plan-arch	1783137590	1783137660	70	codex-primary-plan-arch-output.txt	0	complete
+v1	vendor	1783137660	implement	-	codex	codex-phase1-codex-plan-innovation	1783137590	1783137660	70	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783137697	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783137590	1783137697	107	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783137697	implement	-	codex	codex-phase1-codex-plan-pragmatic	1783137590	1783137697	107	codex-primary-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783137708	implement	-	cursor	cursor-phase1-cursor-plan-requirements	1783137590	1783137708	118	cursor-plan-requirements-output.txt	0	complete
+v1	vendor	1783137716	implement	-	cursor	cursor-phase1-cursor-plan-innovation	1783137590	1783137716	126	cursor-plan-innovation-output.txt	0	complete
+v1	vendor	1783137754	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783137590	1783137754	164	cursor-plan-arch-output.txt	0	complete
+v1	vendor	1783137763	implement	-	codex	codex-phase1-aggregator	1783137756	1783137763	7	aggregator-output.txt	0	complete
+v1	vendor	1783137782	implement	-	codex	codex-phase1-voter-2	1783137765	1783137782	17	codex-vote-output.txt	0	complete
+v1	vendor	1783137809	implement	-	cursor	cursor-phase1-voter-3	1783137765	1783137809	44	cursor-vote-output.txt	0	complete
+v1	vendor	1783137818	implement	-	claude	claude-plan-voter	1783137765	1783137818	53	claude-vote-output.txt	0	complete
+v1	mark	1783137840	design	design Step 3.5 — gate B	-	-	-	-	-	-	-	-
+v1	round	1783137904	design	design Step 3 — plan review	2	1783137589	1783137904	315	0	0	-	1
+v1	vendor	1783137931	implement	-	codex	codex-phase1-codex-plan-requirements	1783137905	1783137931	26	codex-primary-plan-requirements-output.txt	0	complete
+v1	vendor	1783137955	implement	-	codex	codex-phase1-codex-plan-innovation	1783137905	1783137955	50	codex-primary-plan-innovation-output.txt	0	complete
+v1	vendor	1783138022	implement	-	cursor	cursor-phase1-cursor-plan-pragmatic	1783137905	1783138022	117	cursor-plan-pragmatic-output.txt	0	complete
+v1	vendor	1783138027	implement	-	cursor	cursor-phase1-cursor-plan-arch	1783137905	1783138027	122	cursor-plan-arch-output.txt	0	complete
+v1	round	1783138028	design	design Step 3 — plan review	3	1783137904	1783138028	124	0	0	-	1
+v1	mark	1783138057	design	design Step 3b — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783138064	design	design Step 4 — rejected findings	-	-	-	-	-	-	-	-
+v1	mark	1783138064	design	design Step 4b — gate C	-	-	-	-	-	-	-	-
+v1	mark	1783138123	design	design Step 5 — finalize	-	-	-	-	-	-	-	-
+v1	mark	1783138413	design	design Step 5b.5 — arch diagram	-	-	-	-	-	-	-	-
+v1	vendor	1783138523	implement	-	claude	exec-issue-assessment	1783138510	1783138523	13	output.txt	124	signal
