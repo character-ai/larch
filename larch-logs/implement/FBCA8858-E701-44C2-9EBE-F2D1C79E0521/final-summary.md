@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 02:37:55
-- **Cost**: 💰 TOTAL ~$53.44 — Claude $6.22, Codex-5.5 $31.49, Codex-mini $3.03, Cursor $11.15, Claude (subprocess) $1.55  |  Tokens: 88399k
+- **Cost**: 💰 TOTAL ~$58.10 — Claude $10.87, Codex-5.5 $31.49, Codex-mini $3.03, Cursor $11.15, Claude (subprocess) $1.56  |  Tokens: 94868k
 - **Issue**: #6158 — https://github.com/character-ai/larch/issues/6158
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -11,7 +11,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 1
-- **Warnings**: 4
+- **Warnings**: 5
 - **Run logs**: `larch-logs/implement/FBCA8858-E701-44C2-9EBE-F2D1C79E0521/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
@@ -22,11 +22,12 @@
 ## Exec Issues and Warnings
 Exec Issues (1):
   1. Step implement Step 5 — codex-review failed (exit 124 — quota — auth-retries=1, transient-retries=1)
-Warnings (4):
+Warnings (5):
   1. Step 7a.1 — 6 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/tests/agents/test_agent_voters.py, python/tests/agents/test_launch_review.p...
   2. code-review panel (round 1): dynamic reviewer slot drop/failure detected (failed=1, dropped=1, stragglers=1); review continued with the remaining panel output.
   3. Step 5 — code review hit 3-round cap without converging: HARD-tier review completed 3 rounds (`EFFECTIVE_ROUND_CAP=3`) with fixes applied each round but findings still open at cap; proceeding per c...
   4. Step 7a — session-transcript status=write-failed: larch-log write failed; transcript was not captured: [Errno 2] No such file or directory: '<TMPDIR>/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T...
+  5. Architectural guidelines (Phase A) — G-IO-1 deviation: `rendering.py`'s `_write_payload_bytes_sidecar()` and `tokens.py`'s `read_panel_payload_bytes()` hand-roll tempfile+replace and read-with-fall...
 
 ## Review Phase Detail
 
@@ -126,3 +127,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_2** (nit): Duplicate env payload parsing helpers. Concern: Duplicate env payload parsing helpers instead of reusing tokens._parse_panel_payload_bytes. No current behavioral divergence; only maintenance cost if parsing rules change.
 - **Round 2 OOS_3** (nit): Rendering column assertions are missing from materialization tests. Concern: Panel dispatch materialization tests were not updated to assert scaffold_bytes and payload_bytes columns. Weaker integration regression guard but dedicated column tests exist in test_tokens.py.
 - **Round 2 OOS_4** (nit): Voter dispatch payload_files coverage is missing. Concern: Plan-required per-tool payload_files voter dispatch test with differing tool payload counts is still absent. Voter fallback could pick wrong per-tool payload without a plan-review-specific regression test.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
