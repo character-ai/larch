@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-testing' in FINDING_2 not traceable to scoped input (first 80 chars: 'Store a stable short needle, and add a truncated-ps regression test.')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_3 not traceable to scoped input (first 80 chars: 'Retry ps capture briefly after `_loop_pid=$!` or re-read identity in teardown wh')
