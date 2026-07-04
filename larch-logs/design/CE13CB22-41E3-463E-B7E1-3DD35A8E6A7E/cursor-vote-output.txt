@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan-review.md is not a planned edit surface and stale contract text does not block the code fix or regression tests

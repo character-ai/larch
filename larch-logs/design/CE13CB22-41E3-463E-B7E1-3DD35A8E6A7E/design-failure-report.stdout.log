@@ -1,0 +1,3 @@
+DESIGN_FAILURE_REPORT_DECISION=escalation-success
+DESIGN_FAILURE_REPORT_ENV=<TMPDIR>/design-failure-escalation-success.env
+DESIGN_FAILURE_REPORT_ARTIFACT=<TMPDIR>/design-failure-issue-input.md

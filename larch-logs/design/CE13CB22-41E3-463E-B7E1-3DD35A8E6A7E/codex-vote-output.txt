@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real legacy/malformed-row hardening, but it is broader than the scoped normal-handoff fix and not necessary for this feature to ship correctly.
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- The contract doc is stale, but this is documentation drift only and does not meet the necessity gate for the feature.
