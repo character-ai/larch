@@ -1,0 +1,131 @@
+## Summary
+
+Every `/implement` run since the round-XII capture migration silently fails to capture its `session-transcript.jsonl`. The shared helper `_rebase_under_tmpdir` (`python/larch/report/run_log_batch.py:102-116`) re-anchors the rendered transcript's absolute `tempfile.mkstemp` path — which is created in the **system** `$TMPDIR`, outside `IMPLEMENT_TMPDIR` — into a corrupted, non-existent path of the form `{IMPLEMENT_TMPDIR}/var/folders/.../T/session-transcript.XXXX.jsonl`. The subsequent read fails with `ENOENT`, capture reports `SESSION_TRANSCRIPT_STATUS=write-failed`, and no transcript is committed.
+
+This is the **same root cause** as #6259 (`write-tally` / `code-review-tally.json`), a different victim of the same `_rebase_under_tmpdir` path-doubling defect (see "Relationship to #6259" below). It is a **separate** defect from the design-path outage that #6154 repaired; #6154 never touched the implement code path, so implement capture remained 100% broken. Design capture is unaffected because `IMPLEMENT_TMPDIR` is unset during `/design` runs, making the rebase a no-op.
+
+## Original report
+
+Filed from a root-cause investigation while checking whether #6162 (heatmap-driven eager-reference demotion) can be unblocked. #6162 is gated on either 2026-07-17 or 50 post-repair runs of restored transcript accrual. While measuring accrual, the `token measure-references-heatmap` output showed design climbing from `0` to `17` transcript runs post-repair, but implement showing **zero** new post-repair transcripts despite 21 genuinely post-repair implement runs having executed. Investigation traced this to a path-corruption bug in the implement transcript-capture path (details below), fully reproduced. #6154's repair only covered the design path.
+
+## Reproduction scenario
+
+Deterministic, isolated reproduction of the corrupting helper (no repo mutation):
+
+```bash
+cd <repo>
+PYTHONPATH=python python3 - <<'PY'
+import os, tempfile, importlib
+from pathlib import Path
+sys_tmp = tempfile.gettempdir()                                 # macOS: /var/folders/<x>/<y>/T
+os.environ["IMPLEMENT_TMPDIR"] = os.path.join(sys_tmp, "larch-implement-abc123")
+rlb = importlib.import_module("larch.report.run_log_batch")
+rendered = tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1]  # == run_log_flush.py:862
+rebased = rlb._rebase_under_tmpdir(rendered)
+print("rendered exists:", Path(rendered).is_file(), rendered)
+print("rebased  exists:", Path(rebased).is_file(),  rebased)
+os.unlink(rendered)
+PY
+```
+
+Output: `rendered` exists; `rebased` is `{IMPLEMENT_TMPDIR}/var/folders/<x>/<y>/T/session-transcript.XXXX.jsonl` and does **not** exist. With `IMPLEMENT_TMPDIR` unset (the `/design` case) the function returns the path unchanged.
+
+End-to-end: run any `/implement`; on completion its committed run-log dir under `larch-logs/implement/<run-id>/` contains `token-report.json`, `timing-report.json`, `manifest.json`, and `review-findings-full.jsonl`, but **no** `session-transcript.jsonl`, and `execution-issues` records `session-transcript status=write-failed`.
+
+## Expected behavior
+
+Each completed `/implement` run captures and commits `session-transcript.jsonl` into its run-log directory, exactly as `/design` does, so the reference heatmap (`token measure-references-heatmap`) and realized-cost reports accrue real implement-side signal.
+
+## Observed behavior
+
+`SESSION_TRANSCRIPT_STATUS=write-failed` for every post-migration implement run; `session-transcript.jsonl` is never written or committed. 21 of 21 genuinely post-#6154-merge implement runs (manifest `started_at` 2026-07-03T22:57Z → 2026-07-04T09:03Z) failed this way; the implement heatmap rows still reflect only stale pre-outage reads.
+
+## Root cause analysis
+
+Two conditions, both introduced together by the implement-flush Python migration (#5771), combine to corrupt the transcript path:
+
+1. `python/larch/report/run_log_flush.py:862` — `capture_transcript_main` renders the transcript into `tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")`, which lands in the **system** `$TMPDIR` (`/var/folders/.../T/`), then passes that absolute path to `_write_batch(..., input_file=str(rendered))` at line 897.
+2. `python/larch/report/run_log_batch.py:320` — `_write_batch` calls `_rebase_under_tmpdir(input_file)`. In `_rebase_under_tmpdir` (lines 102–116), when `IMPLEMENT_TMPDIR` is set and the input is absolute but **not** under it, `candidate.relative_to(tmpdir)` raises `ValueError`, and line 115 re-anchors the path:
+
+   ```python
+   return tmpdir / Path(*candidate.parts[1:])
+   ```
+
+   For `raw = /var/folders/<x>/<y>/T/session-transcript.XXXX.jsonl`, `parts[1:]` drops only the leading `/`, yielding `{IMPLEMENT_TMPDIR}/var/folders/<x>/<y>/T/session-transcript.XXXX.jsonl` — a path that does not exist.
+
+`_redact_to_temp` then can't read the corrupted path → `OSError` (`[Errno 2] No such file or directory`) → caught at `run_log_flush.py:898–904` as `status=write-failed` → the transcript is dropped.
+
+**Why design is immune:** `_rebase_under_tmpdir` keys on `IMPLEMENT_TMPDIR` (`config.ENV_IMPLEMENT_TMPDIR`). `/design` runs never set `IMPLEMENT_TMPDIR` (they use `DESIGN_TMPDIR`), so the helper returns the path unchanged and design capture succeeds. `design_publish.py` contains no reference to `IMPLEMENT_TMPDIR`.
+
+**Why only the transcript fails (selectivity):** the other implement batches (`token-report`, `timing-report`, ship-route handoff, etc.) are built under `Path(ctx.tmpdir)` (== `IMPLEMENT_TMPDIR`), so `relative_to()` succeeds and the rebase is a no-op — they survive. Only the transcript's `mkstemp` file lives outside `IMPLEMENT_TMPDIR`, so only it is corrupted.
+
+**Why #6154 did not fix it:** #6154 (PR #6197, commit `0ab2e6671`) changed only `python/larch/design/design_publish.py` (removed a `SESSION_UUID == session_id` gate) plus `tokens.py`/`bootstrap.py`/tests. It never touched `run_log_flush.py` or `run_log_batch.py`. Its message claimed to "cover design, implement, and review paths," but the implement defect is an unrelated path-corruption bug that remained. Umbrella #6166 likewise diagnosed the outage as "`token claude-source` materialization fails repo-wide" — that is the **design** mechanism only.
+
+## Relationship to #6259 (same root cause, different victim)
+
+#6259 (`[DESIGNING] [BUG] write-tally fails under malformed $TMPDIR; run-root code-review-tally.json never lands`) is the **same `_rebase_under_tmpdir` doubling defect** at a different call site, and this issue confirms its stated root cause is a **mis-attribution**:
+
+- `write_tally_main` (`python/larch/review/voting.py:1466`) stages its record via `tempfile.NamedTemporaryFile(..., prefix="write-tally-record.")` with **no `dir=`** → a valid file in the system `$TMPDIR` — then passes it to `run-log write --input-file <syspath>` (voting.py:1470–1484).
+- `run-log write` → `larch_log_write_main` (`run_logs.py:270`) → `_write_batch(input_file=...)` → the **same** `_rebase_under_tmpdir`, which doubles the path to `{IMPLEMENT_TMPDIR}/var/folders/.../T/write-tally-record.XXXX` — exactly the malformed path #6259 reports.
+- #6259 attributes this to "the ambient `$TMPDIR` resolves to a malformed, nonexistent path" and proposes hardening `NamedTemporaryFile` with `dir=`. In fact the `$TMPDIR` is fine and `NamedTemporaryFile` succeeds; the doubled path is produced by `_rebase_under_tmpdir` in the downstream `run-log write`. Adding `dir=<IMPLEMENT_TMPDIR>` happens to fix it only because a temp already under `IMPLEMENT_TMPDIR` makes the rebase a no-op — a call-site band-aid, not the root fix.
+
+Net: **one root-cause defect** (`_rebase_under_tmpdir` corrupts valid, existing, same-host absolute temp paths when `IMPLEMENT_TMPDIR` is set) with at least two confirmed victims — `write-tally`/`code-review-tally.json` (#6259) and `session-transcript.jsonl` (this issue) — plus any future `run-log write`/`_write_batch` caller that stages a temp in the system `$TMPDIR`. This issue is filed separately because the two victims have different call sites and impact, but they should be fixed together (see Suggested fixes; this issue is wired blocked-by #6259).
+
+## Evidence
+
+Investigated at `main` @ `e0bd4489f`.
+
+- **21/21 post-repair implement runs failed.** Manifests with `started_at` after the #6154 merge (2026-07-03T22:33:17Z) through 2026-07-04T09:03Z all lack `session-transcript.jsonl`; `git log --diff-filter=A` shows **zero** implement transcripts added after the repair merge (last one added 2026-07-01T10:34).
+- **Production breadcrumb** (representative, from an affected run's `execution-issues`): `Step 7a — session-transcript status=write-failed: larch-log write failed; transcript was not captured: [Errno 2] No such file or directory: '<TMPDIR>/var/folders/<x>/<y>/T/session-transcript.XXXXXXX.jsonl'`. The `<TMPDIR>` redaction masks the `IMPLEMENT_TMPDIR` prefix, leaving the doubled tail — exactly the corruption above.
+- **Direct reproduction** of `_rebase_under_tmpdir` corrupting a real `mkstemp` path when `IMPLEMENT_TMPDIR` is set, and returning it unchanged when unset (see Reproduction scenario).
+- **Selectivity confirmed:** in an affected run dir, `token-report.json`, `timing-report.json`, `manifest.json`, and `review-findings-full.jsonl` are present; only `session-transcript.jsonl` is missing.
+- **Design contrast:** `token measure-references-heatmap` shows `design: 17/683` transcript runs (all post-repair) vs `implement: 1081/1405` (all pre-outage; none new post-repair).
+- **Regression origin:** `#5771` (commit `6ef6577d7`, 2026-06-28) introduced both `env["IMPLEMENT_TMPDIR"] = ctx.tmpdir` and the `mkstemp`-in-`$TMPDIR` transcript render routed through `_write_batch`. Implement transcripts stopped committing ~2026-07-01, consistent with this landing.
+- **Shared-cause verification:** `voting.py:1466` (NamedTemporaryFile, no `dir=`) → `run-log write` (voting.py:1481) → `run_logs.py:270` `_write_batch` → `_rebase_under_tmpdir` — the identical corrupting path as this issue, confirming #6259 is the same root cause.
+
+## Affected files
+
+- `python/larch/report/run_log_batch.py` (`_rebase_under_tmpdir`, lines 102–116; the corrupting re-anchor at line 115) — the shared defect site for this issue AND #6259.
+- `python/larch/report/run_log_flush.py` (`capture_transcript_main`, line 862 `mkstemp` in `$TMPDIR`; line 897 `_write_batch` call; lines 898–904 the `write-failed` catch) — where the bad path originates for the transcript and the failure is swallowed into a warning.
+- `python/larch/review/voting.py:1466` — #6259's sibling call site (NamedTemporaryFile, no `dir=`), listed here to show the shared surface.
+- `python/larch/design/design_publish.py` — the design capture path; unaffected (no `IMPLEMENT_TMPDIR`), useful as the working contrast.
+
+## Suggested fix(es)
+
+Prefer a **single root fix** that resolves this issue, #6259, and any future caller:
+
+1. Root fix (recommended): harden `_rebase_under_tmpdir` (`run_log_batch.py:115`) so it does not corrupt a valid, existing, same-host absolute path. E.g. when `candidate.is_absolute()` and the file exists (or lies under the real system `$TMPDIR`), return it unchanged rather than re-anchoring under `IMPLEMENT_TMPDIR`. This must preserve the intended cross-clone remap for genuinely foreign-clone paths (cf. #6213) — so scope the no-op to existing/same-host temps, not all absolute paths.
+2. Defense-in-depth at the call sites: create the rendered transcript under `IMPLEMENT_TMPDIR` (`tempfile.mkstemp(dir=<run tmpdir>, ...)` at `run_log_flush.py:862`); #6259 proposes the analogous `dir=` fix for `voting.py:1466`. With a temp already under `IMPLEMENT_TMPDIR`, the rebase is a clean no-op.
+
+Add a regression test asserting a run-log batch write succeeds when the input temp file is outside `IMPLEMENT_TMPDIR` while `IMPLEMENT_TMPDIR` is set — this single test guards both victims.
+
+## Open questions
+
+- Should this issue and #6259 be fixed by one PR at `_rebase_under_tmpdir` (root fix), or separately at each call site? This issue is wired blocked-by #6259 to serialize the shared `run_log_batch.py` surface; if #6259's design adopts the root fix, this issue may reduce to verification only. Coordinating owners should confirm.
+- Does the review capture path (review runs with `IMPLEMENT_TMPDIR` set) route any other `mkstemp`/`NamedTemporaryFile`-in-`$TMPDIR` input through `run-log write` / `_write_batch`? If so, it shares this hazard and is covered by the root fix.
+- Should the swallowed `write-failed` status be promoted from a warning to a louder signal (or a green-path assertion) so a future capture regression fails visibly instead of silently starving the heatmap for days?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Add a regression test for `capture_transcript_main` with `IMPLEMENT_TMPDIR` set.
+- Confirm that a rendered transcript in system `$TMPDIR` is captured without path corruption.
+
+### Non-goals
+- Changing `_rebase_under_tmpdir` (already fixed by PR #6273).
+- Fixing `_resolve_log_root` path-doubling (separate latent issue, out of scope).
+- Adding `dir=IMPLEMENT_TMPDIR` call-site defense to `capture_transcript_main`.
+
+### Approach sketch
+- Add one test function near the existing `capture_transcript_main` tests (~line 2655 in `test_run_logs.py`).
+- Set `IMPLEMENT_TMPDIR` via `monkeypatch.setenv` to a path outside system `$TMPDIR`.
+- Mock `subprocess.run` to write JSON content to the renderer `--output` path.
+- Assert `SESSION_TRANSCRIPT_STATUS=captured`.
+
+### Surfaces in scope
+- `python/tests/report/test_run_logs.py`
+
+### Open questions
+- None.

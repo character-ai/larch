@@ -1,0 +1,30 @@
+### FINDING_1:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/tests/report/test_run_logs.py
+- **Concern**: `tempfile.tempdir` monkeypatch will not reliably steer `mkstemp` in pytest. Scenario: The plan patches `run_log_flush.tempfile.tempdir`, but `tempfile.mkstemp` uses cached `gettempdir()`; pytest/tmp_path usually calls that before the test body. Render output can stay in the real host `$TMPDIR` while the mock asserts it is under `system-tmp`, so correct code can fail. If the patch is a no-op, the test may still pass without proving the intended isolation.
+- **Proposed resolution**: Patch `run_log_flush.tempfile.gettempdir` to return `str(system_tmp)`, or drop the fake `system-tmp` harness and assert only that `--output` is outside `implement-tmp` while `IMPLEMENT_TMPDIR` is set.
+
+
+
+### FINDING_2:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Focus area**: correctness
+- **Location**: python/tests/report/test_run_logs.py:2609-2656
+- **Concern**: [SCOPE-REDUCTION] Planned `system-tmp` scaffolding is unnecessary for the regression. Scenario: With `IMPLEMENT_TMPDIR` set to `implement-tmp`, production `mkstemp` already lands in host temp outside that dir, which is the bug trigger. The extra dir plus `tempfile` patch adds ~10 lines and a flaky hook without improving detection versus extending the defer-commit harness with `IMPLEMENT_TMPDIR` and a not-under-implement-tmp assertion.
+- **Proposed resolution**: Add `IMPLEMENT_TMPDIR` to the existing defer-commit test (or a thin sibling) and assert `SESSION_TRANSCRIPT_STATUS=captured`, `session-transcript.jsonl` exists, and the mocked `--output` path is not under `implement-tmp`; omit `system-tmp` and `tempfile.tempdir`. ### 1. [correctness] `tempfile.tempdir` monkeypatch is unreliable in pytest (`python/tests/report/test_run_logs.py`) The plan forces `mkstemp` into `system-tmp` by patching `run_log_flush.tempfile.tempdir`. In CPython, `gettempdir()` caches its result on first use. Pytest’s `tmp_path` fixture typically calls that before your test runs, so setting `tempdir` later often does not change where `mkstemp` writes. That breaks the planned mock assertions (“`--output` is under `system-tmp`”). Correct code can fail because output lands in real `/var/folders/.../T` instead of `tmp_path/system-tmp`. Patch `run_log_flush.tempfile.gettempdir`, or drop the fake system temp dir and assert only that the render path is outside `implement-tmp`. ### 2. [correctness] [SCOPE-REDUCTION] Fake `system-tmp` is not needed to reproduce the bug (`python/tests/report/test_run_logs.py:2609-2656`) The regression only needs `IMPLEMENT_TMPDIR` set while `mkstemp` writes outside it. Host `$TMPDIR` already satisfies that when `implement-tmp` is a sibling under `tmp_path`. Prior round FINDING_1/2 fixes are now in the plan; the remaining delta over `test_capture_transcript_main_defer_commit_no_warning` is `IMPLEMENT_TMPDIR` plus “output not under implement tmp” and a `session-transcript.jsonl` existence check. Prefer extending that test (or a small sibling) instead of a second full subprocess-mock harness with dual temp dirs. That matches the issue’s minimum ask and avoids the `tempfile` cache footgun. **Note:** `test_rebase_under_tmpdir_keeps_external_absolute_path` (`python/tests/report/test_run_logs.py:1544-1551`) already pins the helper fix; the planned integration test still adds value by exercising `_write_batch` → `_redact_to_temp` on a real temp file. No finding on that choice. Accepted ledger items FINDING_1 and FINDING_2 appear addressed in the current plan text.
+
+
+
+### FINDING_3:
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/larch/report/run_log_batch.py:110-115
+- **Concern**: [SCOPE-REDUCTION] Broad absolute-path passthrough removes the existing root-relative argv recovery contract. Scenario: Post-Step-0 fences can still invoke the stable launcher with caller-shell-expanded paths such as /execution-issue-record.ndjson. The old rebase mapped that to $IMPLEMENT_TMPDIR/execution-issue-record.ndjson, but the current passthrough reads /execution-issue-record.ndjson and the run-log append fails.
+- **Proposed resolution**: Narrow the no-op to the external temp-file case needed by transcript capture and write-tally. Keep rebasing root-relative session paths whose target exists under IMPLEMENT_TMPDIR, and restore coverage for root-relative run-log write or append inputs.
+
+
+

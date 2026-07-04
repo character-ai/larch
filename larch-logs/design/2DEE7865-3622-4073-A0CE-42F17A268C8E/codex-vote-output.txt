@@ -1,0 +1,3 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- `tempfile.tempdir` does steer `mkstemp`; this is not a real failure mode for the planned test.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the simplification is real but optional; the plan still only needs the regression assertion.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- the current plan does not include changing `_rebase_under_tmpdir`, so this concern is out of scope.

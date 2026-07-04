@@ -1,0 +1,79 @@
+## Plan
+
+## Approach
+
+Add one focused regression test. The code fix already appears present: `_rebase_under_tmpdir` now returns external absolute paths unchanged when `IMPLEMENT_TMPDIR` is set. The remaining work is to pin the `capture_transcript_main` path that exposed the bug.
+
+## Files to modify/create
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add a test near the existing `capture_transcript_main` tests.
+
+Test shape:
+
+- Create two separate dirs under `tmp_path`:
+  - `system-tmp`
+  - `implement-tmp`
+- Set `IMPLEMENT_TMPDIR` with `config.ENV_IMPLEMENT_TMPDIR` to `implement-tmp`.
+- Force `tempfile.mkstemp` for the capture path to use `system-tmp`, for example by monkeypatching `run_log_flush.tempfile.tempdir`.
+- Create a source file with `TRANSCRIPT_PATH=<transcript>`.
+- Create a non-empty transcript file at that path (e.g., one JSON line), so `capture_transcript_main` passes the `transcript_path.is_file()` guard and proceeds to render/write.
+- Mock `subprocess.run` like the existing capture test:
+  - Find the `--output` argument.
+  - Assert the render output path is under `system-tmp`.
+  - Assert it is not under `implement-tmp`.
+  - Write a small rendered transcript payload to that path.
+  - Return `subprocess.CompletedProcess(..., returncode=0, ...)`.
+- Call `run_logs.capture_transcript_main` with:
+  - `--source-file <source-file>` (required to pass the source-file guard)
+  - `--log-root <tmp_path>/larch-logs`
+  - `--skill implement`
+  - `--run-id RUN1`
+  - `--defer-commit true`
+- Assert:
+  - return code is `0`
+  - stdout contains `SESSION_TRANSCRIPT_STATUS=captured`
+  - `<log-root>/implement/RUN1/session-transcript.jsonl` exists
+  - the committed transcript content matches the fake rendered payload
+  - no `write-failed` status appears
+
+## Edge cases
+
+- Use `--defer-commit true` so the test does not depend on git state.
+- Patch `tempfile.tempdir` with `monkeypatch` so pytest restores the global temp setting.
+- Keep the fake system temp dir outside `IMPLEMENT_TMPDIR`; otherwise the test would not guard the regression.
+
+## Failure modes
+
+- If `_rebase_under_tmpdir` regresses and re-anchors the render path under `IMPLEMENT_TMPDIR`, `_write_batch` will read a non-existent path and the test will see `SESSION_TRANSCRIPT_STATUS=write-failed`.
+- If the renderer mock forgets to write the `--output` file, the test will fail on `render-empty`, not the intended path-corruption assertion.
+
+## Testing strategy
+
+Run focused tests:
+
+- `python3 -m pytest -q python/tests/report/test_run_logs.py -k capture_transcript`
+- Optional nearby guard: `python3 -m pytest -q python/tests/report/test_run_logs.py -k rebase_under_tmpdir`
+
+Run changed-file lint if available:
+
+- `cd python && ruff check tests/report/test_run_logs.py`
+- `cd python && pyright tests/report/test_run_logs.py`
+
+## Acceptance
+
+Run focused tests:
+
+- `python3 -m pytest -q python/tests/report/test_run_logs.py -k capture_transcript`
+- Optional nearby guard: `python3 -m pytest -q python/tests/report/test_run_logs.py -k rebase_under_tmpdir`
+
+Run changed-file lint if available:
+
+- `cd python && ruff check tests/report/test_run_logs.py`
+- `cd python && pyright tests/report/test_run_logs.py`
+
+review_status: complete
+rounds_completed: 2
+difficulty: TRIVIAL
+diff_lines: 60
