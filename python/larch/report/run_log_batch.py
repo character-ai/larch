@@ -263,10 +263,14 @@ def _resolve_log_root(log_root: str | None = None) -> Path:
 
 
 def _run_dir(*, log_root: Path, skill: str, run_id: str) -> Path:
+    if not validate_run_id_slug(run_id):
+        raise ValueError(f"invalid run-id: {run_id}")
     return log_root / skill / run_id
 
 
 def _repo_run_dir(*, repo_root: Path, skill: str, run_id: str) -> Path:
+    if not validate_run_id_slug(run_id):
+        raise ValueError(f"invalid run-id: {run_id}")
     return repo_root / "larch-logs" / skill / run_id
 
 

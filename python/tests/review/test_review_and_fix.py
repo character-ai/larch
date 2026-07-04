@@ -13,6 +13,7 @@ import threading
 from pathlib import Path
 from unittest import mock
 
+from larch.calibration import difficulty_calibration
 from larch.report import exec_issue_detail
 from larch.core import logging_util
 import pytest
@@ -1375,7 +1376,63 @@ def test_write_self_review_tally_nonzero_counts(tmp_path, monkeypatch):
     assert tally["rejected_count"] == 1
     findings_path = run_dir / "review-findings-full.jsonl"
     assert findings_path.is_file()
-    assert findings_path.read_text(encoding="utf-8") == ""
+    rows = [json.loads(line) for line in findings_path.read_text(encoding="utf-8").splitlines()]
+    assert [(row["id"], row["outcome"], row["schema_version"]) for row in rows] == [
+        ("SELF_REVIEW_ACCEPTED_1", "accepted", "2"),
+        ("SELF_REVIEW_ACCEPTED_2", "accepted", "2"),
+        ("SELF_REVIEW_REJECTED_1", "rejected", "2"),
+    ]
+    assert all(row["phase"] == "code-review" for row in rows)
+    assert all(row["round_num"] == "1" for row in rows)
+    state = difficulty_calibration.AnalyzerState()
+    parsed, source_parseable, count = difficulty_calibration._parse_jsonl_source(findings_path, skill="implement", state=state)
+    assert source_parseable is True
+    assert count == 3
+    assert sum(1 for row in parsed if row.accepted) == 2
+
+
+def test_write_self_review_tally_nonzero_tally_failure_writes_sidecars_once(tmp_path, monkeypatch):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    (impl / "self-review-accepted.md").write_text("### [Code Review] Self-review accepted\n", encoding="utf-8")
+    (impl / "rejected-findings.md").write_text("### [Code Review] Self-review\n", encoding="utf-8")
+
+    def fake_run(argv, **_kwargs):
+        if argv[2:4] == ["voting", "write-tally"]:
+            return review_and_fix.proc.CommandResult(tuple(argv), 9, "tally stdout", "tally stderr", 0.0)
+        if argv[2:4] == ["run-log", "write"]:
+            log_root = Path(_arg_value(argv, "--log-root"))
+            run_id = _arg_value(argv, "--run-id")
+            batch = _arg_value(argv, "--batch")
+            source = Path(_arg_value(argv, "--input-file"))
+            dest = log_root / "implement" / run_id / f"{batch}.jsonl"
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copyfile(source, dest)
+            return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+        raise AssertionError(argv)
+
+    monkeypatch.setattr(review_and_fix, "_run", fake_run)
+
+    rc = review_and_fix.write_self_review_tally([
+        "--implement-tmpdir", str(impl),
+        "--run-id", "run-sr",
+    ])
+
+    assert rc == 0
+    run_dir = impl / "larch-logs" / "implement" / "run-sr"
+    tmp_sidecar = impl / "code-review-tally.flush.err"
+    run_sidecar = run_dir / "code-review-tally.flush.err"
+    assert tmp_sidecar.read_text(encoding="utf-8") == run_sidecar.read_text(encoding="utf-8")
+    sidecar_text = run_sidecar.read_text(encoding="utf-8")
+    assert "returncode=9" in sidecar_text
+    assert "tally stderr" in sidecar_text
+    assert "tally stdout" in sidecar_text
+    warning_text = (impl / "execution-issues.md").read_text(encoding="utf-8")
+    assert warning_text.count("`code-review-tally` write failed") == 1
+    assert "larch-logs/implement/run-sr/code-review-tally.flush.err" in warning_text
+    rows = [json.loads(line) for line in (run_dir / "review-findings-full.jsonl").read_text(encoding="utf-8").splitlines()]
+    assert [row["id"] for row in rows] == ["SELF_REVIEW_ACCEPTED_1", "SELF_REVIEW_REJECTED_1"]
 
 
 def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
@@ -1393,6 +1450,85 @@ def test_self_review_prompt_reconciles_tally_counts_from_artifacts():
     assert "$IMPLEMENT_TMPDIR/self-review-accepted.md" in self_review_section
     assert "$IMPLEMENT_TMPDIR/rejected-findings.md" in self_review_section
     assert 'write-self-review-tally --implement-tmpdir "$IMPLEMENT_TMPDIR" --run-id "$RUN_ID"' in self_review_section
+
+
+def _fake_review_batch_run(argv: list[str], *, tally_result: review_and_fix.proc.CommandResult) -> review_and_fix.proc.CommandResult:
+    if argv[2:4] == ["voting", "write-tally"]:
+        return tally_result
+    if argv[2:4] == ["run-log", "write"]:
+        log_root = Path(_arg_value(argv, "--log-root"))
+        run_id = _arg_value(argv, "--run-id")
+        batch = _arg_value(argv, "--batch")
+        source = Path(_arg_value(argv, "--input-file"))
+        suffix = ".tsv" if batch.endswith("ledger") else ".jsonl"
+        dest = log_root / "implement" / run_id / f"{batch}{suffix}"
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(source, dest)
+        return review_and_fix.proc.CommandResult(tuple(argv), 0, "", "", 0.0)
+    raise AssertionError(argv)
+
+
+def test_flush_review_batches_nonzero_tally_writes_sidecars_and_findings(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    findings_source = tmp_path / "findings.jsonl"
+    findings_source.write_text(json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}) + "\n", encoding="utf-8")
+    result = review_and_fix.proc.CommandResult(("python3",), 7, "tally stdout", "tally stderr", 0.0)
+    monkeypatch.setattr(batch_report, "_run", lambda argv, **_kwargs: _fake_review_batch_run(argv, tally_result=result))
+
+    ok = batch_report.flush_review_batches(impl_tmpdir=impl, run_id="run-flush", rounds=1, _accepted=1, _rejected=0, composed_findings_source=findings_source)
+
+    assert ok is False
+    run_dir = impl / "larch-logs" / "implement" / "run-flush"
+    tmp_sidecar = impl / "code-review-tally.flush.err"
+    run_sidecar = run_dir / "code-review-tally.flush.err"
+    assert tmp_sidecar.is_file()
+    assert run_sidecar.is_file()
+    assert tmp_sidecar.read_text(encoding="utf-8") == run_sidecar.read_text(encoding="utf-8")
+    sidecar_text = run_sidecar.read_text(encoding="utf-8")
+    assert "returncode=7" in sidecar_text
+    assert "tally stderr" in sidecar_text
+    assert "tally stdout" in sidecar_text
+    warning_text = (impl / "execution-issues.md").read_text(encoding="utf-8")
+    assert "larch-logs/implement/run-flush/code-review-tally.flush.err" in warning_text
+    assert (run_dir / "review-findings-full.jsonl").read_text(encoding="utf-8") == findings_source.read_text(encoding="utf-8")
+
+
+def test_flush_review_batches_success_removes_stale_tally_sidecars(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    run_dir = impl / "larch-logs" / "implement" / "run-flush"
+    run_dir.mkdir(parents=True)
+    (impl / "code-review-tally.flush.err").write_text("stale", encoding="utf-8")
+    (run_dir / "code-review-tally.flush.err").write_text("stale", encoding="utf-8")
+    findings_source = tmp_path / "findings.jsonl"
+    findings_source.write_text(json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}) + "\n", encoding="utf-8")
+    result = review_and_fix.proc.CommandResult(("python3",), 0, "", "", 0.0)
+    monkeypatch.setattr(batch_report, "_run", lambda argv, **_kwargs: _fake_review_batch_run(argv, tally_result=result))
+
+    assert batch_report.flush_review_batches(impl_tmpdir=impl, run_id="run-flush", rounds=1, _accepted=1, _rejected=0, composed_findings_source=findings_source)
+
+    assert not (impl / "code-review-tally.flush.err").exists()
+    assert not (run_dir / "code-review-tally.flush.err").exists()
+
+
+def test_flush_review_batches_tally_warning_append_is_fail_open(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    findings_source = tmp_path / "findings.jsonl"
+    findings_source.write_text(json.dumps({"id": "FINDING_1", "phase": "code-review", "outcome": "accepted"}) + "\n", encoding="utf-8")
+    result = review_and_fix.proc.CommandResult(("python3",), 7, "", "", 0.0)
+    monkeypatch.setattr(batch_report, "_run", lambda argv, **_kwargs: _fake_review_batch_run(argv, tally_result=result))
+
+    def boom(**_kwargs):
+        raise OSError("append failed")
+
+    monkeypatch.setattr(batch_report.run_logs, "append_execution_issue", boom)
+
+    ok = batch_report.flush_review_batches(impl_tmpdir=impl, run_id="run-flush", rounds=1, _accepted=1, _rejected=0, composed_findings_source=findings_source)
+
+    assert ok is False
+    assert (impl / "code-review-tally.flush.err").is_file()
 
 
 def test_flush_review_batches_rewrites_cumulative_tally_with_ignored_body_header(

@@ -28,6 +28,7 @@ from larch.report import progress_report
 from larch.core import redact
 from larch.review import review_pipeline
 from larch.review import review_tally
+from larch.review import self_review_tally
 from larch.report import run_logs
 from larch.review import voting
 from larch.review.review_types import ReviewCoreStatus, parse_findings, parse_findings_text, read_finding_text
@@ -89,6 +90,7 @@ from larch.review.coder_runner import (
 )
 from larch.review.batch_report import (
     _skip_ratio_threshold,
+    observe_code_review_tally_flush,
     flush_review_batches,
     flush_round_log_after_coder,
     flush_scout_manifest,
@@ -1037,15 +1039,36 @@ def record_round_timing(argv: list[str] | None = None) -> int:
     return 1
 
 
+def _self_review_findings_jsonl(*, accepted: int, rejected: int) -> str:
+    tally_data = {"mode": "self-review", "accepted_count": accepted, "rejected_count": rejected}
+    records: list[str] = []
+    for item in self_review_tally.self_review_tally_items(tally_data):
+        record = {
+            "id": item.finding_id,
+            "issue_number": "0",
+            "phase": "code-review",
+            "outcome": item.outcome,
+            "schema_version": "2",
+            "reviewer_slots": ["self-review"],
+            "round_num": "1",
+            "category": "",
+            "body_severity": "",
+            "focus_area": "",
+            "prose_body": "",
+        }
+        records.append(json.dumps(record, separators=(",", ":")))
+    return "".join(f"{record}\n" for record in records)
+
+
 def write_self_review_tally(argv: list[str] | None = None) -> int:
     """Emit the Step 5 self-review run-log artifacts (best effort).
 
-    Writes ``code-review-tally.json`` (mode ``self-review``) and an empty
-    ``review-findings-full.jsonl`` so the final-report ``Code review`` line and
-    ``audit_runs`` Step 5 detection treat a clean ``--self-review`` run as
-    "review ran" rather than "no review". Observability only: writer failures
-    are surfaced (stderr + an execution-issues Warnings entry) but the verb
-    still returns 0 so the thin SKILL.md launcher fence never blocks Step 6.
+    Writes ``code-review-tally.json`` (mode ``self-review``) and matching
+    ``review-findings-full.jsonl`` rows so final reports, audit runs, and
+    difficulty calibration can recover self-review counts when the tally is
+    unavailable. Observability only: writer failures are surfaced (stderr plus
+    fail-open Warnings entries) but the verb still returns 0 so the thin
+    SKILL.md launcher fence never blocks Step 6.
     """
     logging_util.quiet_init(argv0="review-and-fix-write-self-review-tally")
     parser = argparse.ArgumentParser(prog="cli.py review-and-fix write-self-review-tally")
@@ -1074,7 +1097,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
     batch_input = implement_tmpdir / "larch-log-batches-input"
     batch_input.mkdir(parents=True, exist_ok=True)
     findings_file = batch_input / "review-findings-full.jsonl"
-    _write_text(path=findings_file, text="")
+    _write_text(path=findings_file, text=_self_review_findings_jsonl(accepted=accepted, rejected=rejected))
     tally_result = _run([
         "python3", str(_PY_CLI), "voting", "write-tally",
         "--log-root", str(log_root),
@@ -1086,6 +1109,7 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
         "--accepted", str(accepted),
         "--rejected", str(rejected),
     ])
+    observe_code_review_tally_flush(impl_tmpdir=implement_tmpdir, run_id=args.run_id, result=tally_result)
     if tally_result.returncode != 0:
         _err(f"⚠ review-and-fix: self-review write-tally failed (rc={tally_result.returncode})")
         if tally_result.stderr:
@@ -1102,12 +1126,13 @@ def write_self_review_tally(argv: list[str] | None = None) -> int:
         _err(f"⚠ review-and-fix: self-review run-log write review-findings-full failed (rc={findings_result.returncode})")
         if findings_result.stderr:
             _err(findings_result.stderr.rstrip())
-    if tally_result.returncode != 0 or findings_result.returncode != 0:
-        run_logs.append_execution_issue(
-            log_file=implement_tmpdir / "execution-issues.md",
-            category="Warnings",
-            entry="Step 5 self-review tally emission failed; final report may fall back to Code review: N/A.",
-        )
+    if tally_result.returncode == 0 and findings_result.returncode != 0:
+        with contextlib.suppress(OSError):
+            run_logs.append_execution_issue(
+                log_file=implement_tmpdir / "execution-issues.md",
+                category="Warnings",
+                entry="Step 5 self-review findings emission failed; final report may fall back to Code review: N/A.",
+            )
     return 0
 
 

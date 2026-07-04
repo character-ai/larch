@@ -4287,7 +4287,7 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0911",
     "qualified_symbol": "_derive_review_line",
-    "metric": 9
+    "metric": 10
   },
   {
     "file": "larch/report/final_report.py",
