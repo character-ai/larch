@@ -105,8 +105,8 @@
     "skill_md_lines": 0
   },
   {
-    "closure_content_estimated_tokens": 10056,
-    "closure_estimated_tokens": 10090,
+    "closure_content_estimated_tokens": 10093,
+    "closure_estimated_tokens": 10127,
     "closure_lines": 402,
     "conditional_content_estimated_tokens": 3497,
     "conditional_estimated_tokens": 3508,
@@ -125,8 +125,8 @@
       "skills/review/references/domain-rules.md"
     ],
     "skill": "review",
-    "skill_md_content_estimated_tokens": 5624,
-    "skill_md_estimated_tokens": 5634,
+    "skill_md_content_estimated_tokens": 5661,
+    "skill_md_estimated_tokens": 5671,
     "skill_md_lines": 124
   }
 ]
