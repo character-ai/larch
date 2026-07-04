@@ -1,0 +1,92 @@
+## Goal
+Implement issue #6303: [IMPLEMENTING] Scrub em-dashes from SKILL.md outline auto-approve breadcrumb and design_step5b.py warning strings.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Make the smallest literal-only change.
+
+- In the Step 1d.7 auto-approve breadcrumb, replace `outline — auto-approved` with `outline: auto-approved`.
+- In Step 5b Python output strings, replace each scoped ` — ` separator with `; `.
+- Preserve all control flow, exit codes, `KEY=value` rows, sentinels, code fences, and status tokens.
+- Do not edit `skills/design/references/design-outline.md` or `skills/design/references/finalize-step5.md`.
+
+## Files to modify/create
+
+### UPDATED: skills/design/SKILL.md
+
+Change only the line 249 auto-approve print literal:
+
+- From `⏩ 1d.7: outline — auto-approved (--skip-approve)`
+- To `⏩ 1d.7: outline: auto-approved (--skip-approve)`
+
+Do not scrub other em-dashes in comments, headings, or mandatory-read prose.
+
+### UPDATED: python/larch/design/design_step5b.py
+
+Change only operator-visible Step 5b strings in the approved range.
+
+- In `_STEP5B_SKIP_BREADCRUMBS`, replace `⏩ 5b: oos filing — ...` with `⏩ 5b: oos filing; ...`.
+- In the warning print strings at the scoped lines, replace ` — ` with `; `.
+- Keep `STEP5B_STATUS`, `NEXT_ACTION`, `OOS_SKIP_BREADCRUMB`, and other machine-parsed rows unchanged.
+
+### MAY_UPDATE: python/tests/design/test_design_oos.py
+
+Update exact expected breadcrumb literals only if tests pin the old strings.
+
+Known likely updates:
+
+- `⏩ 5b: oos filing; sentinel recovery (skip pipeline)`
+- `⏩ 5b: oos filing; no accepted-OOS items`
+- `⏩ 5b: oos filing; no non-security OOS items`
+- `OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing; oos-issue-sentinel present (already filed); skip pipeline`
+
+Do not add behavior tests for punctuation only.
+
+## Edge cases
+
+- Leave historical run logs untouched.
+- Do not use a repo-wide em-dash scrub. The approved scope is narrow.
+- Do not change warning meaning or routing. Only punctuation changes.
+- Keep markdown command fences byte-stable.
+
+## Failure modes
+
+- Exact-literal tests may fail if expected breadcrumbs are not synced.
+- A broad grep for em-dashes in whole files may still find out-of-scope em-dashes. Acceptance should check the scoped literals, not all prose in these files.
+- Changing `OOS_SKIP_BREADCRUMB` key names or status values would break prompt-side routing. Do not touch them.
+
+## Testing strategy
+
+Run focused checks:
+
+- `python3 -m pytest python/tests/design/test_design_oos.py`
+- `bash scripts/test-design-structure.sh`
+- Targeted grep to confirm scoped old literals are gone from the two runtime surfaces:
+  - `outline — auto-approved`
+  - `oos filing —`
+  - `OOS filing prepare failed —`
+  - `unrecognized OOS prepare status —`
+  - `ISSUES_FAILED>0 —`
+  - `annotate skipped (empty issue stdout) —`
+
+## Acceptance
+
+Run focused checks:
+
+- `python3 -m pytest python/tests/design/test_design_oos.py`
+- `bash scripts/test-design-structure.sh`
+- Targeted grep to confirm scoped old literals are gone from the two runtime surfaces:
+  - `outline — auto-approved`
+  - `oos filing —`
+  - `OOS filing prepare failed —`
+  - `unrecognized OOS prepare status —`
+  - `ISSUES_FAILED>0 —`
+  - `annotate skipped (empty issue stdout) —`
+
+diff_lines: 14
+
+## Test plan
+(no test plan section in plan-file)
