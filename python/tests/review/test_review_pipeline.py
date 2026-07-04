@@ -2838,6 +2838,8 @@ def test_dispatch_panel_materializes_panel_prompt_sizes(tmp_path: Path) -> None:
     tsv = case_dir / "panel-prompt-sizes.tsv"
     assert tsv.is_file()
     text = tsv.read_text(encoding="utf-8")
+    header = text.splitlines()[0]
+    assert header.split("\t")[11] == "payload_bytes"
     data_lines = [line for line in text.splitlines() if line and not line.startswith("site\t")]
     assert len(data_lines) >= 1
     for line in data_lines:

@@ -807,9 +807,9 @@ def _write_payload_bytes_sidecar(path_value: str, payload_bytes: int) -> None:
         tmp.replace(target)
     except OSError:
         if tmp is not None:
-            with contextlib.suppress(FileNotFoundError):
+            with contextlib.suppress(OSError):
                 tmp.unlink()
-        with contextlib.suppress(FileNotFoundError):
+        with contextlib.suppress(OSError):
             target.unlink()
 
 def _architectural_guidelines_review_section() -> str:

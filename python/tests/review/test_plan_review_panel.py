@@ -7,6 +7,7 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+from larch.core import config
 from larch.report import tokens
 from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
@@ -1003,6 +1004,85 @@ def test_dynamic_slot_rows_thread_payload_bytes_from_render(tmp_path: Path, monk
     assert failures == []
     assert rows[0]["payload_bytes"] == 27
     assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == "rendered dynamic prompt\n"
+
+
+def test_plan_review_rows_ignore_stale_payload_sidecars_on_fallback_prompt(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    design = tmp_path / "design-fallback"
+    design.mkdir()
+    _ = (design / "plan.txt").write_text("Plan body.\n", encoding="utf-8")
+    _ = (design / "feature-description.txt").write_text("feat\n", encoding="utf-8")
+    _ = (design / "scout-plan-manifest.json").write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "alpha",
+                        "focus_area": "correctness",
+                        "weight": 2,
+                        "rationale": "r1",
+                        "prompt_body": "Check dynamic rendering.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    round_dir = design / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    slot_defaults = (
+        config.SlotDefault(slot="cursor-plan-arch", tool="cursor", output="cursor-plan-arch.txt", focus_area="architecture", archetype="arch"),
+        config.SlotDefault(slot="codex-plan-generic", tool="codex", output="codex-plan-generic.txt", focus_area="", archetype="generic"),
+    )
+    monkeypatch.setattr(
+        plan_review_panel.external_defaults,
+        "slot_defaults",
+        lambda role_id, env=None: slot_defaults if role_id == "design.plan_review_panel" else (),  # noqa: ARG005
+    )
+    monkeypatch.setattr(
+        plan_review_panel.external_defaults,
+        "panel_dispatch_policy",
+        lambda role_id: config.PanelDispatchPolicy(generic_codex_rounds=frozenset({1})) if role_id == "design.plan_review_panel" else config.PanelDispatchPolicy(),  # noqa: ARG005
+    )
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "plan-review"):
+            sidecar = Path(a[a.index("--payload-bytes-output") + 1])
+            sidecar.write_text("99\n", encoding="utf-8")
+            return cp(a, 0, stdout="", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+
+    rows = plan_review_panel._static_slot_rows(  # pyright: ignore[reportPrivateUsage]
+        design=design,
+        round_dir=round_dir,
+        round_num=1,
+        codex_present="true",
+        cursor_present="true",
+        plan_file=str(design / "plan.txt"),
+        feature_file=str(design / "feature-description.txt"),
+    )
+    generic = plan_review_panel._generic_plan_codex_row(  # pyright: ignore[reportPrivateUsage]
+        design=design,
+        round_dir=round_dir,
+        round_num=1,
+        plan_file=str(design / "plan.txt"),
+        feature_file=str(design / "feature-description.txt"),
+    )
+
+    assert rows[0]["prompt_file"] == str(design / "render-plan-cursor-arch.prompt")
+    assert (design / "render-plan-cursor-arch.prompt").read_text(encoding="utf-8") == "Review the design plan with a architecture lens."
+    assert "payload_bytes" not in rows[0]
+    assert generic is not None
+    assert generic["prompt_file"] == str(round_dir / "render-plan-codex-generic.prompt")
+    assert (round_dir / "render-plan-codex-generic.prompt").read_text(encoding="utf-8") == "Review the design plan with a code-quality lens."
+    assert "payload_bytes" not in generic
 
 
 def test_filter_pruned_round_two_prunes_unproductive_rows(tmp_path: Path) -> None:

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 from pathlib import Path
@@ -391,6 +392,75 @@ def test_aggregate_oos_attribution_failure_retries_then_succeeds(tmp_path: Path)
     retry_section = prompt.split("## Previous aggregation attempt rejected by validation", 1)[1]
     assert "omit that reviewer slot" not in retry_section
     assert "every input reviewer must still appear" in retry_section
+
+
+def test_aggregate_oos_retry_threads_payload_bytes_into_env_and_manifest(tmp_path: Path) -> None:
+    findings = tmp_path / "in-retry-payload.md"
+    _ = findings.write_text(_OOS_ATTR_INPUT, encoding="utf-8")
+    dispatch = tmp_path / "payload-dispatch.sh"
+    env_log = tmp_path / "payload-env.log"
+    counter = tmp_path / "dispatch-count.txt"
+    rts.write_executable(
+        path=dispatch,
+        body=f"""#!/usr/bin/env bash
+set -euo pipefail
+slots=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --slots-file) slots="${{2:?}}"; shift 2 ;;
+    --require-result-pattern) shift 2 ;;
+    --codex-present|--cursor-present|--mode|--diff-file|--plan-file|--feature-file|--scope-files|--description-text) shift 2 ;;
+    *) shift 1 ;;
+  esac
+done
+[[ -n "$slots" && -f "$slots" ]] || exit 2
+out=$(jq -r '.output' "$slots")
+n=0
+[[ -f "{counter}" ]] && n=$(cat "{counter}")
+n=$((n + 1))
+printf '%s' "$n" > "{counter}"
+printf '%s\n' "${{LARCH_PANEL_PAYLOAD_BYTES:-0}}" >> "{env_log}"
+if [[ "$n" -eq 1 ]]; then
+  cat > "$out" <<'FAILBODY'
+{_OOS_ATTR_FAIL}
+FAILBODY
+else
+  cat > "$out" <<'OKBODY'
+{_OOS_ATTR_SUCCESS}
+OKBODY
+fi
+paths_out="${{slots}}.output-files"
+printf '%s\n' "$out" > "$paths_out"
+printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_FILES_PATH=%s\nALL_OUTPUT_TOOLS=cursor\n' "$out" "$paths_out"
+""",
+    )
+
+    result = run_review(
+        "aggregate-findings",
+        "--findings-file",
+        str(findings),
+        "--review-tmpdir",
+        str(tmp_path),
+        "--codex-present",
+        "true",
+        "--cursor-present",
+        "true",
+        "--mode",
+        "diff",
+        env=_aggregate_env(
+            tmp_path,
+            AGGREGATE_DISPATCH_SH=str(dispatch),
+            AGGREGATE_PAYLOAD_ENV_LOG=str(env_log),
+        ),
+    )
+
+    assert result.returncode == 0, result.stderr
+    payload_env = [int(line) for line in env_log.read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert len(payload_env) == 2
+    assert payload_env[0] > 0
+    assert payload_env[1] > payload_env[0]
+    rows = [json.loads(line) for line in (tmp_path / "aggregator-slots.ndjson").read_text(encoding="utf-8").splitlines() if line.strip()]
+    assert rows[-1]["payload_bytes"] == payload_env[1]
 
 
 def test_aggregate_validation_failure_exhausts_retry_budget(tmp_path: Path) -> None:

@@ -136,7 +136,7 @@ def _static_slot_rows(
             output=round_dir / slot.output,
             prompt_file=prompt_path,
             prompt=prompt,
-            payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 else 0,
+            payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and prompt else 0,
         )
         if slot.tool == "codex":
             role = difficulty.codex_review_model_role(tier)
@@ -201,14 +201,15 @@ def _generic_plan_codex_row(
         capture_output=True,
         check=False,
     )
+    prompt = proc.stdout if proc.returncode == 0 else ""
     row = _slot_row(
         tool=slot.tool,
         slot=slot.slot,
         focus=slot.focus_area or "code-quality",
         output=round_dir / slot.output,
         prompt_file=prompt_path,
-        prompt=proc.stdout if proc.returncode == 0 else "",
-        payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 else 0,
+        prompt=prompt,
+        payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and prompt else 0,
     )
     role = difficulty.codex_review_model_role(tier)
     row["model_role"] = role
@@ -367,7 +368,7 @@ def _dynamic_slot_rows(
             failures.append((slot, tool, proc.returncode))
             with contextlib.suppress(OSError):
                 _append_dynamic_render_warning(design=design, slot=slot, tool=tool, return_code=proc.returncode, diagnostics=proc.stderr or proc.stdout or "")
-        row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered, payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 else 0)
+        row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered, payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and rendered else 0)
         if tool == "codex":
             role = difficulty.codex_review_model_role(tier)
             row["model_role"] = role

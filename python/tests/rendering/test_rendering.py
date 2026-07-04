@@ -283,6 +283,30 @@ def test_write_payload_bytes_sidecar_swallows_write_failures(
     assert not sidecar.exists()
 
 
+def test_write_payload_bytes_sidecar_swallows_unlink_permission_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+    original_replace = Path.replace
+    original_unlink = Path.unlink
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        raise OSError("replace boom")
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self == sidecar or self.name.startswith(f".{sidecar.name}."):
+            raise PermissionError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
 def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path: Path) -> None:
     diff_file = tmp_path / "changes.diff"
     feature_file = tmp_path / "feature.md"
