@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:11:26
-- **Cost**: 💰 TOTAL ~$5.48 — Claude $0.61, Codex-5.5 $1.84, Codex-mini $0.36, Cursor $2.46, Claude (subprocess) $0.21  |  Tokens: 9893k
+- **Cost**: 💰 TOTAL ~$6.09 — Claude $1.22, Codex-5.5 $1.84, Codex-mini $0.36, Cursor $2.46, Claude (subprocess) $0.21  |  Tokens: 11374k
 - **Issue**: #6295 — https://github.com/character-ai/larch/issues/6295
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -59,3 +59,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (important): Readability-style content is not inlined for specialist renders. Concern: Specialist render paths load pre-rendered reviewer bodies that rely on the readability-style directive, but they do not inline `readability-style.md`. As a result, Codex/Cursor read-only launches receive an instruction they cannot satisfy unless the render pa…
 - **Round 1 OOS_2** (important): Empty agent-file walks can let readability lint pass. Concern: `_agent_files()` skips missing paths silently, so if all reviewer agent files are deleted the walk becomes empty and readability lint exits 0 instead of failing closed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
