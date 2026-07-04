@@ -1,0 +1,78 @@
+## Summary
+
+#6141 (its item 4, from #6139) added `scripts/test-hook-clone-ownership-parity.sh` to keep the two guard hooks' deliberately-duplicated clone-ownership helpers from drifting. That parity test asserts byte-identity for only two functions — `clone_paths_same` and `marker_foreign_clone`. Three further functions are duplicated verbatim across `scripts/hook-bg-poll-guard.sh` and `scripts/hook-no-progress-guard.sh` and are **not** covered: `canonical_dir`, `marker_value`, and `marker_candidates`. All three are byte-identical today, so this is a latent drift risk rather than an active defect. The most consequential is `marker_candidates` — the marker-discovery function that decides which `.bg-wait-active` markers each hook scans; if the two copies drifted, the two hooks would discover different marker sets and could scope cross-clone behavior differently, which is exactly the inconsistent cross-clone behavior #6139/#6141 set out to prevent.
+
+## Original report
+
+Surfaced during a correctness/completeness audit of the recent cross-session process-death fixes. After confirming the cross-clone hook-denial cluster (#5925/#5927/#6108/#5948/#6141) holds and that the #6141 parity test guards the two clone-ownership helpers, an audit of the remaining duplicated code between the two hook scripts found three more verbatim-duplicated helpers that the parity test does not cover. This report tracks extending the parity coverage. Low severity — file as hardening, not an active bug.
+
+## Reproduction scenario
+
+Static / test-gap; nothing to run to observe a failure today (the functions are identical). To confirm the gap:
+
+1. Read `scripts/test-hook-clone-ownership-parity.sh` and observe it only calls `compare_function clone_paths_same` and `compare_function marker_foreign_clone`.
+2. Extract the `canonical_dir`, `marker_value`, and `marker_candidates` function bodies from both `scripts/hook-bg-poll-guard.sh` and `scripts/hook-no-progress-guard.sh` and `diff` them: they are byte-identical, yet nothing in CI asserts they stay that way.
+
+To demonstrate the latent risk: make a one-sided edit to `marker_candidates` in only one hook (e.g., add a new session-dir glob prefix), run `make test-hook-clone-ownership-parity` — it still passes, because that function is outside the parity test's scope.
+
+## Expected behavior
+
+Every helper that is intentionally duplicated across the two guard hooks — and whose divergence would reintroduce inconsistent cross-clone scoping — should be guarded against drift, either by the byte-identity parity test (for verbatim copies) or by a behavioral-equivalence fixture (for intentionally-renamed equivalents). A one-sided edit to any of them should fail CI.
+
+## Observed behavior
+
+Only `clone_paths_same` and `marker_foreign_clone` are guarded. `canonical_dir`, `marker_value`, and `marker_candidates` can each be edited in one hook and not the other without any test failing.
+
+## Root cause analysis
+
+When #6141 implemented the #6139 anti-drift guard, it scoped the parity test to the two functions #6139 named explicitly (`clone_paths_same`, `marker_foreign_clone`), which were the clone-matching core. The other duplicated helpers that participate in the same cross-clone decision path — path canonicalization (`canonical_dir`), marker-field parsing (`marker_value`), and marker discovery (`marker_candidates`) — were not added to the parity list. This is an inference from the test's contents plus the byte-diff of the helpers, not a captured incident.
+
+## Evidence
+
+- Parity test scope: `scripts/test-hook-clone-ownership-parity.sh` defines `extract_function`/`compare_function` and invokes `compare_function clone_paths_same` and `compare_function marker_foreign_clone` only (around lines 43-44); no other functions are compared. It is wired into CI via `make test-hook-clone-ownership-parity` (Makefile `test-harnesses-3`).
+- Uncovered duplicated helpers, verified byte-identical across both hooks by diffing the extracted function bodies:
+  - `canonical_dir` — `scripts/hook-bg-poll-guard.sh:24-28`; the same body is defined in `scripts/hook-no-progress-guard.sh`.
+  - `marker_value` — `scripts/hook-bg-poll-guard.sh:79-82` and `scripts/hook-no-progress-guard.sh:56-59`.
+  - `marker_candidates` — `scripts/hook-bg-poll-guard.sh:54-77` and `scripts/hook-no-progress-guard.sh:104-127`; the no-progress copy even carries the comment "Same discovery logic as hook-bg-poll-guard.sh marker_candidates".
+- Intentionally-renamed near-duplicates (same logic, different names, so a byte-diff won't apply): `marker_step_completed` (bg-poll) vs `is_step_completed` (no-progress); `marker_is_live` (bg-poll) vs `is_marker_live` (no-progress).
+- Context from #6141's body item 4: the anti-drift guard was chosen precisely because "A future fix to one copy's clone-matching logic … can land in one hook and not the other. That reintroduces inconsistent cross-clone behavior between the two guards."
+
+## Affected files
+
+- `scripts/test-hook-clone-ownership-parity.sh` — extend the compared-function set.
+- `scripts/test-hook-clone-ownership-parity.md` — sibling contract doc; record the expanded coverage.
+- `scripts/hook-bg-poll-guard.sh`, `scripts/hook-no-progress-guard.sh` — the two sources of the duplicated helpers being guarded (no behavior change; referenced for the parity extraction).
+
+## Suggested fix(es)
+
+1. Add `compare_function canonical_dir`, `compare_function marker_value`, and `compare_function marker_candidates` to `scripts/test-hook-clone-ownership-parity.sh`, using the same byte-identity mechanism as the existing two.
+2. Optionally add a behavioral-equivalence fixture for the intentionally-renamed pairs (`marker_step_completed`/`is_step_completed`, `marker_is_live`/`is_marker_live`) if keeping those two in sync is deemed in scope.
+3. Update `scripts/test-hook-clone-ownership-parity.md` to list the expanded coverage.
+
+## Open questions
+
+- Should the renamed pairs (`marker_step_completed`/`is_step_completed`, `marker_is_live`/`is_marker_live`) be brought into the parity contract via a behavioral fixture, or is a byte-identity guard over the three verbatim helpers sufficient for now?
+- Is there appetite for a more general lint that flags any newly-introduced verbatim-duplicated function across the two hook scripts that is not on the parity list, so future additions can't silently escape coverage?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Guard `canonical_dir`, `marker_value`, and `marker_candidates` against drift between the two guard hooks.
+- Fail CI when any of those three functions diverge between `hook-bg-poll-guard.sh` and `hook-no-progress-guard.sh`.
+
+### Non-goals
+- Behavioral-equivalence fixtures for the intentionally-renamed pairs (`marker_step_completed`/`is_step_completed`, `marker_is_live`/`is_marker_live`).
+- Any behavior change in either hook script.
+
+### Approach sketch
+- Add three `compare_function` calls to `scripts/test-hook-clone-ownership-parity.sh` using the existing `compare_function` helper.
+- Update `scripts/test-hook-clone-ownership-parity.md` to list all five guarded functions.
+
+### Surfaces in scope
+- `scripts/test-hook-clone-ownership-parity.sh`
+- `scripts/test-hook-clone-ownership-parity.md`
+
+### Open questions
+- None.
