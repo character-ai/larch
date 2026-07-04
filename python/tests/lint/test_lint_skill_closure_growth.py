@@ -174,6 +174,36 @@ def test_background_reference_collects_multiple_paths(tmp_path: Path) -> None:
     )
 
 
+def test_conditional_reference_verbs_and_qualifiers_are_reported(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        design=(
+            "root\n"
+            "Load `references/load.md` only when editing mappings; later `references/other.md` is prose.\n"
+            "Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/read.md` only after the driver exits.\n"
+            "See `./skills/design/references/see.md` only before launch.\n"
+            "Follow `references/follow.md` only on cancel routes.\n"
+            "load `references/upon.md` and run the retained path only; this token is valid only upon exit.\n"
+            "Read `references/for.md` only for shared flag semantics.\n"
+        ),
+    )
+    for name in ("load", "read", "see", "follow", "upon", "for", "other"):
+        write(tmp_path, f"skills/design/references/{name}.md", f"{name}\n")
+
+    result = scg.scan_skill(tmp_path, "design")
+
+    assert result.files == ("skills/design/SKILL.md",)
+    assert result.conditional_files == (
+        "skills/design/references/load.md",
+        "skills/design/references/read.md",
+        "skills/design/references/see.md",
+        "skills/design/references/follow.md",
+        "skills/design/references/upon.md",
+        "skills/design/references/for.md",
+    )
+    assert "skills/design/references/other.md" not in result.conditional_files
+
+
 def test_branch_only_routing_table_rows_are_excluded(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
@@ -757,27 +787,50 @@ def test_rebase_or_bootstrap_mandatory_reads_stay_excluded(tmp_path: Path) -> No
     )
 
 
-def test_implement_failure_only_macro_sections_are_excluded_until_next_heading(tmp_path: Path) -> None:
+def test_implement_macro_sections_are_conditional_until_next_peer_heading(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
         implement=(
             "root\n"
             "## Checks Failure Entry Macro\n"
             "2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.\n"
-            "## Durable Bail to Step 18 Macro\n"
-            "**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`; follow durable bail.\n"
             "## Step 5\n"
             "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/checks-repair-loop.md", "checks\n")
-    write(tmp_path, "skills/implement/references/step5-review-branches.md", "branches\n")
     write(tmp_path, "skills/implement/references/self-review.md", "review\n")
 
     result = scg.scan_skill(tmp_path, "implement")
 
     assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
-    assert not result.conditional_files
+    assert result.conditional_files == ("skills/implement/references/checks-repair-loop.md",)
+
+
+def test_implement_macro_conditional_state_survives_nested_heading_only(tmp_path: Path) -> None:
+    write_roots(
+        tmp_path,
+        implement=(
+            "root\n"
+            "## Durable Bail to Step 18 Macro\n"
+            "**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`; follow durable bail.\n"
+            "### Nested macro detail\n"
+            "**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/nested.md`.\n"
+            "## Step 18\n"
+            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+        ),
+    )
+    write(tmp_path, "skills/implement/references/step5-review-branches.md", "branches\n")
+    write(tmp_path, "skills/implement/references/nested.md", "nested\n")
+    write(tmp_path, "skills/implement/references/self-review.md", "review\n")
+
+    result = scg.scan_skill(tmp_path, "implement")
+
+    assert result.files == ("skills/implement/SKILL.md", "skills/implement/references/self-review.md")
+    assert result.conditional_files == (
+        "skills/implement/references/step5-review-branches.md",
+        "skills/implement/references/nested.md",
+    )
 
 
 def test_review_step0_narrow_eager_patterns_are_counted(tmp_path: Path) -> None:
@@ -1058,37 +1111,44 @@ def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() 
     assert "skills/design/references/plan-review.md" not in result.conditional_files
     assert "skills/shared/session-setup-output.md" not in result.conditional_files
     assert "skills/shared/external-reviewers.md" not in result.conditional_files
-    assert "skills/design/references/decompose-panel.md" not in result.files
-    assert "skills/design/references/validator-failure.md" not in result.files
-    assert "skills/design/references/settle-rc-dispatch.md" not in result.files
-    assert "skills/design/references/step2b5-rc-handling.md" not in result.files
-    assert "skills/design/references/flags.md" not in result.files
-    assert "skills/design/references/decompose-panel.md" in result.conditional_files
-    assert "skills/design/references/validator-failure.md" in result.conditional_files
-    assert "skills/design/references/settle-rc-dispatch.md" in result.conditional_files
-    assert "skills/design/references/step2b5-rc-handling.md" in result.conditional_files
-    assert "skills/design/references/flags.md" in result.conditional_files
+    for rel in (
+        "skills/design/references/decompose-panel.md",
+        "skills/design/references/validator-failure.md",
+        "skills/design/references/settle-rc-dispatch.md",
+        "skills/design/references/step2b5-rc-handling.md",
+        "skills/design/references/flags.md",
+        "skills/design/references/sentinel-host-table.md",
+        "skills/design/references/step2b-drafter-failsafe.md",
+        "skills/design/references/dialectic-clarifier.md",
+        "skills/shared/final-summary-emit.md",
+    ):
+        assert rel not in result.files
+        assert rel in result.conditional_files
 
 
-def test_real_implement_scan_includes_named_eager_gaps() -> None:
+def test_real_implement_scan_tracks_macro_and_audit_refs_conditionally() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     result = scg.scan_skill(repo_root, "implement")
-    baseline = next(row for row in scg.load_baseline(repo_root / scg.BASELINE_RELPATH) if row.skill == "implement")
 
     assert "skills/implement/scripts/step-name-registry.tsv" in result.files
     assert "skills/shared/final-summary-emit.md" in result.files
     assert "skills/implement/references/preflight-plan-audit.md" in result.files
     assert "skills/implement/references/force-mode.md" not in result.files
-    assert result.files == baseline.files
-    assert result.closure_lines == baseline.closure_lines
-    assert result.closure_estimated_tokens == baseline.closure_estimated_tokens
+    for rel in (
+        "skills/implement/references/checks-repair-loop.md",
+        "skills/implement/references/extracted-script-registry.md",
+        "skills/implement/references/phantom-probe.md",
+        "skills/shared/orchestrator-never.md",
+    ):
+        assert rel not in result.files
+        assert rel in result.conditional_files
     assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.files
     assert "$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md" not in result.conditional_files
     assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.files
     assert "$IMPLEMENT_TMPDIR/security-oos-observations.md" not in result.conditional_files
 
 
-def test_real_review_scan_includes_named_eager_sources() -> None:
+def test_real_review_scan_includes_eager_and_conditional_sources() -> None:
     repo_root = Path(__file__).resolve().parents[3]
     result = scg.scan_skill(repo_root, "review")
 
@@ -1096,6 +1156,18 @@ def test_real_review_scan_includes_named_eager_sources() -> None:
     assert "skills/shared/session-setup-output.md" in result.files
     assert "skills/shared/external-reviewers.md" in result.files
     assert "skills/review/references/domain-rules.md" in result.files
+    assert "skills/shared/run-id-flag.md" not in result.files
+    assert "skills/shared/run-id-flag.md" in result.conditional_files
+
+
+def test_real_scan_keeps_deliberate_exclusions_untracked() -> None:
+    repo_root = Path(__file__).resolve().parents[3]
+
+    for result in scg.scan_all(repo_root):
+        assert "SECURITY.md" not in result.files
+        assert "SECURITY.md" not in result.conditional_files
+        assert "skills/shared/oos-acceptance-rubric.md" not in result.files
+        assert "skills/shared/oos-acceptance-rubric.md" not in result.conditional_files
 
 
 def test_committed_baseline_matches_fresh_scan(tmp_path: Path) -> None:

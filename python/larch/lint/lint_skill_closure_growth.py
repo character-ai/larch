@@ -37,13 +37,15 @@ CONDITIONAL_TO_CLOSURE_METRIC = {
 }
 BASELINE_KEYS = frozenset({"skill", *METRIC_FIELDS, "files", *CONDITIONAL_METRIC_FIELDS, "conditional_files"})
 PLUGIN_ROOT_PREFIX = "${CLAUDE_PLUGIN_ROOT}/"
-SUPPRESSED_IMPLEMENT_SECTIONS = frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"})
-CONDITIONAL_DESIGN_SECTIONS = frozenset(
-    {
-        "Plan command validator failure (shared)",
-        "Split-path (decomposition panel)",
-    }
-)
+CONDITIONAL_SECTIONS_BY_SKILL: dict[str, frozenset[str]] = {
+    "design": frozenset(
+        {
+            "Plan command validator failure (shared)",
+            "Split-path (decomposition panel)",
+        }
+    ),
+    "implement": frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"}),
+}
 
 MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY\s+(?:[—-]\s+)?READ\s+ENTIRE\s+FILE", re.IGNORECASE)
 READ_COMPLETELY_RE = re.compile(r"\bread\b(?P<body>.*?\.md.*?)\bcompletely\b", re.IGNORECASE)
@@ -77,8 +79,9 @@ SESSION_START_REGISTRY_RE = re.compile(r"\bRead\b.*?step-name-registry\.tsv", re
 SESSION_SETUP_OUTPUT_RE = re.compile(r"\buse\b.*?session-setup-output\.md.*?\bfor\b", re.IGNORECASE)
 EXTERNAL_REVIEWERS_PROCEDURE_RE = re.compile(r"\bprocedure\s+in\b.*?external-reviewers\.md", re.IGNORECASE)
 IMPLEMENT_FINAL_SUMMARY_RE = re.compile(r"\bfollow\b.*?final-summary-emit\.md", re.IGNORECASE)
-BACKGROUND_REFERENCE_RE = re.compile(
-    r"\bsee\b(?P<body>.*?\.md.*?\bonly\s+for\s+background\b)",
+CONDITIONAL_REFERENCE_RE = re.compile(
+    r"\b(?:see|load|read|follow)\b"
+    r"(?P<body>(?:(?![.,]\s).)*?\.md(?:(?![.,]\s).)*?\bonly\s+(?:for|when|after|before|on|upon)\b)",
     re.IGNORECASE,
 )
 
@@ -179,7 +182,6 @@ class DirectiveContext:
 
 @dataclass(frozen=True)
 class ScanState:
-    suppressed_section: str | None = None
     conditional_section_depth: int | None = None
 
 
@@ -214,7 +216,7 @@ def _repo_relative(root: Path, path: Path) -> str:
 
 
 def _clean_raw_path(raw: str) -> str:
-    return raw.strip().strip("`.,);]")
+    return raw.strip().strip("`").rstrip(".,);]")
 
 
 def _is_runtime_markdown_operand(raw: str) -> bool:
@@ -308,15 +310,15 @@ def _sentence_clause(line: str, match: re.Match[str]) -> str:
     return line[sentence_start : sentence_end + 1]
 
 
-def _background_reference_matches(line: str) -> list[DirectiveMatch]:
+def _conditional_reference_matches(line: str) -> list[DirectiveMatch]:
     return [
         DirectiveMatch(
             index=match.start(),
-            clause=_sentence_clause(line, match),
+            clause=match.group(0),
             supported=True,
             force_conditional=True,
         )
-        for match in BACKGROUND_REFERENCE_RE.finditer(line)
+        for match in CONDITIONAL_REFERENCE_RE.finditer(line)
     ]
 
 
@@ -349,7 +351,7 @@ def _directive_matches(line: str, skill: str) -> list[DirectiveMatch]:
         for match in MANDATORY_DIRECTIVE_RE.finditer(line)
     ]
     matches.extend(_narrow_directive_matches(line, skill))
-    matches.extend(_background_reference_matches(line))
+    matches.extend(_conditional_reference_matches(line))
     for match in READ_COMPLETELY_RE.finditer(line):
         if any(existing.index <= match.start() for existing in matches):
             continue
@@ -422,7 +424,7 @@ def _line_is_conditional(line: str, directive_index: int) -> bool:
     return CONDITIONAL_SUFFIX_RE.search(suffix) is not None
 
 
-def _update_design_scan_state(line: str, state: ScanState) -> ScanState:
+def _update_conditional_section_state(skill: str, line: str, state: ScanState) -> ScanState:
     if STEP_COMMENT_RE.match(line):
         return ScanState()
     heading_match = HEADING_RE.match(line)
@@ -433,29 +435,13 @@ def _update_design_scan_state(line: str, state: ScanState) -> ScanState:
     next_state = state
     if state.conditional_section_depth is not None and heading_depth <= state.conditional_section_depth:
         next_state = ScanState()
-    if next_state.conditional_section_depth is None and title in CONDITIONAL_DESIGN_SECTIONS:
+    if next_state.conditional_section_depth is None and title in CONDITIONAL_SECTIONS_BY_SKILL.get(skill, frozenset()):
         return ScanState(conditional_section_depth=heading_depth)
     return next_state
 
 
-def _update_implement_scan_state(line: str, state: ScanState) -> ScanState:
-    heading_match = HEADING_RE.match(line)
-    if heading_match is None:
-        return state
-    title = heading_match.group("title").strip("# ").strip()
-    if title in SUPPRESSED_IMPLEMENT_SECTIONS:
-        return ScanState(suppressed_section=title)
-    if state.suppressed_section is not None:
-        return ScanState()
-    return state
-
-
 def _update_scan_state(skill: str, line: str, state: ScanState) -> ScanState:
-    if skill == "design":
-        return _update_design_scan_state(line, state)
-    if skill == "implement":
-        return _update_implement_scan_state(line, state)
-    return state
+    return _update_conditional_section_state(skill, line, state)
 
 
 def _session_start_registry_path(root: Path, skill: str) -> str | None:
@@ -517,8 +503,6 @@ def parse_direct_markdown_references(root: Path, skill: str, skill_path: Path) -
     state = ScanState()
     for line_number, line in enumerate(lines, start=1):
         state = _update_scan_state(skill, line, state)
-        if state.suppressed_section is not None:
-            continue
         for match in _directive_matches(line, skill):
             context = DirectiveContext(
                 line,

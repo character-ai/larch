@@ -70,7 +70,7 @@ Scope is narrow by design:
 - Ratchet eager closure for all four targets. Ratchet conditional closure for `review` only.
 - Count each skill `SKILL.md` plus direct always-loaded prompt-source references.
 - Do not recurse from a referenced file into its references.
-- Exclude conditional bullets, branch-only routing-table rows, other route-predicate contexts, and the `/implement` `Checks Failure Entry Macro` and `Durable Bail to Step 18 Macro` sections.
+- Track conditional bullets, branch-only routing-table rows, other route-predicate contexts, and the `/implement` `Checks Failure Entry Macro` and `Durable Bail to Step 18 Macro` sections as conditional closure.
 - Support non-markdown prompt sources only for session-start `step-name-registry.tsv` reads under `skills/*/scripts/`.
 - Count only four narrow eager phrase patterns beyond mandatory/direct read clauses: `session-setup-output.md` setup use, `external-reviewers.md` procedure use, session-start `step-name-registry.tsv` reads, and `final-summary-emit.md` follow instructions.
 - Harvest only the matched directive clause from matching lines. Later citations, harness docs, and unrelated non-markdown references on the same line do not enter the closure.
