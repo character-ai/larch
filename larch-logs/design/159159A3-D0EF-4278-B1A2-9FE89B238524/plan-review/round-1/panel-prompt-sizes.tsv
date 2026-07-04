@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	30921	7731	13378	3345	17543	4386		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	20458	5115	13081	3271	7377	1845		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	20467	5117	13090	3273	7377	1845		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	30912	7728	13369	3343	17543	4386		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	20480	5120	13103	3276	7377	1845		0	0
+design Step 3	phase1	1	dyn-codex-plan-bg-wait-lifecycle	plan-review	codex	dyn-codex-plan-bg-wait-lifecycle.txt	20755	5189	12956	3239	7799	1950		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	30934	7734	13391	3348	17543	4386		0	0
+design Step 3	phase1	1	dyn-cursor-plan-bg-wait-lifecycle	plan-review	cursor	dyn-cursor-plan-bg-wait-lifecycle.txt	31209	7803	13244	3311	17965	4492		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	20482	5121	13105	3277	7377	1845		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	30936	7734	13393	3349	17543	4386		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	35871	8968	4652	1163	31219	7805	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	18119	4530	9066	2267	9053	2264		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	18119	4530	9066	2267	9053	2264		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	18119	4530	9066	2267	9053	2264		0	0

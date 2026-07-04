@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan adds a repo-root acceptance test as a live gate; if the ±15-line window false-fails on real writers the test catches it and forces a fix before shipping, so the plan is self-correcting on this concern
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the new module can follow the same file-level pyright suppression header already used in dispatch_commit_route.py; the concern is speculative and an implementer following existing patterns handles it without a plan amendment
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan's repo-root acceptance test runs in CI and catches any lint-parity regression on bg_wait.py edits; the pre-commit gap is a convenience issue that doesn't clear the materiality gate
+OOS_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
