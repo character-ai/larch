@@ -403,12 +403,16 @@ _step3_review_write_detached_marker() {
   [[ -n "$_pid" ]] || return 0
   _marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
   _tmp="${_marker}.tmp.$$"
-  {
+  if {
     printf 'PID=%s\n' "$_pid"
     printf 'SIGNAL=%s\n' "$_signal"
     printf 'STDOUT_FILE=%s\n' "$_stdout_file"
     printf 'DETACHED_AT_EPOCH=%s\n' "$(date +%s)"
-  } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null || rm -f "$_tmp" 2>/dev/null || true
+  } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null && [ -f "$_marker" ]; then
+    return 0
+  fi
+  rm -f "$_tmp" "$_marker" 2>/dev/null || true
+  return 1
 }
 
 _step3_review_marker_value() {
@@ -505,9 +509,10 @@ _step3_review_cleanup() {
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then
       if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then
-        _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"
-        disown -h "$_loop_pid" 2>/dev/null || true
-        exit "$_rc"
+        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"; then
+          disown -h "$_loop_pid" 2>/dev/null || true
+          exit "$_rc"
+        fi
       fi
     fi
     _step3_review_teardown_loop_group "$_loop_pid"

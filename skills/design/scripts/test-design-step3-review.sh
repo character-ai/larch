@@ -566,9 +566,50 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$detach_out" || fail 'reattach
 [[ ! -f "$D_DETACH/.step3-wrapper-detached" ]] || fail 'reattach path must clear detached marker after normalization'
 [[ -f "$D_DETACH/unexpected-kill-helper" ]] || fail 'reattach path must run tmpdir kill helper before normalization'
 [ ! -f "$D_DETACH/.bg-wait-active" ] || fail 'reattach path must clear bg-wait marker after normalization'
+pass 'Step 3 wrapper detaches live loop on external signal and reattaches without re-dispatch'
+
+# Marker publication failure must fall back to identity-validated teardown instead
+# of leaving a detached loop with no marker.
+D_DETACH_FAIL=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-detach-write-fail.XXXXXX")
+FAKE_BIN_FAIL="$D_DETACH_FAIL/fake-bin"
+mkdir -p "$FAKE_BIN_FAIL"
+cat >"$FAKE_BIN_FAIL/mv" <<'SH'
+#!/usr/bin/env bash
+set -euo pipefail
+printf '%s\n' "mv $*" >>"$DESIGN_TMPDIR/mv-called.log"
+exit 1
+SH
+chmod +x "$FAKE_BIN_FAIL/mv"
+printf 'anchor\n' >"$D_DETACH_FAIL/plan-review-scope-anchor.txt"
+printf '{"schema_version":3}\n' >"$D_DETACH_FAIL/run-params.json"
+printf '# Plan\n\ndiff_lines: 1\n' >"$D_DETACH_FAIL/plan.txt"
+printf 'feature\n' >"$D_DETACH_FAIL/feature-description.txt"
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 PATH="$FAKE_BIN_FAIL:$PATH" CLAUDE_PLUGIN_ROOT="$FAKE_DETACH" DESIGN_TMPDIR="$D_DETACH_FAIL" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" \
+  "$WRAPPER" >"$D_DETACH_FAIL/first.out" 2>"$D_DETACH_FAIL/first.err" &
+detach_fail_wrapper_pid=$!
+waited=0
+while [[ ! -f "$D_DETACH_FAIL/body-entered" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH_FAIL/body-entered" ]] || fail "detach write-fail loop body did not start; stderr=$(cat "$D_DETACH_FAIL/first.err")"
+waited=0
+while [[ ! -f "$D_DETACH_FAIL/.step3-loop-identity.json" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_DETACH_FAIL/.step3-loop-identity.json" ]] || fail 'detach write-fail path must write loop identity before signal'
+kill -TERM "$detach_fail_wrapper_pid" 2>/dev/null || true
+wait "$detach_fail_wrapper_pid" 2>/dev/null || true
+[[ ! -f "$D_DETACH_FAIL/.step3-wrapper-detached" ]] || fail 'detach write-fail path must not leave detached wrapper marker'
+[[ -f "$D_DETACH_FAIL/unexpected-kill-helper" ]] || fail 'detach write-fail path must fall back to identity teardown'
+grep -Fq 'mv -f ' "$D_DETACH_FAIL/mv-called.log" || fail 'detach write-fail path must attempt detached marker publication'
+rm -rf "$D_DETACH_FAIL"
+pass 'Step 3 wrapper falls back to identity-validated teardown when detached marker publication fails'
+
 trap - EXIT
 rm -rf "$D_DETACH"
-pass 'Step 3 wrapper detaches live loop on external signal and reattaches without re-dispatch'
 
 # #4489 / #5418: the wrapper clears stale terminal sentinels at entry; normalize-status
 # writes step-3-terminal before emitting KV when the resolved status is terminal
