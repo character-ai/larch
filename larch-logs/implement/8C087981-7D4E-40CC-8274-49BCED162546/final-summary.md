@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:24:43
-- **Cost**: 💰 TOTAL ~$6.96 — Claude $0.57, Codex-5.5 $2.96, Codex-mini $1.09, Cursor $2.03, Claude (subprocess) $0.31  |  Tokens: 13561k
+- **Cost**: 💰 TOTAL ~$7.34 — Claude $0.93, Codex-5.5 $2.96, Codex-mini $1.09, Cursor $2.03, Claude (subprocess) $0.33  |  Tokens: 14483k
 - **Issue**: #6159 — https://github.com/character-ai/larch/issues/6159
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -76,3 +76,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): Pin the updated test coverage wording. Concern: The branch says `test_rendering.py` is UPDATED even though no test files changed; that is polish-level noise because existing substring tests still cover the invariant.
 - **Round 1 OOS_4** (latent): Show harness and acceptance evidence. Concern: The required plan-test harness runs and live panel-prompt-sizes.tsv acceptance evidence are missing from the branch artifacts, so completion is unproven at merge time.
 - **Round 1 OOS_5** (important): Remove numbered-findings/TSV dual-format ambiguity. Concern: The scaffold still instructs reviewers to return numbered findings and separately mandates a TSV block, which can produce dual-format responses that the structured parser has to salvage.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
