@@ -302,6 +302,7 @@ _plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XX
   exit 1
 }
 _loop_pid=""
+_step3_review_loop_identity_ready=false
 _step3_review_external_signal=""
 _step3_review_external_signal_rc=0
 
@@ -451,7 +452,7 @@ _step3_review_cleanup_detached_marker() {
 }
 
 _step3_review_reattach_detached_loop() {
-  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _normalize_stdout="" _rc=0
+  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _normalize_stdout="" _rc=0 _await_rc=0
   [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
   _pid="$(_step3_review_marker_value PID || true)"
   _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
@@ -460,13 +461,18 @@ _step3_review_reattach_detached_loop() {
     *)
       python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
         --design-tmpdir "$DESIGN_TMPDIR" \
-        --pid "$_pid" >/dev/null 2>&1 || true
+        --pid "$_pid" >/dev/null 2>&1 || _await_rc=$?
       ;;
   esac
+  if [ "$_await_rc" -ne 0 ]; then
+    _step3_review_cleanup_detached_marker "$_stdout_file"
+    return 1
+  fi
   if ! _step3_review_result_env_present; then
     _step3_review_cleanup_detached_marker "$_stdout_file"
     return 1
   fi
+  _step3_review_kill_tmpdir_processes
   _normalize_stdout="$(_step3_review_detached_stdout_file "$_stdout_file" "$_plan_review_stdout_file")"
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
     --design-tmpdir "$DESIGN_TMPDIR" \
@@ -484,9 +490,11 @@ _step3_review_cleanup() {
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then
-      _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"
-      disown -h "$_loop_pid" 2>/dev/null || true
-      exit "$_rc"
+      if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then
+        _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"
+        disown -h "$_loop_pid" 2>/dev/null || true
+        exit "$_rc"
+      fi
     fi
     _step3_review_teardown_loop_group "$_loop_pid"
     _step3_review_kill_tmpdir_processes
@@ -510,7 +518,13 @@ trap _step3_review_cleanup EXIT
 trap '_step3_review_signal_exit TERM 143' TERM
 trap '_step3_review_signal_exit HUP 129' HUP
 trap '_step3_review_signal_exit INT 130' INT
-_step3_review_reattach_detached_loop || true
+_step3_review_reattach_rc=0
+if [ "$_step3_review_has_detached_marker" = true ]; then
+  _step3_review_reattach_detached_loop || _step3_review_reattach_rc=$?
+  if [ "$_step3_review_reattach_rc" -ne 0 ]; then
+    exit "$_step3_review_reattach_rc"
+  fi
+fi
 rm -f "$DESIGN_TMPDIR/.step3-wrapper-detached" 2>/dev/null || true
 # Python owns the process-group setup.
 # Bash owns wait, status capture, identity-validated teardown delegation, and fallback tmpdir cleanup.
@@ -535,6 +549,9 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review write-loop-identity \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --pid "$_loop_pid" \
   --expected-signature "plan-review run" >/dev/null 2>&1 || true
+if [ -f "$DESIGN_TMPDIR/.step3-loop-identity.json" ] && [ ! -L "$DESIGN_TMPDIR/.step3-loop-identity.json" ]; then
+  _step3_review_loop_identity_ready=true
+fi
 wait "$_loop_pid"
 _plan_review_rc=$?
 set -e

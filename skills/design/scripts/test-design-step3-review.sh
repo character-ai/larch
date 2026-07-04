@@ -112,6 +112,16 @@ grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper mu
 grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper must delegate loop teardown to identity helper'
 # shellcheck disable=SC2016
 grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json"' "$WRAPPER" || fail 'Step 3 wrapper must clear loop identity sidecar after wait'
+python3 - "$WRAPPER" <<'PY' || fail 'Step 3 detach marker write must be guarded by loop identity publication'
+from pathlib import Path
+import sys
+
+body = Path(sys.argv[1]).read_text(encoding="utf-8")
+guard = body.index('if [ "${_step3_review_loop_identity_ready:-false}" = true ]; then')
+marker = body.index('_step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file"')
+if guard > marker:
+    raise SystemExit("detach marker write must be guarded by loop identity publication")
+PY
 pass 'Step 3 wrapper uses identity-validated loop teardown'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
@@ -554,6 +564,7 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$detach_out" || fail 'reattach
 [[ "$(wc -l <"$D_DETACH/round-starts.log" | tr -d '[:space:]')" = "1" ]] || fail 'reattach path must not dispatch a second review round'
 [[ -f "$D_DETACH/.completed/step-3" ]] || fail 'reattach path must preserve detached loop completion sentinel'
 [[ ! -f "$D_DETACH/.step3-wrapper-detached" ]] || fail 'reattach path must clear detached marker after normalization'
+[[ -f "$D_DETACH/unexpected-kill-helper" ]] || fail 'reattach path must run tmpdir kill helper before normalization'
 trap - EXIT
 rm -rf "$D_DETACH"
 pass 'Step 3 wrapper detaches live loop on external signal and reattaches without re-dispatch'

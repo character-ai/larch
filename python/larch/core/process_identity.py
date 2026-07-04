@@ -365,11 +365,13 @@ def _validated_design_tmpdir(raw: str) -> Path | None:
     return path
 
 
-def _result_env_has_step3_status(*, tmpdir: Path) -> bool:
+def _result_env_has_step3_status(*, tmpdir: Path, since_mtime_ns: int = 0) -> bool:
     result_env = tmpdir / ".step3-review-result.env"
     if result_env.is_symlink() or not result_env.is_file():
         return False
     try:
+        if since_mtime_ns > 0 and result_env.stat().st_mtime_ns < since_mtime_ns:
+            return False
         for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
             if line.startswith("STEP3_REVIEW_LOOP_STATUS=") and line.partition("=")[2]:
                 return True
@@ -417,16 +419,28 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
     recorded = read_identity_record(path=sidecar)
     if recorded is None or recorded.pid != int(args.pid):
         return 1
+    detached_marker = tmpdir / ".step3-wrapper-detached"
+    detached_mtime_ns = 0
+    if detached_marker.is_file() and not detached_marker.is_symlink():
+        try:
+            detached_mtime_ns = detached_marker.stat().st_mtime_ns
+        except OSError:
+            detached_mtime_ns = 0
+    if detached_mtime_ns <= 0:
+        return 1
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         validation = validate_process_identity(recorded=recorded)
         if validation.ok:
-            if _result_env_has_step3_status(tmpdir=tmpdir):
+            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=detached_mtime_ns):
                 return 0
             time.sleep(0.2)
             continue
         if validation.reason == "missing-pid":
-            return 0
+            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=detached_mtime_ns):
+                return 0
+            time.sleep(0.2)
+            continue
         break
     return 1
 
