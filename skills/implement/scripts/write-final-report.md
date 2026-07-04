@@ -10,15 +10,15 @@ The markdown body is produced by [`python/cli.py render run-summary`](../../../p
 
 These values are emitted by the shared `python/cli.py stall-recovery normalize-outcome` helper. `write-final-report.sh` consumes that helper, and Step 18a.5 uses the same API for escalation-success reporting. The harness `test-write-final-report.sh` is expected to stay aligned with the helper.
 
-1. `stalled` — any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
-2. `forked-dry-run` — `FORKED_TARGET=true`.
-3. `design-only` — `DESIGN_ONLY_DONE=true`.
-4. `merged` — `MERGE_RESULT` is `merged` or `admin_merged`.
-5. `force-merged-externally` — `MERGE_RESULT=already_merged`.
-6. `pr-created-draft` — non-zero `PR_NUMBER` and `DRAFT=true`.
-7. `pr-created` — non-zero `PR_NUMBER`, `DRAFT=false`, `MERGE=false`.
-8. `bailed` — none of the above success/partial paths matched; assigned only after the explicit if/elif chain as a fallthrough default.
-9. `bailed-needs-user-input` — `BAIL_NEEDS_USER_INPUT=true` on finalize state **and** the outcome would otherwise be `bailed` (distinct bail class for operator follow-up).
+1. `stalled`: any observed `STALL_TRACKING=true` in ship-pr state, finalize state, or session env.
+2. `forked-dry-run`: `FORKED_TARGET=true`.
+3. `design-only`: `DESIGN_ONLY_DONE=true`.
+4. `merged`: `MERGE_RESULT` is `merged` or `admin_merged`.
+5. `force-merged-externally`: `MERGE_RESULT=already_merged`.
+6. `pr-created-draft`: non-zero `PR_NUMBER` and `DRAFT=true`.
+7. `pr-created`: non-zero `PR_NUMBER`, `DRAFT=false`, `MERGE=false`.
+8. `bailed`: none of the above success/partial paths matched; assigned only after the explicit if/elif chain as a fallthrough default.
+9. `bailed-needs-user-input`: `BAIL_NEEDS_USER_INPUT=true` on finalize state **and** the outcome would otherwise be `bailed` (distinct bail class for operator follow-up).
 
 ## Bail-time `steps_ran` invariant
 
