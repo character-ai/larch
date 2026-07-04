@@ -121,6 +121,37 @@ def test_missing_per_skill_directive(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert "skills/foo/SKILL.md: missing per-skill readability directive" in err
 
 
+def test_missing_agent_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "agents/code-reviewer.md", "# Agent\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "agents/code-reviewer.md: missing reviewer readability directive" in err
+
+
+def test_agent_directive_present(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "agents/code-reviewer.md", PUBLIC_ORCH + "\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
+def test_agent_wrong_path_form(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "agents/reviewer-foo.md", DEV_ORCH + "\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert "agents/reviewer-foo.md: missing reviewer readability directive" in err
+    assert "agents/reviewer-foo.md: uses wrong readability directive path form" in err
+
+
+def test_non_reviewer_agent_not_checked(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
+    write(tmp_path / "agents/codex-implementer.md", "# Agent\n")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 0, err
+
+
 def test_bare_path_mention_does_not_count_as_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     manifest(tmp_path, "__metadata__\tmetadata-min-count\t0\t\t\n")
     write(tmp_path / "skills/foo/SKILL.md", f"See {PUBLIC_PATH} for the style rules.\n")

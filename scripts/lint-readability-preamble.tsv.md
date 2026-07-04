@@ -34,6 +34,7 @@ Both `python3 python/cli.py lint readability-preamble` and the Python test consu
 ## Dynamic skill coverage
 
 The lint walks public `skills/*/SKILL.md` and dev-only `.claude/skills/*/SKILL.md` files. Each file must contain the correct shared readability path unless it has a `skill-exempt` row. New skills fail until they add a directive or an exemption row.
+The lint also walks `agents/code-reviewer.md` and `agents/reviewer-*.md`, so reviewer agents must carry the public shared readability path.
 
 ## Edit in sync
 
