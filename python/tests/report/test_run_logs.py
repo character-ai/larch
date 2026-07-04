@@ -72,6 +72,11 @@ def test_validate_run_id_slug() -> None:
     assert not run_logs.validate_run_id_slug(r"bad\slash")
 
 
+def test_run_dir_rejects_invalid_run_id(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="invalid run-id"):
+        run_logs._run_dir(log_root=tmp_path / "larch-logs", skill="implement", run_id="../evil")  # pyright: ignore[reportPrivateUsage]
+
+
 @pytest.mark.parametrize(
     "argv",
     [
