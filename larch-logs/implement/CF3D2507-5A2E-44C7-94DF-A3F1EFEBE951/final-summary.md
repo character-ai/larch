@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:26:58
-- **Cost**: 💰 TOTAL ~$7.39 — Claude $0.44, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.40  |  Tokens: 15077k
+- **Cost**: 💰 TOTAL ~$7.87 — Claude $0.92, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.40  |  Tokens: 16168k
 - **Issue**: #6160 — https://github.com/character-ai/larch/issues/6160
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -76,3 +76,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (nit): plan-context frozen grammar coverage. Concern: The plan-context voter frozen-grammar path is still untested, so ballots with scope anchors could drift when that surface changes.
 - **Round 1 OOS_5** (latent): scaffold byte ceiling guard. Concern: There is no automated guard on scaffold_bytes reduction acceptance, so scaffold prose could grow again unless the cost check is rerun manually.
 - **Round 1 OOS_6** (nit): line-range token mismatch. Concern: The dynamic specialist example still uses `<path>:<lines>` while static specialist tagging expects `<path>:<line-range>`, which can confuse the expected token form.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
