@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:28:16
-- **Cost**: 💰 TOTAL ~$12.61 — Claude $3.95, Codex-5.5 $4.84, Codex-mini $0.93, Cursor $1.75, Claude (subprocess) $1.14  |  Tokens: 18081k
+- **Cost**: 💰 TOTAL ~$15.78 — Claude $7.09, Codex-5.5 $4.84, Codex-mini $0.93, Cursor $1.75, Claude (subprocess) $1.17  |  Tokens: 22520k
 - **Issue**: #6165 — https://github.com/character-ai/larch/issues/6165
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -11,7 +11,7 @@
 - **Lines (PR diff)**: N/A
 - **OOS filed**: 0
 - **Exec issues**: 0
-- **Warnings**: 1
+- **Warnings**: 2
 - **Run logs**: `larch-logs/implement/D911DD50-D1E1-442C-92D3-F7F68D66C26C/`
 - **Main agent model**: claude-sonnet-5
 - **Effort**: max
@@ -21,8 +21,9 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (1):
+Warnings (2):
   1. Step 7a — session-transcript status=write-failed: larch-log write failed; transcript was not captured: [Errno 2] No such file or directory: '<TMPDIR>/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T...
+  2. Step 7a (architectural guidelines): G-Sec-1 deviation — `skill_closure_ledger._since_tag_commits()` passes the operator-supplied `--since-tag` value into `git.rev_parse_verify()` / `git.log_path_co...
 
 ## Review Phase Detail
 
@@ -76,3 +77,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_8** (nit): cover production-shaped PR subjects. Concern: The fixture uses simplified issue-subject shapes, so suffix parsing on production-shaped `Fixes #...` subjects is not exercised and PR-column regressions on real history could slip through.
 - **Round 1 OOS_9** (latent): detect duplicate skill keys. Concern: Duplicate `skill` keys are silently last-wins during parsing, so corrupted history can hide the true per-merge delta for that commit.
 - **Round 1 OOS_10** (latent): make NUL-delimited subject parsing collision-proof. Concern: `log_path_commits` relies on splitting subjects on `\x00`, so a NUL embedded in a subject would corrupt SHA/subject pairing.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
