@@ -7,6 +7,8 @@ import argparse
 import json
 import os
 import shutil
+import subprocess
+import sys
 import threading
 from pathlib import Path
 from unittest import mock
@@ -47,6 +49,82 @@ def _tmp_impl(tmp_path: Path) -> Path:
     (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
     (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
     return impl
+
+
+def _repo_root() -> Path:
+    return Path(__file__).resolve().parents[3]
+
+
+def _arg_value(argv: list[str], flag: str) -> str:
+    return argv[argv.index(flag) + 1]
+
+
+def _write_python3_capture_shim(shim_path: Path) -> None:
+    shim_path.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+if [ -z "${REAL_PYTHON3:-}" ]; then
+  printf '%s\n' 'python3 shim: REAL_PYTHON3 is required' >&2
+  exit 127
+fi
+if [ "${2:-}" = "review-and-fix" ] && [ "${3:-}" = "step5" ]; then
+  : "${CAPTURE_ARGV_FILE:?CAPTURE_ARGV_FILE required}"
+  printf '%s\n' "$@" >"$CAPTURE_ARGV_FILE"
+  exit 0
+fi
+exec "$REAL_PYTHON3" "$@"
+""",
+        encoding="utf-8",
+    )
+    shim_path.chmod(0o755)
+
+
+def _run_step5_shell_wrapper(
+    tmp_path: Path,
+    *,
+    wrapper_name: str,
+    wrapper_args: list[str],
+    include_run_flags: bool,
+) -> tuple[Path, list[str], subprocess.CompletedProcess[str]]:
+    repo_root = _repo_root()
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    (impl / "session-env.sh").write_text(
+        f"RUN_ID=run-1\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\nLARCH_CLAUDE_PLUGIN_ROOT={repo_root}\n",
+        encoding="utf-8",
+    )
+    (impl / "plan.txt").write_text("plan\n", encoding="utf-8")
+    (impl / "feature-description.txt").write_text("feature\n", encoding="utf-8")
+    if include_run_flags:
+        (impl / "run-flags.sh").write_text("DIFFICULTY_OVERRIDE=HARD\n", encoding="utf-8")
+
+    shim_bin = tmp_path / "bin"
+    shim_bin.mkdir()
+    capture_file = tmp_path / "captured-argv.txt"
+    _write_python3_capture_shim(shim_bin / "python3")
+
+    env = {
+        "CAPTURE_ARGV_FILE": str(capture_file),
+        "CLAUDE_PLUGIN_ROOT": str(repo_root),
+        "IMPLEMENT_TMPDIR": str(impl),
+        "LARCH_QUIET_DISABLE": "1",
+        "PATH": f"{shim_bin}{os.pathsep}{os.environ.get('PATH', '')}",
+        "REAL_PYTHON3": sys.executable,
+    }
+    for key in ("HOME", "PYTHONPATH", "TMPDIR", "USER"):
+        if key in os.environ:
+            env[key] = os.environ[key]
+
+    result = subprocess.run(
+        [str(repo_root / "skills" / "implement" / "scripts" / wrapper_name), *wrapper_args],
+        cwd=repo_root,
+        env=env,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    argv = capture_file.read_text(encoding="utf-8").splitlines() if capture_file.exists() else []
+    return impl, argv, result
 
 
 def _fix_applied_round_result(impl: Path, *, round_num: int = 1) -> review_and_fix.RoundResult:
@@ -377,6 +455,43 @@ def test_step5_shell_exports_validated_dynamic_cap_before_python_call() -> None:
     assert validation in text
     assert export in text
     assert text.index(validation) < text.index(export) < text.index(banner) < text.index(python_call)
+
+
+@MARK_STEP5
+@pytest.mark.parametrize(
+    ("wrapper_name", "wrapper_args", "expected_starting_round", "include_run_flags"),
+    [
+        pytest.param("step-5-review.sh", [], "1", True, id="review-difficulty-override"),
+        pytest.param("step-5-review.sh", [], "1", False, id="review-no-override"),
+        pytest.param("step-5-resume.sh", ["--final-round-num", "2"], "3", True, id="resume-difficulty-override"),
+        pytest.param("step-5-resume.sh", ["--final-round-num", "2"], "3", False, id="resume-no-override"),
+    ],
+)
+def test_step5_shell_wrappers_forward_difficulty_override(
+    tmp_path: Path,
+    wrapper_name: str,
+    wrapper_args: list[str],
+    expected_starting_round: str,
+    include_run_flags: bool,
+) -> None:
+    impl, argv, result = _run_step5_shell_wrapper(
+        tmp_path,
+        wrapper_name=wrapper_name,
+        wrapper_args=wrapper_args,
+        include_run_flags=include_run_flags,
+    )
+
+    assert result.returncode == 0, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert argv, f"stdout:\n{result.stdout}\nstderr:\n{result.stderr}"
+    assert Path(argv[0]).as_posix().endswith("/python/cli.py")
+    assert argv[1:3] == ["review-and-fix", "step5"]
+    assert _arg_value(argv, "--implement-tmpdir") == str(impl)
+    assert _arg_value(argv, "--mode") == "loop"
+    assert _arg_value(argv, "--starting-round") == expected_starting_round
+    if include_run_flags:
+        assert _arg_value(argv, "--difficulty") == "HARD"
+    else:
+        assert "--difficulty" not in argv
 
 @MARK_DISPATCH
 def test_dynamic_archetypes_defaults_to_zero_without_implement_tmpdir(monkeypatch, tmp_path):
