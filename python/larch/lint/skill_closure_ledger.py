@@ -88,6 +88,7 @@ class _SummaryAccumulator:
 
 
 def _new_summary_accumulator(*, target_delta: TargetDelta) -> _SummaryAccumulator:
+    assert target_delta.previous is not None  # caller only builds an accumulator once previous is known
     acc = _SummaryAccumulator(start=target_delta.previous, current=target_delta.current, delta=target_delta.delta or 0)
     if target_delta.delta is not None and target_delta.delta > 0:
         acc.raises = 1
