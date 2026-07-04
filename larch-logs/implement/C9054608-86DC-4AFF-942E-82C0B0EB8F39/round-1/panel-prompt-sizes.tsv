@@ -1,0 +1,13 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-step5-recovery-codex	specialist	codex	dyn-dyn-step5-recovery-codex-output.txt	18581	4646	9974	2494	8607	2152		0	0
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	21707	5427	13610	3403	8097	2025	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	21415	5354	13318	3330	8097	2025	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	21973	5494	13876	3469	8097	2025	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	dyn-dyn-step5-recovery-codex	specialist	codex	dyn-dyn-step5-recovery-codex-output.txt	18581	4646	9974	2494	8607	2152		0	0
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	21707	5427	13610	3403	8097	2025	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	21973	5494	13876	3469	8097	2025	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	21415	5354	13318	3330	8097	2025	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	dyn-dyn-step5-recovery-codex	specialist	codex	dyn-dyn-step5-recovery-codex-output.txt	18581	4646	9974	2494	8607	2152		0	0
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	21707	5427	13610	3403	8097	2025	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	21973	5494	13876	3469	8097	2025	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	21415	5354	13318	3330	8097	2025	agents/reviewer-testing.md	5452	1363

@@ -1,0 +1,1 @@
+{"phase":"implement","step":"7a","category":"Warnings","source":"execution-issues.md pre-bump","source_sha256":"397c5b9c6ca5f91672ec020db8622c1e1676ad84f9f3a6d099d4afab22b20e0b","body":"\n- **Step 7a.1 \u2014 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10**: skills/implement/references/step5-review-branches.md\n"}
