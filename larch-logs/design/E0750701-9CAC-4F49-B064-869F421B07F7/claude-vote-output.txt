@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS FINDING_3; no materially new evidence; prior round routed this to OOS
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan approach section explicitly states "capture stdout to a temp file and stderr to an implement tmpdir log"; concern is already in scope
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan's "under trap protection" language and the Step 3 reference pattern implicitly require traps before reattach; not a plan-level correctness defect requiring explicit ordering text
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS FINDING_2 (same tmpdir cleanup before normalize-status concern); prior round routed to OOS; no materially new evidence
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- Step 3 already calls teardown-loop-group with pid in the pre-identity window and ships; plan says to reuse that code, so the concern is addressed by reference even if not spelled out
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=true
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS FINDING_5 (same .bg-wait-active lifecycle concern during detach); prior round routed to OOS
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS_1 and OOS_3; oos duplicates should not be re-raised as new OOS
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS FINDING_12 (lint registration for Step 5 harness); rejected at YES=0/3; no new evidence
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS_2 (STALL_REASON=orphan-timeout not in stall branch reference); prior round voted OOS; oos duplicates should not be re-raised
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS_1 and OOS_3; oos duplicates should not be re-raised
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of Round 1 OOS_1 and OOS_3; same operator doc concern; oos duplicates should not be re-raised
