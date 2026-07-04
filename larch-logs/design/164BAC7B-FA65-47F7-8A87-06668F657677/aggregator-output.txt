@@ -1,0 +1,17 @@
+### FINDING_1: Regression test needs a live-like TMPDIR/IMPLEMENT_TMPDIR setup
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Workflow Artifact Regression
+- **Severity**: important
+- **Concern**: The proposed regression test may not faithfully reproduce the live failure or may assert an end-to-end success contract that the current fix scope cannot satisfy, because nested `run-log write` still depends on ambient `TMPDIR`, `tempfile.gettempdir()` may ignore a bad `TMPDIR`, and the test currently omits the live Step 5 `IMPLEMENT_TMPDIR` envelope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Tighten the test contract: add a positive check that write-tally-record.* lands under Path(--log-root).parent, and either stub only the nested proc.run run-log write leg or document that offline repro with a dead TMPDIR cannot require end-to-end rc==0 until run_log_batch._redact_to_temp is separately hardened (explicitly out of scope for this issue).
+  - From Cursor-Innovation: Shape the test so unfixed code fails before the fix: call write_tally_main in-process with monkeypatched tempfile.gettempdir returning a nonexistent directory, or use a TMPDIR candidate that gettempdir() actually selects yet cannot host write-tally-record.* (verify red-green once). Keep asserting rc 0, tally JSON presence, and that the poisoned TMPDIR path was not created
+  - From Cursor-Requirements: Revise the test contract: either (a) assert the record stages under Path(log-root).parent and that the bad TMPDIR tree was not created, without requiring full e2e success under impossible TMPDIR, or (b) use a live-like malformed TMPDIR (existing impl parent plus concatenated /var/folders/.../T suffix) and only require rc=0 plus JSON when that repro actually reaches run-log successfully; keep run-log hardening out of scope unless the narrowed test still fails.
+  - From Cursor-dyn-Workflow Artifact Regression: Use a mkdir decoy TMPDIR (live-shaped malformed path that exists): monkeypatch TMPDIR to it assert no write-tally-record.* files appear under the decoy while code-review-tally.json lands under log-root; or keep nonexistent TMPDIR only to assert staging never touches it and drop the rc==0 assertion unless inner mkstemp is also hardened (explicitly out of scope here)
+  - From Cursor-Innovation: In the new test set IMPLEMENT_TMPDIR to the same directory used as Path(log_root).parent (pytest tmp_path), keep malformed TMPDIR, then run write-tally through run_cli as planned
+
+### FINDING_2: Add a parent-directory existence guard for staged tally files
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: latent
+- **Concern**: `write_tally_main` currently assumes `Path(args.log_root).parent` exists before creating the temporary tally record; if a future caller passes a log root whose parent is missing, the failure becomes a generic temporary-file ENOENT instead of a clearer contract error.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Optional minimum guard only if desired: resolve parent once, fail with a clear ERROR when parent is missing or not a directory; do not add mkdir or broaden beyond write_tally_main.

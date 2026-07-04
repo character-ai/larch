@@ -1,0 +1,92 @@
+## Summary
+
+The `voting write-tally` leg of the Step 5 batch flush still fails in live runs, so run-root `code-review-tally.json` never lands. `#6228` shipped observability plus a summary fallback and deferred the mechanism fix on purpose. The `code-review-tally.flush.err` sidecar `#6228` added now captures the cause: `write_tally_main` stages its record file through the ambient `$TMPDIR`, and in the live orchestrated Step 5 process that `$TMPDIR` resolves to a malformed, nonexistent path. `NamedTemporaryFile` fails with `ENOENT`, the write returns nonzero, and the inner `run-log write` never runs. This is the deferred `#6228` root-cause remainder and the outstanding blocker on umbrella `#5993`'s "real Code review line" close condition.
+
+## Original report
+
+Follow-up of `#6228` and `#6169`. `#6228` (DONE) delivered only observability plus a summary fallback for the silent `voting write-tally` failure. Its plan kept "the root-cause mechanism out of scope until a live run captures the error" and its suggested-fix item 3 was "after the next live run, read the captured error and fix the actual mechanism." That live run has now happened at v52.4.5 (which already carries `#6228`), and the sidecar captured the error. This issue is that owed root-cause fix so `code-review-tally.json` lands again.
+
+Scope is a single work item: harden the write-tally record write. Out of scope and already done: removing the dead `CODE_REVIEW_LINE` ship-handoff branch in `final_report.py`. `#6169` removed it and `test_final_report_code_review_line_ignores_stale_ship_state` guards it, so do not re-file that.
+
+## Reproduction scenario
+
+Field evidence from committed run logs:
+
+1. Inspect run `04CEC3D3-EFE7-4D2C-9571-4400CBDDAAF0` (issue `#6244`, `larch_version` 52.4.5). It has `code-review-tally.flush.err` and no `code-review-tally.json`. The sidecar records `returncode=2` and an `ENOENT` for the `write-tally-record.*` temp file under a malformed `$TMPDIR`.
+2. Runs `3036F305-AE1C-4CB4-B44A-4565732FBB4A` (`#6229`) and `7A08ADD9-CC2E-4DAF-BDF2-6EF0AE7CB230` (`#6233`) show the same shape: sidecar present, tally absent. `#6228` reports this in every live run since about v52.2.4.
+
+Offline reproduction is hard: `#6228` could not reproduce the failure offline because it needs the live `$TMPDIR`. A targeted local repro: set `TMPDIR` to a nonexistent nested path, then run `python3 cli.py voting write-tally ...`; `NamedTemporaryFile` raises `ENOENT` and the command exits nonzero. The full field check is a live `/implement` run on a fix-bearing version.
+
+## Expected behavior
+
+Every Step 5 flush writes both `code-review-tally.json` and `review-findings-full.jsonl` to the run root. Summaries and PR bodies render from the tally. A malformed or unusable ambient `$TMPDIR` does not silently drop the tally write.
+
+## Observed behavior
+
+- Run-root `code-review-tally.json` is missing in the three newest v52.4.5 runs. Each has `code-review-tally.flush.err`.
+- The sidecar records `voting write-tally failed (returncode=2)` and `ERROR=[Errno 2] No such file or directory` for the `write-tally-record.*` temp file.
+- The captured path is malformed: the larch session-cache root with the absolute system tmpdir appended, for example `<HOME><TMPDIR><sid>/var/folders/dw/<hash>/T/write-tally-record.<rand>`.
+- `review-findings-full.jsonl` lands correctly; the adjacent findings leg works.
+- Summaries render real values through `#6228`'s JSONL fallback, so the missing artifact is easy to miss, but the canonical tally is absent and `#5992` calibration loses its per-run accepted-count fallback source.
+
+## Root cause analysis
+
+`write_tally_main` (`python/larch/review/voting.py:1466`) calls `tempfile.NamedTemporaryFile("w", ..., prefix="write-tally-record.")` with no `dir=` argument, so it stages the record under the ambient `$TMPDIR`. In the live Step 5 process `$TMPDIR` resolves to a malformed, nonexistent path (session-cache root plus the absolute system tmpdir). `NamedTemporaryFile` cannot create the file there and raises `ENOENT`. The nonzero return code means the inner `run-log write` for the tally never runs, so run-root `code-review-tally.json` is never written. The findings-batch leg survives because it uses a direct `run-log write` that does not stage through that `NamedTemporaryFile`.
+
+Inference, not yet confirmed: the malformed `$TMPDIR` likely originates in session bootstrap or an env snapshot that builds a per-session tmpdir by joining the session root with the inherited absolute `$TMPDIR` without stripping the leading path. This locus is unconfirmed; see Open questions.
+
+## Evidence
+
+- `python/larch/review/voting.py:1449` `write_tally_main`; line 1466 `NamedTemporaryFile(..., prefix="write-tally-record.")` with no `dir=`; the record path is used at line 1482 and unlinked at 1487.
+- Captured sidecar in run `04CEC3D3` (redacted home path): `voting write-tally failed (returncode=2)` and `ERROR=[Errno 2] No such file or directory: '<HOME><TMPDIR><sid>/var/folders/dw/<hash>/T/write-tally-record.<rand>'`.
+- `python/larch/review/batch_report.py:355` `flush_review_batches` invokes `voting write-tally` at line 379; the `#6228` observability sidecar and Warnings text are at lines 209 and 238.
+- `python/larch/review/review_and_fix.py:1120` `write_self_review_tally` invokes `voting write-tally` at line 1159, so the self-review path shares the same failure.
+- Three newest v52.4.5 runs (`04CEC3D3` `#6244`, `3036F305` `#6229`, `7A08ADD9` `#6233`) each have `code-review-tally.flush.err` and no `code-review-tally.json`.
+- Matches `#6228`'s predicted candidate: "tempfile creation in `write_tally_main` (`tempfile.NamedTemporaryFile` under the live `TMPDIR`)."
+
+## Affected files
+
+- `python/larch/review/voting.py`: `write_tally_main`, the `NamedTemporaryFile` at line 1466. Primary fix site.
+- `python/larch/review/batch_report.py`: `flush_review_batches` caller of `voting write-tally`.
+- `python/larch/review/review_and_fix.py`: `write_self_review_tally` caller; shares the path.
+- `python/larch/state/bootstrap.py` and `python/larch/state/session_env.py`: suspected origin of the malformed `$TMPDIR`. Unconfirmed.
+
+## Suggested fix(es)
+
+1. Stage the tally record under a known-good directory. In `write_tally_main`, pass an explicit `dir=` (the implement or run tmpdir, or the `--log-root`) to `NamedTemporaryFile`, or validate and repair `$TMPDIR` before the call. Keep the write loud: a failed record stage should surface, not silently drop the tally.
+2. Investigate where the malformed `$TMPDIR` is set under `python/larch/state/`. Fix at source if that is the cleaner locus. Route `write_self_review_tally` through the same hardening, since it shares the path.
+3. Add a regression test: with `$TMPDIR` set to a nonexistent nested path, `flush_review_batches` and `write_self_review_tally` still write run-root `code-review-tally.json` and leave no `code-review-tally.flush.err`.
+
+Acceptance: a fresh live `/implement` run on a fix-bearing version commits run-root `code-review-tally.json` with no sidecar, and summaries render from the tally.
+
+## Open questions
+
+- Where exactly is the malformed `$TMPDIR` set? Should the fix live at the `write_tally_main` call site, at the `$TMPDIR` source, or both?
+- Is a one-off log-only back-fill of `code-review-tally.json` for the v52.2.4 to v52.4.5 window worth doing once the mechanism is fixed? The committed round artifacts hold the counts. This mirrors `#6228`'s open question.
+- None on the `CODE_REVIEW_LINE` cleanup: `#6169` already removed it and a test guards it. Explicitly out of scope.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Make `write_tally_main` resilient to malformed or nonexistent `$TMPDIR` by staging the temp record under a known-good directory.
+- Ensure `code-review-tally.json` lands in every live run regardless of ambient `$TMPDIR`.
+- Add a regression test that reproduces the failure and verifies the fix.
+
+### Non-goals
+- Investigating or fixing the malformed `$TMPDIR` source in `bootstrap.py`/`session_env.py`.
+- Backfilling missing `code-review-tally.json` for prior v52.2.4–v52.4.5 runs.
+- Any changes to `CODE_REVIEW_LINE` in `final_report.py` (already cleaned up in #6169).
+
+### Approach sketch
+- In `write_tally_main` (`voting.py:1466`): add `dir=Path(args.log_root).parent` to the `NamedTemporaryFile` call so the temp record stages under the implement session root instead of ambient `$TMPDIR`.
+- Both callers pass `--log-root impl_tmpdir/larch-logs`, so `Path(args.log_root).parent` is always `impl_tmpdir`, a guaranteed-existing directory.
+- Add regression test: set `TMPDIR` to a nonexistent path, invoke `voting write-tally`, assert `code-review-tally.json` lands.
+
+### Surfaces in scope
+- `python/larch/review/voting.py` — `write_tally_main`, one-line change at line 1466.
+- `python/tests/review/test_voting.py` — new regression test.
+
+### Open questions
+- None.

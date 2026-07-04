@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the absolute pass-through concern is speculative; `run-log write` is an internal trusted CLI and no plausible attack path is established beyond a theoretical `/etc/passwd` example; fails the OOS impact-floor and concrete-trigger criteria
