@@ -2555,6 +2555,21 @@ def test_synthesize_dynamic_slots_passes_findings_ledger_file(tmp_path: Path) ->
     assert render_call[render_call.index("--findings-ledger-file") + 1] == str(review_tmpdir / "findings-ledger.tsv")
 
 
+def test_dynamic_agent_body_preserves_generated_prompt_contract() -> None:
+    text = review_pipeline._dynamic_agent_body(  # pyright: ignore[reportPrivateUsage]
+        name="contract",
+        focus_area="correctness",
+        rationale="Inspect contract edges.",
+        prompt_body="Check parser output.",
+    )
+    assert "### In-Scope Findings" in text
+    assert "### Out-of-Scope Observations" in text
+    assert "NO_ISSUES_FOUND" in text
+    assert "- **<focus-area>** `<path>:<lines>` — <issue text>. **Suggested fix:** <text>." in text
+    assert "name: reviewer-dyn-contract" in text
+    assert 'description: "Ephemeral dynamic reviewer for correctness"' in text
+
+
 def test_synthesize_dynamic_slots_nested_implement_ledger_root(tmp_path: Path) -> None:
     impl = tmp_path / "impl"
     round_dir = impl / "round-2"
