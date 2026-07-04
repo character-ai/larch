@@ -111,8 +111,8 @@ grep -Fq 'non-green path: captured foreground `step-18.sh --phase finalize` Bash
 grep -Fq 'Skip marker extraction entirely; do not scan prior tool output for markers.' "$shared_final_summary" || fail 'shared final-summary emit must pin file-only no-marker behavior'
 
 # shellcheck disable=SC2016
-grep -Fq 'defined in the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
-grep -Fq 'applies when `_publish_rc` is 0, 1, or 3' "$design_skill" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
+grep -Fq 'is to follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL anti-halt must point to shared Read-always readiness profile'
+grep -Fq 'only when `_publish_rc` is 0, 1, or 3' "$design_skill" || fail 'design SKILL must pin post-driver full-body emit gate with rc 4 carve-out'
 # shellcheck disable=SC2016
 grep -Fq 'follow the file-only profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md`' "$design_skill" || fail 'design SKILL must pin Step 0b file-only profile'
 # shellcheck disable=SC2016
@@ -125,7 +125,7 @@ grep -Fq '**Not** gated on `python/cli.py design render-final-summary` exit 0' "
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from that completed stdout and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'cancellation fence must cite shared readiness profile without full binding paragraph'
 grep -Fq 'parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile' "$finalize_step5" || fail 'Step 5c abort path must name source and cite shared readiness profile'
 grep -Fq 'Use source `design-step5c.sh` completed `<task-notification>` task output to parse `FINAL_SUMMARY_PATH=<path>` and follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5c item 5 must name task-output source and cite shared readiness profile'
-grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 follows the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared readiness profile'
+grep -Fq 'Step 5d post-driver gate: after `_publish_rc` 0, 1, or 3, Step 5c item 5 must follow the `/design` Read-always readiness profile' "$design_skill" || fail 'Step 5d must back-reference Step 5c item 5 shared readiness profile'
 grep -Fq 'Complete the shared sidecar follow-on before any cancellation line or exit.' "$design_skill" || fail 'cancellation fence must preserve sidecar-before-exit ordering'
 grep -Fq 'Complete the shared sidecar follow-on before stopping.' "$finalize_step5" || fail 'Step 5c abort must preserve sidecar-before-stop ordering'
 grep -Fq 'Apply this emit **before** the plan-write failure warning or success footer decisions below.' "$design_skill" || fail 'Step 5c item 5 must preserve warning/footer ordering'
