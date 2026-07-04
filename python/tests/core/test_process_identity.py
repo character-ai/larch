@@ -4,11 +4,13 @@ from __future__ import annotations
 import json
 from collections.abc import Sequence
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 from larch.core import config, process_identity
 from larch.core.proc import CommandResult
+
+if TYPE_CHECKING:
+    import pytest
 
 
 class FakeRunner:
