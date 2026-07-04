@@ -1,0 +1,16 @@
+### FINDING_1: Missing regression check for staged difficulty-rating content
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The regression coverage only checks `run-log write` argv and `--input-file` wiring, but does not verify that the staged `impl/larch-logs/implement/<run-id>/difficulty-rating.json` actually preserves resolved fields after terminal Step 5 exits. That leaves the committed stale-batch bug undetected if the write path is wired correctly but the staged content remains `audit_evaluated: null` and/or has empty `escalations`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add tests that seed a resolved tmpdir `difficulty-rating.json` (e.g. `audit_evaluated: true`, non-empty `escalations`), run the covered terminal paths without mocking `run-log write`, then read the staged batch under `impl/larch-logs/implement/<run-id>/` and assert the resolved fields survived.
+  - From Cursor-Innovation: Add an integration-style assertion that after `complete` and `cap-hit` loop exits (with a tmpdir `difficulty-rating.json` containing `audit_evaluated: true` and non-empty `escalations`), the file written under `impl/larch-logs/implement/<run-id>/difficulty-rating.json` matches those resolved fields. Keep argv checks optional; content verification is the regression gate.
+  - From Cursor-Pragmatic: Add to the test plan: seed tmpdir `difficulty-rating.json` with `audit_evaluated: true` and non-empty `escalations`, run a covered terminal path with real or faithfully mocked `run-log write` that copies input, then read the staged batch file and assert those resolved fields survived.
+
+### FINDING_2: Audit-deltas filter should key off audit-upgrade, not audited
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch
+- **Severity**: important
+- **Concern**: `_render_audit_deltas` is expected to list only upgrade cases, but the current peer selection still relies on `audited`. Once implement runs can be audited without an upgrade, those runs will be incorrectly included/excluded from the audit-delta peer pool, skewing the analyzer and potentially hiding the intended upgrade-only view. The filter also needs to stay safe when `record.rating` is missing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: When `_render_audit_deltas` filters upgrade rows, select peers with `not _truthy(peer.rating.get("audit_upgrade"))` (or a dedicated `audit_upgraded` property), not `not peer.audited`.
+  - From Codex-Arch: Add `RunRecord.audit_upgraded` or a local predicate that returns false when `record.rating is None`, then filter `_render_audit_deltas` on that guarded predicate.

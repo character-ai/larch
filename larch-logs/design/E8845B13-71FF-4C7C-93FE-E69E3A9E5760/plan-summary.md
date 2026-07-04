@@ -1,0 +1,1 @@
+Fix implement difficulty run logs by re-staging the resolved tmpdir record at Step 5 terminal exits, narrowing audit-delta rows to real audit upgrades, and recording the dispatcher model instead of `unknown`.
