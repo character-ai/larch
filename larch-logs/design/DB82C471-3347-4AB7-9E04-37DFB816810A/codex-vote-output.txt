@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Helpful coverage, but the feature already works on the shipped path and these tests are optional.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=good UNCERTAIN=false -- The validator already accepts exact NO_ISSUES_FOUND in validation mode.
+FINDING_3: NO CORRECTNESS=uncertain SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- I could not verify a shipped acceptance path for headerless prose no-findings, so this reads as optional hardening.
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real /design-path concern, but it is separate from this issue and not material enough to accept here.

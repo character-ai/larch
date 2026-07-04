@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already mandates core accept/reject cases; extra negative shapes are hardening beyond the anchored Step 5 prose fix
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- existing validation-mode sentinel checks already accept NO_ISSUES_FOUND before the new prose helper; not on the demonstrated failure path
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- pinning first-line header is defensive tightening beyond the scoped no-findings prose acceptance fix
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real Cursor guard gap but off the Codex edge-cases NOT_SUBSTANTIVE failure path this issue targets
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

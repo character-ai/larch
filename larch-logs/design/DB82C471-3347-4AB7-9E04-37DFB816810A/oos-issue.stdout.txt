@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6316
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6316
+ISSUE_1_ID=4810818464
+ISSUE_1_TITLE=[OOS] /design still runs --structured-reviewer-validation after substantive validation
+ISSUE_1_BLOCKER_LINKS_APPLIED=1
