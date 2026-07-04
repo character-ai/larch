@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
@@ -13,9 +14,11 @@ from larch.state import finalize
 from larch.report import run_logs
 from larch.errors import ShipError
 from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
@@ -669,6 +672,9 @@ def test_kill_session_background_processes_skips_live_python_ancestors(
         ["sh", "-c", "printf '%s %s' $$ ${PPID:-}"],
         ["ps", "-o", "ppid=", "-p", "300"],
     ]
+    log_text = (tmp_path / finalize.config.FINALIZE_KILL_LOG_FILE).read_text(encoding="utf-8")
+    assert '"pid": 999' in log_text
+    assert '"signal": "SIGTERM"' in log_text
     kill_calls = [call for call in runner.calls if call[:2] == ["kill", "-TERM"]]
     assert kill_calls == [["kill", "-TERM", "999"]]
     assert ["kill", "-TERM", "50"] not in runner.calls

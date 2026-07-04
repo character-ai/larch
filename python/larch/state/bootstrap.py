@@ -19,7 +19,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from larch.state import dirty_tree
-from larch.core import external_defaults
+from larch.core import config, external_defaults
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.calibration import difficulty
@@ -165,11 +165,13 @@ case "$script" in
 esac
 
 _larch_cleanup_active_leg() {
-  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null || true
+  python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir "$IMPLEMENT_TMPDIR" || true
 }
 
 case "$script" in
   *.py)
+    _larch_active_leg_owner_token="$(python3 -c 'import uuid; print(uuid.uuid4().hex)' 2>/dev/null || printf '%s.%s.%s\n' "$$" "$(date +%s)" "${RANDOM:-0}")"
+    export __OWNER_TOKEN_ENV__="$_larch_active_leg_owner_token"
     trap _larch_cleanup_active_leg EXIT INT TERM
     python3 "$CLAUDE_PLUGIN_ROOT/$script" "$@"
     rc=$?
@@ -181,6 +183,7 @@ case "$script" in
   *) printf '%s\\n' "larch-run.sh: unsupported script target: $script" >&2; exit 2 ;;
 esac
 """
+    script = script.replace("__OWNER_TOKEN_ENV__", config.ENV_ACTIVE_LEG_OWNER_TOKEN)
     try:
         _atomic_text(path=path, text=script)
         path.chmod(0o755)

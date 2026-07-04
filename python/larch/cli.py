@@ -170,6 +170,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("plan", "compose-goals-test"): ("larch.design.plan_quality", "compose_plan_goals_test_main"),
     ("plan", "step1-log"): ("larch.design.design_step_log", "step1_log_main"),
     ("plan-review", "run"): ("larch.review.plan_review", "run_main"),
+    ("plan-review", "write-loop-identity"): ("larch.core.process_identity", "write_loop_identity_main"),
+    ("plan-review", "teardown-loop-identity"): ("larch.core.process_identity", "teardown_loop_identity_main"),
     ("plan-review", "normalize-status"): ("larch.review.plan_review", "normalize_step3_status_main"),
     ("plan-review", "panel-dispatch"): ("larch.review.plan_review_panel", "dispatch_panel_main"),
     ("plan-review", "voter-dispatch"): ("larch.review.plan_review_panel", "dispatch_voters_main"),

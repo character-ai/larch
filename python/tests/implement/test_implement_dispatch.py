@@ -34,6 +34,7 @@ from larch.implement import (
     dispatch_recovery,
 )
 from larch.core import config
+from larch.core import process_identity
 from larch.core import logging_util
 from larch.report import run_logs
 
@@ -108,6 +109,9 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "checks-commit-route")] == ("larch.implement.implement_dispatch", "checks_commit_route_main")
     assert _REGISTRY[("implement", "checks-step5-resume")] == ("larch.implement.implement_dispatch", "checks_step5_resume_main")
     assert _REGISTRY[("implement", "clone-tag")] == ("larch.implement.implement_dispatch", "clone_tag_main")
+    assert _REGISTRY[("implement", "kill-active-leg")] == ("larch.implement.implement_dispatch", "kill_active_leg_main")
+    assert _REGISTRY[("plan-review", "write-loop-identity")] == ("larch.core.process_identity", "write_loop_identity_main")
+    assert _REGISTRY[("plan-review", "teardown-loop-identity")] == ("larch.core.process_identity", "teardown_loop_identity_main")
     assert _REGISTRY[("implement", "normalize-coder-scout")] == ("larch.implement.implement_dispatch", "normalize_coder_scout_main")
     assert _REGISTRY[("implement", "step-5-review")] == ("larch.implement.implement_dispatch", "step5_review_main")
     assert _REGISTRY[("implement", "step-6-entry")] == ("larch.implement.implement_dispatch", "step6_entry_main")
@@ -3756,7 +3760,7 @@ def test_checks_step5_resume_timeout_relays_partial_without_composite_continue(
     assert resume_calls == [5678]
 
 
-def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     killed: list[tuple[int, int]] = []
     descendant_kills: list[tuple[int, int]] = []
 
@@ -3796,6 +3800,15 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(implement_dispatch.os, "kill", lambda pid, sig: descendant_kills.append((pid, sig)))
     monkeypatch.setattr(implement_dispatch, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
     monkeypatch.setattr(dispatch_leg, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    identity = process_identity.RecordedProcessIdentity(
+        pid=4242,
+        pgid=4242,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="/opt/homebrew/opt/python@3.11/bin/python3.11 /Users/zhupanov/larch4/python/cli.py checks run-relevant",
+        expected_signature="/opt/homebrew/opt/python@3.11/bin/python3.11 /Users/zhupanov/larch4/python/cli.py checks run-relevant",
+    )
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: identity)
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 
@@ -3809,6 +3822,9 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch) -> No
         (9002, signal.SIGKILL),
     ]
     assert implement_dispatch._timeout_stdout(result) == "after\n"
+    log_text = (tmp_path / config.ACTIVE_LEG_KILL_LOG_FILE).read_text(encoding="utf-8")
+    assert "SIGTERM" in log_text
+    assert "SIGKILL" in log_text
 
 
 def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -3836,6 +3852,323 @@ def test_kill_active_leg_clears_tracked_process(monkeypatch: pytest.MonkeyPatch)
 
     assert killed == [1, 1]
     assert implement_dispatch._LEG_STATE.active is None
+
+
+def test_active_leg_json_record_write_uses_owner_token(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv(config.ENV_ACTIVE_LEG_OWNER_TOKEN, "owner-1")
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="python cli.py checks run-relevant",
+        expected_signature="python cli.py checks run-relevant",
+    )
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: identity)
+
+    record = implement_dispatch._publish_active_leg_record(123, argv=["python", "cli.py", "checks", "run-relevant"])
+
+    payload = json.loads((tmp_path / config.ACTIVE_LEG_IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert record is not None
+    assert payload["owner_token"] == "owner-1"
+    assert payload["pid"] == 123
+    assert payload["pgid"] == 123
+
+
+def test_active_leg_json_record_write_retries_until_identity_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv(config.ENV_ACTIVE_LEG_OWNER_TOKEN, "owner-1")
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="python cli.py checks run-relevant",
+        expected_signature="python cli.py checks run-relevant",
+    )
+    responses = [None, identity]
+    calls = 0
+
+    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(dispatch_leg.process_identity.time, "sleep", lambda _seconds: None)
+
+    record = implement_dispatch._publish_active_leg_record(123, argv=["python", "cli.py", "checks", "run-relevant"])
+
+    payload = json.loads((tmp_path / config.ACTIVE_LEG_IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert record is not None
+    assert calls == 2
+    assert payload["owner_token"] == "owner-1"
+    assert payload["pid"] == 123
+    assert payload["pgid"] == 123
+
+
+def test_active_leg_json_record_write_fails_closed_when_durable_publish_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv(config.ENV_ACTIVE_LEG_OWNER_TOKEN, "owner-1")
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="python cli.py checks run-relevant",
+        expected_signature="python cli.py checks run-relevant",
+    )
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: identity)
+
+    def fail_write(**_kwargs: object) -> None:
+        raise OSError("write failed")
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "write_identity_record", fail_write)
+
+    record = implement_dispatch._publish_active_leg_record(123, argv=["python", "cli.py", "checks", "run-relevant"])
+
+    assert record is None
+    assert not (tmp_path / config.ACTIVE_LEG_IDENTITY_FILE).exists()
+
+
+def test_run_leg_with_timeout_fails_closed_when_active_leg_publish_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    killed: list[int] = []
+
+    class FakeProcess:
+        pid = 4242
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:  # pylint: disable=unused-argument
+            self.returncode = -9
+            return -9
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, **_kwargs: ("", ""))
+
+    result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
+
+    assert isinstance(result, subprocess.CompletedProcess)
+    assert result.returncode == 1
+    assert result.stderr == "checks active-leg publication failed"
+    assert killed == [4242]
+
+
+def test_run_leg_with_timeout_returns_child_result_when_publication_fails_after_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    killed: list[int] = []
+
+    class FakeProcess:
+        pid = 4242
+        returncode = 0
+        stdout = None
+        stderr = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:  # pylint: disable=unused-argument
+            return 0
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *_args, **_kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, **_kwargs: ("child stdout\n", "child stderr\n"))
+
+    result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
+
+    assert isinstance(result, subprocess.CompletedProcess)
+    assert result.returncode == 0
+    assert result.stdout == "child stdout\n"
+    assert result.stderr == "child stderr\n"
+    assert not killed
+
+
+def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = {
+        "pid": 123,
+        "pgid": 123,
+        "start_time": "Fri Jul 3 17:01:02 2026",
+        "command_signature": "python cli.py checks run-relevant",
+        "expected_signature": "checks run-relevant",
+        "owner_token": "owner-1",
+    }
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(record), encoding="utf-8")
+    calls: list[process_identity.RecordedProcessIdentity] = []
+
+    def fake_terminate(*, recorded: process_identity.RecordedProcessIdentity, **_kwargs: object) -> process_identity.ValidationResult:
+        calls.append(recorded)
+        return process_identity.ValidationResult(ok=True, reason="ok", current=recorded)
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
+
+    assert [call.pid for call in calls] == [123]
+    assert not path.exists()
+
+
+def test_kill_active_leg_owner_match_refuses_to_unlink_replaced_record(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    record = {
+        "pid": 123,
+        "pgid": 123,
+        "start_time": "Fri Jul 3 17:01:02 2026",
+        "command_signature": "python cli.py checks run-relevant",
+        "expected_signature": "checks run-relevant",
+        "owner_token": "owner-1",
+        "writer_pid": 1,
+    }
+    foreign = {
+        "pid": 456,
+        "pgid": 456,
+        "start_time": "Fri Jul 3 17:02:02 2026",
+        "command_signature": "python cli.py checks other",
+        "expected_signature": "checks other",
+        "owner_token": "owner-2",
+        "writer_pid": 2,
+    }
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(record), encoding="utf-8")
+    calls: list[process_identity.RecordedProcessIdentity] = []
+
+    def fake_terminate(*, recorded: process_identity.RecordedProcessIdentity, **_kwargs: object) -> process_identity.ValidationResult:
+        calls.append(recorded)
+        path.write_text(json.dumps(foreign), encoding="utf-8")
+        return process_identity.ValidationResult(ok=True, reason="ok", current=recorded)
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
+
+    assert [call.pid for call in calls] == [123]
+    assert json.loads(path.read_text(encoding="utf-8"))["owner_token"] == "owner-2"
+
+
+def test_kill_active_leg_owner_mismatch_noops_without_unlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = {
+        "pid": 123,
+        "pgid": 123,
+        "start_time": "Fri Jul 3 17:01:02 2026",
+        "command_signature": "python cli.py checks run-relevant",
+        "owner_token": "owner-1",
+    }
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(record), encoding="utf-8")
+    called = False
+
+    def fake_terminate(**_kwargs: object) -> process_identity.ValidationResult:
+        nonlocal called
+        called = True
+        return process_identity.ValidationResult(ok=True, reason="ok")
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "other"]) == 0
+
+    assert not called
+    assert path.exists()
+
+
+def test_kill_active_leg_missing_owner_token_refuses_json(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text('{"owner_token":"owner-1"}', encoding="utf-8")
+    called = False
+
+    def fail_read(*_args: object, **_kwargs: object) -> str:
+        nonlocal called
+        called = True
+        raise AssertionError("json record must not be read")
+
+    monkeypatch.setattr(Path, "read_text", fail_read)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path)]) == 0
+
+    assert not called
+    assert path.exists()
+
+
+def test_legacy_active_leg_pgid_refused_and_unlinked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    legacy = tmp_path / config.ACTIVE_LEG_LEGACY_PGID_FILE
+    legacy.write_text("123\n", encoding="ascii")
+    called = False
+
+    def fake_terminate(**_kwargs: object) -> process_identity.ValidationResult:
+        nonlocal called
+        called = True
+        return process_identity.ValidationResult(ok=True, reason="ok")
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner"]) == 0
+
+    assert not called
+    assert not legacy.exists()
+    assert "legacy-active-leg-pgid-refused" in (tmp_path / config.ACTIVE_LEG_KILL_LOG_FILE).read_text(encoding="utf-8")
+
+
+def test_kill_active_leg_recycled_pid_refused(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    record = {
+        "pid": 123,
+        "pgid": 123,
+        "start_time": "old",
+        "command_signature": "python cli.py checks run-relevant",
+        "owner_token": "owner-1",
+    }
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+    def fake_terminate(**_kwargs: object) -> process_identity.ValidationResult:
+        return process_identity.ValidationResult(ok=False, reason="start-time-mismatch")
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "terminate_validated_process_group", fake_terminate)
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
+
+    assert path.exists()
+    assert "start-time-mismatch" in (tmp_path / config.ACTIVE_LEG_KILL_LOG_FILE).read_text(encoding="utf-8")
+
+
+def test_malformed_active_leg_record_refused(tmp_path: Path) -> None:
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text("{", encoding="utf-8")
+
+    assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
+
+    assert not path.exists()
+    assert "malformed-active-leg-record" in (tmp_path / config.ACTIVE_LEG_KILL_LOG_FILE).read_text(encoding="utf-8")
+
+
+def test_dispatcher_finally_does_not_clear_foreign_record(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    own: dict[str, object] = {"pid": 123, "pgid": 123, "start_time": "one", "command_signature": "cmd", "owner_token": "owner-1", "writer_pid": 1}
+    foreign: dict[str, object] = {"pid": 124, "pgid": 124, "start_time": "two", "command_signature": "cmd", "owner_token": "owner-2", "writer_pid": 2}
+    path = tmp_path / config.ACTIVE_LEG_IDENTITY_FILE
+    path.write_text(json.dumps(foreign), encoding="utf-8")
+
+    implement_dispatch._clear_active_leg_record(own)
+
+    assert json.loads(path.read_text(encoding="utf-8"))["owner_token"] == "owner-2"
 
 
 def _setup_step5_resume(

@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import pathlib
 import re
 import shutil
 import sys
@@ -15,7 +16,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from larch.core import config
+from larch.core import config, process_identity
 from larch.issue import execution_issues
 from larch.git import git
 from larch.issue import issue_query
@@ -836,14 +837,33 @@ def kill_session_background_processes(*, runner: Runner, ctx: RunContext) -> boo
     script = (
         "ps -A -o pid= -o args= | "
         'awk -v needle="$1" -v physical="$2" '
-        "'index($0, needle)>0 || (physical != \"\" && physical != needle && index($0, physical)>0) {print $1}'"
+        "'index($0, needle)>0 || (physical != \"\" && physical != needle && index($0, physical)>0) {print $0}'"
     )
     result = runner.run(["sh", "-c", script, "sh", tmpdir, physical])
     killed = False
     for raw in result.stdout.splitlines():
-        pid = raw.strip()
+        line = raw.strip()
+        if not line:
+            continue
+        parts = line.split(maxsplit=1)
+        pid = parts[0]
+        command = parts[1] if len(parts) > 1 else ""
         if not pid or pid in skip:
             continue
+        process_identity.append_kill_log(
+            path=pathlib.Path(tmpdir) / config.FINALIZE_KILL_LOG_FILE,
+            event=process_identity.KillLogEvent(
+                event="signal",
+                signal="SIGTERM",
+                pid=int(pid) if pid.isdigit() else 0,
+                pgid=0,
+                command=command,
+                caller="session kill-background-processes",
+                reason="tmpdir-scoped-background-cleanup",
+                tmpdir_needle=tmpdir,
+                physical_needle=physical,
+            ),
+        )
         term = runner.run(["kill", "-TERM", pid])
         killed = killed or term.returncode == 0
     return killed
