@@ -55,6 +55,48 @@ def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> 
     assert f"CLONE_PATH={tmp_path}\n" in marker_text
 
 
+def test_run_step_checks_main_arms_step3_bg_wait_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = _session(tmp_path)
+    (tmp / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
+    (tmp / ".completed").mkdir()
+    (tmp / ".completed" / "step-3-terminal").write_text("stale", encoding="utf-8")
+    (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").write_text("1", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, str] = {}
+
+    def fake_run_cli_forward(args: Sequence[str]) -> int:
+        assert list(args) == ["checks", "run-relevant", "--site", "step3", "--tmpdir", str(tmp)]
+        marker_text = (tmp / ".bg-wait-active").read_text(encoding="utf-8")
+        seen["marker"] = marker_text
+        assert "STEP=implement-step3-checks\n" in marker_text
+        assert f"CLONE_PATH={tmp_path}\n" in marker_text
+        assert not (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").exists()
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
+
+    assert dispatch_commit_route.run_step_checks_main(["--site", "step3"]) == 0
+
+    assert seen["marker"]
+    assert (tmp / ".completed" / "step-3-terminal").exists()
+    assert not (tmp / ".bg-wait-active").exists()
+
+
+def test_run_step_checks_main_leaves_non_step3_sites_unmarked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+
+    def fake_run_cli_forward(args: Sequence[str]) -> int:
+        assert list(args) == ["checks", "run-relevant", "--site", "step5", "--tmpdir", str(tmp)]
+        assert not (tmp / ".bg-wait-active").exists()
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
+
+    assert dispatch_commit_route.run_step_checks_main(["--site", "step5"]) == 0
+    assert not (tmp / ".bg-wait-active").exists()
+
+
 @pytest.fixture(autouse=True)
 def quiet_off(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")

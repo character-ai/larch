@@ -27,8 +27,7 @@ WRITERS: tuple[WriterSpec, ...] = (
     WriterSpec("skills/implement/scripts/step-6-entry.sh", "implement Step 6 checks"),
     WriterSpec("skills/implement/scripts/step-8-ship.sh", "implement Step 8 ship"),
     WriterSpec("python/larch/design/design_core.py", "design Python bg-wait context"),
-    WriterSpec("python/larch/implement/dispatch_commit_route.py", "implement checks commit route"),
-    WriterSpec("python/larch/implement/step_7a.py", "implement Step 7a"),
+    WriterSpec("python/larch/implement/bg_wait.py", "implement Python bg-wait helper"),
 )
 
 WRITER_EVIDENCE_TOKENS = (".bg-wait-active", "PID=", "START_EPOCH=", "STEP=")
@@ -38,14 +37,53 @@ def _has_writer_evidence(text: str) -> bool:
     return all(token in text for token in WRITER_EVIDENCE_TOKENS)
 
 
+WRITE_CONTEXT_TOKENS = ("write_text(", "printf", ">", ">>", ".replace(", "mv ")
+CLONE_PATH_WINDOW_LINES = 15
+
+
+def _is_comment_line(line: str) -> bool:
+    return line.lstrip().startswith(("#", "//"))
+
+
+def _non_comment_has_clone_path(line: str) -> bool:
+    return not _is_comment_line(line) and "CLONE_PATH=" in line
+
+
+def _is_cleanup_marker_line(line: str) -> bool:
+    if ".bg-wait-active" not in line:
+        return False
+    stripped = line.lstrip()
+    return stripped.startswith(("rm ", "rm -", "del ")) or ".unlink()" in line
+
+
+def _has_write_context(lines: list[str], index: int) -> bool:
+    line = lines[index]
+    if any(token in line for token in WRITE_CONTEXT_TOKENS):
+        return True
+    start = max(0, index - CLONE_PATH_WINDOW_LINES)
+    end = min(len(lines), index + CLONE_PATH_WINDOW_LINES + 1)
+    return any(not _is_comment_line(candidate) and any(token in candidate for token in WRITE_CONTEXT_TOKENS) for candidate in lines[start:end])
+
+
+def _has_nearby_clone_path(lines: list[str], index: int) -> bool:
+    start = max(0, index - CLONE_PATH_WINDOW_LINES)
+    end = min(len(lines), index + CLONE_PATH_WINDOW_LINES + 1)
+    return any(_non_comment_has_clone_path(line) for line in lines[start:end])
+
+
 def _has_clone_path_emission(text: str) -> bool:
-    for line in text.splitlines():
-        stripped = line.lstrip()
-        if stripped.startswith(("#", "//")):
-            continue
-        if "CLONE_PATH=" in line:
-            return True
-    return False
+    lines = text.splitlines()
+    marker_write_indexes = [
+        index
+        for index, line in enumerate(lines)
+        if not _is_comment_line(line)
+        and ".bg-wait-active" in line
+        and not _is_cleanup_marker_line(line)
+        and _has_write_context(lines, index)
+    ]
+    if not marker_write_indexes:
+        return any(_non_comment_has_clone_path(line) for line in lines)
+    return all(_has_nearby_clone_path(lines, index) for index in marker_write_indexes)
 
 
 def _read_writer(path: Path, *, rel: str) -> str:
