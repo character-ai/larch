@@ -20,6 +20,7 @@ EOFSTUB
   chmod +x "$dir/skills/design/scripts/plan-review-loop-stub.sh"
   cat >"$dir/python/cli.py" <<'CLIPY'
 #!/usr/bin/env python3
+import json
 import os
 import subprocess
 import sys
@@ -28,6 +29,24 @@ BAKED_REAL_ROOT = "__LARCH_TEST_REAL_ROOT__"
 if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "run" and "--record-report-evidence" not in sys.argv[3:]:
     run_sh = os.path.join(os.environ.get("CLAUDE_PLUGIN_ROOT", ""), "skills", "design", "scripts", "plan-review-loop-stub.sh")
     sys.exit(subprocess.call(["/bin/bash", run_sh]))
+# #6258 harness speedup: stub the wrapper's incidental plumbing verbs locally so
+# each subtest pays one real cli.py cold-start (normalize-status, the SUT) instead
+# of ~5. These verbs are never asserted by make_fake_step3_plugin subtests (the
+# kill-helper ordering test and the detach tests use their own cli.py). scope-anchor
+# validate and normalize-status still forward to the real CLI to preserve coverage.
+if len(sys.argv) >= 3 and sys.argv[1] == "session" and sys.argv[2] in ("validate-design-tmpdir", "kill-background-processes"):
+    sys.exit(0)
+if len(sys.argv) >= 3 and sys.argv[1] == "plan-review" and sys.argv[2] == "write-loop-identity":
+    # Faithful drop-in: write the identity sidecar the real verb writes, so the
+    # wrapper's normal-path identity handling is unchanged.
+    try:
+        design_tmpdir = sys.argv[sys.argv.index("--design-tmpdir") + 1]
+        pid = int(sys.argv[sys.argv.index("--pid") + 1])
+        with open(os.path.join(design_tmpdir, ".step3-loop-identity.json"), "w", encoding="utf-8") as handle:
+            json.dump({"pid": pid, "pgid": pid, "start_time": "stub", "command_signature": "plan-review run", "expected_signature": "plan-review run"}, handle)
+    except (ValueError, OSError):
+        pass
+    sys.exit(0)
 real_root = os.environ.get("LARCH_TEST_REAL_REPO_ROOT") or BAKED_REAL_ROOT
 real_cli = os.path.join(real_root, "python", "cli.py")
 if real_cli and os.path.isfile(real_cli):
