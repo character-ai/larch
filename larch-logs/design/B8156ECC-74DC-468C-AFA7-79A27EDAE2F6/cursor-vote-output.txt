@@ -1,0 +1,7 @@
+Reading the ballot and verifying findings against the repo.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already mandates plan-review.md cap-2 prose and round-3 removal
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- runtime _resolution_from_data clamp governs enforcement; report metadata mismatch is diagnostic only
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- committed round-meta may show stale 3 but does not authorize a third review round
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- dead escalation-gated branch is harmless cleanup once HARD ceiling is 2

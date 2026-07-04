@@ -1,0 +1,6 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- stale-record compatibility is real, but the cap-2 plan does not require preserving the old on-disk 3 assertion or adding a runtime-clamp test here
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- report/flush normalization is a follow-on artifact-consistency issue, not required to deliver the cap-2 review-round feature
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- raw round-meta reporting can still surface stale caps, but that artifact path is outside the capped-rounds feature scope
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- removing a dead authorization branch is cleanup beyond the scoped cap change

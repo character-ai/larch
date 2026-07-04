@@ -1,0 +1,28 @@
+Reviewing the plan against config, difficulty resolution, escalation paths, and docs for gaps that could still allow a third review round.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/scripts/test-step3-review-cap.sh:226-236	CI cap harness still requires HARD escalation to launch round 3	Plan omits this file but make test-step3-review-cap (Makefile:581-582, wired into test-harnesses-5/lint) asserts round 3 dispatch, counter=3, and REVIEW_ROUND_CAP=3 on escalation (lines 358-369). After a correct runtime cap of 2 the harness fails or pressures keeping round-3 behavior	Add ### UPDATED: skills/design/scripts/test-step3-review-cap.sh: invert/remove the HARD round-3-reachable case, expect cap-reached at round-2 boundary with escalation, and assert REVIEW_ROUND_CAP=2; include make test-step3-review-cap in the testing strategy
+1	in_scope	important	correctness	skills/design/references/approval-gates.md:15	Gate C prose still advertises round 3 authorization	Operators loading approval-gates see Round 3 is offered only when escalation or substantiality has been recorded, contradicting a universal cap of 2 and implying a third review round remains available	Add ### UPDATED: skills/design/references/approval-gates.md and state re-run eligibility uses the fixed cap of 2 with no round-3 carve-out
+1	in_scope	important	risk-integration	skills/implement/scripts/step-5-review.sh:59	/implement Step 5 breadcrumb still prints tier cap 2/2/3	Every Step 5 run emits tier cap 2/2/3 to chat even when runtime policy is cap 2 for all tiers, advertising a third HARD round	Update step-5-review.sh and skills/implement/scripts/step-5-review.md to print a fixed cap of 2 (plan lists implement/SKILL.md but not these runtime wrappers)
+1	in_scope	important	correctness	python/larch/review/plan_review_common.py:155-157	Design escalation path can still authorize a third round when HARD ceiling stays 3	effective_authorized_cap returns raw_cap when raw_cap > ROUND_THREE_AUTHORIZATION_CAP (2) and design_escalation_authorized is true; with DIFFICULTY_TIER_CEILINGS[HARD]=3 this is the live /design round-3 gate (plan_review.py:367-368). Config-only change fixes it but the plan does not call out this function; a partial implement that clamps persisted records but misses config.py leaves escalation unlocking round 3	Add an explicit ### UPDATED: python/larch/review/plan_review_common.py step to collapse effective_authorized_cap to min(raw_cap, tier_ceiling(panel_tier)) or document config.py change as mandatory paired with a regression test that escalation + HARD never returns cap > 2
+1	in_scope	important	correctness	skills/review/references/heavy-worker.md:37	/review heavy-worker path still documents tier cap 2/2/3	Heavy-worker reference loaded on the /review Step 3 loop still says tier cap 2/2/3, advertising a HARD third round after plan updates review/SKILL.md only	Add ### UPDATED: skills/review/references/heavy-worker.md replacing 2/2/3 with fixed cap 2 prose
+
+### Findings
+
+**1. [correctness] `skills/design/scripts/test-step3-review-cap.sh:226-236` (also `:358-369`)**  
+The plan’s pytest-only testing strategy does not cover this harness, yet it is a `make lint` prerequisite. It still positively requires HARD escalation to dispatch round 3 and emit `REVIEW_ROUND_CAP=3`. After a correct cap-2 implementation the harness fails unless round 3 is preserved. Add the harness to **Files to modify/create** and flip those cases to expect cap-reached at 2 with escalation recorded.
+
+**2. [correctness] `skills/design/references/approval-gates.md:15`**  
+Gate C guidance still says “Round 3 is offered only when escalation or substantiality has been recorded.” That advertises a third review round the issue removes. Update this subsection when refreshing collaborative-sketches / plan-review prose.
+
+**3. [risk-integration] `skills/implement/scripts/step-5-review.sh:59`** (and `skills/implement/scripts/step-5-review.md:20`)  
+The Step 5 launcher prints `tier cap 2/2/3` on every `/implement` run. That is operator-visible advertising of a third HARD round. The plan updates `skills/implement/SKILL.md` but not these wrappers.
+
+**4. [correctness] `python/larch/review/plan_review_common.py:155-157`**  
+`/design` Step 3 entry uses `effective_authorized_cap()` (`plan_review.py:367-368`). With `DIFFICULTY_TIER_CEILINGS[HARD]=3` and recorded escalation, this function returns 3 today. Config HARD→2 fixes it, but the plan should treat this escalation-unlock branch as an explicit contract surface (or simplify it) so a partial diff that only clamps `_resolution_from_data` cannot leave design escalation on a third round.
+
+**5. [correctness] `skills/review/references/heavy-worker.md:37`**  
+The heavy-worker reference still documents `tier cap 2/2/3` for the `/review` loop. Plan updates `skills/review/SKILL.md` only; this loaded reference would still advertise a HARD third round.
+
+---
+
+**[OUT_OF_SCOPE]** `python/tests/review/test_review_pipeline.py:4512-4535` — HARD `PANEL_ROUND_CAP=3` / `EFFECTIVE_ROUND_CAP=3` assertions are stale after config change but are test-only; plan’s targeted pytest list omits this file. Worth a follow-up issue, not required for runtime cap correctness.

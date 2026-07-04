@@ -1,0 +1,9 @@
+1	`make test-step3-review-cap` still encodes escalated hard reviews as a round-3 path, so the cap-2 change will break the ci harness unless those expectations move to round 2.
+1	the `python/tests/review/test_review_pipeline.py` shard still asserts hard-specific cap-3 behavior, so the review-pipeline makefile targets will fail after the cap change unless those assertions move to 2.
+1	the implement token-propagation harness still expects hard cap 3, so `make test-implement-review-token-propagation` stays red after hard is capped at 2.
+1	the approval-gates and flags design docs still authorize round 3 or say hard=3, leaving operator guidance stale after the cap becomes universal.
+1	the `/implement` step 5 wrapper still prints and documents a tier cap of `2/2/3`, so every normal run keeps advertising a third hard round even after the policy changes.
+1	the plan-review escalation continuation tests still assert `review_round_cap=3`, so that targeted pytest shard will fail once hard is capped at 2.
+1	the `/review --subagent` heavy-worker reference still advertises a `2/2/3` tier cap, so the subagent path can keep steering hard reviews toward a third round even if the parent skill prose changes.
+2	the continuation/escalation tests still assume a third review round after hard is flattened to a cap of 2. at `review_count == 2`, the escalation branch no longer runs, so these cases should either expect `cap-reached` or seed `review_count=1` for the continue-true path.
+2	the tiered plan-review documentation still describes hard as cap 3 and references round-3 pruning. that prose is stale once all tiers are capped at 2 and will mislead operators and readers.
