@@ -3,14 +3,14 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:38:57
-- **Cost**: 💰 TOTAL ~$25.59 — Claude $3.21, Codex-5.5 $13.41, Codex-mini $0.71, Cursor $6.20, Claude (subprocess) $2.06  |  Tokens: 44462k
+- **Cost**: 💰 TOTAL ~$26.01 — Claude $3.61, Codex-5.5 $13.41, Codex-mini $0.71, Cursor $6.20, Claude (subprocess) $2.08  |  Tokens: 45732k
 - **Issue**: #6244 — https://github.com/character-ai/larch/issues/6244
 - **PR**: #6256 — https://github.com/character-ai/larch/pull/6256
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 3/3 accepted
-- **Lines (PR diff)**: code +152/-76, larch-logs +680/-0
+- **Lines (PR diff)**: code +152/-76, larch-logs +702/-0
 - **OOS filed**: 1 — https://github.com/character-ai/larch/issues/6255
 - **Exec issues**: 0
 - **Warnings**: 3
@@ -79,4 +79,4 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
