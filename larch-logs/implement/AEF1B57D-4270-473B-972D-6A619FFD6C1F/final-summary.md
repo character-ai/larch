@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:17:55
-- **Cost**: 💰 TOTAL ~$9.61 — Claude $1.98, Codex-5.5 $2.55, Codex-mini $1.43, Cursor $3.38, Claude (subprocess) $0.27  |  Tokens: 18284k
+- **Cost**: 💰 TOTAL ~$11.13 — Claude $3.48, Codex-5.5 $2.55, Codex-mini $1.43, Cursor $3.38, Claude (subprocess) $0.29  |  Tokens: 20216k
 - **Issue**: #6179 — https://github.com/character-ai/larch/issues/6179
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -70,3 +70,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (important): Conditional-reference regex is punctuation-sensitive. Concern: `CONDITIONAL_REFERENCE_RE` is still punctuation-sensitive: it misses split-sentence conditional prose, treats comma-separated qualifiers as untracked, and relies on commas to keep some explicit exclusions from being classified at all.
 - **Round 1 OOS_4** (latent): Ratchet misses runtime refs that evade all classifier arms. Concern: The ratchet still only protects files that already land in the eager/conditional baselines, so runtime references that fail every classifier arm can reappear without a lint failure.
 - **Round 1 OOS_5** (latent): `_clean_raw_path` punctuation trim changed without a test. Concern: `_clean_raw_path` now trims punctuation asymmetrically, changing path resolution behavior globally without a dedicated regression test.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
