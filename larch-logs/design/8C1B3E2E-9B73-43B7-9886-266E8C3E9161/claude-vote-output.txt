@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the validator-inventory bullets are indeed counted in payload_base_bytes (line 862), so shortening them moves payload not scaffold; but the other two edits (heading and scope-reduction notice) do sit outside payload_base_bytes and DO reduce scaffold_bytes, so the acceptance criterion (measured scaffold-byte drop) is still met without this correction — the plan over-serves but does not fail
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
