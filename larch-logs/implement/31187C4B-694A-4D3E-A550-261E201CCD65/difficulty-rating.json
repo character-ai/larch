@@ -1,0 +1,22 @@
+{
+  "applied_tier": "TRIVIAL",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "TRIVIAL",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "TRIVIAL",
+  "predicted_tier": "TRIVIAL",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Literal-only edits to scoped operator-facing strings with exact expected test literals updated.",
+  "round_cap": 2,
+  "schema_version": 1
+}

@@ -273,9 +273,9 @@ def test_step5b_prepare_ready_orchestration(tmp_path: Path, monkeypatch: pytest.
 @pytest.mark.parametrize(
     ("status", "breadcrumb"),
     [
-        ("skip-sentinel", "⏩ 5b: oos filing — sentinel recovery (skip pipeline)"),
-        ("skip-no-items", "⏩ 5b: oos filing — no accepted-OOS items"),
-        ("skip-all-security", "⏩ 5b: oos filing — no non-security OOS items"),
+        ("skip-sentinel", "⏩ 5b: oos filing; sentinel recovery (skip pipeline)"),
+        ("skip-no-items", "⏩ 5b: oos filing; no accepted-OOS items"),
+        ("skip-all-security", "⏩ 5b: oos filing; no non-security OOS items"),
     ],
 )
 def test_step5b_prepare_skip_marks_complete(
@@ -329,7 +329,7 @@ def test_step5b_prepare_already_filed_sentinel_routes_annotation_by_issue_stdout
 
     assert rc == 0
     assert "NEXT_ACTION=skip-pipeline" in out
-    assert "OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline" in out
+    assert "OOS_SKIP_BREADCRUMB=⏩ 5b: oos filing; oos-issue-sentinel present (already filed); skip pipeline" in out
     assert "WARN=already filed recovery warning" in out
     if issue_stdout_text:
         assert "STEP5B_NEEDS_ANNOTATE=true" in out

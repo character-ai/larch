@@ -66,11 +66,11 @@ def _step5b_annotate_sequencing_error(oos_issue_stdout: Path) -> bool:
 
 
 _STEP5B_SKIP_BREADCRUMBS = {
-    "skip-sentinel": "⏩ 5b: oos filing — sentinel recovery (skip pipeline)",
-    "skip-already-filed-sentinel": "⏩ 5b: oos filing — oos-issue-sentinel present (already filed); skip pipeline",
-    "skip-no-items": "⏩ 5b: oos filing — no accepted-OOS items",
-    "skip-all-security": "⏩ 5b: oos filing — no non-security OOS items",
-    "label-only-retry": "⏩ 5b: oos filing — label-only retry (pending priority labels)",
+    "skip-sentinel": "⏩ 5b: oos filing; sentinel recovery (skip pipeline)",
+    "skip-already-filed-sentinel": "⏩ 5b: oos filing; oos-issue-sentinel present (already filed); skip pipeline",
+    "skip-no-items": "⏩ 5b: oos filing; no accepted-OOS items",
+    "skip-all-security": "⏩ 5b: oos filing; no non-security OOS items",
+    "label-only-retry": "⏩ 5b: oos filing; label-only retry (pending priority labels)",
 }
 
 
@@ -165,7 +165,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
             exit_code=prep_rc,
             stderr_path=stderr_path,
         )
-        print("**⚠ /design: OOS filing prepare failed — skipping /larch:issue; continuing to Step 5b.5**")
+        print("**⚠ /design: OOS filing prepare failed; skipping /larch:issue; continuing to Step 5b.5**")
         wrapper_text = (
             "STEP5B_STATUS=prepare-failed-continue\n"
             f"OOS_PREP_RC={prep_rc}\n"
@@ -184,7 +184,7 @@ def step5b_prepare_main(argv: Sequence[str]) -> int:
         oos_issue_stdout=oos_issue_stdout,
     )
     if next_action == "unknown-oos-status":
-        print("**⚠ /design: unrecognized OOS prepare status — stop for repair before Step 5b.5**")
+        print("**⚠ /design: unrecognized OOS prepare status; stop for repair before Step 5b.5**")
         return 2
     return 0
 
@@ -213,7 +213,7 @@ def _step5b_handle_empty_stdout_retry(*, plugin_root: Path, design_tmpdir: Path,
         category="Warnings",
         output_file=stderr_path,
     )
-    print(f"**⚠ /design: annotate {verb} (empty issue stdout) — status unclear; see execution-issues**")
+    print(f"**⚠ /design: annotate {verb} (empty issue stdout); status unclear; see execution-issues**")
     return 1
 
 
@@ -265,7 +265,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
             stderr_path=stderr_path,
         )
         if _step5b_issues_failed(oos_issue_stdout):
-            print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0 — see execution-issues and oos-issue.stdout.txt**")
+            print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0; see execution-issues and oos-issue.stdout.txt**")
         if status in {"annotate-failed-empty-stdout", "annotate-skipped-empty-stdout"} and warn:
             return _step5b_handle_empty_stdout_retry(
                 plugin_root=plugin_root,
