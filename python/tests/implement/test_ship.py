@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 import pytest
 
@@ -22,9 +23,11 @@ from larch.implement import ship_pr
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
-from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 _REAL_FLUSH_LOGS_PRE = run_logs.flush_logs_pre
 
