@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:09:29
-- **Cost**: 💰 TOTAL ~$2.12 — Claude $0.45, Codex-5.5 $0.54, Codex-mini $0.14, Cursor $0.89, Claude (subprocess) $0.10  |  Tokens: 3682k
+- **Cost**: 💰 TOTAL ~$2.41 — Claude $0.74, Codex-5.5 $0.54, Codex-mini $0.14, Cursor $0.89, Claude (subprocess) $0.10  |  Tokens: 4466k
 - **Issue**: #6265 — https://github.com/character-ai/larch/issues/6265
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE; override operator
@@ -66,3 +66,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_1** (latent): brittle awk extraction in parity harness. Concern: `scripts/test-hook-clone-ownership-parity.sh` uses an awk-based `extract_function` that stops at the first standalone `}` line inside a function body. Future helper refactors with nested brace constructs could truncate extraction and yield misleading pass/fai…
 - **Round 1 OOS_2** (latent): missing behavioral parity for completion-sentinel helper renames. Concern: The parity coverage does not exercise the renamed completion helpers `marker_step_completed` and `is_step_completed`, so one-sided edits could change step-completion detection without failing the clone-ownership parity check.
 - **Round 1 OOS_3** (latent): missing behavioral parity for liveness helper renames. Concern: The parity coverage does not exercise the renamed liveness helpers `marker_is_live` and `is_marker_live`, so one-sided edits could change marker-liveness blocking behavior without failing the clone-ownership parity check.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
