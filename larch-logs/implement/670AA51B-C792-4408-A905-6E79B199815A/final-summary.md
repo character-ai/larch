@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:30:28
-- **Cost**: 💰 TOTAL ~$5.65 — Claude $0.80, Codex-5.5 $1.64, Codex-mini $0.80, Cursor $2.14, Claude (subprocess) $0.27  |  Tokens: 11867k
+- **Cost**: 💰 TOTAL ~$6.04 — Claude $1.19, Codex-5.5 $1.64, Codex-mini $0.80, Cursor $2.14, Claude (subprocess) $0.27  |  Tokens: 12888k
 - **Issue**: #6255 — https://github.com/character-ai/larch/issues/6255
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -72,3 +72,7 @@ codex/validity-vote              │                                            
 These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.
 
 - **Round 1 OOS_1** (important): Missing regression guard for eager run_logs imports. Concern: There is no dedicated CI lint or structural test to prevent eager `run_logs` imports from being reintroduced on the `run_log_flush → final_report` load path. That leaves the cycle vulnerable to coming back later without a targeted failure signal.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
