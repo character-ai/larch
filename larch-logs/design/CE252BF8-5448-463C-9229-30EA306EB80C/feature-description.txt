@@ -1,0 +1,30 @@
+# Scrub em-dashes from the Python run-summary and reporting layer
+
+**Problem**
+
+larch's readability style bans em-dashes (`skills/shared/readability-style.md`: "never use em dashes; use periods, commas, colons, or semicolons instead"). The Python reporting layer hard-codes em-dashes in user-facing output. This fires on every `/implement` and `/design` run, so the most visible artifact larch produces (the run summary) violates the rule deterministically. The #6124 readability fix wired directives into prompts but never touched these renderers.
+
+**Evidence**
+
+Emitting sites (verify the full set during design):
+
+- `python/larch/git/pr_body.py`: the run-summary H2 heading `## /{skill} run {run_id} — {outcome}` (line ~554), plus the cost line (~533), issue line (~538), PR line (~543), and OOS line (~550).
+- `python/larch/report/report_tokens_cost.py:665`: the `💰 Cost: TOTAL ~$X — Claude ...` line.
+- `python/larch/report/run_logs.py` (~653-659): failure-log suffix lines.
+- `python/larch/report/progress_report.py` (~732, 1057, 1400, 1419, 1425): live progress and status lines shown during runs.
+
+Observed impact: every recent `/implement` `final-summary.md` carries 3 to 14 em-dashes, and all of them trace to these renderer or template lines, not to model prose. The affected logs were created after the "No em dashes" rule landed (2026-07-03 05:05).
+
+**Fix**
+
+Replace em-dashes in larch-authored emitted strings with compliant punctuation (colon, comma, period) or restructure the line. Sweep `python/larch/report/` and `python/larch/git/` for em-dashes inside emitted strings (f-strings and `print`), skipping code comments and docstrings.
+
+**Scope and risk**
+
+The run-summary block is parsed downstream via the `<!-- larch:run-summary v=1 -->` sentinel. Before changing the H2 heading separator, confirm no parser splits on ` — ` to recover the outcome. Pick a separator that keeps any downstream parse intact. Update pr_body / render tests to match.
+
+**Acceptance**
+
+- No em-dash in emitted strings under `python/larch/report/` and `python/larch/git/`.
+- A fresh `/implement` and `/design` run-summary contains no em-dash.
+- Existing render tests updated and green.
