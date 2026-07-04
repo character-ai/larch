@@ -1,0 +1,16 @@
+# attributed_ballot_sha256=bcc03448f678866001b0d1144a32aeef551a760fa345cc26e3c0f6c3df771cd8
+# neutral_ballot_sha256=75731371934366ac8a4fb1c1dde05e326959c484880a9974050a724b68647db3
+item_id	reviewer	reviewer_line
+FINDING_1	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Orchestrator Wait Contract	- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Orchestrator Wait Contract
+FINDING_2	Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Orchestrator Wait Contract	- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Orchestrator Wait Contract
+FINDING_3	Codex-Pragmatic	- **Reviewer(s)**: Codex-Pragmatic
+FINDING_4	Cursor-Requirements, Codex-Requirements	- **Reviewer(s)**: Cursor-Requirements, Codex-Requirements
+FINDING_5	Codex-dyn-Orchestrator Wait Contract	- **Reviewer(s)**: Codex-dyn-Orchestrator Wait Contract
+FINDING_6	Cursor-dyn-Orchestrator Wait Contract	- **Reviewer(s)**: Cursor-dyn-Orchestrator Wait Contract
+OOS_1	Cursor-Innovation	- **Reviewer**: Cursor-Innovation
+OOS_2	Codex-Innovation	- **Reviewer**: Codex-Innovation
+OOS_3	Cursor-Pragmatic	- **Reviewer**: Cursor-Pragmatic
+OOS_4	Cursor-Requirements	- **Reviewer**: Cursor-Requirements
+OOS_5	Cursor-Requirements	- **Reviewer**: Cursor-Requirements
+OOS_6	Cursor-dyn-Orchestrator Wait Contract	- **Reviewer**: Cursor-dyn-Orchestrator Wait Contract
+OOS_7	Cursor-dyn-Orchestrator Wait Contract	- **Reviewer**: Cursor-dyn-Orchestrator Wait Contract

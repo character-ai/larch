@@ -1,0 +1,51 @@
+Reviewing the plan against current docs, tests, and related contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/design/SKILL.md:413	Step 3 NEXT_ACTION gate still says yield or probe on premature notifications without fingerprint carve-out	Repeated byte-identical notifications with absent step-3-terminal still match premature and yield or probe; orchestrator may run a foreground probe each turn, hook denies while bg-wait-active is live, and ScheduleWakeup or prose loops continue	In the Step 3 post-loop routing paragraph add: on byte-identical non-empty repeat with absent step-3-terminal end the turn silently with no probe; probe only on the first or changed non-empty premature notification per design-background-wait.md
+1	in_scope	important	correctness	skills/design/SKILL.md:81	Anti-pattern #5 still says one-foreground-probe allowance applies only to non-empty-output notifications	Plan extends #5 for repeated byte-identical non-empty waits but leaves the existing sentence implying every non-empty notification may probe; agents can probe on identical repeats before reading the new carve-out	When extending #5 revise that sentence to new non-empty notifications excluding byte-identical repeats; point to design-background-wait.md fingerprint rule
+1	in_scope	important	risk-integration	skills/shared/design-background-wait.md:29-33	Fingerprint silent-yield rule is ordered after the foreground-probe instruction and uses yield without probing not the empty-output no-tool list	Agent reads line 29 first and may probe before evaluating byte-identical fingerprint; yield without probing omits explicit no Bash no wc no ScheduleWakeup no prose parity with line 29 empty-output branch	Reorder or prefix Step 3 boundary: evaluate empty then byte-identical fingerprint before any probe; mirror line 29 no-tool list and add bg-wait-active may remain until wrapper EXIT trap per issue
+1	in_scope	important	risk-integration	skills/design/SKILL.md:80	Anti-pattern #4 still mandates one foreground probe per recovery turn for any premature notification	No carve-out for byte-identical repeats; conflicts with planned silent-yield contract and reinforces probe-on-every-notification behavior during long Step 3 waits	Add one clause to #4 How to apply: byte-identical non-empty repeats with absent terminal sentinel end silently with no probe per design-background-wait.md Step 3 boundary
+1	in_scope	latent	code-quality	skills/shared/design-background-wait.md:33-35	[SCOPE-REDUCTION] Plan says replace repeated-notification sentence but repo already has #5418 fingerprint and sentinel-present branch	Implementer may rewrite or drop working text instead of minimal strengthen-only delta	Retitle plan edit to strengthen/clarify existing lines 33-35; list only additive deltas explicit no-tool list bg-wait-active note ScheduleWakeup ban
+1	out_of_scope	latent	correctness	scripts/test-implement-anti-polling-rule.sh:49-209	Testing strategy runs anti-polling harness but plan adds no #5418 or byte-identical literal pins	Docs-only drift on new contract text is not mechanically guarded; regressions would not fail CI until an agent misbehaves in production	Add check_context pins for #5418 and byte-identical silent-yield literals only if team wants harness enforcement beyond existing #5240 pins
+1	out_of_scope	latent	architecture	AGENTS.md:64	Project-wide /design premature-notification rule still authorizes foreground probe on any non-empty output with no fingerprint carve-out	Operators loading AGENTS.md without the updated shared wait doc may still probe on repeated identical Step 3 notifications	Future issue to align AGENTS.md with fingerprint silent-yield or defer explicitly because this plan scopes two design files only
+
+## Numbered findings
+
+### 1. correctness — `skills/design/SKILL.md:413`
+
+The Step 3 routing gate still tells the orchestrator to treat missing `step-3-terminal` as “yield **or probe**” without mentioning byte-identical repeats. That directly conflicts with the bug’s desired silent-yield path and with the fingerprint rule already at `skills/shared/design-background-wait.md:33-35`.
+
+**Suggested revision:** In the same `### UPDATED: skills/design/SKILL.md` section, add an explicit routing line: byte-identical non-empty repeat + absent sentinel → silent yield, no probe; probe only on first/changed non-empty premature notification.
+
+### 2. correctness — `skills/design/SKILL.md:81`
+
+Anti-pattern #5 currently ends with: “The one-foreground-probe recovery allowance applies only to non-empty-output notifications.” Repeated byte-identical notifications are non-empty, so this sentence still authorizes probing unless the plan also revises it.
+
+**Suggested revision:** Change that clause to “new (non-byte-identical) non-empty notifications” and cross-reference the fingerprint rule.
+
+### 3. risk-integration — `skills/shared/design-background-wait.md:29-33`
+
+The Step 3 boundary lists the foreground-probe rule first (line 29) and the #5418 fingerprint rule second (line 33). “Yield without probing” is weaker than the empty-output branch’s explicit “call no tool… no `wc`… no prose” (line 29). The plan’s intended fix depends on agents checking fingerprint **before** probing; current ordering works against that.
+
+**Suggested revision:** Put fingerprint/empty checks before the probe allowance; copy the full no-tool list from the empty-output branch; add the `.bg-wait-active` / EXIT-trap note from the issue.
+
+### 4. risk-integration — `skills/design/SKILL.md:80`
+
+Anti-pattern #4 still says the sanctioned recovery for any premature notification is “one foreground… probe per recovery turn.” That reinforces per-notification probing and is not carved out in the plan.
+
+**Suggested revision:** One sentence in #4 deferring byte-identical repeats to the Step 3 boundary silent-yield path.
+
+### 5. code-quality — `skills/shared/design-background-wait.md:33-35` [SCOPE-REDUCTION]
+
+The plan frames a “replace” of the repeated-notification sentence, but the repo already ships `#5418` fingerprint text and the sentinel-present branch. Minimum-change should be strengthen-only, not rewrite.
+
+### Out-of-scope (tracked)
+
+- **`scripts/test-implement-anti-polling-rule.sh`:** Harness pins `#5240` empty-output literals (lines 49-209) but not `#5418` / byte-identical text; optional future harness work.
+- **`AGENTS.md:64`:** Still probes on any non-empty `/design` premature notification; out of this plan’s two-file scope.
+
+## Verification notes (plan strengths)
+
+- Sentinel-present completion path is already correct at `skills/shared/design-background-wait.md:35-36` and matches the plan’s edge case.
+- Empty-output `#5240` contract is intact at `skills/shared/design-background-wait.md:29` and `skills/design/SKILL.md:81`.
+- Planned tests (`make test-implement-anti-polling-rule`, `make test-design-structure`, skill-closure lint) match existing harness surfaces; they will pass doc-only edits unless closure growth fails (plan handles that).
+- Code path timing described in the issue matches `skills/design/scripts/design-step3-review.sh:634-641` (normalize-status stdout flush before EXIT trap). Docs-only scope is appropriate; no hook/Python change required for correctness at process exit.

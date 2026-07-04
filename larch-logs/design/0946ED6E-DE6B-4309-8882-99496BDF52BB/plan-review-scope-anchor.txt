@@ -1,0 +1,96 @@
+## Summary
+
+`design-step3-review.sh` fires a `<task-notification>` with valid output (including `LOOP_STATUS=complete`) before the process fully exits and before `_step3_review_guarantee_post_loop_exit` removes `.bg-wait-active`. During the gap between the notification and the process exit, the hook blocks every probe attempt, causing repeated task-notification re-deliveries and wasted turns. The v52.4.9 fix (#6268) ensures `.bg-wait-active` is removed on process exit, resolving the loop when the review completes. However, the early notification creates a window where the loop runs continuously until exit, which can be very long if the review itself is still in progress.
+
+## Original report
+
+root cause of spurious notifications problems, and why the fix we merged just today did not work. Was it not in the larch version running this session?
+
+## Reproduction scenario
+
+1. Start `/design <issue>` that reaches Step 3 plan review with Cursor + Codex active.
+2. Step 3 launches `design-step3-review.sh` with `run_in_background: true`.
+3. Within ~30 seconds the orchestrator receives `<task-notification>` with the current task output. At this point the review may still be running (Cursor/Codex reviewers active, `plan-review run` not yet done).
+4. The orchestrator attempts to probe `.completed/step-3-terminal`; the hook denies access because `.bg-wait-active` is present and PID is alive.
+5. Each turn end re-fires the same `taskId` notification.
+6. The loop continues until the process exits and `_step3_review_guarantee_post_loop_exit` removes `.bg-wait-active` and writes the sentinel.
+
+In a 14-minute run (Cursor reviewer active for 7+ minutes) this produced 10+ notification re-deliveries and ~6 ScheduleWakeup recovery cycles, burning ~500–1000 tokens.
+
+## Expected behavior
+
+The task notification fires only after the process has fully exited and `.bg-wait-active` has been removed. No re-notification loop occurs during the review.
+
+## Observed behavior
+
+- Task notification fires while the review is still running (confirmed: PIDs 3572/3601/3605/3630 alive at 13+ minutes elapsed when notification shows valid `LOOP_STATUS=complete` output).
+- Each turn end re-delivers the same notification (`taskId: byqc6dgqk`).
+- Hook denies all probes while `.bg-wait-active` is present and PID is alive.
+- Loop continues for the full review duration (~14 minutes in this run).
+- Once the process exits, the v52.4.9 fix works correctly: `.bg-wait-active` is removed, `step-3-terminal` sentinel is written, hook releases, and the orchestrator can advance.
+
+## Root cause analysis
+
+**Two-phase timing gap.** The `run_in_background: true` task notification fires when the bash task's stdout is flushed — not strictly when the process exits. In `design-step3-review.sh`, `plan-review normalize-status` writes to stdout while the process is still alive (not yet at the `exit` call). Claude Code's task framework captures that stdout flush and fires the notification. The process then runs `_step3_review_guarantee_post_loop_exit` (the v52.4.9 new trap), removes `.bg-wait-active`, writes the sentinel, and exits. The gap between the stdout flush (notification fire) and the process exit (cleanup completion) is normally very small — but if the review itself is still running when the notification fires, the gap can span the entire review duration.
+
+**How the early notification fires.** `normalize-status` runs and writes its output to the bash process's stdout. The task output file receives `LOOP_STATUS=complete` etc. Claude Code sees the file updated and fires the notification. However, `design-step3-review.sh` hasn't executed the EXIT trap yet (it calls `exit "$_step3_normalize_rc"` after `rm -f "$_plan_review_stdout_file"`). `.bg-wait-active` is still present. The hook blocks all probes.
+
+**Why the v52.4.9 fix (#6268) did work.** The fix added `_step3_review_guarantee_post_loop_exit` as the post-loop EXIT trap, which removes `.bg-wait-active` and writes the sentinel. This ran correctly when the process exited, breaking the loop. Confirmed: `.bg-wait-active` gone, `step-3-terminal` present after exit.
+
+**Why it appeared "not to work" during the live run.** The fix applies at process exit. During the ~14-minute review, the process was alive, the marker correctly present, and probes correctly blocked. The fix couldn't run until the review completed. This gave the appearance of the fix failing, but it was actually waiting for the review to finish.
+
+**The remaining gap.** There is a brief window between `normalize-status` writing stdout (notification fires) and the process exit (cleanup runs). For fast reviews this window is milliseconds. For slow reviews (Cursor taking 7+ minutes), the window equals the remaining review time. The re-notification loop during this window is an efficiency bug, not a correctness bug — it resolves correctly when the process exits.
+
+## Evidence
+
+- Task output at time of first notification: `LOOP_STATUS=complete`, `NEXT_ACTION=step3b`, `ACCEPTED_COUNT=0`.
+- ps at 13:13 elapsed: PIDs 3566/3572/3601/3605/3630 all alive (review in progress).
+- After review completed: `PID_3572_GONE`, `.bg-wait-active MARKER_GONE`, `.completed/step-3-terminal TERMINAL_PRESENT`.
+- Session PLUGIN_ROOT=`<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.4.9` (confirmed v52.4.9 was running).
+- `design-step3-review.sh` line 634: `trap _step3_review_guarantee_post_loop_exit EXIT` (v52.4.9 fix present).
+- `design-step3-review.sh` modified at 14:21; session started at 14:29 (fix was present before session start).
+
+## Affected files
+
+- `skills/design/scripts/design-step3-review.sh` — the process's cleanup gap between stdout flush and EXIT-trap execution is the timing source.
+- `scripts/hook-no-progress-guard.sh` / `hook-bg-poll-guard.sh` — correctly block probes while the marker is live; no change needed here.
+- `skills/design/SKILL.md` / `skills/shared/design-background-wait.md` — documentation may need to clarify that the re-notification loop during a long review is expected and resolves automatically; no probe action needed while the process is alive.
+
+## Suggested fix(es)
+
+1. **No code change needed for correctness.** The v52.4.9 fix resolves the loop at process exit. For fast reviews the window is negligible.
+
+2. **Efficiency improvement (optional).** To reduce token burn during the wait window, the hook could distinguish "process alive, review in progress" (normal wait — end turn silently) from "process dead, marker stale" (the pre-v52.4.9 bug — probe allowed). If `kill -0 $PID` fails, the hook could allow a single probe even if `.bg-wait-active` is present. But this may already be done by the hook's liveness check.
+
+3. **Document the expected loop duration.** Add a note to `design-background-wait.md` that the re-notification loop during a long review is expected behavior; the orchestrator should end turns silently on repeated identical notifications (per the `#5418` fingerprint rule) rather than scheduling wakeups, which can compound the turn count.
+
+## Open questions
+
+- Does the hook already check `kill -0 $PID` and release after process death, independently of marker cleanup? If so, the #6268 fix was defense-in-depth, not the primary release mechanism.
+- Why does the harness re-deliver the SAME `taskId` notification on each turn end? Is this by design (pending notification re-fire until consumed via sentinel probe), or a harness bug?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Strengthen the fingerprint rule in `design-background-wait.md` so "yield" is unambiguous: end the turn with no tool call, no ScheduleWakeup, no prose.
+- Document that the re-notification loop is expected behavior during a long review (process alive, `.bg-wait-active` present) and resolves automatically on process exit.
+- Add a SKILL.md ANTI-PATTERN covering repeated non-empty identical notifications, closing the gap left by the existing empty-notification rule.
+
+### Non-goals
+- No code changes to `design-step3-review.sh`, hooks, or Python modules.
+- No changes to the no-progress guard threshold or behavior.
+- Not addressing the harness notification timing (outside larch's control).
+
+### Approach sketch
+- Update `skills/shared/design-background-wait.md` Step 3 task notification boundary: replace "yield without probing" with explicit "end the turn silently: call no tool, run no ScheduleWakeup, print no prose" for repeated identical notifications.
+- Add a note below that re-notification during a long review is expected; the loop resolves when the process exits and the EXIT trap runs.
+- Update `skills/design/SKILL.md` ANTI-PATTERNS: add a new rule (or extend #5) explicitly forbidding ScheduleWakeup on repeated non-empty identical notifications during any `/design` background wait.
+
+### Surfaces in scope
+- `skills/shared/design-background-wait.md`
+- `skills/design/SKILL.md`
+
+### Open questions
+- None.
