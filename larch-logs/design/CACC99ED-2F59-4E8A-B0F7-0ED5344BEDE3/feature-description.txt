@@ -1,0 +1,134 @@
+# [BUG] design-step3-review.sh line 589 trap replacement drops .bg-wait-active removal, causing permanent hook denial and notification re-delivery loop
+
+## Summary
+
+`design-step3-review.sh` replaces its EXIT trap at line 589 with `_step3_review_guarantee_completed_sentinels`, which writes `.completed/step-3-terminal` but **does not remove `.bg-wait-active`**. The marker removal lived in the prior trap `_step3_review_cleanup` (line 507). After the trap swap, the marker persists even after the process exits. `hook-bg-poll-guard.sh` blocks every subsequent probe because `.bg-wait-active` is present, creating an infinite hook-denial → notification-re-delivery → token-burn loop. In a live run this produced 20+ identical task-notification re-deliveries across 25+ orchestrator turns before the user interrupted.
+
+## Original report
+
+Found during a live `/design -s 6262` run on 2026-07-04. After Step 3 plan review completed (Codex + Cursor, Round 1), the background task `design-step3-review.sh` emitted definitive output (`NEXT_ACTION=step3b`, `LOOP_STATUS=complete`), but `.bg-wait-active` was never removed and `.completed/step-3-terminal` was never written. Every orchestrator turn that attempted a terminal-sentinel probe received the denial `"An immediate-background wait is active."` The task notification (`LOOP_STATUS=complete`, `STEP3_REVIEW_LOOP_STATUS=complete`, `NEXT_ACTION=step3b`) was re-delivered ~20 times byte-identically. The session DESIGN_TMPDIR was `<TMPDIR>`; the marker PID was 48507.
+
+## Reproduction scenario
+
+Start any `/design` run with two available reviewers (Cursor + Codex). Let it reach the Step 3 plan review panel dispatch. After `design-step3-review.sh` completes and the task notification fires:
+
+1. Observe that `.bg-wait-active` is still present: `cat "$DESIGN_TMPDIR/.bg-wait-active"` shows `STEP=design-step3-review`, `PID=<N>`.
+2. Observe that `.completed/step-3-terminal` is absent.
+3. Each probe attempt (`test -f "$DESIGN_TMPDIR/.completed/step-3-terminal"`) is denied by `hook-bg-poll-guard.sh`.
+4. The task notification with `LOOP_STATUS=complete` / `NEXT_ACTION=step3b` is re-delivered on every turn where the orchestrator ends without consuming a probe result.
+
+Direct field confirmation without a live run: read `design-step3-review.sh` lines 504–596 and note that `_step3_review_cleanup` (which calls `rm -f "$DESIGN_TMPDIR/.bg-wait-active"`) is the EXIT trap set at line 536, then overridden at line 589 by `_step3_review_guarantee_completed_sentinels`, which never touches `.bg-wait-active`.
+
+## Expected behavior
+
+After `plan-review run` completes and `normalize-status` writes the result envelope:
+
+- The EXIT trap removes `.bg-wait-active`.
+- `_step3_review_guarantee_completed_sentinels` writes `.completed/step-3-terminal` (when `.step3-terminal-persisted-this-run` is present).
+- `hook-bg-poll-guard.sh` releases: `marker_is_live` returns 1 (not live) because either `marker_step_completed` fires or `kill -0 $PID` fails.
+- Subsequent orchestrator probes succeed.
+
+## Observed behavior
+
+The EXIT trap set at line 589 calls only `_step3_review_guarantee_completed_sentinels`. That function:
+
+- Writes `.completed/step-3-terminal` (conditionally, if `.step3-terminal-persisted-this-run` exists — see below).
+- Does **not** call `rm -f "$DESIGN_TMPDIR/.bg-wait-active"`.
+
+`.bg-wait-active` remains on disk after the script exits. The hook then:
+
+1. Finds `.bg-wait-active` present.
+2. Calls `marker_step_completed` — if `.step3-terminal-persisted-this-run` or `.completed/step-3-terminal` is absent, returns false.
+3. Calls `kill -0 $PID` — if the launcher (design-run-$PPID.sh) is still alive post-execution, this succeeds.
+4. Declares the marker live → denies the probe.
+
+Additionally, the probe-clamp counter (`bg-poll-guard-probe-denials.step-3-terminal.count`, threshold 2) accumulates across turns and begins denying probes before `marker_is_live` even runs, so even the `kill -0` dead-PID release path cannot fire.
+
+## Root cause analysis
+
+**Primary defect — `design-step3-review.sh` line 589 trap replacement drops `.bg-wait-active` removal:**
+
+```bash
+# Line 536: full cleanup trap (removes marker AND writes sentinel)
+trap _step3_review_cleanup EXIT
+
+# ... loop teardown, kill_tmpdir_processes, normalize-status ...
+
+# Line 589: REPLACES with sentinel-only trap — NO marker removal
+trap '_step3_review_guarantee_completed_sentinels' EXIT
+```
+
+`_step3_review_cleanup` (lines 504–523):
+```bash
+_step3_review_cleanup() {
+  local _rc=$?
+  trap - EXIT TERM HUP INT
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true   # ← present here
+  _step3_review_guarantee_completed_sentinels                   # ← and here
+  ...
+}
+```
+
+`_step3_review_guarantee_completed_sentinels` (lines 362–371):
+- Writes `.completed/step-3` and `.completed/step-3-terminal` only.
+- Has no `rm -f "$DESIGN_TMPDIR/.bg-wait-active"` call.
+
+The comment at lines 584–588 explains the intent: "Replace the loop-cleanup trap with the guarantee trap in a single atomic assignment: bash overwrites the active EXIT handler in one step, so there is no window where no EXIT trap is registered." The PR that introduced line 589 (#4724) correctly solved the two-step trap-removal gap but inadvertently dropped the marker removal from the replacement.
+
+**Secondary factor — conditional sentinel write may miss:**
+
+`_step3_review_guarantee_completed_sentinels` writes `.completed/step-3-terminal` only if `.step3-terminal-persisted-this-run` is a regular, readable, non-symlink file (line 368). This sidecar is written by `python3 cli.py plan-review normalize-status` (via `plan_review_normalize.py:67`). If normalize-status fails or exits before writing the sidecar, `.completed/step-3-terminal` is never written, making `marker_step_completed` permanently false and preventing sentinel-based release.
+
+**Amplifier — Claude Code notification re-delivery on denied turns:**
+
+When every orchestrator tool call is denied by the hook, the turn ends without consuming the task result. Claude Code then re-delivers the same task notification on the next turn. This creates an O(N)-turns spin loop that burns tokens proportional to context size.
+
+## Evidence
+
+- `design-step3-review.sh:536`: `trap _step3_review_cleanup EXIT` — original, full cleanup.
+- `design-step3-review.sh:589`: `trap '_step3_review_guarantee_completed_sentinels' EXIT` — replacement, sentinel-only (no marker removal).
+- `design-step3-review.sh:504–523`: `_step3_review_cleanup` removes `.bg-wait-active` at line 507 AND calls `_step3_review_guarantee_completed_sentinels`.
+- `design-step3-review.sh:362–371`: `_step3_review_guarantee_completed_sentinels` does not remove `.bg-wait-active`.
+- `design-step3-review.sh:162–170`: `design_bg_wait_marker_start` sets its own EXIT trap to remove the marker; this trap is overridden at line 536 and again at line 589 — neither replacement includes the removal.
+- `hook-bg-poll-guard.sh:593–632`: `marker_is_live` calls `marker_step_completed` first (sentinel-based release), then `kill -0 $PID` (dead-PID removal), then age check. If the process is alive and the sentinel is absent, the marker is live → deny.
+- `hook-bg-poll-guard.sh:146–208`: `marker_step_completed` for `design-step3-review` requires BOTH `.completed/step-3-terminal` AND `.step3-terminal-persisted-this-run` (line 164) — both must be regular, readable, non-symlink files.
+- `hook-bg-poll-guard.sh:547–568`: `terminal_sentinel_probe_clamp` accumulates per-sentinel probe denials and denies unconditionally once the threshold (default 2) is exceeded while the sentinel is absent, regardless of PID state.
+- Live run: marker PID 48507, CLAUDE_PID 37401, STEP=design-step3-review. 20+ identical notifications re-delivered. Marker still present 15+ minutes after first notification.
+
+## Affected files
+
+- `skills/design/scripts/design-step3-review.sh` — line 589: trap replacement drops `.bg-wait-active` removal; fix by adding marker removal to the replacement trap body.
+- `skills/design/scripts/design-step3-review.md` — sibling doc; update to document the corrected EXIT trap contract.
+- `scripts/hook-bg-poll-guard.sh` — may warrant a defensive fallback if the marker survives process death (dead-PID removal path exists but depends on `kill -0` returning non-zero, which can fail if PID was recycled).
+
+## Suggested fix(es)
+
+**Fix 1 (minimal — recommended):** Add marker removal to the replacement trap at line 589:
+
+```bash
+# Before (line 589):
+trap '_step3_review_guarantee_completed_sentinels' EXIT
+
+# After:
+trap 'rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true; _step3_review_guarantee_completed_sentinels' EXIT
+```
+
+Or, preferably, add a wrapper function that pairs removal with the sentinel guarantee, mirroring `_step3_review_cleanup`:
+
+```bash
+_step3_review_guarantee_exit() {
+  rm -f "${DESIGN_TMPDIR:+$DESIGN_TMPDIR/.bg-wait-active}" 2>/dev/null || true
+  _step3_review_guarantee_completed_sentinels
+}
+trap _step3_review_guarantee_exit EXIT
+```
+
+**Fix 2 (defensive):** Add `.bg-wait-active` removal directly inside `_step3_review_guarantee_completed_sentinels` as a first step. This makes the guarantee function idempotent regardless of which trap path calls it.
+
+**Fix 3 (test coverage):** Add an assertion to `test-design-step3-review.sh` that on a successful normal exit, `.bg-wait-active` is absent. This would have caught this regression.
+
+## Open questions
+
+- Is the launcher (design-run-$PPID.sh) doing post-execution work after `design-step3-review.sh` exits that keeps PID 48507 alive? If so, `kill -0` would succeed even after the script exits, and the sentinel-based release path would be the only fast release. This makes Fix 1 even more critical.
+- Is there an existing test that asserts `.bg-wait-active` is removed on normal script exit? (`test-design-step3-review.sh` should be checked.) If not, Fix 3 closes the recurrence gap.
+- Was this trap-replacement regression introduced in the #4724 fix? Cross-reference `git log --oneline skills/design/scripts/design-step3-review.sh` to confirm when line 589 changed form.

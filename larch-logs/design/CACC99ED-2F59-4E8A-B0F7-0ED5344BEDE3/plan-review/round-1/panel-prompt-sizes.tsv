@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	26980	6745	13319	3330	13661	3416		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	23217	5805	13022	3256	10195	2549		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	23226	5807	13031	3258	10195	2549		0	0
+design Step 3	phase1	1	dyn-cursor-plan-step3-trap-cleanup	plan-review	cursor	dyn-cursor-plan-step3-trap-cleanup.txt	27326	6832	13185	3297	14141	3536		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	26993	6749	13332	3333	13661	3416		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	26995	6749	13334	3334	13661	3416		0	0
+design Step 3	phase1	1	dyn-codex-plan-step3-trap-cleanup	plan-review	codex	dyn-codex-plan-step3-trap-cleanup.txt	23572	5893	12897	3225	10675	2669		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	23241	5811	13046	3262	10195	2549		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	26971	6743	13310	3328	13661	3416		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	23239	5810	13044	3261	10195	2549		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	16856	4214	4597	1150	12259	3065	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	19053	4764	9011	2253	10042	2511		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	19053	4764	9011	2253	10042	2511		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	19053	4764	9011	2253	10042	2511		0	0

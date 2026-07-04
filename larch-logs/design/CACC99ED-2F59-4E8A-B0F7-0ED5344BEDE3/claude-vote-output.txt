@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the recursion concern is real but addressed by FINDING_1's disarm fix; using a void helper instead of an exiting wrapper is a design simplification, not a correctness necessity
