@@ -506,10 +506,10 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
         def wait(self) -> int:
             return 0
 
-    def fake_prompt(*, design: Path, tool: str, **_kwargs: object) -> Path:
+    def fake_prompt(*, design: Path, tool: str, **_kwargs: object) -> plan_review_panel.VoterPromptResult:
         path = design / f"{tool}.prompt"
         path.write_text("prompt\n", encoding="utf-8")
-        return path
+        return plan_review_panel.VoterPromptResult(prompt_file=path)
 
     def fake_parse_rate(**_kwargs: object) -> str:
         return "OK"

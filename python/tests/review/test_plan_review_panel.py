@@ -1001,7 +1001,7 @@ def test_dynamic_slot_rows_thread_payload_bytes_from_render(tmp_path: Path, monk
         feature_file=str(design / "feature-description.txt"),
     )
 
-    assert failures == []
+    assert not failures
     assert rows[0]["payload_bytes"] == 27
     assert (round_dir / "dyn-cursor-plan-alpha.prompt").read_text(encoding="utf-8") == "rendered dynamic prompt\n"
 

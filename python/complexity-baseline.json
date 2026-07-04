@@ -183,7 +183,7 @@
     "file": "larch/agents/_claude_runner.py",
     "code": "PLR0915",
     "qualified_symbol": "launch_claude_review_main",
-    "metric": 79
+    "metric": 90
   },
   {
     "file": "larch/agents/_claude_runner.py",
@@ -736,18 +736,6 @@
     "code": "PLR0915",
     "qualified_symbol": "wait_reviewers",
     "metric": 55
-  },
-  {
-    "file": "larch/cli.py",
-    "code": "C901",
-    "qualified_symbol": "main",
-    "metric": 11
-  },
-  {
-    "file": "larch/cli.py",
-    "code": "PLR0911",
-    "qualified_symbol": "main",
-    "metric": 8
   },
   {
     "file": "larch/core/cleanup_skill.py",
@@ -4161,12 +4149,18 @@
     "file": "larch/rendering/rendering.py",
     "code": "C901",
     "qualified_symbol": "render_plan_review_main",
-    "metric": 11
+    "metric": 14
   },
   {
     "file": "larch/rendering/rendering.py",
     "code": "C901",
     "qualified_symbol": "render_reviewer_main",
+    "metric": 12
+  },
+  {
+    "file": "larch/rendering/rendering.py",
+    "code": "C901",
+    "qualified_symbol": "render_voter_main",
     "metric": 12
   },
   {
@@ -4190,8 +4184,14 @@
   {
     "file": "larch/rendering/rendering.py",
     "code": "PLR0912",
+    "qualified_symbol": "render_plan_review_main",
+    "metric": 14
+  },
+  {
+    "file": "larch/rendering/rendering.py",
+    "code": "PLR0912",
     "qualified_symbol": "render_voter_main",
-    "metric": 13
+    "metric": 15
   },
   {
     "file": "larch/rendering/rendering.py",
@@ -4204,6 +4204,18 @@
     "code": "PLR0915",
     "qualified_symbol": "diagrams_upsert_main",
     "metric": 95
+  },
+  {
+    "file": "larch/rendering/rendering.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_plan_review_main",
+    "metric": 62
+  },
+  {
+    "file": "larch/rendering/rendering.py",
+    "code": "PLR0915",
+    "qualified_symbol": "render_voter_main",
+    "metric": 52
   },
   {
     "file": "larch/rendering/rendering.py",
@@ -4851,13 +4863,13 @@
     "file": "larch/report/tokens.py",
     "code": "PLR0913",
     "qualified_symbol": "append_panel_prompt_size",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/report/tokens.py",
     "code": "PLR0913",
     "qualified_symbol": "build_panel_dispatch_env",
-    "metric": 8
+    "metric": 9
   },
   {
     "file": "larch/report/tokens.py",
@@ -5091,7 +5103,7 @@
     "file": "larch/review/coder_runner.py",
     "code": "PLR0912",
     "qualified_symbol": "apply_findings_with_coder",
-    "metric": 19
+    "metric": 20
   },
   {
     "file": "larch/review/coder_runner.py",
@@ -5259,7 +5271,7 @@
     "file": "larch/review/plan_review_panel.py",
     "code": "PLR0913",
     "qualified_symbol": "_slot_row",
-    "metric": 6
+    "metric": 7
   },
   {
     "file": "larch/review/plan_review_panel.py",
