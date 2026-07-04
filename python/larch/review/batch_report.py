@@ -10,6 +10,7 @@ import os
 import re
 import shutil
 from pathlib import Path
+from typing import cast
 
 from larch.report import run_logs
 from larch.review import review_pipeline
@@ -187,6 +188,7 @@ def _count_code_review_findings(findings_file: Path) -> tuple[int, int, bool]:
             continue
         if not isinstance(record, dict):
             continue
+        record = cast("dict[str, object]", record)
         if record.get("phase") != "code-review":
             continue
         seen_code_review = True

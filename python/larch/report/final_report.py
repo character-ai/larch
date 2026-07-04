@@ -25,7 +25,7 @@ from larch.git import pr_body
 from larch.git import repo_roots
 from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
-from larch.review.batch_report import _count_code_review_findings
+from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
 from larch.state import stall_recovery
 from larch.report import tokens
 from larch.calibration import difficulty
