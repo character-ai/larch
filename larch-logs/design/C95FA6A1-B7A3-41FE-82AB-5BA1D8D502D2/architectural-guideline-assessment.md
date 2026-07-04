@@ -1,0 +1,1 @@
+- **G-Enf-1** (prefer mechanical enforcement over recurring manual judgment): the plan does not add a scaffold-byte ratchet/lint. Deliberate: round XII scopes ratchet/governance work to separate sibling issues (#6156, #6165); the density children measure via #6158's instrumentation manually per pass, matching precedent (#5979 also shipped without a dedicated ratchet).

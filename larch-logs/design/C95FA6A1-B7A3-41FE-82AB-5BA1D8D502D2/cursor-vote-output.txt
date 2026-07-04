@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicates round-1 neutral enum concern; CI already grep-checks rendering.py and plan tests already require specialist section anchors
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- acceptance targets generated/no-agent specialist and voter rows that this change actually edits; full slot_kind sums dilute unchanged static-agent volume
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- delimiter warning is safety prose outside parser-facing voting grammar; feature acceptance does not require preserving it byte-for-byte
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- production voter dispatch uses finding-oos; plan edge case already requires testing both branches if prose changes
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicates round-1 OOS finding-only test item; latent unit-test hardening not required for this scaffold pass
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate optional hardening; description concedes it is not required for implement-scaffold acceptance

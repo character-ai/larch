@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Duplicate of the round-1 enum-preservation finding; no materially new evidence.
+FINDING_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- Duplicate of the round-1 OOS measurement concern; re-raising it here is not necessary.
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Fresh logged runs with the new scaffold/payload columns satisfy the acceptance check; legacy baselines are not a required fix.
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The delimiter warning is useful, but the scaffold-compression feature can ship without preserving that extra guard line.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already excludes static agent bodies; this is optional scope-tightening, not a necessity.
