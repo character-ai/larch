@@ -201,7 +201,7 @@ ignore = [
     "PLR0912",
     "PLR0915",
 ]
-"larch/state/_report.py" = [
+"**/larch/state/_report.py" = [
     "C901",
     "PLR0911",
     "PLR0912",
