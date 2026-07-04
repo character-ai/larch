@@ -317,10 +317,9 @@ def test_write_payload_bytes_sidecar_swallows_unlink_permission_errors(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     sidecar = tmp_path / "payload.txt"
-    original_replace = Path.replace
     original_unlink = Path.unlink
 
-    def fail_replace(self: Path, target: Path) -> Path:
+    def fail_replace(_self: Path, _target: Path) -> Path:
         raise OSError("replace boom")
 
     def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
@@ -1521,3 +1520,4 @@ def test_render_voter_payload_sidecar_counts_scope_anchor(tmp_path: Path, capsys
     )
 
     assert sidecar.read_text(encoding="utf-8") == f"{len(anchor.read_bytes())}\n"
+# pyright: reportArgumentType=false

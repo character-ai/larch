@@ -2165,3 +2165,4 @@ def test_outer_meta_coerces_non_low_risk_to_high(tmp_path: Path) -> None:
     meta.write_text("", encoding="utf-8")
     agents._review_append_outer_meta(meta, prompt_sidecar=prompt_sidecar, risk="low", stderr_sink="")
     assert "OUTER_LAUNCHER_RISK=low" in meta.read_text(encoding="utf-8")
+# pyright: reportArgumentType=false, reportUnknownLambdaType=false

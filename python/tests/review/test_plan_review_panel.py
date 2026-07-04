@@ -1044,7 +1044,7 @@ def test_plan_review_rows_ignore_stale_payload_sidecars_on_fallback_prompt(
     monkeypatch.setattr(
         plan_review_panel.external_defaults,
         "panel_dispatch_policy",
-        lambda role_id: config.PanelDispatchPolicy(generic_codex_rounds=frozenset({1})) if role_id == "design.plan_review_panel" else config.PanelDispatchPolicy(),  # noqa: ARG005
+        lambda role_id: config.PanelDispatchPolicy(generic_codex_rounds=frozenset({1})) if role_id == "design.plan_review_panel" else config.PanelDispatchPolicy(),
     )
     cp = plan_review_panel.subprocess.CompletedProcess
 
@@ -1943,3 +1943,4 @@ def test_plan_review_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Pa
     assert lines
     assert all(line.split("\t")[4] == "voter" for line in lines)
 # pyright: reportUnusedFunction=false
+# pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnusedCallResult=false

@@ -167,3 +167,4 @@ def test_read_rows_malformed_header_and_empty_are_empty(tmp_path: Path) -> None:
     assert findings_ledger.read_rows(path) == []
     _ = path.write_text("bad\theader\n1\t2\n", encoding="utf-8")  # pyright: ignore[reportUnusedCallResult]
     assert findings_ledger.read_rows(path) == []
+# pyright: reportArgumentType=false
