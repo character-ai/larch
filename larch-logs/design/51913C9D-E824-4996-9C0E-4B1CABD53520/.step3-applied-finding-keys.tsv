@@ -1,0 +1,7 @@
+1	the command does not define what happens when neither `--window` nor `--since-tag` is supplied, so implementations may choose different history windows or truncate silently.
+1	tag-based filtering needs a precise peeled-commit rev range and ancestry check so `--since-tag` selects the intended post-tag commits.
+1	the `--root` contract is advertised but not pinned to a repo-root default or explicit git `cwd`, so history reads can point at the wrong tree.
+1	summary mode needs explicit predecessor-snapshot and first-seen seeding rules so brand-new targets and the first post-filter delta are not lost.
+1	the fixture history should exercise the design-side trajectory, not only the panel-tier path.
+2	the since-tag test fixture currently encodes the wrong predecessor for the first post-tag delta, so the test either needs to pin the tag to a non-touching commit or update the expected delta to the tagged commit’s baseline value, depending on the intended history shape.
+3	`--since-tag` ref validation can run against the ambient checkout instead of the resolved `--root`, so the tag check and the history walk can disagree and produce empty or wrong post-tag summaries.

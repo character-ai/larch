@@ -1,0 +1,3 @@
+### Deviation from G-Sec-1: Validate untrusted strings against an allowlist regex before subprocess argv
+
+The plan validates `--since-tag TAG` only via `git rev-parse --verify '<TAG>^{commit}'` (fails closed on an unresolvable ref) but never checks the raw string against an allowlist regex before it reaches subprocess argv. `python/larch/git/git.py` already has `_GIT_REF_LABEL_RE = re.compile(r"^[A-Za-z0-9._/-]+$")`, used by `validate_base_remote_ref` for exactly this purpose on `base_remote`/`base_ref`. A tag value beginning with `-` could be misread as a flag by some git subcommands rather than as a ref. Worth applying the same allowlist check to `--since-tag` during implementation or review.

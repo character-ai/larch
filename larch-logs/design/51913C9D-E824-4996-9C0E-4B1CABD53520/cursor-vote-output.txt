@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan does not mandate a cwd-isolation test and the feature is verifiable via focused fixture tests without it
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicates round-2 OOS since-tag ancestry item with no materially new evidence beyond already-known rev-range limits
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- dropping whole-tree make targets is convention-aligned but not required for a complete, correct ledger deliverable
