@@ -16,6 +16,7 @@ from larch.core import config
 from larch.report import final_report
 from larch.report import run_logs
 from larch.report import run_log_commit, run_log_flush
+from larch.report.run_log_batch import _rebase_under_tmpdir  # pyright: ignore[reportPrivateUsage]
 from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
@@ -1523,12 +1524,57 @@ def test_larch_log_write_rebases_root_relative_log_root_and_input_file(
         "--batch",
         "token-report",
         "--input-file",
-        "/token-report.json",
+        str(source),
     ])
 
     assert rc == 0
     assert (session / "larch-logs" / "implement" / "run-abc" / "token-report.json").read_text(encoding="utf-8") == "token report\n"
 
+
+def test_rebase_under_tmpdir_handles_session_local_absolute_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = tmp_path / "record.json"
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    assert _rebase_under_tmpdir(str(source)) == source
+
+
+def test_rebase_under_tmpdir_keeps_external_absolute_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    source = Path("/var/folders/example/T/record.json")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    assert _rebase_under_tmpdir(str(source)) == source
+
+
+def test_rebase_under_tmpdir_prepends_relative_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    assert _rebase_under_tmpdir("record.json") == tmp_path / "record.json"
+
+
+def test_rebase_under_tmpdir_uses_default_leaf_for_empty_path(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+
+    assert _rebase_under_tmpdir("", default_leaf="default.json") == tmp_path / "default.json"
+
+
+def test_rebase_under_tmpdir_returns_path_without_implement_tmpdir(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+
+    assert _rebase_under_tmpdir("record.json") == Path("record.json")
 
 
 def test_checks_digest_sizes_batch_is_append_mode_tsv(tmp_path: Path) -> None:
@@ -1580,7 +1626,7 @@ def test_larch_log_append_rebases_root_relative_log_root_and_record_file(
         "--batch",
         "execution-issues",
         "--record-file",
-        "/execution-issue-record.ndjson",
+        str(record),
     ])
 
     assert rc == 0

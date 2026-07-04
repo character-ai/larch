@@ -1,0 +1,12 @@
+voting write-tally failed (returncode=2)
+--- stderr ---
+
+--- stdout ---
+LOG_WRITTEN=false
+LOG_PATH=
+BYTES=0
+SHA256=
+COMMIT_SHA=
+UNCHANGED=false
+ERROR=[Errno 2] No such file or directory: '/Users/zhupanov/.cache/larch/sessions/claude-implement-larch6-ezhcvwr2/var/folders/dw/kg5dyxc91t973n1j620gr8480000gn/T/write-tally-record.jz832kqv'
+

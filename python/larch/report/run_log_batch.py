@@ -112,7 +112,7 @@ def _rebase_under_tmpdir(raw: str, *, default_leaf: str | None = None) -> Path:
                 candidate.relative_to(tmpdir)
                 return candidate
             except ValueError:
-                return tmpdir / Path(*candidate.parts[1:])
+                return candidate
         return tmpdir / candidate
     return candidate
 
