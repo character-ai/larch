@@ -15,7 +15,7 @@ The wrapper relays the underlying helper stdout unchanged unless this file names
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Session telemetry key names live in `skills/shared/session-setup-output.md`; check wrappers consume the `$IMPLEMENT_TMPDIR/session-env.sh` copy.
-- When `--site step3`, writes a `.bg-wait-active` marker (`STEP=implement-step3-checks`) before the checks call; the EXIT trap writes `.completed/step-3-terminal` and removes the marker on any exit. Fail-open: marker/sentinel writes must not abort the checks.
+- When `--site step3`, writes a `.bg-wait-active` marker (`STEP=implement-step3-checks`) before the checks call; it includes `CLONE_PATH`, copied from the sibling `.larch-keepalive` file when available. The EXIT trap writes `.completed/step-3-terminal` and removes the marker on any exit. Fail-open: marker/sentinel writes must not abort the checks.
 
 ## Edit-in-sync
 

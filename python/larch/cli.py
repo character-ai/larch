@@ -407,6 +407,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "codex-exec-auth"): ("larch.lint.lint_codex_exec_auth", "main"),
     ("lint", "consecutive-bash"): ("larch.lint.lint_consecutive_bash", "main"),
     ("lint", "bg-wait-coverage"): ("larch.lint.lint_bg_wait_coverage", "main"),
+    ("lint", "bg-wait-writer-parity"): ("larch.lint.lint_bg_wait_writer_parity", "main"),
     ("lint", "skill-invocations"): ("larch.lint.lint_skill_invocations", "main"),
     ("skill-closure", "report"): ("larch.lint.lint_skill_closure_growth", "report_main"),
     ("skill-closure", "ledger"): ("larch.lint.skill_closure_ledger", "ledger_main"),

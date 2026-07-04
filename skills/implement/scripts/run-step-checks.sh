@@ -69,8 +69,12 @@ if [ "$SITE" = "step3" ]; then
   _step3_start=$(date +%s 2>/dev/null) || _step3_start=0
   case "$_step3_start" in ''|*[!0-9]*) _step3_start=0 ;; esac
   _step3_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\n' \
-    "$$" "$_step3_claude_pid" "$_step3_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  _step3_clone_path=""
+  if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
+    _step3_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+  fi
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\nCLONE_PATH=%s\n' \
+    "$$" "$_step3_claude_pid" "$_step3_start" "$_step3_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 fi
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"
