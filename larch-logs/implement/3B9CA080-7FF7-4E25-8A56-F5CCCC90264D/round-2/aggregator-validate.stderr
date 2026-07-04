@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_3 not traceable to scoped input (first 80 chars: 'Set stall_tracking=True on all terminal normalize_status failure paths')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_3 not traceable to scoped input (first 80 chars: 'Emit STALL_TRACKING=true for normalization failure envelopes or omit it to use t')
