@@ -758,6 +758,7 @@ class _Tally:
         rejected_chunks: list[str] = []
         oos_chunks: list[str] = []
         oos_accepted_chunks: list[str] = []
+        oos_pool_chunks: list[str] = []
         score_rows: list[tuple[str, str, str, int, float]] = []
         sole_finder_reward_count = 0
         attribution_labels = self._attribution_labels()
@@ -791,28 +792,11 @@ class _Tally:
             artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
             reroute_marker = _finding_oos_reroute_marker(block_text=block_text, neutral_rescued=neutral_rescued)
 
-            if kind == "finding":
-                if result == "accepted":
-                    accepted_chunks.append(artifact_text + "\n")
-                elif reroute_marker:
-                    oos_chunks.append(
-                        artifact_text
-                        + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
-                        f"Result={result} ({reroute_marker})\n\n"
-                    )
-                else:
-                    rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")
-            else:
-                # An accepted security OOS is absorbed into the plan with no
-                # artifact; every other OOS is recorded on the OOS track.
-                absorbed = result == "accepted" and security
-                if not absorbed:
-                    oos_chunks.append(
-                        artifact_text
-                        + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n"
-                    )
-                    if result == "accepted":
-                        oos_accepted_chunks.append(artifact_text + "\n")
+            _record_plan_review_artifact_chunks(
+                item=(kind, result, reroute_marker, item_id, artifact_text, security),
+                vote_counts=(yes, no, judge_error),
+                chunks=(accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks),
+            )
 
         buf += "\n## Reviewer Competition Scoreboard\n\n"
         buf += (
@@ -831,6 +815,7 @@ class _Tally:
         _append(path=rejected_plan, chunks=rejected_chunks)
         _append(path=oos_file, chunks=oos_chunks)
         _accumulate_round_oos(path=oos_accepted_local, chunks=oos_accepted_chunks)
+        _accumulate_round_oos(path=Path(self.design_tmpdir) / "oos-aggregate-pool.md", chunks=oos_pool_chunks)
 
     @staticmethod
     def _scoreboard(score_rows: list[tuple[str, str, str, int, float]]) -> str:
@@ -877,6 +862,42 @@ class _Tally:
             )
         lines.sort()
         return "".join(lines)
+
+
+def _record_plan_review_artifact_chunks(
+    *,
+    item: tuple[str, str, str, str, str, bool],
+    vote_counts: tuple[int, int, int],
+    chunks: tuple[list[str], list[str], list[str], list[str], list[str]],
+) -> None:
+    kind, result, reroute_marker, item_id, artifact_text, security = item
+    accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks = chunks
+    yes, no, judge_error = vote_counts
+    if kind == "finding":
+        if result == "accepted":
+            accepted_chunks.append(artifact_text + "\n")
+        elif reroute_marker:
+            oos_artifact = (
+                artifact_text
+                + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} "
+                f"Result={result} ({reroute_marker})\n\n"
+            )
+            oos_chunks.append(oos_artifact)
+            oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=security))
+        else:
+            rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")
+        return
+    if result == "accepted" and security:
+        return
+    oos_artifact = artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n"
+    oos_chunks.append(oos_artifact)
+    oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=security))
+    if result == "accepted":
+        oos_accepted_chunks.append(artifact_text + "\n")
+
+
+def _public_oos_pool_chunks(*, artifact: str, security: bool) -> list[str]:
+    return [] if security else [artifact]
 
 
 def _append(*, path: Path, chunks: list[str]) -> None:

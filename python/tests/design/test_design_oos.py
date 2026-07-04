@@ -124,6 +124,11 @@ def test_prepare_uses_cross_session_cache_and_recovers_accepted(
         "https://github.com/acme/repo/issues/123\n",
         encoding="utf-8",
     )
+    _ = cache.with_name("cache.accepted-design.md").write_text(
+        "### OOS_3: title\n- desc\n- **Filed URL**: https://github.com/acme/repo/issues/123\n",
+        encoding="utf-8",
+    )
+
     def _stub_cache1(_issue: str) -> Path:
         return cache
 
@@ -135,6 +140,43 @@ def test_prepare_uses_cross_session_cache_and_recovers_accepted(
     assert kv["FILE_DESIGN_OOS_STATUS"] == "skip-sentinel"
     assert "Filed URL" in accepted.read_text(encoding="utf-8")
     assert (tmp_path / "oos-issues-created.md").is_file()
+
+
+def test_prepare_ignores_stale_cross_session_cache_when_block_identity_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    accepted = tmp_path / "oos-accepted-design.md"
+    _ = accepted.write_text(
+        "### OOS_1: gamma\n- **Description**: current one\n\n"
+        "### OOS_2: delta\n- **Description**: current two\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "44.md"
+    _ = cache.write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/123\n"
+        "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/124\n",
+        encoding="utf-8",
+    )
+    _ = cache.with_name("44.accepted-design.md").write_text(
+        "### OOS_1: alpha\n- **Description**: previous one\n- **Filed URL**: https://github.com/acme/repo/issues/123\n\n"
+        "### OOS_2: beta\n- **Description**: previous two\n- **Filed URL**: https://github.com/acme/repo/issues/124\n",
+        encoding="utf-8",
+    )
+
+    def _stub_cache(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache)
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
+    out = _kv(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["FILE_DESIGN_OOS_STATUS"] == "ready"
+    assert not (tmp_path / "oos-issues-created.md").exists()
+    assert (tmp_path / "oos-combined.md").is_file()
 
 
 def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
@@ -574,6 +616,192 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
     assert (tmp_path / ".completed" / "step-5b").is_file()
 
 
+def test_step5b_annotate_empty_stdout_retries_once_then_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout")
+        print("NEXT_ACTION=retry-file-and-annotate")
+        print("WARN=empty issue stdout")
+        return 1
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc_first = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    first = capsys.readouterr().out
+
+    assert rc_first == 1
+    assert "FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout" in first
+    assert "NEXT_ACTION=retry-file-and-annotate" in first
+    assert (tmp_path / ".oos-issue-retry-used").is_file()
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+    assert "status unclear" in first
+
+    rc_second = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    second = capsys.readouterr().out
+
+    assert rc_second == 1
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+    assert "after retry sentinel" in second
+
+
+def test_prepare_promotes_important_pool_item(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: important one
+- **Severity**: important
+- **Concern**: one.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert "### OOS_1: important one" in accepted
+    assert "### OOS_1: important one" in combined
+
+
+def test_prepare_promotes_pool_before_skip_sentinel(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-accepted-design.md").write_text(
+        "### OOS_1: already filed\n- **Severity**: latent\n- **Filed URL**: https://github.com/acme/repo/issues/11\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-issues-created.md").write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/11\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: pool item
+- **Severity**: important
+- **Concern**: promote before skip.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert "https://github.com/acme/repo/issues/11" in accepted
+    assert "### OOS_2: pool item" in accepted
+    assert "### OOS_2: pool item" in combined
+
+
+def test_prepare_counts_accepted_and_pool_latent_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-accepted-design.md").write_text(
+        """### OOS_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### OOS_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent three
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 3
+    assert combined.count("### OOS_") == 3
+    assert "latent three" in accepted
+
+
+def test_prepare_multi_round_pool_accumulates_latent_items(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    pool = tmp_path / "oos-aggregate-pool.md"
+    _ = pool.write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+
+    rc_first = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+    first = _kv(capsys.readouterr().out)
+
+    assert rc_first == 0
+    assert first["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+
+    _ = pool.write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+
+### FINDING_3: latent three
+- **Severity**: latent
+- **Concern**: three.
+
+### FINDING_4: latent four
+- **Severity**: latent
+- **Concern**: four.
+""",
+        encoding="utf-8",
+    )
+
+    rc_second = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+    second = _kv(capsys.readouterr().out)
+
+    assert rc_second == 0
+    assert second["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 4
+    assert "latent four" in accepted
+
+
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
@@ -909,3 +1137,81 @@ def test_label_only_mapping_uses_oos_file_map_without_stdout(tmp_path: Path) -> 
         "https://github.com/acme/repo/issues/102": False,
     }
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
+
+
+def _stub_design_oos_prepare_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run_cli(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("oos", "issue-cap"):
+            input_file = Path(args[args.index("--input-file") + 1])
+            output = Path(args[args.index("--output") + 1])
+            _ = output.write_text(input_file.read_text(encoding="utf-8"), encoding="utf-8")
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        if args[:2] == ("oos", "file-conflict-deps"):
+            output = Path(args[args.index("--output") + 1])
+            _ = output.write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    monkeypatch.setattr(design_oos, "_run_cli", fake_run_cli)
+
+
+def test_prepare_promotes_three_latent_pool_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+
+### FINDING_3: latent three
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 3
+    assert "### FINDING_" not in combined
+    assert "latent three" in combined
+
+
+def test_prepare_two_latent_pool_items_do_not_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert _kv(capsys.readouterr().out)["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+
+
+def test_annotate_empty_stdout_requests_single_retry(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = design_oos.file_oos_annotate_main(
+        ["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(tmp_path / "missing-again.txt")],
+    )
+    assert rc == 1
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-failed-empty-stdout"
+    assert kv["NEXT_ACTION"] == "retry-file-and-annotate"
+    assert not (tmp_path / "oos-issues-created.md").exists()

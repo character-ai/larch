@@ -1251,7 +1251,7 @@
     "file": "larch/design/design_oos.py",
     "code": "C901",
     "qualified_symbol": "file_oos_prepare_main",
-    "metric": 22
+    "metric": 18
   },
   {
     "file": "larch/design/design_oos.py",
@@ -1263,7 +1263,7 @@
     "file": "larch/design/design_oos.py",
     "code": "PLR0911",
     "qualified_symbol": "file_oos_prepare_main",
-    "metric": 12
+    "metric": 10
   },
   {
     "file": "larch/design/design_oos.py",
@@ -1281,19 +1281,19 @@
     "file": "larch/design/design_oos.py",
     "code": "PLR0912",
     "qualified_symbol": "file_oos_prepare_main",
-    "metric": 21
+    "metric": 17
   },
   {
     "file": "larch/design/design_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "file_oos_annotate_main",
-    "metric": 72
+    "metric": 69
   },
   {
     "file": "larch/design/design_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "file_oos_prepare_main",
-    "metric": 81
+    "metric": 65
   },
   {
     "file": "larch/design/design_pause.py",
@@ -1599,13 +1599,13 @@
     "file": "larch/design/design_step5b.py",
     "code": "C901",
     "qualified_symbol": "step5b_annotate_main",
-    "metric": 12
+    "metric": 13
   },
   {
     "file": "larch/design/design_step5b.py",
     "code": "PLR0911",
     "qualified_symbol": "step5b_annotate_main",
-    "metric": 7
+    "metric": 9
   },
   {
     "file": "larch/design/design_step5c.py",
@@ -5360,12 +5360,6 @@
   {
     "file": "larch/review/plan_review_tally.py",
     "code": "C901",
-    "qualified_symbol": "_Tally._render",
-    "metric": 11
-  },
-  {
-    "file": "larch/review/plan_review_tally.py",
-    "code": "C901",
     "qualified_symbol": "_Tally._resolve_voters",
     "metric": 12
   },
@@ -5398,12 +5392,6 @@
     "code": "PLR0913",
     "qualified_symbol": "_Tally._render",
     "metric": 7
-  },
-  {
-    "file": "larch/review/plan_review_tally.py",
-    "code": "PLR0915",
-    "qualified_symbol": "_Tally._render",
-    "metric": 58
   },
   {
     "file": "larch/review/plan_review_tally.py",
@@ -5739,7 +5727,7 @@
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "emit_tally",
-    "metric": 19
+    "metric": 17
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5775,7 +5763,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "emit_tally",
-    "metric": 20
+    "metric": 18
   },
   {
     "file": "larch/review/review_tally.py",

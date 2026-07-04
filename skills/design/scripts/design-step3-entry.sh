@@ -36,6 +36,7 @@ python3 "$SCRIPT_DIR/../../../python/cli.py" session validate-design-tmpdir "$DE
 DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
 if [ "$REENTRY" = true ]; then
   : > "$DESIGN_TMPDIR/.step3-reentry"
+  rm -f "$DESIGN_TMPDIR/oos-aggregate-pool.md"
 fi
 rm -f "$DESIGN_TMPDIR/.pause-save-complete"
 "$SCRIPT_DIR/design-step3-entry-state.sh" --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID"

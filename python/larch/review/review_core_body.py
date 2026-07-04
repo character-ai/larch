@@ -12,7 +12,7 @@ import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from larch.core import logging_util
+from larch.core import config, logging_util
 from larch.calibration import difficulty
 from larch.review.review_pipeline_shared import (
     PreVoteGateError,
@@ -561,6 +561,21 @@ def _emit_tally(*, commands: ReviewCommands, args: Sequence[str], out_file: Path
     return _kv_parse(result.stdout)
 
 
+def _emit_tally_with_context(
+    *,
+    commands: ReviewCommands,
+    args: list[str],
+    out_file: Path,
+    session_env_path: str,
+) -> dict[str, str]:
+    if session_env_path:
+        args.extend(["--session-env-path", session_env_path])
+    implement_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR)
+    if implement_tmpdir:
+        args.extend(["--implement-tmpdir", implement_tmpdir])
+    return _emit_tally(commands=commands, args=args, out_file=out_file)
+
+
 def _zero_findings_branch(*,  # noqa: PLR0913,RUF100
     commands: ReviewCommands,
     review_tmpdir: Path,
@@ -639,11 +654,7 @@ def _zero_findings_branch(*,  # noqa: PLR0913,RUF100
         "--static-slot-count",
         static_slot_count,
     ]
-    if session_env_path:
-        emit_args.extend(["--session-env-path", session_env_path])
-    if os.environ.get("IMPLEMENT_TMPDIR"):
-        emit_args.extend(["--implement-tmpdir", os.environ["IMPLEMENT_TMPDIR"]])
-    _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-zero-findings-emit.env")
+    _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-zero-findings-emit.env", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
     _restore_oos(review_tmpdir=review_tmpdir, stem="zero-findings", session_env_path=session_env_path)
     _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
@@ -742,7 +753,7 @@ def _handle_validation_exhausted_after_gate(ctx: ReviewCoreBranchContext) -> Rev
     classification = tally.get("FINDINGS_CLASSIFICATION_TSV_FILE", "")
     ctx.rows.extend(_record_classification(review_tmpdir=ctx.review_tmpdir, round_num=ctx.round_num, classification_file=classification))
     emit_args = ["--tally-file", str(ctx.review_tmpdir / "review-core-aggregator-exhaust-tally.env"), "--accepted-findings-file", str(ctx.review_tmpdir / "accepted-findings.md"), "--oos-file", str(ctx.review_tmpdir / "oos.md"), "--review-tmpdir", str(ctx.review_tmpdir), "--round", str(ctx.round_num), "--mode", ctx.mode, "--scout-status", ctx.scout_status, "--dynamic-slots", ctx.dynamic_slots, "--static-slot-count", ctx.static_slot_count]
-    _emit_tally(commands=ctx.commands, args=emit_args, out_file=ctx.review_tmpdir / "review-core-aggregator-exhaust-emit.env")
+    _emit_tally_with_context(commands=ctx.commands, args=emit_args, out_file=ctx.review_tmpdir / "review-core-aggregator-exhaust-emit.env", session_env_path=ctx.session_env_path)
     _flush_round_log(review_tmpdir=ctx.review_tmpdir, run_id=ctx.run_id, round_num=ctx.round_num)
     ctx.rows.extend(_core_common_rows(status="aggregator-validation-exhausted", round_num=ctx.round_num, review_tmpdir=ctx.review_tmpdir, panel_mode=ctx.panel_mode, panel_shape=ctx.panel_shape, threshold_reason="aggregation-validation-exhausted"))
     if classification:
@@ -984,7 +995,7 @@ def _review_core_body(
         tally_file = review_tmpdir / "review-core-panel-failed-tally.env"
         _write_text(path=tally_file, text="ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\n")
         emit_args = ["--tally-file", str(tally_file), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-panel-failed-emit.env")
+        _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-panel-failed-emit.env", session_env_path=session_env_path)
         _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
         _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
         _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
@@ -1120,7 +1131,7 @@ def _review_core_body(
     if tally.get("TALLY_STATUS") == "main-agent-vote-required":
         _write_text(path=review_tmpdir / "rejected-findings.md", text="")
         emit_args = ["--tally-file", tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env")), "--accepted-findings-file", tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-        _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-main-agent-emit.env")
+        _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-main-agent-emit.env", session_env_path=session_env_path)
         _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
         rows.extend(_core_common_rows(status="main-agent-vote-required", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape, oos_drift=tally.get("OUT_OF_SCOPE_DRIFT_COUNT", "0")))
         if classification:
@@ -1134,7 +1145,7 @@ def _review_core_body(
     accepted_file = Path(tally.get("ACCEPTED_FINDINGS_FILE", str(review_tmpdir / "accepted-findings.md")))
     tally_file = tally.get("TALLY_FILE", str(review_tmpdir / "review-tally.env"))
     emit_args = ["--tally-file", tally_file, "--accepted-findings-file", str(accepted_file), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]
-    _emit_tally(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-emit.env")
+    _emit_tally_with_context(commands=commands, args=emit_args, out_file=review_tmpdir / "review-core-emit.env", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "rejected-findings.md", name="rejected-findings.md", session_env_path=session_env_path)
     _copy_to_parent(file=review_tmpdir / "oos-accepted-review.md", name="oos-accepted-review.md", session_env_path=session_env_path)
     _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
