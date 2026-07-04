@@ -6,9 +6,9 @@ Regression harness for the duplicated clone-ownership helpers in `scripts/hook-b
 
 ## Invariants
 
-- Extract `clone_paths_same()` and `marker_foreign_clone()` from both hooks.
+- Extract `canonical_dir()`, `marker_value()`, `marker_candidates()`, `clone_paths_same()`, and `marker_foreign_clone()` from both hooks.
 - Compare each extracted function byte-for-byte.
-- Fail when either hook loses the helper or the helper copies drift.
+- Fail when any guarded helper is missing from either hook or the helper copies drift.
 
 ## Edit-in-sync
 
