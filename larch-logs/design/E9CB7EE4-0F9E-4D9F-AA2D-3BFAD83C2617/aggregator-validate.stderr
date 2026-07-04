@@ -1,0 +1,1 @@
+warning: fix text for slot 'Cursor-Requirements' in FINDING_1 not traceable to scoped input (first 80 chars: 'Pin walk-start to `len(lines) - 1` after trimming trailing blanks, or document t')
