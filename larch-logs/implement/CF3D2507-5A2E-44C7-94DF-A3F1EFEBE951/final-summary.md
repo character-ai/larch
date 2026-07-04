@@ -1,15 +1,16 @@
-## /implement run CF3D2507-5A2E-44C7-94DF-A3F1EFEBE951 — pr-created
+## /implement run CF3D2507-5A2E-44C7-94DF-A3F1EFEBE951 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:26:58
-- **Cost**: 💰 TOTAL ~$7.87 — Claude $0.92, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.40  |  Tokens: 16168k
+- **Cost**: 💰 TOTAL ~$7.88 — Claude $0.92, Codex-5.5 $3.27, Codex-mini $1.63, Cursor $1.65, Claude (subprocess) $0.41  |  Tokens: 16201k
 - **Issue**: #6160 — https://github.com/character-ai/larch/issues/6160
 - **PR**: #6242 — https://github.com/character-ai/larch/pull/6242
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: code +93/-44, larch-logs +777/-0
+- **Lines (PR diff)**: code +93/-44, larch-logs +779/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
