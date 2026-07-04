@@ -1,0 +1,18 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-hook-state-codex	specialist	codex	dyn-dyn-hook-state-codex-output.txt	25621	6406	10006	2502	15615	3904		0	0
+implement Step 5	phase1	1	dyn-dyn-hook-state	specialist	cursor	dyn-dyn-hook-state-output.txt	25621	6406	10006	2502	15615	3904		0	0
+implement Step 5	phase1	1	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	28727	7182	13646	3412	15081	3771	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	28727	7182	13646	3412	15081	3771	agents/reviewer-correctness.md	5682	1421
+implement Step 5	phase1	1	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	28993	7249	13912	3478	15081	3771	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	cursor	cursor-specialist-testing-output.txt	28435	7109	13354	3339	15081	3771	agents/reviewer-testing.md	5452	1363
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	28993	7249	13912	3478	15081	3771	agents/reviewer-edge-cases.md	5985	1497
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	28435	7109	13354	3339	15081	3771	agents/reviewer-testing.md	5452	1363
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	7317	1830	4174	1044	3143	786	agents/orchestrator-aggregator.md	4397	1100
+implement Step 5	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	8638	2160	8374	2094	264	66		0	0
+implement Step 5	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	8984	2246	8720	2180	264	66		0	0
+implement Step 5	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	8695	2174	8431	2108	264	66		0	0
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	31527	7882	13645	3412	17882	4471	agents/reviewer-correctness.md	5682	1421
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	7317	1830	4174	1044	3143	786	agents/orchestrator-aggregator.md	4397	1100
+implement Step 5	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	11529	2883	8375	2094	3154	789		0	0
+implement Step 5	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	11875	2969	8721	2181	3154	789		0	0
+implement Step 5	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	11586	2897	8432	2108	3154	789		0	0

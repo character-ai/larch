@@ -353,7 +353,7 @@ handle_generic_read_poll() {
     local offset="$2"
     local POLL_THRESHOLD=3
     local WINDOW_SECS=30
-    local state_file="$state_dir/state-${cwd_hash}.tsv"
+    local state_file="$state_dir/state-${session_hash}-${cwd_hash}.tsv"
 
     local last_path="" last_offset="0" count=0 first_ts=0
     if [ -f "$state_file" ]; then

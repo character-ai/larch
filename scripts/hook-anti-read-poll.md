@@ -18,17 +18,22 @@ paths count as distinct reads. Task-output paths key state by the normalized
 
 Per-project state under `${TMPDIR:-/tmp}/larch-read-poll/` (mode `700`; entries `600`):
 
-- `state-<cwd_hash>.tsv` — generic Read: `last_path\tlast_offset\tcount\tfirst_ts`
+- `state-<session_hash>-<cwd_hash>.tsv` — generic Read:
+  `last_path\tlast_offset\tcount\tfirst_ts`
 - `state-taskout-<session_hash>-<cwd_hash>-<task_id>.tsv` — task output: `count\tfirst_ts`
 
-Task-output counters are scoped by hook `session_id` (hashed; falls back to
-`conversation_id`, then a shared `nosession` bucket when both are absent), `cwd`, and
-the normalized `tasks/<id>.output` task id so distinct background tasks do not share one
-counter. Sessions with distinct `session_id`/`conversation_id` hashes do not share
-counts within the **600 s** TTL. When metadata is missing, all callers collapse to
-`nosession` and can share counters across sessions (cross-session bleed). State files
-expire logically after **600 s** without a matching poll (window reset, not file
-deletion).
+Both generic-Read and task-output counters use the same session bucket: hook
+`session_id` (hashed), falling back to `conversation_id`,
+`HOOK_ANTI_READ_POLL_DISCRIMINATOR` as `nosession-<discriminator>`, then a shared
+`nosession` bucket when all metadata is absent. Generic-Read counters add `cwd`; task
+output counters add `cwd` and the normalized `tasks/<id>.output` task id so distinct
+background tasks do not share one counter. Sessions with distinct session hashes do not
+share counts within their windows. When metadata is missing and no discriminator is set,
+callers collapse to `nosession` and can share counters across sessions. State files
+expire logically after their windows without a matching poll (window reset, not file
+deletion): **30 s** for generic Read and **600 s** for task output. Legacy cwd-only
+generic state files may remain in tmp but are ignored after the session-keyed filename
+change.
 
 ## Parameters
 
