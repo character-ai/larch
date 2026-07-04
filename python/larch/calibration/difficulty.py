@@ -33,6 +33,7 @@ FLOOR_MANIFEST = Path(__file__).resolve().parents[3] / "docs" / "difficulty-floo
 _TIER_RANK = {tier: rank for rank, tier in enumerate(TIERS)}
 _CONTROL_RE = re.compile(r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]")
 _PLAN_DIFFICULTY_RE = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
+_PLAN_LEGACY_CONFIDENCE_RE = re.compile(r"^confidence: .+$")
 _PLAN_TRAILER_LINE_RE = re.compile(
     r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$"
 )
@@ -504,12 +505,44 @@ def append_escalation(record_path: Path, round_num: int, from_tier: str, to_tier
     _write_record_data(record_path, data)
 
 
-def plan_difficulty(text: str) -> str:
+def trailing_plan_difficulty(text: str) -> str:
     for line in reversed(trailing_plan_metadata_lines(text)):
         match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
         if match:
             return match.group(1)
     return ""
+
+
+def _last_plan_difficulty_line(text: str) -> str:
+    for line in reversed(text.splitlines()):
+        match = _PLAN_DIFFICULTY_RE.fullmatch(line.strip())
+        if match:
+            return match.group(1)
+    return ""
+
+
+def _adjacent_invalid_difficulty(text: str) -> bool:
+    lines = text.splitlines()
+    span = _trailing_metadata_span(lines)
+    idx = span[0] if span is not None else len(lines)
+    while idx > 0:
+        line = lines[idx - 1].strip()
+        if not line or _PLAN_TRAILER_LINE_RE.fullmatch(line) or _PLAN_LEGACY_CONFIDENCE_RE.fullmatch(line):
+            idx -= 1
+            continue
+        if line.startswith("difficulty:"):
+            return _PLAN_DIFFICULTY_RE.fullmatch(line) is None
+        return False
+    return False
+
+
+def plan_difficulty(text: str) -> str:
+    trailing = trailing_plan_difficulty(text)
+    if trailing:
+        return trailing
+    if _adjacent_invalid_difficulty(text):
+        return ""
+    return _last_plan_difficulty_line(text)
 
 
 def rewrite_plan_difficulty(text: str, tier: str) -> str:

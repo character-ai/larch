@@ -16,6 +16,7 @@ from typing import TYPE_CHECKING
 
 from larch.calibration import difficulty
 from larch.design import design_publish
+from larch.design import design_step5c
 
 if TYPE_CHECKING:
     import pytest
@@ -27,6 +28,7 @@ def _write_fake_cli(path: Path) -> None:
         """#!/usr/bin/env python3
 import json
 import os
+import re
 import sys
 args = sys.argv[1:]
 call_log = os.environ.get("FAKE_CLI_CALL_LOG")
@@ -34,6 +36,31 @@ if call_log:
     with open(call_log, "a", encoding="utf-8") as f:
         f.write(json.dumps(args) + "\\n")
 if args[:2] == ["plan","validate"]:
+    plan_path = args[args.index("--plan-file") + 1]
+    plan_text = open(plan_path, encoding="utf-8", errors="replace").read()
+    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$")
+    difficulty_re = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
+    lines = plan_text.splitlines()
+    end = len(lines)
+    while end > 0 and not lines[end - 1].strip():
+        end -= 1
+    start = end
+    while start > 0 and trailer_re.fullmatch(lines[start - 1]):
+        start -= 1
+    trailing_difficulty = ""
+    if start != end:
+        for line in reversed(lines[start:end]):
+            match = difficulty_re.fullmatch(line.strip())
+            if match:
+                trailing_difficulty = match.group(1)
+                break
+    if os.environ.get("FAKE_CLI_REQUIRE_DIFFICULTY") == "1" and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY") == "1" and not trailing_difficulty:
+        print("VALIDATE_STATUS=defects-found")
+        print("VALIDATE_DEFECT_COUNT=1")
+        print("VALIDATE_SKIPPED_COUNT=0")
+        print("VALIDATE_UNSAFE_TOKEN_COUNT=0")
+        print("VALIDATE_LOG_FILE=/tmp/validate.log")
+        raise SystemExit(1)
     print("VALIDATE_STATUS=ok")
     print("VALIDATE_DEFECT_COUNT=0")
     print("VALIDATE_SKIPPED_COUNT=0")
@@ -222,6 +249,7 @@ def _write_difficulty_recording_cli(path: Path) -> None:
         """#!/usr/bin/env python3
 import json
 import os
+import re
 import sys
 from pathlib import Path
 args = sys.argv[1:]
@@ -242,7 +270,23 @@ if args[:2] == ["plan","validate"]:
             f.write("REPO_ROOT=" + repo_root + "\\n")
             f.write("CLAUDE_PLUGIN_ROOT=" + os.environ.get("CLAUDE_PLUGIN_ROOT", "") + "\\n")
             f.write("LARCH_REQUIRE_PLAN_DIFFICULTY=" + os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "") + "\\n")
-    if os.environ.get("FAKE_CLI_REQUIRE_DIFFICULTY") == "1" and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY") == "1" and "difficulty:" not in plan_text:
+    trailer_re = re.compile(r"^(review_status: .+|rounds_completed: [0-9]+|difficulty: (TRIVIAL|MODERATE|HARD)|diff_added: [0-9]+|diff_deleted: [0-9]+|mechanical_churn: .+|diff_lines: [0-9]+)$")
+    difficulty_re = re.compile(r"^difficulty: (TRIVIAL|MODERATE|HARD)$")
+    lines = plan_text.splitlines()
+    end = len(lines)
+    while end > 0 and not lines[end - 1].strip():
+        end -= 1
+    start = end
+    while start > 0 and trailer_re.fullmatch(lines[start - 1]):
+        start -= 1
+    trailing_difficulty = ""
+    if start != end:
+        for line in reversed(lines[start:end]):
+            match = difficulty_re.fullmatch(line.strip())
+            if match:
+                trailing_difficulty = match.group(1)
+                break
+    if os.environ.get("FAKE_CLI_REQUIRE_DIFFICULTY") == "1" and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY") == "1" and not trailing_difficulty:
         print("VALIDATE_STATUS=defects-found")
         print("VALIDATE_DEFECT_COUNT=1")
         print("VALIDATE_SKIPPED_COUNT=0")
@@ -497,6 +541,88 @@ def test_publish_rejects_missing_difficulty_when_validation_enforces_it(tmp_path
     assert recorded["LARCH_REQUIRE_PLAN_DIFFICULTY"] == "1"
     calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
     assert all(call[:2] != ["named-block", "write"] for call in calls)
+
+
+def test_publish_recovers_auto_composed_embedded_difficulty_without_raw_sidecar(tmp_path: Path) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    _ = (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    _ = (design / ".completed" / "step-3").write_text("", encoding="utf-8")
+    _ = (design / ".step3-review-result.env").write_text(
+        "STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=2\n",
+        encoding="utf-8",
+    )
+    _ = (design / "plan.txt").write_text(
+        """## Plan
+
+## Approach
+
+Implement the fix.
+
+## Testing strategy
+
+Run targeted publish validation.
+
+## Edge cases
+
+Keep strict final-trailer validation.
+
+difficulty: MODERATE
+confidence: high
+diff_lines: 12
+""",
+        encoding="utf-8",
+    )
+    assert not (design / difficulty.DESIGN_RAW_RATING_BASENAME).exists()
+
+    design_step5c._auto_compose_plan_md(design)
+    composed_before = (design / "composed-plan.md").read_text(encoding="utf-8")
+    assert difficulty.trailing_plan_difficulty(composed_before) == ""
+    assert difficulty.plan_difficulty(composed_before) == "MODERATE"
+
+    call_log = tmp_path / "calls.ndjson"
+    cli_py = Path(__file__).resolve().parents[2] / "cli.py"
+    env = os.environ.copy()
+    env["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    env["FAKE_CLI_CALL_LOG"] = str(call_log)
+    env["FAKE_CLI_REQUIRE_DIFFICULTY"] = "1"
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(cli_py),
+            "design",
+            "publish",
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "9",
+            "--session-id",
+            "RUN1",
+            "--claude-pid",
+            "11",
+        ],
+        capture_output=True,
+        text=True,
+        check=False,
+        env=env,
+    )
+
+    assert result.returncode == 0, result.stderr
+    composed = (design / "composed-plan.md").read_text(encoding="utf-8")
+    lines = composed.splitlines()
+    diff_idx = next(i for i, line in enumerate(lines) if line.startswith("diff_lines:"))
+    assert lines[diff_idx - 3] == "review_status: complete"
+    assert lines[diff_idx - 2] == "rounds_completed: 2"
+    assert lines[diff_idx - 1] == "difficulty: MODERATE"
+    calls = [json.loads(line) for line in call_log.read_text(encoding="utf-8").splitlines()]
+    sync = next(call for call in calls if call[:2] == ["difficulty", "sync-labels"])
+    assert sync[sync.index("--tier") + 1] == "MODERATE"
+    record = next(call for call in calls if call[:2] == ["difficulty", "write-record"])
+    assert record[record.index("--design-tier") + 1] == "MODERATE"
 
 
 def test_publish_prefers_raw_sidecar_adjusted_tier_over_wire_plan_tier(tmp_path: Path) -> None:
