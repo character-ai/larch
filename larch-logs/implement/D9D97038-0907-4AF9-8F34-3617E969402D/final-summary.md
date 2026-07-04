@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:22:45
-- **Cost**: 💰 TOTAL ~$10.37 — Claude $0.96, Codex-5.5 $4.82, Codex-mini $1.18, Cursor $3.05, Claude (subprocess) $0.36  |  Tokens: 21101k
+- **Cost**: 💰 TOTAL ~$10.81 — Claude $1.37, Codex-5.5 $4.82, Codex-mini $1.18, Cursor $3.05, Claude (subprocess) $0.39  |  Tokens: 22171k
 - **Issue**: #6231 — https://github.com/character-ai/larch/issues/6231
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): Handoff skip remains routed through the early return. Concern: The normal handoff statuses still reach `step3_loop_emit_envelope`, so the no-op now depends on the trimmed phase map and `phase is None` early return while `_STEP3_INTERACTIVE_STATUSES` and `_STEP3_NEXT_ACTION_BY_STATUS` remain untouched; regression coverage…
 - **Round 1 OOS_3** (latent): Broad substring matching can misread panel failure evidence. Concern: `panel_failure_evidence_present` still uses broad substring regex matching on ledger files, so incidental substrings in unrelated log fields can trip panel-failure retry behavior.
 - **Round 1 OOS_4** (latent): Legacy marker can still force escalation-success. Concern: `escalation_evidence_present()` still treats any non-empty `design-failure-escalation-record-failure.env` as evidence, so a resumed tmpdir with a stale marker and a handoff-only ledger can still file `escalation-success`.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
