@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:21:38
-- **Cost**: 💰 TOTAL ~$20.16 — Claude $0.53, Codex-5.5 $14.84, Codex-mini $0.36, Cursor $4.12, Claude (subprocess) $0.31  |  Tokens: 32053k
+- **Cost**: 💰 TOTAL ~$20.60 — Claude $0.97, Codex-5.5 $14.84, Codex-mini $0.36, Cursor $4.12, Claude (subprocess) $0.31  |  Tokens: 33229k
 - **Issue**: #6229 — https://github.com/character-ai/larch/issues/6229
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -72,3 +72,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (latent): internal-error path still skips difficulty restage. Concern: The Step 5 internal-error exit path still never restages difficulty after tier resolution, which can leave the committed rating at the earlier staged value.
 - **Round 1 OOS_5** (latent): explicit self-review bypasses Step 5 restaging. Concern: Explicit `--self-review` skips `review-and-fix step5`, so difficulty restaging never runs on that orchestrator path and the committed `difficulty-rating.json` can stay at the bootstrap value.
 - **Round 1 OOS_6** (nit): missing coverage for other flush-invoking terminal paths. Concern: The new tests do not cover stall, `self-review-required`, or `mav-resume-past-cap` exits even though those terminal paths also call `_flush_review_batches_for_result`, so a second flush call could still slip through unnoticed.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
