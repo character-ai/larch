@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:10:49
-- **Cost**: 💰 TOTAL ~$4.22 — Claude $0.44, Codex-5.5 $1.57, Codex-mini $0.27, Cursor $1.60, Claude (subprocess) $0.34  |  Tokens: 6989k
+- **Cost**: 💰 TOTAL ~$4.56 — Claude $0.78, Codex-5.5 $1.57, Codex-mini $0.27, Cursor $1.60, Claude (subprocess) $0.34  |  Tokens: 7877k
 - **Issue**: #6268 — https://github.com/character-ai/larch/issues/6268
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -55,3 +55,7 @@ cursor/edge-cases                │ ██████████████�
 These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.
 
 - **Round 1 OOS_1** (unknown): risk-integration: scripts/hook-bg-poll-guard.sh:547-567. Concern: [latent] Probe-clamp can deny sentinel probes after marker removal when normalize-status fails without writing step-3-terminal. Orchestrator may still stall on recovery probes even though the bg wait ended; unlike the fixed bug, this does not recreate a live-…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
