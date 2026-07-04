@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- render-time inlining is extra scope here; the agent-body update already feeds `_render_specialist_text`.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- pre-existing dynamic-scout prompt wiring is outside the anchored readability-directive fix and does not block shipping it.

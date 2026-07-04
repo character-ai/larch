@@ -1,0 +1,2 @@
+warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: '`Add a \\`### UPDATED: python/larch/rendering/rendering.py\\` step: in \\`_render_s')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`Add \\`### UPDATED: python/larch/rendering/rendering.py\\` to mirror \\`render_pla')

@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan adds the orchestrator-inline directive to every agent body (including pre-rendered bodies used by _render_specialist_text), satisfying the acceptance criterion "carries the readability directive"; modifying _render_specialist_text to inline readability-style.md at render time is beyond what the issue scope requests and is not required by any acceptance criterion
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

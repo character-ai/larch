@@ -1,0 +1,25 @@
+# Wire the readability directive into the code-reviewer agents
+
+**Problem**
+
+The readability-preamble lint walks `skills/*/SKILL.md` and `.claude/skills/*/SKILL.md`, but not `agents/`. The code-reviewer agent prompts carry no readability directive. Their finding text (`what`, `scenario_or_breakage`, `suggested_fix`) is user-facing in `/review` and `/implement` Step 5. Today it only has "be concise" sentence caps, not the shared style.
+
+**Evidence**
+
+- `agents/code-reviewer.md`, `agents/reviewer-*.md`, and `agents/pre-rendered/`: no readability directive (grep finds none).
+- `skills/shared/reviewer-templates.md`: only "Be concise" caps (lines ~221, 304, 398, 488). This is the canonical source for the generated reviewer agents.
+- `python/larch/lint/lint_readability_preamble.py`: `_skill_files` walks only `skills/` and `.claude/skills/`, so `agents/` is uncovered.
+
+**Fix**
+
+Add the shared readability directive to `skills/shared/reviewer-templates.md` so generated agents inherit it, and to the hand-maintained specialist agents. Regenerate the agents (`python3 python/cli.py generate ...` and `generate pre-rendered-reviewer-prompts`). Extend the readability-preamble lint and its manifest to cover `agents/` so the directive cannot silently drop.
+
+**Scope and risk**
+
+Keep reviewer output grammar byte-stable (the TSV header, the `no_issues_found` sentinel). The directive applies to finding prose only. This issue is independent of the em-dash scrubs, but it edits `lint_readability_preamble.py`, which the enforcement-lock issue also edits: whoever lands second rebases.
+
+**Acceptance**
+
+- Every code-reviewer agent prompt carries the readability directive.
+- The readability-preamble lint covers `agents/` and fails when the directive is missing.
+- Generator drift check (`generate check`) green.

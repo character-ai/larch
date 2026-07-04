@@ -1,0 +1,21 @@
+### FINDING_1: Specialist review prompts still miss readability style
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation
+- **Severity**: important
+- **Concern**: The code-review specialist prompt path still does not carry the shared readability rules into Codex/Cursor vendor prompts. The agent-file directive alone is insufficient because `_render_specialist_text` is the actual path used by review/scout launches, and it currently appends tagging/context without inlining `skills/shared/readability-style.md`. As a result, external reviewers can continue emitting finding prose without the intended shared style.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Add a \`### UPDATED: python/larch/rendering/rendering.py\` step: in \`_render_specialist_text\`, read \`skills/shared/readability-style.md\` from plugin root (same source as \`render_plan_review_main\`) and append it to \`stable_chunks\` after the agent body. Keep the orchestrator-inline line in agent files for lint/Claude-subagent parity; treat render-time inlining as the external-vendor delivery path already used for plan review.`
+  - From Cursor-Innovation: `Add \`### UPDATED: python/larch/rendering/rendering.py\` to mirror \`render_plan_review_main\`: after the stable specialist body in \`_render_specialist_text\`, append the readability-style file contents (same \`--readability-style-file\` / \`READABILITY_STYLE_FILE\` fallback used at line 1368). Add a focused test beside \`test_render_plan_review_inlines_strunk_and_white_readability\` in \`python/tests/rendering/test_rendering.py\`. Keep the agent directive plus lint walk for Claude Agent-tool paths and drift enforcement; the render append is what actually wires style into the external panel path named in the issue`
+
+
+Vote tally: YES=1 NO=2 JUDGE_ERROR=0 Result=neutral (neutral-rescued)
+
+### OOS_1: Ephemeral dynamic scout reviewers still lack readability wiring
+- **Description**: Ephemeral dynamic scout reviewers still lack readability wiring. Scenario: `_dynamic_agent_body` builds one-off `reviewer-dyn-*` prompts with scout `prompt_body` only and never pulls agent templates or readability-style. Those slots still emit user-facing finding text in Step 5 when scouting succeeds.
+- **Reviewer**: Cursor-Arch
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/review/review_dispatch_panel.py:188-223
+- **Phase**: design
+
+Vote tally: YES=1 NO=2 JUDGE_ERROR=0 Result=neutral
+
