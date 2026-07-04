@@ -379,6 +379,32 @@ def _copy_if_file(*, source: Path, dest: Path) -> None:
         shutil.copyfile(source, dest)
 
 
+def _ledger_row_has_escalation_evidence(row: str) -> bool:
+    values: dict[str, str] = {}
+    for field in row.split("\t"):
+        if "=" not in field:
+            continue
+        key, value = field.split("=", 1)
+        values[key] = value
+    site = values.get("site", "")
+    trigger = values.get("trigger", "")
+    if not site or not trigger:
+        return False
+    if site != "step3-review":
+        return True
+    return trigger in config.STEP3_ESCALATION_FAILURE_STATUSES
+
+
+def _ledger_file_has_escalation_evidence(path: Path) -> bool:
+    if path.is_symlink() or not path.is_file():
+        return False
+    try:
+        rows = path.read_text(encoding="utf-8", errors="replace").splitlines()
+    except OSError:
+        return False
+    return any(_ledger_row_has_escalation_evidence(row) for row in rows)
+
+
 def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
     parser = argparse.ArgumentParser(prog="design failure-report", add_help=False)
     parser.add_argument("--design-tmpdir", required=True)
@@ -502,9 +528,9 @@ def failure_report_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         return False
 
     def escalation_evidence_present() -> bool:
-        if ledger.stat().st_size if ledger.exists() else 0:
+        if _ledger_file_has_escalation_evidence(ledger):
             return True
-        if fallback.stat().st_size if fallback.exists() else 0:
+        if _ledger_file_has_escalation_evidence(fallback):
             return True
         if marker.stat().st_size if marker.exists() else 0:
             return True

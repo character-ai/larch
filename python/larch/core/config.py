@@ -162,6 +162,12 @@ ACTIVE_LEG_LEGACY_PGID_FILE: Final = ".active-leg-pgid"
 ENV_ACTIVE_LEG_OWNER_TOKEN: Final = "LARCH_ACTIVE_LEG_OWNER_TOKEN"
 DESIGN_STEP3_LOOP_IDENTITY_FILE: Final = ".step3-loop-identity.json"
 DESIGN_STEP3_WRAPPER_DETACHED_FILE: Final = ".step3-wrapper-detached"
+STEP3_ESCALATION_FAILURE_STATUSES: Final[tuple[str, ...]] = (
+    "panel-failed",
+    "panel-init-failed",
+    "tally-error",
+    "degraded-empty-collector",
+)
 ACTIVE_LEG_KILL_LOG_FILE: Final = "active-leg-kill.log.jsonl"
 DESIGN_STEP3_KILL_LOG_FILE: Final = "design-step3-kill.log.jsonl"
 FINALIZE_KILL_LOG_FILE: Final = "finalize-kill.log.jsonl"
