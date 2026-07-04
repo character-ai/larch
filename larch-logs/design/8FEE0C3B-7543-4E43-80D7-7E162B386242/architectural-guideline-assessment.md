@@ -1,0 +1,1 @@
+G-Cfg-1: trigger threshold (3) and severity sets ({"important","blocking"}, {"latent"}) appear as inline literals in the plan description. The implementation should define these as module-level Final constants (e.g., _OOS_FILING_HIGH_SEVERITIES, _OOS_FILING_LATENT_THRESHOLD) in both tally modules rather than repeating the literals at each call site.

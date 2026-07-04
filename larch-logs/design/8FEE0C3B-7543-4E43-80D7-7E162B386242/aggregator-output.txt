@@ -1,0 +1,70 @@
+### FINDING_1: Design prepare can skip before aggregate promotion
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-Innovation, Cursor-Pragmatic, Codex-Pragmatic
+- **Severity**: blocking
+- **Concern**: `design_oos.py` can return `skip-sentinel` or `skip-no-items` before the aggregate pool is read and promoted, so qualifying pool-only OOS never reach filing on same-issue reruns.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Run pool read/evaluate/promote (or at least consult the pool trigger) before any cross-session `skip-sentinel` return; only skip when recovered accepted text has no unfiled blocks and the pool cannot fire filing.
+  - From Codex-Innovation: After sentinel recovery, merge/evaluate aggregate-pool promotions before deciding skip-sentinel. Compute unfiled blocks over the recovered plus promoted accepted text, and test cache recovery with an aggregate-only important item.
+  - From Cursor-Innovation: Move aggregate pool evaluation and promotion to run before the `skip-no-items` checks on empty/missing `oos-accepted-design.md` (and re-check unfiled blocks after promotion). Add a prepare test with empty accepted sink plus a triggering pool.
+  - From Cursor-Pragmatic: Move aggregate pool read, trigger evaluation, and promotion into `oos-accepted-design.md` immediately after cross-session/sentinel guards and before the `if not accepted.is_file() or accepted.stat().st_size == 0` branch; only then run `_extract_unfiled_blocks` and the existing ready path.
+  - From Codex-Pragmatic: Apply aggregate-pool promotion before any skip-sentinel return, or run the Bug B unfiled check against recovered accepted text after adding triggered pool items. Add a sentinel-plus-aggregate-only regression test.
+
+### FINDING_2: Pool appends need deduplication
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: Pool sidecar writes can duplicate blocks across rounds, inflating trigger counts and causing repeated promotion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Specify and implement pool writes with the same unique-block append helper used for `oos-accepted-design.md`, and make trigger counting operate on deduped pool entries.
+  - From Cursor-Pragmatic: Reuse `_append_unique_artifact_blocks` (or equivalent block-key dedupe) when accumulating pool sidecars; keep promotion idempotent by skipping chunks already present in the accepted sink.
+
+### FINDING_3: Bug A retry needs an orchestrator-owned once-only contract
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The retry path for empty `/issue` stdout is still not safely owned by the orchestrator, so accepted OOS can be stranded or retried twice.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a durable once-only marker (for example `$DESIGN_TMPDIR/.oos-issue-retry-used`), document the `file-issues` annotate-failure branch in finalize-step5.md to re-run issue+annotate only when the marker is absent, and have design_step5b refuse a second retry with a non-retryable status.
+  - From Codex-Innovation: `finalize-step5.md` keeps `/larch:issue` prompt-side. The plan assigns retry to `design_step5b.py`, but that wrapper only calls `file_oos_annotate_main`; it cannot invoke the Skill tool. Annotate can emit `NEXT_ACTION=retry-file-and-annotate`, yet finalize prose still treats empty stdout as warn-and-continue to Step 5b.5 (lines 49-55), so Bug A can remain. Add an orchestrator `NEXT_ACTION=retry-file-and-annotate` branch in `finalize-step5.md` (and dispatch docs): re-run the file-issues `/larch:issue` capture once, then annotate; do not write `.completed/step-5b` until success. Limit the wrapper to surfacing the action and a retry sentinel; test the orchestrator contract, not an internal issue relaunch.
+  - From Cursor-Pragmatic: Extend finalize-step5 (and tests) with an explicit branch on annotate `NEXT_ACTION=retry-file-and-annotate`: if no retry sentinel exists, re-run the file-issues Skill call, rewrite `oos-issue.stdout.txt`, rerun annotate, and write a once-only sentinel; on second failure surface non-retryable error and do not write `.completed/step-5b`.
+  - From Cursor-Requirements: Have `file_oos_annotate_main` emit `NEXT_ACTION=retry-file-and-annotate` only. Document a new `finalize-step5.md` branch (under `NEXT_ACTION=file-issues`) that re-runs `/larch:issue`, rewrites `oos-issue.stdout.txt`, and re-invokes annotate once without writing `.completed/step-5b`. Limit `design_step5b.py` to surfacing that action, not calling `/larch:issue`.
+
+### FINDING_4: emit_tally needs an explicit session pool path
+- **Reviewer(s)**: Cursor-Arch, Codex-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: The session-level aggregate pool path is not threaded into production `emit_tally` calls, so trigger evaluation cannot reliably read or persist the parent pool.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Pin the implement pool to `$IMPLEMENT_TMPDIR/oos-aggregate-pool.md` (written from `tally_code_votes` via `session_env_path.parent`), and have `emit_tally` resolve it from `Path(args.review_tmpdir).parent` or an explicit `--session-env-path` before trigger evaluation and sink promotion.
+  - From Codex-Innovation: Add `### UPDATED: python/larch/review/review_core_body.py` and forward `--session-env-path` plus `--implement-tmpdir` on every `emit_tally` invocation, mirroring the zero-findings branch.
+  - From Codex-Innovation: Thread --session-env-path into the review_core_body emit_tally calls that follow tally-code-votes, especially the normal and main-agent-vote-required branches.
+  - From Codex-Requirements: Add python/larch/review/review_core_body.py to the firm changes and thread --session-env-path, or an explicit aggregate-pool path from the tally env, through every production emit-tally call that evaluates aggregate OOS.
+
+### FINDING_5: Aggregate trigger counts miss accepted and main-agent OOS
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The aggregate trigger pool is too narrow, so accepted-sink items and main-agent OOS can be left out of severity counting and promotion.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Collect every non-security OOS-tagged block, including result=accepted blocks, into the session aggregate pool; when promotion runs, de-dupe against the accepted sink so `OOS_ACCEPTED_COUNT` stays vote-based.
+  - From Cursor-Innovation: When evaluating the trigger at prepare/emit time, count body severities from the pool plus non-security blocks already in the accepted sink (deduped), or also record vote-accepted OOS into the pool for counting-only.
+  - From Codex-Pragmatic: Keep OOS_ACCEPTED_COUNT vote-based, but include all non-security OOS-tagged items in the aggregate trigger pool, or count existing accepted-sink latent blocks together with the pool before deciding promotion. Add the mixed accepted-plus-nonaccepted latent case to test_review_tally.py.
+  - From Codex-Requirements: Include non-security accepted review OOS and oos-accepted-main-agent.md items in the /implement aggregate trigger counts, while de-duplicating them from the promoted sink.
+
+### FINDING_6: Direct-review-entry cleanup must reset the new pool sidecar
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: Gate C re-entry can leave stale aggregate-pool state in place, so previously rejected OOS can still be promoted later.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add the new aggregate pool sidecar and any previous snapshot for it to the same direct-review-entry cleanup path, or otherwise reset the pool whenever existing plan-review OOS artifacts are reset.
+
+### FINDING_7: emit_tally serialize/rebuild can wipe promoted blocks
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: Later `oos serialize` or sink-rewrite branches can overwrite an already-augmented accepted sink, erasing aggregate promotions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: `emit_tally` `oos serialize` rebuild can erase aggregate promotions. Scenario: The plan relaxes the OOS sink count guard but still routes `OOS_ACCEPTED_COUNT > 0` through `python/cli.py oos serialize`, which truncates `--output-file` and rebuilds only vote-eligible blocks from `oos.md`. Any aggregate promotion written to `oos-accepted-review.md` before that branch is wiped whenever vote-accepted OOS exist in the same round.
+  - From Cursor-Requirements: emit_tally promotion path still wipes or rebuilds an augmented sink. Scenario: Relaxing the equality guard to `sink_count >= OOS_ACCEPTED_COUNT` is not enough. When `OOS_ACCEPTED_COUNT=0` and a promoted sink is non-empty, the final `else` branch still writes an empty `oos-accepted-review.md`. When `OOS_ACCEPTED_COUNT>0` but the sink is larger, the `oos serialize` rebuild still replaces promoted blocks with vote-only output from `oos.md`.
+
+### FINDING_8: /implement promotion must run at filing time
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: If promotion only happens in per-round tallying, later round-copy steps can still overwrite promoted blocks before Step 9a.1 filing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Pin symmetric promotion to filing time: add an `oos_filer.py` (or shared helper) step before `_working_batch` that reads `$IMPLEMENT_TMPDIR/oos-aggregate-pool.md`, evaluates the trigger, normalizes headers, and appends into `oos-accepted-review.md`. Keep tally rounds append-only to the pool file.

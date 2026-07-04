@@ -1,0 +1,10 @@
+1	promoted `/design` rerouted findings keep `finding_n` headers, so `design_oos._extract_unfiled_blocks` cannot see them and `file_oos_prepare_main` can still return `skip-no-items` even after the aggregate trigger fires.
+1	promoted `/implement` oos blocks can make the accepted sink larger than `oos_accepted_count`, but `emit-tally` still enforces exact equality and refuses to write summaries.
+1	empty `/issue` stdout after bug a still leaves step 5b without a reliable retry or repair path, so accepted oos can remain unannotated or stranded behind the sentinel.
+1	the aggregate filing trigger is evaluated per review round instead of over the whole run's collected oos pool, so split latent items never trip filing.
+2	`design_oos.py` can return `skip-sentinel` or `skip-no-items` before the aggregate pool is read and promoted, so qualifying pool-only oos never reach filing on same-issue reruns.
+2	the retry path for empty `/issue` stdout is still not safely owned by the orchestrator, so accepted oos can be stranded or retried twice.
+2	the aggregate trigger pool is too narrow, so accepted-sink items and main-agent oos can be left out of severity counting and promotion.
+2	gate c re-entry can leave stale aggregate-pool state in place, so previously rejected oos can still be promoted later.
+2	later `oos serialize` or sink-rewrite branches can overwrite an already-augmented accepted sink, erasing aggregate promotions.
+2	python/larch/design/design_step5b.py:192-285 [scope-reduction] prior bug a retry fix is still wired at the wrong boundary. scenario: `design_step5b.py` has no skill-tool boundary, while `finalize-step5.md` states the `/larch:issue` call is prompt-side; making the wrapper re-run `/larch:issue` forces a duplicate lower-level issue pipeline or leaves `next_action=retry-file-and-annotate` unreachable.

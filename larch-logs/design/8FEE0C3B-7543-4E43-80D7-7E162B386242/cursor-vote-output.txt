@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+FINDING_9: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- finalize-step5.md already documents the retry path; updating the dispatch reference is optional documentation, not required for filing to work.

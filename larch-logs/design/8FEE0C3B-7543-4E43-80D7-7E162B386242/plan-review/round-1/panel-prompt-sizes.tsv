@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	33339	8335	13375	3344	19964	4991		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	24713	6179	13087	3272	11626	2907		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	24728	6182	13102	3276	11626	2907		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	24704	6176	13078	3270	11626	2907		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	33330	8333	13366	3342	19964	4991		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	33354	8339	13390	3348	19964	4991		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	24726	6182	13100	3275	11626	2907		0	0
+design Step 3	phase1	1	dyn-cursor-plan-oos-filing-integrator	plan-review	cursor	dyn-cursor-plan-oos-filing-integrator.txt	33778	8445	13241	3311	20537	5135		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	33352	8338	13388	3347	19964	4991		0	0
+design Step 3	phase1	1	dyn-codex-plan-oos-filing-integrator	plan-review	codex	dyn-codex-plan-oos-filing-integrator.txt	25152	6288	12953	3239	12199	3050		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	55401	13851	4653	1164	50748	12687	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	22810	5703	9067	2267	13743	3436		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	22810	5703	9067	2267	13743	3436		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	22810	5703	9067	2267	13743	3436		0	0

@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan explicitly lists dedup as an edge case to handle; items across rounds have unique IDs in normal operation; over-filing risk is low and owner accepted higher volume
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=uncertain UNCERTAIN=false -- review_core_body.py already threads --session-env-path and --implement-tmpdir to every emit_tally call (lines 603, 643, 645); pool path is derivable from existing parameters without adding review_core_body.py to the change list
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- main-agent OOS is intentionally excluded per the plan Non-goals section; accepted review OOS is included via "OOS-tagged review items with any vote result"; the scope anchor open question resolved as "None" in the approved direction
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=blocker QUALITY=adequate UNCERTAIN=false
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=uncertain QUALITY=weak UNCERTAIN=false -- plan explicitly says "do not evaluate the aggregate trigger inside the tally functions"; promotion happens at emit_tally/pre-file-helper time, so the IF condition "if promotion only happens in per-round tallying" does not apply
+FINDING_9: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=latent QUALITY=adequate UNCERTAIN=false -- finalize-step5.md is already listed as updated and will document the retry action; the dispatch reference is auxiliary and this gap passes no materiality gate for blocking the feature

@@ -1,0 +1,102 @@
+Reviewing the plan against tally, OOS filing, and lifecycle code paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/larch/review/review_tally.py:1207-1222	Aggregate promotion inflates oos-accepted-review.md while OOS_ACCEPTED_COUNT stays vote-only	After tally writes severity-promoted blocks with zero vote-accepted OOS, emit-tally sees sink_count>0 but OOS_ACCEPTED_COUNT=0 and exits 1 (refusing destructive rebuild); same failure when promoted blocks exceed the vote-accepted count	Add a MAY_UPDATE emit_tally guard: treat tally-written sink as authoritative when sink_count>=OOS_ACCEPTED_COUNT and blocks are non-security; or add an explicit promoted-count KV and relax the equality check; add a test mirroring test_emit_tally_refuses_destructive_oos_rebuild_mismatch for promotion-only runs
+1	in_scope	important	correctness	python/larch/design/design_oos.py:22-24,74-87; python/larch/review/plan_review_tally.py:794-833	/design promotion lacks FINDING→OOS header normalization symmetric with /implement	Latent or neutral-rescued in-scope findings promoted into oos-accepted-design.md keep ### FINDING_N: headers; _extract_unfiled_blocks and _OOS_HEADER_RE only match ### OOS_, so prepare returns skip-no-items despite accepted content	Mirror review_tally._normalize_oos_header_text in plan_review_tally post-trigger promotion; allocate monotonic OOS_N across cumulative oos-accepted-design.md; add a plan-review test that promoted FINDING blocks reach oos-combined.md
+1	in_scope	important	correctness	python/larch/review/plan_review_tally.py:112-122; plan plan_review_tally section	Plan reuses _body_severity_for_block without the lowercase normalization the Approach requires	_body_severity_for_block returns raw Severity text; Important/BLOCKING will not match blocking|important triggers, so aggregate filing stays rare on mixed-case reviewer output	Use one shared trigger helper that lowercases and classifies blocking/important/latent; do not wire the trigger to raw _body_severity_for_block output without normalization
+1	in_scope	important	risk-integration	python/larch/design/design_oos.py:790-797; python/larch/design/design_step5b.py:227-257; skills/design/references/finalize-step5.md:51-55	Bug A retry NEXT_ACTION has no consumer on the Step 5b orchestration path	annotate-failed-empty-stdout emits a status but no recognized NEXT_ACTION today; finalize-step5 still appends Tool Failures and continues to 5b.5, so empty /issue stdout still strands accepted OOS without an automatic file-and-annotate retry	Emit NEXT_ACTION=retry-file-and-annotate from annotate; update design_step5b annotate wrapper and finalize-step5.md to re-run /larch:issue plus annotate instead of marking 5b complete; add an orchestration test not only annotate_main KVs
+1	in_scope	latent	correctness	python/larch/review/review_tally.py:269-284,898-902	Promoted /implement blocks may reuse OOS sequence numbers after _seed_oos_seq	_seed_oos_seq counts accumulated-oos.md only; promoted rerouted FINDING blocks normalized after the loop can collide with vote-accepted OOS_N headers or under-count when session sink already has blocks	Seed oos_seq from max(OOS_N) in both round and session oos-accepted sinks before post-loop promotion; extend review_tally tests with session-env-path outside round dir
+
+## Findings
+
+### 1. [correctness] `emit-tally` rejects promoted-only sinks (`review_tally.py:1207-1222`)
+
+The plan keeps `OOS_ACCEPTED_COUNT` vote-only (correct for scoreboards), but `emit_tally` requires an exact match between that counter and non-security blocks in `oos-accepted-review.md`:
+
+```1207:1212:python/larch/review/review_tally.py
+    sink_count = _non_security_oos_count(oos_accepted_file)
+    if oos_accepted_count > 0 and sink_count == oos_accepted_count:
+        pass
+    elif sink_count > 0 and sink_count != oos_accepted_count:
+        print(f"emit-tally: OOS_ACCEPTED_COUNT={oos_accepted_count} but accepted sink has {sink_count} non-security block(s); refusing destructive rebuild", file=sys.stderr)
+        return 1
+```
+
+The primary feature path (zero vote-accepted OOS, severity trigger fires, tally promotes pool items) produces `sink_count > 0` with `OOS_ACCEPTED_COUNT=0`, which hits the refusal branch. `test_emit_tally_refuses_destructive_oos_rebuild_mismatch` (`python/tests/review/test_review_tally.py:1719-1747`) encodes this strict equality. The plan does not list `emit_tally` under `### UPDATED:` or `### MAY_UPDATE:`.
+
+**Suggested revision:** Add a narrow `emit_tally` relaxation (or companion KV) so tally-written promoted sinks are preserved when `sink_count >= OOS_ACCEPTED_COUNT`, and add a promotion-only emit test.
+
+### 2. [correctness] Design promotion missing header normalization (`design_oos.py:22-24`, `plan_review_tally.py:794-833`)
+
+`/implement` explicitly normalizes promoted chunks via `_normalize_oos_header_text` (`review_tally.py:451-452`). The plan edge case covers `/implement` FINDING→OOS headers but not `/design`.
+
+Design filing only recognizes `### OOS_<n>:` blocks:
+
+```22:24:python/larch/design/design_oos.py
+_OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)
+```
+
+```74:87:python/larch/design/design_oos.py
+def _extract_unfiled_blocks(text: str) -> str:
+    indices: list[int] = [match.start() for match in _OOS_HEADER_RE.finditer(text)]
+    if not indices:
+        return ""
+```
+
+Latent and neutral-rescued in-scope findings are `FINDING_N` items routed to `oos.md` only today (`plan_review_tally.py:794-802`). Promoting them without reheadering leaves `oos-accepted-design.md` invisible to prepare, reproducing `skip-no-items` for the exact population this issue targets.
+
+**Suggested revision:** Add design-side normalization and monotonic `OOS_N` allocation before `_accumulate_round_oos`, plus a plan-review tally test that promoted FINDING blocks reach `oos-combined.md`.
+
+### 3. [correctness] Body-severity helper contract is inconsistent inside the plan (`plan_review_tally.py:112-122`)
+
+The Approach requires lowercase normalization and `blocking`/`important`/`latent` classification. The `plan_review_tally.py` section says to use `_body_severity_for_block`, which returns raw text with no lowercasing:
+
+```112:122:python/larch/review/plan_review_tally.py
+def _body_severity_for_block(block_path: str | Path) -> str:
+    ...
+            return re.sub(r"[ \t]+$", "", value)
+    return ""
+```
+
+Reviewer output with `Important` or `BLOCKING` would not satisfy the trigger even when the issue intent is met.
+
+**Suggested revision:** Point both tally modules at one new `_aggregate_trigger_severity(block)` helper; keep `_body_severity_for_block` for classification TSV only.
+
+### 4. [risk-integration] Bug A retry action is not wired through Step 5b (`design_oos.py:790-797`, `design_step5b.py:254-257`)
+
+Annotate already fails closed on empty stdout without writing `oos-issues-created.md`:
+
+```790:797:python/larch/design/design_oos.py
+    if not stdout_path.is_file() or stdout_path.stat().st_size == 0:
+        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
+        ...
+        return 1
+```
+
+The plan adds a retry `NEXT_ACTION`, but only `MAY_UPDATE: design_lifecycle.py`. Prepare routing knows only `file-issues`, `label-only`, and skip statuses (`design_step5b.py:77-84`). Annotate failure prints `STEP5B_STATUS=annotate-failed` and the skill body still continues to 5b.5 (`finalize-step5.md:55`). The plan’s own failure mode warns about a dead retry status without lifecycle support.
+
+**Suggested revision:** List `design_step5b.py` (annotate path) and finalize-step5 retry branching as firm updates; test the full prepare→issue→annotate retry loop.
+
+### 5. [correctness] `/implement` `oos_seq` seeding may be insufficient for promoted reroutes (`review_tally.py:269-284`)
+
+`_seed_oos_seq` reads `accumulated-oos.md` only. Post-loop promotion that reheaders `FINDING_N` blocks needs a seq beyond vote-accepted writes in the same round and any pre-existing session sink when `--session-env-path` differs from the round dir (called out in planned tests). Without seeding from existing accepted sinks, promoted headers can collide.
+
+**Suggested revision:** Seed from max `OOS_N` in round and session accepted files before the post-loop promotion pass.
+
+---
+
+## What the plan gets right
+
+- **Vote-accepted path preserved:** Both tallies append to accepted sinks only on `result == "accepted"` today (`plan_review_tally.py:814-815`; `review_tally.py:896-903`); post-loop promotion is additive.
+- **Scoreboards stay vote-based:** Score rows are recorded inside the per-item loop before any promotion (`plan_review_tally.py:782-787`, `836-862`; `review_tally.py:867-940`); keeping `OOS_ACCEPTED_COUNT` vote-only matches that contract.
+- **Security exclusion:** Public pool exclusion and absorbed accepted-security behavior align with current `absorbed` logic (`plan_review_tally.py:808-809`) and `_security_block` gating (`review_tally.py:897-897`).
+- **Design cumulative dedup:** `_accumulate_round_oos` already deduplicates by block text (`plan_review_tally.py:941-942`, `919-933`).
+- **Bug B fix shape:** Checking `_extract_unfiled_blocks` after cross-session recovery before `skip-sentinel` matches the defect at `design_oos.py:403-414`.
+- **Symmetry intent:** Parallel changes to `plan_review_tally.py` and `review_tally.py` with focused tests are proportionate minimum scope.
+
+## Out-of-scope (max 3)
+
+**[OUT_OF_SCOPE]** `docs/issue-anchored-plan.md` — Document `NEXT_ACTION=retry-file-and-annotate` only if Step 5b stdout grammar becomes operator-facing; orchestration code changes are the blocking gap.
+
+**[OUT_OF_SCOPE]** `oos-accepted-main-agent.md` — Issue open question; main-agent OOS already files via a separate implement path (`oos_filer.py`); aggregate trigger on reviewer pool only is consistent with minimum change.
+
+**[OUT_OF_SCOPE]** Shared severity module extraction — Plan’s “private helpers in both tally modules if reuse widens scope” is an acceptable minimum-change tradeoff.

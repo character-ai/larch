@@ -1,0 +1,148 @@
+## Approach
+
+Implement the minimum change at the tally and design OOS handoff seams.
+
+Use the existing `_body_severity_for_block(block)` helper in `plan_review_tally.py` to read block body severity. In `review_tally.py`, add an equivalent `_body_severity_from_text(text)` inline helper (mirroring `compose_review._extract_body_severity`) rather than introducing a new shared module. Normalize the result to lowercase and classify `blocking` and `important` as high-trigger, `latent` as latent-trigger. Do not use judge vote severity for the aggregate trigger.
+
+Preserve the current vote-accepted path. During each tally loop, collect the non-security OOS filing pool into a **cumulative per-run pool file** instead of evaluating the trigger per round:
+
+- OOS-tagged review items with any vote result.
+- Latent-rerouted findings.
+- Neutral-rescued findings.
+- Exclude security-classed blocks from the public filing pool.
+
+Do not evaluate the aggregate trigger inside the tally functions. Instead, append each public pool item (with its body severity) to a cumulative file (`oos-aggregate-pool.md` for `/design`, an equivalent session-level file for `/implement`). This file accumulates across all review rounds so the trigger sees the full per-run pool.
+
+Evaluate the trigger at filing time:
+
+- For `/design`: in `file_oos_prepare_main`, after loading `oos-accepted-design.md`, read `oos-aggregate-pool.md`. Count distinct non-security items by severity. Fire if at least one has severity `important` or `blocking`, or if at least three have severity `latent`. When the trigger fires, normalize and add all pool items not already in `oos-accepted-design.md` before computing the filing batch. This naturally covers multi-round runs.
+- For `/implement`: accumulate the pool to a session-level file via the session path. Evaluate the trigger in `emit_tally` or a small pre-file helper over the full session pool before writing the final accepted-OOS sink.
+
+When promoting for `/design`, rerouted findings (`FINDING_N`-headed blocks) must be normalized to `### OOS_N:` headers before writing to `oos-accepted-design.md`. Seed the sequence number from the max existing `OOS_N` in `oos-accepted-design.md`. This is required because `_extract_unfiled_blocks` in `design_oos` relies on `OOS_` prefixes. Use the same normalization helper or the `review_tally._normalize_oos_header_text` approach.
+
+When promoting for `/implement`, normalize promoted OOS headers through `_normalize_oos_header_text` and advance `oos_seq` for each promoted public block, seeded from the current session sink. Write both `oos_accepted_file` and `oos_accepted_out` when they differ.
+
+Update `emit_tally` for `/implement` to allow the accepted-OOS sink count to exceed `OOS_ACCEPTED_COUNT` when aggregate promotion is present. Add a separate `OOS_FILING_COUNT` KV (non-security accepted-sink count including promoted items) and relax the equality check to allow `sink_count >= OOS_ACCEPTED_COUNT`. Keep scoreboard and `OOS_ACCEPTED_COUNT` vote-based and unchanged.
+
+Fix Bug A in `design_oos.py` by making empty or missing `/issue` stdout a loud retryable state, and wiring the retry through the Step 5b lifecycle:
+
+- Keep `FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout`.
+- Emit `NEXT_ACTION=retry-file-and-annotate`.
+- Do not write `oos-issues-created.md`.
+- Update `design_step5b.py` annotate wrapper and `finalize-step5.md` to re-run `/larch:issue` plus annotate on `retry-file-and-annotate`, without writing `.completed/step-5b`. At most one retry; a second failure surfaces as a non-retryable error.
+
+Fix Bug B in `file_oos_prepare_main`:
+
+- After restoring the cross-session sentinel and recovered URLs into `oos-accepted-design.md`, compute `_extract_unfiled_blocks(recovered)`.
+- Emit `skip-sentinel` only when no unfiled blocks remain.
+- If unfiled blocks remain, remove the restored local sentinel and fall through to the normal prepare path so new blocks file.
+- Preserve warning behavior when sentinel recovery fails.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+During `_render`, collect public non-security pool items into a cumulative sidecar `oos-aggregate-pool.md`. Each entry records the chunk and body severity. Do not evaluate the trigger here. Promotion and OOS header normalization happen at filing time in `design_oos.py`.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Two changes:
+
+- `tally_code_votes`: accumulate public non-security pool candidates (non-accepted OOS + rerouted findings) to a session-level pool file. Keep vote-result counts and scoreboards unchanged.
+- `emit_tally`: add `OOS_FILING_COUNT` KV equal to the non-security accepted-sink count (including promoted items). Relax the equality guard to `sink_count >= OOS_ACCEPTED_COUNT`. Keep `OOS_ACCEPTED_COUNT` vote-based and scoreboard unchanged.
+
+### UPDATED: python/larch/design/design_oos.py
+
+Primary change: in `file_oos_prepare_main`, after loading `oos-accepted-design.md`, read `oos-aggregate-pool.md`, evaluate the aggregate trigger, and when it fires, normalize pool items not already in the accepted sink to `### OOS_N:` headers (seeded from max existing OOS number in `oos-accepted-design.md`), then append them. Fall through to the normal filing batch.
+
+Bug A: emit `NEXT_ACTION=retry-file-and-annotate` on empty stdout; keep hard failure but enable retry.
+
+Bug B: after sentinel recovery, check `_extract_unfiled_blocks`; emit `skip-sentinel` only when empty; else remove restored sentinel and fall through.
+
+### UPDATED: python/larch/design/design_step5b.py
+
+Update annotate wrapper to handle `NEXT_ACTION=retry-file-and-annotate`: re-run `/larch:issue` and annotate once without writing `.completed/step-5b`. Surface a non-retryable failure on second failure.
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+Document the `annotate-failed-empty-stdout` + `retry-file-and-annotate` retry path and its once-only bound. Keep existing manual recovery notes.
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+Add focused plan-review tally tests:
+
+- One non-accepted OOS with body severity `important` adds to `oos-aggregate-pool.md` but not `oos-accepted-design.md` during tally.
+- `file_oos_prepare_main` with a pool containing one `important` item promotes it to the filing batch as `OOS_N` header.
+- Three latent pool items trigger filing.
+- One or two latent-only pool items do not trigger filing.
+- Security-classed OOS is excluded from the public pool and filing batch even when the trigger fires.
+- Vote-accepted OOS still writes when the aggregate trigger does not fire.
+- A promoted latent-rerouted `FINDING_N` block survives `file_oos_prepare_main` with an `OOS_N` header and non-empty `oos-combined.md`.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+Add symmetric `/implement` code-review tally tests:
+
+- Pool candidates accumulate to the session-level pool file (non-accepted OOS + rerouted findings).
+- Three latent pool items promote into `oos-accepted-review.md` when the trigger fires at emit/file time.
+- One or two latent-only items do not promote.
+- Security-classed OOS is excluded from public promotion.
+- `OOS_ACCEPTED_COUNT` remains vote-based; `OOS_FILING_COUNT` includes promoted items.
+- Test that `sink_count >= OOS_ACCEPTED_COUNT` with promoted blocks passes emit-tally.
+- Assert both local and session-level accepted OOS outputs when `--session-env-path` points outside the round dir.
+
+### UPDATED: python/tests/design/test_design_oos.py
+
+Add or adjust tests for Bug A, Bug B, and the aggregate trigger:
+
+- Empty stdout emits `FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout`, `NEXT_ACTION=retry-file-and-annotate`, and no created sentinel.
+- `design_step5b.py` retry path re-runs file-issues + annotate once and surfaces non-retryable failure on second failure.
+- Cross-session sentinel recovery with all blocks filed still emits `skip-sentinel`.
+- Cross-session sentinel recovery with one filed block and one new unfiled accepted block falls through to `ready`.
+- A pool with one `important` item triggers filing; two latent items do not.
+- A multi-round pool with two latent items in round 1 and two in round 2 fires the trigger at prepare time (total four latent items).
+
+### MAY_UPDATE: docs/issue-anchored-plan.md
+
+Only update if the accepted OOS artifact contract or Step 5b status grammar changes. Do not update for implementation-only helper details.
+
+## Edge cases
+
+- A qualifying trigger promotes all public pool items, not only the qualifying item.
+- Security-classed OOS stays out of public accepted OOS even if other pool items trigger filing.
+- Accepted security OOS remains absorbed as today.
+- Promoted rerouted `/design` findings must receive `OOS_N` headers so `_extract_unfiled_blocks` can parse them.
+- OOS sequence numbers for promoted items are seeded from max existing `OOS_N` in the accepted sink to avoid header collisions.
+- Duplicate plan-review rounds should not duplicate already accumulated pool items or accepted OOS.
+- `/implement` promoted rerouted findings must get stable `OOS_N` headers.
+- Body severities missing or outside `blocking`, `important`, and `latent` do not count toward the trigger.
+- Existing vote-accepted filing still works when no aggregate trigger fires.
+- `OOS_ACCEPTED_COUNT` in emit-tally remains vote-based; `OOS_FILING_COUNT` includes promoted items.
+- Multi-round `/design` runs: latent pool items from round 1 plus round 2 accumulate in `oos-aggregate-pool.md` and correctly trigger filing at prepare time.
+
+## Failure modes
+
+- Counting vote severity instead of body severity can over-file items whose reviewers judged them high but whose OOS block was not marked high.
+- Evaluating the trigger per-round instead of per-run misses latent items split across rounds.
+- Promoted `/design` rerouted chunks with `FINDING_N` headers bypass `_extract_unfiled_blocks` and produce `skip-no-items` at prepare time.
+- `emit_tally` equality guard failing on a promotion-augmented sink produces a broken summary.
+- Adding a retry action for Bug A without lifecycle support in `design_step5b.py` can create a dead status unless tests cover the step5b call path.
+- Keeping a restored cross-session sentinel while new unfiled blocks remain can reproduce Bug B.
+
+## Testing strategy
+
+Run focused unit tests only:
+
+- `python -m pytest python/tests/review/test_plan_review.py -k 'oos or latent or pool'`
+- `python -m pytest python/tests/review/test_review_tally.py -k 'oos or latent or pool'`
+- `python -m pytest python/tests/design/test_design_oos.py -k 'oos or stdout or sentinel or pool'`
+
+Then run changed-file lint:
+
+- `make py-lint`
+- `python3 python/cli.py checks run-relevant`
+
+If lifecycle code changes (`design_step5b.py`, `finalize-step5.md`), also run the narrow Step 5b design tests in `python/tests/design/test_design_oos.py`.
+
+difficulty: HARD
+diff_lines: 420
