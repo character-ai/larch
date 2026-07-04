@@ -1,0 +1,22 @@
+{
+  "applied_tier": "TRIVIAL",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "TRIVIAL",
+  "override_source": "none",
+  "panel_skipped": "self-review",
+  "panel_tier": "TRIVIAL",
+  "predicted_tier": "TRIVIAL",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Doc-only wording refinement in one scoped lifecycle bullet after existing branch changes already added the recovery note and taxonomy token.",
+  "round_cap": 2,
+  "schema_version": 1
+}
