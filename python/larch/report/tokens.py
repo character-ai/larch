@@ -30,6 +30,32 @@ _TOKEN_FIELDS = ("input", "output", "cache_read", "cache_create", "total")
 TOKEN_LOCK_TIMEOUT_S = 5.0
 _SAFE_SESSION_RE = re.compile(r"^[A-Za-z0-9_-]{1,128}$")
 _UINT_RE = re.compile(r"^[0-9]+$")
+_SIGNED_INT_RE = re.compile(r"^-?[0-9]+$")
+CHECKS_DIGEST_SIZE_BASENAME = "checks-digest-sizes.tsv"
+_CHECKS_DIGEST_MIN_SAMPLES = 5
+_CHECKS_DIGEST_UNSIGNED_FIELDS = ("redacted_bytes", "digest_bytes", "redacted_tokens", "digest_tokens")
+_CHECKS_DIGEST_SIGNED_FIELDS = ("saved_bytes", "saved_tokens")
+_CHECKS_DIGEST_SIZE_FIELDS = (
+    "site",
+    "attempt",
+    *_CHECKS_DIGEST_UNSIGNED_FIELDS,
+    *_CHECKS_DIGEST_SIGNED_FIELDS,
+    "digest_truncated",
+)
+_CHECKS_DIGEST_SAVINGS_REPORT_FIELDS = (
+    "status",
+    "recommendation",
+    "valid_rows",
+    "files_observed",
+    "rows_seen",
+    "rows_skipped",
+    "redacted_bytes",
+    "digest_bytes",
+    "redacted_tokens",
+    "digest_tokens",
+    "saved_bytes",
+    "saved_tokens",
+)
 
 
 @dataclass(frozen=True)
@@ -394,7 +420,7 @@ def _locked_tsv_append(path: Path, write_fn: Any) -> None:
                 except BlockingIOError:
                     if time.monotonic() >= deadline:
                         print(
-                            f"panel prompt size: WARNING: flock lock acquisition failed; skipping append for {path}",
+                            f"locked tsv append: WARNING: flock lock acquisition failed; skipping append for {path}",
                             file=sys.stderr,
                         )
                         return
@@ -2367,6 +2393,133 @@ def _uint_cell(row: Mapping[str, str], key: str) -> int:
     return int(raw) if _UINT_RE.fullmatch(str(raw)) else 0
 
 
+@dataclass
+class ChecksDigestSavingsAggregate:
+    valid_rows: int = 0
+    files_observed: int = 0
+    rows_seen: int = 0
+    rows_skipped: int = 0
+    redacted_bytes: int = 0
+    digest_bytes: int = 0
+    redacted_tokens: int = 0
+    digest_tokens: int = 0
+    saved_bytes: int = 0
+    saved_tokens: int = 0
+
+    def add_row(self, values: Mapping[str, int]) -> None:
+        self.valid_rows += 1
+        self.redacted_bytes += values["redacted_bytes"]
+        self.digest_bytes += values["digest_bytes"]
+        self.redacted_tokens += values["redacted_tokens"]
+        self.digest_tokens += values["digest_tokens"]
+        self.saved_bytes += values["saved_bytes"]
+        self.saved_tokens += values["saved_tokens"]
+
+
+def _signed_int_cell(row: Mapping[str, str], key: str) -> int | None:
+    raw = (row.get(key) or "").strip()
+    return int(raw) if _SIGNED_INT_RE.fullmatch(raw) else None
+
+
+def _unsigned_int_cell(row: Mapping[str, str], key: str) -> int | None:
+    raw = (row.get(key) or "").strip()
+    return int(raw) if _UINT_RE.fullmatch(raw) else None
+
+
+def _checks_digest_size_row_values(row: Mapping[str, str]) -> dict[str, int] | None:
+    values: dict[str, int] = {}
+    for field in _CHECKS_DIGEST_UNSIGNED_FIELDS:
+        value = _unsigned_int_cell(row, field)
+        if value is None:
+            return None
+        values[field] = value
+    for field in _CHECKS_DIGEST_SIGNED_FIELDS:
+        value = _signed_int_cell(row, field)
+        if value is None:
+            return None
+        values[field] = value
+    return values
+
+
+def _iter_checks_digest_size_files(repo: Path) -> list[Path]:
+    root = repo / "larch-logs"
+    if not root.is_dir():
+        return []
+    paths: list[Path] = []
+    for skill in ("implement", "review"):
+        paths.extend(root.glob(f"{skill}/*/{CHECKS_DIGEST_SIZE_BASENAME}"))
+    return sorted(path for path in paths if path.is_file() and not path.is_symlink())
+
+
+def _read_checks_digest_size_file(path: Path) -> tuple[bool, int, int, list[dict[str, int]]]:
+    rows_seen = 0
+    rows_skipped = 0
+    parsed: list[dict[str, int]] = []
+    try:
+        with path.open(encoding="utf-8", errors="replace", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            fieldnames = tuple(reader.fieldnames or ())
+            if any(field not in fieldnames for field in _CHECKS_DIGEST_SIZE_FIELDS):
+                return False, 0, 0, []
+            for row in reader:
+                rows_seen += 1
+                values = _checks_digest_size_row_values(row)
+                if values is None:
+                    rows_skipped += 1
+                    continue
+                parsed.append(values)
+    except OSError:
+        return False, 0, 0, []
+    return True, rows_seen, rows_skipped, parsed
+
+
+def _render_checks_digest_savings_report(aggregate: ChecksDigestSavingsAggregate) -> str:
+    if aggregate.valid_rows < _CHECKS_DIGEST_MIN_SAMPLES:
+        status = "insufficient-data"
+        recommendation = ""
+    else:
+        status = "sufficient-data"
+        recommendation = (
+            "go-design-validator-extension"
+            if aggregate.saved_tokens > 0
+            else "no-go-design-validator-extension"
+        )
+    row = {
+        "status": status,
+        "recommendation": recommendation,
+        "valid_rows": str(aggregate.valid_rows),
+        "files_observed": str(aggregate.files_observed),
+        "rows_seen": str(aggregate.rows_seen),
+        "rows_skipped": str(aggregate.rows_skipped),
+        "redacted_bytes": str(aggregate.redacted_bytes),
+        "digest_bytes": str(aggregate.digest_bytes),
+        "redacted_tokens": str(aggregate.redacted_tokens),
+        "digest_tokens": str(aggregate.digest_tokens),
+        "saved_bytes": str(aggregate.saved_bytes),
+        "saved_tokens": str(aggregate.saved_tokens),
+    }
+    return "\t".join(_CHECKS_DIGEST_SAVINGS_REPORT_FIELDS) + "\n" + "\t".join(
+        row[field] for field in _CHECKS_DIGEST_SAVINGS_REPORT_FIELDS
+    ) + "\n"
+
+
+def measure_checks_digest_savings() -> Path:
+    repo = _repo_root()
+    out_path = repo / "larch-logs" / "measure-checks-digest-savings" / f"{_measure_stamp()}.tsv"
+    aggregate = ChecksDigestSavingsAggregate()
+    for tsv in _iter_checks_digest_size_files(repo):
+        has_header, rows_seen, rows_skipped, rows = _read_checks_digest_size_file(tsv)
+        if not has_header:
+            continue
+        aggregate.files_observed += 1
+        aggregate.rows_seen += rows_seen
+        aggregate.rows_skipped += rows_skipped
+        for row in rows:
+            aggregate.add_row(row)
+    _atomic_text(path=out_path, text=_render_checks_digest_savings_report(aggregate))
+    return out_path
+
+
 def measure_panel_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-panel-cost" / f"{_measure_stamp()}.tsv"
@@ -2691,6 +2844,13 @@ def compute_pr_line_counts_main(argv: list[str] | None = None) -> int:
         print(f"{key}={value}")
     return 0
 
+
+
+def measure_checks_digest_savings_main(argv: list[str] | None = None) -> int:
+    _ = argv
+    path = measure_checks_digest_savings()
+    print(f"WROTE\t{path.relative_to(_repo_root())}")
+    return 0
 
 
 def measure_panel_cost_main(argv: list[str] | None = None) -> int:

@@ -371,6 +371,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("token", "measure-references-heatmap"): ("larch.report.tokens", "measure_references_heatmap_main"),
     ("token", "measure-realized-cost"): ("larch.report.tokens", "measure_realized_cost_main"),
     ("token", "measure-panel-cost"): ("larch.report.tokens", "measure_panel_cost_main"),
+    ("token", "measure-checks-digest-savings"): ("larch.report.tokens", "measure_checks_digest_savings_main"),
     ("timing", "mark"): ("larch.report.timing", "timing_mark_main"),
     ("timing", "record-vendor-task"): ("larch.report.timing", "timing_record_vendor_task_main"),
     ("timing", "record-round"): ("larch.report.timing", "timing_record_round_main"),
@@ -787,6 +788,33 @@ def _build_help_parser() -> argparse.ArgumentParser:
     return parser
 
 
+def _run_subcommand(module_name: str, func_name: str, rest_argv: list[str]) -> int:
+    try:
+        module = importlib.import_module(module_name)
+    except ImportError as exc:
+        print(f"ERROR: failed to import module {module_name!r}: {exc}", file=sys.stderr)
+        return 2
+
+    target_main = getattr(module, func_name, None)
+    if target_main is None:
+        print(
+            f"ERROR: module {module_name!r} has no function {func_name!r}",
+            file=sys.stderr,
+        )
+        return 2
+
+    try:
+        return int(target_main(rest_argv))
+    except RuntimeError as exc:
+        plan_review_mod = sys.modules.get("larch.review.plan_review")
+        if plan_review_mod is not None:
+            plan_review_error = getattr(plan_review_mod, "PlanReviewError", None)
+            if plan_review_error is not None and isinstance(exc, plan_review_error):
+                print(f"ERROR: plan-review: {exc}", file=sys.stderr)
+                return 1
+        raise
+
+
 def main(argv: list[str] | None = None) -> int:
     args = argv if argv is not None else sys.argv[1:]
 
@@ -822,27 +850,4 @@ def main(argv: list[str] | None = None) -> int:
     if key in _MACHINE_STDOUT_KEYS:
         os.environ["LARCH_QUIET_DISABLE"] = "1"
 
-    try:
-        module = importlib.import_module(module_name)
-    except ImportError as exc:
-        print(f"ERROR: failed to import module {module_name!r}: {exc}", file=sys.stderr)
-        return 2
-
-    target_main = getattr(module, func_name, None)
-    if target_main is None:
-        print(
-            f"ERROR: module {module_name!r} has no function {func_name!r}",
-            file=sys.stderr,
-        )
-        return 2
-
-    try:
-        return int(target_main(rest_argv))
-    except RuntimeError as exc:
-        plan_review_mod = sys.modules.get("larch.review.plan_review")
-        if plan_review_mod is not None:
-            plan_review_error = getattr(plan_review_mod, "PlanReviewError", None)
-            if plan_review_error is not None and isinstance(exc, plan_review_error):
-                print(f"ERROR: plan-review: {exc}", file=sys.stderr)
-                return 1
-        raise
+    return _run_subcommand(module_name, func_name, rest_argv)

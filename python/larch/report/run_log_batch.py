@@ -57,6 +57,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "review-findings": BatchInfo(".ndjson", "append", "json-lines"),
     "review-panel-manifest": BatchInfo(".ndjson", "replace", "none"),
     "panel-prompt-sizes": BatchInfo(".tsv", "replace", "none"),
+    "checks-digest-sizes": BatchInfo(".tsv", "append", "none"),
     "review-round-summary": BatchInfo(".md", "replace", "none"),
     "review-scout-manifest": BatchInfo(".json", "replace", "json-object"),
     "difficulty-rating": BatchInfo(".json", "replace", "json-object"),

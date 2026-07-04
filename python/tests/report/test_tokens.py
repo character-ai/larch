@@ -1206,6 +1206,110 @@ def test_measure_realized_cost_averages_reference_reads_across_missing_transcrip
     assert design["reference_capture_status"] == "measured"
 
 
+
+def _write_checks_digest_rows(path: Path, rows: list[str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    header = "site\tattempt\tredacted_bytes\tdigest_bytes\tredacted_tokens\tdigest_tokens\tsaved_bytes\tsaved_tokens\tdigest_truncated\n"
+    path.write_text(header + "".join(rows), encoding="utf-8")
+
+
+def test_measure_checks_digest_savings_insufficient_data(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-03")  # pyright: ignore[reportPrivateUsage]
+    _write_checks_digest_rows(
+        tmp_path / "larch-logs" / "implement" / "run-1" / "checks-digest-sizes.tsv",
+        ["step6\t1\t100\t20\t25\t5\t80\t20\tfalse\n"] * 4,
+    )
+
+    out = tokens.measure_checks_digest_savings()
+    row = _tsv_rows(out)[0]
+
+    assert row["status"] == "insufficient-data"
+    assert row["recommendation"] == ""
+    assert row["valid_rows"] == "4"
+    assert row["saved_tokens"] == "80"
+
+
+def test_measure_checks_digest_savings_go_recommendation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-03")  # pyright: ignore[reportPrivateUsage]
+    _write_checks_digest_rows(
+        tmp_path / "larch-logs" / "implement" / "run-1" / "checks-digest-sizes.tsv",
+        ["step6\t1\t100\t20\t25\t5\t80\t20\tfalse\n"] * 5,
+    )
+
+    row = _tsv_rows(tokens.measure_checks_digest_savings())[0]
+
+    assert row["status"] == "sufficient-data"
+    assert row["recommendation"] == "go-design-validator-extension"
+    assert row["saved_bytes"] == "400"
+    assert row["saved_tokens"] == "100"
+
+
+def test_measure_checks_digest_savings_no_go_recommendation(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-03")  # pyright: ignore[reportPrivateUsage]
+    _write_checks_digest_rows(
+        tmp_path / "larch-logs" / "review" / "run-1" / "checks-digest-sizes.tsv",
+        ["step6\t1\t20\t100\t5\t25\t-80\t-20\tfalse\n"] * 5,
+    )
+
+    row = _tsv_rows(tokens.measure_checks_digest_savings())[0]
+
+    assert row["status"] == "sufficient-data"
+    assert row["recommendation"] == "no-go-design-validator-extension"
+    assert row["saved_bytes"] == "-400"
+    assert row["saved_tokens"] == "-100"
+
+
+def test_measure_checks_digest_savings_skips_symlink_and_malformed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-03")  # pyright: ignore[reportPrivateUsage]
+    good = tmp_path / "larch-logs" / "implement" / "run-good" / "checks-digest-sizes.tsv"
+    _write_checks_digest_rows(good, ["step6\t1\t100\t20\t25\t5\t80\t20\tfalse\n"] * 5)
+    malformed = tmp_path / "larch-logs" / "implement" / "run-bad" / "checks-digest-sizes.tsv"
+    malformed.parent.mkdir(parents=True)
+    malformed.write_text("site\tattempt\nstep6\t1\n", encoding="utf-8")
+    symlink = tmp_path / "larch-logs" / "review" / "run-link" / "checks-digest-sizes.tsv"
+    symlink.parent.mkdir(parents=True)
+    symlink.symlink_to(good)
+
+    row = _tsv_rows(tokens.measure_checks_digest_savings())[0]
+
+    assert row["valid_rows"] == "5"
+    assert row["files_observed"] == "1"
+    assert row["rows_skipped"] == "0"
+
+
+def test_measure_checks_digest_savings_accepts_negative_saved_and_rejects_negative_unsigned(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-03")  # pyright: ignore[reportPrivateUsage]
+    _write_checks_digest_rows(
+        tmp_path / "larch-logs" / "implement" / "run-1" / "checks-digest-sizes.tsv",
+        [
+            "step6\t1\t20\t100\t5\t25\t-80\t-20\tfalse\n",
+            "step6\t2\t-20\t100\t5\t25\t-120\t-20\tfalse\n",
+            "step6\t3\t20\t-100\t5\t25\t-80\t-20\tfalse\n",
+            "step6\t4\t20\t100\t-5\t25\t-80\t-30\tfalse\n",
+            "step6\t5\t20\t100\t5\t-25\t-80\t30\tfalse\n",
+        ],
+    )
+
+    out = tokens.measure_checks_digest_savings()
+    row = _tsv_rows(out)[0]
+
+    assert row["valid_rows"] == "1"
+    assert row["rows_seen"] == "5"
+    assert row["rows_skipped"] == "4"
+    assert row["saved_bytes"] == "-80"
+    assert row["saved_tokens"] == "-20"
+    report_text = out.read_text(encoding="utf-8")
+    assert "step6" not in report_text
+
+
 def test_panel_prompt_size_helper_writes_counts_without_prompt_text(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     out = tmp_path / "panel-prompt-sizes.tsv"
     monkeypatch.setenv("LARCH_PANEL_SLOT", "correctness")

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import argparse
 import contextlib
+import csv
 import os
 import re
 import sys
@@ -17,12 +18,18 @@ import time
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Final
+from typing import Final, TextIO
 
 from larch.core import config
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
+from larch.report.tokens import (
+    CHECKS_DIGEST_SIZE_BASENAME,
+    _CHECKS_DIGEST_SIZE_FIELDS,  # pyright: ignore[reportPrivateUsage]
+    _estimate_tokens_for_bytes,  # pyright: ignore[reportPrivateUsage]
+    _locked_tsv_append,  # pyright: ignore[reportPrivateUsage]
+)
 
 _RCC_MAX_ITER_CAP: Final = 6
 CHECKS_FAILURE_DIGEST_MAX_BYTES: Final = 8192
@@ -334,6 +341,102 @@ def _clean_child_env() -> dict[str, str]:
 
 def _write_log(*, log_fd: int, text: str) -> None:
     _ = os.write(log_fd, text.encode("utf-8", errors="replace"))
+
+
+@dataclass(frozen=True)
+class _ChecksDigestSizeRow:
+    site: str
+    attempt: str
+    redacted_bytes: int
+    digest_bytes: int
+    redacted_tokens: int
+    digest_tokens: int
+    saved_bytes: int
+    saved_tokens: int
+    digest_truncated: bool
+
+    def as_tsv_row(self) -> list[str]:
+        return [
+            self.site,
+            self.attempt,
+            str(self.redacted_bytes),
+            str(self.digest_bytes),
+            str(self.redacted_tokens),
+            str(self.digest_tokens),
+            str(self.saved_bytes),
+            str(self.saved_tokens),
+            "true" if self.digest_truncated else "false",
+        ]
+
+
+def _checks_digest_run_artifact(canonical_tmp: Path) -> Path | None:
+    root = canonical_tmp / "larch-logs"
+    if not root.is_dir() or root.is_symlink():
+        return None
+    candidates: list[Path] = []
+    for skill in ("implement", "review"):
+        skill_root = root / skill
+        if not skill_root.is_dir() or skill_root.is_symlink():
+            continue
+        try:
+            with os.scandir(skill_root) as entries:
+                candidates.extend(
+                    Path(entry.path) / CHECKS_DIGEST_SIZE_BASENAME
+                    for entry in entries
+                    if entry.is_dir(follow_symlinks=False)
+                )
+        except OSError:
+            continue
+    return candidates[0] if len(candidates) == 1 else None
+
+
+def _write_checks_digest_size_row(path: Path, row: _ChecksDigestSizeRow) -> None:
+    def _write(handle: TextIO, needs_header: object) -> None:
+        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
+        if needs_header:
+            writer.writerow(_CHECKS_DIGEST_SIZE_FIELDS)
+        writer.writerow(row.as_tsv_row())
+
+    _locked_tsv_append(path, _write)
+
+
+def _digest_header_truncated(digest: str) -> bool:
+    lines = digest.splitlines()
+    return len(lines) > 2 and lines[2] == "digest_truncated=true"  # noqa: PLR2004
+
+
+def _record_checks_digest_size_telemetry(
+    *,
+    log_dir: Path,
+    site: str,
+    attempt: str,
+    redacted_text: str,
+    digest: str,
+) -> None:
+    try:
+        if log_dir.name != "relevant-checks":
+            return
+        artifact = _checks_digest_run_artifact(log_dir.parent)
+        if artifact is None:
+            return
+        redacted_bytes = len(redacted_text.encode("utf-8"))
+        digest_bytes = len(digest.encode("utf-8"))
+        redacted_tokens = _estimate_tokens_for_bytes(redacted_bytes)
+        digest_tokens = _estimate_tokens_for_bytes(digest_bytes)
+        row = _ChecksDigestSizeRow(
+            site=site,
+            attempt=attempt,
+            redacted_bytes=redacted_bytes,
+            digest_bytes=digest_bytes,
+            redacted_tokens=redacted_tokens,
+            digest_tokens=digest_tokens,
+            saved_bytes=redacted_bytes - digest_bytes,
+            saved_tokens=redacted_tokens - digest_tokens,
+            digest_truncated=_digest_header_truncated(digest),
+        )
+        _write_checks_digest_size_row(artifact, row)
+    except Exception as exc:  # best-effort telemetry must not alter checks flow
+        print(f"checks digest telemetry: write skipped: {exc}", file=sys.stderr)
 
 
 def _run_logged(
@@ -794,6 +897,13 @@ def _write_failure_digest_from_redacted(
         digest = _build_checks_failure_digest(redacted_log_text=redacted_text, site=site)
         _ = digest_file.write_text(digest, encoding="utf-8")
         digest_file.chmod(0o600)
+        _record_checks_digest_size_telemetry(
+            log_dir=log_dir,
+            site=site,
+            attempt=attempt,
+            redacted_text=redacted_text,
+            digest=digest,
+        )
     except OSError:
         with contextlib.suppress(OSError):
             digest_file.unlink(missing_ok=True)

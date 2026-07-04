@@ -279,6 +279,33 @@ def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_pat
     assert result.records[0].codex.total == 11
 
 
+
+def test_keep_file_retains_checks_digest_sizes_for_implement_and_review() -> None:
+    keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
+
+    assert keep(filename="checks-digest-sizes.tsv", skill="implement")
+    assert keep(filename="checks-digest-sizes.tsv", skill="review")
+    assert not keep(filename="checks-digest-sizes.tsv", skill="design")
+
+
+def test_gc_run_logs_slim_preserves_checks_digest_sizes_for_implement_and_review(tmp_path: Path) -> None:
+    logs_root = tmp_path / "repo" / "larch-logs"
+    for skill in ("implement", "review"):
+        run = logs_root / skill / "run-abc"
+        run.mkdir(parents=True)
+        (run / "manifest.json").write_text('{"started_at":"2020-01-01T00:00:00Z"}\n', encoding="utf-8")
+        (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+        (run / "checks-digest-sizes.tsv").write_text("site\tattempt\nstep6\t1\n", encoding="utf-8")
+        (run / "forensic.txt").write_text("remove me\n", encoding="utf-8")
+
+        item = gc_run_logs.PlannedDir(skill, run, "2020-01-01T00:00:00Z")
+        _ = gc_run_logs._slim_dir(logs_root=logs_root, item=item)  # pyright: ignore[reportPrivateUsage]
+
+        assert (run / "checks-digest-sizes.tsv").is_file()
+        assert not (run / "forensic.txt").exists()
+        assert (run / "gc-slimmed").is_file()
+
+
 def test_keep_file_retains_difficulty_rating() -> None:
     keep = gc_run_logs._keep_file  # pyright: ignore[reportPrivateUsage]
 
