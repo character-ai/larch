@@ -5,6 +5,8 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
+import pytest
+
 from larch.core import config, process_identity
 from larch.core.proc import CommandResult
 
@@ -151,7 +153,7 @@ def test_terminate_validated_process_group_revalidates_descendants_before_sigkil
             key = tuple(argv)
             self.calls.append(key)
             if key == ("ps", "-p", "123", "-o", "lstart=", "-o", "command="):
-                return good if self.calls.count(key) == 1 else good
+                return good
             if key == ("pgrep", "-P", "123"):
                 return first_descendants if self.calls.count(key) == 1 else second_descendants
             return super().run(argv, **kwargs)
@@ -276,7 +278,7 @@ def test_terminate_validated_process_group_cleans_live_members_when_leader_missi
     )
 
     def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
-        pid = int(_kwargs["pid"])
+        pid = int(_kwargs["pid"])  # type: ignore[reportArgumentType]
         if pid == 123:
             return None
         if pid in {10, 11}:
@@ -379,7 +381,7 @@ def test_write_loop_identity_main_retries_until_process_group_stable(tmp_path: P
 
 def test_teardown_loop_identity_main_clears_sidecar_after_validated_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     sidecar = tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
-    sidecar.write_text(
+    _ = sidecar.write_text(
         json.dumps(
             {
                 "pid": 123,

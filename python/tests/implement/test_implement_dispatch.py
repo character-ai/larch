@@ -3955,9 +3955,9 @@ def test_run_leg_with_timeout_fails_closed_when_active_leg_publish_missing(monke
         return FakeProcess()
 
     monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
-    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, *, timeout_s=2: ("", ""))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, **_kwargs: ("", ""))
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 
@@ -3988,9 +3988,9 @@ def test_run_leg_with_timeout_returns_child_result_when_publication_fails_after_
         return FakeProcess()
 
     monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
-    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *_args, **_kwargs: None)
     monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
-    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, *, timeout_s=2: ("child stdout\n", "child stderr\n"))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, **_kwargs: ("child stdout\n", "child stderr\n"))
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 

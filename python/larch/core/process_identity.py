@@ -212,6 +212,27 @@ def _log_signal(
     )
 
 
+def _validated_missing_leader_members(
+    *,
+    recorded: RecordedProcessIdentity,
+    runner: proc.Runner,
+) -> tuple[int, ...] | None:
+    descendants = collect_process_group_members(pgid=recorded.pgid, runner=runner)
+    if not descendants:
+        return None
+    validated_members: list[int] = []
+    for child in descendants:
+        child_identity = read_process_identity(
+            pid=child,
+            runner=runner,
+            expected_signature=recorded.expected_signature,
+        )
+        if child_identity is None or child_identity.pgid != recorded.pgid:
+            return None
+        validated_members.append(child)
+    return tuple(validated_members)
+
+
 def terminate_validated_process_group(
     *,
     recorded: RecordedProcessIdentity,
@@ -228,20 +249,9 @@ def terminate_validated_process_group(
     if validation.ok:
         descendants = collect_descendants(pid=recorded.pid, runner=active_runner)
     else:
-        descendants = collect_process_group_members(pgid=recorded.pgid, runner=active_runner)
+        descendants = _validated_missing_leader_members(recorded=recorded, runner=active_runner)
         if not descendants:
             return validation
-        validated_members: list[int] = []
-        for child in descendants:
-            child_identity = read_process_identity(
-                pid=child,
-                runner=active_runner,
-                expected_signature=recorded.expected_signature,
-            )
-            if child_identity is None or child_identity.pgid != recorded.pgid:
-                return validation
-            validated_members.append(child)
-        descendants = tuple(validated_members)
     snapshot = KillTargetSnapshot(
         pid=recorded.pid,
         pgid=recorded.pgid,

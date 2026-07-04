@@ -114,7 +114,7 @@ def _publish_active_leg_record(pid: int, *, argv: Sequence[str], env: dict[str, 
     if path is None:
         return None
     owner_token = _active_leg_owner_token(env=env)
-    identity = process_identity._read_stable_process_identity(  # pylint: disable=protected-access
+    identity = process_identity._read_stable_process_identity(  # noqa: SLF001  # pylint: disable=protected-access
         pid=pid,
         expected_signature=_expected_signature(argv),
         require_pgid_match=True,
@@ -316,12 +316,11 @@ def _kill_active_leg_json(*, implement_tmpdir: str, owner_token: str) -> None:
         with contextlib.suppress(OSError):
             json_path.unlink(missing_ok=True)
         return
-    if not isinstance(payload, dict):
-        _log_active_leg_refusal(implement_tmpdir=implement_tmpdir, reason="malformed-active-leg-record")
-        with contextlib.suppress(OSError):
-            json_path.unlink(missing_ok=True)
-        return
-    if str(payload.get("owner_token", "")) != owner_token:
+    if not isinstance(payload, dict) or str(payload.get("owner_token", "")) != owner_token:
+        if not isinstance(payload, dict):
+            _log_active_leg_refusal(implement_tmpdir=implement_tmpdir, reason="malformed-active-leg-record")
+            with contextlib.suppress(OSError):
+                json_path.unlink(missing_ok=True)
         return
     recorded = _recorded_identity_from_payload(payload)
     if recorded is None:
