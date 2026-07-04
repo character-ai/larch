@@ -403,13 +403,15 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
         ),
         encoding="utf-8",
     )
-    marker = tmp_path / ".step3-wrapper-detached"
+    identity_mtime_ns = 1_000_000_000
+    os.utime(sidecar, ns=(identity_mtime_ns, identity_mtime_ns))
+    marker = tmp_path / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
     marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
-    detached_mtime_ns = 1_000_000_000
+    detached_mtime_ns = identity_mtime_ns + 2_000_000
     os.utime(marker, ns=(detached_mtime_ns, detached_mtime_ns))
     result_env = tmp_path / ".step3-review-result.env"
     result_env.write_text("STEP3_REVIEW_LOOP_STATUS=complete\nLOOP_STATUS=complete\n", encoding="utf-8")
-    stale_mtime_ns = detached_mtime_ns - 1000
+    stale_mtime_ns = identity_mtime_ns - 1000
     os.utime(result_env, ns=(stale_mtime_ns, stale_mtime_ns))
     monkeypatch.setattr(
         process_identity,
@@ -438,8 +440,8 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
     assert stale_rc == 1
 
     monotonic_value["value"] = 0.0
-    fresh_mtime_ns = detached_mtime_ns + 1000
-    os.utime(result_env, ns=(fresh_mtime_ns, fresh_mtime_ns))
+    between_identity_and_detach_ns = identity_mtime_ns + 1_000_000
+    os.utime(result_env, ns=(between_identity_and_detach_ns, between_identity_and_detach_ns))
 
     fresh_rc = process_identity.await_loop_identity_main(
         [
@@ -452,6 +454,49 @@ def test_await_loop_identity_main_requires_fresh_result_env(tmp_path: Path, monk
         ]
     )
     assert fresh_rc == 0
+
+
+def test_await_loop_identity_main_missing_pid_grace_without_result(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sidecar = tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
+    sidecar.write_text(
+        json.dumps(
+            {
+                "pid": 123,
+                "pgid": 123,
+                "start_time": "Fri Jul 3 17:01:02 2026",
+                "command_signature": "/usr/bin/python3 /repo/python/cli.py plan-review run",
+                "expected_signature": "plan-review run",
+            }
+        ),
+        encoding="utf-8",
+    )
+    marker = tmp_path / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
+    marker.write_text("PID=123\nSIGNAL=TERM\nSTDOUT_FILE=/tmp/ignored\nDETACHED_AT_EPOCH=1\n", encoding="utf-8")
+    monkeypatch.setattr(
+        process_identity,
+        "validate_process_identity",
+        lambda **_kwargs: process_identity.ValidationResult(ok=False, reason="missing-pid"),
+    )
+    monotonic_value = {"value": 0.0}
+
+    def fake_monotonic() -> float:
+        monotonic_value["value"] += 1.0
+        return monotonic_value["value"]
+
+    monkeypatch.setattr(process_identity.time, "monotonic", fake_monotonic)
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+
+    rc = process_identity.await_loop_identity_main(
+        [
+            "--design-tmpdir",
+            str(tmp_path),
+            "--pid",
+            "123",
+            "--timeout-s",
+            "21600",
+        ]
+    )
+    assert rc == 1
 
 
 def test_teardown_loop_identity_main_clears_sidecar_after_validated_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

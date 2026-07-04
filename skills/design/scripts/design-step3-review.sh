@@ -422,9 +422,21 @@ _step3_review_marker_value() {
   return 1
 }
 
+_step3_review_file_mtime_ns() {
+  local _path="$1"
+  [ -f "$_path" ] && [ ! -L "$_path" ] || return 1
+  python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_mtime_ns)' "$_path" 2>/dev/null
+}
+
 _step3_review_result_env_present() {
+  local _identity="$DESIGN_TMPDIR/.step3-loop-identity.json" _since_ns="" _mtime_ns=""
   [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ] && [ ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ] || return 1
-  command grep -Eq '^(STEP3_REVIEW_LOOP_STATUS=.+|LOOP_STATUS=zero-findings-degraded-panel)$' "$DESIGN_TMPDIR/.step3-review-result.env"
+  command grep -Eq '^(STEP3_REVIEW_LOOP_STATUS=.+|LOOP_STATUS=zero-findings-degraded-panel)$' "$DESIGN_TMPDIR/.step3-review-result.env" || return 1
+  _since_ns="$(_step3_review_file_mtime_ns "$_identity" || true)"
+  [ -n "$_since_ns" ] || return 1
+  _mtime_ns="$(_step3_review_file_mtime_ns "$DESIGN_TMPDIR/.step3-review-result.env" || true)"
+  [ -n "$_mtime_ns" ] || return 1
+  [ "$_mtime_ns" -ge "$_since_ns" ] || return 1
 }
 
 _step3_review_detached_stdout_file() {
@@ -457,13 +469,14 @@ _step3_review_reattach_detached_loop() {
   _pid="$(_step3_review_marker_value PID || true)"
   _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
   case "$_pid" in
-    ''|*[!0-9]*) ;;
-    *)
-      python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
-        --design-tmpdir "$DESIGN_TMPDIR" \
-        --pid "$_pid" >/dev/null 2>&1 || _await_rc=$?
+    ''|*[!0-9]*)
+      _step3_review_cleanup_detached_marker "$_stdout_file"
+      return 1
       ;;
   esac
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --pid "$_pid" >/dev/null 2>&1 || _await_rc=$?
   if [ "$_await_rc" -ne 0 ]; then
     _step3_review_cleanup_detached_marker "$_stdout_file"
     return 1
@@ -487,6 +500,7 @@ _step3_review_reattach_detached_loop() {
 _step3_review_cleanup() {
   local _rc=$?
   trap - EXIT TERM HUP INT
+  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
   _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
   if [[ -n "${_loop_pid:-}" ]]; then
     if [[ -n "${_step3_review_external_signal:-}" ]]; then

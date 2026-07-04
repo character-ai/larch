@@ -19,6 +19,7 @@ PS_LSTART_FIELD_COUNT = 5
 COMMAND_LOG_LIMIT = 500
 PROCESS_IDENTITY_CAPTURE_ATTEMPTS = 10
 PROCESS_IDENTITY_CAPTURE_SLEEP_S = 0.05
+DESIGN_STEP3_MISSING_PID_GRACE_S = 5.0
 
 
 @dataclass(frozen=True)
@@ -419,26 +420,31 @@ def await_loop_identity_main(argv: list[str] | None = None) -> int:
     recorded = read_identity_record(path=sidecar)
     if recorded is None or recorded.pid != int(args.pid):
         return 1
-    detached_marker = tmpdir / ".step3-wrapper-detached"
-    detached_mtime_ns = 0
-    if detached_marker.is_file() and not detached_marker.is_symlink():
-        try:
-            detached_mtime_ns = detached_marker.stat().st_mtime_ns
-        except OSError:
-            detached_mtime_ns = 0
-    if detached_mtime_ns <= 0:
+    detached_marker = tmpdir / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
+    if not detached_marker.is_file() or detached_marker.is_symlink():
         return 1
+    identity_mtime_ns = 0
+    try:
+        identity_mtime_ns = sidecar.stat().st_mtime_ns
+    except OSError:
+        identity_mtime_ns = 0
+    if identity_mtime_ns <= 0:
+        return 1
+    missing_pid_since: float | None = None
     deadline = time.monotonic() + timeout_s
     while time.monotonic() < deadline:
         validation = validate_process_identity(recorded=recorded)
         if validation.ok:
-            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=detached_mtime_ns):
-                return 0
+            missing_pid_since = None
             time.sleep(0.2)
             continue
         if validation.reason == "missing-pid":
-            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=detached_mtime_ns):
+            if _result_env_has_step3_status(tmpdir=tmpdir, since_mtime_ns=identity_mtime_ns):
                 return 0
+            if missing_pid_since is None:
+                missing_pid_since = time.monotonic()
+            elif time.monotonic() - missing_pid_since >= DESIGN_STEP3_MISSING_PID_GRACE_S:
+                return 1
             time.sleep(0.2)
             continue
         break

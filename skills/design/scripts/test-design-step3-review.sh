@@ -565,6 +565,7 @@ grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' <<<"$detach_out" || fail 'reattach
 [[ -f "$D_DETACH/.completed/step-3" ]] || fail 'reattach path must preserve detached loop completion sentinel'
 [[ ! -f "$D_DETACH/.step3-wrapper-detached" ]] || fail 'reattach path must clear detached marker after normalization'
 [[ -f "$D_DETACH/unexpected-kill-helper" ]] || fail 'reattach path must run tmpdir kill helper before normalization'
+[ ! -f "$D_DETACH/.bg-wait-active" ] || fail 'reattach path must clear bg-wait marker after normalization'
 trap - EXIT
 rm -rf "$D_DETACH"
 pass 'Step 3 wrapper detaches live loop on external signal and reattaches without re-dispatch'
