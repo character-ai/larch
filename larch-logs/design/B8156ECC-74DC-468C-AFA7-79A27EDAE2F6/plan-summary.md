@@ -1,0 +1,1 @@
+Cap HARD review rounds at 2 by making the policy source authoritative, updating persisted-resolution handling, refreshing tests, and fixing stale skill and public docs that still advertise 2/2/3 or a 3-round HARD cap.
