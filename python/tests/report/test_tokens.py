@@ -1328,7 +1328,37 @@ def test_panel_prompt_size_helper_writes_counts_without_prompt_text(tmp_path: Pa
     assert rows[0]["slot_kind"] == "specialist"
     assert rows[0]["prompt_bytes"] == str(len(b"secret rendered prompt text"))
     assert rows[0]["prompt_tokens"] == str((len(b"secret rendered prompt text") + 3) // 4)
+    assert rows[0]["scaffold_bytes"] == rows[0]["prompt_bytes"]
+    assert rows[0]["payload_bytes"] == "0"
 
+
+
+
+def test_panel_prompt_size_records_explicit_and_env_payload_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "aggregator")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "4")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abcdefghij", payload_bytes=6)
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abcdefghij")
+
+    rows = _tsv_rows(out)
+    assert rows[0]["payload_bytes"] == "6"
+    assert rows[0]["scaffold_bytes"] == "4"
+    assert rows[1]["payload_bytes"] == "4"
+    assert rows[1]["scaffold_bytes"] == "6"
+
+
+def test_panel_prompt_size_malformed_payload_falls_back_to_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "not-an-int")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abc", payload_bytes="-1")
+
+    row = _tsv_rows(out)[0]
+    assert row["payload_bytes"] == "0"
+    assert row["scaffold_bytes"] == "3"
 
 def test_panel_prompt_size_skips_without_panel_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
@@ -1425,6 +1455,23 @@ def test_build_panel_dispatch_env_sets_panel_keys_without_mutating_parent(tmp_pa
     assert env["LARCH_PANEL_ROUND_NUM"] == "3"
     assert env["LARCH_PANEL_SLOT"] == "correctness"
     assert env["LARCH_PANEL_PRIMARY_TOOL"] == "cursor"
+    assert "LARCH_PANEL_PAYLOAD_BYTES" not in env
+
+
+def test_build_panel_dispatch_env_clears_inherited_payload_without_explicit_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "123")
+
+    env = tokens.build_panel_dispatch_env(artifact_dir=tmp_path, site="review Step 2")
+
+    assert "LARCH_PANEL_PAYLOAD_BYTES" not in env
+
+
+def test_build_panel_dispatch_env_sets_explicit_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "123")
+
+    env = tokens.build_panel_dispatch_env(artifact_dir=tmp_path, site="review Step 2", payload_bytes=7)
+
+    assert env["LARCH_PANEL_PAYLOAD_BYTES"] == "7"
 
 
 def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1452,6 +1499,8 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     assert "agents/reviewer-testing.md" in text
     assert "999" not in text
     data = _tsv_rows(out)
+    assert data[0]["scaffold_bytes"] == "100"
+    assert data[0]["payload_bytes"] == "0"
     assert data[0]["realized_bytes"] == "100"
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
 

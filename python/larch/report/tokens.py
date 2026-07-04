@@ -86,6 +86,10 @@ _PANEL_PROMPT_SIZE_FIELDS = (
     "output",
     "prompt_bytes",
     "prompt_tokens",
+    "scaffold_bytes",
+    "scaffold_tokens",
+    "payload_bytes",
+    "payload_tokens",
     "agent_file",
     "agent_bytes",
     "agent_tokens",
@@ -106,6 +110,10 @@ class PanelPromptSizeRow:
     output: str
     prompt_bytes: int
     prompt_tokens: int
+    scaffold_bytes: int = 0
+    scaffold_tokens: int = 0
+    payload_bytes: int = 0
+    payload_tokens: int = 0
     agent_file: str = ""
     agent_bytes: int = 0
     agent_tokens: int = 0
@@ -121,6 +129,10 @@ class PanelPromptSizeRow:
             self.output,
             str(self.prompt_bytes),
             str(self.prompt_tokens),
+            str(self.scaffold_bytes),
+            str(self.scaffold_tokens),
+            str(self.payload_bytes),
+            str(self.payload_tokens),
             self.agent_file,
             str(self.agent_bytes),
             str(self.agent_tokens),
@@ -384,8 +396,10 @@ def build_panel_dispatch_env(
     phase: str = "",
     primary_tool: str = "",
     source_agent_file: str = "",
+    payload_bytes: int | str | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ)
+    env.pop("LARCH_PANEL_PAYLOAD_BYTES", None)
     env["LARCH_PANEL_ARTIFACT_DIR"] = str(artifact_dir)
     env["LARCH_PANEL_SITE"] = site
     env["LARCH_PANEL_SLOT"] = slot
@@ -400,6 +414,9 @@ def build_panel_dispatch_env(
     effective_round_num = round_num if round_num is not None else _round_num_from_path(effective_round_dir or artifact_dir)
     if effective_round_num is not None:
         env["LARCH_PANEL_ROUND_NUM"] = str(effective_round_num)
+    parsed_payload = _parse_panel_payload_bytes(payload_bytes)
+    if parsed_payload is not None:
+        env["LARCH_PANEL_PAYLOAD_BYTES"] = str(parsed_payload)
     return env
 
 
@@ -434,6 +451,36 @@ def _locked_tsv_append(path: Path, write_fn: Any) -> None:
         path.chmod(0o600)
 
 
+def _parse_panel_payload_bytes(value: object) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value if value >= 0 else None
+    text = str(value).strip()
+    if not text or not _UINT_RE.fullmatch(text):
+        return None
+    return int(text)
+
+
+def _panel_payload_bytes(explicit: object = None) -> int:
+    parsed = _parse_panel_payload_bytes(explicit)
+    if parsed is not None:
+        return parsed
+    parsed = _parse_panel_payload_bytes(os.environ.get("LARCH_PANEL_PAYLOAD_BYTES"))
+    return parsed if parsed is not None else 0
+
+
+def read_panel_payload_bytes(path: Path) -> int:
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return 0
+    parsed = _parse_panel_payload_bytes(text)
+    return parsed if parsed is not None else 0
+
+
 def _write_panel_prompt_row(path: Path, row: PanelPromptSizeRow) -> None:
     def _write(handle: Any, needs_header: object) -> None:
         writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
@@ -457,6 +504,7 @@ def append_panel_prompt_size(
     round_num: int | str | None = None,
     slot: str = "",
     phase: str = "",
+    payload_bytes: int | str | None = None,
 ) -> None:
     try:
         inferred_kind = _panel_slot_kind_from_env(slot_kind=slot_kind)
@@ -468,6 +516,8 @@ def append_panel_prompt_size(
                 return
             prompt_text = Path(prompt_file).read_text(encoding="utf-8", errors="replace")
         prompt_bytes = len(prompt_text.encode("utf-8"))
+        effective_payload_bytes = _panel_payload_bytes(payload_bytes)
+        scaffold_bytes = max(0, prompt_bytes - effective_payload_bytes)
         env_agent = os.environ.get("LARCH_PANEL_SOURCE_AGENT_FILE", "")
         source_agent = str(agent_file or env_agent or "")
         agent_rel, agent_bytes, agent_tokens = _repo_relative_agent_path(source_agent)
@@ -486,6 +536,10 @@ def append_panel_prompt_size(
             output=output_name,
             prompt_bytes=prompt_bytes,
             prompt_tokens=_estimate_tokens_for_bytes(prompt_bytes),
+            scaffold_bytes=scaffold_bytes,
+            scaffold_tokens=_estimate_tokens_for_bytes(scaffold_bytes),
+            payload_bytes=effective_payload_bytes,
+            payload_tokens=_estimate_tokens_for_bytes(effective_payload_bytes),
             agent_file=agent_rel,
             agent_bytes=agent_bytes,
             agent_tokens=agent_tokens,
@@ -2348,6 +2402,10 @@ class _PanelCostAggregate:
     dispatch_count: int = 0
     prompt_bytes: int = 0
     prompt_tokens: int = 0
+    scaffold_bytes: int = 0
+    scaffold_tokens: int = 0
+    payload_bytes: int = 0
+    payload_tokens: int = 0
     agent_bytes: int = 0
     agent_tokens: int = 0
     runs: set[tuple[str, str]] = dataclass_field(default_factory=set)
@@ -2542,29 +2600,42 @@ def measure_panel_cost() -> Path:
                     key = (skill, agent_file, slot_kind)
                     agg = aggregates.setdefault(key, _PanelCostAggregate())
                     agg.dispatch_count += 1
-                    agg.prompt_bytes += _uint_cell(row, "prompt_bytes")
-                    agg.prompt_tokens += _uint_cell(row, "prompt_tokens")
+                    prompt_bytes = _uint_cell(row, "prompt_bytes")
+                    prompt_tokens = _uint_cell(row, "prompt_tokens")
+                    has_scaffold = "scaffold_bytes" in row and "payload_bytes" in row
+                    scaffold_bytes = _uint_cell(row, "scaffold_bytes") if has_scaffold else prompt_bytes
+                    scaffold_tokens = _uint_cell(row, "scaffold_tokens") if has_scaffold else prompt_tokens
+                    payload_bytes = _uint_cell(row, "payload_bytes") if has_scaffold else 0
+                    payload_tokens = _uint_cell(row, "payload_tokens") if has_scaffold else 0
+                    agg.prompt_bytes += prompt_bytes
+                    agg.prompt_tokens += prompt_tokens
+                    agg.scaffold_bytes += scaffold_bytes
+                    agg.scaffold_tokens += scaffold_tokens
+                    agg.payload_bytes += payload_bytes
+                    agg.payload_tokens += payload_tokens
                     agg.agent_bytes += _uint_cell(row, "agent_bytes")
                     agg.agent_tokens += _uint_cell(row, "agent_tokens")
                     agg.runs.add((skill, run_id))
         except OSError:
             continue
-    rows: list[tuple[int, str, str, str, _PanelCostAggregate]] = []
+    rows: list[tuple[int, int, str, str, str, _PanelCostAggregate]] = []
     for (skill, agent_file, slot_kind), agg in aggregates.items():
         realized = agg.prompt_bytes + agg.agent_bytes
-        rows.append((realized, skill, agent_file, slot_kind, agg))
-    rows.sort(key=lambda item: (-item[0], item[2], item[3], item[1]))
+        rows.append((agg.scaffold_bytes, realized, skill, agent_file, slot_kind, agg))
+    rows.sort(key=lambda item: (-item[0], -item[1], item[3], item[4], item[2]))
     lines = [
         "skill\tagent_file\tslot_kind\tdispatch_count\truns_observed\tloads_per_run\t"
-        "prompt_bytes\tprompt_tokens\tagent_bytes\tagent_tokens\trealized_bytes\trealized_tokens\n"
+        "prompt_bytes\tprompt_tokens\tscaffold_bytes\tscaffold_tokens\tpayload_bytes\tpayload_tokens\t"
+        "agent_bytes\tagent_tokens\trealized_bytes\trealized_tokens\n"
     ]
-    for realized, skill, agent_file, slot_kind, agg in rows:
+    for _scaffold_sort, realized, skill, agent_file, slot_kind, agg in rows:
         runs_observed = len(agg.runs)
         loads_per_run = agg.dispatch_count / runs_observed if runs_observed else 0.0
         realized_tokens = agg.prompt_tokens + agg.agent_tokens
         lines.append(
             f"{skill}\t{agent_file}\t{slot_kind}\t{agg.dispatch_count}\t{runs_observed}\t{loads_per_run:.6f}\t"
-            f"{agg.prompt_bytes}\t{agg.prompt_tokens}\t{agg.agent_bytes}\t{agg.agent_tokens}\t{realized}\t{realized_tokens}\n"
+            f"{agg.prompt_bytes}\t{agg.prompt_tokens}\t{agg.scaffold_bytes}\t{agg.scaffold_tokens}\t"
+            f"{agg.payload_bytes}\t{agg.payload_tokens}\t{agg.agent_bytes}\t{agg.agent_tokens}\t{realized}\t{realized_tokens}\n"
         )
     _atomic_text(path=out_path, text="".join(lines))
     return out_path

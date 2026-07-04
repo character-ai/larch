@@ -1550,6 +1550,38 @@ def test_parse_slot_row_accepts_prompt_files_only(tmp_path: Path) -> None:
     assert agent_waterfall._prompt_file_for_tool(slot=slot, tool="claude") is None  # pyright: ignore[reportPrivateUsage]
 
 
+
+
+def test_parse_slot_row_accepts_payload_bytes_and_payload_files(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    slot = agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+        json.dumps({
+            "slot": "s1",
+            "tool": "codex",
+            "output": str(output),
+            "prompt_files": {"codex": "codex.prompt", "cursor": "cursor.prompt"},
+            "payload_bytes": "5",
+            "payload_files": {"codex": "7", "cursor": 11},
+        })
+    )
+
+    assert slot.payload_bytes == 5
+    assert slot.payload_files == {"codex": 7, "cursor": 11}
+    assert agent_waterfall._payload_bytes_for_tool(slot=slot, tool="cursor") == 11  # pyright: ignore[reportPrivateUsage]
+    assert agent_waterfall._payload_bytes_for_tool(slot=slot, tool="claude") == 0  # pyright: ignore[reportPrivateUsage]
+
+
+def test_parse_slot_row_rejects_invalid_payload_fields(tmp_path: Path) -> None:
+    output = tmp_path / "out.txt"
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_file": "p", "payload_bytes": "bad"})
+        )
+    with pytest.raises(agent_waterfall.ValidationError):
+        agent_waterfall._parse_slot_row(  # pyright: ignore[reportPrivateUsage]
+            json.dumps({"slot": "s1", "tool": "codex", "output": str(output), "prompt_file": "p", "payload_files": {"codex": -1}})
+        )
+
 def test_parse_slot_row_rejects_invalid_prompt_files(tmp_path: Path) -> None:
     output = tmp_path / "out.txt"
     with pytest.raises(agent_waterfall.ValidationError):
@@ -1643,13 +1675,14 @@ def test_launch_slot_threads_panel_env(tmp_path: Path, monkeypatch: pytest.Monke
         site="review Step 2",
         panel_artifact_dir=str(artifact_dir),
     )
-    slot = agent_waterfall.Slot("correctness", "cursor", str(tmp_path / "out.txt"), "", str(tmp_path / "prompt.txt"))
+    slot = agent_waterfall.Slot("correctness", "cursor", str(tmp_path / "out.txt"), "", str(tmp_path / "prompt.txt"), payload_bytes=9)
 
     agent_waterfall._launch_slot(idx=0, phase="phase1", tool="cursor", output=str(tmp_path / "out.txt"), slots=[slot], opts=opts)  # pyright: ignore[reportPrivateUsage]
 
     assert captured_env["LARCH_PANEL_ARTIFACT_DIR"] == str(artifact_dir)
     assert captured_env["LARCH_PANEL_SLOT"] == "correctness"
     assert captured_env["LARCH_PANEL_ROUND_NUM"] == "7"
+    assert captured_env["LARCH_PANEL_PAYLOAD_BYTES"] == "9"
 
 
 def _tsv_rows(path: Path) -> list[dict[str, str]]:

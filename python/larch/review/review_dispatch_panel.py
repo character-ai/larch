@@ -35,7 +35,7 @@ from larch.review.review_pipeline_shared import (
     _run_python_cli,
     _write_text,
 )
-from larch.report.tokens import build_panel_dispatch_env
+from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.review.review_prune import (
     derive_prune_status,
     normalize_prune_eligible,
@@ -327,6 +327,7 @@ def _synthesize_dynamic_slots(*,
         prompt_body = str(row.get("prompt_body") or "")
         agent_file = dyn_dir / f"reviewer-dyn-{name}.md"
         rendered_prompt = dyn_dir / f"dyn-{name}-prompt.md"
+        payload_sidecar = dyn_dir / f"dyn-{name}-prompt.payload-bytes"
         _write_text(path=agent_file, text=_dynamic_agent_body(name=name, focus_area=focus_area, rationale=rationale, prompt_body=prompt_body))
         ledger_root = findings_ledger.ledger_root(review_tmpdir, session_env_path=session_env_path)
         render_args = [
@@ -338,6 +339,8 @@ def _synthesize_dynamic_slots(*,
             mode,
             "--findings-ledger-file",
             str(findings_ledger.ledger_path(ledger_root)),
+            "--payload-bytes-output",
+            str(payload_sidecar),
         ]
         if session_env_path:
             render_args.extend(["--session-env-path", session_env_path])
@@ -359,13 +362,15 @@ def _synthesize_dynamic_slots(*,
         result = _run_python_cli(render_args, runner=runner)  # type: ignore[arg-type]
         if result.returncode == 0 and result.stdout:
             _write_text(path=rendered_prompt, text=result.stdout)
+            payload_bytes = read_panel_payload_bytes(payload_sidecar) + len(rationale.encode("utf-8")) + len(prompt_body.encode("utf-8"))
         else:
             _write_text(path=rendered_prompt, text=agent_file.read_text(encoding="utf-8"))
+            payload_bytes = read_panel_payload_bytes(payload_sidecar) if result.returncode == 0 else 0
         if cursor_available and (tier != difficulty.TRIVIAL or not codex_available):
             cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
             _append_manifest_row(
                 manifest=manifest,
-                row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "weight": weight, "focus_area": focus_area}
+                row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "payload_bytes": payload_bytes, "weight": weight, "focus_area": focus_area}
             )
             count += 1
         if codex_available and (tier != difficulty.TRIVIAL or codex_available):
@@ -377,6 +382,7 @@ def _synthesize_dynamic_slots(*,
                     "tool": "codex",
                     "output": str(codex_out),
                     "prompt_file": str(rendered_prompt),
+                    "payload_bytes": payload_bytes,
                     "weight": weight,
                     "focus_area": focus_area,
                     "model_role": difficulty.codex_review_model_role(tier),

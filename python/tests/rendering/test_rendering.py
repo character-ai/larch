@@ -1243,3 +1243,71 @@ def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, c
     )
     text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "cursor")
     assert "**Your recent calibration:**" not in text
+
+
+def test_render_specialist_payload_sidecar_counts_description_and_cache_hit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    cache_dir = tmp_path / "render-cache"
+    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
+    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
+    sidecar = tmp_path / "payload.txt"
+    args = [
+        "--agent-file", str(agent),
+        "--mode", "description",
+        "--description-text", "payload description",
+        "--scope-files", str(tmp_path / "scope.txt"),
+        "--payload-bytes-output", str(sidecar),
+    ]
+    (tmp_path / "scope.txt").write_text("python/foo.py\n", encoding="utf-8")
+
+    assert rendering.render_specialist_main(args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
+    sidecar.write_text("stale\n", encoding="utf-8")
+    assert rendering.render_specialist_main(args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
+
+
+def test_render_plan_review_payload_sidecar_counts_cursor_plan_and_feature(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    sidecar = tmp_path / "payload.txt"
+
+    rc = rendering.render_plan_review_main([
+        "--archetype", "arch",
+        "--vendor", "cursor",
+        "--plan-file", str(plan),
+        "--design-tmpdir", str(tmp_path),
+        "--feature-file", str(feature),
+        "--payload-bytes-output", str(sidecar),
+    ])
+
+    assert rc == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
+
+
+def test_render_voter_payload_sidecar_counts_scope_anchor(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    anchor = tmp_path / "anchor.md"
+    anchor.write_text("ANCHOR PAYLOAD\n", encoding="utf-8")
+    sidecar = tmp_path / "payload.txt"
+
+    _ = _render_voter_text(
+        tmp_path,
+        capsys,
+        "--verification-context", "plan",
+        "--scope-anchor-file", str(anchor),
+        "--payload-bytes-output", str(sidecar),
+    )
+
+    assert sidecar.read_text(encoding="utf-8") == f"{len(anchor.read_bytes())}\n"

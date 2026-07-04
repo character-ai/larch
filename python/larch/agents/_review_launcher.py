@@ -24,7 +24,7 @@ from larch.git import git
 from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
-from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, _panel_logging_enabled
+from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, read_panel_payload_bytes, _panel_logging_enabled
 
 from larch.agents._types import (
     _CTRL_RE,
@@ -202,15 +202,44 @@ def _review_specialist_render_args(args: argparse.Namespace, *, sentinel: dict[s
     return render_args
 
 
-def _review_render_specialist_prompt(args: argparse.Namespace) -> tuple[int, str]:
+def _review_env_payload_bytes() -> int:
+    raw = os.environ.get("LARCH_PANEL_PAYLOAD_BYTES", "").strip()
+    return int(raw) if re.fullmatch(r"[0-9]+", raw) else 0
+
+
+def _review_render_specialist_prompt_with_payload(args: argparse.Namespace) -> tuple[int, str, int]:
+    output_value = getattr(args, "output", "")
+    output_parent = Path(output_value).parent if output_value else Path.cwd()
+    output_parent.mkdir(parents=True, exist_ok=True)
+    fd, sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(output_parent))
+    os.close(fd)
+    sidecar = Path(sidecar_name)
+    with contextlib.suppress(FileNotFoundError):
+        sidecar.unlink()
     result = proc.run(
-        [sys.executable, str(_PY_CLI), "render", "specialist", *_review_specialist_render_args(args)],
+        [
+            sys.executable,
+            str(_PY_CLI),
+            "render",
+            "specialist",
+            *_review_specialist_render_args(args),
+            "--payload-bytes-output",
+            str(sidecar),
+        ],
         check=False,
     )
+    payload_bytes = read_panel_payload_bytes(sidecar)
+    with contextlib.suppress(FileNotFoundError):
+        sidecar.unlink()
     if result.returncode != 0:
         _err(result.stderr or result.stdout or "agent launch-review: render specialist failed")
-        return result.returncode if result.returncode != 0 else 1, ""
-    return 0, result.stdout
+        return result.returncode if result.returncode != 0 else 1, "", 0
+    return 0, result.stdout, payload_bytes
+
+
+def _review_render_specialist_prompt(args: argparse.Namespace) -> tuple[int, str]:
+    rc, prompt, _payload_bytes = _review_render_specialist_prompt_with_payload(args)
+    return rc, prompt
 
 
 def _review_read_prompt_file(path: str) -> tuple[int, str]:
@@ -270,18 +299,20 @@ def _review_read_codex_prompt_sentinel(path: str) -> tuple[int, str] | None:
     return 0, prompt
 
 
-def _review_resolve_prompt(args: argparse.Namespace) -> tuple[int, str]:
+def _review_resolve_prompt(args: argparse.Namespace) -> tuple[int, str, int]:
     if args.prompt is not None:
-        return 0, args.prompt
+        return 0, args.prompt, 0
     if args.prompt_file:
+        payload_bytes = _review_env_payload_bytes()
         if args.tool == "codex":
             sentinel = _review_read_codex_prompt_sentinel(args.prompt_file)
             if sentinel is not None:
-                return sentinel
-        return _review_read_prompt_file(args.prompt_file)
+                return sentinel[0], sentinel[1], payload_bytes
+        rc, prompt = _review_read_prompt_file(args.prompt_file)
+        return rc, prompt, payload_bytes
     if args.agent_file:
-        return _review_render_specialist_prompt(args)
-    return 2, ""
+        return _review_render_specialist_prompt_with_payload(args)
+    return 2, "", 0
 
 
 def _review_write_codex_prompt_sidecar(*, output: Path, prompt: str, args: argparse.Namespace) -> Path:
@@ -1176,7 +1207,7 @@ def _review_launch_cursor(*, args: argparse.Namespace, original_prompt: str) -> 
     return result.exit_code
 
 
-def _review_log_panel_prompt_size(*, args: argparse.Namespace, output: Path, prompt: str) -> None:
+def _review_log_panel_prompt_size(*, args: argparse.Namespace, output: Path, prompt: str, payload_bytes: int = 0) -> None:
     if not _panel_logging_enabled():
         return
     artifact = panel_prompt_size_artifact_for_output(output=output, site=getattr(args, "site", ""))
@@ -1187,6 +1218,7 @@ def _review_log_panel_prompt_size(*, args: argparse.Namespace, output: Path, pro
         prompt=prompt,
         agent_file=getattr(args, "agent_file", "") or "",
         site=getattr(args, "site", ""),
+        payload_bytes=payload_bytes,
     )
 
 
@@ -1207,10 +1239,10 @@ def launch_review_main(argv: list[str] | None = None) -> int:
     output = Path(args.output)
     if _review_check_budget_or_write_cap_hit(output=output, cap=_review_effective_token_cap(args), timing_kind=args.timing_task_kind):
         return 0
-    prompt_rc, prompt = _review_resolve_prompt(args)
+    prompt_rc, prompt, payload_bytes = _review_resolve_prompt(args)
     if prompt_rc != 0:
         return prompt_rc
-    _review_log_panel_prompt_size(args=args, output=output, prompt=prompt)
+    _review_log_panel_prompt_size(args=args, output=output, prompt=prompt, payload_bytes=payload_bytes)
     if args.tool == "codex":
         return _review_launch_codex(args=args, prompt=prompt)
     return _review_launch_cursor(args=args, original_prompt=prompt)
