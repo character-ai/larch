@@ -3998,7 +3998,7 @@ def test_run_leg_with_timeout_returns_child_result_when_publication_fails_after_
     assert result.returncode == 0
     assert result.stdout == "child stdout\n"
     assert result.stderr == "child stderr\n"
-    assert killed == []
+    assert not killed
 
 
 def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

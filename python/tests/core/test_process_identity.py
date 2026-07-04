@@ -260,7 +260,7 @@ def test_terminate_validated_process_group_cleans_live_members_when_leader_missi
 
     assert not result.ok
     assert result.reason == "missing-pid"
-    assert kills == []
+    assert not kills
 
 
 def test_terminate_validated_process_group_cleans_live_members_when_leader_missing_and_members_validate(
