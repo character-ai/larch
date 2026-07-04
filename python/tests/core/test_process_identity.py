@@ -5,7 +5,7 @@ import json
 from collections.abc import Sequence
 from pathlib import Path
 
-from larch.core import process_identity
+from larch.core import config, process_identity
 from larch.core.proc import CommandResult
 
 
@@ -111,6 +111,81 @@ def test_logs_before_kill(monkeypatch, tmp_path: Path) -> None:
     assert calls
 
 
+def test_append_kill_log_redacts_secret_fields(tmp_path: Path) -> None:
+    secret = "sk-ant-abcdefghijklmnopqrstuvwx"
+    log_path = tmp_path / "kill.jsonl"
+
+    process_identity.append_kill_log(
+        path=log_path,
+        event=process_identity.KillLogEvent(
+            event="signal",
+            signal="SIGTERM",
+            pid=123,
+            pgid=123,
+            command=f"python cli.py --token {secret}",
+            caller=f"caller {secret}",
+            reason=f"reason {secret}",
+            descendants=(),
+            tmpdir_needle=secret,
+            physical_needle=secret,
+        ),
+    )
+
+    text = log_path.read_text(encoding="utf-8")
+    assert secret not in text
+    assert config.REDACTED_TOKEN in text
+
+
+def test_terminate_validated_process_group_revalidates_descendants_before_sigkill(monkeypatch, tmp_path: Path) -> None:
+    monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(process_identity.os, "killpg", lambda _pgid, sig: kills.append((-1, sig)))
+    monkeypatch.setattr(process_identity.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+    good = _ps(123)
+    first_descendants = CommandResult(("pgrep", "-P", "123"), 0, "10\n11\n", "", 0.01)
+    second_descendants = CommandResult(("pgrep", "-P", "123"), 0, "11\n", "", 0.01)
+
+    class ChangingRunner(FakeRunner):
+        def run(self, argv: Sequence[str], **kwargs: object) -> CommandResult:
+            key = tuple(argv)
+            self.calls.append(key)
+            if key == ("ps", "-p", "123", "-o", "lstart=", "-o", "command="):
+                return good if self.calls.count(key) == 1 else good
+            if key == ("pgrep", "-P", "123"):
+                return first_descendants if self.calls.count(key) == 1 else second_descendants
+            return super().run(argv, **kwargs)
+
+    runner = ChangingRunner({
+        ("pgrep", "-P", "10"): CommandResult(("pgrep", "-P", "10"), 1, "", "", 0.01),
+        ("pgrep", "-P", "11"): CommandResult(("pgrep", "-P", "11"), 1, "", "", 0.01),
+    })
+    recorded = process_identity.RecordedProcessIdentity(
+        123,
+        123,
+        "Fri Jul 3 17:01:02 2026",
+        "/usr/bin/python3 /repo/python/cli.py plan-review run",
+        "plan-review run",
+    )
+
+    result = process_identity.terminate_validated_process_group(
+        recorded=recorded,
+        log_path=tmp_path / "kill.jsonl",
+        caller="test",
+        reason="unit",
+        runner=runner,
+    )
+
+    assert result.ok
+    assert kills == [
+        (-1, process_identity.signal.SIGTERM),
+        (10, process_identity.signal.SIGTERM),
+        (11, process_identity.signal.SIGTERM),
+        (-1, process_identity.signal.SIGKILL),
+        (11, process_identity.signal.SIGKILL),
+    ]
+
+
 def test_does_not_sigkill_after_failed_validation(monkeypatch, tmp_path: Path) -> None:
     monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
     signals: list[int] = []
@@ -145,3 +220,69 @@ def test_does_not_sigkill_after_failed_validation(monkeypatch, tmp_path: Path) -
 
     assert result.reason == "command-mismatch"
     assert signals == [process_identity.signal.SIGTERM]
+
+
+def test_write_loop_identity_main_retries_until_process_group_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="/usr/bin/python3 /repo/python/cli.py plan-review run",
+        expected_signature="plan-review run",
+    )
+    calls: list[int] = []
+    responses = [None, identity]
+
+    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
+        calls.append(1)
+        return responses.pop(0)
+
+    monkeypatch.setattr(process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+
+    rc = process_identity.write_loop_identity_main([
+        "--design-tmpdir",
+        str(tmp_path),
+        "--pid",
+        "123",
+    ])
+
+    assert rc == 0
+    assert len(calls) == 2
+    payload = json.loads((tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert payload["pid"] == 123
+    assert payload["pgid"] == 123
+
+
+def test_teardown_loop_identity_main_clears_sidecar_after_validated_cleanup(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    sidecar = tmp_path / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
+    sidecar.write_text(
+        json.dumps(
+            {
+                "pid": 123,
+                "pgid": 123,
+                "start_time": "Fri Jul 3 17:01:02 2026",
+                "command_signature": "/usr/bin/python3 /repo/python/cli.py plan-review run",
+                "expected_signature": "plan-review run",
+            }
+        ),
+        encoding="utf-8",
+    )
+    recorded_calls: list[int] = []
+
+    def fake_terminate(*, recorded: process_identity.RecordedProcessIdentity, **_kwargs: object) -> process_identity.ValidationResult:
+        recorded_calls.append(recorded.pid)
+        return process_identity.ValidationResult(ok=True, reason="ok", current=recorded)
+
+    monkeypatch.setattr(process_identity, "terminate_validated_process_group", fake_terminate)
+
+    rc = process_identity.teardown_loop_identity_main([
+        "--design-tmpdir",
+        str(tmp_path),
+        "--pid",
+        "123",
+    ])
+
+    assert rc == 0
+    assert recorded_calls == [123]
+    assert not sidecar.exists()

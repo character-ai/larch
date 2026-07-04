@@ -13,10 +13,12 @@ from pathlib import Path
 from typing import Any
 
 from larch import io as larch_io
-from larch.core import config, proc
+from larch.core import config, proc, redact
 
 PS_LSTART_FIELD_COUNT = 5
 COMMAND_LOG_LIMIT = 500
+PROCESS_IDENTITY_CAPTURE_ATTEMPTS = 10
+PROCESS_IDENTITY_CAPTURE_SLEEP_S = 0.05
 
 
 @dataclass(frozen=True)
@@ -105,6 +107,22 @@ def read_process_identity(
     return _parse_ps_identity(pid=pid, pgid=pgid, stdout=result.stdout, expected_signature=expected_signature)
 
 
+def _read_stable_process_identity(
+    *,
+    pid: int,
+    runner: proc.Runner | None = None,
+    expected_signature: str = "",
+    require_pgid_match: bool = False,
+) -> RecordedProcessIdentity | None:
+    for attempt in range(PROCESS_IDENTITY_CAPTURE_ATTEMPTS):
+        identity = read_process_identity(pid=pid, runner=runner, expected_signature=expected_signature)
+        if identity is not None and (not require_pgid_match or identity.pgid == pid):
+            return identity
+        if attempt < PROCESS_IDENTITY_CAPTURE_ATTEMPTS - 1:
+            time.sleep(PROCESS_IDENTITY_CAPTURE_SLEEP_S)
+    return None
+
+
 def validate_process_identity(
     *,
     recorded: RecordedProcessIdentity,
@@ -147,6 +165,9 @@ def append_kill_log(*, path: Path | None, event: KillLogEvent) -> None:
     if path is None:
         return
     payload = asdict(event)
+    for key, value in list(payload.items()):
+        if isinstance(value, str):
+            payload[key] = redact.redact_outbound(value)
     payload["command"] = bounded_command(str(payload.get("command", "")))
     payload["ts"] = time.time()
     with contextlib.suppress(OSError, TypeError):
@@ -221,7 +242,7 @@ def terminate_validated_process_group(
     validation = validate_process_identity(recorded=recorded, runner=active_runner)
     if not validation.ok:
         return validation
-    kill_descendants = tuple(dict.fromkeys((*descendants, *collect_descendants(pid=recorded.pid, runner=active_runner))))
+    kill_descendants = collect_descendants(pid=recorded.pid, runner=active_runner)
     snapshot = KillTargetSnapshot(
         pid=recorded.pid,
         pgid=recorded.pgid,
@@ -307,7 +328,11 @@ def write_loop_identity_main(argv: list[str] | None = None) -> int:
     tmpdir = _validated_design_tmpdir(args.design_tmpdir)
     if tmpdir is None or not str(args.pid).isdigit():
         return 0
-    identity = read_process_identity(pid=int(args.pid), expected_signature=args.expected_signature)
+    identity = _read_stable_process_identity(
+        pid=int(args.pid),
+        expected_signature=args.expected_signature,
+        require_pgid_match=True,
+    )
     if identity is None:
         return 0
     write_identity_record(path=tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE, recorded=identity)

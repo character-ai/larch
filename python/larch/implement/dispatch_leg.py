@@ -114,7 +114,11 @@ def _publish_active_leg_record(pid: int, *, argv: Sequence[str], env: dict[str, 
     if path is None:
         return None
     owner_token = _active_leg_owner_token(env=env)
-    identity = process_identity.read_process_identity(pid=pid, expected_signature=_expected_signature(argv))
+    identity = process_identity._read_stable_process_identity(  # pylint: disable=protected-access
+        pid=pid,
+        expected_signature=_expected_signature(argv),
+        require_pgid_match=True,
+    )
     if identity is None:
         return None
     record: dict[str, object] = {
@@ -335,6 +339,7 @@ def _kill_active_leg_json(*, implement_tmpdir: str, owner_token: str) -> None:
             reason=validation.reason,
             payload=payload,
         )
+        return
     with contextlib.suppress(OSError):
         json_path.unlink(missing_ok=True)
 

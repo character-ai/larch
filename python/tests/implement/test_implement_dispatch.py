@@ -3868,6 +3868,40 @@ def test_active_leg_json_record_write_uses_owner_token(tmp_path: Path, monkeypat
     assert payload["pgid"] == 123
 
 
+def test_active_leg_json_record_write_retries_until_identity_available(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv(config.ENV_ACTIVE_LEG_OWNER_TOKEN, "owner-1")
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="python cli.py checks run-relevant",
+        expected_signature="python cli.py checks run-relevant",
+    )
+    responses = [None, identity]
+    calls = 0
+
+    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
+        nonlocal calls
+        calls += 1
+        return responses.pop(0)
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(dispatch_leg.process_identity.time, "sleep", lambda _seconds: None)
+
+    record = implement_dispatch._publish_active_leg_record(123, argv=["python", "cli.py", "checks", "run-relevant"])
+
+    payload = json.loads((tmp_path / config.ACTIVE_LEG_IDENTITY_FILE).read_text(encoding="utf-8"))
+    assert record is not None
+    assert calls == 2
+    assert payload["owner_token"] == "owner-1"
+    assert payload["pid"] == 123
+    assert payload["pgid"] == 123
+
+
 def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     record = {
         "pid": 123,
@@ -3973,7 +4007,7 @@ def test_kill_active_leg_recycled_pid_refused(tmp_path: Path, monkeypatch: pytes
 
     assert implement_dispatch.kill_active_leg_main(["--implement-tmpdir", str(tmp_path), "--owner-token", "owner-1"]) == 0
 
-    assert not path.exists()
+    assert path.exists()
     assert "start-time-mismatch" in (tmp_path / config.ACTIVE_LEG_KILL_LOG_FILE).read_text(encoding="utf-8")
 
 
