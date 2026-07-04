@@ -141,6 +141,12 @@ def _publish_active_leg_record(pid: int, *, argv: Sequence[str], env: dict[str, 
                 "created_at": record["created_at"],
             },
         )
+    try:
+        current = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if not isinstance(current, dict) or not _record_matches_current(current=current, expected=record):
+        return None
     return record
 
 
@@ -423,6 +429,15 @@ def _run_leg_with_timeout(
     )
     _LEG_STATE.active = process
     _LEG_STATE.active_record = _publish_active_leg_record(process.pid, argv=full_cmd, env=env)
+    if _LEG_STATE.active_record is None:
+        _kill_leg_process_group(process)
+        stdout, stderr = _drain_leg_pipes(process)
+        return subprocess.CompletedProcess(
+            full_cmd,
+            process.returncode or 1,
+            stdout or "",
+            stderr or f"{label} active-leg publication failed",
+        )
     try:
         try:
             stdout, stderr = process.communicate(timeout=timeout_s)

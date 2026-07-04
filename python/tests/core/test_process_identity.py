@@ -222,6 +222,89 @@ def test_does_not_sigkill_after_failed_validation(monkeypatch, tmp_path: Path) -
     assert signals == [process_identity.signal.SIGTERM]
 
 
+def test_terminate_validated_process_group_cleans_live_members_when_leader_missing(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(process_identity.os, "killpg", lambda _pgid, sig: kills.append((-1, sig)))
+    monkeypatch.setattr(process_identity.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr(process_identity, "read_process_identity", lambda **_kwargs: None)
+    member_calls = [(10, 11), (11,)]
+
+    def fake_collect_process_group_members(*, pgid: int, **_kwargs: object) -> tuple[int, ...]:
+        _ = pgid
+        return member_calls.pop(0)
+
+    monkeypatch.setattr(process_identity, "collect_process_group_members", fake_collect_process_group_members)
+
+    recorded = process_identity.RecordedProcessIdentity(
+        123,
+        123,
+        "Fri Jul 3 17:01:02 2026",
+        "/usr/bin/python3 /repo/python/cli.py plan-review run",
+        "plan-review run",
+    )
+
+    result = process_identity.terminate_validated_process_group(
+        recorded=recorded,
+        log_path=tmp_path / "kill.jsonl",
+        caller="test",
+        reason="unit",
+    )
+
+    assert result.ok
+    assert kills == [
+        (-1, process_identity.signal.SIGTERM),
+        (10, process_identity.signal.SIGTERM),
+        (11, process_identity.signal.SIGTERM),
+        (-1, process_identity.signal.SIGKILL),
+        (11, process_identity.signal.SIGKILL),
+    ]
+
+
+def test_terminate_validated_process_group_escalates_live_members_when_leader_exits_before_sigkill(
+    monkeypatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(process_identity.os, "getpgid", lambda pid: pid)
+    kills: list[tuple[int, int]] = []
+    monkeypatch.setattr(process_identity.os, "killpg", lambda _pgid, sig: kills.append((-1, sig)))
+    monkeypatch.setattr(process_identity.os, "kill", lambda pid, sig: kills.append((pid, sig)))
+    monkeypatch.setattr(process_identity.time, "sleep", lambda _seconds: None)
+    identity = process_identity.RecordedProcessIdentity(
+        123,
+        123,
+        "Fri Jul 3 17:01:02 2026",
+        "/usr/bin/python3 /repo/python/cli.py plan-review run",
+        "plan-review run",
+    )
+    responses = [identity, None]
+
+    def fake_read_process_identity(**_kwargs: object) -> process_identity.RecordedProcessIdentity | None:
+        return responses.pop(0)
+
+    monkeypatch.setattr(process_identity, "read_process_identity", fake_read_process_identity)
+    monkeypatch.setattr(process_identity, "collect_descendants", lambda **_kwargs: (10, 11))
+    monkeypatch.setattr(process_identity, "collect_process_group_members", lambda **_kwargs: (11,))
+
+    result = process_identity.terminate_validated_process_group(
+        recorded=identity,
+        log_path=tmp_path / "kill.jsonl",
+        caller="test",
+        reason="unit",
+    )
+
+    assert result.ok
+    assert kills == [
+        (-1, process_identity.signal.SIGTERM),
+        (10, process_identity.signal.SIGTERM),
+        (11, process_identity.signal.SIGTERM),
+        (-1, process_identity.signal.SIGKILL),
+        (11, process_identity.signal.SIGKILL),
+    ]
+
+
 def test_write_loop_identity_main_retries_until_process_group_stable(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     identity = process_identity.RecordedProcessIdentity(
         pid=123,

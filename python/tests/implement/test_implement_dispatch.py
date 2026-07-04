@@ -3801,7 +3801,14 @@ def test_run_leg_with_timeout_group_kills(monkeypatch: pytest.MonkeyPatch, tmp_p
     monkeypatch.setattr(implement_dispatch, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
     monkeypatch.setattr(dispatch_leg, "_descendants", lambda pid: [9001, 9002] if pid == 4242 else [])
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
-    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: None)
+    identity = process_identity.RecordedProcessIdentity(
+        pid=4242,
+        pgid=4242,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="/opt/homebrew/opt/python@3.11/bin/python3.11 /Users/zhupanov/larch4/python/cli.py checks run-relevant",
+        expected_signature="/opt/homebrew/opt/python@3.11/bin/python3.11 /Users/zhupanov/larch4/python/cli.py checks run-relevant",
+    )
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: identity)
 
     result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
 
@@ -3900,6 +3907,64 @@ def test_active_leg_json_record_write_retries_until_identity_available(
     assert payload["owner_token"] == "owner-1"
     assert payload["pid"] == 123
     assert payload["pgid"] == 123
+
+
+def test_active_leg_json_record_write_fails_closed_when_durable_publish_missing(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv(config.ENV_ACTIVE_LEG_OWNER_TOKEN, "owner-1")
+    identity = process_identity.RecordedProcessIdentity(
+        pid=123,
+        pgid=123,
+        start_time="Fri Jul 3 17:01:02 2026",
+        command_signature="python cli.py checks run-relevant",
+        expected_signature="python cli.py checks run-relevant",
+    )
+    monkeypatch.setattr(dispatch_leg.process_identity, "read_process_identity", lambda **_kwargs: identity)
+
+    def fail_write(**_kwargs: object) -> None:
+        raise OSError("write failed")
+
+    monkeypatch.setattr(dispatch_leg.process_identity, "write_identity_record", fail_write)
+
+    record = implement_dispatch._publish_active_leg_record(123, argv=["python", "cli.py", "checks", "run-relevant"])
+
+    assert record is None
+    assert not (tmp_path / config.ACTIVE_LEG_IDENTITY_FILE).exists()
+
+
+def test_run_leg_with_timeout_fails_closed_when_active_leg_publish_missing(monkeypatch: pytest.MonkeyPatch) -> None:
+    killed: list[int] = []
+
+    class FakeProcess:
+        pid = 4242
+        returncode = None
+        stdout = None
+        stderr = None
+
+        def poll(self) -> int | None:
+            return self.returncode
+
+        def wait(self, timeout: float | None = None) -> int:  # pylint: disable=unused-argument
+            self.returncode = -9
+            return -9
+
+    def fake_popen(*_args: object, **_kwargs: object) -> FakeProcess:
+        return FakeProcess()
+
+    monkeypatch.setattr(implement_dispatch.subprocess, "Popen", fake_popen)
+    monkeypatch.setattr(dispatch_leg, "_publish_active_leg_record", lambda *args, **kwargs: None)
+    monkeypatch.setattr(dispatch_leg, "_kill_leg_process_group", lambda process: killed.append(process.pid))
+    monkeypatch.setattr(dispatch_leg, "_drain_leg_pipes", lambda _process, *, timeout_s=2: ("", ""))
+
+    result = implement_dispatch._run_leg_with_timeout(argv=["checks", "run-relevant"], deadline_ms=1, label="checks")
+
+    assert isinstance(result, subprocess.CompletedProcess)
+    assert result.returncode == 1
+    assert result.stderr == "checks active-leg publication failed"
+    assert killed == [4242]
 
 
 def test_kill_active_leg_owner_match_kills_and_unlinks(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
