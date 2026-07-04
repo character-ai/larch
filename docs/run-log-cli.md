@@ -53,6 +53,29 @@ Default-branch and post-merge commit refusals remain stderr-only hard stops.
 `verify skill-called` preserves the `VERIFIED=true|false` and `REASON=<token>`
 contract. Malformed regex faults exit 1 with stderr only.
 
+## `skill-closure ledger`
+
+Run:
+
+```bash
+python3 python/cli.py skill-closure ledger
+python3 python/cli.py skill-closure ledger --window 20 --summary
+python3 python/cli.py skill-closure ledger --since-tag vX.Y.Z --summary
+```
+
+The command reads the git history of
+`python/skill-closure-baseline.json`. With neither `--window` nor
+`--since-tag`, it covers the full file history. With neither `--summary`, it
+prints detailed per-commit TSV rows.
+
+`--window N` selects the last `N` commits that touched the baseline file.
+`--since-tag TAG` selects commits after the tag. `--summary` prints aggregate
+per-target totals for the selected range.
+
+Output is informational only. Positive deltas are marked as raises, but they do
+not fail the command. The historical parser is lenient and does not use the
+current strict baseline validator.
+
 ## `token measure-cache-efficiency`
 
 Run:

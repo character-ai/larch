@@ -406,6 +406,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "bg-wait-coverage"): ("larch.lint.lint_bg_wait_coverage", "main"),
     ("lint", "skill-invocations"): ("larch.lint.lint_skill_invocations", "main"),
     ("skill-closure", "report"): ("larch.lint.lint_skill_closure_growth", "report_main"),
+    ("skill-closure", "ledger"): ("larch.lint.skill_closure_ledger", "ledger_main"),
     ("lint", "skill-closure-growth"): ("larch.lint.lint_skill_closure_growth", "main"),
     ("lint", "run-log-run-id"): ("larch.lint.lint_run_log_run_id", "main"),
     ("voting", "findings-classification-header"): ("larch.review.voting", "findings_classification_header_main"),

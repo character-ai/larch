@@ -95,6 +95,87 @@ def test_log_subjects() -> None:
     assert subjects.subjects == ("first", "second")
 
 
+def test_log_path_commits_parses_path_history() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner(
+        {
+            argv: CommandResult(
+                argv,
+                0,
+                "abc123\x00Initial baseline\n"
+                "def456\x00Shrink panel tier (#5978)\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+
+    commits = git.log_path_commits(runner, "python/skill-closure-baseline.json")
+
+    assert commits == (
+        git.PathCommit(sha="abc123", subject="Initial baseline"),
+        git.PathCommit(sha="def456", subject="Shrink panel tier (#5978)"),
+    )
+
+
+def test_log_path_commits_includes_rev_range_before_path() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "v1.0.0..HEAD",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner({argv: CommandResult(argv, 0, "", "", 0.01)})
+
+    commits = git.log_path_commits(
+        runner,
+        "python/skill-closure-baseline.json",
+        rev_range="v1.0.0..HEAD",
+    )
+
+    assert not commits
+
+
+def test_log_path_commits_raises_on_malformed_output() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner({argv: CommandResult(argv, 0, "missing-delimiter\n", "", 0.01)})
+
+    with pytest.raises(ShipError, match="malformed line"):
+        _ = git.log_path_commits(runner, "python/skill-closure-baseline.json")
+
+
+def test_log_path_commits_raises_on_git_failure() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner({argv: CommandResult(argv, 128, "", "fatal", 0.01)})
+
+    with pytest.raises(ShipError, match="git command failed"):
+        _ = git.log_path_commits(runner, "python/skill-closure-baseline.json")
+
+
 def test_operation_helpers_build_expected_argv() -> None:
     responses = {
         ("git", "symbolic-ref", "--short", "HEAD"): CommandResult(
