@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- the plan's listed compression targets are "TSV-contract/sentinel instructions, plan-directive prose, tier-emphasis line"; OOS prose is not listed, so no conflict with the `_oos_proposal_instruction()` exclusion exists
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false

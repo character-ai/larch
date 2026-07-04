@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The staged plan does not ask to compress the shared OOS helper, so the alleged boundary conflict is not a required blocker for this issue.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- There are extra exact-string checks, but the plan can preserve them; nothing here shows the feature cannot ship without updating those harness assertions.

@@ -1,0 +1,16 @@
+# md-to-py-XII: density-pass the design plan-review generated prompt builders
+
+**Context.** The single largest realized panel bucket: 2.44M tokens over 31 runs, about 79k tokens per run at 12.6 loads per run, with no agent-file component. The prompt is fully builder-generated (plan-review templates in `python/larch/design/plan_review_panel.py` and the rendering module). It has never had a density pass.
+
+**Scope.**
+
+- Prose-compress the static scaffold text in the plan-review prompt builders.
+- Do not change protocol grammars, dispatch, payload inclusion, or panel topology.
+- Keep finding/OOS anchors, severity sets, and `<READABILITY_STYLE>` token wiring byte-identical.
+
+**Acceptance.**
+
+- Scaffold bytes per plan-review slot drop measurably in the scaffold/payload columns, confirmed by a live design run's committed `panel-prompt-sizes.tsv`.
+- Plan-review parse rate and structure tests unchanged; no ratchet raise.
+
+Part of md-to-py-XII (round XI: #5986). Blocked by the scaffold/payload instrumentation child.
