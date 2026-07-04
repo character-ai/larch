@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:10:38
-- **Cost**: 💰 TOTAL ~$2.18 — Claude $0.43, Codex-5.5 $0.93, Codex-mini $0.31, Cursor $0.39, Claude (subprocess) $0.12  |  Tokens: 3670k
+- **Cost**: 💰 TOTAL ~$2.57 — Claude $0.79, Codex-5.5 $0.93, Codex-mini $0.31, Cursor $0.39, Claude (subprocess) $0.15  |  Tokens: 4644k
 - **Issue**: #6233 — https://github.com/character-ai/larch/issues/6233
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -63,3 +63,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (latent): detailed ledger parity across gaps. Concern: `_build_revisions` still clears absent targets from `last_values`, so the detailed ledger can emit `previous=None` on reappear while the summary path freezes through gaps and resets via `reappearing_targets`. This is a parity gap between the detailed and summ…
 - **Round 1 OOS_2** (nit): spy coverage for multi-target advances. Concern: The spy assertion only checks that `("c3", 0)` was not advanced and does not record which target each `advance` call touched, so a multi-target regression could slip through if another target were advanced to `0` at `c3`.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
