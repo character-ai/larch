@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:14:01
-- **Cost**: 💰 TOTAL ~$5.42 — Claude $0.41, Codex-5.5 $1.53, Codex-mini $0.75, Cursor $2.43, Claude (subprocess) $0.30  |  Tokens: 11219k
+- **Cost**: 💰 TOTAL ~$5.77 — Claude $0.73, Codex-5.5 $1.53, Codex-mini $0.75, Cursor $2.43, Claude (subprocess) $0.33  |  Tokens: 12122k
 - **Issue**: #6259 — https://github.com/character-ai/larch/issues/6259
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -65,3 +65,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): redaction scratch creation still depends on ambient TMPDIR. Concern: The redaction scratch path still relies on ambient `mkstemp` selection, so a broken `TMPDIR` can prevent scratch creation even after the input-path fix.
 - **Round 1 OOS_3** (important): absolute inputs can escape session confinement. Concern: The shared run-log helper no longer confines absolute input paths to `IMPLEMENT_TMPDIR`, which can let a caller copy or read an arbitrary host file when a trusted path is supplied.
 - **Round 1 OOS_4** (important): regression coverage is too weak. Concern: The current regression/integration coverage does not reliably exercise the fixed temp-path bug or prove the positive staging location, so the test can stay green on buggy code and still miss the required caller or live-run path.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
