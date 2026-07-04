@@ -1,0 +1,32 @@
+Reviewing the plan against the codebase: tracing Step-3 evidence recording and the escalation report gate.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/design/design_terminal.py:504-512	Unconditional marker check bypasses trigger filtering the plan adds for ledger and fallback	When record-escalation fails for a normal Step-3 handoff, python/larch/state/_escalation.py writes a generic marker plus a fallback row whose trigger is the handoff status. After the plan filters ledger/fallback by STEP3_ESCALATION_FAILURE_STATUSES, a non-empty design-failure-escalation-record-failure.env still makes escalation_evidence_present() true, so approved runs can still emit escalation-success for the exact bug class on resumed tmpdirs	Count marker evidence only when a ledger or fallback row carries a genuine-failure trigger, or drop the standalone marker branch and rely on filtered fallback rows plus execution-issues tool-failure entries
+1	in_scope	important	correctness	python/larch/design/design_terminal.py (proposed helper)	Mixed-ledger any-row semantics are documented only in Edge cases, not in the implementation steps	The edge case requires reporting when any row has a genuine-failure trigger. python/larch/state/_report.py:_first_escalation_field (169-178) returns the first trigger only; a helper that copies that pattern would miss tally-error on row two when row one is main-agent-apply-required, letting genuine failures skip the report gate	State explicitly in the design_terminal.py change that the helper scans every ledger and fallback row and returns true on the first trigger in STEP3_ESCALATION_FAILURE_STATUSES
+1	out_of_scope	latent	architecture	python/larch/core/config.py (proposed)	STEP3_NORMAL_HANDOFF_STATUSES is added but never referenced in the proposed file changes	Extra tuple constant with no consumer adds surface area without behavior; NORMAL can be inferred as the complement of escalation statuses or derived from existing interactive sets	Omit STEP3_NORMAL_HANDOFF_STATUSES unless a caller imports it, or reference it in tests or the gate helper for symmetry
+
+## Review summary
+
+Reviewed the proposed plan against current Step-3 evidence recording and the approved-run failure-report gate in:
+
+- `python/larch/review/plan_review_normalize.py` (165-173, 570-573, 664-732)
+- `python/larch/review/plan_review_loop.py` (140-145)
+- `python/larch/review/plan_review.py` (675-685)
+- `python/larch/design/design_terminal.py` (382-776, especially 494-512)
+- `python/larch/state/_escalation.py` (103-166)
+- `python/larch/state/_report.py` (169-198, 350-354)
+- `python/tests/review/test_plan_review.py` (187-215, 709-723)
+- `python/tests/design/test_design_lifecycle.py` (2762-2798)
+
+### Source paths after the plan
+
+**New normal-handoff reports:** The plan closes the active recording paths. Today `_STEP3_EVIDENCE_STATUSES` includes normal handoffs (165-173), `normalize_step3_status_main` records on those statuses (570-573), `step3_loop_emit_envelope` calls `step3_record_report_evidence` unconditionally (145), and `step3_record_report_evidence` writes ledger rows for them (681-713). Shrinking the evidence set, early-returning in `step3_record_report_evidence`, and leaving routing sets untouched matches the plan’s minimum-change intent.
+
+**Legacy normal-handoff reports:** Ledger and fallback filtering addresses the issue’s ledger row (`trigger=main-agent-apply-required`). The unconditional marker check (504-509) and execution-issues tool-failure regex (511-512) can still admit legacy artifacts from prior normal-handoff record attempts; the marker gap is the material one.
+
+### Genuine failures still pass the gate
+
+With any-row trigger scanning, `tally-error` / `panel-failed` / `panel-init-failed` / `degraded-empty-collector` still record via `step3_record_report_evidence` and `normalize_step3_status_main`’s failure warning path (571-572). Existing `test_record_report_evidence_writes_escalation_ledger` and `test_step3_normalizer_escalation_evidence_failure_contract` cover that contract. The planned fixture change in `test_failure_report_escalation_success_from_ledger` plus parametrized normal-only skip tests align with the gate behavior.
+
+### Plan fidelity
+
+The dual fix (stop recording + filter legacy rows) is proportionate to the issue scope. Tests target the two proposed modules with focused selectors. No additional in-scope findings on routing regressions, `per-round-approval-required`, or validator autofix ledger rows (`plan_quality.py` 1092-1134), which use non-Step-3 triggers and fall outside this bug’s scope.

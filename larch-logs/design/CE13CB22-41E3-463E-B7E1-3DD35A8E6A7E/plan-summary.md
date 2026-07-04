@@ -1,0 +1,1 @@
+Fix `/design` escalation-success noise by separating normal Step-3 handoffs from real escalation failures. Keep reports for `panel-failed`, `panel-init-failed`, `tally-error`, and `degraded-empty-collector`. Add regression tests for both sides.
