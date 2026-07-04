@@ -67,23 +67,33 @@ class SummaryRow:
 @dataclass
 class _SummaryAccumulator:
     start: int
-    end: int
+    current: int
     delta: int = 0
     raises: int = 0
     largest_raise_commit: str = ""
     largest_raise_delta: int | None = None
 
-    def add(self, target_delta: TargetDelta) -> None:
-        if target_delta.delta is None:
+    def advance(self, *, commit: str, current: int) -> None:
+        change = current - self.current
+        if change == 0:
             return
-        self.end = target_delta.current
-        self.delta += target_delta.delta
-        if target_delta.delta <= 0:
+        self.current = current
+        self.delta += change
+        if change <= 0:
             return
         self.raises += 1
-        if self.largest_raise_delta is None or target_delta.delta > self.largest_raise_delta:
-            self.largest_raise_delta = target_delta.delta
-            self.largest_raise_commit = target_delta.commit
+        if self.largest_raise_delta is None or change > self.largest_raise_delta:
+            self.largest_raise_delta = change
+            self.largest_raise_commit = commit
+
+
+def _new_summary_accumulator(*, target_delta: TargetDelta) -> _SummaryAccumulator:
+    acc = _SummaryAccumulator(start=target_delta.previous, current=target_delta.current, delta=target_delta.delta or 0)
+    if target_delta.delta is not None and target_delta.delta > 0:
+        acc.raises = 1
+        acc.largest_raise_commit = target_delta.commit
+        acc.largest_raise_delta = target_delta.delta
+    return acc
 
 
 def _positive_int(text: str) -> int:
@@ -262,18 +272,20 @@ def _summarize(revisions: Iterable[BaselineRevision]) -> tuple[SummaryRow, ...]:
     accumulators: dict[str, _SummaryAccumulator] = {}
     order: list[str] = []
     for revision in revisions:
+        snapshot_values = {value.target: value.closure_estimated_tokens for value in revision.snapshot.values}
+        for target, accumulator in accumulators.items():
+            accumulator.advance(commit=revision.commit.sha, current=snapshot_values.get(target, 0))
         for delta in revision.deltas:
             if delta.delta is None or delta.previous is None:
                 continue
             if delta.target not in accumulators:
                 order.append(delta.target)
-                accumulators[delta.target] = _SummaryAccumulator(start=delta.previous, end=delta.current)
-            accumulators[delta.target].add(delta)
+                accumulators[delta.target] = _new_summary_accumulator(target_delta=delta)
     return tuple(
         SummaryRow(
             target=target,
             start=accumulators[target].start,
-            end=accumulators[target].end,
+            end=accumulators[target].current,
             delta=accumulators[target].delta,
             raises=accumulators[target].raises,
             largest_raise_commit=accumulators[target].largest_raise_commit,

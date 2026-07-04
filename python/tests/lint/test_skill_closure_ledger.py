@@ -96,6 +96,16 @@ def _fixture_history(repo: Path) -> dict[str, str]:
     return commits
 
 
+def _fixture_history_with_panel_tier_removed(repo: Path) -> dict[str, str]:
+    commits = _fixture_history(repo)
+    commits["panel_removed"] = _commit_baseline(
+        repo,
+        "Remove panel tier (#6030)",
+        [_row("design", 12600, extra=True)],
+    )
+    return commits
+
+
 def _tsv_rows(text: str) -> list[dict[str, str]]:
     lines = text.strip().splitlines()
     header = lines[0].split("\t")
@@ -173,6 +183,38 @@ def test_since_tag_summary_aggregates_after_tag(
         "start": "50057",
         "end": "44124",
         "delta": "-5933",
+        "raises": "1",
+        "largest_raise_commit": commits["pr6029"],
+        "largest_raise_delta": "654",
+    }
+    assert rows["design"] == {
+        "target": "design",
+        "start": "10000",
+        "end": "12600",
+        "delta": "2600",
+        "raises": "1",
+        "largest_raise_commit": commits["pr6029"],
+        "largest_raise_delta": "2763",
+    }
+
+
+def test_since_tag_summary_reflects_removed_target_in_final_snapshot(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    commits = _fixture_history_with_panel_tier_removed(repo)
+
+    rc = ledger.ledger_main(["--root", str(repo), "--since-tag", "v-ledger-test", "--summary"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    rows = {row["target"]: row for row in _tsv_rows(captured.out)}
+    assert rows["panel-tier"] == {
+        "target": "panel-tier",
+        "start": "50057",
+        "end": "0",
+        "delta": "-50057",
         "raises": "1",
         "largest_raise_commit": commits["pr6029"],
         "largest_raise_delta": "654",
