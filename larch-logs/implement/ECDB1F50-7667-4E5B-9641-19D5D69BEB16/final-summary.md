@@ -3,7 +3,7 @@
 - **Mode**: N/A
 - Force: true
 - **Duration**: 01:19:49
-- **Cost**: 💰 TOTAL ~$32.99 — Claude $3.14, Codex-5.5 $21.44, Codex-mini $1.88, Cursor $5.18, Claude (subprocess) $1.35  |  Tokens: 47166k
+- **Cost**: 💰 TOTAL ~$34.89 — Claude $5.03, Codex-5.5 $21.44, Codex-mini $1.88, Cursor $5.18, Claude (subprocess) $1.36  |  Tokens: 49204k
 - **Issue**: #6237 — https://github.com/character-ai/larch/issues/6237
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -121,3 +121,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 3 OOS_1** (important): Step 5/8 wrappers still lack signal-aware detach. Concern: The Step 5/8 wrappers still lack the signal-aware detach pattern needed to survive harness idle SIGTERM, so background drivers can be killed mid-run without detach/reattach recovery.
 - **Round 3 OOS_2** (latent): Detached review loops lack an orphan cap. Concern: Detached plan-review loops have no explicit orphan cap, so a disowned loop can keep running and spending tokens indefinitely if the session never reattaches.
 - **Round 3 OOS_3** (nit): `--read-result-env` runs before detach-marker handling. Concern: The `--read-result-env` path runs before detached-marker handling, so premature probes can report missing status even while the detached loop is still active and may prompt an unnecessary retry.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
