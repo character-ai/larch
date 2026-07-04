@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:12:55
-- **Cost**: 💰 TOTAL ~$3.56 — Claude $0.51, Codex-5.5 $1.27, Codex-mini $0.60, Cursor $1.00, Claude (subprocess) $0.18  |  Tokens: 6497k
+- **Cost**: 💰 TOTAL ~$3.91 — Claude $0.86, Codex-5.5 $1.27, Codex-mini $0.60, Cursor $1.00, Claude (subprocess) $0.18  |  Tokens: 7400k
 - **Issue**: #6267 — https://github.com/character-ai/larch/issues/6267
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): Planned files and coverage updated. Concern: The patch updated all planned files, added session-isolation coverage, and kept the docs aligned with the new key and legacy-orphan guidance.
 - **Round 1 OOS_2** (nit): Only the state key changed. Concern: Thresholds, increment/reset rules, fail-open behavior, and reminder text remain unchanged; only the state-file key moved to the new session-scoped form.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
