@@ -1463,7 +1463,13 @@ def write_tally_main(argv: list[str]) -> int:
             if rc not in (0, 4):
                 _die("code-review body header validation failed")
         record = compose_tally_record(args)
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, prefix="write-tally-record.") as handle:
+        with tempfile.NamedTemporaryFile(
+            "w",
+            encoding="utf-8",
+            delete=False,
+            prefix="write-tally-record.",
+            dir=Path(args.log_root).parent,
+        ) as handle:
             handle.write(record + "\n")
             record_file = handle.name
         try:

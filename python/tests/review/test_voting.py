@@ -951,6 +951,41 @@ def _write_tally_logger(tmp_path: Path) -> Path:
     return logger
 
 
+def test_write_tally_stages_record_under_log_root_parent(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    run_id = "run-code-tmpdir"
+    malformed_tmpdir = tmp_path / "fake" / "var" / "folders" / "T"
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setenv("TMPDIR", str(malformed_tmpdir))
+
+    result = run_cli(
+        "voting",
+        "write-tally",
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--accepted",
+        "1",
+        "--rejected",
+        "0",
+    )
+
+    assert result.returncode == 0
+    record_path = tmp_path / "larch-logs" / "implement" / run_id / "code-review-tally.json"
+    record = json.loads(record_path.read_text(encoding="utf-8"))
+    assert record["batch"] == "code-review-tally"
+    assert not malformed_tmpdir.exists()
+
+
 def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) -> None:
     invalid_body = tmp_path / "invalid-body.md"
     invalid_body.write_text("## Voting Tally\n## Foo\n", encoding="utf-8")
