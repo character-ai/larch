@@ -1,0 +1,22 @@
+{
+  "applied_tier": "TRIVIAL",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "TRIVIAL",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "TRIVIAL",
+  "predicted_tier": "TRIVIAL",
+  "rater": "implement",
+  "rater_model": "unknown",
+  "rater_tool": "claude",
+  "rationale": "Two targeted GitHub issue body edits: three text replacements in #6261, one in #5993. No repo files changed. External API calls only.",
+  "round_cap": 2,
+  "schema_version": 1
+}
