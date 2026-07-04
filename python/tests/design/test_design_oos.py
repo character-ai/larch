@@ -909,3 +909,81 @@ def test_label_only_mapping_uses_oos_file_map_without_stdout(tmp_path: Path) -> 
         "https://github.com/acme/repo/issues/102": False,
     }
 # pyright: reportUnknownArgumentType=false, reportUnknownLambdaType=false
+
+
+def _stub_design_oos_prepare_commands(monkeypatch: pytest.MonkeyPatch) -> None:
+    def fake_run_cli(*args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args[:2] == ("oos", "issue-cap"):
+            input_file = Path(args[args.index("--input-file") + 1])
+            output = Path(args[args.index("--output") + 1])
+            _ = output.write_text(input_file.read_text(encoding="utf-8"), encoding="utf-8")
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        if args[:2] == ("oos", "file-conflict-deps"):
+            output = Path(args[args.index("--output") + 1])
+            _ = output.write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(list(args), 0, "", "")
+        return subprocess.CompletedProcess(list(args), 0, "", "")
+
+    monkeypatch.setattr(design_oos, "_run_cli", fake_run_cli)
+
+
+def test_prepare_promotes_three_latent_pool_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+
+### FINDING_3: latent three
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
+    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
+    combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
+    assert accepted.count("### OOS_") == 3
+    assert "### FINDING_" not in combined
+    assert "latent three" in combined
+
+
+def test_prepare_two_latent_pool_items_do_not_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert _kv(capsys.readouterr().out)["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+
+
+def test_annotate_empty_stdout_requests_single_retry(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    rc = design_oos.file_oos_annotate_main(
+        ["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(tmp_path / "missing-again.txt")],
+    )
+    assert rc == 1
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-failed-empty-stdout"
+    assert kv["NEXT_ACTION"] == "retry-file-and-annotate"
+    assert not (tmp_path / "oos-issues-created.md").exists()

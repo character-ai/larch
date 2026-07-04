@@ -3796,3 +3796,40 @@ def test_write_atomic_does_not_create_missing_parent(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         plan_review._write_atomic(path=missing_parent, content="A=1\n")  # pyright: ignore[reportPrivateUsage]
     assert not missing_parent.exists()
+
+
+def test_tally_plan_review_nonaccepted_important_oos_enters_aggregate_pool(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### OOS_1: [OUT_OF_SCOPE] important follow-up
+- **Reviewer**: Codex-Correctness
+- **Severity**: important
+- **Concern**: File this when the aggregate trigger is evaluated.
+""",
+        encoding="utf-8",
+    )
+    voters = [tmp_path / f"v{idx}.txt" for idx in range(1, 4)]
+    for voter in voters:
+        _ = voter.write_text("OOS_1: NO SEVERITY=major\n", encoding="utf-8")
+    design = tmp_path / "design-important-oos"
+    design.mkdir()
+
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        *(str(voter) for voter in voters),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    pool = (design / "oos-aggregate-pool.md").read_text(encoding="utf-8")
+    accepted_path = design / "oos-accepted-design.md"
+    accepted = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
+    assert "important follow-up" in pool
+    assert "**Severity**: important" in pool
+    assert "important follow-up" not in accepted

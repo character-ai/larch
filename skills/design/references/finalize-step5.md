@@ -46,20 +46,15 @@ If `FILE_DESIGN_OOS_DEPS_AVAILABLE=true` **and** `FILE_DESIGN_OOS_DEPS_TSV` poin
 
 Capture **stdout only** from the Skill tool to `$DESIGN_TMPDIR/oos-issue.stdout.txt`. **This write is MANDATORY** for every `/issue` invocation. If the Skill tool returns output inline, use the Write tool to write the exact captured `/larch:issue` stdout to that file before `annotate`. Never skip or reorder annotate relative to this write: `cmd_annotate` is the only writer of `oos-issues-created.md`, and `python/cli.py design render-final-summary` reads OOS count only from that file.
 
-Run annotate and capture stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`. On exit 0 with `FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout`, parse `WARN=`; if non-empty, append a `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md` via `run-log append-failure` with site `design Step 5b annotate-skip`, tool `python/cli.py design file-oos-annotate`, category `Warnings`, and exit code 0. Print `**⚠ /design: annotate skipped (empty issue stdout): OOS filing status unclear; see execution-issues**` and continue to Step 5b.5.
+Run annotate and capture stdout to `$DESIGN_TMPDIR/oos-filing-annotate.stdout.txt`. On `FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout` with `NEXT_ACTION=retry-file-and-annotate`, retry the file-and-annotate sequence once. Use `$DESIGN_TMPDIR/.oos-issue-retry-used` as the once-only sentinel. If the sentinel already exists, append `Tool Failures`, print a non-retryable failure, and do not write `.completed/step-5b`.
+
+For the retry, re-run `/larch:issue` with the same arguments used for `NEXT_ACTION=file-issues`, capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`, then re-run `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`. If the second annotate returns `annotate-failed-empty-stdout`, stop before Step 5b.5. Do not loop.
 
 On non-zero `_oos_ann_rc` with `FILE_DESIGN_OOS_STATUS=annotate-label-failed` or `.oos-priority-label-pending`, append under `Tool Failures`, print the label-failure status, and stop before Step 5b.5. Do not write `.completed/step-5b`. The next retry must run label-only annotate or re-prepare to get `NEXT_ACTION=label-only`.
 
-On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt`, append under `Tool Failures` via `run-log append-failure`, including stderr. Print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0: see execution-issues and oos-issue.stdout.txt**`, then continue to Step 5b.5. Per-block `Filed URL` lines are written only for successful items.
+On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.stdout.txt`, append under `Tool Failures` via `run-log append-failure`, including stderr. Print `**⚠ /design: OOS filing completed with ISSUES_FAILED>0; see execution-issues and oos-issue.stdout.txt**`, then continue to Step 5b.5. Per-block `Filed URL` lines are written only for successful items.
 
-On non-zero `_oos_ann_rc` without a partial-failure contract, treat it as annotate or parse failure: append `Tool Failures` and continue to Step 5b.5.
-
-**Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5:
-
-1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
-2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
-3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
-4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
+On non-zero `_oos_ann_rc` without the retry, label, or partial-failure contract, treat it as annotate or parse failure: append `Tool Failures` and continue to Step 5b.5.
 
 ### `NEXT_ACTION=label-only`
 

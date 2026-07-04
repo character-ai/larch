@@ -30,6 +30,11 @@ _MIN_DEGRADABLE_PANEL = 2
 _CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain\tscope"
 )
+_OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
+_OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):", re.MULTILINE)
+_OOS_POOL_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_\d+:", re.MULTILINE)
+_AGGREGATE_HIGH_SEVERITIES = {"blocking", "important"}
+_AGGREGATE_LATENT_THRESHOLD = 3
 
 
 def _error(message: str) -> int:
@@ -452,6 +457,106 @@ def _normalize_oos_header_text(*, text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
 
+def _body_severity_from_text(text: str) -> str:
+    for line in text.splitlines():
+        match = re.match(r"^[\s-]*\*\*Severity\*\*:\s*(.*?)\s*$", line)
+        if match:
+            return match.group(1).strip().lower()
+    return ""
+
+
+def _aggregate_parent(*, review_tmpdir: Path, session_env_path: str = "", implement_tmpdir: str = "") -> Path:
+    if session_env_path:
+        return Path(session_env_path).parent
+    if implement_tmpdir and Path(implement_tmpdir).is_dir():
+        return Path(implement_tmpdir)
+    return review_tmpdir
+
+
+def _aggregate_oos_blocks(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    matches = list(_OOS_POOL_HEADER_RE.finditer(normalized))
+    if not matches:
+        return []
+    blocks: list[str] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+        block = normalized[match.start():end].strip("\n")
+        if block:
+            blocks.append(block + "\n")
+    return blocks
+
+
+def _aggregate_block_identity(block: str) -> str:
+    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", block).strip()
+    body = re.sub(r"^###\s+(?:OOS|FINDING)_\d+:", "### ITEM:", body, count=1)
+    return re.sub(r"\s+", " ", body).strip().lower()
+
+
+def _append_oos_pool_candidate(*, pool_file: Path, text: str) -> None:
+    identity = _aggregate_block_identity(text)
+    if not identity:
+        return
+    existing = pool_file.read_text(encoding="utf-8", errors="replace") if pool_file.is_file() else ""
+    if identity in {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(existing)}:
+        return
+    pool_file.parent.mkdir(parents=True, exist_ok=True)
+    separator = "" if not existing or existing.endswith("\n") else "\n"
+    with pool_file.open("a", encoding="utf-8") as handle:
+        _ = handle.write(separator + text.rstrip("\n") + "\n")
+
+
+def _aggregate_trigger_fires(blocks: list[str]) -> bool:
+    latent = 0
+    for block in blocks:
+        severity = _body_severity_from_text(block)
+        if severity in _AGGREGATE_HIGH_SEVERITIES:
+            return True
+        if severity == "latent":
+            latent += 1
+    return latent >= _AGGREGATE_LATENT_THRESHOLD
+
+
+def _next_oos_number(text: str) -> int:
+    numbers = [int(match.group(1)) for match in _OOS_HEADER_RE.finditer(text)]
+    return max(numbers, default=0) + 1
+
+
+def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | None = None) -> None:
+    sink_text = _read(sink) if sink.is_file() else ""
+    sink_blocks = [block for block in _aggregate_oos_blocks(sink_text) if not voting.is_security_block_text(block)]
+    pool_blocks = [block for block in _aggregate_oos_blocks(_read(pool)) if not voting.is_security_block_text(block)] if pool.is_file() else []
+    main_blocks = (
+        [block for block in _aggregate_oos_blocks(_read(main_agent)) if not voting.is_security_block_text(block)]
+        if main_agent is not None and main_agent.is_file()
+        else []
+    )
+    seen: set[str] = set()
+    trigger_blocks: list[str] = []
+    for block in [*sink_blocks, *pool_blocks, *main_blocks]:
+        identity = _aggregate_block_identity(block)
+        if identity and identity not in seen:
+            seen.add(identity)
+            trigger_blocks.append(block)
+    if not _aggregate_trigger_fires(trigger_blocks):
+        return
+    accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(sink_text)}
+    next_num = _next_oos_number(sink_text)
+    promoted: list[str] = []
+    for block in pool_blocks:
+        identity = _aggregate_block_identity(block)
+        if not identity or identity in accepted_seen:
+            continue
+        promoted.append(_normalize_oos_header_text(text=block, seq=next_num).rstrip("\n") + "\n")
+        accepted_seen.add(identity)
+        next_num += 1
+    if not promoted:
+        return
+    separator = "" if not sink_text or sink_text.endswith("\n") else "\n"
+    with sink.open("a", encoding="utf-8") as handle:
+        _ = handle.write(separator + "\n".join(promoted))
+
+
 def _resolve_proposer_map(*,
     ballot_file: Path,
     review_tmpdir: Path,
@@ -557,6 +662,12 @@ def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: st
         "vote_tally": vote_tally,
         "reason": _ledger_reason(block_text),
     }
+
+
+def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, artifact: str, security: bool) -> None:
+    _append(path=oos_file, text=artifact)
+    if not security:
+        _append_oos_pool_candidate(pool_file=pool_file, text=artifact)
 
 
 def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
@@ -881,7 +992,12 @@ def tally_code_votes(argv: list[str]) -> int:
                 accepted += 1
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=True, outcome="accepted")
             elif reroute_marker:
-                _append(path=oos_file, text=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n")
+                _record_public_oos_artifact(
+                    oos_file=oos_file,
+                    pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                    artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n",
+                    security=security,
+                )
                 oos_rejected += 1
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome="oos" if neutral_rescued else result)
             else:
@@ -892,7 +1008,12 @@ def tally_code_votes(argv: list[str]) -> int:
                 _append(path=rejected_file, text=f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{artifact_text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome=result)
         else:
-            _append(path=oos_file, text=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n")
+            _record_public_oos_artifact(
+                oos_file=oos_file,
+                pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n",
+                security=security,
+            )
             if result == "accepted":
                 if not security:
                     oos_seq += 1
@@ -1127,6 +1248,58 @@ def _non_security_oos_count(path: Path) -> int:
     return count
 
 
+def _emit_dest_dirs(*, session_env_path: str, implement_tmpdir: str) -> list[Path]:
+    return ([Path(session_env_path).parent] if session_env_path else []) + (
+        [Path(implement_tmpdir)] if implement_tmpdir and Path(implement_tmpdir).is_dir() else []
+    )
+
+
+def _finalize_emit_oos_filing(
+    *,
+    context: tuple[Path, str, str],
+    artifacts: tuple[Path, Path, Path, Path],
+) -> str:
+    review_tmpdir, session_env_path, implement_tmpdir = context
+    round_summary, review_summary, rejected_full, oos_accepted_file = artifacts
+    aggregate_parent = _aggregate_parent(
+        review_tmpdir=review_tmpdir,
+        session_env_path=session_env_path,
+        implement_tmpdir=implement_tmpdir,
+    )
+    _promote_aggregate_oos_pool(
+        sink=oos_accepted_file,
+        pool=aggregate_parent / _OOS_AGGREGATE_POOL,
+        main_agent=aggregate_parent / "oos-accepted-main-agent.md",
+    )
+    _copy_emit_artifacts(
+        dest_dirs=_emit_dest_dirs(session_env_path=session_env_path, implement_tmpdir=implement_tmpdir),
+        round_summary=round_summary,
+        review_summary=review_summary,
+        rejected_full=rejected_full,
+        oos_accepted_file=oos_accepted_file,
+    )
+    return str(_non_security_oos_count(oos_accepted_file))
+
+
+def _copy_emit_artifacts(
+    *,
+    dest_dirs: list[Path],
+    round_summary: Path,
+    review_summary: Path,
+    rejected_full: Path,
+    oos_accepted_file: Path,
+) -> None:
+    for dest_dir in dest_dirs:
+        for src, name in (
+            (round_summary, "review-round-summary.md"),
+            (review_summary, "review-summary.json"),
+            (rejected_full, "rejected-findings-full.md"),
+            (oos_accepted_file, "oos-accepted-review.md"),
+        ):
+            with suppress(OSError):
+                shutil.copyfile(src, dest_dir / name)
+
+
 def emit_tally(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="emit-tally")
     try:
@@ -1225,13 +1398,14 @@ def emit_tally(argv: list[str]) -> int:
         return 1
     else:
         _write(path=oos_accepted_file, text="")
-    for dest_dir in ([Path(args.session_env_path).parent] if args.session_env_path else []) + ([Path(args.implement_tmpdir)] if args.implement_tmpdir and Path(args.implement_tmpdir).is_dir() else []):
-        for src, name in ((round_summary, "review-round-summary.md"), (review_summary, "review-summary.json"), (rejected_full, "rejected-findings-full.md")):
-            with suppress(OSError):
-                shutil.copyfile(src, dest_dir / name)
+    oos_filing_count = _finalize_emit_oos_filing(
+        context=(review_tmpdir, args.session_env_path, args.implement_tmpdir),
+        artifacts=(round_summary, review_summary, rejected_full, oos_accepted_file),
+    )
     logging_util.emit_kv(key="EMIT_OK", value="true")
     logging_util.emit_kv(key="ROUND_SUMMARY_FILE", value=str(round_summary))
     logging_util.emit_kv(key="REVIEW_SUMMARY_FILE", value=str(review_summary))
+    logging_util.emit_kv(key="OOS_FILING_COUNT", value=oos_filing_count)
     return 0
 
 

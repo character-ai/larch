@@ -17,13 +17,29 @@ from larch.issue import file_oos
 from larch.issue import oos_priority
 
 OOS_ISSUE_STDOUT_FILE = "oos-issue.stdout.txt"
+OOS_AGGREGATE_POOL_FILE = "oos-aggregate-pool.md"
 _GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
 _OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)
+_POOL_BLOCK_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_(\d+):[^\n]*\n", re.MULTILINE)
+_BODY_SEVERITY_LINE_RE = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*(.*?)[ \t]*$", re.IGNORECASE)
+_SECURITY_FOCUS_RE = re.compile(
+    r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
+    r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
+    re.IGNORECASE | re.MULTILINE,
+)
+_SECURITY_HEADER_RE = re.compile(
+    r"^###\s+(?:OOS_\d+:|FINDING_\d+:)\s*"
+    r"(?:\[(?:OUT_OF_SCOPE|OOS)\]\s*)?"
+    r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
+    re.IGNORECASE,
+)
 _ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(\d+)_(URL|DUPLICATE_OF_URL)=(.*)$")
 _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
 _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
+_AGGREGATE_HIGH_SEVERITIES = {"blocking", "important"}
+_AGGREGATE_LATENT_THRESHOLD = 3
 
 
 def _emit_kv(*, key: str, value: str) -> None:
@@ -91,6 +107,166 @@ def _count_non_security_blocks(text: str) -> int:
     if not text.strip():
         return 0
     return file_oos._count_non_security_markdown(text)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+
+
+def _body_severity_from_text(text: str) -> str:
+    for line in text.splitlines():
+        match = _BODY_SEVERITY_LINE_RE.match(line)
+        if match:
+            return match.group(1).strip().lower()
+    return ""
+
+
+def _is_security_block_text(text: str) -> bool:
+    text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
+    text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
+    if re.search(r"focus-area\s*=\s*security", text_no_backtick, flags=re.IGNORECASE):
+        return True
+    lines = text_no_fence.splitlines()
+    if lines and _SECURITY_HEADER_RE.search(lines[0]):
+        return True
+    return any(_SECURITY_FOCUS_RE.search(line.replace("`", "").replace("*", "")) for line in lines)
+
+
+def _aggregate_oos_blocks(text: str) -> list[str]:
+    normalized = text.replace("\r\n", "\n").replace("\r", "\n")
+    matches = list(_POOL_BLOCK_HEADER_RE.finditer(normalized))
+    if not matches:
+        return []
+    blocks: list[str] = []
+    for index, match in enumerate(matches):
+        end = matches[index + 1].start() if index + 1 < len(matches) else len(normalized)
+        block = normalized[match.start():end].strip("\n")
+        if block:
+            blocks.append(block + "\n")
+    return blocks
+
+
+def _aggregate_block_identity(block: str) -> str:
+    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", block).strip()
+    body = re.sub(r"^###\s+(?:OOS|FINDING)_\d+:", "### ITEM:", body, count=1)
+    return re.sub(r"\s+", " ", body).strip().lower()
+
+
+def _next_oos_number(text: str) -> int:
+    numbers = [int(match.group(1)) for match in _OOS_HEADER_RE.finditer(text)]
+    return max(numbers, default=0) + 1
+
+
+def _aggregate_trigger_fires(blocks: list[str]) -> bool:
+    latent = 0
+    for block in blocks:
+        severity = _body_severity_from_text(block)
+        if severity in _AGGREGATE_HIGH_SEVERITIES:
+            return True
+        if severity == "latent":
+            latent += 1
+    return latent >= _AGGREGATE_LATENT_THRESHOLD
+
+
+def _promote_aggregate_oos_pool(*, accepted_path: Path, pool_path: Path) -> None:
+    accepted_text = accepted_path.read_text(encoding="utf-8", errors="replace") if accepted_path.is_file() else ""
+    accepted_blocks = [block for block in _aggregate_oos_blocks(accepted_text) if not _is_security_block_text(block)]
+    pool_blocks = [
+        block for block in _aggregate_oos_blocks(pool_path.read_text(encoding="utf-8", errors="replace"))
+        if not _is_security_block_text(block)
+    ] if pool_path.is_file() else []
+    seen = {_aggregate_block_identity(block) for block in accepted_blocks}
+    trigger_blocks = list(accepted_blocks)
+    for block in pool_blocks:
+        identity = _aggregate_block_identity(block)
+        if identity and identity not in seen:
+            trigger_blocks.append(block)
+            seen.add(identity)
+    if not _aggregate_trigger_fires(trigger_blocks):
+        return
+    next_num = _next_oos_number(accepted_text)
+    promoted: list[str] = []
+    accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(accepted_text)}
+    for block in pool_blocks:
+        identity = _aggregate_block_identity(block)
+        if not identity or identity in accepted_seen:
+            continue
+        normalized = re.sub(r"^###\s+(?:FINDING|OOS)_\d+:", f"### OOS_{next_num}:", block, count=1)
+        promoted.append(normalized.rstrip("\n") + "\n")
+        accepted_seen.add(identity)
+        next_num += 1
+    if not promoted:
+        return
+    accepted_path.parent.mkdir(parents=True, exist_ok=True)
+    separator = "" if not accepted_text or accepted_text.endswith("\n") else "\n"
+    with accepted_path.open("a", encoding="utf-8") as handle:
+        _ = handle.write(separator + "\n".join(promoted))
+
+
+def _accepted_unfiled_text(accepted: Path) -> str:
+    accepted_text = accepted.read_text(encoding="utf-8", errors="replace") if accepted.is_file() else ""
+    return _extract_unfiled_blocks(accepted_text)
+
+
+def _emit_empty_stdout_retry(issue_stdout_file: str) -> int:
+    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
+    _emit_kv(key="NEXT_ACTION", value="retry-file-and-annotate")
+    _emit_kv(
+        key="WARN",
+        value=f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
+    )
+    print(f"design file-oos-annotate: issue-stdout-file empty or missing ({issue_stdout_file})", file=sys.stderr)
+    return 1
+
+
+def _prepare_sentinel_handled(
+    *,
+    design_tmpdir: Path,
+    accepted: Path,
+    sentinel: Path,
+    cache_path: Path | None,
+) -> bool:
+    if sentinel.is_file() and sentinel.stat().st_size > 0:
+        if not _accepted_unfiled_text(accepted).strip():
+            _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
+            return True
+        sentinel.unlink(missing_ok=True)
+    created, failed, deduped = _load_issue_sentinel_status(design_tmpdir)
+    if failed == 0 and (created + deduped) > 0:
+        if not _accepted_unfiled_text(accepted).strip():
+            _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-already-filed-sentinel")
+            _emit_kv(
+                key="WARN",
+                value="file-design-oos prepare: oos-issue-sentinel present "
+                f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
+                "oos-issues-created.md absent; skipping re-file",
+            )
+            return True
+        (design_tmpdir / "oos-issue-sentinel").unlink(missing_ok=True)
+    if cache_path and cache_path.is_file() and cache_path.stat().st_size > 0 and accepted.is_file():
+        try:
+            sentinel_text = cache_path.read_text(encoding="utf-8")
+            _ = sentinel.write_text(sentinel_text, encoding="utf-8")
+            ok, recovered = _recover_accepted_from_sentinel(
+                accepted_text=accepted.read_text(encoding="utf-8"),
+                sentinel_text=sentinel_text,
+            )
+            if ok:
+                _ = accepted.write_text(recovered, encoding="utf-8")
+                if not _extract_unfiled_blocks(recovered).strip():
+                    _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
+                    return True
+            sentinel.unlink(missing_ok=True)
+            _append_warning_log(
+                design_tmpdir=design_tmpdir,
+                site="design file-design-oos cross-session",
+                tool="python/cli.py design file-oos-prepare",
+                detail="recover_oos_accepted_from_sentinel_urls failed",
+            )
+        except OSError as exc:
+            _append_warning_log(
+                design_tmpdir=design_tmpdir,
+                site="design file-design-oos cross-session",
+                tool="python/cli.py design file-oos-prepare",
+                detail=f"cross-session cache restore failed: {exc}",
+            )
+    return False
 
 
 def _issue_number_from(args_issue_number: str | None) -> str:
@@ -211,7 +387,8 @@ def _clear_label_retry_pending(*, design_tmpdir: Path, issue_number: str) -> Non
     (design_tmpdir / _PRIORITY_PENDING).unlink(missing_ok=True)
     pending_path = _cross_session_priority_pending_path(issue_number)
     if pending_path is not None:
-        pending_path.unlink(missing_ok=True)
+        with contextlib.suppress(OSError):
+            pending_path.unlink(missing_ok=True)
 
 
 def _read_simple_env_value(path: Path, key: str) -> str:
@@ -387,45 +564,14 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         if args.repo:
             _emit_kv(key="REPO", value=args.repo)
         return 0
-    if sentinel.is_file() and sentinel.stat().st_size > 0:
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
+    _promote_aggregate_oos_pool(accepted_path=accepted, pool_path=design_tmpdir / OOS_AGGREGATE_POOL_FILE)
+    if _prepare_sentinel_handled(
+        design_tmpdir=design_tmpdir,
+        accepted=accepted,
+        sentinel=sentinel,
+        cache_path=cache_path,
+    ):
         return 0
-    created, failed, deduped = _load_issue_sentinel_status(design_tmpdir)
-    if failed == 0 and (created + deduped) > 0:
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-already-filed-sentinel")
-        _emit_kv(
-            key="WARN",
-            value="file-design-oos prepare: oos-issue-sentinel present "
-            f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
-            "oos-issues-created.md absent; skipping re-file",
-        )
-        return 0
-    if cache_path and cache_path.is_file() and cache_path.stat().st_size > 0 and accepted.is_file():
-        try:
-            sentinel_text = cache_path.read_text(encoding="utf-8")
-            _ = sentinel.write_text(sentinel_text, encoding="utf-8")
-            ok, recovered = _recover_accepted_from_sentinel(
-                accepted_text=accepted.read_text(encoding="utf-8"),
-                sentinel_text=sentinel_text,
-            )
-            if ok:
-                _ = accepted.write_text(recovered, encoding="utf-8")
-                _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-sentinel")
-                return 0
-            sentinel.unlink(missing_ok=True)
-            _append_warning_log(
-                design_tmpdir=design_tmpdir,
-                site="design file-design-oos cross-session",
-                tool="python/cli.py design file-oos-prepare",
-                detail="recover_oos_accepted_from_sentinel_urls failed",
-            )
-        except OSError as exc:
-            _append_warning_log(
-                design_tmpdir=design_tmpdir,
-                site="design file-design-oos cross-session",
-                tool="python/cli.py design file-oos-prepare",
-                detail=f"cross-session cache restore failed: {exc}",
-            )
     if not accepted.is_file() or accepted.stat().st_size == 0:
         _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="skip-no-items")
         return 0
@@ -788,13 +934,7 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-label-complete" if rc == 0 else "annotate-label-failed")
         return rc
     if not stdout_path.is_file() or stdout_path.stat().st_size == 0:
-        _emit_kv(key="FILE_DESIGN_OOS_STATUS", value="annotate-failed-empty-stdout")
-        _emit_kv(
-            key="WARN",
-            value=f"file-design-oos annotate: issue-stdout-file empty or missing ({issue_stdout_file}); oos-issues-created.md not written",
-        )
-        print(f"design file-oos-annotate: issue-stdout-file empty or missing ({issue_stdout_file})", file=sys.stderr)
-        return 1
+        return _emit_empty_stdout_retry(issue_stdout_file)
     accepted = design_tmpdir / "oos-accepted-design.md"
     order_file = design_tmpdir / "oos-design-filing-order.txt"
     if not order_file.is_file():

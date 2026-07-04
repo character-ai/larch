@@ -2335,3 +2335,149 @@ def test_log_phase_accepts_panel_prompt_sizes_batch(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (tmp_path / "logs" / "review" / "run-abc" / "panel-prompt-sizes.tsv").is_file()
 # pyright: reportUnusedCallResult=false
+
+
+def test_tally_code_votes_accumulates_public_oos_pool(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent"
+    case = parent / "round-1"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    _ = (case / "ballot.md").write_text(
+        """### OOS_1: [OUT_OF_SCOPE] important follow-up
+- **Reviewer**: Codex-Correctness
+- **Severity**: important
+- **Concern**: File this after aggregate evaluation.
+""",
+        encoding="utf-8",
+    )
+    for name in ("v1.txt", "v2.txt", "v3.txt"):
+        _ = (case / name).write_text("OOS_1: NO SEVERITY=major\n", encoding="utf-8")
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--voter-files",
+        str(case / "v1.txt"),
+        str(case / "v2.txt"),
+        str(case / "v3.txt"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
+    pool = (parent / "oos-aggregate-pool.md").read_text(encoding="utf-8")
+    assert "important follow-up" in pool
+    assert "**Severity**: important" in pool
+    assert not (parent / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
+
+
+def test_emit_tally_promotes_three_latent_pool_items_after_vote_rebuild(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent"
+    case = parent / "round-1"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    _ = (parent / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: latent one
+- **Severity**: latent
+- **Concern**: one.
+
+### FINDING_2: latent two
+- **Severity**: latent
+- **Concern**: two.
+
+### FINDING_3: latent three
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+    tally = case / "review-tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\nOOS_ACCEPTED_COUNT=0\n", encoding="utf-8")
+    accepted = case / "accepted-findings.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--round",
+        "1",
+        "--mode",
+        "diff",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OOS_FILING_COUNT=3" in result.stdout
+    local_sink = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
+    parent_sink = (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
+    assert local_sink.count("### OOS_") == 3
+    assert "### FINDING_" not in local_sink
+    assert parent_sink == local_sink
+    assert "OOS_ACCEPTED_COUNT=0" in tally.read_text(encoding="utf-8")
+
+
+def test_emit_tally_counts_main_agent_latents_toward_trigger(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent-main"
+    case = parent / "round-1"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    _ = (parent / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: reviewer latent
+- **Severity**: latent
+- **Concern**: one.
+""",
+        encoding="utf-8",
+    )
+    _ = (parent / "oos-accepted-main-agent.md").write_text(
+        """### OOS_1: main latent one
+- **Severity**: latent
+- **Concern**: two.
+
+### OOS_2: main latent two
+- **Severity**: latent
+- **Concern**: three.
+""",
+        encoding="utf-8",
+    )
+    tally = case / "review-tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\nOOS_ACCEPTED_COUNT=0\n", encoding="utf-8")
+    accepted = case / "accepted-findings.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--round",
+        "1",
+        "--mode",
+        "diff",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OOS_FILING_COUNT=1" in result.stdout
+    assert "reviewer latent" in (case / "oos-accepted-review.md").read_text(encoding="utf-8")
