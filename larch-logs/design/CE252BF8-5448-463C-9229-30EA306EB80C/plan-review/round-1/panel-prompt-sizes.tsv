@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	22493	5624	13363	3341	9130	2283		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15278	3820	13088	3272	2190	548		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	22484	5621	13354	3339	9130	2283		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15265	3817	13075	3269	2190	548		0	0
+design Step 3	phase1	1	dyn-cursor-plan-summary-parser-compat	plan-review	cursor	dyn-cursor-plan-summary-parser-compat.txt	22837	5710	13229	3308	9608	2402		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	22506	5627	13376	3344	9130	2283		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15256	3814	13066	3267	2190	548		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15280	3820	13090	3273	2190	548		0	0
+design Step 3	phase1	1	dyn-codex-plan-summary-parser-compat	plan-review	codex	dyn-codex-plan-summary-parser-compat.txt	15609	3903	12941	3236	2668	667		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	22508	5627	13378	3345	9130	2283		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	22131	5533	4641	1161	17490	4373	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	12863	3216	9055	2264	3808	952		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	12863	3216	9055	2264	3808	952		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	12863	3216	9055	2264	3808	952		0	0

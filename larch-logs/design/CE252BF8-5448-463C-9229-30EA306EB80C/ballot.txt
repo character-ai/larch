@@ -1,0 +1,124 @@
+### FINDING_1: CI-log pointer in `gh.py` still uses an em dash
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: `run_logs_failed()` still emits a user-facing CI-log pointer with an em dash, and the plan does not explicitly include `python/larch/git/gh.py`, so the no-em-dash cleanup leaves a live emitter in the git surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: python/larch/git/gh.py` to replace the pointer separator (for example `--- CI log (run …): last …`) and update any `test_gh.py` assertions if present
+  - From Codex-Arch: Add `python/larch/git/gh.py` and `python/tests/git/test_gh.py` to the plan, replace the pointer separator with compliant punctuation, and assert the rendered prefix has no em dash.
+  - From Cursor-Innovation: Add `### UPDATED: python/larch/git/gh.py` to replace the pointer separator (colon/comma). Update `python/tests/git/test_gh.py` only if a new assertion on the pointer line is added.
+  - From Codex-Innovation: Add python/larch/git/gh.py to the plan and change the pointer separator to colon or comma punctuation
+  - From Codex-Pragmatic: Change the separator in `python/larch/git/gh.py:1781` to colon or comma, and add or update the `run_logs_failed` coverage in `python/tests/git/test_gh.py`.
+  - From Cursor-Requirements: Add `### UPDATED: python/larch/git/gh.py` to replace the pointer separator (for example `: last` instead of `— last`); extend `python/tests/git/test_gh.py` only if an assertion is added for the pointer text
+  - From Codex-Requirements: Add `python/larch/git/gh.py` to the firm edit list, replace the separator with colon/comma/period punctuation, and add or update a focused test for `run_logs_main` output.
+  - From Cursor-dyn-Summary Parser Compat: Add `### UPDATED: python/larch/git/gh.py` (colon/comma in the CI-log pointer) or document an explicit grep exception; add/adjust `python/tests/git/test_gh.py` if it asserts that string.
+
+### FINDING_2: `design_summary.py` still appends an enrich-degraded em dash
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The enrich-degraded warning appended to `final-summary.md` still uses an em dash, and the planned `design_summary.py` edits only cover the fallback block, so a design run can still ship noncompliant summary text.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend the `design_summary.py` step to scrub the enrich-degraded warning at line 331 (for example `**⚠ Enrich degraded: exec issue detail unavailable.**`) and update design-summary fixtures if they assert that text
+  - From Cursor-Requirements: Add an explicit bullet under `design_summary.py` to rewrite the enrich-degraded message at line 331; assert no em dash in the enrich-failure path in `python/tests/design/test_design_summary.py` if that path is not already covered
+  - From Cursor-dyn-Summary Parser Compat: Add line 331 to `### UPDATED: python/larch/design/design_summary.py` (colon/comma separator) and extend `python/tests/design/test_design_summary.py` with a degrade-enrich assertion if the plan mandates that fixture.
+
+### FINDING_3: Retro script help output still inherits em dashes from docstrings
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The module docstrings used for argparse help in the two retro scripts still contain em dashes, so `--help` output can remain noncompliant even if the planned runtime renderers are fixed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Add both scripts to the update set, rewrite the docstring headlines with compliant punctuation, and add a small help-output check.
+
+### FINDING_4: Stalled-summary rewrite path still preserves an em dash
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The stalled-summary rewrite path can still re-emit a heading with an em dash when repairing manifest-only stalled summaries, so recovery summaries stay noncompliant.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Normalize the rewritten heading to the new colon form before writing, while still accepting legacy headings for detection
+
+### FINDING_5: Live progress renderer replays em-dash step labels
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The generic live progress renderer replays step labels verbatim, so em dashes in timing-ledger labels can still reach users even after separator-only edits.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add display-time U+2014 normalization when rendering step_label in `_render_generic` (and any other progress echo path), without mutating timing-ledger rows; extend the testing strategy with one live-progress helper assertion, not only run-summary renders
+
+### FINDING_6: Run-log tolerance fixtures still hard-code the old em-dash separator
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The run-log tolerance fixtures still hard-code the old em-dash heading separator, so the parser-facing compatibility path is not fully updated or verified.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Summary Parser Compat: Move `python/tests/report/test_run_log_tolerance.py` to UPDATED and switch both summary fixtures to colon-headed summaries while keeping the existing assertions.
+
+### FINDING_7:
+- **Reviewer(s)**: anonymous
+- **Severity**: nit
+- **Focus area**: code-quality
+- **Location**: python/tests/report/test_final_report.py
+- **Concern**: [SCOPE-REDUCTION] Duplicate stalled-heading parser tests. Scenario: Stalled detection and `reconcile_stalled_summary_from_manifest()` are already exercised in `python/tests/report/test_run_logs.py` and `python/tests/implement/test_ship.py`. Adding parallel stalled-parser cases in `test_final_report.py` duplicates harness without new behavior coverage.
+- **Proposed resolution**: Keep stalled backward-compat and `: stalled` cases in `test_run_logs.py` / `test_ship.py` only; limit `test_final_report.py` to its existing final-report write/render coverage unless a gap remains there.
+
+### FINDING_8:
+- **Reviewer(s)**: anonymous
+- **Severity**: nit
+- **Focus area**: architecture
+- **Location**: python/tests/report/test_final_report.py
+- **Concern**: [SCOPE-REDUCTION] Firm `UPDATED` on `test_final_report.py` is likely unnecessary churn. Scenario: The file has no stalled-heading or separator assertions today; stalled recovery is already exercised in `test_run_logs.py` and `test_ship.py`, so a required edit here adds work without closing a named gap
+- **Proposed resolution**: Demote `test_final_report.py` to `MAY_UPDATE`, or limit changes to new focused `summary_heading_is_stalled` cases; keep legacy/new stalled reconciliation coverage in the existing run-log and ship tests already listed
+
+### OOS_1: [OUT_OF_SCOPE] Parallel CI log pointer outside report/git sweep
+- **Description**: [OUT_OF_SCOPE] Parallel CI log pointer outside report/git sweep. Scenario: `collect_failed_logs()` emits the same `--- CI log … — last …` pattern as `gh.py`, but it lives under `python/larch/implement/`, outside the issue’s report/git directory bound.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/larch/implement/ci_monitor.py:1009-1012
+- **Phase**: design
+
+
+
+### OOS_2: [OUT_OF_SCOPE] Timing-ledger step labels still carry em dashes
+- **Description**: [OUT_OF_SCOPE] Timing-ledger step labels still carry em dashes. Scenario: Even after changing the generic `{label} — started` separator, echoed `step_label` values come from timing marks written outside `python/larch/report/` (e.g. `Step 5 — code review`), so live progress text can still contain em dashes without further non-report edits.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: python/larch/report/_progress_report_live.py:322-324
+- **Phase**: design
+
+
+
+### OOS_3: Redact truncation sentinel still contains an em dash and can surface in PR bodies and summaries composed by report/git modules
+- **Description**: Redact truncation sentinel still contains an em dash and can surface in PR bodies and summaries composed by report/git modules. Scenario: Issue sweep targets report/ and git/ sources only; truncation text from core/redact.py can still appear in user-visible composed output when PEM redaction triggers
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/larch/core/redact.py:29-30
+- **Phase**: design
+
+
+
+### OOS_4: [OUT_OF_SCOPE] Duplicate CI log pointer with the same em-dash pattern lives outside `report/` and `git/`
+- **Description**: [OUT_OF_SCOPE] Duplicate CI log pointer with the same em-dash pattern lives outside `report/` and `git/`. Scenario: CI-fix output can still show an em dash even after this issue’s directory sweep passes
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: risk-integration
+- **Location**: python/larch/implement/ci_monitor.py:1010
+- **Phase**: design
+
+
+
+### OOS_5: [OUT_OF_SCOPE] PEM truncation marker injected through `pr_body.redact_pr_body` still contains an em dash
+- **Description**: [OUT_OF_SCOPE] PEM truncation marker injected through `pr_body.redact_pr_body` still contains an em dash. Scenario: Rare PR-body redaction failures can still emit `—` in user-visible PR text although the source file is outside the planned sweep
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: security
+- **Location**: python/larch/core/redact.py:30
+- **Phase**: design
+
+
+
+### OOS_6: [OUT_OF_SCOPE] `execution-issues.md` warning strings under `implement/` retain em dashes and are committed into run logs
+- **Description**: [OUT_OF_SCOPE] `execution-issues.md` warning strings under `implement/` retain em dashes and are committed into run logs. Scenario: Post-fix run logs can still contain em dashes in warning lines even when run-summary renderers are clean; outside the issue’s `report/` and `git/` sweep scope
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: code-quality
+- **Location**: python/larch/implement/dispatch_step2.py:576
+- **Phase**: design

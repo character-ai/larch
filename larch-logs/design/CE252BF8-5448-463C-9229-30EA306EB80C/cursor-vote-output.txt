@@ -1,0 +1,14 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan non-goals exclude docstrings; --help is out of sweep scope
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- outside report/git bound; low-frequency CI-fix path does not clear filing materiality
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- display normalization in report/ (FINDING_5) addresses live progress without cross-package edits
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rare PEM-redaction trigger outside sweep; issue overhead exceeds impact
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1; same out-of-scope bound and low filing materiality
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same rare redact path as OOS_3; outside planned sweep
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- implement warning strings are outside issue scope; renderer cleanup still meets acceptance

@@ -1,0 +1,44 @@
+Reviewing run-summary parser compatibility and em-dash scrubbing across the reporting layer. Searching the codebase for renderers, parsers, and tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/design/design_summary.py:331	Plan omits enrich-degraded final-summary append path	When post-publish enrich fails and issue-detail is unavailable, the code writes `**⚠ Enrich degraded — exec issue detail unavailable.**` into `final-summary.md`. That path is outside the plan bullets for degraded fallback H2/prose (lines 646-647), so a design run can still ship an em dash in the primary summary artifact.	Add line 331 to `### UPDATED: python/larch/design/design_summary.py` (colon/comma separator) and extend `python/tests/design/test_design_summary.py` with a degrade-enrich assertion if the plan mandates that fixture.
+1	in_scope	important	completeness	python/larch/git/gh.py:1781	`python/larch/git/gh.py` emit site missing from plan	Acceptance and the post-edit grep target all of `python/larch/git/`, but only `pr_body.py` is listed. `run_logs_failed()` still emits `--- CI log (run …) — last …` to operators; the verification grep will flag this hit with no assigned fix.	Add `### UPDATED: python/larch/git/gh.py` (colon/comma in the CI-log pointer) or document an explicit grep exception; add/adjust `python/tests/git/test_gh.py` if it asserts that string.
+
+## Findings
+
+### 1. correctness — `python/larch/design/design_summary.py:331`
+
+The plan updates degraded fallback output at lines 646-647 but not the enrich-degraded branch at line 331:
+
+```329:332:python/larch/design/design_summary.py
+                    degraded_body = (
+                        degraded_body.rstrip("\n")
+                        + "\n\n**⚠ Enrich degraded — exec issue detail unavailable.**\n"
+                    )
+```
+
+That text is written to `final-summary.md` on the design publish path, so it is user-facing run-summary output. Without a plan step here, design summaries can still contain a literal em dash after the rest of the scrub lands.
+
+**Suggested revision:** Add the line 331 string to the `design_summary.py` update list and cover it in `test_design_summary.py` if the plan requires that fixture.
+
+### 2. completeness — `python/larch/git/gh.py:1781`
+
+Issue acceptance and the planned grep sweep cover all of `python/larch/git/`, but the plan only lists `pr_body.py` under `git/`:
+
+```1780:1783:python/larch/git/gh.py
+    pointer = (
+        f"--- CI log (run {run_id}, repo {repo}) — last {tail_lines} lines shown. "
+        f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
+    )
+```
+
+`run_logs_failed()` returns this pointer to operators during CI failures. The planned `git grep` over `python/larch/git/` will surface this line with no assigned fix.
+
+**Suggested revision:** Add `gh.py` to the firm file list (or document a deliberate grep exception) and update `test_gh.py` if it asserts this text.
+
+---
+
+**Plan coverage that looks sound (no finding):**
+
+- **Parser compatibility:** `final_report.py` stalled detection (`summary_heading_is_stalled`, `_summary_stalled_heading_index`) and `reconcile_stalled_summary_from_manifest` are in scope; `run_log_tolerance.py` matches outcome tokens at line end, so both `— stalled` and `: stalled` headings keep working.
+- **Primary emitters:** `pr_body.render_run_summary()` is the implement heading source; design uses `render run-summary` with fallback at 646-647.
+- **Tests:** Implement paths (`test_pr_body.py`, `test_ship.py`, `test_run_logs.py`, proposed `test_final_report.py` stalled cases) and design paths (`test_design_summary.py`, `test_design_pause.py`) are listed; stalled recovery fixtures in `test_run_logs.py` and `test_ship.py` are slated for separator updates including `split("—")` helpers.
