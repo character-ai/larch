@@ -873,7 +873,7 @@ def validate_plan_main(argv: list[str]) -> int:
         if raw.startswith("difficulty:") and not difficulty.tier_valid(raw[len("difficulty:") :].strip()):
             difficulty_defects = 1
             break
-    if difficulty_defects == 0 and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "").strip() == "1" and not difficulty.plan_difficulty(plan_text):
+    if difficulty_defects == 0 and os.environ.get("LARCH_REQUIRE_PLAN_DIFFICULTY", "").strip() == "1" and not difficulty.trailing_plan_difficulty(plan_text):
         difficulty_defects = 1
     status = "defects-found" if summary.defect_count or difficulty_defects else summary.status
     emit_kv(key="VALIDATE_STATUS", value=status)
@@ -903,4 +903,3 @@ def validate_plan_main(argv: list[str]) -> int:
         log_path = Path(name)
     emit_kv(key="VALIDATE_LOG_FILE", value=str(log_path))
     return 0
-

@@ -115,6 +115,29 @@ def test_validate_difficulty_metadata_ignores_body_tokens() -> None:
     assert found == "HARD"
 
 
+def test_validate_plan_require_difficulty_stays_trailing_only(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\nbody\ndifficulty: MODERATE\n\n## Acceptance\nok\n\ndiff_lines: 9\n", encoding="utf-8")
+
+    cp = run_cli(
+        "plan",
+        "validate",
+        "--plan-file",
+        str(plan),
+        "--repo-root",
+        str(REPO_ROOT),
+        "--design-tmpdir",
+        str(tmp_path),
+        env={"LARCH_REQUIRE_PLAN_DIFFICULTY": "1"},
+    )
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+
+    assert cp.returncode == 0, cp.stderr
+    assert out["VALIDATE_STATUS"] == "defects-found"
+    assert out["VALIDATE_DEFECT_COUNT"] == "1"
+    assert "DEFECT plan kind=difficulty-metadata" in (tmp_path / "validate-plan-commands.log").read_text(encoding="utf-8")
+
+
 _TRAILER_AWK_PARSE_CASES = [
     ("all-three-present", "body\ndiff_added: 100\ndiff_deleted: 50\nmechanical_churn: true\ndiff_lines: 200\n", 3, "100", "50", "true"),
     ("none-present", "body\ndiff_lines: 1\n", 0, None, None, "false"),
