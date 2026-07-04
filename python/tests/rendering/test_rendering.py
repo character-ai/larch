@@ -828,6 +828,17 @@ def test_specialist_tagging_includes_oos_proposal_cap() -> None:
     assert "skills/shared/oos-acceptance-rubric.md" in text
 
 
+def test_specialist_tagging_preserves_output_anchors() -> None:
+    text = rendering._specialist_tagging(diff_mode="generic", mode="diff")  # pyright: ignore[reportPrivateUsage]
+    assert "### In-Scope Findings" in text
+    assert "### Out-of-Scope Observations" in text
+    assert "NO_ISSUES_FOUND" in text
+    assert (
+        "- **<focus-area>** `<path>:<line-range>` — <one-paragraph issue text>. **Suggested fix:** <one-paragraph suggested fix text>."
+        in text
+    )
+
+
 def test_render_plan_review_injects_architectural_guidelines_separate_from_scope_anchor(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1067,8 +1078,10 @@ def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, mo
             ["--agent-file", str(_specialist_agent(tmp_path)), "--mode", "diff", "--competition-notice", "--diff-file", str(_render_diff(tmp_path, "diff --git a/a b/a\n"))]
         )
     )
+    assert "**Competition notice**" in text
+    assert "Review Acceptance Rubric" in text
     assert "provisional +1 at vote time" in text
-    assert "fate-adjusted diagnostic report without changing live vote tallies" in text
+    assert "without changing vote tallies" in text
 
 
 def test_render_specialist_uses_inprocess_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1237,13 +1250,18 @@ def test_scope_anchor_retally_prefers_parsed(tmp_path: Path, capsys: pytest.Capt
     assert capsys.readouterr().out == str(parsed)
 
 
-def _render_voter_text(tmp_path: Path, capsys: pytest.CaptureFixture[str], *extra: str) -> str:
+def _render_voter_text(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    *extra: str,
+    id_grammar: str = "finding-oos",
+) -> str:
     ballot = tmp_path / "ballot.md"
     ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
     rc = rendering.render_voter_main([
         "--ballot-file", str(ballot),
         "--panel-role", "test voter",
-        "--id-grammar", "finding-oos",
+        "--id-grammar", id_grammar,
         "--verification-context", "code",
         *extra,
     ])
@@ -1261,11 +1279,31 @@ def test_render_voter_no_archetype_matches_default_output(tmp_path: Path, capsys
 def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     assert "Panel severity rubric" in text
-    assert "`blocker` = data loss, security exposure, corruption" in text
-    assert "`major` = blocks merge" in text
-    assert "`minor` = real, necessary, limited-impact issue" in text
-    assert "`nit` = style, wording, polish, or cleanup" in text
-    assert "`uncertain` = cannot judge severity after verification" in text
+    assert "blocker|major|minor|nit|uncertain" in text
+
+
+def test_render_voter_finding_oos_grammar_is_frozen(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = _render_voter_text(tmp_path, capsys)
+    correctness = "true|partially-true|false-positive|uncertain"
+    severity = "blocker|major|minor|nit|uncertain"
+    quality = "excellent|good|adequate|weak|no-fix|uncertain"
+    uncertain = "true|false"
+    assert (
+        f"  FINDING_N: YES CORRECTNESS=<{correctness}> SEVERITY=<{severity}> QUALITY=<{quality}> UNCERTAIN=<{uncertain}>"
+        in text
+    )
+    assert "  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason" in text
+    assert f"  OOS_N: YES CORRECTNESS=<{correctness}> SEVERITY=<{severity}> QUALITY=<{quality}> UNCERTAIN=<{uncertain}>" in text
+    assert "  OOS_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason" in text
+    assert "No markdown tables or pipe-delimited grids; parser reads one anchored line per item." in text
+
+
+def test_render_voter_finding_only_grammar_is_frozen(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    text = _render_voter_text(tmp_path, capsys, id_grammar="finding-only")
+    assert "  FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain>" in text
+    assert "  FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason" in text
+    assert "  OOS_N:" not in text
+    assert "No markdown tables or pipe-delimited grids; parser reads one anchored line per item." in text
 
 
 def test_render_voter_immediate_action_directive(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -1279,21 +1317,17 @@ def test_render_voter_immediate_action_directive(tmp_path: Path, capsys: pytest.
 def test_render_voter_archetype_lens_blocks(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     validity = _render_voter_text(tmp_path, capsys, "--archetype", "validity-correctness")
     assert "full Review Acceptance Rubric" in validity
-    assert "defect is real and triggerable" in validity
+    assert "**is it real**" in validity
     plan = _render_voter_text(tmp_path, capsys, "--archetype", "plan-fidelity-completeness")
     assert "missing plan context is not an automatic NO" in plan
-    assert "Plan-mandated deliverable carve-out" in plan
-    assert "other artifact explicitly required by the supplied implementation plan is in-scope when omitted" in plan
-    assert "Do not include that mapping in voter output" in plan
-    assert "silently map it to the exact supplied-plan line" in plan
-    assert "do not cite plan lines, quote plan text, or mention the mapping in output" in plan
-    assert "If the plan explicitly requires a test, doc, generated artifact, cleanup task, or other deliverable" in plan
-    assert "Plan-mandated deliverable omissions override the generic default-test-to-OOS guidance" in plan
+    assert "**is it in scope**" in plan
+    assert "Plan-required deliverable omissions override default-test-to-OOS" in plan
     assert "k=3" not in plan
     assert "self-consistency" not in plan
     assert "plan-fidelity alone" not in plan
     pragmatic = _render_voter_text(tmp_path, capsys, "--archetype", "pragmatism-cost")
-    assert "never trade correctness or security away for simplicity" in pragmatic
+    assert "**is it worth it**" in pragmatic
+    assert "Defer to validity on correctness and security" in pragmatic
 
 
 def test_render_findings_view_filters_and_handles_missing_body(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
