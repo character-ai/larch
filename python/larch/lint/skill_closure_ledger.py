@@ -292,10 +292,22 @@ def _summarize(revisions: Iterable[BaselineRevision]) -> tuple[SummaryRow, ...]:
     order: list[str] = []
     for revision in revisions:
         snapshot_values = {value.target: value.closure_estimated_tokens for value in revision.snapshot.values}
+        reappearing_targets = {
+            delta.target
+            for delta in revision.deltas
+            if delta.previous is None and delta.target in accumulators
+        }
         for target, accumulator in accumulators.items():
+            if target in reappearing_targets:
+                continue
             accumulator.advance(commit=revision.commit.sha, current=snapshot_values.get(target, 0))
         for delta in revision.deltas:
-            if delta.delta is None or delta.previous is None:
+            if delta.previous is None:
+                if delta.target in reappearing_targets:
+                    accumulators[delta.target] = _SummaryAccumulator(
+                        start=delta.current,
+                        current=delta.current,
+                    )
                 continue
             if delta.target not in accumulators:
                 order.append(delta.target)

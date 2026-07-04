@@ -242,6 +242,38 @@ def test_detailed_ledger_clears_stale_target_after_gap(
     assert reappeared["raise"] == "false"
 
 
+def test_summary_ledger_restarts_target_after_gap(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = tmp_path / "repo"
+    commits = _fixture_history_with_panel_tier_gap(repo)
+
+    rc = ledger.ledger_main(["--root", str(repo), "--summary"])
+
+    captured = capsys.readouterr()
+    assert rc == 0
+    rows = {row["target"]: row for row in _tsv_rows(captured.out)}
+    assert rows["panel-tier"] == {
+        "target": "panel-tier",
+        "start": "45000",
+        "end": "45000",
+        "delta": "0",
+        "raises": "0",
+        "largest_raise_commit": "",
+        "largest_raise_delta": "",
+    }
+    assert rows["design"] == {
+        "target": "design",
+        "start": "10000",
+        "end": "12600",
+        "delta": "2600",
+        "raises": "1",
+        "largest_raise_commit": commits["pr6029"],
+        "largest_raise_delta": "2763",
+    }
+
+
 def test_window_uses_predecessor_outside_selected_range(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
