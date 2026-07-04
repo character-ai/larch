@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:58:10
-- **Cost**: 💰 TOTAL ~$31.48 — Claude $1.95, Codex-5.5 $21.70, Codex-mini $1.98, Cursor $4.03, Claude (subprocess) $1.82  |  Tokens: 52121k
+- **Cost**: 💰 TOTAL ~$32.54 — Claude $3.01, Codex-5.5 $21.70, Codex-mini $1.98, Cursor $4.03, Claude (subprocess) $1.82  |  Tokens: 54886k
 - **Issue**: #6264 — https://github.com/character-ai/larch/issues/6264
 - **PR**: #6292 — https://github.com/character-ai/larch/pull/6292
 - **Plan review**: N/A
