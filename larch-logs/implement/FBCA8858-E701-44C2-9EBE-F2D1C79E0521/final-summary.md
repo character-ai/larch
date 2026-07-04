@@ -1,14 +1,16 @@
-## /implement run FBCA8858-E701-44C2-9EBE-F2D1C79E0521 — shipping
+## /implement run FBCA8858-E701-44C2-9EBE-F2D1C79E0521 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 02:37:55
 - **Cost**: 💰 TOTAL ~$58.10 — Claude $10.87, Codex-5.5 $31.49, Codex-mini $3.03, Cursor $11.15, Claude (subprocess) $1.56  |  Tokens: 94868k
 - **Issue**: #6158 — https://github.com/character-ai/larch/issues/6158
+- **PR**: #6223 — https://github.com/character-ai/larch/pull/6223
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1511/-79, larch-logs +1523/-0
 - **OOS filed**: 0
 - **Exec issues**: 1
 - **Warnings**: 5
