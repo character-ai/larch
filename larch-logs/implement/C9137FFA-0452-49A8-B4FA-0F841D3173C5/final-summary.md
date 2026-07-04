@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 00:29:09
-- **Cost**: 💰 TOTAL ~$11.72 — Claude $0.50, Codex-5.5 $4.96, Codex-mini $1.84, Cursor $4.19, Claude (subprocess) $0.23  |  Tokens: 20256k
+- **Cost**: 💰 TOTAL ~$12.13 — Claude $0.86, Codex-5.5 $4.96, Codex-mini $1.84, Cursor $4.19, Claude (subprocess) $0.28  |  Tokens: 21225k
 - **Issue**: #6262 — https://github.com/character-ai/larch/issues/6262
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/6275
 - **Exec issues**: 1
 - **Warnings**: 2
 - **Run logs**: `larch-logs/implement/C9137FFA-0452-49A8-B4FA-0F841D3173C5/`
@@ -104,3 +104,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_9** (unknown): correctness. Concern: - **correctness** `skills/implement/SKILL.md:441` / `python/larch/implement/dispatch_commit_route.py:75-88` — Active `/implement` Step 3 already writes `CLONE_PATH=` through `checks-commit-route` → `_write_bg_wait_marker()`; `test_dispatch_bg_wait_marker_copi…
 - **Round 1 OOS_10** (unknown): correctness. Concern: - **correctness** `skills/implement/scripts/run-step-checks.sh:76-77` — The legacy shell writer still stamps `TIMEOUT_S=10800` while the live composite uses `15600` for `implement-step3-checks` (`dispatch_commit_route.py:119-121`). That timeout skew predates…
 - **Additional candidates**: 5 omitted by the final-summary cap.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
