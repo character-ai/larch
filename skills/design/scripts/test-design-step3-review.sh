@@ -104,6 +104,13 @@ grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$NORMALIZE_MODULE" || fail 'panel
 grep -Fq 'file=sys.stderr' "$NORMALIZE_MODULE" || fail 'normalizer markdown warnings must route to stderr'
 grep -Fq 'load_bash_quoted_env' "$NORMALIZE_MODULE" || fail 'normalizer must load quoted env values'
 grep -Fq '_step3_read_result_env_quiet' "$MODULE" || fail 'quiet read-result-env helper missing'
+if grep -Fq 'kill -- -"$_pid"' "$WRAPPER" || grep -Fq 'kill -- -"$_loop_pid"' "$WRAPPER"; then
+  fail 'Step 3 wrapper must not raw-kill retained loop pids'
+fi
+grep -Fq 'plan-review write-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper must write loop identity sidecar after launch'
+grep -Fq 'plan-review teardown-loop-identity' "$WRAPPER" || fail 'Step 3 wrapper must delegate loop teardown to identity helper'
+grep -Fq 'rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json"' "$WRAPPER" || fail 'Step 3 wrapper must clear loop identity sidecar after wait'
+pass 'Step 3 wrapper uses identity-validated loop teardown'
 
 D_STEP3=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-stage.XXXXXX")
 trap 'rm -rf "$D_STEP3"' EXIT

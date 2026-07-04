@@ -156,6 +156,15 @@ STALL_RECOVERY_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = tuple(dict.fromkeys(
 TRANSIENT_RETRY_MAX_ATTEMPTS: Final = 3
 TRANSIENT_RETRY_BACKOFF_SEC: Final = (2, 4)
 
+# Identity-validated process signaling sidecars and logs.
+ACTIVE_LEG_IDENTITY_FILE: Final = ".active-leg.json"
+ACTIVE_LEG_LEGACY_PGID_FILE: Final = ".active-leg-pgid"
+ENV_ACTIVE_LEG_OWNER_TOKEN: Final = "LARCH_ACTIVE_LEG_OWNER_TOKEN"
+DESIGN_STEP3_LOOP_IDENTITY_FILE: Final = ".step3-loop-identity.json"
+ACTIVE_LEG_KILL_LOG_FILE: Final = "active-leg-kill.log.jsonl"
+DESIGN_STEP3_KILL_LOG_FILE: Final = "design-step3-kill.log.jsonl"
+FINALIZE_KILL_LOG_FILE: Final = "finalize-kill.log.jsonl"
+
 # Voter calibration prompt-feedback.
 ENV_LARCH_VOTER_CALIBRATION_FEEDBACK: Final = "LARCH_VOTER_CALIBRATION_FEEDBACK"
 ENV_LARCH_VOTER_CALIBRATION_WINDOW: Final = "LARCH_VOTER_CALIBRATION_WINDOW"

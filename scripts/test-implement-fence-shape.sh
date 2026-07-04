@@ -221,8 +221,12 @@ if saw_py_launcher:
     forbidden = '*.py) exec "$CLAUDE_PLUGIN_ROOT/$script" "$@" ;;'
     if required not in bootstrap:
         errors.append('larch-run.sh template must trap active-leg cleanup for .py targets')
-    if 'implement kill-active-leg --implement-tmpdir' not in bootstrap:
-        errors.append('larch-run.sh template must delegate outer-fence leg cleanup to implement kill-active-leg')
+    if 'export __OWNER_TOKEN_ENV__="$_larch_active_leg_owner_token"' not in bootstrap or 'script = script.replace("__OWNER_TOKEN_ENV__", config.ENV_ACTIVE_LEG_OWNER_TOKEN)' not in bootstrap:
+        errors.append('larch-run.sh template must export active-leg owner token before .py target')
+    if 'implement kill-active-leg --owner-token "$_larch_active_leg_owner_token" --implement-tmpdir' not in bootstrap:
+        errors.append('larch-run.sh template must forward owner token to implement kill-active-leg')
+    if 'kill-active-leg --implement-tmpdir "$IMPLEMENT_TMPDIR" 2>/dev/null' in bootstrap:
+        errors.append('larch-run.sh template must not silence kill-active-leg stderr')
     if forbidden_exec in bootstrap:
         errors.append('larch-run.sh template must not exec .py targets (outer fence needs trap cleanup)')
     if forbidden in bootstrap:

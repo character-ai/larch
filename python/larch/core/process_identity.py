@@ -1,0 +1,338 @@
+"""Process identity checks for persisted pid/pgid signal targets."""
+
+from __future__ import annotations
+
+import argparse
+import contextlib
+import json
+import os
+import signal
+import time
+from dataclasses import asdict, dataclass
+from pathlib import Path
+from typing import Any
+
+from larch import io as larch_io
+from larch.core import config, proc
+
+PS_LSTART_FIELD_COUNT = 5
+COMMAND_LOG_LIMIT = 500
+
+
+@dataclass(frozen=True)
+class RecordedProcessIdentity:
+    pid: int
+    pgid: int
+    start_time: str
+    command_signature: str
+    expected_signature: str = ""
+
+
+@dataclass(frozen=True)
+class ValidationResult:
+    ok: bool
+    reason: str
+    current: RecordedProcessIdentity | None = None
+
+
+@dataclass(frozen=True)
+class KillTargetSnapshot:
+    pid: int
+    pgid: int
+    descendants: tuple[int, ...]
+    command: str
+
+
+@dataclass(frozen=True)
+class KillLogEvent:
+    event: str
+    signal: str
+    pid: int
+    pgid: int
+    command: str
+    caller: str
+    reason: str
+    descendants: tuple[int, ...] = ()
+    tmpdir_needle: str = ""
+    physical_needle: str = ""
+
+
+def normalize_command_signature(value: str) -> str:
+    return " ".join(value.replace("\r", " ").replace("\n", " ").split())
+
+
+def bounded_command(value: str, *, limit: int = COMMAND_LOG_LIMIT) -> str:
+    normalized = normalize_command_signature(value)
+    if len(normalized) <= limit:
+        return normalized
+    return normalized[: max(0, limit - 1)] + "…"
+
+
+def _parse_ps_identity(*, pid: int, pgid: int, stdout: str, expected_signature: str) -> RecordedProcessIdentity | None:
+    for raw in stdout.splitlines():
+        parts = raw.strip().split(maxsplit=PS_LSTART_FIELD_COUNT)
+        if len(parts) < PS_LSTART_FIELD_COUNT:
+            continue
+        start_time = " ".join(parts[:PS_LSTART_FIELD_COUNT])
+        command = parts[PS_LSTART_FIELD_COUNT] if len(parts) > PS_LSTART_FIELD_COUNT else ""
+        return RecordedProcessIdentity(
+            pid=pid,
+            pgid=pgid,
+            start_time=normalize_command_signature(start_time),
+            command_signature=normalize_command_signature(command),
+            expected_signature=normalize_command_signature(expected_signature),
+        )
+    return None
+
+
+def read_process_identity(
+    *,
+    pid: int,
+    runner: proc.Runner | None = None,
+    expected_signature: str = "",
+) -> RecordedProcessIdentity | None:
+    if pid <= 0:
+        return None
+    pgid: int | None = None
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        pgid = os.getpgid(pid)
+    if pgid is None:
+        return None
+    active_runner = runner or proc.ProcRunner()
+    result = active_runner.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="])
+    if result.returncode != 0:
+        return None
+    return _parse_ps_identity(pid=pid, pgid=pgid, stdout=result.stdout, expected_signature=expected_signature)
+
+
+def validate_process_identity(
+    *,
+    recorded: RecordedProcessIdentity,
+    runner: proc.Runner | None = None,
+) -> ValidationResult:
+    current = read_process_identity(pid=recorded.pid, runner=runner, expected_signature=recorded.expected_signature)
+    if current is None:
+        return ValidationResult(ok=False, reason="missing-pid")
+    if current.pgid != recorded.pgid:
+        return ValidationResult(ok=False, reason="pgid-mismatch", current=current)
+    if normalize_command_signature(current.start_time) != normalize_command_signature(recorded.start_time):
+        return ValidationResult(ok=False, reason="start-time-mismatch", current=current)
+    recorded_command = normalize_command_signature(recorded.command_signature)
+    current_command = normalize_command_signature(current.command_signature)
+    if recorded_command and current_command != recorded_command:
+        return ValidationResult(ok=False, reason="command-mismatch", current=current)
+    expected = normalize_command_signature(recorded.expected_signature)
+    if expected and expected not in current_command:
+        return ValidationResult(ok=False, reason="expected-command-mismatch", current=current)
+    return ValidationResult(ok=True, reason="ok", current=current)
+
+
+def collect_descendants(*, pid: int, runner: proc.Runner | None = None) -> tuple[int, ...]:
+    active_runner = runner or proc.ProcRunner()
+    result = active_runner.run(["pgrep", "-P", str(pid)])
+    if result.returncode != 0:
+        return ()
+    descendants: list[int] = []
+    for line in result.stdout.splitlines():
+        raw = line.strip()
+        if not raw.isdigit():
+            continue
+        child = int(raw)
+        descendants.extend(collect_descendants(pid=child, runner=active_runner))
+        descendants.append(child)
+    return tuple(descendants)
+
+
+def append_kill_log(*, path: Path | None, event: KillLogEvent) -> None:
+    if path is None:
+        return
+    payload = asdict(event)
+    payload["command"] = bounded_command(str(payload.get("command", "")))
+    payload["ts"] = time.time()
+    with contextlib.suppress(OSError, TypeError):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with path.open("a", encoding="utf-8") as handle:
+            _ = handle.write(json.dumps(payload, sort_keys=True) + "\n")
+
+
+def _log_signal(
+    *,
+    log_path: Path | None,
+    signal_name: str,
+    snapshot: KillTargetSnapshot,
+    caller: str,
+    reason: str,
+) -> None:
+    append_kill_log(
+        path=log_path,
+        event=KillLogEvent(
+            event="signal",
+            signal=signal_name,
+            pid=snapshot.pid,
+            pgid=snapshot.pgid,
+            command=snapshot.command,
+            caller=caller,
+            reason=reason,
+            descendants=snapshot.descendants,
+        ),
+    )
+
+
+def terminate_validated_process_group(
+    *,
+    recorded: RecordedProcessIdentity,
+    log_path: Path | None,
+    caller: str,
+    reason: str,
+    runner: proc.Runner | None = None,
+) -> ValidationResult:
+    active_runner = runner or proc.ProcRunner()
+    validation = validate_process_identity(recorded=recorded, runner=active_runner)
+    if not validation.ok:
+        return validation
+    current = validation.current or recorded
+    descendants = collect_descendants(pid=recorded.pid, runner=active_runner)
+    snapshot = KillTargetSnapshot(
+        pid=recorded.pid,
+        pgid=recorded.pgid,
+        descendants=descendants,
+        command=current.command_signature,
+    )
+    _log_signal(log_path=log_path, signal_name="SIGTERM", snapshot=snapshot, caller=caller, reason=reason)
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(recorded.pgid, signal.SIGTERM)
+    for child in descendants:
+        append_kill_log(
+            path=log_path,
+            event=KillLogEvent(
+                event="signal",
+                signal="SIGTERM",
+                pid=child,
+                pgid=recorded.pgid,
+                command="",
+                caller=caller,
+                reason=reason,
+                descendants=(),
+            ),
+        )
+        with contextlib.suppress(OSError):
+            os.kill(child, signal.SIGTERM)
+    time.sleep(2)
+    validation = validate_process_identity(recorded=recorded, runner=active_runner)
+    if not validation.ok:
+        return validation
+    kill_descendants = tuple(dict.fromkeys((*descendants, *collect_descendants(pid=recorded.pid, runner=active_runner))))
+    snapshot = KillTargetSnapshot(
+        pid=recorded.pid,
+        pgid=recorded.pgid,
+        descendants=kill_descendants,
+        command=(validation.current or current).command_signature,
+    )
+    _log_signal(log_path=log_path, signal_name="SIGKILL", snapshot=snapshot, caller=caller, reason=reason)
+    with contextlib.suppress(ProcessLookupError, PermissionError, OSError):
+        os.killpg(recorded.pgid, signal.SIGKILL)
+    for child in kill_descendants:
+        append_kill_log(
+            path=log_path,
+            event=KillLogEvent(
+                event="signal",
+                signal="SIGKILL",
+                pid=child,
+                pgid=recorded.pgid,
+                command="",
+                caller=caller,
+                reason=reason,
+                descendants=(),
+            ),
+        )
+        with contextlib.suppress(OSError):
+            os.kill(child, signal.SIGKILL)
+    return validation
+
+
+def _identity_to_json(recorded: RecordedProcessIdentity, *, extra: dict[str, Any] | None = None) -> str:
+    payload: dict[str, Any] = {
+        "pid": recorded.pid,
+        "pgid": recorded.pgid,
+        "start_time": recorded.start_time,
+        "command_signature": recorded.command_signature,
+        "expected_signature": recorded.expected_signature,
+    }
+    if extra:
+        payload.update(extra)
+    return json.dumps(payload, indent=2, sort_keys=True) + "\n"
+
+
+def write_identity_record(*, path: Path, recorded: RecordedProcessIdentity, extra: dict[str, Any] | None = None) -> None:
+    larch_io.atomic_write(
+        path=path,
+        text=_identity_to_json(recorded, extra=extra),
+        temp_name=f"{path.name}.tmp.{os.getpid()}",
+        nofollow=True,
+    )
+
+
+def read_identity_record(*, path: Path) -> RecordedProcessIdentity | None:
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    try:
+        return RecordedProcessIdentity(
+            pid=int(payload["pid"]),
+            pgid=int(payload["pgid"]),
+            start_time=str(payload["start_time"]),
+            command_signature=str(payload["command_signature"]),
+            expected_signature=str(payload.get("expected_signature", "")),
+        )
+    except (KeyError, TypeError, ValueError):
+        return None
+
+
+def _validated_design_tmpdir(raw: str) -> Path | None:
+    if not raw:
+        return None
+    path = Path(raw)
+    if not path.is_absolute() or path.is_symlink() or not path.is_dir():
+        return None
+    return path
+
+
+def write_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review write-loop-identity")
+    _ = parser.add_argument("--design-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    _ = parser.add_argument("--expected-signature", default="plan-review run")
+    args = parser.parse_args(argv)
+    tmpdir = _validated_design_tmpdir(args.design_tmpdir)
+    if tmpdir is None or not str(args.pid).isdigit():
+        return 0
+    identity = read_process_identity(pid=int(args.pid), expected_signature=args.expected_signature)
+    if identity is None:
+        return 0
+    write_identity_record(path=tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE, recorded=identity)
+    return 0
+
+
+def teardown_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review teardown-loop-identity")
+    _ = parser.add_argument("--design-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    args = parser.parse_args(argv)
+    tmpdir = _validated_design_tmpdir(args.design_tmpdir)
+    if tmpdir is None or not str(args.pid).isdigit():
+        return 0
+    sidecar = tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
+    recorded = read_identity_record(path=sidecar)
+    if recorded is None or recorded.pid != int(args.pid):
+        return 0
+    validation = terminate_validated_process_group(
+        recorded=recorded,
+        log_path=tmpdir / config.DESIGN_STEP3_KILL_LOG_FILE,
+        caller="design-step3-review",
+        reason="step3-trap-cleanup",
+    )
+    if validation.ok:
+        with contextlib.suppress(OSError):
+            sidecar.unlink(missing_ok=True)
+    return 0

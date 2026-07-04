@@ -363,7 +363,11 @@ _step3_review_guarantee_completed_sentinels() {
 _step3_review_teardown_loop_group() {
   local _pid="${1:-}"
   [[ -n "$_pid" ]] || return 0
-  kill -- -"$_pid" 2>/dev/null || true
+  [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] || return 0
+  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review teardown-loop-identity \
+    --design-tmpdir "$DESIGN_TMPDIR" \
+    --pid "$_pid" >/dev/null 2>&1 || true
 }
 
 _step3_review_kill_tmpdir_processes() {
@@ -401,7 +405,7 @@ fi
 
 trap _step3_review_cleanup EXIT
 # Python owns the process-group setup.
-# Bash owns wait, status capture, process-group teardown, and fallback tmpdir cleanup.
+# Bash owns wait, status capture, identity-validated teardown delegation, and fallback tmpdir cleanup.
 # The dedicated loop stderr log remains the only stderr quarantine for the worker and children.
 set +e
 if [ -n "$STARTING_ROUND" ]; then
@@ -419,12 +423,16 @@ else
     >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
 fi
 _loop_pid=$!
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review write-loop-identity \
+  --design-tmpdir "$DESIGN_TMPDIR" \
+  --pid "$_loop_pid" \
+  --expected-signature "plan-review run" >/dev/null 2>&1 || true
 wait "$_loop_pid"
 _plan_review_rc=$?
 set -e
-_step3_review_teardown_loop_group "$_loop_pid"
-_step3_review_kill_tmpdir_processes
+rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json" 2>/dev/null || true
 _loop_pid=""
+_step3_review_kill_tmpdir_processes
 # #4489 / #4724: loop teardown is done; from here every terminal exit (config-error,
 # postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
 # fall-through) must leave .completed/step-3 in place. The hook-release sentinel
