@@ -90,7 +90,7 @@ def test_reconcile_manifest_for_terminal_report_marks_present_summary_and_pr_cre
     run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
     run_dir.mkdir(parents=True)
     _ = (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement run run-1 — pr-created\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run run-1: pr-created\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=42\n", encoding="utf-8")
     calls: list[list[str]] = []
 
@@ -319,7 +319,7 @@ def test_write_final_report_renders_panel_failed_merge_downgrade(
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "## /implement run run1 — pr-created" in body
+    assert "## /implement run run1: pr-created" in body
     assert "**⚠ Merge downgraded**" in body
 
 
@@ -698,6 +698,19 @@ def test_render_run_summary_includes_dynamic_archetypes_line() -> None:
         cost_unavailable=True,
     )
     assert "- **Dynamic archetypes**: static-only, pre-scouted-empty" in body
+
+
+@pytest.mark.parametrize("skill", ["implement", "design"])
+def test_render_run_summary_never_emits_em_dash_in_bounded_block(skill: str) -> None:
+    body = pr_body.render_run_summary(
+        skill=skill,
+        outcome="completed",
+        run_id="run1",
+        cost_unavailable=True,
+    )
+    block, sentinel, _tail = body.partition("<!-- larch:run-summary v=1 -->")
+    assert sentinel == "<!-- larch:run-summary v=1 -->"
+    assert "—" not in block
 
 
 def test_final_report_dynamic_archetypes_line_ok_count(tmp_path: Path) -> None:

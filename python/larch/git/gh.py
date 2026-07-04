@@ -1778,7 +1778,7 @@ def run_logs_failed(
     cwd: str | None = None,
 ) -> tuple[str, int]:
     pointer = (
-        f"--- CI log (run {run_id}, repo {repo}) — last {tail_lines} lines shown. "
+        f"--- CI log (run {run_id}, repo {repo}): last {tail_lines} lines shown. "
         f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
     )
     result = runner.run(["gh", "run", "view", run_id, "--repo", repo, "--log-failed"], cwd=cwd)

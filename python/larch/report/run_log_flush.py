@@ -776,7 +776,7 @@ def _capture_transcript_append_warning(
 ) -> None:
     if issues_log is None:
         return
-    entry = f"- **Step {step_label} — session-transcript status={status}:** {message}"
+    entry = f"- **Step {step_label}: session-transcript status={status}:** {message}"
     with suppress(OSError):
         _append_execution_issue(log_file=issues_log, category="Warnings", entry=entry)
 

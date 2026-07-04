@@ -321,7 +321,7 @@ def _last_artifact(tmpdir: Path) -> str:
 
 def _render_generic(*, skill: str, step_label: str, start_s: int | None, tmpdir: Path) -> str:
     label = step_label or "unknown step"
-    return f"{skill}: {label} — started {_human_elapsed(start_s)} ago\n{_last_artifact(tmpdir)}"
+    return f"{skill}: {label}: started {_human_elapsed(start_s)} ago\n{_last_artifact(tmpdir)}"
 
 
 def _render_ship_pr(implement_tmpdir: Path) -> str:
@@ -544,7 +544,7 @@ def _round_vendor_cost_argv(
 
 def _fmt_hms(seconds: int | None) -> str:
     if seconds is None or seconds <= 0:
-        return "—"
+        return "N/A"
     hours = seconds // SECONDS_PER_HOUR
     minutes = (seconds % SECONDS_PER_HOUR) // SECONDS_PER_MINUTE
     secs = seconds % SECONDS_PER_MINUTE
@@ -636,7 +636,7 @@ def _timing_round_attempt_windows(
 
 def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s: int | None) -> str:
     if token_ledger is None or not token_ledger.is_file() or start_s is None or end_s is None:
-        return "—"
+        return "N/A"
     sums: dict[str, dict[str, int]] = {}
     claude_sub_by_model: dict[str, dict[str, int]] = {}
     for line in _read_lines_best_effort(token_ledger):
@@ -667,12 +667,12 @@ def _round_vendor_cost(*, token_ledger: Path | None, start_s: int | None, end_s:
     try:
         out = report_tokens_cost.token_cost_from_args(argv)
     except Exception:  # pylint: disable=broad-except
-        return "—"
+        return "N/A"
     for line in out.splitlines():
         key, sep, value = line.partition("=")
         if sep and key == "TOTAL_COST" and re.fullmatch(r"[0-9]+(?:\.[0-9]+)?", value):
             return f"${value}"
-    return "—"
+    return "N/A"
 
 
 @dataclass(frozen=True)

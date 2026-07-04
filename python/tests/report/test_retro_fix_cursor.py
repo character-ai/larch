@@ -13,7 +13,7 @@ from larch.report import retro_fix_cursor as rfc
 def _write_summary(run_dir: Path, cursor: str, total: str, *, extra: str = "") -> Path:
     run_dir.mkdir(parents=True, exist_ok=True)
     content = (
-        f"## /implement run — merged\n\n"
+        f"## /implement run: merged\n\n"
         f"- **Cost**: 💰 TOTAL ~${total} — Claude $10.00, Codex $1.00, "
         f"Cursor ${cursor}, Claude (subprocess) $0.00  |  Tokens: 10000k\n"
         f"{extra}"

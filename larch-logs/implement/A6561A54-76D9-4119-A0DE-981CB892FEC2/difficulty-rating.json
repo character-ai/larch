@@ -1,0 +1,22 @@
+{
+  "applied_tier": "MODERATE",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "review",
+  "confidence": "medium",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "MODERATE",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Touches several report renderers and downstream fixtures while preserving legacy stalled-summary compatibility.",
+  "round_cap": 2,
+  "schema_version": 1
+}

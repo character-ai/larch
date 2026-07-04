@@ -650,13 +650,13 @@ def append_failure_main(argv: list[str]) -> int:
         body = design_diagram_log.sanitize_diagram_capture(body)
     suffix = ""
     if args.verdict:
-        suffix += f" — {args.verdict}"
+        suffix += f", {args.verdict}"
     if args.retry_count and args.transient_retry_count:
-        suffix += f" — auth-retries={args.retry_count}, transient-retries={args.transient_retry_count}"
+        suffix += f", auth-retries={args.retry_count}, transient-retries={args.transient_retry_count}"
     elif args.retry_count:
-        suffix += f" — retries={args.retry_count}"
+        suffix += f", retries={args.retry_count}"
     entry = (
-        f"- **Step {args.site} — {args.tool} {args.status_label} "
+        f"- **Step {args.site}: {args.tool} {args.status_label} "
         f"(exit {args.exit_code}{suffix})**:\n"
         "  ```\n"
         f"{body.rstrip()}\n"

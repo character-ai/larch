@@ -328,7 +328,7 @@ def _write_enriched_post_publish_summary(
                 else:
                     degraded_body = (
                         degraded_body.rstrip("\n")
-                        + "\n\n**⚠ Enrich degraded — exec issue detail unavailable.**\n"
+                        + "\n\n**⚠ Enrich degraded: exec issue detail unavailable.**\n"
                     )
                 _ = out_file.write_text(degraded_body, encoding="utf-8")
         except OSError:
@@ -643,8 +643,8 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
 
     if rc != 0 or not out_file.is_file() or out_file.stat().st_size == 0:
         with out_file.open("w", encoding="utf-8") as fh:
-            fh.write(f"## /design run {run_id} — {outcome}\n\n")  # pyright: ignore[reportUnusedCallResult]
-            fh.write("**⚠ Degraded fallback — full renderer failed.**\n\n")  # pyright: ignore[reportUnusedCallResult]
+            fh.write(f"## /design run {run_id}: {outcome}\n\n")  # pyright: ignore[reportUnusedCallResult]
+            fh.write("**⚠ Degraded fallback: full renderer failed.**\n\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write(f"- **Outcome**: {outcome}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write(f"- **Duration**: {duration}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write("- **Cost**: N/A\n")  # pyright: ignore[reportUnusedCallResult]

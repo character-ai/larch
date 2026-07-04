@@ -1866,7 +1866,7 @@ exit 1
     )
     assert proc.returncode == 1
     issues = (design / "execution-issues.md").read_text(encoding="utf-8")
-    assert "Step review Step 2 — codex-review failed" in issues
+    assert "Step review Step 2: codex-review failed" in issues
     assert "quota" in issues
 
 
@@ -1890,7 +1890,7 @@ exit 7
     )
     assert proc.returncode == 7
     issues = (impl / "execution-issues.md").read_text(encoding="utf-8")
-    assert "Step review Step 2 — codex-review failed" in issues
+    assert "Step review Step 2: codex-review failed" in issues
     assert "transient-retries=5" in issues
 
 

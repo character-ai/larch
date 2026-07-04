@@ -220,7 +220,7 @@ def test_pause_save_uses_real_log_publish_path(
         session_id = argv[argv.index("--session-id") + 1] if "--session-id" in argv else "RUN1"
         outcome = argv[argv.index("--outcome") + 1]
         _ = (design_tmpdir / "final-summary.md").write_text(
-            f"## /design run {session_id} — {outcome}\n\n"
+            f"## /design run {session_id}: {outcome}\n\n"
             f"- **Outcome**: {outcome}\n"
             "<!-- larch:run-summary v=1 -->\n",
             encoding="utf-8",
@@ -267,7 +267,7 @@ def test_pause_save_uses_real_log_publish_path(
     summary_body = blob.stdout or (design / "final-summary.md").read_text(encoding="utf-8")
     assert "## /design run" in summary_body
     assert "<!-- larch:run-summary v=1 -->" in summary_body
-    assert "## /design run RUN1 — paused" in summary_body
+    assert "## /design run RUN1: paused" in summary_body
 
 
 def test_pause_save_rejects_non_allowlisted_tmpdir(capsys: object) -> None:

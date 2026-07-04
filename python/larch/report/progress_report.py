@@ -675,7 +675,7 @@ def render_phase_detail(
         )
         for row in phase_rounds
     )
-    total_cost = f"${sum(costs):.2f}" if costs else "—"
+    total_cost = f"${sum(costs):.2f}" if costs else "N/A"
     lines.append(
         f"| **Total (round-sum)** | **{sum(row.suggestions for row in phase_rounds)}** | "
         f"**{sum(row.accepted for row in phase_rounds)}** | "
@@ -729,7 +729,7 @@ def render_phase_detail(
     lines.append("**Top reviewers** (by per-round accepted-point score, whole run):")
     if top_reviewers:
         for index, (label, count) in enumerate(top_reviewers, start=1):
-            lines.append(f"{index}. {label} — {voting.format_score(count)}")
+            lines.append(f"{index}. {label}: {voting.format_score(count)}")
     else:
         lines.append("- (no accepted-point score attributed to a reviewer slot)")
     lines.append("")
@@ -1054,7 +1054,7 @@ def _render_step5(*, implement_tmpdir: Path, run_id: str, window_start_s: int | 
     total = _count_lines(round_dir / "panel-manifest.ndjson")
     returned = _returned_reviewers(round_dir)
     header = (
-        f"Step 5 code review — round {round_num} in progress\n"
+        f"Step 5 code review: round {round_num} in progress\n"
         f"  reviewers: {returned}/{total} returned | elapsed: {_round_elapsed(round_dir)}"
     )
     selected_root = _review_rounds_root(implement_tmpdir=implement_tmpdir, run_id=run_id)
@@ -1397,7 +1397,7 @@ def _render_design_plan_review(*, design_tmpdir: Path, start_s: int | None) -> s
         voter_returned = voter_external_returned + claude_done
         review_state = "complete" if returned >= total else "in progress"
         header = (
-            f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
+            f"Step 3 plan review: round {round_num} {review_state}; plan vote in progress\n"
             f"  reviewers: {returned}/{total} | voters: {voter_returned}/{voter_total} returned"
             f" | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
         )
@@ -1416,13 +1416,13 @@ def _render_design_plan_review(*, design_tmpdir: Path, start_s: int | None) -> s
         if claude_is_active:
             review_state = "complete" if returned >= total else "in progress"
             header = (
-                f"Step 3 plan review — round {round_num} {review_state}; plan vote in progress\n"
+                f"Step 3 plan review: round {round_num} {review_state}; plan vote in progress\n"
                 f"  reviewers: {returned}/{total} | voters: {claude_done}/1 returned"
                 f" | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
             )
         else:
             header = (
-                f"Step 3 plan review — round {round_num} in progress\n"
+                f"Step 3 plan review: round {round_num} in progress\n"
                 f"  reviewers: {returned}/{total} returned | elapsed: {_design_elapsed(round_dir=round_dir, step_start_s=start_s)}"
             )
     plan_review_root = design_tmpdir / "plan-review"

@@ -662,7 +662,7 @@ def _emit_cost_line(*, total: str, claude: str, codex_5_5: str, codex_mini: str,
     except ValueError:
         tok_k = 0
     return (
-        f"💰 Cost: TOTAL ~{money(total)} — Claude {money(claude)}, Codex-5.5 {money(codex_5_5)}, "
+        f"💰 Cost: TOTAL ~{money(total)}: Claude {money(claude)}, Codex-5.5 {money(codex_5_5)}, "
         f"Codex-mini {money(codex_mini)}, Cursor {money(cursor)}, Claude (subprocess) {money(claude_sub)}  |  Tokens: {tok_k}k\n"
     )
 

@@ -9,6 +9,7 @@ import shutil
 import subprocess
 import sys
 from pathlib import Path
+from typing import TYPE_CHECKING
 from unittest.mock import Mock
 import pytest
 
@@ -22,9 +23,11 @@ from larch.implement import ship_pr
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
-from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner, make_run_context
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 _REAL_FLUSH_LOGS_PRE = run_logs.flush_logs_pre
 
@@ -1066,7 +1069,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
     assert result.outcome is Outcome.NEEDS_USER_INPUT
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     final_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading = final_summary.split("—", 1)[-1].split("\n", 1)[0].strip()
+    heading = final_summary.split(":", 1)[-1].split("\n", 1)[0].strip()
     assert heading in {"stalled", "bailed", "bailed-needs-user-input"}
     assert "pr-created" not in heading
     assert manifest["steps_ran"].get("step8") is True
@@ -1243,7 +1246,7 @@ def _prepare_recovered_stalled_log(
     _ = run_logs.init_run(ctx)
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n",
+        "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n",
         encoding="utf-8",
     )
 
@@ -1309,7 +1312,7 @@ def test_recovered_open_pr_premerge_reconciles_stalled_summary_before_merge(
     assert result.outcome is Outcome.OK
     assert merge_calls["count"] == 1
     text = (tmp_path / "larch-logs" / "implement" / "run-abc" / "final-summary.md").read_text(encoding="utf-8")
-    assert "— pr-created" in text
+    assert ": pr-created" in text
     assert "- **Outcome**: stalled" not in text
 
 
@@ -1323,7 +1326,7 @@ def test_recovered_draft_pr_reconciles_stalled_summary_before_ok(
 
     assert result.outcome is Outcome.OK
     text = (tmp_path / "larch-logs" / "implement" / "run-abc" / "final-summary.md").read_text(encoding="utf-8")
-    assert "— pr-created-draft" in text
+    assert ": pr-created-draft" in text
     assert "- **Outcome**: stalled" not in text
 
 
@@ -1347,14 +1350,14 @@ def test_committed_summary_gate_reads_repo_not_corrected_tmpdir(
     _init_git_repo(repo)
     run_dir = repo / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
-    stalled = "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n"
+    stalled = "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #7\n"
     _ = (run_dir / "final-summary.md").write_text(stalled, encoding="utf-8")
     _ = subprocess.run(["git", "add", "larch-logs"], cwd=repo, check=True, capture_output=True)
     _ = subprocess.run(["git", "commit", "-q", "-m", "stalled log"], cwd=repo, check=True, capture_output=True)
 
     session_run_dir = session / "larch-logs" / "implement" / "run-abc"
     session_run_dir.mkdir(parents=True)
-    corrected = "## /implement run run-abc — pr-created\n\n- **PR**: #7\n"
+    corrected = "## /implement run run-abc: pr-created\n\n- **PR**: #7\n"
     _ = (session_run_dir / "final-summary.md").write_text(corrected, encoding="utf-8")
 
     ctx = make_run_context(

@@ -530,28 +530,28 @@ def render_run_summary(**kwargs: object) -> str:
     if kwargs.get("cost_unavailable") or total_cost == "N/A":
         cost = "N/A"
     else:
-        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))} — Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, {_codex_cost_segment(kwargs)}, Cursor {_fmt_money(_money_value(kwargs.get('cursor_cost', 0)))}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
+        cost = f"💰 TOTAL ~{_fmt_money(_money_value(total_cost))}: Claude {_fmt_money(_money_value(kwargs.get('claude_cost', 0)))}, {_codex_cost_segment(kwargs)}, Cursor {_fmt_money(_money_value(kwargs.get('cursor_cost', 0)))}, Claude (subprocess) {_fmt_money(_money_value(kwargs.get('claude_sub_cost', 0)))}  |  Tokens: {int((total_tokens + 500) / 1000)}k"
     issue_number = str(kwargs.get("issue_number") or "")
     issue_url = str(kwargs.get("issue_url") or "")
     issue = "N/A"
     if issue_number and issue_number != "0":
-        issue = f"#{issue_number}" + (f" — {issue_url}" if issue_url and issue_url != "N/A" else "")
+        issue = f"#{issue_number}" + (f": {issue_url}" if issue_url and issue_url != "N/A" else "")
     pr_number = str(kwargs.get("pr_number") or "")
     pr_url = str(kwargs.get("pr_url") or "")
     pr = "N/A"
     if pr_number and pr_number != "0":
-        pr = f"#{pr_number}" + (f" — {pr_url}" if pr_url and pr_url != "N/A" else "")
+        pr = f"#{pr_number}" + (f": {pr_url}" if pr_url and pr_url != "N/A" else "")
     lines_disp = "N/A"
     ca, cd, la, ld = (str(kwargs.get(k) or "") for k in ("code_added", "code_deleted", "logs_added", "logs_deleted"))
     if ca.isdigit() and cd.isdigit() and la.isdigit() and ld.isdigit():
         lines_disp = f"code +{ca}/-{cd}, larch-logs +{la}/-{ld}"
     oos_count = str(kwargs.get("oos_count") or "0")
     oos_urls = str(kwargs.get("oos_urls") or "")
-    oos_disp = oos_count if not oos_urls or oos_urls == "N/A" or oos_count == "0" else f"{oos_count} — {oos_urls}"
+    oos_disp = oos_count if not oos_urls or oos_urls == "N/A" or oos_count == "0" else f"{oos_count}: {oos_urls}"
     run_logs_path = str(kwargs.get("run_logs_path") or "")
     if not run_logs_path and run_id != "unknown" and outcome not in {"failed-publish", "publish-skipped"}:
         run_logs_path = f"larch-logs/{skill}/{run_id}/"
-    lines = [f"## /{skill} run {run_id} — {outcome}", ""]
+    lines = [f"## /{skill} run {run_id}: {outcome}", ""]
     if outcome.startswith(("bailed", "stalled", "cancelled-", "failed-")) or outcome == "publish-skipped":
         lines.append(f"- **Outcome**: {outcome}")
     if skill != "design":
@@ -870,7 +870,7 @@ def slack_issue_announce(implement_tmpdir: Path, *, best_effort: bool = False) -
     run_id = _read_kv(path=parent, key="RUN_ID") or ((implement_tmpdir / "session-id").read_text(encoding="utf-8").strip() if (implement_tmpdir / "session-id").is_file() else "")
     text = f"Implement run {run_id} opened PR {_read_kv(path=ship, key='PR_URL', default='N/A')} for tracking issue #{issue}"
     if _read_kv(path=ship, key="PR_TITLE"):
-        text += f" — {_read_kv(path=ship, key='PR_TITLE')}"
+        text += f": {_read_kv(path=ship, key='PR_TITLE')}"
     payload = json.dumps({"text": text}).encode()
     try:
         req = urllib.request.Request(webhook, data=payload, headers={"Content-Type": "application/json"}, method="POST")  # noqa: S310
