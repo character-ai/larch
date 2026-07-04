@@ -1,14 +1,16 @@
-## /implement run 26EEFBCE-E2E5-4ADE-84E5-8503BEDBC997 — shipping
+## /implement run 26EEFBCE-E2E5-4ADE-84E5-8503BEDBC997 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:10:11
 - **Cost**: 💰 TOTAL ~$2.73 — Claude $1.03, Codex-5.5 $1.24, Codex-mini $0.22, Cursor $0.06, Claude (subprocess) $0.18  |  Tokens: 4545k
 - **Issue**: #6294 — https://github.com/character-ai/larch/issues/6294
+- **PR**: #6311 — https://github.com/character-ai/larch/pull/6311
 - **Plan review**: N/A
 - **Difficulty**: predicted TRIVIAL; applied TRIVIAL
 - **Dynamic archetypes**: static-only, pre-scouted-empty
 - **Code review**: 0 findings
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +26/-26, larch-logs +376/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
