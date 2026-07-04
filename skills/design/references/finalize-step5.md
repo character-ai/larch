@@ -56,6 +56,13 @@ On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.st
 
 On non-zero `_oos_ann_rc` without the retry, label, or partial-failure contract, treat it as annotate or parse failure: append `Tool Failures` and continue to Step 5b.5.
 
+**Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5:
+
+1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
+2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.
+3. Apply the blocker edge: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" issue add-blocked-by --client-issue <OOS_NUM> --blocker-issue <TRACKING_NUM> --repo <REPO>`.
+4. Re-run annotate: `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5b-annotate.sh`.
+
 ### `NEXT_ACTION=label-only`
 
 Do not call `/larch:issue`. Run `design-step5b-annotate.sh` in label-only mode. It reads `oos-issues-created.md`, `oos-combined.md`, optional `oos-design-filing-order.txt`, and `REPO`; it skips empty-stdout and missing-accepted sequencing errors. URL mapping is 1-based by original `ISSUE_n` filing slot, including failed-slot gaps. Cap rollup labels the sole surviving URL when any post-cap combined block is high-risk.
