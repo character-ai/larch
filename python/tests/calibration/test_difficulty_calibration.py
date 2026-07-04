@@ -25,7 +25,15 @@ def _root(tmp_path: Path) -> Path:
     return root
 
 
-def _rating(applied: str, *, predicted: str | None = None, escalated: bool = False, audit: bool = False) -> dict[str, Any]:
+def _rating(
+    applied: str,
+    *,
+    predicted: str | None = None,
+    escalated: bool = False,
+    audit: bool = False,
+    audit_upgrade: bool | None = None,
+) -> dict[str, Any]:
+    upgraded = audit if audit_upgrade is None else audit_upgrade
     return {
         "schema_version": 1,
         "rater": "implement",
@@ -39,14 +47,27 @@ def _rating(applied: str, *, predicted: str | None = None, escalated: bool = Fal
         "applied_tier": applied,
         "override_source": "none",
         "floors_applied": [],
-        "audit_upgrade": "true" if audit else None,
+        "audit_upgrade": "true" if upgraded else None,
         "audit_evaluated": audit,
         "escalations": [{"round": 1, "trigger": "fixture"}] if escalated else [],
         "panel_skipped": None,
     }
 
 
-def _run(root: Path, skill: str, run_id: str, *, applied: str = difficulty.MODERATE, predicted: str | None = None, escalated: bool = False, audit: bool = False, month: str = "2026-06", issue: int = 42, rating: bool = True) -> Path:
+def _run(
+    root: Path,
+    skill: str,
+    run_id: str,
+    *,
+    applied: str = difficulty.MODERATE,
+    predicted: str | None = None,
+    escalated: bool = False,
+    audit: bool = False,
+    audit_upgrade: bool | None = None,
+    month: str = "2026-06",
+    issue: int = 42,
+    rating: bool = True,
+) -> Path:
     run = root / skill / run_id
     run.mkdir(parents=True)
     (run / "manifest.json").write_text(
@@ -54,7 +75,10 @@ def _run(root: Path, skill: str, run_id: str, *, applied: str = difficulty.MODER
         encoding="utf-8",
     )
     if rating:
-        (run / "difficulty-rating.json").write_text(json.dumps(_rating(applied, predicted=predicted, escalated=escalated, audit=audit)), encoding="utf-8")
+        (run / "difficulty-rating.json").write_text(
+            json.dumps(_rating(applied, predicted=predicted, escalated=escalated, audit=audit, audit_upgrade=audit_upgrade)),
+            encoding="utf-8",
+        )
     (run / ("token-report-final.json" if skill == "design" else "token-report.json")).write_text(
         json.dumps({"BUCKETS_claude": {"input": 100, "cache_read": 0, "cache_create_5m": 0, "cache_create_1h": 0, "output": 10, "total": 110}}),
         encoding="utf-8",
@@ -337,16 +361,29 @@ def test_audit_pairing_renders_deltas_and_na_when_no_peer(tmp_path: Path) -> Non
     root = _root(tmp_path)
     audited = _run(root, "implement", "AUDIT", applied=difficulty.HARD, predicted=difficulty.MODERATE, audit=True, month="2026-05")
     peer = _run(root, "implement", "PEER", applied=difficulty.MODERATE, predicted=difficulty.MODERATE, month="2026-05")
+    evaluated_peer = _run(
+        root,
+        "implement",
+        "EVALUATED-NONUPGRADE",
+        applied=difficulty.MODERATE,
+        predicted=difficulty.MODERATE,
+        audit=True,
+        audit_upgrade=False,
+        month="2026-05",
+    )
     no_peer = _run(root, "implement", "AUDIT-NOPEER", applied=difficulty.HARD, predicted=difficulty.HARD, audit=True, month="2026-06")
-    for run in (audited, peer, no_peer):
+    for run in (audited, peer, evaluated_peer, no_peer):
         _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"))
     (audited / "token-report.json").write_text(json.dumps({"BUCKETS_claude": {"total": 200}}), encoding="utf-8")
     (peer / "token-report.json").write_text(json.dumps({"BUCKETS_claude": {"total": 100}}), encoding="utf-8")
+    (evaluated_peer / "token-report.json").write_text(json.dumps({"BUCKETS_claude": {"total": 140}}), encoding="utf-8")
 
     _corpus, report = _report(root)
 
-    assert "| implement | AUDIT | 2026-05 | MODERATE | 1 | 100 | 0 |" in report
+    audit_section = report.split("## Audit-run Deltas", 1)[1].split("## Escalation Statistics", 1)[0]
+    assert "| implement | AUDIT | 2026-05 | MODERATE | 2 | 80 | 0 |" in audit_section
     assert "| implement | AUDIT-NOPEER | 2026-06 | HARD | 0 | n/a | n/a |" in report
+    assert "EVALUATED-NONUPGRADE" not in audit_section
 
 
 def test_drift_skips_runs_without_started_at(tmp_path: Path) -> None:
@@ -427,7 +464,7 @@ def test_under_rating_sidecar_matches_accepted_identities_without_hash(tmp_path:
     assert "| implement | MATCH | 42 | MODERATE | MODERATE | HARD | 3 | n/a | confirmed=1 |" in report
 
 
-def test_audit_deltas_render_na_without_source_or_floor_tiers(tmp_path: Path) -> None:
+def test_audit_deltas_render_na_without_upgrades(tmp_path: Path) -> None:
     root = _root(tmp_path)
     run = _run(root, "implement", "AUDIT-NO-TIERS", rating=False, audit=True, month="2026-05")
     _implement_tsv(run, 1, _code_row("FINDING_1", "accepted"))
@@ -458,7 +495,11 @@ def test_audit_deltas_render_na_without_source_or_floor_tiers(tmp_path: Path) ->
     record = next(item for item in corpus.records if item.run_id == "AUDIT-NO-TIERS")
 
     assert record.pre_audit_tier is None
-    assert "| implement | AUDIT-NO-TIERS | 2026-05 | n/a | 0 | n/a | n/a |" in report
+    assert record.audited
+    assert not record.audit_upgraded
+    audit_section = report.split("## Audit-run Deltas", 1)[1].split("## Escalation Statistics", 1)[0]
+    assert "| n/a | n/a | n/a | n/a | 0 | n/a | n/a |" in audit_section
+    assert "AUDIT-NO-TIERS" not in audit_section
 
 
 def test_out_writes_report_and_prints_only_report_file(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

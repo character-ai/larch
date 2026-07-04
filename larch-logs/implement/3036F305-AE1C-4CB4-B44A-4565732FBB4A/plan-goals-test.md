@@ -1,0 +1,123 @@
+## Goal
+Implement issue #6229: [IMPLEMENTING] difficulty-tiers [BUG]: committed implement difficulty-rating is pre-resolution; audit and escalation state never reaches run logs.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so this plan uses direct code and test inspection.
+
+Keep the fix narrow:
+
+1. Re-stage `difficulty-rating` from `$IMPLEMENT_TMPDIR/difficulty-rating.json` after Step 5 terminal batch flushes.
+2. Keep ship-time `_refresh_difficulty_record` unchanged. It remains a fallback for detached or resumed flushes.
+3. Change the calibration audit-delta predicate to include only `audit_upgrade=true` runs.
+4. Store the implement rater model that the Step 2 dispatcher can resolve for Codex or Cursor.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/review_and_fix.py
+
+- Add a small `_restage_difficulty_batch(implement_tmpdir, run_id)` helper near `_flush_review_batches_for_result`.
+- The helper should:
+  - return early when `run_id` is empty;
+  - return early when `difficulty-rating.json` is missing or symlinked;
+  - call `python3 <plugin>/python/cli.py run-log write --log-root <tmpdir>/larch-logs --skill implement --run-id <run_id> --batch difficulty-rating --input-file <tmpdir>/difficulty-rating.json`;
+  - warn to stderr and append a Warning execution issue on non-zero exit, but not alter Step 5 terminal status.
+- Call the helper from `_flush_review_batches_for_result` after the existing code-review batch path. Wrap this call in a fail-open `try/except Exception` block (same contract as the existing code-review flush) so a helper exception never alters the Step 5 terminal status.
+- Also call the helper (wrapped in the same fail-open `try/except Exception`) in the `main-agent-vote-required` / `coder-main-agent-required` early-return branch, after `_record_escalation_if_needed` and before `return 0`. Those branches do not go through `_flush_review_batches_for_result`, so the restage must be placed there explicitly.
+- Preserve existing terminal behavior for `complete`, `cap-hit`, `stall`, `self-review-required`, and `mav-resume-past-cap`.
+
+### UPDATED: python/larch/calibration/difficulty_calibration.py
+
+- Add a small predicate or property for audit upgrades, for example `_truthy(record.rating.get("audit_upgrade"))` guarded against `record.rating is None`. A dedicated `RunRecord.audit_upgraded` property is the preferred spelling.
+- Change `_render_audit_deltas` to select only audit-upgrade records (rows where `audit_upgraded` is true).
+- Update peer selection inside `_render_audit_deltas` to use `not peer.audit_upgraded` (or the equivalent predicate), not `not peer.audited`. This ensures non-upgrading but audit-evaluated runs are valid peers for delta comparison rather than being excluded.
+- Keep `RunRecord.audited` unchanged; other report sections may still need "audit evaluated or upgraded."
+- Update table empty-state behavior so no audit upgrades prints the existing `n/a` row.
+
+### UPDATED: python/larch/implement/dispatch_step2.py
+
+- Add a helper to resolve the implement rater model from known Step 2 model sources:
+  - Cursor: `LARCH_CURSOR_MODEL`, then `CLAUDE_PLUGIN_OPTION_CURSOR_MODEL`, then `config.CURSOR_DEFAULT_MODEL`.
+  - Codex: `LARCH_CODEX_MODEL`, then `CLAUDE_PLUGIN_OPTION_CODEX_MODEL`, then `config.CODEX_DEFAULT_MODEL`.
+- Prefer process env, then `session-env.sh` via `_session_get`, then the default.
+- Fall back to `unknown` if the resolved value is blank or contains control characters.
+- Pass this helper result to `difficulty write-record --rater-model` instead of the hardcoded `unknown`.
+- Do not add public CLI flags or schema fields.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+- Add a regression test for `_flush_review_batches_for_result` or the Step 5 loop that writes a resolved tmpdir `difficulty-rating.json`, monkeypatches `_run`, and asserts a `run-log write --batch difficulty-rating` call is made.
+- Cover at least `complete` and `cap-hit` terminal statuses, matching the issue's required regression.
+- Assert the helper uses the tmpdir record as input, not the stale staged copy.
+- Add a non-zero run-log write case asserting Step 5 still returns success and writes a Warning execution issue.
+- Cover the `main-agent-vote-required` / `coder-main-agent-required` early-return branch: assert `_restage_difficulty_batch` (or equivalent `run-log write --batch difficulty-rating`) is also called on those paths, not only through the flush helper.
+
+### UPDATED: python/tests/calibration/test_difficulty_calibration.py
+
+- Update the existing audit-delta test so an `audit_evaluated=true` but `audit_upgrade` false run is excluded.
+- Add or adjust an assertion that only `audit_upgrade=true` rows appear in "Audit-run Deltas."
+- Keep a no-upgrades case that expects the `n/a` row.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Add tests for the new rater-model helper.
+- Cover Codex env override, Cursor plugin-option fallback, and default fallback.
+- If testing through `step2_dispatch_main` is simpler, monkeypatch `_invoke_cli` and assert `--rater-model` receives the resolved model.
+- Avoid real external agent launches.
+
+## Edge cases
+
+- Missing `difficulty-rating.json`: no-op. Step 5 should still finish.
+- Symlinked difficulty record: no-op, matching existing safety patterns.
+- Empty `run_id`: no-op, matching batch flush behavior.
+- Run-log write failure: warn and record a Warning issue, but do not fail Step 5.
+- `_restage_difficulty_batch` raises an exception: caught by the fail-open wrapper at every call site; Step 5 terminal status is unaffected.
+- Existing staged stale record: overwritten by the tmpdir resolved record when Step 5 reaches any covered terminal path.
+- Detached ship flush without tmpdir: unchanged, because `_refresh_difficulty_record` stays as fallback behavior.
+- `main-agent-vote-required` / `coder-main-agent-required` paths: restage called directly in those branches, so the resolved record is staged even though `_flush_review_batches_for_result` is not called.
+
+## Failure modes when non-trivial
+
+- Re-staging too early would still miss escalation state. Call after `_resolve_step5_tier` and after any `append_escalation` path reaches terminal flush.
+- Re-staging only inside the existing `flush_review_batches` try block could skip the fix when code-review batch flush throws. Keep the difficulty write outside that try block, in its own fail-open wrapper.
+- Treating all audited runs as upgrades would keep the analyzer noisy. Filter specifically on `audit_upgrade`.
+- Model capture can drift from launcher resolution if the helper uses different defaults. Reuse `config` constants and the same env priority.
+
+## Testing strategy
+
+Run focused Python tests only:
+
+- `python3 -m pytest python/tests/review/test_review_and_fix.py -k "difficulty or terminal_flushes_review_batches_with_counts or complete_flush_warning"`
+- `python3 -m pytest python/tests/calibration/test_difficulty_calibration.py -k "audit"`
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py -k "difficulty or rater_model or step2_dispatch_complete"`
+- `make py-lint` if touched Python lint risk appears high.
+
+Optional manual verification after tests:
+
+- Create a tmp `difficulty-rating.json` with `audit_evaluated: true` and an escalation.
+- Invoke the restage helper through the Step 5 covered path.
+- Confirm `<tmpdir>/larch-logs/implement/<run-id>/difficulty-rating.json` carries the resolved fields.
+
+## Acceptance
+
+Run focused Python tests only:
+
+- `python3 -m pytest python/tests/review/test_review_and_fix.py -k "difficulty or terminal_flushes_review_batches_with_counts or complete_flush_warning"`
+- `python3 -m pytest python/tests/calibration/test_difficulty_calibration.py -k "audit"`
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py -k "difficulty or rater_model or step2_dispatch_complete"`
+- `make py-lint` if touched Python lint risk appears high.
+
+Optional manual verification after tests:
+
+- Create a tmp `difficulty-rating.json` with `audit_evaluated: true` and an escalation.
+- Invoke the restage helper through the Step 5 covered path.
+- Confirm `<tmpdir>/larch-logs/implement/<run-id>/difficulty-rating.json` carries the resolved fields.
+
+mechanical_churn: false
+diff_lines: 190
+
+## Test plan
+(no test plan section in plan-file)
