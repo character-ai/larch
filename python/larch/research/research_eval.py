@@ -374,6 +374,19 @@ def _has_code_fence_content(text: str) -> bool:
     return False
 
 
+def _validation_mode_reviewer_no_findings_prose(lines: list[str]) -> bool:
+    """Accept the shipped reviewer template's exact prose no-findings shape."""
+    if len(lines) not in {2, 4}:
+        return False
+    if lines[0] != "### In-Scope Findings" or lines[1] != "No in-scope issues found.":
+        return False
+    if len(lines) == 2:
+        return True
+    if lines[2] != "### Out-of-Scope Observations":
+        return False
+    return lines[3] == "No out-of-scope observations."
+
+
 def _has_provenance(text: str) -> bool:
     if re.search(voting.FILE_LINE_REGEXES["any-re"], text):
         return True
@@ -421,6 +434,8 @@ def validate_research_output(
         if re.search(r"^FINDING_[0-9]+:\s*(YES|NO|EXONERATE)", text, flags=re.MULTILINE):
             return 0
         if _validate_structured_tsv(text):
+            return 0
+        if _validation_mode_reviewer_no_findings_prose(lines):
             return 0
     words = _word_count_without_fences(text)
     if words < min_words:
