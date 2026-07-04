@@ -1,0 +1,1 @@
+Track all confirmed prompt-closure gaps by widening the closure classifier, converting implement macro suppression into conditional tracking, tightening skill prose references, and regenerating the skill closure baseline.

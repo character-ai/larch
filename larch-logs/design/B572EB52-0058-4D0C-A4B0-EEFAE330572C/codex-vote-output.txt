@@ -1,0 +1,1 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- design already uses `only when` / `only after`; I found no `only on` / `only upon` final-summary examples, so the claimed gap is not real

@@ -1,0 +1,102 @@
+## /design run B572EB52-0058-4D0C-A4B0-EEFAE330572C — approved
+
+- **Duration**: 01:24:16
+- **Cost**: 💰 TOTAL ~$45.76 — Claude $26.07, Codex-5.5 $7.70, Codex-mini $1.88, Cursor $7.40, Claude (subprocess) $2.71  |  Tokens: 65811k
+- **Issue**: #6179 — https://github.com/character-ai/larch/issues/6179
+- **Plan review**: complete (3 rounds)
+- **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD escalated-high-accepted
+- **Dynamic archetypes**: static-only, drafter filter_failed
+- **OOS filed**: 0
+- **Exec issues**: 0
+- **Warnings**: 0
+- **Run logs**: `larch-logs/design/B572EB52-0058-4D0C-A4B0-EEFAE330572C/`
+- **Main agent model**: claude-sonnet-5
+- **Effort**: max
+- **Larch version**: unknown
+
+<!-- larch:run-summary v=1 -->
+
+## Review Phase Detail
+
+| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |
+|--:|--:|--:|--:|--:|:--|--:|--:|
+| 1 | 5 | 3 | 4 | 0 | 20m 11s | $5.39 | 10 |
+| 2 | 3 | 1 | 4 | 0 | 12m 16s | $8.51 | 8 |
+| 3 | 1 | 1 | 0 | 0 | 48m 29s | $4.15 | 2 |
+| **Total (round-sum)** | **9** | **5** | **8** | **0** | **1h 20m 56s** | **$18.05** | **20** |
+
+_The Total (round-sum) row adds up the per-round Suggestions and Accepted: when the review loop re-raises the same finding across rounds, that finding is counted once per round, so the round-sum can exceed the number of distinct findings. Top reviewers counts per-round accepted-point scores the same way._
+
+### Round 1 reviewer timing
+
+```
+Round 1 reviewer timing  ·  window 0:00-20:11 (1211s)
+                                                   0:00                        20:11
+                                                  ┌─────────────────────────────────┐
+codex/codex-plan-requirements                     │███                              │  99s
+codex/codex-plan-pragmatic                        │████                             │ 128s
+codex/codex-plan-arch                             │█████                            │ 183s
+cursor/dyn-cursor-plan-closure-ratchet-specialist │█████                            │ 193s
+cursor/cursor-plan-requirements                   │██████                           │ 219s
+codex/codex-plan-innovation                       │██████                           │ 230s
+cursor/cursor-plan-pragmatic                      │██████                           │ 234s
+cursor/cursor-plan-arch                           │███████                          │ 263s
+codex/dyn-codex-plan-closure-ratchet-specialist   │███████                          │ 270s
+cursor/cursor-plan-innovation                     │█████████                        │ 333s
+aggregator                                        │         ██                      │  62s
+cursor/vote                                       │           ██                    │  85s
+codex/vote                                        │           ███                   │ 104s
+claude/vote                                       │           █████████████         │ 468s
+                                                  └─────────────────────────────────┘
+```
+
+### Round 2 reviewer timing
+
+```
+Round 2 reviewer timing  ·  window 0:00-12:16 (736s)
+                                 0:00                                          12:16
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-arch           │██████                                             │  85s
+codex/codex-plan-innovation     │██████████                                         │ 146s
+cursor/cursor-plan-requirements │███████████                                        │ 154s
+cursor/cursor-plan-arch         │████████████                                       │ 164s
+cursor/cursor-plan-pragmatic    │████████████                                       │ 164s
+cursor/cursor-plan-innovation   │████████████                                       │ 175s
+codex/codex-plan-pragmatic      │████████████                                       │ 166s
+codex/codex-plan-requirements   │████████████                                       │ 176s
+aggregator                      │             █                                     │   9s
+cursor/vote                     │              ███                                  │  53s
+codex/vote                      │              █████                                │  78s
+claude/vote                     │              ███████████████████████              │ 340s
+                                └───────────────────────────────────────────────────┘
+```
+
+### Round 3 reviewer timing
+
+```
+Round 3 reviewer timing  ·  window 0:00-48:29 (2909s)
+                                 0:00                                          48:29
+                                ┌───────────────────────────────────────────────────┐
+codex/codex-plan-arch           │███                                                │ 145s
+cursor/cursor-plan-requirements │███                                                │ 163s
+cursor/vote                     │   █                                               │  30s
+codex/vote                      │   █                                               │  31s
+codex/codex-plan-arch           │                                            ██     │  96s
+cursor/cursor-plan-requirements │                                            ███    │ 157s
+aggregator                      │                                               █   │  19s
+cursor/vote                     │                                               █   │  27s
+codex/vote                      │                                               █   │  31s
+claude/vote                     │                                               ██  │  98s
+                                └───────────────────────────────────────────────────┘
+```
+
+**Top reviewers** (by per-round accepted-point score, whole run):
+1. Cursor-Innovation — 6
+2. Cursor-Requirements — 6
+3. Codex-Arch — 3
+4. Cursor-Arch — 2
+5. Cursor-Pragmatic — 2
+6. Codex-Innovation — 1
+
+**Reviewer slot failures**: 0
+REPORT_GATE_SIDECARS_FILE=<TMPDIR>/design-report-gate-sidecars.md

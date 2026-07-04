@@ -1,0 +1,8 @@
+### FINDING_1: Final-summary qualifiers use unsupported connectors
+- **Reviewer(s)**: Codex-Arch, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The planned conditional-reference regex only recognizes connectors like `only for`, `only when`, `only after`, and `only before`, but the design final-summary examples use `only on` and `only upon`. If those examples are followed as written, the `final-summary-emit.md` citations will not be classified as conditional, and the design closure/assertion for that file can fail.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: `Change the examples to supported wording such as `only when on the cancel-title-filter / cancel-reentry-guard routes` and `only after reaching Step 5c item 5`, or explicitly add `only on|only upon` to the regex and tests`
+  - From Cursor-Requirements: `Use one connector set everywhere: either extend the conditional-reference regex to include only on and only upon, or rewrite the four design final-summary-emit qualifiers to use only when / only after (e.g. only when on cancel-title-filter or cancel-reentry-guard routes; only when reaching Step 5c item 5)`
+

@@ -1,0 +1,14 @@
+# [OOS] [OUT_OF_SCOPE] Audit step leaves other neither-tier runtime refs untracked by the new dropped-file ratchet
+
+## Out-of-Scope Observation
+
+**Surfaced by**: Cursor-Innovation
+**Phase**: design
+**Vote tally**: 3 YES / 0 NO — accepted
+
+## Description
+
+[OUT_OF_SCOPE] Audit step leaves other neither-tier runtime refs untracked by the new dropped-file ratchet. Scenario: sentinel-host-table.md, step2b-drafter-failsafe.md, and dialectic-clarifier.md are absent from baseline.files and baseline.conditional_files today. They use Load/load or only for (not only for background), so the new regex will not classify them. The dropped-file check only guards files already in the baseline union, so they can still regrow unseen after this PR. Issue asks for an audit; plan MAY_UPDATE handles findings case by case. Acceptable minimum-change for this PR; track separate classifier follow-ups if audit confirms runtime closure edges.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
