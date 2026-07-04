@@ -30,6 +30,7 @@ _GIT_STAGE_THEIRS = 3
 _COMMAND_NOT_FOUND_EXIT = 127
 _LSOF_MIN_COLUMNS = 2
 _PS_LINE_FIELDS = 2
+_PATH_LOG_FIELDS = 2
 
 
 def validate_base_remote_ref(*, base_remote: str, base_ref: str) -> str | None:
@@ -49,6 +50,12 @@ class GitStatus:
 @dataclass(frozen=True)
 class LogSubjects:
     subjects: tuple[str, ...]
+
+
+@dataclass(frozen=True)
+class PathCommit:
+    sha: str
+    subject: str
 
 
 def _run(
@@ -73,6 +80,11 @@ def _ensure_success(result: CommandResult) -> CommandResult:
 
 def rev_parse(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
     result = _ensure_success(_run(runner, ["git", "rev-parse", ref], cwd=cwd))
+    return result.stdout.strip()
+
+
+def rev_parse_verify(runner: Runner, ref: str, *, cwd: str | None = None) -> str:
+    result = _ensure_success(_run(runner, ["git", "rev-parse", "--verify", ref], cwd=cwd))
     return result.stdout.strip()
 
 
@@ -191,6 +203,30 @@ def log_subjects(
     ))
     lines = tuple(line for line in result.stdout.splitlines() if line)
     return LogSubjects(subjects=lines)
+
+
+def log_path_commits(
+    runner: Runner,
+    path: str,
+    *,
+    rev_range: str | None = None,
+    cwd: str | None = None,
+) -> tuple[PathCommit, ...]:
+    argv = ["git", "log", "--reverse", "--format=%H%x00%s"]
+    if rev_range is not None:
+        argv.append(rev_range)
+    argv.extend(["--", path])
+    result = _ensure_success(_run(runner, argv, cwd=cwd))
+    commits: list[PathCommit] = []
+    for line in result.stdout.splitlines():
+        if not line:
+            continue
+        parts = line.split("\x00")
+        if len(parts) != _PATH_LOG_FIELDS or not parts[0]:
+            msg = f"git log path history returned malformed line: {line!r}"
+            raise ShipError(msg)
+        commits.append(PathCommit(sha=parts[0], subject=parts[1]))
+    return tuple(commits)
 
 
 def try_log_subjects(
