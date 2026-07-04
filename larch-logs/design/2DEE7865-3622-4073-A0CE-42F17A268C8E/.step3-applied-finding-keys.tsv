@@ -1,0 +1,2 @@
+1	the planned `capture_transcript_main` invocation omits `--source-file`, so the call exits `source-file-missing` before `tempfile.mkstemp` and `_write_batch` and never exercises the regression path.
+1	the plan does not require creating the file named by `transcript_path`, so `capture_transcript_main` returns `transcript-path-missing` before render/write and the batch write regression is still untested.

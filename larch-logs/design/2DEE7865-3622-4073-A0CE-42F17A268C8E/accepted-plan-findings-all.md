@@ -1,0 +1,19 @@
+### FINDING_1: Add `--source-file` to the planned `capture_transcript_main` argv
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The planned `capture_transcript_main` invocation omits `--source-file`, so the call exits `source-file-missing` before `tempfile.mkstemp` and `_write_batch` and never exercises the regression path.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add --source-file pointing at the created TRANSCRIPT_PATH= source file to the planned argv list, matching test_capture_transcript_main_defer_commit_no_warning
+  - From Cursor-Innovation: Add --source-file pointing at the TRANSCRIPT_PATH source file, mirroring test_capture_transcript_main_defer_commit_no_warning
+  - From Cursor-Requirements: Add --source-file pointing at the prepared source file to the planned capture_transcript_main invocation matching test_capture_transcript_main_defer_commit_no_warning
+
+
+### FINDING_2: Create the transcript file referenced by `TRANSCRIPT_PATH`
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The plan does not require creating the file named by `TRANSCRIPT_PATH`, so `capture_transcript_main` returns `transcript-path-missing` before render/write and the batch write regression is still untested.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Create a non-empty transcript.jsonl (or equivalent) and reference it from the source file TRANSCRIPT_PATH= line
+  - From Cursor-Requirements: Create a non-empty transcript file at the referenced path before calling capture_transcript_main as the existing defer_commit test does
+
+
