@@ -29,7 +29,7 @@ from larch.core import config
 from larch.core import proc as larch_proc
 from larch.core import redact
 from larch.report import run_logs
-from larch.report.tokens import build_panel_dispatch_env
+from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes
 from larch.state.session_env import validate_design_tmpdir
 
 _REPO_ROOT = Path(__file__).resolve().parents[3]
@@ -54,6 +54,12 @@ class VoterPromptRenderOptions:
     calibration_stats_file: str | None = None
     voter_tool: str | None = None
     output_path: Path | None = None
+
+
+@dataclass(frozen=True)
+class VoterPromptResult:
+    prompt_file: Path
+    payload_bytes: int = 0
 
 
 _DEFAULT_VOTER_PROMPT_RENDER_OPTIONS = VoterPromptRenderOptions()
@@ -98,6 +104,7 @@ def _static_slot_rows(
             continue
         archetype = slot.archetype
         prompt_path = design / f"render-plan-{slot.tool}-{archetype}.prompt"
+        payload_sidecar = prompt_path.with_name(prompt_path.name + ".payload-bytes")
         proc = subprocess.run(
             [
                 *cli,
@@ -113,6 +120,8 @@ def _static_slot_rows(
                 feature_file,
                 "--findings-ledger-file",
                 str(findings_ledger.ledger_path(design)),
+                "--payload-bytes-output",
+                str(payload_sidecar),
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -121,7 +130,13 @@ def _static_slot_rows(
         )
         prompt = proc.stdout if proc.returncode == 0 else ""
         row = _slot_row(
-            tool=slot.tool, slot=slot.slot, focus=slot.focus_area or archetype, output=round_dir / slot.output, prompt_file=prompt_path, prompt=prompt,
+            tool=slot.tool,
+            slot=slot.slot,
+            focus=slot.focus_area or archetype,
+            output=round_dir / slot.output,
+            prompt_file=prompt_path,
+            prompt=prompt,
+            payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and prompt else 0,
         )
         if slot.tool == "codex":
             role = difficulty.codex_review_model_role(tier)
@@ -157,6 +172,7 @@ def _generic_plan_codex_row(
     body_file = round_dir / "render-plan-codex-generic.body"
     _ = body_file.write_text(_GENERIC_CODEX_PLAN_REVIEW_ROLE + "\n", encoding="utf-8")
     prompt_path = round_dir / "render-plan-codex-generic.prompt"
+    payload_sidecar = prompt_path.with_name(prompt_path.name + ".payload-bytes")
     proc = subprocess.run(
         [
             sys.executable,
@@ -177,19 +193,23 @@ def _generic_plan_codex_row(
             feature_file,
             "--findings-ledger-file",
             str(findings_ledger.ledger_path(design)),
+            "--payload-bytes-output",
+            str(payload_sidecar),
         ],
         cwd=str(_REPO_ROOT),
         text=True,
         capture_output=True,
         check=False,
     )
+    prompt = proc.stdout if proc.returncode == 0 else ""
     row = _slot_row(
         tool=slot.tool,
         slot=slot.slot,
         focus=slot.focus_area or "code-quality",
         output=round_dir / slot.output,
         prompt_file=prompt_path,
-        prompt=proc.stdout if proc.returncode == 0 else "",
+        prompt=prompt,
+        payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and prompt else 0,
     )
     role = difficulty.codex_review_model_role(tier)
     row["model_role"] = role
@@ -245,7 +265,7 @@ def _validate_tmpdir(*, parser: argparse.ArgumentParser, value: str, create: boo
     return path.resolve()
 
 
-def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "") -> dict[str, object]:
+def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Path, prompt: str = "", payload_bytes: int = 0) -> dict[str, object]:
     # Write the rendered prompt (or the one-line fallback when the render was empty or
     # non-zero) to its own file and reference it via "prompt_file", matching the voter
     # manifest pattern below. agent_waterfall._load_slots accepts only "agent" or
@@ -253,14 +273,17 @@ def _slot_row(*, tool: str, slot: str, focus: str, output: Path, prompt_file: Pa
     # first row and the panel launched zero reviewers (#4765).
     prompt_text = prompt or f"Review the design plan with a {focus} lens."
     _ = prompt_file.write_text(prompt_text, encoding="utf-8")
-    return _with_attribution({
+    row: dict[str, object] = {
         "tool": tool,
         "slot": slot,
         "name": slot,
         "focus_area": focus,
         "prompt_file": str(prompt_file),
         "output": str(output),
-    })
+    }
+    if payload_bytes > 0:
+        row["payload_bytes"] = payload_bytes
+    return _with_attribution(row)
 
 
 def _load_dynamic_rows(design: Path) -> list[tuple[str, str, str, str]]:
@@ -315,6 +338,7 @@ def _dynamic_slot_rows(
     for tool, slot, focus, prompt in dynamic:
         body_file = round_dir / f"{slot}.body"
         _ = body_file.write_text(prompt, encoding="utf-8")
+        payload_sidecar = round_dir / f"{slot}.prompt.payload-bytes"
         proc = subprocess.run(
             [
                 *cli,
@@ -330,6 +354,9 @@ def _dynamic_slot_rows(
                 str(body_file),
                 "--findings-ledger-file",
                 str(findings_ledger.ledger_path(design)),
+                "--payload-bytes-output",
+                str(payload_sidecar),
+                "--body-file-payload",
             ],
             cwd=str(_REPO_ROOT),
             text=True,
@@ -341,7 +368,7 @@ def _dynamic_slot_rows(
             failures.append((slot, tool, proc.returncode))
             with contextlib.suppress(OSError):
                 _append_dynamic_render_warning(design=design, slot=slot, tool=tool, return_code=proc.returncode, diagnostics=proc.stderr or proc.stdout or "")
-        row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered)
+        row = _slot_row(tool=tool, slot=slot, focus=focus, output=round_dir / f"{slot}.txt", prompt_file=round_dir / f"{slot}.prompt", prompt=rendered, payload_bytes=read_panel_payload_bytes(payload_sidecar) if proc.returncode == 0 and rendered else 0)
         if tool == "codex":
             role = difficulty.codex_review_model_role(tier)
             row["model_role"] = role
@@ -660,8 +687,9 @@ def _make_voter_prompt(
     ballot: Path,
     tool: str,
     render_options: VoterPromptRenderOptions = _DEFAULT_VOTER_PROMPT_RENDER_OPTIONS,
-) -> Path:
+) -> VoterPromptResult:
     prompt_file = render_options.output_path or design / f"{tool}-plan-voter-prompt{f'-{render_options.voter_tool}' if render_options.voter_tool else ''}.txt"
+    payload_sidecar = prompt_file.with_name(prompt_file.name + ".payload-bytes")
     args = [
         sys.executable,
         str(_plugin_root() / "python" / "cli.py"),
@@ -677,6 +705,8 @@ def _make_voter_prompt(
         "plan",
         "--findings-ledger-file",
         str(findings_ledger.ledger_path(design)),
+        "--payload-bytes-output",
+        str(payload_sidecar),
     ]
     if render_options.scope_anchor:
         args.extend(["--scope-anchor-file", render_options.scope_anchor])
@@ -688,7 +718,7 @@ def _make_voter_prompt(
     if proc.returncode != 0 or "Read the ballot from this path" not in proc.stdout:
         raise RuntimeError(f"render voter failed for {tool}")
     _ = prompt_file.write_text(proc.stdout, encoding="utf-8")
-    return prompt_file
+    return VoterPromptResult(prompt_file=prompt_file, payload_bytes=read_panel_payload_bytes(payload_sidecar))
 
 
 def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path, voter_tool: str, prompt_file: Path) -> str:
@@ -864,13 +894,13 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             ),
         )
         voter_1_path = design / policies["voter-1"].output_name
-        rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
+        rc = _launch_claude_voter(design=design, prompt_file=claude_prompt.prompt_file, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude", "LARCH_PANEL_PAYLOAD_BYTES": str(claude_prompt.payload_bytes)})
         voter_1_retried = "false"
         if _voter_needs_retry(rc=rc, output=voter_1_path):
             voter_1_retried = "true"
-            rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
+            rc = _launch_claude_voter(design=design, prompt_file=claude_prompt.prompt_file, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude", "LARCH_PANEL_PAYLOAD_BYTES": str(claude_prompt.payload_bytes)})
         voter_1_status = "launched" if rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0 else "failed"
-        voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
+        voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt.prompt_file)
         if voter_1_status != "failed" and voter_1_parse == "NOT_SUBSTANTIVE":
             voter_1_status = "failed"
         paths_file = design / "plan-review-voter-paths.txt"
@@ -1004,7 +1034,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             "--output",
             str(voter_1_path),
             "--prompt-file",
-            str(claude_prompt),
+            str(claude_prompt.prompt_file),
             "--mode",
             "description",
             "--role",
@@ -1019,14 +1049,18 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         cwd=str(_REPO_ROOT),
         stdout=subprocess.DEVNULL,
         stderr=stderr_file,
-        env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"},
+        env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude", "LARCH_PANEL_PAYLOAD_BYTES": str(claude_prompt.payload_bytes)},
     )
 
     manifest = design / "plan-voter-slots.ndjson"
     manifest_lines: list[str] = []
     prompt_maps_by_slot = {
-        "voter-2": {"codex": str(codex_prompt), "cursor": str(codex_cursor_prompt), "claude": str(codex_claude_prompt)},
-        "voter-3": {"cursor": str(cursor_prompt), "codex": str(cursor_codex_prompt), "claude": str(cursor_claude_prompt)},
+        "voter-2": {"codex": str(codex_prompt.prompt_file), "cursor": str(codex_cursor_prompt.prompt_file), "claude": str(codex_claude_prompt.prompt_file)},
+        "voter-3": {"cursor": str(cursor_prompt.prompt_file), "codex": str(cursor_codex_prompt.prompt_file), "claude": str(cursor_claude_prompt.prompt_file)},
+    }
+    payload_maps_by_slot = {
+        "voter-2": {"codex": codex_prompt.payload_bytes, "cursor": codex_cursor_prompt.payload_bytes, "claude": codex_claude_prompt.payload_bytes},
+        "voter-3": {"cursor": cursor_prompt.payload_bytes, "codex": cursor_codex_prompt.payload_bytes, "claude": cursor_claude_prompt.payload_bytes},
     }
     output_by_slot = {"voter-2": voter_2_path, "voter-3": voter_3_path}
     # Always enqueue both slots (issue #5817): the waterfall routes each voter
@@ -1036,7 +1070,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     # Claude floor guarantees output for every enqueued slot.
     for slot_name in ("voter-2", "voter-3"):
         policy = policies[slot_name]
-        manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_files": prompt_maps_by_slot[slot_name]}))
+        manifest_lines.append(json.dumps({"slot": policy.slot_name, "tool": policy.primary_tool, "output": str(output_by_slot[slot_name]), "prompt_files": prompt_maps_by_slot[slot_name], "payload_files": payload_maps_by_slot[slot_name]}))
     _ = manifest.write_text("\n".join(manifest_lines) + ("\n" if manifest_lines else ""), encoding="utf-8")
 
     waterfall_output = ""
@@ -1083,7 +1117,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     voter_1_retried = "false"
     if _voter_needs_retry(rc=voter1_rc, output=voter_1_path):
         voter_1_retried = "true"
-        voter1_rc = _launch_claude_voter(design=design, prompt_file=claude_prompt, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude"})
+        voter1_rc = _launch_claude_voter(design=design, prompt_file=claude_prompt.prompt_file, output=voter_1_path, env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude", "LARCH_PANEL_PAYLOAD_BYTES": str(claude_prompt.payload_bytes)})
         _ = Path(f"{voter_1_path}.done").write_text(f"{voter1_rc}\n", encoding="utf-8")
 
     wf_kv = _parse_kv(waterfall_output)
@@ -1105,14 +1139,14 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         voter_2_tool = voter_2_binding.tool or voter_2_tool
         voter_3_tool = voter_3_binding.tool or voter_3_tool
 
-    voter_2_prompt = Path(prompt_maps_by_slot["voter-2"].get(voter_2_tool, str(codex_prompt)))
-    voter_3_prompt = Path(prompt_maps_by_slot["voter-3"].get(voter_3_tool, str(cursor_prompt)))
+    voter_2_prompt = Path(prompt_maps_by_slot["voter-2"].get(voter_2_tool, str(codex_prompt.prompt_file)))
+    voter_3_prompt = Path(prompt_maps_by_slot["voter-3"].get(voter_3_tool, str(cursor_prompt.prompt_file)))
 
     voter_1_status = "launched" if (voter1_rc in {0, 99} and voter_1_path.is_file() and voter_1_path.stat().st_size > 0) else "failed"
     voter_2_status = "launched" if voter_2_path.is_file() and voter_2_path.stat().st_size > 0 else "failed"
     voter_3_status = "launched" if voter_3_path.is_file() and voter_3_path.stat().st_size > 0 else "failed"
 
-    voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt)
+    voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="1", voter_file=voter_1_path, voter_tool="claude", prompt_file=claude_prompt.prompt_file)
     voter_2_parse = "SKIPPED" if voter_2_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="2", voter_file=voter_2_path, voter_tool=voter_2_tool, prompt_file=voter_2_prompt)
     voter_3_parse = "SKIPPED" if voter_3_status == "failed" else _parse_rate_retry(design=design, ballot=ballot, slot="3", voter_file=voter_3_path, voter_tool=voter_3_tool, prompt_file=voter_3_prompt)
 

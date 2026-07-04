@@ -21,7 +21,7 @@ from larch.review import voting
 from larch.core import config
 from larch.core import logging_util
 from larch.core import proc
-from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
+from larch.report.tokens import build_panel_dispatch_env, read_panel_payload_bytes, resolve_panel_artifact_dir
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 DISPATCH_LABEL = "agent dispatch-voters"
@@ -38,6 +38,12 @@ class VoterSlotPolicy:
     prompt_label: str
     output_name: str
     semantic_labels: Mapping[str, str]
+
+
+@dataclass(frozen=True)
+class VoterPromptResult:
+    prompt_file: str
+    payload_bytes: int = 0
 
 
 VOTER_SLOT_POLICIES = tuple(
@@ -226,9 +232,10 @@ def _make_voter_prompt_file(  # noqa: PLR0913
     calibration_stats_file: str | None = None,
     voter_tool: str | None = None,
     output_basename: str | None = None,
-) -> str:
+) -> VoterPromptResult:
     basename = output_basename or (f"{label}-vote-prompt-{voter_tool}.txt" if voter_tool else f"{label}-vote-prompt.txt")
     prompt_file = review_tmpdir / basename
+    payload_sidecar = prompt_file.with_name(prompt_file.name + ".payload-bytes")
     argv = [
         *_cli_argv("render", "voter"),
         "--ballot-file",
@@ -241,6 +248,8 @@ def _make_voter_prompt_file(  # noqa: PLR0913
         "code",
         "--findings-ledger-file",
         str(findings_ledger.ledger_path(findings_ledger.ledger_root(review_tmpdir, session_env_path=opts.session_env_path))),
+        "--payload-bytes-output",
+        str(payload_sidecar),
     ]
     if archetype:
         argv.extend(["--archetype", archetype])
@@ -257,7 +266,7 @@ def _make_voter_prompt_file(  # noqa: PLR0913
     if "Read the ballot from this path" not in result.stdout:
         _err(f"agent dispatch-voters: python/cli.py render voter output for {label} voter is missing ballot pointer; aborting")
         raise SystemExit(2)
-    return str(prompt_file)
+    return VoterPromptResult(prompt_file=str(prompt_file), payload_bytes=read_panel_payload_bytes(payload_sidecar))
 
 
 def _build_voter_prompt_files(
@@ -267,8 +276,9 @@ def _build_voter_prompt_files(
     policies: Sequence[VoterSlotPolicy],
     availability: tuple[bool, bool],
     calibration_stats_file: str | None,
-) -> dict[str, dict[str, str]]:
+) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, int]]]:
     prompt_files: dict[str, dict[str, str]] = {}
+    payload_files: dict[str, dict[str, int]] = {}
     codex_present, cursor_present = availability
     for policy in policies:
         tools = _launchable_base_tools_for_slot(
@@ -277,8 +287,10 @@ def _build_voter_prompt_files(
             cursor_present=cursor_present,
             no_fallback=False,
         )
-        prompt_files[policy.prompt_label] = {
-            tool: _make_voter_prompt_file(
+        prompt_files[policy.prompt_label] = {}
+        payload_files[policy.prompt_label] = {}
+        for tool in tools:
+            rendered = _make_voter_prompt_file(
                 opts=opts,
                 review_tmpdir=review_tmpdir,
                 label=policy.prompt_label,
@@ -287,12 +299,12 @@ def _build_voter_prompt_files(
                 voter_tool=tool,
                 output_basename=f"{policy.prompt_label}-vote-prompt-{tool}.txt",
             )
-            for tool in tools
-        }
-    return prompt_files
+            prompt_files[policy.prompt_label][tool] = rendered.prompt_file
+            payload_files[policy.prompt_label][tool] = rendered.payload_bytes
+    return prompt_files, payload_files
 
 
-def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[VoterSlotPolicy], prompt_files: dict[str, dict[str, str]]) -> str:
+def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[VoterSlotPolicy], prompt_files: dict[str, dict[str, str]], payload_files: dict[str, dict[str, int]]) -> str:
     manifest = review_tmpdir / "code-voter-slots.ndjson"
     with manifest.open("w", encoding="utf-8") as handle:
         for policy in policies:
@@ -301,6 +313,7 @@ def _write_voter_waterfall_manifest(*, review_tmpdir: Path, policies: Sequence[V
                 "tool": policy.primary_tool,
                 "output": str(review_tmpdir / policy.output_name),
                 "prompt_files": prompt_files.get(policy.prompt_label, {}),
+                "payload_files": payload_files.get(policy.prompt_label, {}),
             }
             _ = handle.write(json.dumps(row, separators=(",", ":")) + "\n")
     return str(manifest)
@@ -497,14 +510,14 @@ def dispatch_voters(opts: Options) -> int:
     if external_voter23:
         launched_policies.extend(VOTER_SLOT_POLICIES[1:])
 
-    prompt_files = _build_voter_prompt_files(
+    prompt_files, payload_files = _build_voter_prompt_files(
         opts=opts,
         review_tmpdir=review_tmpdir,
         policies=launched_policies,
         availability=(codex_present, cursor_present),
         calibration_stats_file=calibration_stats_file,
     )
-    manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files)
+    manifest = _write_voter_waterfall_manifest(review_tmpdir=review_tmpdir, policies=launched_policies, prompt_files=prompt_files, payload_files=payload_files)
     waterfall_output = _dispatch_waterfall(opts=opts, manifest=manifest, ctx_args=ctx_args, review_tmpdir=review_tmpdir)
     _outputs, _tools, dispatch_ok = _parse_waterfall_output(waterfall_output)
     bindings = agent_waterfall.bind_manifest_slot_outputs(manifest_path=manifest, wf_kv=_kv_from_waterfall(waterfall_output))

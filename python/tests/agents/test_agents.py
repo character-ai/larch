@@ -4393,6 +4393,71 @@ def test_launch_claude_subprocess_failure_sidecars_and_clean_dirty_tree(tmp_path
     assert "STATUS=clean" in output.with_suffix(output.suffix + ".dirty-tree").read_text(encoding="utf-8")
 
 
+def test_launch_claude_review_payload_sidecar_unlink_failure_is_best_effort(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prompt = tmp_path / "prompt.md"
+    prompt.write_text("prompt", encoding="utf-8")
+    scope = tmp_path / "scope.txt"
+    scope.write_text("python/foo.py\n", encoding="utf-8")
+    output = tmp_path / "out.txt"
+    sidecar = tmp_path / "payload.txt"
+    temp_prompt = tmp_path / "temp-prompt.txt"
+
+    def fake_render(argv: list[str], **_kwargs: object) -> object:
+        sidecar_idx = argv.index("--payload-bytes-output") + 1
+        assert Path(argv[sidecar_idx]) == sidecar
+        sidecar.write_text("11\n", encoding="utf-8")
+        return type("R", (), {"stdout": "rendered prompt body\n", "stderr": "", "returncode": 0})()
+
+    def fake_launch_subprocess(_args: list[str]) -> int:
+        output.write_text("ok", encoding="utf-8")
+        output.with_suffix(output.suffix + ".done").write_text("0\n", encoding="utf-8")
+        return 0
+
+    original_unlink = Path.unlink
+    mkstemp_calls = 0
+
+    def fake_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        nonlocal mkstemp_calls
+        mkstemp_calls += 1
+        path = sidecar if mkstemp_calls == 1 else temp_prompt
+        fd = os.open(path, os.O_RDWR | os.O_CREAT | os.O_TRUNC, 0o600)
+        return fd, str(path)
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self == sidecar:
+            raise OSError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(_claude_runner.proc, "run", fake_render)
+    monkeypatch.setattr(_claude_runner.tempfile, "mkstemp", fake_mkstemp)
+    monkeypatch.setattr(_claude_runner, "launch_claude_subprocess_main", fake_launch_subprocess)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    rc = agents.launch_claude_review_main(
+        [
+            "--output",
+            str(output),
+            "--agent-file",
+            str(REPO_ROOT / "agents" / "reviewer-structure.md"),
+            "--mode",
+            "description",
+            "--description-text",
+            "payload description",
+            "--scope-files",
+            str(scope),
+            "--timeout",
+            "5",
+        ],
+    )
+
+    assert rc == 0
+    assert output.read_text(encoding="utf-8") == "ok"
+    assert sidecar.exists()
+
+
 @pytest.mark.parametrize("payload", ["not-json", '{"is_error":true,"result":"bad"}', '{"result":""}'])
 def test_launch_claude_subprocess_bad_json_envelope_uses_legacy_sentinel(
     payload: str,

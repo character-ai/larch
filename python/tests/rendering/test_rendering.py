@@ -259,6 +259,82 @@ def test_render_specialist_cache_hit(tmp_path: Path, capsys: pytest.CaptureFixtu
     assert capsys.readouterr().out == "CACHE HIT SENTINEL\n"
 
 
+def test_write_payload_bytes_sidecar_clamps_negative_payload_bytes(tmp_path: Path) -> None:
+    sidecar = tmp_path / "payload.txt"
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), -7)  # pyright: ignore[reportPrivateUsage]
+
+    assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
+def test_write_payload_bytes_sidecar_swallows_write_failures(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+
+    def fail_mkstemp(*_args: object, **_kwargs: object) -> tuple[int, str]:
+        raise OSError("boom")
+
+    monkeypatch.setattr(rendering.tempfile, "mkstemp", fail_mkstemp)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
+def test_write_payload_bytes_sidecar_removes_stale_content_on_write_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+    sidecar.write_text("stale\n", encoding="utf-8")
+    original_unlink = Path.unlink
+    unlink_calls = 0
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        nonlocal unlink_calls
+        if self == sidecar and unlink_calls == 0:
+            unlink_calls += 1
+            raise OSError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    def fail_replace(self: Path, target: Path) -> Path:
+        _ = self
+        _ = target
+        raise OSError("replace boom")
+
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+    monkeypatch.setattr(Path, "replace", fail_replace)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
+def test_write_payload_bytes_sidecar_swallows_unlink_permission_errors(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    sidecar = tmp_path / "payload.txt"
+    original_unlink = Path.unlink
+
+    def fail_replace(_self: Path, _target: Path) -> Path:
+        raise OSError("replace boom")
+
+    def fail_unlink(self: Path, *args: object, **kwargs: object) -> None:
+        if self == sidecar or self.name.startswith(f".{sidecar.name}."):
+            raise PermissionError("unlink denied")
+        return original_unlink(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "replace", fail_replace)
+    monkeypatch.setattr(Path, "unlink", fail_unlink)
+
+    rendering._write_payload_bytes_sidecar(str(sidecar), 13)  # pyright: ignore[reportPrivateUsage]
+
+    assert not sidecar.exists()
+
+
 def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path: Path) -> None:
     diff_file = tmp_path / "changes.diff"
     feature_file = tmp_path / "feature.md"
@@ -294,6 +370,98 @@ def test_render_specialist_places_reviewer_body_before_dynamic_context(tmp_path:
     assert str(diff_file) in text
     assert "<feature_description" in text
     assert "<implementation_plan" in text
+
+
+def test_render_specialist_payload_sidecar_counts_inline_diff_context(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    agent = _specialist_agent(tmp_path)
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    diff = tmp_path / "diff.txt"
+    sidecar = tmp_path / "payload.txt"
+    plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
+
+    base_args = [
+        "--agent-file",
+        str(agent),
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(diff),
+        "--plan-file",
+        str(plan),
+        "--feature-file",
+        str(feature),
+        "--payload-bytes-output",
+        str(sidecar),
+    ]
+
+    assert rendering.render_specialist_main(base_args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
+
+    sidecar.write_text("stale\n", encoding="utf-8")
+    assert rendering.render_specialist_main([*base_args, "--diff-mode", "test-only"]) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
+def test_render_voter_calibration_feedback_contributes_payload_bytes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    ballot = tmp_path / "ballot.md"
+    stats = tmp_path / "stats.tsv"
+    sidecar = tmp_path / "payload.txt"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    assert voting.write_voter_calibration_stats(
+        path=stats,
+        stats=[
+            voting.VoterCalibrationStat(
+                tool="codex",
+                yes_votes=3,
+                valid_yes_severity_count=2,
+                blocker=1,
+                major=0,
+                minor=1,
+                nit=0,
+                uncertain=0,
+                missing_severity=0,
+                high_rate=0.5,
+                calibration_score=0.25,
+                uncalibrated=False,
+            )
+        ],
+    )
+
+    rc = rendering.render_voter_main(
+        [
+            "--ballot-file",
+            str(ballot),
+            "--panel-role",
+            "judge",
+            "--id-grammar",
+            "finding-oos",
+            "--verification-context",
+            "code",
+            "--calibration-stats-file",
+            str(stats),
+            "--voter-tool",
+            "codex",
+            "--payload-bytes-output",
+            str(sidecar),
+        ],
+    )
+
+    out = capsys.readouterr().out
+    assert rc == 0
+    expected = rendering._voter_calibration_feedback_block(stats_file=str(stats), voter_tool="codex")  # pyright: ignore[reportPrivateUsage]
+    assert expected in out
+    assert sidecar.read_text(encoding="utf-8") == f"{len(expected.encode('utf-8'))}\n"
 
 
 def test_render_specialist_cache_setup_failure_falls_back_uncached(
@@ -1243,3 +1411,113 @@ def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, c
     )
     text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "cursor")
     assert "**Your recent calibration:**" not in text
+
+
+def test_render_specialist_payload_sidecar_counts_description_and_cache_hit(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    cache_dir = tmp_path / "render-cache"
+    monkeypatch.setenv("LARCH_RENDER_CACHE_DIR", str(cache_dir))
+    agent = REPO_ROOT / "agents" / "reviewer-structure.md"
+    sidecar = tmp_path / "payload.txt"
+    args = [
+        "--agent-file", str(agent),
+        "--mode", "description",
+        "--description-text", "payload description",
+        "--scope-files", str(tmp_path / "scope.txt"),
+        "--payload-bytes-output", str(sidecar),
+    ]
+    (tmp_path / "scope.txt").write_text("python/foo.py\n", encoding="utf-8")
+
+    assert rendering.render_specialist_main(args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
+    sidecar.write_text("stale\n", encoding="utf-8")
+    assert rendering.render_specialist_main(args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(b'payload description')}\n"
+
+
+def test_render_plan_review_payload_sidecar_counts_cursor_plan_and_feature(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    sidecar = tmp_path / "payload.txt"
+
+    rc = rendering.render_plan_review_main([
+        "--archetype", "arch",
+        "--vendor", "cursor",
+        "--plan-file", str(plan),
+        "--design-tmpdir", str(tmp_path),
+        "--feature-file", str(feature),
+        "--payload-bytes-output", str(sidecar),
+    ])
+
+    assert rc == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(plan.read_bytes()) + len(feature.read_bytes())}\n"
+
+
+def test_render_plan_review_body_file_payload_sidecar_counts_body_feature_and_plan(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _reset_quiet(monkeypatch)
+    design_tmpdir = tmp_path / "design"
+    design_tmpdir.mkdir()
+    plan = design_tmpdir / "plan.txt"
+    feature = design_tmpdir / "feature.txt"
+    body = design_tmpdir / "body.txt"
+    sidecar = tmp_path / "payload.txt"
+    _ = plan.write_text("PLAN PAYLOAD\n", encoding="utf-8")
+    _ = feature.write_text("FEATURE PAYLOAD\n", encoding="utf-8")
+    _ = body.write_text("ROLE LINE\n", encoding="utf-8")
+
+    rc = rendering.render_plan_review_main(
+        [
+            "--body-file",
+            str(body),
+            "--body-file-payload",
+            "--archetype",
+            "alpha",
+            "--vendor",
+            "cursor",
+            "--plan-file",
+            str(plan),
+            "--design-tmpdir",
+            str(design_tmpdir),
+            "--feature-file",
+            str(feature),
+            "--payload-bytes-output",
+            str(sidecar),
+        ],
+    )
+
+    assert rc == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(body.read_bytes()) + len(feature.read_bytes()) + len(plan.read_bytes())}\n"
+
+
+def test_render_voter_payload_sidecar_counts_scope_anchor(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    anchor = tmp_path / "anchor.md"
+    anchor.write_text("ANCHOR PAYLOAD\n", encoding="utf-8")
+    sidecar = tmp_path / "payload.txt"
+
+    _ = _render_voter_text(
+        tmp_path,
+        capsys,
+        "--verification-context", "plan",
+        "--scope-anchor-file", str(anchor),
+        "--payload-bytes-output", str(sidecar),
+    )
+
+    assert sidecar.read_text(encoding="utf-8") == f"{len(anchor.read_bytes())}\n"
+# pyright: reportArgumentType=false

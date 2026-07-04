@@ -26,6 +26,7 @@ class FakeHarness:
     def __init__(self, review_tmpdir: Path) -> None:
         self.review_tmpdir = review_tmpdir
         self.run_calls: list[list[str]] = []
+        self.run_envs: list[dict[str, str] | None] = []
         self.append_calls: list[list[str]] = []
         self.render_missing_pointer = False
         self.render_rc = 0
@@ -37,6 +38,7 @@ class FakeHarness:
     def run(self, argv: Sequence[str], **_kwargs: Any) -> proc.CommandResult:
         args = [str(item) for item in argv]
         self.run_calls.append(args)
+        self.run_envs.append(_kwargs.get("env"))
         verb = _verb(args)
         if verb == ("render", "voter"):
             text = "stub voter prompt\n"
@@ -1171,7 +1173,12 @@ def test_voter_dispatch_forwards_panel_artifact_dir(tmp_path: Path, monkeypatch:
     assert agent_voters.dispatch_voters(_opts(ballot, review, round_num=4)) == 0
 
     waterfall = next(call for call in harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    waterfall_env = harness.run_envs[harness.run_calls.index(waterfall)]
     assert _value_after(waterfall, "--panel-artifact-dir") == str(review)
+    assert waterfall_env is not None
+    assert waterfall_env["LARCH_PANEL_ARTIFACT_DIR"] == str(review)
+    assert waterfall_env["LARCH_PANEL_SITE"] == "review Step 2"
+    assert waterfall_env["LARCH_PANEL_ROUND_NUM"] == "4"
 
 
 def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1189,6 +1196,42 @@ def test_voter_dispatch_materializes_panel_prompt_sizes(tmp_path: Path, monkeypa
     lines = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
     assert len(lines) >= 1
     assert all(line.split("\t")[4] == "voter" for line in lines)
+    waterfall = next(call for call in _harness.run_calls if _verb(call) == ("agent", "dispatch-waterfall"))
+    manifest = json.loads(Path(_value_after(waterfall, "--slots-file")).read_text(encoding="utf-8").splitlines()[0])
+    assert "payload_files" in manifest
+    assert sorted(manifest["payload_files"]) == ["claude", "codex", "cursor"]
+
+
+def test_build_voter_prompt_files_tracks_distinct_payload_counts(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    review = tmp_path / "review"
+    review.mkdir()
+    ballot = tmp_path / "ballot.md"
+    ballot.write_text("### FINDING_1: one\n", encoding="utf-8")
+    opts = _opts(ballot, review)
+    payloads = {"codex": 7, "cursor": 11, "claude": 13}
+
+    def fake_make_voter_prompt_file(
+        *,
+        voter_tool: str | None = None,
+        label: str = "",
+        **_kwargs: object,
+    ) -> agent_voters.VoterPromptResult:
+        tool = voter_tool or "claude"
+        return agent_voters.VoterPromptResult(prompt_file=str(review / f"{label}-{tool}.txt"), payload_bytes=payloads[tool])
+
+    monkeypatch.setattr(agent_voters, "_make_voter_prompt_file", fake_make_voter_prompt_file)
+
+    prompt_files, payload_files = agent_voters._build_voter_prompt_files(  # pyright: ignore[reportPrivateUsage]
+        opts=opts,
+        review_tmpdir=review,
+        policies=agent_voters.VOTER_SLOT_POLICIES[:2],
+        availability=(True, True),
+        calibration_stats_file=None,
+    )
+
+    assert payload_files[agent_voters.VOTER_SLOT_POLICIES[0].prompt_label]["codex"] == 7
+    assert payload_files[agent_voters.VOTER_SLOT_POLICIES[0].prompt_label]["cursor"] == 11
+    assert prompt_files[agent_voters.VOTER_SLOT_POLICIES[1].prompt_label]["codex"].endswith("codex.txt")
 
 
 def test_voter_dispatch_resolves_round_subdir_for_panel_artifact(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

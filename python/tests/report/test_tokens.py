@@ -1328,7 +1328,72 @@ def test_panel_prompt_size_helper_writes_counts_without_prompt_text(tmp_path: Pa
     assert rows[0]["slot_kind"] == "specialist"
     assert rows[0]["prompt_bytes"] == str(len(b"secret rendered prompt text"))
     assert rows[0]["prompt_tokens"] == str((len(b"secret rendered prompt text") + 3) // 4)
+    assert rows[0]["scaffold_bytes"] == rows[0]["prompt_bytes"]
+    assert rows[0]["payload_bytes"] == "0"
 
+
+
+
+def test_panel_prompt_size_records_explicit_and_env_payload_bytes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "aggregator")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "4")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abcdefghij", payload_bytes=6)
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abcdefghij")
+
+    rows = _tsv_rows(out)
+    assert rows[0]["payload_bytes"] == "6"
+    assert rows[0]["scaffold_bytes"] == "4"
+    assert rows[1]["payload_bytes"] == "4"
+    assert rows[1]["scaffold_bytes"] == "6"
+
+
+def test_panel_prompt_size_malformed_payload_falls_back_to_zero(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "not-an-int")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abc", payload_bytes="-1")
+
+    row = _tsv_rows(out)[0]
+    assert row["payload_bytes"] == "0"
+    assert row["scaffold_bytes"] == "3"
+
+
+def test_panel_prompt_size_explicit_malformed_does_not_fall_back_to_env(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "4")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="abc", payload_bytes="not-an-int")
+
+    row = _tsv_rows(out)[0]
+    assert row["payload_bytes"] == "0"
+    assert row["scaffold_bytes"] == "3"
+
+
+def test_panel_prompt_size_migrates_legacy_header_on_append(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    out = tmp_path / "panel-prompt-sizes.tsv"
+    out.write_text(
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+        "review\t\t1\tcorrectness\tspecialist\tcursor\told.txt\t12\t3\tagents/reviewer-testing.md\t8\t2\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LARCH_PANEL_SLOT", "voter-1")
+
+    tokens.append_panel_prompt_size(artifact_path=out, prompt="xyz", payload_bytes=1)
+
+    rows = _tsv_rows(out)
+    assert rows[0]["scaffold_bytes"] == "12"
+    assert rows[0]["payload_bytes"] == "0"
+    assert rows[0]["agent_file"] == "agents/reviewer-testing.md"
+    assert rows[1]["scaffold_bytes"] == "2"
+    assert rows[1]["payload_bytes"] == "1"
+    assert rows[1]["agent_file"] == ""
 
 def test_panel_prompt_size_skips_without_panel_slot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("LARCH_PANEL_SLOT", raising=False)
@@ -1425,6 +1490,23 @@ def test_build_panel_dispatch_env_sets_panel_keys_without_mutating_parent(tmp_pa
     assert env["LARCH_PANEL_ROUND_NUM"] == "3"
     assert env["LARCH_PANEL_SLOT"] == "correctness"
     assert env["LARCH_PANEL_PRIMARY_TOOL"] == "cursor"
+    assert "LARCH_PANEL_PAYLOAD_BYTES" not in env
+
+
+def test_build_panel_dispatch_env_clears_inherited_payload_without_explicit_value(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "123")
+
+    env = tokens.build_panel_dispatch_env(artifact_dir=tmp_path, site="review Step 2")
+
+    assert "LARCH_PANEL_PAYLOAD_BYTES" not in env
+
+
+def test_build_panel_dispatch_env_sets_explicit_payload(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_PANEL_PAYLOAD_BYTES", "123")
+
+    env = tokens.build_panel_dispatch_env(artifact_dir=tmp_path, site="review Step 2", payload_bytes=7)
+
+    assert env["LARCH_PANEL_PAYLOAD_BYTES"] == "7"
 
 
 def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1452,8 +1534,37 @@ def test_measure_panel_cost_aggregates_committed_tsvs(tmp_path: Path, monkeypatc
     assert "agents/reviewer-testing.md" in text
     assert "999" not in text
     data = _tsv_rows(out)
+    assert data[0]["scaffold_bytes"] == "100"
+    assert data[0]["payload_bytes"] == "0"
     assert data[0]["realized_bytes"] == "100"
     assert {row["agent_file"] for row in data} >= {"generated/no-agent:voter", "agents/orchestrator-aggregator.md"}
+
+
+def test_measure_panel_cost_ranks_by_scaffold_bytes_before_realized_bytes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(tokens, "_repo_root", lambda: tmp_path)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(tokens, "_measure_stamp", lambda: "2026-07-01")  # pyright: ignore[reportPrivateUsage]
+    header = (
+        "site\tphase\tround_num\tslot\tslot_kind\ttool\toutput\tprompt_bytes\tprompt_tokens\tscaffold_bytes\t"
+        "scaffold_tokens\tpayload_bytes\tpayload_tokens\tagent_file\tagent_bytes\tagent_tokens\n"
+    )
+    rows = [
+        tmp_path / "larch-logs" / "design" / "d1" / "plan-review" / "round-1" / "panel-prompt-sizes.tsv",
+        tmp_path / "larch-logs" / "review" / "r1" / "panel-prompt-sizes.tsv",
+    ]
+    rows[0].parent.mkdir(parents=True)
+    rows[0].write_text(header + "design\t\t\tcorrectness\tspecialist\tcursor\tlow.txt\t150\t38\t100\t25\t0\t0\ta-agent.md\t20\t5\n", encoding="utf-8")
+    rows[1].parent.mkdir(parents=True)
+    rows[1].write_text(header + "review\t\t\taggregator\taggregator\tcodex\thigh.txt\t150\t38\t200\t50\t0\t0\tz-agent.md\t20\t5\n", encoding="utf-8")
+
+    out = tokens.measure_panel_cost()
+    data = _tsv_rows(out)
+
+    assert data[0]["agent_file"] == "z-agent.md"
+    assert data[0]["scaffold_bytes"] == "200"
+    assert data[1]["agent_file"] == "a-agent.md"
 
 
 def test_measure_panel_cost_skips_symlinked_panel_prompt_sizes(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

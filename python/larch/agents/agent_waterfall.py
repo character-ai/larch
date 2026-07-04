@@ -62,6 +62,8 @@ class Slot:
     prompt_file: str
     model_role: str = ""
     prompt_files: dict[str, str] | None = None
+    payload_bytes: int = 0
+    payload_files: dict[str, int] | None = None
 
 
 @dataclass(frozen=True)
@@ -338,6 +340,35 @@ def _parse_prompt_files_map(*, raw: object, slot: str) -> dict[str, str] | None:
     return parsed
 
 
+def _parse_nonnegative_int_field(*, raw: object, slot: str, field: str) -> int:
+    if raw is None or raw == "":
+        return 0
+    if isinstance(raw, bool):
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' {field} must be a non-negative integer")
+    if isinstance(raw, int):
+        if raw >= 0:
+            return raw
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' {field} must be a non-negative integer")
+    if isinstance(raw, str) and re.fullmatch(r"[0-9]+", raw.strip()):
+        return int(raw.strip())
+    raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' {field} must be a non-negative integer")
+
+
+def _parse_payload_files_map(*, raw: object, slot: str) -> dict[str, int] | None:
+    if raw is None:
+        return None
+    if not isinstance(raw, dict):
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' payload_files must be an object")
+    parsed: dict[str, int] = {}
+    for key_obj, value_obj in cast("dict[object, object]", raw).items():
+        if not isinstance(key_obj, str) or key_obj not in {"claude", "codex", "cursor"}:
+            raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' payload_files keys must be claude, codex, or cursor")
+        parsed[key_obj] = _parse_nonnegative_int_field(raw=value_obj, slot=slot, field=f"payload_files.{key_obj}")
+    if not parsed:
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' payload_files must not be empty")
+    return parsed
+
+
 def _validate_prompt_sources(*, slot: str, agent: str, prompt_file: str, prompt_files: dict[str, str] | None) -> None:
     has_prompt_source = bool(prompt_file or prompt_files)
     if agent and has_prompt_source:
@@ -362,6 +393,8 @@ def _parse_slot_row(row: str) -> Slot:
     agent = data_dict.get("agent", "")
     prompt_file = data_dict.get("prompt_file", "")
     prompt_files_raw: object | None = data_dict.get("prompt_files")
+    payload_bytes_raw: object | None = data_dict.get("payload_bytes")
+    payload_files_raw: object | None = data_dict.get("payload_files")
     if not isinstance(slot, str) or not slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
     if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
@@ -384,7 +417,9 @@ def _parse_slot_row(row: str) -> Slot:
     _validate_prompt_sources(slot=slot, agent=agent, prompt_file=prompt_file, prompt_files=prompt_files)
     model_role_value: object | None = data_dict.get("model_role", "")
     model_role = _validated_model_role(value=model_role_value, slot=slot, row=row)  # type: ignore[reportUnknownArgumentType]
-    return Slot(slot, tool_value, output, agent, prompt_file, model_role, prompt_files)
+    payload_bytes = _parse_nonnegative_int_field(raw=payload_bytes_raw, slot=slot, field="payload_bytes")
+    payload_files = _parse_payload_files_map(raw=payload_files_raw, slot=slot)
+    return Slot(slot, tool_value, output, agent, prompt_file, model_role, prompt_files, payload_bytes, payload_files)
 
 
 def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
@@ -461,6 +496,12 @@ def _prompt_file_for_tool(*, slot: Slot, tool: str) -> str | None:
     return slot.prompt_file if slot.prompt_file.strip() else None
 
 
+def _payload_bytes_for_tool(*, slot: Slot, tool: str) -> int:
+    if slot.payload_files is not None:
+        return slot.payload_files.get(tool, 0)
+    return slot.payload_bytes
+
+
 def _prompt_missing_drop(*, slot: Slot, tool: str) -> DropState:
     return DropState("prompt-missing", f"slot {slot.name} has no prompt file for launch tool {tool}")
 
@@ -529,6 +570,7 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             phase=phase,
             primary_tool=tool,
             source_agent_file=slot.agent or os.environ.get("LARCH_PANEL_SOURCE_AGENT_FILE", ""),
+            payload_bytes=_payload_bytes_for_tool(slot=slot, tool=tool),
         )
     stderr_handle = Path(f"{output}.launch-stderr").open("wb")  # noqa: SIM115  # pylint: disable=consider-using-with
     try:

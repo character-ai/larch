@@ -405,6 +405,10 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
     _write_text(path=round_dir / "submodule-paths.txt", text="\n".join(submodules) + ("\n" if submodules else ""))
     prompt_path = round_dir / "coder-prompt.md"
     prompt_body = _compose_coder_prompt(prompt_file=prompt_path, findings_file=scrubbed, round_dir=round_dir, submodules=submodules)
+    try:
+        payload_bytes = len(scrubbed.read_bytes())
+    except OSError:
+        payload_bytes = 0
     fix_coder_order = external_defaults.tool_order("review.fix_coder")
     runner_by_tool: dict[str, Callable[..., bool]] = {
         "codex": _run_coder_codex,
@@ -420,6 +424,7 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
         slot="implementer",
         phase="review.fix_coder",
         primary_tool=first_tool,
+        payload_bytes=payload_bytes,
     )
     panel_updates = {key: value for key, value in panel_env.items() if key.startswith("LARCH_PANEL_")}
     previous_panel_env = {key: os.environ.get(key) for key in panel_updates}
@@ -435,6 +440,7 @@ def apply_findings_with_coder(*, input_file: Path, round_dir: Path, result_file:
             round_num=round_num,
             slot="implementer",
             phase="review.fix_coder",
+            payload_bytes=payload_bytes,
         )
     finally:
         for key, value in previous_panel_env.items():

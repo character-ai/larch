@@ -2760,6 +2760,45 @@ def test_apply_findings_with_coder_failed_codex_cleans_and_falls_through_to_curs
 
 
 @MARK_DISPATCH
+def test_apply_findings_with_coder_records_scrubbed_payload_bytes_and_tsv_row(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = _mk_git_repo(tmp_path)
+    monkeypatch.chdir(repo)
+    _patch_coder_basics(monkeypatch)
+    round_dir = tmp_path / "impl" / "round-1"
+    findings = _coder_findings(tmp_path)
+    scrubbed_bytes = findings.read_bytes()
+
+    def codex(*, round_dir: Path, prompt_body: str, tool_log: Path) -> bool:
+        (repo / "tracked.txt").write_text("codex\n", encoding="utf-8")
+        review_and_fix._run(["git", "add", "tracked.txt"])
+        tool_log.write_text("codex\n", encoding="utf-8")
+        return True
+
+    monkeypatch.setattr(coder_runner, "_run_coder_codex", codex)
+    monkeypatch.setattr(coder_runner, "_stage_and_commit_round", lambda **_kwargs: review_and_fix.RoundCommitResult(sha="deadbeef"))
+
+    result = review_and_fix.apply_findings_with_coder(
+        input_file=findings,
+        round_dir=round_dir,
+        result_file=round_dir / "coder.env",
+        round_num=1,
+    )
+
+    assert result.rc == 0
+    assert result.tool == "codex"
+    assert result.status == "applied"
+    tsv = round_dir / "panel-prompt-sizes.tsv"
+    rows = [line for line in tsv.read_text(encoding="utf-8").splitlines() if line and not line.startswith("site\t")]
+    assert len(rows) == 1
+    fields = rows[0].split("\t")
+    assert fields[11] == str(len(scrubbed_bytes))
+    assert fields[12] == str((len(scrubbed_bytes) + 3) // 4)
+
+
+@MARK_DISPATCH
 def test_apply_findings_with_coder_commit_failure_cleans_and_falls_through(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

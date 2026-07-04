@@ -165,9 +165,11 @@ sidecar into `larch-logs/`.
 
 ### panel prompt-size telemetry
 
-`panel-prompt-sizes.tsv` is count-only telemetry for panel-tier prompts. It records safe identifiers, rendered prompt byte and estimated-token counts, and agent-file byte and estimated-token counts when a repo-local agent file exists. It never stores rendered prompt text.
+`panel-prompt-sizes.tsv` is count-only telemetry for panel-tier prompts. It records safe identifiers, rendered prompt byte and estimated-token counts, derived scaffold and payload byte/token counts, and agent-file byte and estimated-token counts when a repo-local agent file exists. It never stores rendered prompt text or payload text.
 
 Rows are written only when `LARCH_PANEL_SLOT` is set and the slot class is recognized as specialist, plan-review, voter, aggregator, or implementer. Dispatch producers set the panel environment explicitly in review dispatch, code voters, plan-review dispatch, aggregation, and review-fix coder paths. Appends use a best-effort flock-protected TSV writer, so lock or write failures skip telemetry without failing the parent dispatch.
+
+Current rows include `scaffold_bytes`, `scaffold_tokens`, `payload_bytes`, and `payload_tokens`. `prompt_bytes` remains the rendered prompt size. `payload_bytes` is count-only per-run content that the renderer or dispatcher knows it inlined or attached as prompt payload; `scaffold_bytes` is the non-negative remainder of prompt bytes after subtracting payload bytes. Older committed TSVs may lack these columns. `measure-panel-cost` treats missing scaffold as the whole prompt and missing payload as zero.
 
 Committed locations are:
 
@@ -175,7 +177,7 @@ Committed locations are:
 - Implement Step 5: `larch-logs/implement/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv`.
 - Standalone review: `larch-logs/review/<RUN_ID>/panel-prompt-sizes.tsv`, or `larch-logs/review/<RUN_ID>/round-<N>/panel-prompt-sizes.tsv` when the dispatch is round-local.
 
-`python3 python/cli.py token measure-panel-cost` aggregates committed panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a ranked TSV under `larch-logs/measure-panel-cost/` with dispatch counts, runs observed, loads per run, prompt counts, agent counts, and total realized counts.
+`python3 python/cli.py token measure-panel-cost` aggregates committed panel TSVs by agent file, plus generated/no-agent buckets for voters and generated prompts. It writes a TSV under `larch-logs/measure-panel-cost/` with dispatch counts, runs observed, loads per run, prompt counts, scaffold and payload counts, agent counts, and total realized counts. Rows rank by scaffold bytes so fixed prompt surface stays visible even when payload-heavy runs dominate realized bytes.
 
 ### checks digest-size telemetry
 

@@ -428,6 +428,61 @@ def test_plan_review_panel_static_and_voter_roles(tmp_path: Path, monkeypatch: p
     assert seen_policy == ["design.plan_review_panel"]
 
 
+def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    slots = (
+        config.SlotDefault(slot="cursor-plan-sentinel", tool="cursor", output="cursor-sentinel.out", focus_area="sentinel", archetype="sentinel"),
+    )
+    calls = {"count": 0}
+
+    def fake_slot_defaults(role_id: str, *_args: object, **_kwargs: object) -> tuple[config.SlotDefault, ...]:
+        assert role_id == "design.plan_review_panel"
+        return slots
+
+    def fake_panel_policy(role_id: str) -> config.PanelDispatchPolicy:
+        assert role_id == "design.plan_review_panel"
+        return config.PanelDispatchPolicy()
+
+    def fake_run(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        payload_sidecar = Path(argv[argv.index("--payload-bytes-output") + 1])
+        calls["count"] += 1
+        if calls["count"] == 1:
+            payload_sidecar.write_text("41\n", encoding="utf-8")
+            return subprocess.CompletedProcess(argv, 0, "prompt", "")
+        return subprocess.CompletedProcess(argv, 1, "", "render failed")
+
+    monkeypatch.setattr(plan_review_panel.external_defaults, "slot_defaults", fake_slot_defaults)
+    monkeypatch.setattr(plan_review_panel.external_defaults, "panel_dispatch_policy", fake_panel_policy)
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", fake_run)
+
+    first = plan_review_panel._static_slot_rows(  # pyright: ignore[reportPrivateUsage]
+        design=tmp_path,
+        round_dir=tmp_path,
+        round_num=3,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=str(tmp_path / "plan.txt"),
+        feature_file=str(tmp_path / "feature.txt"),
+    )
+    second = plan_review_panel._static_slot_rows(  # pyright: ignore[reportPrivateUsage]
+        design=tmp_path,
+        round_dir=tmp_path,
+        round_num=3,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=str(tmp_path / "plan.txt"),
+        feature_file=str(tmp_path / "feature.txt"),
+    )
+
+    assert first[0]["payload_bytes"] == 41
+    assert second[0].get("payload_bytes", 0) == 0
+    assert (tmp_path / "render-plan-cursor-sentinel.prompt").read_text(encoding="utf-8") == (
+        "Review the design plan with a sentinel lens."
+    )
+
+
 def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policies = (
         config.VoterPolicyDefault("1", "voter-1", "claude", "claude", "validity-correctness", "claude", "claude-custom.txt", (("claude", "claude"),)),
@@ -451,10 +506,10 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
         def wait(self) -> int:
             return 0
 
-    def fake_prompt(*, design: Path, tool: str, **_kwargs: object) -> Path:
+    def fake_prompt(*, design: Path, tool: str, **_kwargs: object) -> plan_review_panel.VoterPromptResult:
         path = design / f"{tool}.prompt"
         path.write_text("prompt\n", encoding="utf-8")
-        return path
+        return plan_review_panel.VoterPromptResult(prompt_file=path)
 
     def fake_parse_rate(**_kwargs: object) -> str:
         return "OK"

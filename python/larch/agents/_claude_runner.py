@@ -23,7 +23,7 @@ from larch.core import logging_util
 from larch.core import proc
 from larch.core import redact
 from larch.core.proc import CommandResult, Runner
-from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, _panel_logging_enabled
+from larch.report.tokens import append_panel_prompt_size, panel_prompt_size_artifact_for_output, read_panel_payload_bytes, _panel_logging_enabled
 
 from larch.agents._types import (
     _CLAUDE_AUTH_FAST_FAIL_WINDOW,
@@ -62,6 +62,11 @@ from larch.agents._run_external import (
 from larch.agents._review_launcher import (
     _review_session_env_path,
 )
+
+def _panel_payload_bytes_from_env() -> int:
+    raw = os.environ.get("LARCH_PANEL_PAYLOAD_BYTES", "").strip()
+    return int(raw) if re.fullmatch(r"[0-9]+", raw) else 0
+
 
 def _canonical(path: Path) -> Path:
     return path.resolve(strict=True)
@@ -480,6 +485,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         return 2
     model = args.model or (os.environ.get("LARCH_VOTER_MODEL", "claude-sonnet-4-6") if args.role == "voter" else "claude-sonnet-4-6")
     temp_prompt = ""
+    payload_bytes = 0
     prompt_tmpdir = Path(args.output).parent
     prompt_tmpdir.mkdir(parents=True, exist_ok=True)
     if args.prompt is not None:
@@ -516,10 +522,19 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         render_args.extend(["--findings-ledger-file", str(ledger_file)])
         if session_env_path:
             render_args.extend(["--session-env-path", session_env_path])
+        fd, payload_sidecar_name = tempfile.mkstemp(prefix=".larch-render-payload.", dir=str(prompt_tmpdir))
+        os.close(fd)
+        payload_sidecar = Path(payload_sidecar_name)
+        with contextlib.suppress(OSError):
+            payload_sidecar.unlink()
+        render_args.extend(["--payload-bytes-output", str(payload_sidecar)])
         rendered = proc.run(render_args)
         if rendered.returncode != 0:
             _err(rendered.stderr or rendered.stdout or "agent launch-claude-review: render specialist failed")
             return 2
+        payload_bytes = read_panel_payload_bytes(payload_sidecar)
+        with contextlib.suppress(OSError):
+            payload_sidecar.unlink()
         body = rendered.stdout
         fd, temp_prompt = tempfile.mkstemp(prefix=".larch-claude-review-agent-", dir=str(prompt_tmpdir))
         os.close(fd)
@@ -527,6 +542,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
         prompt_file = temp_prompt
     else:
         prompt_file = args.prompt_file
+        payload_bytes = _panel_payload_bytes_from_env()
     if _panel_logging_enabled():
         append_panel_prompt_size(
             artifact_path=panel_prompt_size_artifact_for_output(output=Path(args.output)),
@@ -534,6 +550,7 @@ def launch_claude_review_main(argv: list[str] | None = None) -> int:
             tool="claude",
             prompt_file=prompt_file,
             agent_file=args.agent_file or "",
+            payload_bytes=payload_bytes,
         )
     try:
         forwarded_contexts = [value for value in (args.diff_file, args.plan_file, args.feature_file, args.scope_files) if value and Path(value).is_file()]
