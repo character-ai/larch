@@ -1,14 +1,16 @@
-## /implement run 757488DF-DAB4-4578-8C53-517DDC1A67E8 — shipping
+## /implement run 757488DF-DAB4-4578-8C53-517DDC1A67E8 — stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:29:13
-- **Cost**: 💰 TOTAL ~$11.95 — Claude $1.55, Codex-5.5 $2.78, Codex-mini $2.01, Cursor $3.77, Claude (subprocess) $1.84  |  Tokens: 28345k
+- **Cost**: 💰 TOTAL ~$11.99 — Claude $1.55, Codex-5.5 $2.78, Codex-mini $2.01, Cursor $3.77, Claude (subprocess) $1.88  |  Tokens: 28443k
 - **Issue**: #6228 — https://github.com/character-ai/larch/issues/6228
+- **PR**: #6248 — https://github.com/character-ai/larch/pull/6248
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +315/-22, larch-logs +702/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
