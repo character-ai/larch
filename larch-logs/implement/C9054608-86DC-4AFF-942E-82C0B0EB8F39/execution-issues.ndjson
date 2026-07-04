@@ -1,0 +1,1 @@
+{"phase":"implement","step":"18","category":"Tool Failures","source":"execution-issues.md safety-net","source_sha256":"b2a728e3da559cd61c5a8298b4eb5274c7082c13b2cdd556e9067baa786afc81","body":"- Step 5 \u2014 wrapper stalled: panel-failed\n\n- Step 5 \u2014 wrapper stalled: panel-failed (retry)\n"}
