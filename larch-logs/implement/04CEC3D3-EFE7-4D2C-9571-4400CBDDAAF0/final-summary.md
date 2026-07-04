@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 00:38:57
-- **Cost**: 💰 TOTAL ~$23.48 — Claude $1.19, Codex-5.5 $13.41, Codex-mini $0.71, Cursor $6.20, Claude (subprocess) $1.97  |  Tokens: 39243k
+- **Cost**: 💰 TOTAL ~$23.98 — Claude $1.66, Codex-5.5 $13.41, Codex-mini $0.71, Cursor $6.20, Claude (subprocess) $2.00  |  Tokens: 40473k
 - **Issue**: #6244 — https://github.com/character-ai/larch/issues/6244
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 3/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1 — https://github.com/character-ai/larch/issues/6255
 - **Exec issues**: 0
 - **Warnings**: 2
 - **Run logs**: `larch-logs/implement/04CEC3D3-EFE7-4D2C-9571-4400CBDDAAF0/`
@@ -73,3 +73,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (latent): `python/larch/review/plan_review_common.py` unreachable round-three authorization branch. Concern: The `ROUND_THREE_AUTHORIZATION_CAP` bonus branch in `effective_authorized_cap` is unreachable under the current universal cap of 2, so it is dead code that can mislead future cap changes.
 - **Round 1 OOS_2** (nit): plan update omits the convergence-guard rationale. Concern: The convergence-guard change is not reflected in the plan UPDATED list, leaving a traceability gap for reviewers and operators.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
