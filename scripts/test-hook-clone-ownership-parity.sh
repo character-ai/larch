@@ -40,6 +40,9 @@ compare_function() {
   fi
 }
 
+compare_function canonical_dir
+compare_function marker_value
+compare_function marker_candidates
 compare_function clone_paths_same
 compare_function marker_foreign_clone
 
