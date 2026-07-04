@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:28:58
-- **Cost**: 💰 TOTAL ~$8.69 — Claude $2.16, Codex-5.5 $2.21, Codex-mini $0.99, Cursor $2.99, Claude (subprocess) $0.34  |  Tokens: 17858k
+- **Cost**: 💰 TOTAL ~$11.09 — Claude $4.55, Codex-5.5 $2.21, Codex-mini $0.99, Cursor $2.99, Claude (subprocess) $0.35  |  Tokens: 21291k
 - **Issue**: #6192 — https://github.com/character-ai/larch/issues/6192
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -70,3 +70,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): Missing direct unit tests for normalize_file_failure_report_env. Concern: `normalize_file_failure_report_env()` lacks direct unit coverage for pass-through and fallback statuses, leaving no-match / lookup-failed-open handling vulnerable to regressions.
 - **Round 1 OOS_4** (nit): Prefixed-slice dedup test misses normalized stdout assertion. Concern: The prefixed-slice dedup integration path does not assert the normalized stdout shape after the production change, so the helper could emit raw FILE_FAILURE_REPORT_* keys without failing the test.
 - **Round 1 OOS_5** (nit): Subprocess mock targets shared module instead of call site. Concern: The subprocess mock patches `stall_recovery.subprocess` rather than the module used by `_report`, which makes the test fragile to import-refactor changes.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
