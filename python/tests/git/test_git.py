@@ -125,6 +125,34 @@ def test_log_path_commits_parses_path_history() -> None:
     )
 
 
+def test_log_path_commits_preserves_embedded_nul_in_subject() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner(
+        {
+            argv: CommandResult(
+                argv,
+                0,
+                "abc123\x00Subject with \x00 embedded nul\n",
+                "",
+                0.01,
+            ),
+        },
+    )
+
+    commits = git.log_path_commits(runner, "python/skill-closure-baseline.json")
+
+    assert commits == (
+        git.PathCommit(sha="abc123", subject="Subject with \x00 embedded nul"),
+    )
+
+
 def test_log_path_commits_includes_rev_range_before_path() -> None:
     argv = (
         "git",
@@ -156,6 +184,23 @@ def test_log_path_commits_raises_on_malformed_output() -> None:
         "python/skill-closure-baseline.json",
     )
     runner = StubRunner({argv: CommandResult(argv, 0, "missing-delimiter\n", "", 0.01)})
+
+    with pytest.raises(ShipError, match="malformed line"):
+        _ = git.log_path_commits(runner, "python/skill-closure-baseline.json")
+
+
+def test_log_path_commits_raises_on_empty_sha() -> None:
+    argv = (
+        "git",
+        "log",
+        "--reverse",
+        "--format=%H%x00%s",
+        "--",
+        "python/skill-closure-baseline.json",
+    )
+    runner = StubRunner(
+        {argv: CommandResult(argv, 0, "\x00Subject only\n", "", 0.01)},
+    )
 
     with pytest.raises(ShipError, match="malformed line"):
         _ = git.log_path_commits(runner, "python/skill-closure-baseline.json")
