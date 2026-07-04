@@ -1,0 +1,2 @@
+Reading the ballot and verifying against the plan and referenced code.
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
