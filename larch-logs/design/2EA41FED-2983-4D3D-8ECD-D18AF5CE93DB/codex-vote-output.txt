@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- wording clarity only; the added recovery doc still satisfies the plan without this rewrite.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- same-session wording polish, not a required condition for the feature to ship correctly.
