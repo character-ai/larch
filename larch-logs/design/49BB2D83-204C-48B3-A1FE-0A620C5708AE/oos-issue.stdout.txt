@@ -1,0 +1,6 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6303
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6303
+ISSUE_1_TITLE=Scrub em-dashes from SKILL.md outline auto-approve breadcrumb and design_step5b.py warning strings
