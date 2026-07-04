@@ -46,6 +46,17 @@ run_bash_hook_disc() {
     mk_bash_payload "$command" "$cwd" "" | HOOK_ANTI_READ_POLL_NOW="$now" HOOK_ANTI_READ_POLL_DISCRIMINATOR="$disc" "$HOOK"
 }
 
+run_hook_disc() {
+    local now="$1" path="$2" offset="${3:-0}" cwd="${4:-/tmp/test-proj}" disc="${5:?discriminator required}"
+    mk_payload "$path" "$offset" "$cwd" "" | HOOK_ANTI_READ_POLL_NOW="$now" HOOK_ANTI_READ_POLL_DISCRIMINATOR="$disc" "$HOOK"
+}
+
+cwd_hash() {
+    printf '%s' "$1" | cksum | awk '{print $1}'
+}
+
+nosession_hash=$(printf '%s' "nosession" | cksum | awk '{print $1}')
+
 assert_reminder() {
     local out="$1" label="$2"
     if printf '%s' "$out" | grep -q 'additionalContext'; then
@@ -267,6 +278,22 @@ assert_silent "$out_s2" 'session beta call 1 silent'
 out_s3=$(run_bash_hook 2 "cat $TASK_OUT" "/proj-session-iso" "session-alpha")
 assert_reminder "$out_s3" 'session alpha call 2 fires reminder'
 
+echo "=== generic Read session_id buckets do not share counters ==="
+out_gs1=$(run_hook 0 "/tmp/generic-session.md" 0 "/proj-generic-session-iso" "session-alpha")
+assert_silent "$out_gs1" 'generic session alpha call 1 silent'
+out_gs2=$(run_hook 1 "/tmp/generic-session.md" 0 "/proj-generic-session-iso" "session-alpha")
+assert_silent "$out_gs2" 'generic session alpha call 2 silent'
+out_gs_beta=$(run_hook 2 "/tmp/generic-session-other.md" 0 "/proj-generic-session-iso" "session-beta")
+assert_silent "$out_gs_beta" 'generic session beta different path does not reset alpha'
+out_gs3=$(run_hook 3 "/tmp/generic-session.md" 0 "/proj-generic-session-iso" "session-alpha")
+assert_reminder "$out_gs3" 'generic session alpha call 3 fires reminder after beta interleave'
+out_gs_inherit1=$(run_hook 0 "/tmp/generic-inherit.md" 0 "/proj-generic-session-inherit" "session-alpha")
+assert_silent "$out_gs_inherit1" 'generic inherit alpha call 1 silent'
+out_gs_inherit2=$(run_hook 1 "/tmp/generic-inherit.md" 0 "/proj-generic-session-inherit" "session-alpha")
+assert_silent "$out_gs_inherit2" 'generic inherit alpha call 2 silent'
+out_gs_inherit_beta=$(run_hook 2 "/tmp/generic-inherit.md" 0 "/proj-generic-session-inherit" "session-beta")
+assert_silent "$out_gs_inherit_beta" 'generic session beta does not inherit alpha count'
+
 echo "=== semicolon inside quoted echo does not count as poll ==="
 semi_echo_cmd="echo 'waiting; cat $TASK_OUT'"
 out_se1=$(run_bash_hook 0 "$semi_echo_cmd" "/proj-semi-echo-fp")
@@ -359,7 +386,7 @@ out_s1=$(run_hook 100 "/tmp/skew.md" 0 "/proj-skew")
 if [ -z "$out_s1" ]; then pass 'skew call 1 silent'; else fail "skew call 1 should be silent, got: $out_s1"; fi
 out_s2=$(run_hook 101 "/tmp/skew.md" 0 "/proj-skew")
 if [ -z "$out_s2" ]; then pass 'skew call 2 silent'; else fail "skew call 2 should be silent, got: $out_s2"; fi
-state_skew="$TMP/larch-read-poll/state-$(printf '%s' "/proj-skew" | cksum | awk '{print $1}').tsv"
+state_skew="$TMP/larch-read-poll/state-${nosession_hash}-$(cwd_hash "/proj-skew").tsv"
 printf '/tmp/skew.md\t0\t2\t200\n' > "$state_skew"
 out_s3=$(run_hook 102 "/tmp/skew.md" 0 "/proj-skew")
 if [ -z "$out_s3" ]; then pass 'future timestamp resets skewed state'; else fail "future timestamp should reset state, got: $out_s3"; fi
@@ -384,7 +411,7 @@ if printf '%s' "$out_c3" | grep -q 'Read-poll detected'; then
 else
     fail "control-char path call 3 should fire warning, got: $out_c3"
 fi
-state_controls="$TMP/larch-read-poll/state-$(printf '%s' "/proj-controls" | cksum | awk '{print $1}').tsv"
+state_controls="$TMP/larch-read-poll/state-${nosession_hash}-$(cwd_hash "/proj-controls").tsv"
 stored_line=$(cat "$state_controls")
 tab_count=$(printf '%s' "$stored_line" | awk -F '\t' '{print NF-1}')
 if [ "$tab_count" -eq 3 ]; then
@@ -430,6 +457,21 @@ else
     fail "expected discriminator-alpha state file: $state_alpha"
 fi
 
+echo "=== nosession discriminators do not share generic Read state ==="
+run_hook_disc 0 "/tmp/generic-disc.md" 0 "/proj-generic-disc" alpha >/dev/null
+run_hook_disc 1 "/tmp/generic-disc.md" 0 "/proj-generic-disc" alpha >/dev/null
+out_generic_disc_beta=$(run_hook_disc 2 "/tmp/generic-disc.md" 0 "/proj-generic-disc" beta)
+assert_silent "$out_generic_disc_beta" 'generic discriminator beta does not inherit alpha count'
+out_generic_disc_alpha=$(run_hook_disc 2 "/tmp/generic-disc.md" 0 "/proj-generic-disc" alpha)
+assert_reminder "$out_generic_disc_alpha" 'generic discriminator alpha call 3 fires reminder'
+session_alpha_generic=$(printf '%s' "nosession-alpha" | cksum | awk '{print $1}')
+state_alpha_generic="$TMP/larch-read-poll/state-${session_alpha_generic}-$(cwd_hash "/proj-generic-disc").tsv"
+if [ -f "$state_alpha_generic" ]; then
+    pass 'generic discriminator alpha state file exists'
+else
+    fail "expected generic discriminator-alpha state file: $state_alpha_generic"
+fi
+
 echo "=== bash single-quote escape does not false-positive read verb in quoted path ==="
 sq_cmd="sed -n '1,5p' '/tmp/my'\''file/notes.txt'"
 out_sq1=$(run_bash_hook 0 "$sq_cmd" "/proj-sq-escape")
@@ -438,7 +480,7 @@ out_sq2=$(run_bash_hook 1 "$sq_cmd" "/proj-sq-escape")
 assert_silent "$out_sq2" 'bash sq-escape call 2 silent'
 
 echo "=== state file is private ==="
-state_file="$TMP/larch-read-poll/state-$(printf '%s' "/proj-window" | cksum | awk '{print $1}').tsv"
+state_file="$TMP/larch-read-poll/state-${nosession_hash}-$(cwd_hash "/proj-window").tsv"
 # Avoid parsing `stat` output: GNU `-f` is not BSD `-f`, and BSD `%a` is atime (not mode).
 if find "$state_file" -perm 600 2>/dev/null | grep -q .; then
     pass 'state file mode is 600'
