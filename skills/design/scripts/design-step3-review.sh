@@ -406,16 +406,17 @@ _step3_review_signal_exit() {
 }
 
 _step3_review_write_detached_marker() {
-  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _marker _tmp
+  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _detached_at_epoch="${4:-}" _marker _tmp
   [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
   [[ -n "$_pid" ]] || return 0
   _marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
   _tmp="${_marker}.tmp.$$"
+  [[ -n "$_detached_at_epoch" ]] || _detached_at_epoch="$(date +%s)"
   if {
     printf 'PID=%s\n' "$_pid"
     printf 'SIGNAL=%s\n' "$_signal"
     printf 'STDOUT_FILE=%s\n' "$_stdout_file"
-    printf 'DETACHED_AT_EPOCH=%s\n' "$(date +%s)"
+    printf 'DETACHED_AT_EPOCH=%s\n' "$_detached_at_epoch"
   } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null && [ -f "$_marker" ]; then
     return 0
   fi
@@ -476,11 +477,12 @@ _step3_review_cleanup_detached_marker() {
 }
 
 _step3_review_reattach_detached_loop() {
-  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _signal="" _normalize_stdout="" _rc=0 _await_rc=0 _active="$DESIGN_TMPDIR/.step3-reattach-active"
+  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _signal="" _detached_at_epoch="" _normalize_stdout="" _rc=0 _await_rc=0 _active="$DESIGN_TMPDIR/.step3-reattach-active"
   [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
   _pid="$(_step3_review_marker_value PID || true)"
   _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
   _signal="$(_step3_review_marker_value SIGNAL || true)"
+  _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
   case "$_pid" in
     ''|*[!0-9]*)
       _step3_review_cleanup_detached_marker "$_stdout_file"
@@ -496,7 +498,7 @@ _step3_review_reattach_detached_loop() {
     --pid "$_pid" \
     --reattach >/dev/null 2>&1 || _await_rc=$?
   if [ "$_await_rc" -ne 0 ]; then
-    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" || true
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
     rm -f "$_active" 2>/dev/null || true
     _loop_pid=""
     return 1
@@ -513,11 +515,17 @@ _step3_review_reattach_detached_loop() {
     --design-tmpdir "$DESIGN_TMPDIR" \
     --stdout-file "$_normalize_stdout" \
     --loop-rc 0 || _rc=$?
+  if [ "$_rc" -ne 0 ]; then
+    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
+    rm -f "$_active" 2>/dev/null || true
+    _loop_pid=""
+    exit "$_rc"
+  fi
   _step3_review_cleanup_detached_marker "$_stdout_file"
   _step3_review_cleanup_detached_marker "$_normalize_stdout"
   rm -f "$_plan_review_stdout_file" "$_active" 2>/dev/null || true
   _loop_pid=""
-  exit "$_rc"
+  exit 0
 }
 
 # #6258: The detach gate below normally reads the cached

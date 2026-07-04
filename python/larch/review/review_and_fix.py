@@ -205,6 +205,12 @@ def _step5_probe_prior_round_env(*, implement_tmpdir: Path, prior_round: int) ->
     return expected.is_file()
 
 
+def _step5_write_terminal_sentinel(*, implement_tmpdir: Path) -> None:
+    completed = implement_tmpdir / ".completed"
+    completed.mkdir(parents=True, exist_ok=True)
+    (completed / "step-5-terminal").touch()
+
+
 @contextlib.contextmanager
 def _stderr_sidecar(path: Path) -> Generator[None, None, None]:
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -655,6 +661,31 @@ def _parse_optional_positive_float(value: str, *, label: str) -> float | None:
     return parsed
 
 
+def _step5_parse_optional_epoch(value: str) -> float | None:
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
+def _step5_detached_marker_value(*, implement_tmpdir: Path, key: str) -> str:
+    marker = implement_tmpdir / config.IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE
+    if marker.is_symlink() or not marker.is_file():
+        return ""
+    prefix = f"{key}="
+    try:
+        for line in marker.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith(prefix):
+                return line.partition("=")[2]
+    except OSError:
+        return ""
+    return ""
+
+
 def _step5_orphan_timeout_elapsed(*, implement_tmpdir: Path, timeout_s: float | None) -> bool:
     if timeout_s is None:
         return False
@@ -663,6 +694,9 @@ def _step5_orphan_timeout_elapsed(*, implement_tmpdir: Path, timeout_s: float | 
     marker = implement_tmpdir / config.IMPLEMENT_STEP5_WRAPPER_DETACHED_FILE
     if marker.is_symlink() or not marker.is_file():
         return False
+    detached_at = _step5_parse_optional_epoch(_step5_detached_marker_value(implement_tmpdir=implement_tmpdir, key="DETACHED_AT_EPOCH"))
+    if detached_at is not None:
+        return time.time() - detached_at >= timeout_s
     try:
         age_s = time.time() - marker.stat().st_mtime
     except OSError:
@@ -706,6 +740,7 @@ def normalize_status(argv: list[str] | None = None) -> int:
         return 2
     has_envelope = any(line.startswith("STEP5_REVIEW_STATUS=") and line.partition("=")[2] for line in text.splitlines())
     if has_envelope:
+        _step5_write_terminal_sentinel(implement_tmpdir=implement_tmpdir)
         sys.stdout.write(text)
         if text and not text.endswith("\n"):
             sys.stdout.write("\n")

@@ -125,6 +125,7 @@ STEP3_NORMALIZE_ALLOW_KEYS = (
     "STEP3_REVIEW_ROUND_NUM",
     "ROUND_NUM",
     "REVIEW_ROUND_COUNT",
+    "REASON",
 )
 _STEP3_READ_RESULT_ENV_KEYS = (
     "NEXT_ACTION",
@@ -135,6 +136,7 @@ _STEP3_READ_RESULT_ENV_KEYS = (
     "ACCEPTED_COUNT",
     "DEGRADED_PANEL_WARNING",
     "INVALID_SLOT_PANEL_WARNING",
+    "REASON",
 )
 _STEP3_STATUS_VALUES = {
     "complete",
@@ -473,6 +475,7 @@ def _step3_emit_normalize_envelope(values: dict[str, str]) -> None:
         "DEGRADED_PANEL_WARNING",
         "INVALID_SLOT_PANEL_WARNING",
         "PLAN_REVIEW_CONTINUE_REASON",
+        "REASON",
     ):
         value = values.get(key, "")
         if value:
@@ -531,7 +534,12 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
         values["LOOP_STATUS"] = loop_status
 
     rounds_completed = _step3_parse_rounds(values)
-    if values.get("STEP3_REVIEW_LOOP_STATUS") == "panel-failed" and _step3_review_zero_round_coverage_missing(tmpdir=tmpdir, rounds_completed=rounds_completed):
+    orphan_timeout = values.get("REASON") == "orphan-timeout"
+    if (
+        values.get("STEP3_REVIEW_LOOP_STATUS") == "panel-failed"
+        and not orphan_timeout
+        and _step3_review_zero_round_coverage_missing(tmpdir=tmpdir, rounds_completed=rounds_completed)
+    ):
         _step3_normalize_warn_stderr("**⚠ Step 3: panel failed before any reviewer round launched; treating as panel-init-failed**")
         values["STEP3_REVIEW_LOOP_STATUS"] = "panel-init-failed"
         values["LOOP_STATUS"] = "panel-init-failed"

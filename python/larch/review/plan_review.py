@@ -339,6 +339,17 @@ def _parse_orphan_timeout(parser: argparse.ArgumentParser, value: str) -> float 
     return parsed
 
 
+def _parse_optional_epoch(value: str) -> float | None:
+    text = value.strip()
+    if not text:
+        return None
+    try:
+        parsed = float(text)
+    except ValueError:
+        return None
+    return parsed if parsed > 0 else None
+
+
 def _step3_orphan_timeout_elapsed(*, tmpdir: Path, timeout_s: float | None) -> bool:
     if timeout_s is None:
         return False
@@ -347,6 +358,9 @@ def _step3_orphan_timeout_elapsed(*, tmpdir: Path, timeout_s: float | None) -> b
     marker = tmpdir / config.DESIGN_STEP3_WRAPPER_DETACHED_FILE
     if marker.is_symlink() or not marker.is_file():
         return False
+    detached_at = _parse_optional_epoch(_read_kv_file(path=marker).get("DETACHED_AT_EPOCH", ""))
+    if detached_at is not None:
+        return time.time() - detached_at >= timeout_s
     try:
         age_s = time.time() - marker.stat().st_mtime
     except OSError:

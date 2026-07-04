@@ -472,6 +472,30 @@ def test_step5_new_process_group_invokes_setsid(monkeypatch, tmp_path):
 
 
 @MARK_STEP5
+def test_step5_new_process_group_unavailable_exits_2(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+    monkeypatch.delattr(review_and_fix.os, "setsid", raising=False)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--new-process-group", "--orphan-timeout-s", "1"])
+    assert rc == 2
+    assert "os.setsid is unavailable" in capsys.readouterr().err
+
+
+@MARK_STEP5
+def test_step5_new_process_group_oserror_exits_2(monkeypatch, tmp_path, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def failing_setsid() -> None:
+        raise OSError("boom")
+
+    monkeypatch.setattr(review_and_fix.os, "setsid", failing_setsid)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--new-process-group", "--orphan-timeout-s", "1"])
+    assert rc == 2
+    assert "boom" in capsys.readouterr().err
+
+
+@MARK_STEP5
 def test_step5_invalid_orphan_timeout_fails_closed(tmp_path, capsys):
     impl = _tmp_impl(tmp_path)
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--orphan-timeout-s", "0"])
@@ -484,9 +508,10 @@ def test_step5_orphan_timeout_emits_stall(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
     impl = _tmp_impl(tmp_path)
     marker = impl / ".step5-wrapper-detached"
-    marker.write_text("PID=123\nSTDOUT_FILE=/tmp/out\n", encoding="utf-8")
-    old = time.time() - 10
-    os.utime(marker, (old, old))
+    old_epoch = time.time() - 10
+    marker.write_text(f"PID=123\nSTDOUT_FILE=/tmp/out\nDETACHED_AT_EPOCH={int(old_epoch)}\n", encoding="utf-8")
+    now = time.time()
+    os.utime(marker, (now, now))
     rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--orphan-timeout-s", "1"])
     out = capsys.readouterr().out
     assert rc == 2
@@ -501,6 +526,17 @@ def test_step5_normalize_status_replays_envelope(tmp_path, capsys):
     stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
     rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "0"])
     assert rc == 0
+    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
+
+
+@MARK_STEP5
+def test_step5_normalize_status_writes_terminal_sentinel_for_nonzero_loop_rc(tmp_path, capsys):
+    impl = _tmp_impl(tmp_path)
+    stdout_file = tmp_path / "stdout.txt"
+    stdout_file.write_text("STEP5_REVIEW_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    rc = review_and_fix.normalize_status(["--implement-tmpdir", str(impl), "--stdout-file", str(stdout_file), "--loop-rc", "7"])
+    assert rc == 7
+    assert (impl / ".completed" / "step-5-terminal").is_file()
     assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
 
 

@@ -56,14 +56,15 @@ _step5_signal_exit() {
 }
 
 _step5_write_detached_marker() {
-  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _tmp
+  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _detached_at_epoch="${4:-}" _tmp
   [ -n "$_pid" ] || return 1
   _tmp="${_step5_detached_marker}.tmp.$$"
+  [ -n "$_detached_at_epoch" ] || _detached_at_epoch="$(date +%s)"
   if {
     printf 'PID=%s\n' "$_pid"
     printf 'SIGNAL=%s\n' "$_signal"
     printf 'STDOUT_FILE=%s\n' "$_stdout_file"
-    printf 'DETACHED_AT_EPOCH=%s\n' "$(date +%s)"
+    printf 'DETACHED_AT_EPOCH=%s\n' "$_detached_at_epoch"
   } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_step5_detached_marker" 2>/dev/null && [ -f "$_step5_detached_marker" ]; then
     return 0
   fi
@@ -114,7 +115,7 @@ _step5_preidentity_kill_group() {
 _step5_emit_wrapper_stall() {
   local _reason="${1:-reattach-failed}"
   printf 'STEP5_REVIEW_STATUS=stall\n'
-  printf 'STALL_TRACKING=false\n'
+  printf 'STALL_TRACKING=true\n'
   printf 'STALL_REASON=%s\n' "$_reason"
   printf 'ROUNDS_COMPLETED=0\n'
   printf 'FINAL_ROUND_NUM=0\n'
@@ -192,11 +193,12 @@ _step5_normalize_and_finish() {
 }
 
 _step5_reattach_detached_loop() {
-  local _pid _stdout_file _signal _await_rc=0 _normalize_rc=0
+  local _pid _stdout_file _signal _detached_at_epoch="" _await_rc=0 _normalize_rc=0
   [ -f "$_step5_detached_marker" ] && [ ! -L "$_step5_detached_marker" ] || return 1
   _pid="$(_step5_marker_value PID || true)"
   _stdout_file="$(_step5_marker_value STDOUT_FILE || true)"
   _signal="$(_step5_marker_value SIGNAL || true)"
+  _detached_at_epoch="$(_step5_marker_value DETACHED_AT_EPOCH || true)"
   case "$_pid" in
     ''|*[!0-9]*) rm -f "$_step5_detached_marker" "$IMPLEMENT_TMPDIR/.step5-loop-identity.json" 2>/dev/null || true; return 1 ;;
   esac
@@ -210,7 +212,7 @@ _step5_reattach_detached_loop() {
     --pid "$_pid" \
     --reattach >/dev/null 2>&1 || _await_rc=$?
   if [ "$_await_rc" -ne 0 ]; then
-    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" || true
+    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
     rm -f "$_step5_reattach_active" "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
     _loop_pid=""
     _step5_emit_wrapper_stall reattach-await-failed
@@ -220,7 +222,7 @@ _step5_reattach_detached_loop() {
   _step5_kill_tmpdir_processes
   _step5_normalize_and_finish "$_stdout_file" 0 || _normalize_rc=$?
   if [ "$_normalize_rc" -ne 0 ]; then
-    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" || true
+    _step5_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
     rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
     _loop_pid=""
     exit "$_normalize_rc"
