@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:10:11
-- **Cost**: 💰 TOTAL ~$2.34 — Claude $0.64, Codex-5.5 $1.24, Codex-mini $0.22, Cursor $0.06, Claude (subprocess) $0.18  |  Tokens: 3570k
+- **Cost**: 💰 TOTAL ~$2.73 — Claude $1.03, Codex-5.5 $1.24, Codex-mini $0.22, Cursor $0.06, Claude (subprocess) $0.18  |  Tokens: 4545k
 - **Issue**: #6294 — https://github.com/character-ai/larch/issues/6294
 - **Plan review**: N/A
 - **Difficulty**: predicted TRIVIAL; applied TRIVIAL
@@ -56,3 +56,7 @@ unknown/aggregator-output-phase2 │                                     ██�
 These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.
 
 - **Round 1 OOS_1** (important): skills/design/SKILL.md:249 still emits em-dash skip-approve breadcrumb. Concern: When `SKIP_APPROVE_REQUESTED=true`, the Step 1d.7 auto-approve instruction in `skills/design/SKILL.md` (line 249) still prints `⏩ 1d.7: outline — auto-approved (--skip-approve)` with an em dash. The sibling reference `skills/design/references/design-outline.m…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
