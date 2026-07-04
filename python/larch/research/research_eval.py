@@ -376,7 +376,7 @@ def _has_code_fence_content(text: str) -> bool:
 
 def _validation_mode_reviewer_no_findings_prose(lines: list[str]) -> bool:
     """Accept the shipped reviewer template's exact prose no-findings shape."""
-    if len(lines) not in {2, 3, 4}:
+    if len(lines) not in {2, 4}:
         return False
     if lines[0] != "### In-Scope Findings" or lines[1] != "No in-scope issues found.":
         return False
@@ -384,7 +384,7 @@ def _validation_mode_reviewer_no_findings_prose(lines: list[str]) -> bool:
         return True
     if lines[2] != "### Out-of-Scope Observations":
         return False
-    return len(lines) == 3 or lines[3] == "No out-of-scope observations."
+    return lines[3] == "No out-of-scope observations."
 
 
 def _has_provenance(text: str) -> bool:

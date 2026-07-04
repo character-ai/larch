@@ -57,6 +57,11 @@ def test_validation_mode_sentinels_and_thresholds(tmp_path: Path) -> None:
         "### In-Scope Findings\nNo in-scope issues found.\n### Out-of-Scope Observations\nNo out-of-scope observations.\n",
     )
     assert research_eval.validate_research_output(reviewer_no_oos, validation_mode=True) == 0
+    reviewer_truncated_oos = write(
+        tmp_path / "reviewer-truncated-oos.md",
+        "### In-Scope Findings\nNo in-scope issues found.\n### Out-of-Scope Observations\n",
+    )
+    assert research_eval.validate_research_output(reviewer_truncated_oos, validation_mode=True) == 2
     assert research_eval.validate_research_output(write(tmp_path / "reviewer-bare.md", "No in-scope issues found.\n"), validation_mode=True) == 2
     mixed = write(tmp_path / "reviewer-mixed.md", "### In-Scope Findings\nNo in-scope issues found. I kept reviewing.\n")
     assert research_eval.validate_research_output(mixed, validation_mode=True) == 2
