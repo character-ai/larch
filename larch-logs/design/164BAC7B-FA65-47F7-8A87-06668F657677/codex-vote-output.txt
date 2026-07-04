@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Real test mismatch if the path semantics change, but updating this integration test is not necessary for the write-tally fix and is out of scope.
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- The security concern is real if absolute paths are passed through, but it is a broader hardening change outside this issue’s scope.

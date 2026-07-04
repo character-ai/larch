@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24074	6019	13339	3335	10735	2684		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	20805	5202	13051	3263	7754	1939		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	20820	5205	13066	3267	7754	1939		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	20796	5199	13042	3261	7754	1939		0	0
+design Step 3	phase1	1	dyn-codex-plan-workflow-artifact-regression	plan-review	codex	dyn-codex-plan-workflow-artifact-regression.txt	21133	5284	12917	3230	8216	2054		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	20818	5205	13064	3266	7754	1939		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24065	6017	13330	3333	10735	2684		0	0
+design Step 3	phase1	1	dyn-cursor-plan-workflow-artifact-regression	plan-review	cursor	dyn-cursor-plan-workflow-artifact-regression.txt	24402	6101	13205	3302	11197	2800		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24089	6023	13354	3339	10735	2684		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24087	6022	13352	3338	10735	2684		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	20311	5078	4475	1119	15836	3959	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	18035	4509	9031	2258	9004	2251		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	18035	4509	9031	2258	9004	2251		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	18035	4509	9031	2258	9004	2251		0	0
