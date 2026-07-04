@@ -365,6 +365,21 @@ def _validated_design_tmpdir(raw: str) -> Path | None:
     return path
 
 
+def _result_env_has_step3_status(*, tmpdir: Path) -> bool:
+    result_env = tmpdir / ".step3-review-result.env"
+    if result_env.is_symlink() or not result_env.is_file():
+        return False
+    try:
+        for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
+            if line.startswith("STEP3_REVIEW_LOOP_STATUS=") and line.partition("=")[2]:
+                return True
+            if line.startswith("LOOP_STATUS=zero-findings-degraded-panel"):
+                return True
+    except OSError:
+        return False
+    return False
+
+
 def write_loop_identity_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py plan-review write-loop-identity")
     _ = parser.add_argument("--design-tmpdir", required=True)
@@ -383,6 +398,37 @@ def write_loop_identity_main(argv: list[str] | None = None) -> int:
         return 0
     write_identity_record(path=tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE, recorded=identity)
     return 0
+
+
+def await_loop_identity_main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py plan-review await-loop-identity")
+    _ = parser.add_argument("--design-tmpdir", required=True)
+    _ = parser.add_argument("--pid", required=True)
+    _ = parser.add_argument("--timeout-s", default="21600")
+    args = parser.parse_args(argv)
+    tmpdir = _validated_design_tmpdir(args.design_tmpdir)
+    try:
+        timeout_s = float(args.timeout_s)
+    except (TypeError, ValueError):
+        timeout_s = 0.0
+    if tmpdir is None or not str(args.pid).isdigit() or timeout_s <= 0:
+        return 1
+    sidecar = tmpdir / config.DESIGN_STEP3_LOOP_IDENTITY_FILE
+    recorded = read_identity_record(path=sidecar)
+    if recorded is None or recorded.pid != int(args.pid):
+        return 1
+    deadline = time.monotonic() + timeout_s
+    while time.monotonic() < deadline:
+        validation = validate_process_identity(recorded=recorded)
+        if validation.ok:
+            if _result_env_has_step3_status(tmpdir=tmpdir):
+                return 0
+            time.sleep(0.2)
+            continue
+        if validation.reason == "missing-pid":
+            return 0
+        break
+    return 1
 
 
 def teardown_loop_identity_main(argv: list[str] | None = None) -> int:
