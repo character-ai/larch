@@ -1,0 +1,44 @@
+### FINDING_1: Preserve specialist tagging anchors and focus-area enum
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: `_specialist_tagging` can still lose parser-facing specialist scaffolding during prose compression, including the CI-checked slash-separated focus-area enum and the section/template anchors that the renderer and CI expect.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the `rendering.py` preserve list, add the exact substring `code-quality / risk-integration / correctness / architecture / security` (or an explicit "do not edit lines matching the CI slash-separated enum grep"). Add one rendering test that asserts that substring survives specialist tagging output.
+  - From Cursor-Innovation: Extend the rendering.py preserve list with the exact substring `code-quality / risk-integration / correctness / architecture / security` (both occurrences in `_specialist_tagging`). Add a focused `test_rendering.py` assertion that rendered specialist `description` and `generic` prompts still contain that string. Run `python3 python/cli.py lint focus-area-enum` in the testing strategy.
+  - From Cursor-Pragmatic: Add that exact slash-separated enum string to the rendering.py preserve list and assert it in the new specialist frozen-grammar tests.
+  - From Cursor-Requirements: Mirror the `review_dispatch_panel.py` output-anchor list in the rendering.py preserve contract and add specialist render assertions for section headers, `NO_ISSUES_FOUND`, the bullet template, and `code-quality / risk-integration / correctness / architecture / security`
+
+### FINDING_2: Measure all specialist/voter aggregates, not just generated fallbacks
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: Acceptance measurement can understate the scaffold-byte change if it looks only at sparse `generated/no-agent:*` rows instead of the full specialist and voter slot-kind aggregates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Re-measure by summing or diffing all `slot_kind=specialist` and `slot_kind=voter` aggregates (optionally broken out by `skill`), or run before/after on a fresh `/implement` Step 5 log and compare every specialist/voter row. Keep `generated/no-agent:*` as a secondary cross-check only.
+
+### FINDING_3: Reject legacy baseline rows without scaffold columns
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The baseline evidence can be misleading if it uses committed prompt-size rows that do not carry `scaffold_bytes` and `payload_bytes`, because those legacy rows do not prove the required scaffold-byte drop.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Require baseline and post-change rows with scaffold_bytes and payload_bytes from logged runs, or run a fresh logged baseline before edits when existing rows are legacy; report legacy-only baseline data as not valid for this acceptance check.
+
+### FINDING_4: Preserve the untrusted-input delimiter warning
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: `_render_specialist_text` can drop a general untrusted-input delimiter warning before diff/description payloads, weakening the guard that tells readers tag-like content is data, not instructions.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add a preservation bullet for `python/larch/rendering/rendering.py:923-934`: keep the tag-delimiter warning before dynamic diff and description payloads. It may be shortened only if it still says tag-like content is data, not instructions.
+
+### FINDING_5: Keep the ballot-path pointer line intact
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: Voter scaffold compression can remove the exact `Read the ballot from this path` substring, which the implement and design voter dispatch paths require before they will proceed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Add `Read the ballot from this path` to the rendering.py preserve contract and to the new frozen-grammar tests in `python/tests/rendering/test_rendering.py` (or keep the full line byte-stable).
+
+### FINDING_6: Preserve both anti-format closing strings
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Concern**: The voter renderer has two distinct closing anti-format sentences, and deduping them into one line can break the untouched `finding-only` branch even if the `finding-oos` path still passes tests.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Name both anti-format strings in the preserve contract and add a `finding-only` render assertion for its distinct closing line

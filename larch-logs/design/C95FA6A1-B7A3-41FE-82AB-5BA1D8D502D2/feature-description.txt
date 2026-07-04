@@ -1,0 +1,15 @@
+# md-to-py-XII: density-pass implement specialist and voter generated prompt scaffolds
+
+**Context.** Implement specialist generated scaffold: about 2.74M realized bytes (`generated/no-agent:specialist`), plus 3.5M to 3.7M prompt bytes per big-three reviewer dispatch stream. Voter generated prompts: 2.57M bytes (design), 1.39M (implement). Sources: `python/larch/review/review_dispatch_panel.py` and the `render_voter_main` static prose in `python/larch/rendering/rendering.py`. #5979 already cut 1,586 bytes from the voter prose; the residual scaffold has not had a measured pass.
+
+**Scope.**
+
+- Compress specialist and voter scaffold text in the builders.
+- Keep the voting grammar byte-identical: finding and OOS anchors, `YES`/`NO`, severity set, `ELIGIBLE_VOTERS`/`EFFECTIVE_VOTERS`/`vN_tool` keys, and the anti-format directive.
+
+**Acceptance.**
+
+- Measured scaffold-byte drop per the new columns across specialist and voter slot kinds.
+- Vote parse rate unchanged on a live run; no ratchet raise.
+
+Part of md-to-py-XII (round XI: #5986). Blocked by the scaffold/payload instrumentation child.
