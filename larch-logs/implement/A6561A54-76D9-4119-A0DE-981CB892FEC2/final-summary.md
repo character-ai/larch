@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:34:17
-- **Cost**: 💰 TOTAL ~$16.41 — Claude $0.68, Codex-5.5 $3.54, Codex-mini $3.60, Cursor $6.90, Claude (subprocess) $1.69  |  Tokens: 48497k
+- **Cost**: 💰 TOTAL ~$16.80 — Claude $1.07, Codex-5.5 $3.54, Codex-mini $3.60, Cursor $6.90, Claude (subprocess) $1.69  |  Tokens: 49560k
 - **Issue**: #6293 — https://github.com/character-ai/larch/issues/6293
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -79,3 +79,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (important): write-final-report harness is out of sync with the new heading contract. Concern: The offline write-final-report harness still asserts em-dash run-summary headings, matrix outcomes, and top-reviewer lines even though the renderer now emits colon separators, so direct bash-harness runs can false-fail against the new contract.
 - **Round 1 OOS_6** (latent): run-summary heading docs still show the old em dash. Concern: The documented run-summary heading contract still shows `## /<skill> run <run-id> — <outcome>`, which no longer matches the colon format emitted by the renderers and can mislead implement tooling and reviewers.
 - **Round 1 OOS_7** (latent): final_report stalled-heading parser is fragile. Concern: `_summary_stalled_heading_index()` and `summary_heading_is_stalled()` only inspect the first non-empty line of `final-summary.md`, so the parser is brittle if any writer ever prepends content above the H2.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
