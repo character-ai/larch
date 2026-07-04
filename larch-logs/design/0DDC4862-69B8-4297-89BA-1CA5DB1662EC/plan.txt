@@ -1,0 +1,120 @@
+## Approach
+
+Implement the approved narrow fix.
+
+- Treat `voting write-tally` nonzero exits as observable warnings, not Step 5 blockers.
+- Persist `stderr` and `stdout` for the tally subprocess to `code-review-tally.flush.err`.
+- Stage the same sidecar into the run-root tree so it ships with committed run logs. Create the run-root directory first, and point the Warnings text at the run-root path.
+- Keep observability fail-open: a sidecar or Warnings write error must not turn a tolerated tally failure into a Step 5 exit.
+- Remove stale tally sidecars after a later successful tally write.
+- Keep the root-cause mechanism out of scope until a live run captures the error.
+- Derive `Code review` from `review-findings-full.jsonl` when `code-review-tally.json` is absent, reusing one shared counting core rather than a second copy.
+- Keep the self-review path recoverable: emit v2 `review-findings-full` records so both the final-report fallback and calibration reconstruct real self-review counts.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/batch_report.py
+
+Add a small helper for tally flush observability, and factor a reusable counting core.
+
+- Helper input: `impl_tmpdir`, `run_id`, and the `voting write-tally` `proc.CommandResult`. The sidecar basename is fixed (`code-review-tally.flush.err`).
+- On failure:
+  - create `impl_tmpdir / "larch-logs" / "implement" / run_id` with `mkdir(parents=True, exist_ok=True)` before the run-root write, so the sidecar cannot be dropped when the run directory does not exist yet;
+  - write `impl_tmpdir / "code-review-tally.flush.err"`;
+  - write the same content to `impl_tmpdir / "larch-logs" / "implement" / run_id / "code-review-tally.flush.err"`;
+  - include the return code plus stderr and stdout, so empty-output failures still leave evidence;
+  - append an `execution-issues.md` Warnings entry that names the run-root path `larch-logs/implement/<run_id>/code-review-tally.flush.err` (run-root first).
+- On success: unlink both sidecar paths with `contextlib.suppress(FileNotFoundError)`.
+- Fail-open: wrap the sidecar writes and the execution-issues append in `contextlib.suppress(OSError)`, matching `_append_scout_flush_warning`, so an observability write error never escapes into a Step 5 exit.
+- Call the helper around the existing `voting write-tally` subprocess in `flush_review_batches`.
+- Keep the existing `review-findings-full.flush.err` behavior unchanged.
+- Preserve `_derive_code_review_tally`'s `(accepted, rejected)` signature so both existing callers (`batch_report.py:322` and `round_runner.py:613`) stay unchanged. Factor the JSONL counting into a shared core that also reports whether any `phase == "code-review"` record was seen. `_derive_code_review_tally` returns the 2-tuple from that core; the final-report fallback uses the seen-aware core. One counting implementation, no caller churn.
+
+### UPDATED: python/larch/review/review_and_fix.py
+
+Route self-review tally observability through the shared helper, and stop losing self-review counts.
+
+- Route the nonzero self-review `voting write-tally` leg through the shared helper, so it writes the `code-review-tally.flush.err` sidecars and owns the fail-open tally Warnings entry.
+- Build `review-findings-full.jsonl` from `self_review_tally.self_review_tally_items({"mode": "self-review", "accepted_count": …, "rejected_count": …})`. Write one minimal v2 `review-findings-full` record per item: its stable `SELF_REVIEW_ACCEPTED_n` / `SELF_REVIEW_REJECTED_n` `id`, `phase: code-review`, the matching `outcome`, `round_num: "1"`, and the required v2 schema fields (`schema_version`, etc.). One row per accepted or rejected finding, so the final-report tally fallback and `difficulty_calibration._parse_jsonl_source` both recover real counts instead of dropping id-less rows. Keep the empty file only when both counts are zero.
+- Replace the combined legacy Warnings block. Let the helper own tally-failure observability, and keep one findings-only Warnings append (for a `run-log write` failure when the tally succeeded), wrapped in `contextlib.suppress(OSError)`. This keeps the append fail-open and avoids double-logging a single tally failure.
+- Keep the command best-effort: return `0` after warning emission, as today.
+
+### UPDATED: python/larch/report/final_report.py
+
+Add the resilience fallback for the final summary and PR body.
+
+- Keep normal tally parsing first.
+- If `filename != "code-review-tally.json"`, preserve existing behavior. Plan-review derivation never uses the fallback.
+- If `code-review-tally.json` is absent, reuse the shared seen-aware counting core over `review-findings-full.jsonl` instead of duplicating the loop. Import it from `batch_report.py`, or promote the core to a shared helper if the import direction is undesirable.
+- Render with the same wording as tally records:
+  - positive total (`accepted + rejected > 0`): `<accepted>/<total> accepted`;
+  - zero total with at least one `phase == "code-review"` record present: `0 findings`;
+  - present-but-empty findings file (no `phase == "code-review"` record), or absent/unreadable file: `N/A`.
+- Do not treat a present-but-empty JSONL as proof of a zero-finding review.
+- Do not use stale `CODE_REVIEW_LINE` from ship state.
+
+### UPDATED: python/tests/review/test_review_and_fix.py
+
+Add and update targeted regression tests.
+
+- `flush_review_batches` with a mocked nonzero `voting write-tally`:
+  - returns `False`;
+  - writes both the tmpdir and run-root `code-review-tally.flush.err`, creating the run-root directory when absent;
+  - captures rc, stderr, and stdout;
+  - appends an execution-issues Warnings entry that names the run-root path;
+  - still writes `review-findings-full.jsonl` when that subprocess succeeds.
+- A later successful `flush_review_batches` removes stale tally sidecars.
+- Observability stays fail-open: a simulated `execution-issues.md` append `OSError` does not raise.
+- Update `test_write_self_review_tally_nonzero_counts` (and any other self-review test pinning an empty findings file) to expect the new v2 records with stable `SELF_REVIEW_*` ids, not just `phase`/`outcome`.
+- `write_self_review_tally` with a mocked nonzero `voting write-tally`:
+  - returns `0`;
+  - writes both sidecars;
+  - records one fail-open Warnings entry, not a duplicate;
+  - emits one v2 record per accepted/rejected finding with a stable `SELF_REVIEW_*` id, and keeps an empty file only when both are zero;
+  - the emitted rows survive `difficulty_calibration._parse_jsonl_source` (carry `id` + `schema_version`), so calibration recovery does not regress.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Add direct final-report line tests.
+
+- Missing `code-review-tally.json` plus `review-findings-full.jsonl` with one accepted and one rejected code-review record returns `1/2 accepted`.
+- Missing tally plus a self-review-shaped findings file (nonzero `phase: code-review` records) returns the real counts, not `0 findings`.
+- Missing tally plus a findings file with `phase == "code-review"` records but zero accepted/rejected returns `0 findings`.
+- Missing tally plus a present-but-empty findings file returns `N/A`.
+- Existing tally wins over conflicting findings content.
+- Plan-review tally derivation does not use the code-review findings fallback.
+
+### MAY_UPDATE: python/tests/report/test_final_report.py
+
+Add one integration-level test only if direct helper tests miss the PR-body path.
+
+- Build a minimal implement tmpdir with run-root `review-findings-full.jsonl` but no `code-review-tally.json`.
+- Assert `_derive_final_report_fields(... )["code_review_line"]` uses the fallback.
+
+## Edge cases
+
+- Nonzero `write-tally` with empty stderr and stdout still writes a sidecar with the rc.
+- Stale `code-review-tally.flush.err` files are removed after a successful tally write.
+- Malformed JSONL lines in `review-findings-full.jsonl` are ignored, matching the shared counting core.
+- The fallback only applies to `code-review-tally.json`.
+- Self-review emits one v2 `review-findings-full` record (stable `SELF_REVIEW_*` id) per accepted or rejected finding, so the derived ratio matches the markdown counts and `difficulty_calibration` still recovers the accepted count.
+- A present-but-empty `review-findings-full.jsonl` renders `N/A`, not `0 findings`, because it cannot prove a review ran. Self-review runs emit records to preserve nonzero counts; genuinely zero-finding self-review runs with an absent tally fall back to `N/A`.
+
+## Failure modes
+
+- If run-root sidecar writing fails, the tmpdir sidecar and execution-issues entry may still capture the failure.
+- Observability writes are fail-open: a sidecar or `execution-issues.md` append error is suppressed so a tolerated tally failure never becomes a Step 5 exit.
+- If the live root cause is before the Python subprocess returns, this change still captures the rc and any wrapper output.
+
+## Testing strategy
+
+Run focused tests for changed surfaces.
+
+- `python3 -m pytest python/tests/review/test_review_and_fix.py -k "flush_review_batches or write_self_review_tally"`
+- `python3 -m pytest python/tests/git/test_pr_body.py -k derive_review_line`
+- If `python/tests/report/test_final_report.py` changes, run `python3 -m pytest python/tests/report/test_final_report.py -k code_review_line`
+- Run the changed Python files through the repo lint path, for example scoped ruff and pyright if available.
+
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 195
