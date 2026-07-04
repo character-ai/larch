@@ -9,11 +9,19 @@ from larch.implement import step_7a
 
 def test_step7a_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
     _ = (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-    step_7a._write_bg_wait_marker(tmpdir=tmp_path, step="implement-step7a", timeout_s=21600)  # type: ignore[reportPrivateUsage]
 
-    marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
+    with step_7a._bg_wait_marker(
+        tmpdir=tmp_path,
+        step="implement-step7a",
+        timeout_s=21600,
+        terminal_sentinel=".completed/step-7a-terminal",
+    ):
+        marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
+
     assert "STEP=implement-step7a\n" in marker_text
     assert f"CLONE_PATH={tmp_path}\n" in marker_text
+    assert (tmp_path / ".completed" / "step-7a-terminal").exists()
+    assert not (tmp_path / ".bg-wait-active").exists()
 
 
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -300,3 +308,4 @@ def test_step7a_relays_session_transcript_status(tmp_path: Path, capsys: pytest.
 
     assert rc == 0
     assert "SESSION_TRANSCRIPT_STATUS=captured" in capsys.readouterr().out
+# pyright: reportPrivateUsage=false

@@ -959,6 +959,37 @@ def test_write_tally_stages_record_under_log_root_parent(
     malformed_tmpdir = tmp_path / "fake" / "var" / "folders" / "T"
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
     monkeypatch.setenv("TMPDIR", str(malformed_tmpdir))
+    captured_inputs: list[Path] = []
+
+    def fake_run(argv: list[str]) -> voting.proc.CommandResult:
+        input_file = Path(argv[argv.index("--input-file") + 1])
+        captured_inputs.append(input_file)
+        assert input_file.exists()
+        assert input_file.parent == tmp_path
+        return voting.proc.CommandResult(tuple(argv), 0, "LOG_WRITTEN=true\n", "", 0.0)
+
+    monkeypatch.setattr(voting.proc, "run", fake_run)
+
+    rc = voting.write_tally_main([
+        "--log-root",
+        str(tmp_path / "larch-logs"),
+        "--skill",
+        "implement",
+        "--run-id",
+        run_id,
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--accepted",
+        "1",
+        "--rejected",
+        "0",
+    ])
+
+    assert rc == 0
+    assert captured_inputs
+    assert not captured_inputs[0].exists()
 
     result = run_cli(
         "voting",
@@ -984,6 +1015,70 @@ def test_write_tally_stages_record_under_log_root_parent(
     record = json.loads(record_path.read_text(encoding="utf-8"))
     assert record["batch"] == "code-review-tally"
     assert not malformed_tmpdir.exists()
+
+
+def test_write_tally_rejects_unsafe_root_staging_parent(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = voting.write_tally_main([
+        "--log-root",
+        "/larch-logs",
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-root",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+    ])
+
+    assert rc == 2
+    assert "ERROR=unsafe write-tally staging parent: /" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    ("case", "expected"),
+    [
+        ("symlinked-ancestor", "write-tally staging parent must not have symlinked ancestors"),
+        ("nonexistent-parent", "write-tally staging parent does not exist"),
+        ("non-directory-parent", "write-tally staging parent is not a directory"),
+    ],
+)
+def test_write_tally_rejects_staging_parent_path_issues(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], case: str, expected: str
+) -> None:
+    if case == "symlinked-ancestor":
+        real_parent = tmp_path / "real-parent"
+        nested = real_parent / "nested"
+        nested.mkdir(parents=True)
+        ancestor = tmp_path / "ancestor"
+        ancestor.symlink_to(real_parent, target_is_directory=True)
+        log_root = ancestor / "nested" / "larch-logs"
+    elif case == "nonexistent-parent":
+        log_root = tmp_path / "missing" / "larch-logs"
+    else:
+        non_dir = tmp_path / "parent-file"
+        non_dir.write_text("not a directory", encoding="utf-8")
+        log_root = non_dir / "larch-logs"
+
+    rc = voting.write_tally_main([
+        "--log-root",
+        str(log_root),
+        "--skill",
+        "implement",
+        "--run-id",
+        "run-path-issue",
+        "--phase",
+        "code-review",
+        "--mode",
+        "simple",
+        "--accepted",
+        "0",
+        "--rejected",
+        "0",
+    ])
+
+    assert rc == 2
+    assert expected in capsys.readouterr().err
 
 
 def test_write_tally_header_validation_and_logger_kv_reemission(tmp_path: Path) -> None:

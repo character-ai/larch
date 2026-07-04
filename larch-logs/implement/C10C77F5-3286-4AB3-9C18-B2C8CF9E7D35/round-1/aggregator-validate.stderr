@@ -1,0 +1,2 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Fail closed when writer evidence exists but no write-context anchors are found; ')
+warning: fix text for slot 'dyn-dyn-bg-wait' in FINDING_2 not traceable to scoped input (first 80 chars: 'When marker_write_indexes is empty, return False (or fail unless _has_writer_evi')

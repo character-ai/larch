@@ -1418,6 +1418,27 @@ def compose_tally_record_main(argv: list[str]) -> int:
         return int(exc.code)
 
 
+def _write_tally_stage_dir(log_root: str) -> Path:
+    # write_tally stages beside larch-logs so redaction and rebasing stay under the implement tmpdir.
+    parent = Path(log_root).parent
+    if str(parent) in {"", "."} or not parent.is_absolute() or parent == Path(parent.anchor):
+        _die(f"unsafe write-tally staging parent: {parent}")
+    current = parent
+    while True:
+        if current.is_symlink():
+            _die(f"write-tally staging parent must not have symlinked ancestors: {current}")
+        if current == current.parent:
+            break
+        current = current.parent
+    if not parent.exists():
+        _die(f"write-tally staging parent does not exist: {parent}")
+    if not parent.is_dir():
+        _die(f"write-tally staging parent is not a directory: {parent}")
+    if parent.is_symlink():
+        _die(f"write-tally staging parent must not be a symlink: {parent}")
+    return parent
+
+
 def _validate_code_review_headers(body_file: str) -> tuple[int, str]:
     in_fence = False
     try:
@@ -1468,7 +1489,7 @@ def write_tally_main(argv: list[str]) -> int:
             encoding="utf-8",
             delete=False,
             prefix="write-tally-record.",
-            dir=Path(args.log_root).parent,
+            dir=_write_tally_stage_dir(args.log_root),
         ) as handle:
             handle.write(record + "\n")
             record_file = handle.name

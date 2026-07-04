@@ -10,14 +10,14 @@ import os
 import re
 import subprocess
 import sys
-import time
 from pathlib import Path
-from larch import io as larch_io
 
-from larch.issue import execution_issues
-from larch.git import pr_body
+from larch import io as larch_io
 from larch.core import config
 from larch.core import run_context
+from larch.git import pr_body
+from larch.issue import execution_issues
+from larch.implement.bg_wait import _write_bg_wait_marker  # type: ignore[reportPrivateUsage]
 from larch.report import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
@@ -70,41 +70,6 @@ def _run_cli(*args: str) -> subprocess.CompletedProcess[str]:
     )
 
 
-
-def _clear_no_progress_sidecars(tmpdir: Path) -> None:
-    for name in ("no-progress-turns.count", "no-progress-circuit-breaker-armed"):
-        with contextlib.suppress(OSError):
-            (tmpdir / name).unlink()
-
-
-def _read_keepalive_clone_path(tmpdir: Path) -> str:
-    keepalive = tmpdir / ".larch-keepalive"
-    if not keepalive.is_file() or keepalive.is_symlink():
-        return ""
-    with contextlib.suppress(OSError):
-        for line in keepalive.read_text(encoding="utf-8", errors="replace").splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key == "CLONE_PATH":
-                return value.strip()
-    return ""
-
-
-def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
-    _clear_no_progress_sidecars(tmpdir)
-    start = int(time.time())
-    claude_pid = os.environ.get("LARCH_BG_POLL_GUARD_SESSION_PID", "") or str(os.getppid())
-    text = (
-        f"PID={os.getpid()}\n"
-        f"CLAUDE_PID={claude_pid}\n"
-        f"START_EPOCH={start}\n"
-        f"STEP={step}\n"
-        f"TIMEOUT_S={timeout_s}\n"
-        f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}\n"
-    )
-    with contextlib.suppress(OSError):
-        (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
-
-
 def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
     path = tmpdir / sentinel
     with contextlib.suppress(OSError):
@@ -121,6 +86,7 @@ def _bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int, terminal_sentine
         _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
         with contextlib.suppress(OSError):
             (tmpdir / ".bg-wait-active").unlink()
+
 
 def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) -> None:
     section = implement_tmpdir / "code-flow-section.md"

@@ -15,9 +15,10 @@ from pathlib import Path
 from typing import cast
 
 from larch.core import config
+from larch.core import redact
 from larch.implement import checks
 from larch.implement import ship
-from larch.core import redact
+from larch.implement.bg_wait import _write_bg_wait_marker
 from larch.implement.dispatch_helpers import (
     _current_cli_path,
     _emit_kv,
@@ -51,41 +52,6 @@ from larch.implement.dispatch_leg import (
     TIMING_LEDGER_MIN_COLUMNS,
 )
 from larch.implement.dispatch_helpers import _derive_pathspec_via_recovery_paths
-
-
-
-def _clear_no_progress_sidecars(tmpdir: Path) -> None:
-    for name in ("no-progress-turns.count", "no-progress-circuit-breaker-armed"):
-        with contextlib.suppress(OSError):
-            (tmpdir / name).unlink()
-
-
-def _read_keepalive_clone_path(tmpdir: Path) -> str:
-    keepalive = tmpdir / ".larch-keepalive"
-    if not keepalive.is_file() or keepalive.is_symlink():
-        return ""
-    with contextlib.suppress(OSError):
-        for line in keepalive.read_text(encoding="utf-8", errors="replace").splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key == "CLONE_PATH":
-                return value.strip()
-    return ""
-
-
-def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
-    _clear_no_progress_sidecars(tmpdir)
-    start = int(time.time())
-    claude_pid = os.environ.get("LARCH_BG_POLL_GUARD_SESSION_PID", "") or str(os.getppid())
-    text = (
-        f"PID={os.getpid()}\n"
-        f"CLAUDE_PID={claude_pid}\n"
-        f"START_EPOCH={start}\n"
-        f"STEP={step}\n"
-        f"TIMEOUT_S={timeout_s}\n"
-        f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}\n"
-    )
-    with contextlib.suppress(OSError):
-        (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
 
 
 def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
@@ -1112,7 +1078,20 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    return _run_cli_forward(["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)])
+    command = ["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)]
+    if args.site != "step3":
+        return _run_cli_forward(command)
+    with contextlib.suppress(OSError):
+        (implement_tmpdir / ".completed" / "step-3-terminal").unlink()
+    with contextlib.suppress(OSError):
+        (implement_tmpdir / "bg-poll-guard-probe-denials.step-3-terminal.count").unlink()
+    with _bg_wait_marker(
+        tmpdir=implement_tmpdir,
+        step="implement-step3-checks",
+        timeout_s=10800,
+        terminal_sentinel=".completed/step-3-terminal",
+    ):
+        return _run_cli_forward(command)
 
 
 def step8_python_guard_main(argv: list[str] | None = None) -> int:
