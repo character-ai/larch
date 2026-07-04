@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:29:13
-- **Cost**: 💰 TOTAL ~$11.49 — Claude $1.12, Codex-5.5 $2.78, Codex-mini $2.01, Cursor $3.77, Claude (subprocess) $1.81  |  Tokens: 27177k
+- **Cost**: 💰 TOTAL ~$11.95 — Claude $1.55, Codex-5.5 $2.78, Codex-mini $2.01, Cursor $3.77, Claude (subprocess) $1.84  |  Tokens: 28345k
 - **Issue**: #6228 — https://github.com/character-ai/larch/issues/6228
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -73,3 +73,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Malformed JSONL rows lack direct unit coverage. Concern: `_count_code_review_findings` skips malformed lines today, but that behavior is untested, so a future edit could start counting bad rows and skew both tally derivation and final-report fallback ratios.
 - **Round 1 OOS_6** (latent): flush return value is still ignored. Concern: `_flush_review_batches_for_result` ignores the return value from `flush_review_batches`, preserving the pre-existing soft-failure behavior where Step 5 does not change exit status.
 - **Round 1 OOS_7** (latent): Findings flush error stays tmpdir-only. Concern: `review-findings-full.flush.err` is still written only under the implement tmpdir, not copied into the committed run-root tree, so findings flush failures can still ship without a durable error artifact.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
