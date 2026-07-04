@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:49:06
-- **Cost**: 💰 TOTAL ~$11.26 — Claude $0.92, Codex-5.5 $4.41, Codex-mini $2.62, Cursor $2.96, Claude (subprocess) $0.35  |  Tokens: 27268k
+- **Cost**: 💰 TOTAL ~$11.81 — Claude $1.47, Codex-5.5 $4.41, Codex-mini $2.62, Cursor $2.96, Claude (subprocess) $0.35  |  Tokens: 28792k
 - **Issue**: #6286 — https://github.com/character-ai/larch/issues/6286
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -78,3 +78,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Harness lacks negative fixtures for brace-depth extraction and renamed-pair comparison. Concern: The brace-depth extractor and `compare_renamed_pair` are only covered by positive cases, so nested-body truncation or semantic-drift regressions could slip through.
 - **Round 1 OOS_6** (nit): Legacy bg-wait test still couples to the re-export. Concern: `test_dispatch_bg_wait_marker_copies_keepalive_clone_path` still reaches `_write_bg_wait_marker` through the `dispatch_commit_route` re-export, so a change in the shared implementation could stay hidden behind the import path.
 - **Round 1 OOS_7** (nit): Validation-only note for cursor-specialist-correctness. Concern: This slot was confirmatory only and did not surface a separate actionable defect.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
