@@ -146,11 +146,27 @@ assert_escalation_recorded() {
   rm -rf "$dir"
 }
 
-for status in main-agent-vote-required main-agent-apply-required panel-failed panel-init-failed degraded-empty-collector tally-error; do
+assert_escalation_not_recorded() {
+  local status="$1"
+  local dir
+  dir=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-no-escalation-${status}.XXXXXX")
+  python3 "$ROOT/python/cli.py" plan-review run --design-tmpdir "$dir" --record-report-evidence "$status" >/dev/null
+  [ ! -e "$dir/design-failure-escalation-ledger.tsv" ] || fail "${status} must not record escalation ledger row"
+  [ ! -e "$dir/design-failure-escalation-fallback.tsv" ] || fail "${status} must not record escalation fallback row"
+  [ ! -e "$dir/design-failure-escalation-record-failure.env" ] || fail "${status} must not record escalation marker"
+  if compgen -G "$dir/.step3-report-*.recorded" >/dev/null; then
+    fail "${status} must not create escalation sentinel"
+  fi
+  rm -rf "$dir"
+}
+
+for status in panel-failed panel-init-failed degraded-empty-collector tally-error; do
   assert_escalation_recorded "$status" validation
 done
-assert_escalation_recorded postplan-operator-required postplan
-pass 'Step 3 main-agent and degradation statuses record escalation evidence'
+for status in main-agent-vote-required main-agent-apply-required postplan-operator-required; do
+  assert_escalation_not_recorded "$status"
+done
+pass 'Step 3 genuine failures record escalation evidence; normal handoffs do not'
 
 D_ROUND_START=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-round-start.XXXXXX")
 cat >"$D_ROUND_START/continuation.sh" <<'SH'

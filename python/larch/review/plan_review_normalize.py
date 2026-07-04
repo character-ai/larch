@@ -14,6 +14,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch.core import logging_util
+from larch.core.config import STEP3_ESCALATION_FAILURE_STATUSES
 from larch.design.design_lifecycle import (
     capture_contract_stream_to_paths,
     _classify_input,  # pyright: ignore[reportPrivateUsage]
@@ -162,15 +163,7 @@ _STEP3_LOOP_STATUS_VALUES = {
     "postplan-operator-required",
     "postplan-failed",
 }
-_STEP3_EVIDENCE_STATUSES = {
-    "panel-failed",
-    "panel-init-failed",
-    "tally-error",
-    "degraded-empty-collector",
-    "main-agent-vote-required",
-    "main-agent-apply-required",
-    "postplan-operator-required",
-}
+_STEP3_EVIDENCE_STATUSES = set(STEP3_ESCALATION_FAILURE_STATUSES)
 _STEP3_SYNTHESIS_STATUSES = {"panel-failed", "panel-init-failed", "tally-error", "degraded-empty-collector", "postplan-failed"}
 # Statuses that require interactive main-agent action mid-loop; sentinel must NOT
 # be written in normalize for these because the loop is not yet in a terminal state.
@@ -679,9 +672,6 @@ def step3_record_report_evidence(
             print(f"plan-review run: {message}", file=sys.stderr)
         return 2
     phase = {
-        "main-agent-vote-required": "validation",
-        "main-agent-apply-required": "validation",
-        "postplan-operator-required": "postplan",
         "panel-failed": "validation",
         "panel-init-failed": "validation",
         "tally-error": "validation",

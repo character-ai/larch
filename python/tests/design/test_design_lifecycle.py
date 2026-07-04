@@ -2557,6 +2557,26 @@ def _capture_failure_report(tmp_path: Path, outcome: str, monkeypatch: pytest.Mo
     return rc, out.read_text(encoding="utf-8"), err.read_text(encoding="utf-8")
 
 
+def _escalation_row(
+    *,
+    site: str = "step3-review",
+    trigger: str = "tally-error",
+    step: str = "step3",
+    phase: str = "validation",
+    dispatcher: str = "design-step3-review",
+) -> str:
+    return (
+        "utc=2026-01-01T00:00:00Z\t"
+        f"site={site}\t"
+        f"trigger={trigger}\t"
+        f"step={step}\t"
+        f"phase={phase}\t"
+        f"dispatcher={dispatcher}\t"
+        "exit_code=unknown\t"
+        "failure_detail_log=\n"
+    )
+
+
 def test_stage_terminal_state_rejects_unknown_outcome_and_vocab(tmp_path: Path) -> None:
     bad_outcome = _stage_args(tmp_path, "--outcome", "bad-outcome")
     assert design_lifecycle.stage_terminal_state_core(bad_outcome)[0] == 2
@@ -2761,12 +2781,89 @@ def test_failure_report_invalid_terminal_state_fallback(tmp_path: Path, monkeypa
 
 def test_failure_report_escalation_success_from_ledger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     ledger = tmp_path / "design-failure-escalation-ledger.tsv"
-    ledger.write_text(
-        "utc=2026-01-01T00:00:00Z\tsite=step3-review\ttrigger=main-agent-vote-required\tstep=step3\tphase=validation\tdispatcher=design-step3-review\texit_code=unknown\tfailure_detail_log=\n",
+    ledger.write_text(_escalation_row(trigger="tally-error"), encoding="utf-8")
+    _, stdout, _ = _capture_failure_report(tmp_path, "approved", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=escalation-success" in stdout
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    ["design-failure-escalation-ledger.tsv", "design-failure-escalation-fallback.tsv"],
+)
+@pytest.mark.parametrize(
+    "trigger",
+    ["main-agent-apply-required", "main-agent-vote-required", "postplan-operator-required"],
+)
+def test_failure_report_escalation_normal_step3_handoff_only_rows_skip(
+    tmp_path: Path,
+    artifact_name: str,
+    trigger: str,
+) -> None:
+    (tmp_path / artifact_name).write_text(_escalation_row(trigger=trigger), encoding="utf-8")
+    _, stdout, _ = _capture_failure_report(tmp_path, "approved")
+    assert "DESIGN_FAILURE_REPORT_DECISION=skip" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=no-escalation-evidence" in stdout
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    ["design-failure-escalation-ledger.tsv", "design-failure-escalation-fallback.tsv"],
+)
+def test_failure_report_escalation_mixed_step3_rows_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+) -> None:
+    (tmp_path / artifact_name).write_text(
+        _escalation_row(trigger="main-agent-apply-required") + _escalation_row(trigger="tally-error"),
         encoding="utf-8",
     )
     _, stdout, _ = _capture_failure_report(tmp_path, "approved", monkeypatch)
     assert "DESIGN_FAILURE_REPORT_DECISION=escalation-success" in stdout
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    ["design-failure-escalation-ledger.tsv", "design-failure-escalation-fallback.tsv"],
+)
+def test_failure_report_escalation_validator_autofix_rows_report(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    artifact_name: str,
+) -> None:
+    (tmp_path / artifact_name).write_text(
+        _escalation_row(
+            site="validator",
+            trigger="validator-autofix",
+            step="validator",
+            dispatcher="design-step-validator-autofix",
+        ),
+        encoding="utf-8",
+    )
+    _, stdout, _ = _capture_failure_report(tmp_path, "approved", monkeypatch)
+    assert "DESIGN_FAILURE_REPORT_DECISION=escalation-success" in stdout
+
+
+@pytest.mark.parametrize(
+    "artifact_name",
+    ["design-failure-escalation-ledger.tsv", "design-failure-escalation-fallback.tsv"],
+)
+@pytest.mark.parametrize(
+    "row",
+    [
+        "utc=2026-01-01T00:00:00Z\tsite=step3-review\tstep=step3\tphase=validation\n",
+        "utc=2026-01-01T00:00:00Z\ttrigger=tally-error\tstep=step3\tphase=validation\n",
+    ],
+)
+def test_failure_report_escalation_malformed_rows_skip(
+    tmp_path: Path,
+    artifact_name: str,
+    row: str,
+) -> None:
+    (tmp_path / artifact_name).write_text(row, encoding="utf-8")
+    _, stdout, _ = _capture_failure_report(tmp_path, "approved")
+    assert "DESIGN_FAILURE_REPORT_DECISION=skip" in stdout
+    assert "DESIGN_FAILURE_REPORT_REASON=no-escalation-evidence" in stdout
 
 
 @pytest.mark.parametrize(
@@ -2788,7 +2885,7 @@ def test_failure_report_escalation_tier_a_backfill_failures_are_specific(
     ledger.write_text(
         "utc=2026-01-01T00:00:00Z\t"
         "site=step3-review\t"
-        "trigger=main-agent-vote-required\t"
+        "trigger=tally-error\t"
         "step=step3\t"
         "phase=validation\t"
         "dispatcher=design-step3-review\t"

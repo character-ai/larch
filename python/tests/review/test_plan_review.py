@@ -723,6 +723,26 @@ def test_record_report_evidence_writes_escalation_ledger(tmp_path: Path) -> None
     assert "phase=validation" in text
 
 
+@pytest.mark.parametrize(
+    "status",
+    ["main-agent-apply-required", "main-agent-vote-required", "postplan-operator-required"],
+)
+def test_record_report_evidence_skips_normal_handoffs(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    status: str,
+) -> None:
+    def fail_run(*_args: object, **_kwargs: object) -> subprocess.CompletedProcess[object]:
+        raise AssertionError("normal Step 3 handoffs must not call record-escalation")
+
+    monkeypatch.setattr(plan_review_normalize.subprocess, "run", fail_run)
+    assert plan_review_normalize.step3_record_report_evidence(status=status, design_tmpdir=tmp_path) == 0
+    assert not (tmp_path / "design-failure-escalation-ledger.tsv").exists()
+    assert not (tmp_path / "design-failure-escalation-fallback.tsv").exists()
+    assert not (tmp_path / "design-failure-escalation-record-failure.env").exists()
+    assert not list(tmp_path.glob(".step3-report-*.recorded"))
+
+
 def test_record_report_evidence_requires_design_tmpdir() -> None:
     proc = run_cli(
         "plan-review",
