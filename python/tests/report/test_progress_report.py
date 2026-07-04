@@ -685,7 +685,7 @@ def test_dispatch_precedence(tmp_path: Path, monkeypatch) -> None:  # type: igno
 
     report = progress_report._report(str(cwd))
 
-    assert "Step 5 code review — round 1 in progress" in report
+    assert "Step 5 code review: round 1 in progress" in report
     assert "Ship-PR phase: checks" not in report
 
 
@@ -705,7 +705,7 @@ def test_liveness_header_fields(tmp_path: Path, monkeypatch) -> None:  # type: i
 
     report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
-    assert "Step 5 code review — round 2 in progress" in report
+    assert "Step 5 code review: round 2 in progress" in report
     assert "reviewers: 2/3 returned" in report
     assert "elapsed: 2m" in report
     assert report.endswith("detail")
@@ -777,7 +777,7 @@ def test_strip_md_for_terminal() -> None:
         "| 1 | 17 |\n"
         "| **Total** | **17** |\n\n"
         "**Top reviewers** (by suggestions accepted):\n"
-        "- slot/arch — 3\n\n"
+        "- slot/arch: 3\n\n"
         "_Cost is a footnote._\n"
     )
     stripped = progress_report._strip_md_for_terminal(raw)
@@ -1017,7 +1017,7 @@ def test_render_step5_inflight_only_skips_detail(tmp_path: Path, monkeypatch) ->
 
     report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
-    assert "Step 5 code review — round 1 in progress" in report
+    assert "Step 5 code review: round 1 in progress" in report
     assert "No review rounds completed." not in report
 
 
@@ -1057,7 +1057,7 @@ def test_render_step5_first_round_inflight_gantt(tmp_path: Path, monkeypatch) ->
 
     report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
-    assert "Step 5 code review — round 1 in progress" in report
+    assert "Step 5 code review: round 1 in progress" in report
     assert "Round 1 reviewer timing" in report
     assert "tool/slot" in report
     assert "cursor/apply" in report
@@ -1185,7 +1185,7 @@ def test_render_design_plan_review_inflight_only_skips_detail(
 
     report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
-    assert "Step 3 plan review — round 1 in progress" in report
+    assert "Step 3 plan review: round 1 in progress" in report
     assert "No review rounds completed." not in report
 
 
@@ -1206,7 +1206,7 @@ def test_render_design_plan_review_inflight_gantt_uses_root_manifest(
 
     report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
-    assert "Step 3 plan review — round 1 in progress" in report
+    assert "Step 3 plan review: round 1 in progress" in report
     assert "Round 1 reviewer timing" in report
     assert "codex/slot-1" in report
 
@@ -1377,7 +1377,7 @@ def test_render_inflight_gantt_absent_without_completed_vendor_rows(
 
     report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
-    assert "Step 5 code review — round 1 in progress" in report
+    assert "Step 5 code review: round 1 in progress" in report
     assert "Round 1 reviewer timing" not in report
 
 
@@ -1396,7 +1396,7 @@ def test_render_step5_inflight_gantt_absent_with_only_ci_rows(
 
     report = progress_report._render_step5(implement_tmpdir=impl, run_id="run-1")
 
-    assert "Step 5 code review — round 1 in progress" in report
+    assert "Step 5 code review: round 1 in progress" in report
     assert "Round 1 reviewer timing" not in report
 
 
@@ -1428,7 +1428,7 @@ def test_design_step3_header_only_with_fresh_round_local_manifest(
 
     report = progress_report._render_design_plan_review(design_tmpdir=design, start_s=90)
 
-    assert "Step 3 plan review — round 1 in progress" in report
+    assert "Step 3 plan review: round 1 in progress" in report
     assert "reviewers: 1/2 returned | elapsed: 2m" in report
 
 
@@ -1493,7 +1493,7 @@ def test_design_step3_no_usable_rounds_falls_through_to_generic(tmp_path: Path) 
     report = progress_report._render_design(_design_run(design))
 
     assert report.startswith("design: Step 3 — plan review")
-    assert "Step 3 plan review — round 1 in progress" not in report
+    assert "Step 3 plan review: round 1 in progress" not in report
 
 
 def test_design_detail_argv_uses_design_skill_and_rounds_root(
@@ -2232,9 +2232,9 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 110, 190)
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing, findings_file=findings)
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | — | 3 |" in rendered
-    assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **—** | **3** |" in rendered
-    assert "1. codex/slot-1 — 1" in rendered
+    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
+    assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **N/A** | **3** |" in rendered
+    assert "1. codex/slot-1: 1" in rendered
     assert "**Reviewer slot failures**: 1" in rendered
     assert "- codex/slot-1: 1" in rendered
     assert "### Round 1 reviewer timing" in rendered
@@ -2515,8 +2515,8 @@ def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -
         encoding="utf-8",
     )
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
-    assert "1. Cursor-Requirements — 3" in rendered
-    assert "2. Codex-Generic — 1" in rendered
+    assert "1. Cursor-Requirements: 3" in rendered
+    assert "2. Codex-Generic: 1" in rendered
     assert "- (no accepted-point score attributed to a reviewer slot)" not in rendered
     # OOS rows are excluded so Top reviewers matches the in-scope Accepted column.
     assert "Cursor-Arch" not in rendered
@@ -2559,8 +2559,8 @@ def test_render_phase_detail_top_reviewers_implement_from_classification(tmp_pat
         encoding="utf-8",
     )
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", findings_file=root / "review-findings-full.jsonl")
-    assert "1. cursor/arch — 2" in rendered
-    assert "2. codex/generalist — 1" in rendered
+    assert "1. cursor/arch: 2" in rendered
+    assert "2. codex/generalist: 1" in rendered
     assert "flat-jsonl" not in rendered
     assert "cursor-specialist-oos" not in rendered
 
@@ -2598,7 +2598,7 @@ def test_render_phase_detail_top_reviewers_implement_from_classification_vendor_
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
 
     assert not (r1 / "collector-results.env").exists()
-    assert "1. cursor/arch (via Codex) — 1" in rendered
+    assert "1. cursor/arch (via Codex): 1" in rendered
 
 
 def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path: Path) -> None:
@@ -2637,7 +2637,7 @@ def test_render_phase_detail_total_relabeled_round_sum_under_recurrence(tmp_path
     assert "counted once per round" in rendered
     # One finding accepted in all three rounds is counted once per round (round-sum => "— 3"),
     # not deduplicated to 1; the label and caption are what prevent misreading it as distinct work.
-    assert "1. Cursor-Arch — 3" in rendered
+    assert "1. Cursor-Arch: 3" in rendered
 
 
 def test_parse_classification_tsv_counts_neutral_oos(tmp_path: Path) -> None:
@@ -2698,9 +2698,9 @@ def test_top_reviewers_whitespace_coproposers_and_comma_fallback(tmp_path: Path)
         encoding="utf-8",
     )
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
-    assert "1. Codex-Arch — 2" in rendered
-    assert "2. Cursor-Pragmatic — 2" in rendered
-    assert "3. Unknown-Label — 2" in rendered
+    assert "1. Codex-Arch: 2" in rendered
+    assert "2. Cursor-Pragmatic: 2" in rendered
+    assert "3. Unknown-Label: 2" in rendered
     assert "Cursor-Pragmatic Codex-Arch" not in rendered
 
 
@@ -2736,12 +2736,12 @@ def test_top_reviewers_classification_unique_finder_bonus(tmp_path: Path, monkey
         encoding="utf-8",
     )
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="design")
-    assert "1. Solo-Reviewer — 1.25" in rendered
-    assert "2. Codex-Arch — 1" in rendered
-    assert "3. Cursor-Pragmatic — 1" in rendered
-    assert "4. Multi-A — 1" in rendered
-    assert "5. Multi-B — 1" in rendered
-    assert "— 1.0" not in rendered
+    assert "1. Solo-Reviewer: 1.25" in rendered
+    assert "2. Codex-Arch: 1" in rendered
+    assert "3. Cursor-Pragmatic: 1" in rendered
+    assert "4. Multi-A: 1" in rendered
+    assert "5. Multi-B: 1" in rendered
+    assert ": 1.0" not in rendered
     assert "Oos-Reviewer" not in rendered
 
 
@@ -2810,7 +2810,7 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "## Review Phase Detail" in rendered
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | — | 3 |" in rendered
+    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
     assert "### Round 1 reviewer timing" in rendered
     assert "```" in rendered
     assert "codex/codex-review" in rendered

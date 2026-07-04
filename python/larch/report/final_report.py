@@ -604,11 +604,16 @@ def _outcome_with_manifest_only_backstop(
     return recovered or outcome
 
 
+def _summary_heading_line_is_stalled(line: str) -> bool:
+    stripped = line.rstrip("\n").rstrip()
+    return stripped.endswith((": stalled", "— stalled"))
+
+
 def summary_heading_is_stalled(text: str) -> bool:
     for line in text.splitlines():
         if not line.strip():
             continue
-        return line.rstrip("\n").rstrip().endswith("— stalled")
+        return _summary_heading_line_is_stalled(line)
     return False
 
 
@@ -616,7 +621,7 @@ def _summary_stalled_heading_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
         if not line.strip():
             continue
-        return idx if line.rstrip("\n").rstrip().endswith("— stalled") else None
+        return idx if _summary_heading_line_is_stalled(line) else None
     return None
 
 
@@ -668,7 +673,9 @@ def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
         return False
     line = lines[heading_idx]
     newline = "\n" if line.endswith("\n") else ""
-    lines[heading_idx] = line.rstrip("\n").removesuffix("stalled") + outcome + newline
+    heading = line.rstrip("\n").rstrip()
+    rewritten_heading = re.sub(r"(?:\s—|:)\s*stalled$", f": {outcome}", heading)
+    lines[heading_idx] = rewritten_heading + newline
     del lines[outcome_idx]
     rewritten = "".join(lines)
     if "- **Outcome**: stalled" in rewritten:

@@ -90,7 +90,7 @@ def test_reconcile_manifest_for_terminal_report_marks_present_summary_and_pr_cre
     run_dir = tmp_path / "larch-logs" / "implement" / "run-1"
     run_dir.mkdir(parents=True)
     _ = (run_dir / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement run run-1 — pr-created\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run run-1: pr-created\n", encoding="utf-8")
     _ = (tmp_path / "ship-pr-state.sh").write_text("PR_NUMBER=42\n", encoding="utf-8")
     calls: list[list[str]] = []
 
@@ -319,7 +319,7 @@ def test_write_final_report_renders_panel_failed_merge_downgrade(
 
     assert rc == 0
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "## /implement run run1 — pr-created" in body
+    assert "## /implement run run1: pr-created" in body
     assert "**⚠ Merge downgraded**" in body
 
 

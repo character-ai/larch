@@ -1348,7 +1348,7 @@ def token_report(
         d_raw = sum(data["codex"].values())
         u_raw = sum(data["cursor"].values())
         cs_raw = sum(data["claude_sub"].values())
-        return f"Tokens: {_tok_k(data['token_total'])}k — Claude: {_tok_k(c_raw)}k | Codex: {_tok_k(d_raw)}k | Cursor: {_tok_k(u_raw)}k | Claude (subprocess): {_tok_k(cs_raw)}k"
+        return f"Tokens: {_tok_k(data['token_total'])}k, Claude: {_tok_k(c_raw)}k | Codex: {_tok_k(d_raw)}k | Cursor: {_tok_k(u_raw)}k | Claude (subprocess): {_tok_k(cs_raw)}k"
     if mode == "terse":
         last = marks[-1]
         start = cast("float", last["ts"])
@@ -1671,7 +1671,7 @@ class ResearchLaneTally:
             else:
                 unknown[phase] += 1
         if not lanes["research"] and not lanes["validation"]:
-            return "\n".join([*lines, "_(no measurements available — Claude inline only, no measurable subagent invocations)_"])
+            return "\n".join([*lines, "_(no measurements available: Claude inline only, no measurable subagent invocations)_"])
         rate_raw = os.environ.get("LARCH_TOKEN_RATE_PER_M", "")
         try:
             rate = float(rate_raw)
@@ -1679,7 +1679,7 @@ class ResearchLaneTally:
             rate = 0.0
         def row(*, label: str, phase: str) -> str:
             if not lanes[phase]:
-                suffix = "(4 lanes — Codex-first with per-lane Claude fallback): not measured" if phase == "research" else "(3 reviewers — Code|Cursor|Codex): not measured"
+                suffix = "(4 lanes, Codex-first with per-lane Claude fallback): not measured" if phase == "research" else "(3 reviewers, Code|Cursor|Codex): not measured"
                 return f"  {label:<22} {suffix}"
             count = measured[phase] + unknown[phase]
             cov = f"({count} lanes, {measured[phase]} measured" + (f", {unknown[phase]} unmeasurable)" if unknown[phase] else ")")

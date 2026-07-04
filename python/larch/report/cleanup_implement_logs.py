@@ -546,7 +546,7 @@ def main(argv: list[str] | None = None) -> int:
 
     execute = args.execute
     if not execute:
-        print("DRY-RUN mode — pass --execute to apply changes")
+        print("DRY-RUN mode: pass --execute to apply changes")
 
     repo_root = Path(__file__).resolve().parent.parent
     impl_root = (repo_root / "larch-logs" / "implement").resolve()

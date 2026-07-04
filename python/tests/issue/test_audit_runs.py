@@ -982,7 +982,7 @@ def test_scan_required_bailed_heading_with_pr_evidence_reports_missing(tmp_path:
     run = tmp_path / "run"
     run.mkdir()
     (run / "manifest.json").write_text('{"steps_ran":{},"pr_number":7}\n', encoding="utf-8")
-    (run / "final-summary.md").write_text("## /implement run run — bailed\n", encoding="utf-8")
+    (run / "final-summary.md").write_text("## /implement run run: bailed\n", encoding="utf-8")
     required = tmp_path / "required.tsv"
     required.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
     scans = tmp_path / "scans.tsv"

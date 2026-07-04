@@ -855,7 +855,7 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert not skip1.skipped
     final1 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading1 = final1.split("—", 1)[-1].split("\n", 1)[0].strip()
+    heading1 = final1.split(":", 1)[-1].split("\n", 1)[0].strip()
     assert heading1 == "shipping"
 
     _ = state.write_text(
@@ -867,7 +867,7 @@ def test_flush_logs_pre_multi_flush_shipping_then_pr_created(
     skip2 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
     assert not skip2.skipped
     final2 = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    heading2 = final2.split("—", 1)[-1].split("\n", 1)[0].strip()
+    heading2 = final2.split(":", 1)[-1].split("\n", 1)[0].strip()
     assert heading2 == "pr-created"
     manifest = json.loads((run_dir / "manifest.json").read_text(encoding="utf-8"))
     assert manifest["status"] == config.MANIFEST_STATUS_IN_PROGRESS
@@ -910,7 +910,7 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
     skip1 = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
     assert not skip1.skipped
     stalled_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "— stalled" in stalled_summary
+    assert ": stalled" in stalled_summary
     assert "- **Outcome**: stalled" in stalled_summary
 
     _ = state.write_text(
@@ -923,12 +923,14 @@ def test_flush_logs_pre_rewrites_stalled_summary_after_clean_pr_recovery(
 
     assert not skip2.skipped
     recovered_summary = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "— pr-created" in recovered_summary
+    assert ": pr-created" in recovered_summary
     assert "- **Outcome**: stalled" not in recovered_summary
 
 
+@pytest.mark.parametrize("heading_separator", [": ", " — "])
 def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcome(
     tmp_path: Path,
+    heading_separator: str,
 ) -> None:
     run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
     run_dir.mkdir(parents=True)
@@ -942,14 +944,14 @@ def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcom
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        f"## /implement run run-abc{heading_separator}stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
         encoding="utf-8",
     )
 
     assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
 
     text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
-    assert "## /implement run run-abc — merged" in text
+    assert "## /implement run run-abc: merged" in text
     assert "- **Outcome**: stalled" not in text
 
 
@@ -968,7 +970,7 @@ def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
         encoding="utf-8",
     )
 
@@ -991,7 +993,7 @@ def test_manifest_only_stalled_summary_skips_rewrite_with_active_bail_reason(
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
     _ = (run_dir / "final-summary.md").write_text(
-        "## /implement run run-abc — stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        "## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
         encoding="utf-8",
     )
     _ = (tmp_path / "ship-pr-state.sh").write_text("BAIL_REASON=ci-failed\n", encoding="utf-8")
@@ -2517,7 +2519,7 @@ def test_verify_completeness_bailed_heading_with_pr_number_does_not_bail_skip(
         "pr_number": 7,
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — bailed\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1: bailed\n", encoding="utf-8")
     tsv = tmp_path / "required.tsv"
     _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
     monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
@@ -2543,7 +2545,7 @@ def test_verify_completeness_stalled_heading_with_pr_number_keeps_bail_skip(
         "pr_number": 7,
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — stalled\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1: stalled\n", encoding="utf-8")
     tsv = tmp_path / "required.tsv"
     _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
     monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))
@@ -2568,7 +2570,7 @@ def test_verify_completeness_bailed_heading_without_pr_number_keeps_bail_skip(
         "status": "partial",
     }
     _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
-    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1 — bailed\n", encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text("## /implement run RUN1: bailed\n", encoding="utf-8")
     tsv = tmp_path / "required.tsv"
     _ = tsv.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
     monkeypatch.setenv("LARCH_VERIFY_MANIFEST", str(tsv))

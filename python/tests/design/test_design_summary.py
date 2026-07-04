@@ -141,7 +141,7 @@ def _install_final_summary_env(
         if args[:2] == ("render", "run-summary"):
             out_file = Path(args[args.index("--output-file") + 1])
             _ = out_file.write_text(
-                "## /design run design-run-1 — approved\n\n"
+                "## /design run design-run-1: approved\n\n"
                 "- **Outcome**: approved\n"
                 "<!-- larch:run-summary v=1 -->\n",
                 encoding="utf-8",
@@ -225,7 +225,7 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
     assert "## Review Phase Detail" in body
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 05s | — | 1 |" in body
+    assert "| 1 | 4 | 2 | 2 | 1 | 1m 05s | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" in body
     assert "```\n" in body
     assert "## Review Phase Detail" in stdout
@@ -251,7 +251,7 @@ def test_render_final_summary_pre_phase_counts_without_detail(
         if args[:2] == ("render", "run-summary"):
             out_file = Path(args[args.index("--output-file") + 1])
             _ = out_file.write_text(
-                "## /design run design-run-1 — approved\n\n"
+                "## /design run design-run-1: approved\n\n"
                 f"- **Exec issues**: {args[args.index('--exec-issues') + 1]}\n"
                 f"- **Warnings**: {args[args.index('--warnings') + 1]}\n",
                 encoding="utf-8",
@@ -327,7 +327,7 @@ def test_render_final_summary_missing_timing_keeps_table_without_gantt(
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     assert "## Review Phase Detail" in body
-    assert "| 1 | 4 | 2 | 2 | 1 | — | — | 1 |" in body
+    assert "| 1 | 4 | 2 | 2 | 1 | N/A | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" not in body
 
 
@@ -575,7 +575,7 @@ def test_render_final_summary_persists_difficulty_record_before_render(
         if args[:2] == ("render", "run-summary"):
             out_file = Path(args[args.index("--output-file") + 1])
             _ = out_file.write_text(
-                "## /design run design-run-1 — approved\n\n<!-- larch:run-summary v=1 -->\n",
+                "## /design run design-run-1: approved\n\n<!-- larch:run-summary v=1 -->\n",
                 encoding="utf-8",
             )
         return subprocess.CompletedProcess(["cli.py", *args], 0, stdout="", stderr="")

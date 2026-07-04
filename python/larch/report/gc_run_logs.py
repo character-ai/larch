@@ -328,7 +328,7 @@ def run_main(argv: list[str] | None = None) -> int:
         _emit_kv(key="STATUS", value="error")
         return 2
     if _git(repo_root, "status", "--porcelain").stdout.strip():
-        _err("gc-run-logs: working tree is dirty — ensure no /implement or /design session is active before running GC")
+        _err("gc-run-logs: working tree is dirty. Ensure no /implement or /design session is active before running GC")
         _emit_kv(key="STATUS", value="error")
         return 2
     branch = _git(repo_root, "rev-parse", "--abbrev-ref", "HEAD").stdout.strip()
