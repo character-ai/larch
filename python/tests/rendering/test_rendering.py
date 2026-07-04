@@ -410,6 +410,40 @@ def test_render_specialist_payload_sidecar_counts_inline_diff_context(
     assert sidecar.read_text(encoding="utf-8") == "0\n"
 
 
+def test_render_specialist_payload_sidecar_counts_competition_notice_only_when_rendered(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    agent = _specialist_agent(tmp_path)
+    diff = tmp_path / "diff.txt"
+    notice = tmp_path / "notice.md"
+    sidecar = tmp_path / "payload.txt"
+    diff.write_text("diff --git a/a b/a\n", encoding="utf-8")
+    notice.write_text("NOTICE PAYLOAD ☕\n", encoding="utf-8")
+
+    base_args = [
+        "--agent-file",
+        str(agent),
+        "--mode",
+        "diff",
+        "--diff-file",
+        str(diff),
+        "--competition-notice-file",
+        str(notice),
+        "--payload-bytes-output",
+        str(sidecar),
+    ]
+
+    assert rendering.render_specialist_main([*base_args, "--competition-notice"]) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == f"{len(notice.read_bytes())}\n"
+
+    sidecar.write_text("stale\n", encoding="utf-8")
+    assert rendering.render_specialist_main(base_args) == 0
+    _ = capsys.readouterr()
+    assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
 def test_render_voter_calibration_feedback_contributes_payload_bytes(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

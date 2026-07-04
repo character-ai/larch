@@ -895,6 +895,8 @@ def _specialist_payload_bytes(args: argparse.Namespace) -> int:
             total += _file_payload_bytes(Path(args.feature_file))
         if args.plan_file:
             total += _file_payload_bytes(Path(args.plan_file))
+    if args.competition_notice and args.competition_notice_file:
+        total += _file_payload_bytes(Path(args.competition_notice_file))
     ledger_section = _code_ledger_section(path_value=args.findings_ledger_file, session_env_path=args.session_env_path, role="reviewer")
     if ledger_section:
         total += _byte_len(ledger_section)
