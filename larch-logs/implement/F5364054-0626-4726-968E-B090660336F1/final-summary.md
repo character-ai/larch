@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:20:56
-- **Cost**: 💰 TOTAL ~$9.37 — Claude $1.26, Codex-5.5 $3.01, Codex-mini $1.16, Cursor $3.65, Claude (subprocess) $0.29  |  Tokens: 18071k
+- **Cost**: 💰 TOTAL ~$10.34 — Claude $2.22, Codex-5.5 $3.01, Codex-mini $1.16, Cursor $3.65, Claude (subprocess) $0.30  |  Tokens: 19452k
 - **Issue**: #6211 — https://github.com/character-ai/larch/issues/6211
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -70,3 +70,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (nit): risk-integration: python/tests/design/test_design_publish.py:617. Concern: The publish regression finds `diff_lines` via the first `startswith` match, not the terminal trailer. Prose containing `diff_lines:` in the plan body could make ordering assertions check the wrong block. Anchor assertions on `trailing_plan_metadata_lines()` o…
 - **Round 1 OOS_3** (nit): risk-integration: python/tests/design/test_design_publish.py:327-357. Concern: The fake plan validate path duplicates trailing parsing instead of calling the production helper, so harness regex can drift from production and weaken the regression.
 - **Round 1 OOS_4** (latent): architecture: python/larch/design/design_step2b.py. Concern: The drafter subprocess still does not write `design-difficulty-rating.raw.json`. The missing sidecar remains, so publish relies entirely on plan-text recovery. Write the sidecar from vendor plan text in the drafter path.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
