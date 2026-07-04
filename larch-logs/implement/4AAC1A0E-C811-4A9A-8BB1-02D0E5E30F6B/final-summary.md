@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:25:34
-- **Cost**: 💰 TOTAL ~$5.14 — Claude $0.77, Codex-5.5 $1.22, Codex-mini $0.76, Cursor $1.33, Claude (subprocess) $1.06  |  Tokens: 8758k
+- **Cost**: 💰 TOTAL ~$5.51 — Claude $1.14, Codex-5.5 $1.22, Codex-mini $0.76, Cursor $1.33, Claude (subprocess) $1.06  |  Tokens: 9639k
 - **Issue**: #6219 — https://github.com/character-ai/larch/issues/6219
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -72,3 +72,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): Boolean token rows need regression coverage. Concern: No test now asserts that JSON boolean `closure_estimated_tokens` values are still skipped after the new float branch, so a refactor that reorders `isinstance` checks could let `True`/`False` count as integer token values without CI catching it.
 - **Round 1 OOS_3** (nit): Test and CLI scope stays contained. Concern: The reviewer notes are guardrail confirmations rather than regressions: the new tests live in existing tracked files, adjacent-revision behavior stays covered, `log_path_commits()` still has a single consumer, and the new stderr warnings do not break success-…
 - **Round 1 OOS_4** (latent): Float token rows can hide history on skip. Concern: Rows whose `closure_estimated_tokens` is a JSON float (including integer-valued floats like `1.0`) are skipped with a warning, so the target vanishes from that snapshot, `last_values` is cleared on the next `_build_revisions()` pass, and the following revisio…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
