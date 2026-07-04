@@ -671,6 +671,13 @@ repos:
         pass_filenames: false
         files: ^skills/(design|implement|review|review-and-fix)/
 
+      - id: lint-bg-wait-writer-parity
+        name: lint background wait writer parity
+        entry: python3 python/cli.py lint bg-wait-writer-parity
+        language: system
+        pass_filenames: false
+        files: ^skills/(design|implement|review|review-and-fix)/
+
       - id: lint-awk-multibyte-regex
         name: lint multi-byte UTF-8 in dynamic awk regex
         entry: bash scripts/lint-awk-multibyte-regex.sh
