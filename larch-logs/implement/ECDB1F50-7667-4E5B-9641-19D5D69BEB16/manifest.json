@@ -1,0 +1,22 @@
+{
+  "attempt": 1,
+  "effort": "max",
+  "flags": {},
+  "issue_number": 6237,
+  "larch_version": "52.4.4",
+  "model_roster": {
+    "main": "claude-opus-4-8"
+  },
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "run_id": "ECDB1F50-7667-4E5B-9641-19D5D69BEB16",
+  "schema_version": 2,
+  "skill": "implement",
+  "stalled_at_step": null,
+  "started_at": "2026-07-04T05:20:13Z",
+  "status": "partial",
+  "steps_ran": {},
+  "superseded_by": null,
+  "updated_at": "2026-07-04T05:40:29Z"
+}
