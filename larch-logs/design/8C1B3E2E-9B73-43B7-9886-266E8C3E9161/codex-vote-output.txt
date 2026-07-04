@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Real but not necessary; changing payload-counted inventory text does not clear the acceptance gate for this scaffold-byte reduction.
+FINDING_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- The missing measurement check is a verification gap, but it is a test/process issue and not clearly necessary enough to make the plan in-scope acceptable.

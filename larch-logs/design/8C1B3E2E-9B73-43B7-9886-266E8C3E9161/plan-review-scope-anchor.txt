@@ -1,0 +1,13 @@
+**Context.** Aggregator realized cost: about 1.13M bytes (design) and 1.12M bytes (implement) per the `measure-panel-cost` ranking, at 1.4 loads per run each. #5981 compressed `agents/orchestrator-aggregator.md` (945 bytes); the generated wrapper around it (`python/larch/review/review_aggregate.py` prompt assembly and the design-side equivalent) was not passed.
+
+**Scope.**
+
+- Compress the aggregator prompt scaffold in both builders.
+- Keep dedup/normalization output grammar and finding-list structure byte-identical.
+
+**Acceptance.**
+
+- Measured scaffold-byte drop for aggregator slot kind in both skills.
+- Aggregation harnesses green; no ratchet raise.
+
+Part of md-to-py-XII (round XI: #5986). Blocked by the scaffold/payload instrumentation child.
