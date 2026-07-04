@@ -1,0 +1,81 @@
+Reviewing the plan against the codebase: locating bg-wait marker writers, hook consumers, and existing lint patterns.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	skills/implement/SKILL.md:440-441	[SCOPE-REDUCTION] Firm run-step-checks.sh CLONE_PATH work targets an orphaned Step 3 writer; live /implement Step 3 already stamps CLONE_PATH via checks-commit-route	Live Step 3 arms implement-step3-checks through python/cli.py implement checks-commit-route (skills/implement/SKILL.md:441), which wraps _optional_bg_wait_marker → _write_bg_wait_marker with CLONE_PATH={_read_keepalive_clone_path(...)} (python/larch/implement/dispatch_commit_route.py:75-88,897-898). run-step-checks.md:7 says SKILL no longer invokes the shell wrapper for active Step 3; run_step_checks_main forwards to checks run-relevant with no marker write (dispatch_commit_route.py:1108-1115). test_dispatch_bg_wait_marker_copies_keepalive_clone_path already covers the live writer (python/tests/implement/test_implement_dispatch.py:49-55). Shell edits fix only the legacy block at run-step-checks.sh:72-73.	Drop the firm UPDATED run-step-checks.sh entry (or demote to optional parity) and center the plan on the writer-parity lint plus dispatch_commit_route.py inventory coverage; if legacy parity is kept, state explicitly that checks-commit-route is the live writer.
+1	in_scope	important	architecture	python/larch/lint/lint_bg_wait_writer_parity.py (planned)	Lint contract does not operationalize local CLONE_PATH emission next to the marker write	Approach item 3 requires marker-writer evidence and a local CLONE_PATH= emission, but the NEW module spec only says to fail on missing CLONE_PATH= or missing writer evidence. A whole-file substring check could pass a comment-only CLONE_PATH= while the .bg-wait-active body omits it (design-step3-review.sh:161-168 and step-5-review.sh:78-79 tie CLONE_PATH to the write block).	Require CLONE_PATH in the same function/block as the .bg-wait-active write (printf/write_text/template joined by the writer-evidence match), not anywhere in the file.
+1	out_of_scope	latent	architecture	python/larch/lint/lint_bg_wait_writer_parity.py (planned)	[OUT_OF_SCOPE] Inventory-only lint cannot catch a brand-new writer file until the list is updated	Edge case 5 and failure mode 2 acknowledge inventory maintenance, but a new writer added outside the frozen list will not fail CI until someone extends the inventory. Acceptable tradeoff for minimum-change static lint; optional future enhancement is cross-check against lint_bg_wait_coverage KNOWN_BACKGROUND_COMMANDS marker_step mappings.
+
+## Findings
+
+### 1. code-quality / correctness — [SCOPE-REDUCTION] Primary shell fix is dead-path churn
+
+The plan’s Approach item 1 and firm `### UPDATED: skills/implement/scripts/run-step-checks.sh` treat the shell Step 3 block as the active gap. Repo evidence shows the opposite.
+
+Live `/implement` Step 3 launches the composite, not the shell wrapper:
+
+```440:441:skills/implement/SKILL.md
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"
+```
+
+That composite already writes `implement-step3-checks` with `CLONE_PATH` from keepalive:
+
+```75:88:python/larch/implement/dispatch_commit_route.py
+def _write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
+    ...
+        f"CLONE_PATH={_read_keepalive_clone_path(tmpdir)}\n"
+    )
+    with contextlib.suppress(OSError):
+        (tmpdir / ".bg-wait-active").write_text(text, encoding="utf-8")
+```
+
+```896:898:python/larch/implement/dispatch_commit_route.py
+    marker = _checks_commit_route_marker(args.checks_site)
+    with _optional_bg_wait_marker(tmpdir=implement_tmpdir, marker=marker):
+        return _checks_commit_route_main_impl(args, implement_tmpdir)
+```
+
+The shell path is explicitly legacy:
+
+```5:7:skills/implement/scripts/run-step-checks.md
+## Caller
+
+`skills/implement/SKILL.md` no longer invokes this wrapper for active Step 3. Keep it available for offline harnesses and any legacy helper-only paths until all callers are removed.
+```
+
+The orphaned shell block still omits `CLONE_PATH`:
+
+```72:73:skills/implement/scripts/run-step-checks.sh
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\n' \
+    "$$" "$_step3_claude_pid" "$_step3_start" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+```
+
+**Suggested revision:** Make the writer-parity lint the required deliverable; treat `run-step-checks.sh` as optional legacy parity or drop it from firm scope. If kept, document that `dispatch_commit_route.py` is the live Step 3 writer.
+
+### 2. architecture — Lint needs write-site coupling, not file-level `CLONE_PATH=`
+
+The planned lint correctly avoids repo-wide grep and hook false positives by using a frozen writer inventory (Approach item 3; failure mode 1). Including `python/larch/implement/dispatch_commit_route.py` does protect the live Step 3/5-resume paths.
+
+The NEW module spec is underspecified on *where* `CLONE_PATH=` must appear. Sibling writers bind it to the marker body:
+
+```74:79:skills/implement/scripts/step-5-review.sh
+_step5_clone_path=""
+if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
+  _step5_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
+fi
+printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step5-review\nTIMEOUT_S=21600\nCLONE_PATH=%s\n' \
+  "$$" "$_step5_claude_pid" "$_step5_start" "$_step5_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+```
+
+**Suggested revision:** In `lint_bg_wait_writer_parity.py`, match the writer-evidence region (function/block containing `.bg-wait-active` write) and require `CLONE_PATH` in that same region’s emitted marker template.
+
+### 3. What the plan gets right
+
+- **Fail-open parity:** Preserving `|| true` on the shell `printf` matches `step-5-review.sh:79` and keeps marker failures non-aborting.
+- **Keepalive semantics:** Planned `-f` + `! -L` + awk read matches siblings (`step-5-review.sh:75-76`).
+- **Hook consumer isolation:** Explicit inventory (not scanning `scripts/hook-bg-poll-guard.sh:103-124` or test harnesses) matches the stated failure mode.
+- **Inventory coverage:** Nine listed writers align with actual marker authors; `design_core.py` correctly covers delegated design Step 5c/final-summary paths (`design_core.py:172-188`).
+- **CI wiring:** Makefile pattern mirrors existing `lint-bg-wait-coverage` (`Makefile:37,186`).
+
+### [OUT_OF_SCOPE] New writers outside the inventory stay undetected until manual list update
+
+Static inventory lint cannot discover writers added outside the frozen list. The plan acknowledges this (edge case 5). Acceptable for minimum-change scope; a future enhancement could diff against `lint_bg_wait_coverage.py` `KNOWN_BACKGROUND_COMMANDS` (`python/larch/lint/lint_bg_wait_coverage.py:41-101`).

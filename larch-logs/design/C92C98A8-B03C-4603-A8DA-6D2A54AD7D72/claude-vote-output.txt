@@ -1,0 +1,17 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- CI wires the lint via `make lint:`; pre-commit is optional defense-in-depth that does not determine feature completeness
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- file-level CLONE_PATH= presence check works for all nine inventory writers including temp-file+mv patterns; more-realistic fixtures improve test quality but do not determine lint correctness
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- static inventory is an acknowledged tradeoff; plan explicitly handles this at edge case 5; future-writer discovery is OOS
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- run-step-checks.sh is confirmed dead/legacy but patching it is harmless; lint is primary deliverable and is still delivered; feature does not break or regress without this reframing
+FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same dead-writer claim as FINDING_4; plan delivers lint correctly regardless; reframing is not necessary for feature to ship
+FINDING_6: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same dead-writer fact; dispatch_commit_route already stamps CLONE_PATH and is tested; shell churn is wasteful but not a gate-blocking defect
+FINDING_7: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deleting the SITE=step3 block is a valid cleanup but not required; legacy code is inert; lint works independently
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- writer-parity lint with CLI, Makefile, and tests is explicitly included in the scope anchor's approved outline; removing it contradicts an already-approved scope decision
+FINDING_9: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same dead-writer finding; upfront verification step is good practice but not a necessity gate; feature (lint) ships correctly without it
+FINDING_10: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of FINDING_9; no new necessity argument; same outcome
+FINDING_11: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- same dead-writer cluster; lint is the durable guard and is delivered; reframing shell work as legacy parity is correct but not blocking
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent exposure; CI lint target enforces the requirement; pre-commit hook parity fails materiality gate for a separate issue
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- deleting dead block is cleaner than patching it but has no production impact; does not clear materiality floor for a standalone issue
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1; nit severity; CI enforcement is sufficient
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1/OOS_3; latent; does not clear materiality gate
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1/OOS_3/OOS_4; latent; same reasoning
+OOS_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- acknowledged static-inventory limitation; plan's edge case 5 documents it; future-writer detection is an enhancement, not a materiality-clearing defect
