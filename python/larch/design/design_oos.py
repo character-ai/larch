@@ -143,9 +143,18 @@ def _aggregate_oos_blocks(text: str) -> list[str]:
 
 
 def _aggregate_block_identity(block: str) -> str:
-    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", block).strip()
+    body = re.sub(r"(?m)^[ \t]*-[ \t]+\*\*Filed[ \t]*URL\*\*:[^\n]*(?:\n|$)", "", block)
+    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", body).strip()
     body = re.sub(r"^###\s+(?:OOS|FINDING)_\d+:", "### ITEM:", body, count=1)
     return re.sub(r"\s+", " ", body).strip().lower()
+
+
+def _aggregate_identity_signature(text: str) -> tuple[str, ...]:
+    return tuple(
+        identity
+        for identity in (_aggregate_block_identity(block) for block in _aggregate_oos_blocks(text))
+        if identity
+    )
 
 
 def _next_oos_number(text: str) -> int:
@@ -221,6 +230,7 @@ def _prepare_sentinel_handled(
     accepted: Path,
     sentinel: Path,
     cache_path: Path | None,
+    issue_number: str,
 ) -> bool:
     if sentinel.is_file() and sentinel.stat().st_size > 0:
         if not _accepted_unfiled_text(accepted).strip():
@@ -236,10 +246,20 @@ def _prepare_sentinel_handled(
                 value="file-design-oos prepare: oos-issue-sentinel present "
                 f"(ISSUES_CREATED={created} ISSUES_DEDUPLICATED={deduped}) but "
                 "oos-issues-created.md absent; skipping re-file",
-            )
+                )
             return True
         (design_tmpdir / "oos-issue-sentinel").unlink(missing_ok=True)
     if cache_path and cache_path.is_file() and cache_path.stat().st_size > 0 and accepted.is_file():
+        accepted_cache = _cross_session_accepted_path(issue_number)
+        cached_signature = (
+            _aggregate_identity_signature(accepted_cache.read_text(encoding="utf-8", errors="replace"))
+            if accepted_cache is not None and accepted_cache.is_file()
+            else ()
+        )
+        current_signature = _aggregate_identity_signature(accepted.read_text(encoding="utf-8", errors="replace"))
+        if not cached_signature or current_signature != cached_signature:
+            sentinel.unlink(missing_ok=True)
+            return False
         try:
             sentinel_text = cache_path.read_text(encoding="utf-8")
             _ = sentinel.write_text(sentinel_text, encoding="utf-8")
@@ -570,6 +590,7 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
         accepted=accepted,
         sentinel=sentinel,
         cache_path=cache_path,
+        issue_number=issue_number,
     ):
         return 0
     if not accepted.is_file() or accepted.stat().st_size == 0:

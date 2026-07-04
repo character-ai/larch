@@ -124,6 +124,11 @@ def test_prepare_uses_cross_session_cache_and_recovers_accepted(
         "https://github.com/acme/repo/issues/123\n",
         encoding="utf-8",
     )
+    _ = cache.with_name("cache.accepted-design.md").write_text(
+        "### OOS_3: title\n- desc\n- **Filed URL**: https://github.com/acme/repo/issues/123\n",
+        encoding="utf-8",
+    )
+
     def _stub_cache1(_issue: str) -> Path:
         return cache
 
@@ -135,6 +140,43 @@ def test_prepare_uses_cross_session_cache_and_recovers_accepted(
     assert kv["FILE_DESIGN_OOS_STATUS"] == "skip-sentinel"
     assert "Filed URL" in accepted.read_text(encoding="utf-8")
     assert (tmp_path / "oos-issues-created.md").is_file()
+
+
+def test_prepare_ignores_stale_cross_session_cache_when_block_identity_changes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    accepted = tmp_path / "oos-accepted-design.md"
+    _ = accepted.write_text(
+        "### OOS_1: gamma\n- **Description**: current one\n\n"
+        "### OOS_2: delta\n- **Description**: current two\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "44.md"
+    _ = cache.write_text(
+        "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/123\n"
+        "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/124\n",
+        encoding="utf-8",
+    )
+    _ = cache.with_name("44.accepted-design.md").write_text(
+        "### OOS_1: alpha\n- **Description**: previous one\n- **Filed URL**: https://github.com/acme/repo/issues/123\n\n"
+        "### OOS_2: beta\n- **Description**: previous two\n- **Filed URL**: https://github.com/acme/repo/issues/124\n",
+        encoding="utf-8",
+    )
+
+    def _stub_cache(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache)
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
+    out = _kv(capsys.readouterr().out)
+
+    assert rc == 0
+    assert out["FILE_DESIGN_OOS_STATUS"] == "ready"
+    assert not (tmp_path / "oos-issues-created.md").exists()
+    assert (tmp_path / "oos-combined.md").is_file()
 
 
 def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
@@ -572,6 +614,37 @@ def test_step5b_annotate_failure_with_issue_stdout_marks_complete_for_step5b5(
     assert rc == 3
     assert "STEP5B_STATUS=annotate-failed" in out
     assert (tmp_path / ".completed" / "step-5b").is_file()
+
+
+def test_step5b_annotate_empty_stdout_retries_once_then_stops(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
+
+    def fake_annotate(_argv: Sequence[str]) -> int:
+        print("FILE_DESIGN_OOS_STATUS=annotate-skipped-empty-stdout")
+        print("WARN=empty issue stdout")
+        return 0
+
+    monkeypatch.setattr(design_lifecycle.design_oos, "file_oos_annotate_main", fake_annotate)
+
+    rc_first = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    first = capsys.readouterr().out
+
+    assert rc_first == 1
+    assert (tmp_path / ".oos-issue-retry-used").is_file()
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+    assert "status unclear" in first
+
+    rc_second = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    second = capsys.readouterr().out
+
+    assert rc_second == 1
+    assert not (tmp_path / ".completed" / "step-5b").exists()
+    assert "after retry sentinel" in second
 
 
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

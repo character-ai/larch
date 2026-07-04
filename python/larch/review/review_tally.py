@@ -488,7 +488,8 @@ def _aggregate_oos_blocks(text: str) -> list[str]:
 
 
 def _aggregate_block_identity(block: str) -> str:
-    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", block).strip()
+    body = re.sub(r"(?m)^[ \t]*-[ \t]+\*\*Filed[ \t]*URL\*\*:[^\n]*(?:\n|$)", "", block)
+    body = re.sub(r"(?m)^Vote tally:.*(?:\n|$)", "", body).strip()
     body = re.sub(r"^###\s+(?:OOS|FINDING)_\d+:", "### ITEM:", body, count=1)
     return re.sub(r"\s+", " ", body).strip().lower()
 
