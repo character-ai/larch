@@ -1,16 +1,15 @@
-## /implement run FB6630E2-ED6F-4C08-B040-CACD78FE898A: stalled
+## /implement run FB6630E2-ED6F-4C08-B040-CACD78FE898A: pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:19:26
-- **Cost**: 💰 TOTAL ~$7.40: Claude $1.57, Codex-5.5 $2.57, Codex-mini $0.85, Cursor $2.15, Claude (subprocess) $0.26  |  Tokens: 15019k
+- **Cost**: 💰 TOTAL ~$7.69: Claude $1.86, Codex-5.5 $2.57, Codex-mini $0.85, Cursor $2.15, Claude (subprocess) $0.26  |  Tokens: 15802k
 - **Issue**: #6308: https://github.com/character-ai/larch/issues/6308
 - **PR**: #6326: https://github.com/character-ai/larch/pull/6326
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: code +47/-1, larch-logs +595/-0
+- **Lines (PR diff)**: code +55/-3, larch-logs +640/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -74,4 +73,4 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 ## Architectural guidelines
 
-The architectural guideline note was dropped because HEAD drifted after staging.
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
