@@ -1,0 +1,55 @@
+## Goal
+Implement issue #6255: [IMPLEMENTING] [OOS] Direct run-log flush test collection hits circular import.
+
+## Implementation Plan
+## Plan
+
+Approach
+
+- Treat `approach-synthesis.txt` as `NO_SKETCHES`. Draft from direct code inspection.
+- Break the import cycle at the agreed minimal fix point:
+  - Replace `from larch.report import run_logs` with `from larch.report import run_log_batch`.
+  - Change both `run_logs.append_execution_issue(...)` calls to `run_log_batch.append_execution_issue(...)`.
+- Do not touch `run_logs.py`, `run_log_flush.py`, or `final_report.py`.
+- Preserve the `run_logs.py` facade re-export.
+
+Files to modify/create
+
+### UPDATED: python/larch/review/batch_report.py
+
+- Swap the import source from `run_logs` to `run_log_batch`.
+- Update the tally flush warning append call.
+- Update the scout manifest warning append call.
+- Keep behavior unchanged. Only the dependency edge changes.
+
+### MAY_UPDATE: python/tests/review/test_review_and_fix.py
+
+- Update the fail-open monkeypatch from `batch_report.run_logs.append_execution_issue` to `batch_report.run_log_batch.append_execution_issue` if the test still references the removed module attribute.
+- Keep the test intent unchanged: append failure must stay fail-open while sidecar writing still happens.
+
+Edge cases
+
+- Keep `run_log_batch.append_execution_issue` as the only execution-issue append API used by `batch_report.py`.
+- Do not add lazy imports. They hide the cycle instead of removing it.
+- Do not replace other `run_logs` facade imports elsewhere. They are out of scope.
+
+Failure modes
+
+- A stale test monkeypatch can fail after removing `batch_report.run_logs`.
+- A new import from `batch_report.py` back to the facade would re-create the cycle.
+- Over-broad refactors in report modules can change runtime run-log behavior outside this issue.
+
+Testing strategy
+
+- Run `cd python && python3 -m pytest -q tests/report/test_run_log_flush.py`.
+- Run `cd python && python3 -m pytest -q tests/review/test_review_and_fix.py -k "flush_review_batches_tally_warning_append_is_fail_open or flush_review_batches_nonzero_tally_writes_sidecars_and_findings"`.
+- If time allows, run `cd python && python3 -m pytest -q tests/review/test_review_and_fix.py`.
+
+## Acceptance
+
+See Testing strategy in plan.
+
+diff_lines: 8
+
+## Test plan
+(no test plan section in plan-file)
