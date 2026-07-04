@@ -199,6 +199,12 @@ def _skill_files(root: Path) -> tuple[Path, ...]:
     return tuple(path for path in (*public, *dev) if path.is_file() and not path.is_symlink())
 
 
+def _agent_files(root: Path) -> tuple[Path, ...]:
+    agents = root / "agents"
+    paths = [agents / "code-reviewer.md", *sorted(agents.glob("reviewer-*.md"))]
+    return tuple(path for path in paths if path.is_file() and not path.is_symlink())
+
+
 def _skill_rel(path: Path, root: Path) -> str:
     return path.relative_to(root).as_posix()
 
@@ -217,6 +223,22 @@ def _check_skill_path_form(*, root: Path, exemptions: set[str]) -> bool:
             print(f"{rel}: missing per-skill readability directive for {expected}", file=sys.stderr)
             ok = False
         if forbidden in text:
+            print(f"{rel}: uses wrong readability directive path form", file=sys.stderr)
+            ok = False
+    return ok
+
+
+def _check_agent_path_form(*, root: Path) -> bool:
+    ok = True
+    for path in _agent_files(root):
+        rel = _skill_rel(path, root)
+        text = path.read_text(encoding="utf-8", errors="replace")
+        expected = _style_path_for_row(rel)
+        style_re = _orchestrator_style_re(rel_path=rel)
+        if not any(style_re.search(line) for line in text.splitlines()):
+            print(f"{rel}: missing reviewer readability directive for {expected}", file=sys.stderr)
+            ok = False
+        if DEV_STYLE_PATH in text:
             print(f"{rel}: uses wrong readability directive path form", file=sys.stderr)
             ok = False
     return ok
@@ -281,6 +303,8 @@ def main(argv: list[str] | None = None) -> int:
         if row_ok is False:
             missing = True
     if not _check_skill_path_form(root=root, exemptions=exemptions):
+        missing = True
+    if not _check_agent_path_form(root=root):
         missing = True
     return 1 if missing else 0
 
