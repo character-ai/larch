@@ -1,0 +1,3 @@
+1	the acceptance harnesses still only pin positive literals or the wrong substrings, so repeat-fingerprint prose can regress without ci failing and stale byte-identical wording can survive alongside the new repeat carve-out.
+1	anti-pattern #5 still reads like an empty-output-only rule, its body hardcodes the step 3 terminal sentinel for repeat handling, and the anti-polling harness still keys off the old heading text.
+2	the test harness pin can be satisfied by anti-pattern #5 wording instead of the operational step 3/step 5c routing paragraphs, so ci may pass even when the real post-loop routing text remains probe-first or context-insensitive.
