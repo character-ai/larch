@@ -218,6 +218,24 @@ def test_render_rejected_oos_audit_section_keeps_security_md_titled_public_candi
     assert "SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption" in section
 
 
+def test_render_rejected_oos_audit_section_lists_legacy_finding_block(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    _ = (round_dir / "oos.md").write_text(
+        "### FINDING_1: legacy scope drift\n"
+        "- **Reviewer(s)**: codex-specialist-correctness\n"
+        "- **Severity**: minor\n"
+        "- **Concern**: moved into oos.md without an OOS tag.\n"
+        "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n",
+        encoding="utf-8",
+    )
+
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
+
+    assert "Round 1 FINDING_1" in section
+    assert "legacy scope drift" in section
+
+
 def test_render_rejected_oos_audit_section_caps_candidates(tmp_path: Path) -> None:
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()

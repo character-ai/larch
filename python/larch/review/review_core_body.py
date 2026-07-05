@@ -31,7 +31,7 @@ from larch.review.review_pipeline_shared import (
     _write_text,
 )
 from larch.review import voting
-from larch.review.review_types import ReviewCoreStatus, parse_findings_text
+from larch.review.review_types import ReviewCoreStatus
 from larch.review.review_prune import (
     reviewer_prune_record,
     write_prune_decision_env,
@@ -235,7 +235,7 @@ def _ensure_prune_sidecars(*, review_tmpdir: Path, round_num: int) -> None:
 def _ballot_block_count(ballot_file: Path) -> int:
     try:
         text = ballot_file.read_text(encoding="utf-8", errors="replace")
-        return len(parse_findings_text(text, boundary="any_heading"))
+        return sum(1 for line in text.splitlines() if voting.BALLOT_HEADING_RE.match(line))
     except (OSError, ValueError):
         return 0
 

@@ -118,8 +118,6 @@ def _rejected_oos_audit_from_file(path: Path) -> list[str]:
         oos_id = match.group(1)
         title = _clean_oos_title(match.group(2), oos_id)
         block = match.group(0)
-        if oos_id.startswith("FINDING_") and not re.search(r"\[(OUT_OF_SCOPE|OOS)\]", match.group(2), re.IGNORECASE):
-            continue
         result = _vote_result(block)
         if result == "accepted" or voting.is_security_block_text(block):
             continue

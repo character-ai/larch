@@ -2634,6 +2634,41 @@ def test_tally_code_votes_keeps_rejected_oos_out_of_public_oos_pool(tmp_path: Pa
     assert not (parent / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
+def test_tally_code_votes_routes_security_oos_to_session_root(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent"
+    case = parent / "round-1"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    _ = (case / "ballot.md").write_text(
+        """### FINDING_1: [OUT_OF_SCOPE] [security] Sensitive cleanup
+- **Reviewer**: Codex-Correctness
+- **Severity**: latent
+- **Concern**: keep this local only.
+""",
+        encoding="utf-8",
+    )
+    _ = (case / "v1.txt").write_text(
+        "FINDING_1: NO CORRECTNESS=false SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+        encoding="utf-8",
+    )
+
+    result = run_review(
+        "tally-code-votes",
+        "--ballot-file",
+        str(case / "ballot.md"),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--voter-files",
+        str(case / "v1.txt"),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Sensitive cleanup" in (parent / "security-oos-observations.md").read_text(encoding="utf-8")
+    assert "Sensitive cleanup" not in (case / "oos.md").read_text(encoding="utf-8")
+
+
 def test_emit_tally_promotes_three_latent_pool_items_after_vote_rebuild(tmp_path: Path) -> None:
     parent = tmp_path / "impl-parent"
     case = parent / "round-1"
@@ -2684,6 +2719,53 @@ def test_emit_tally_promotes_three_latent_pool_items_after_vote_rebuild(tmp_path
     assert not (case / "oos-accepted-review.md").exists()
     assert not (parent / "oos-accepted-review.md").exists()
     assert "OOS_ACCEPTED_COUNT=0" in tally.read_text(encoding="utf-8")
+
+
+def test_emit_tally_promotes_accepted_pool_items_after_vote_rebuild(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent-pool"
+    case = parent / "round-1"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    _ = (parent / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: pool follow-up
+- **Severity**: important
+- **Concern**: file this after aggregate evaluation.
+Vote tally: YES=3 NO=0 JUDGE_ERROR=0 Result=accepted
+""",
+        encoding="utf-8",
+    )
+    tally = case / "review-tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\nOOS_ACCEPTED_COUNT=0\n", encoding="utf-8")
+    accepted = case / "accepted-findings.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--round",
+        "1",
+        "--mode",
+        "diff",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OOS_FILING_COUNT=1" in result.stdout
+    local_sink = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
+    parent_sink = (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
+    assert "pool follow-up" in local_sink
+    assert "### OOS_1:" in local_sink
+    assert parent_sink == local_sink
 
 
 def test_emit_tally_preserves_serialized_oos_before_pool_promotion(tmp_path: Path) -> None:

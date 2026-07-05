@@ -503,7 +503,6 @@ def _next_oos_number(text: str) -> int:
 
 
 def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | None = None) -> None:
-    _ = pool
     sink_text = _read(sink) if sink.is_file() else ""
     accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(sink_text)}
     main_blocks = (
@@ -511,9 +510,19 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
         if main_agent is not None and main_agent.is_file()
         else []
     )
+    pool_blocks = (
+        [
+            block
+            for block in _aggregate_oos_blocks(_read(pool))
+            if not voting.is_security_block_text(block)
+            and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
+        ]
+        if pool.is_file()
+        else []
+    )
     next_num = _next_oos_number(sink_text)
     promoted: list[str] = []
-    for block in main_blocks:
+    for block in [*main_blocks, *pool_blocks]:
         identity = _aggregate_block_identity(block)
         if not identity or identity in accepted_seen:
             continue
@@ -634,9 +643,9 @@ def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: st
     }
 
 
-def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, artifact: str, security: bool, accepted: bool) -> None:
+def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, security_sidecar: Path, artifact: str, security: bool, accepted: bool) -> None:
     if security:
-        _append(path=oos_file.parent / "security-oos-observations.md", text=artifact)
+        _append(path=security_sidecar, text=artifact)
         return
     _append(path=oos_file, text=artifact)
     if accepted:
@@ -706,6 +715,7 @@ def tally_code_votes(argv: list[str]) -> int:
     accepted_file = review_tmpdir / "accepted-findings.md"
     rejected_file = review_tmpdir / "rejected-findings.md"
     oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
+    security_oos_file = (Path(args.session_env_path).parent if args.session_env_path else oos_accepted_file.parent) / "security-oos-observations.md"
     oos_file = review_tmpdir / "oos.md"
     voting_tally_file = review_tmpdir / "voting-tally.md"
     tally_env = review_tmpdir / "review-tally.env"
@@ -970,6 +980,7 @@ def tally_code_votes(argv: list[str]) -> int:
                 _record_public_oos_artifact(
                     oos_file=oos_file,
                     pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                    security_sidecar=security_oos_file,
                     artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n",
                     security=security,
                     accepted=False,
@@ -987,6 +998,7 @@ def tally_code_votes(argv: list[str]) -> int:
             _record_public_oos_artifact(
                 oos_file=oos_file,
                 pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                security_sidecar=security_oos_file,
                 artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n",
                 security=security,
                 accepted=result == "accepted",

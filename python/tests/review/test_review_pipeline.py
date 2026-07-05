@@ -185,6 +185,19 @@ def test_security_oos_prefixed_findings_stay_on_ballot(tmp_path: Path) -> None:
     assert not (tmp_path / "oos-dropped-security-local.md").exists()
 
 
+def test_direct_oos_findings_stay_on_ballot(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    original = """### OOS_1: Direct out-of-scope item
+- **Reviewer(s)**: stub
+- **Concern**: direct ballot rows should count.
+"""
+    _ = findings.write_text(original, encoding="utf-8")
+
+    assert review_pipeline._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
+    assert findings.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "oos-dropped-direct.md").exists()
+
+
 
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")
