@@ -14,6 +14,7 @@ from contextlib import suppress
 from pathlib import Path
 from typing import cast
 
+from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import proc
 from larch.core import redact
@@ -339,6 +340,25 @@ def _stage_vendor_failure_diagnostics(*, ctx: RunContext, log_root: Path) -> Non
         )
 
 
+def _stage_guideline_ship_outcome(*, ctx: RunContext, log_root: Path) -> None:
+    run_id = effective_run_id(ctx)
+    if not run_id:
+        return
+    path = architectural_guidelines.guideline_ship_outcome_path(Path(ctx.tmpdir))
+    if not path.is_file() or path.is_symlink():
+        return
+    try:
+        _write_batch(
+            log_root=log_root,
+            skill="implement",
+            run_id=run_id,
+            batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+            input_file=str(path),
+        )
+    except (OSError, ShipError, ValueError) as exc:
+        raise ShipError(f"guideline outcome staging failed: {exc}") from exc
+
+
 def _stage_ship_route_handoff(*, ctx: RunContext, log_root: Path) -> None:
     run_id = effective_run_id(ctx)
     if not run_id:
@@ -578,6 +598,7 @@ def _stage_pre_commit(
             source_label="execution-issues.md commit-tail",
         )
     _stage_vendor_failure_diagnostics(ctx=ctx, log_root=log_root)
+    _stage_guideline_ship_outcome(ctx=ctx, log_root=log_root)
     _stage_ship_route_handoff(ctx=ctx, log_root=log_root)
     if mode == "refresh":
         _ = capture_session_transcript(ctx=ctx, runner=runner, defer_commit=True)

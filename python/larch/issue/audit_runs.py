@@ -17,8 +17,10 @@ from pathlib import Path
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from larch.issue import oos_disposition
+from larch.core import config
 from larch.core import proc
-from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE
+from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR
+from larch.implement.ship_guidelines import GUIDELINE_SHIP_OUTCOMES, GUIDELINE_SHIP_REASON_TOKENS
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -200,9 +202,132 @@ def _guideline_assessment_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict
     return {"scan": name, "pr": pr, "result": "pass", "assessment_kind": kind}
 
 
+def _version_tuple(raw: str) -> tuple[int, int, int] | None:
+    match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", (raw or "").strip())
+    if not match:
+        return None
+    return tuple(int(part) for part in match.groups())
+
+
+def _at_or_above_guideline_outcome_cutover(manifest: object | None) -> bool:
+    version = str(manifest.get("larch_version") or "") if isinstance(manifest, dict) else ""
+    parsed = _version_tuple(version)
+    cutover = _version_tuple(config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION)
+    return parsed is not None and cutover is not None and parsed >= cutover
+
+
+def _run_has(run_dir: Path, rel: str) -> bool:
+    if "*" in rel:
+        return any(p.is_file() for p in run_dir.glob(rel))
+    return (run_dir / rel).is_file()
+
+
+def _manifest_steps(manifest: object | None) -> tuple[object | None, dict[str, object]]:
+    sr_raw = manifest.get("steps_ran") if isinstance(manifest, dict) else None
+    sr = sr_raw if isinstance(sr_raw, dict) else {}
+    return sr_raw, sr
+
+
+def _manifest_empty_steps(manifest: object | None) -> bool:
+    sr_raw, _sr = _manifest_steps(manifest)
+    return isinstance(manifest, dict) and (sr_raw is None or (isinstance(sr_raw, dict) and not sr_raw))
+
+
+def _manifest_bail_signal(*, run_dir: Path, manifest: object | None, pr: int = 0) -> bool:
+    if stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=manifest, pr=pr):
+        return False
+    fs = run_dir / "final-summary.md"
+    if not fs.is_file():
+        return False
+    for line in fs.read_text(encoding="utf-8", errors="replace").splitlines():
+        if line.strip():
+            return bool(_TERMINAL_RE.search(line.strip()))
+    return False
+
+
+def _manifest_nonempty_without_step9a1(manifest: object | None) -> bool:
+    _sr_raw, sr = _manifest_steps(manifest)
+    return bool(sr) and "step9a1" not in sr
+
+
+def implement_step9a1_reachable(run_dir: Path, manifest: dict[str, object] | None, *, chain: bool = False, pr: int = 0) -> bool:
+    sr_raw, sr = _manifest_steps(manifest)
+    if sr.get("step9a1") is False:
+        return False
+    if sr.get("step9a1") is True:
+        return True
+    if _manifest_empty_steps(manifest) and _manifest_bail_signal(run_dir=run_dir, manifest=manifest, pr=pr) and not _run_has(run_dir, "run-statistics.md"):
+        return False
+    if _manifest_bail_signal(run_dir=run_dir, manifest=manifest, pr=pr) and not _run_has(run_dir, "run-statistics.md") and _manifest_nonempty_without_step9a1(manifest):
+        return False
+    return _run_has(run_dir, "run-statistics.md") if chain else True
+
+
+def implement_step8_reachable(run_dir: Path, manifest: dict[str, object] | None) -> bool:
+    """Return true when the implement run reached the Step 8 artifact phase."""
+    _sr_raw, sr = _manifest_steps(manifest)
+    if sr.get("step8") is False:
+        return False
+    if _manifest_empty_steps(manifest) and _manifest_bail_signal(run_dir=run_dir, manifest=manifest) and not _run_has(run_dir, "version-bump-reasoning.md"):
+        return False
+    return _run_has(run_dir, "version-bump-reasoning.md") or _run_has(run_dir, "final-summary.md") or implement_step9a1_reachable(run_dir, manifest, chain=True)
+
+
+def _guideline_ship_outcome_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
+    manifest = _read_json_file(run_dir / "manifest.json")
+    if (run_dir / "gc-slimmed").exists() and not (run_dir / GUIDELINE_SHIP_OUTCOME_SIDECAR).exists():
+        return {"scan": name, "pr": pr, "result": "informational", "detail": "gc-slimmed run lacks guideline outcome artifact"}
+    manifest_dict = manifest if isinstance(manifest, dict) else None
+    if manifest_dict is None or not implement_step8_reachable(run_dir, manifest_dict):
+        return {"scan": name, "pr": pr, "result": "informational", "detail": "run did not reach implement Step 8"}
+    path = run_dir / GUIDELINE_SHIP_OUTCOME_SIDECAR
+    if not path.exists() and not path.is_symlink():
+        if not _at_or_above_guideline_outcome_cutover(manifest):
+            return {"scan": name, "pr": pr, "result": "informational", "detail": "pre-cutover run lacks guideline outcome artifact"}
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "missing guideline outcome artifact"}
+    if path.is_symlink() or not path.is_file():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome artifact must be a regular non-symlink file"}
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        if not raw.strip():
+            return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome artifact is empty"}
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": f"guideline outcome artifact malformed: {exc}"}
+    if not isinstance(data, dict):
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome artifact must be a JSON object"}
+    if str(data.get("schema_version") or "") != "1":
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome schema_version must be 1"}
+    outcome = str(data.get("outcome") or "")
+    reason = str(data.get("reason") or "")
+    guidelines_status = str(data.get("guidelines_status") or "")
+    head_sha = str(data.get("head_sha") or "")
+    if outcome not in GUIDELINE_SHIP_OUTCOMES:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome token is unknown"}
+    if guidelines_status not in {"present", "absent", "invalid"}:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome guidelines_status is unknown"}
+    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome reason token is unknown"}
+    if not head_sha:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome head_sha is empty"}
+    obj: dict[str, object] = {
+        "scan": name,
+        "pr": pr,
+        "result": "pass",
+        "outcome": outcome,
+        "reason": reason,
+        "guidelines_status": guidelines_status,
+    }
+    assessment_kind = str(data.get("assessment_kind") or "")
+    if assessment_kind:
+        obj["assessment_kind"] = assessment_kind
+    return obj
+
+
 _NAMED_RUN_SCAN_HANDLERS = {
     "codex-round1-adherence": _codex_round_adherence_scan_obj,
     "guideline-assessment": _guideline_assessment_scan_obj,
+    "guideline-ship-outcome": _guideline_ship_outcome_scan_obj,
 }
 
 
@@ -558,28 +683,18 @@ def _scan_required( *,run_dir: Path, pr: int, required: Path | None) -> dict[str
     if required is None or not required.is_file():
         return {"scan": "required-file-presence", "pr": pr, "result": "skip", "detail": "required-files-tsv not provided"}
     manifest = _read_json_file(run_dir / "manifest.json")
-    sr_raw = manifest.get("steps_ran") if isinstance(manifest, dict) else None
-    sr = sr_raw if isinstance(sr_raw, dict) else {}
+    manifest_dict = manifest if isinstance(manifest, dict) else None
+    sr_raw, sr = _manifest_steps(manifest)
     def has(rel: str) -> bool:
-        if "*" in rel:
-            return any(p.is_file() for p in run_dir.glob(rel))
-        return (run_dir / rel).is_file()
+        return _run_has(run_dir, rel)
     def steps_false(c: str) -> bool:
         return sr.get(c) is False
     def empty_steps() -> bool:
         return isinstance(manifest, dict) and (sr_raw is None or (isinstance(sr_raw, dict) and not sr_raw))
     def bail_signal() -> bool:
-        if stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=manifest, pr=pr):
-            return False
-        fs = run_dir / "final-summary.md"
-        if not fs.is_file():
-            return False
-        for line in fs.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.strip():
-                return bool(_TERMINAL_RE.search(line.strip()))
-        return False
+        return _manifest_bail_signal(run_dir=run_dir, manifest=manifest, pr=pr)
     def nonempty_without_step9a1() -> bool:
-        return bool(sr) and "step9a1" not in sr
+        return _manifest_nonempty_without_step9a1(manifest)
     def cond(c: str, *, chain: bool = False) -> bool:
         if c == "always": return True
         if c == "step5":
@@ -589,15 +704,9 @@ def _scan_required( *,run_dir: Path, pr: int, required: Path | None) -> dict[str
             if empty_steps() and bail_signal() and not (has("token-report.json") or has("timing-report.json") or has("execution-issues.ndjson") or has("session-transcript.jsonl")): return False
             return has("token-report.json") or has("timing-report.json") or has("execution-issues.ndjson") or has("session-transcript.jsonl") or cond("step8")
         if c == "step8":
-            if steps_false("step8"): return False
-            if empty_steps() and bail_signal() and not has("version-bump-reasoning.md"): return False
-            return has("version-bump-reasoning.md") or has("final-summary.md") or cond("step9a1", chain=True)
+            return implement_step8_reachable(run_dir, manifest_dict)
         if c == "step9a1":
-            if steps_false("step9a1"): return False
-            if sr.get("step9a1") is True: return True
-            if empty_steps() and bail_signal() and not has("run-statistics.md"): return False
-            if bail_signal() and not has("run-statistics.md") and nonempty_without_step9a1(): return False
-            return has("run-statistics.md") if chain else True
+            return implement_step9a1_reachable(run_dir, manifest_dict, chain=chain, pr=pr)
         if c == "exn-agg-validate-fail":
             f = run_dir / "execution-issues.ndjson"
             return f.is_file() and "merged output failed validation" in f.read_text(encoding="utf-8", errors="replace")
@@ -948,7 +1057,7 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
             return int(str(value))
         except (TypeError, ValueError):
             return 0
-    de=dm=dc=db=dn=dskip=dch=0; partial=False; files=0
+    de=dm=dc=db=dn=dskip=dch=0; gout_runs=gout_pinned=gout_clean=gout_dropped=0; partial=False; files=0
     for f in d.glob("scan-results-*.ndjson"):
         files+=1; rows,_=_iter_ndjson(f)
         for r in rows:
@@ -962,7 +1071,14 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
                 if r.get("result")=="fail": dn+=num_or_zero(r.get("count"))
                 elif r.get("result")=="skip": dskip+=1
             elif r.get("scan")=="changelog-rebase-conflicts": dch+=num_or_zero(r.get("count"))
-    for k,v in [("SCAN_FILES_FOUND",files),("EXON_MISCLASSIFICATIONS",p_exon+de),("EXON_DELTA",de),("OOS_CATEGORIES_MANGLED",p_mang+dm),("OOS_MANGLED_DELTA",dm),("OOS_CATEGORIES_CLEAN",p_clean+dc),("OOS_CLEAN_DELTA",dc),("OOS_CATEGORIES_BLANK",p_blank+db),("OOS_BLANK_DELTA",db),("NS_RETRIES_CURSOR_SPECIALIST",p_ns+dn),("NS_RETRIES_DELTA",dn),("NS_RETRIES_SKIPPED_RUNS",dskip),("CHANGELOG_REBASE_CONFLICTS",p_ch+dch),("CHANGELOG_DELTA",dch)]: print(f"{k}={v}")
+            elif r.get("scan")=="guideline-ship-outcome" and r.get("result")=="pass":
+                gout_runs += 1
+                outcome = str(r.get("outcome") or "")
+                if outcome == "pinned": gout_pinned += 1
+                elif outcome == "clean": gout_clean += 1
+                elif outcome == "dropped": gout_dropped += 1
+    gout_drop_rate_bps = int((gout_dropped * 10000) / gout_runs) if gout_runs else 0
+    for k,v in [("SCAN_FILES_FOUND",files),("EXON_MISCLASSIFICATIONS",p_exon+de),("EXON_DELTA",de),("OOS_CATEGORIES_MANGLED",p_mang+dm),("OOS_MANGLED_DELTA",dm),("OOS_CATEGORIES_CLEAN",p_clean+dc),("OOS_CLEAN_DELTA",dc),("OOS_CATEGORIES_BLANK",p_blank+db),("OOS_BLANK_DELTA",db),("NS_RETRIES_CURSOR_SPECIALIST",p_ns+dn),("NS_RETRIES_DELTA",dn),("NS_RETRIES_SKIPPED_RUNS",dskip),("CHANGELOG_REBASE_CONFLICTS",p_ch+dch),("CHANGELOG_DELTA",dch),("GUIDELINE_OUTCOME_RUNS",gout_runs),("GUIDELINE_OUTCOME_PINNED",gout_pinned),("GUIDELINE_OUTCOME_CLEAN",gout_clean),("GUIDELINE_OUTCOME_DROPPED",gout_dropped),("GUIDELINE_DROP_RATE_BPS",gout_drop_rate_bps)]: print(f"{k}={v}")
     print(f"CATEGORY_STATS_PARTIAL={str(partial).lower()}")
     return 0
 

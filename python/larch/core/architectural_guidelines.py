@@ -41,6 +41,7 @@ MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
 DURABLE_NOTE = "architectural-guideline-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
 DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"
+GUIDELINE_SHIP_OUTCOME_SIDECAR = "architectural-guideline-outcome.json"
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
@@ -83,6 +84,7 @@ class ComposeMaterializationResult:
     diff_path: Path | None = None
     guidelines_status: str = ""
     guidelines_path: str = ""
+    assessment_kind: str = ""
     warning: str = ""
 
 
@@ -244,6 +246,10 @@ def design_assessment_path(design_tmpdir: Path) -> Path:
 
 def dropped_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DROPPED_NOTE_ARTIFACT
+
+
+def guideline_ship_outcome_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / GUIDELINE_SHIP_OUTCOME_SIDECAR
 
 
 def _validate_design_tmpdir_arg(candidate: str) -> Path:
@@ -419,6 +425,7 @@ def clear_staged_and_dropped_artifacts(implement_tmpdir: Path) -> None:
         STAGED_ASSESSMENT,
         STAGED_ASSESSMENT_ENV,
         DROPPED_NOTE_ARTIFACT,
+        GUIDELINE_SHIP_OUTCOME_SIDECAR,
     ):
         path = implement_tmpdir / name
         try:
@@ -469,6 +476,8 @@ def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: st
             f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
             f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
             f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
+            f"GUIDELINES_STATUS={_env_escape(metadata.get('GUIDELINES_STATUS', 'present'))}",
+            f"ASSESSMENT_KIND={_env_escape(metadata.get('ASSESSMENT_KIND', ''))}",
             f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
             "",
         ]
@@ -690,6 +699,7 @@ _INVALIDATE_ARTIFACTS = (
     DURABLE_NOTE,
     DURABLE_NOTE_ENV,
     DROPPED_NOTE_ARTIFACT,
+    GUIDELINE_SHIP_OUTCOME_SIDECAR,
 )
 
 
@@ -722,14 +732,63 @@ def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
     return _read_env(_durable_meta_path(implement_tmpdir))
 
 
-def note_consumable(*, implement_tmpdir: Path, head_sha: str) -> bool:
+def note_consumable(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
     """Return true when the durable note is safe to surface for head_sha."""
     note = durable_note_path(implement_tmpdir)
     meta = _durable_meta_path(implement_tmpdir)
     if not note.is_file() or note.is_symlink() or not meta.is_file() or meta.is_symlink():
         return False
     metadata = _read_env(meta)
-    return metadata.get("STATUS") == "present" and metadata.get("HEAD_SHA") == head_sha
+    if metadata.get("STATUS") != "present":
+        return False
+    if metadata.get("HEAD_SHA") == head_sha:
+        return True
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if not resolved_base or repo_root is None:
+        return False
+    stored_head = metadata.get("HEAD_SHA", "")
+    if not _head_change_larch_logs_only(
+        repo_root=repo_root,
+        old_head=stored_head,
+        new_head=head_sha,
+    ):
+        return False
+    return not note_fingerprint_stale(
+        implement_tmpdir,
+        base_ref=resolved_base,
+        repo_root=repo_root,
+    )
+
+
+def _head_change_larch_logs_only(
+    *,
+    repo_root: str | Path,
+    old_head: str,
+    new_head: str,
+) -> bool:
+    if not old_head or not new_head:
+        return False
+    try:
+        root = Path(repo_root).resolve()
+    except OSError:
+        return False
+    completed = subprocess.run(
+        ["git", "diff", "--name-only", f"{old_head}..{new_head}", "--"],  # noqa: S607
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return False
+    paths = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    return bool(paths) and all(path == "larch-logs" or path.startswith("larch-logs/") for path in paths)
 
 
 def note_fingerprint_stale(
@@ -752,6 +811,17 @@ def note_fingerprint_stale(
     return live_fp != stored_fp
 
 
+def clear_guideline_ship_outcome(implement_tmpdir: Path) -> None:
+    path = guideline_ship_outcome_path(implement_tmpdir)
+    try:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif _artifact_still_present(path):
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _write_compose_materialization_metadata(
     *,
     implement_tmpdir: Path,
@@ -771,6 +841,7 @@ def _write_compose_materialization_metadata(
                 f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
                 f"GUIDELINES_STATUS={_env_escape(materialized.guidelines_status)}",
                 f"GUIDELINES_PATH={_env_escape(materialized.guidelines_path)}",
+                f"ASSESSMENT_KIND={_env_escape(materialized.assessment_kind)}",
                 f"WRITTEN_AT={written_at}",
                 "",
             ]

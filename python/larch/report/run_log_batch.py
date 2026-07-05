@@ -78,6 +78,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "session-transcript": BatchInfo(".jsonl", "replace", "none"),
     "vendor-failure-diagnostics": BatchInfo(".txt", "replace", "none"),
     "plan-goals-test": BatchInfo(".md", "replace", "plan-goals"),
+    config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
 }
 

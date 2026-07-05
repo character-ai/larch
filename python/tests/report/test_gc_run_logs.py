@@ -200,6 +200,8 @@ def test_keep_file_retains_design_token_ledger() -> None:
     assert keep(filename="session-id", skill="design")
     assert keep(filename="architectural-guideline-assessment.md", skill="design")
     assert not keep(filename="architectural-guideline-assessment.md", skill="implement")
+    assert keep(filename="architectural-guideline-outcome.json", skill="implement")
+    assert not keep(filename="architectural-guideline-outcome.json", skill="design")
     assert not keep(filename="session-id", skill="implement")
 
 

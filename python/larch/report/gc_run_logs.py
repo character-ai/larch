@@ -19,10 +19,10 @@ from larch.core import logging_util
 SKILLS = ("design", "implement", "review")
 COMMON_KEEP = {"manifest.json", "final-summary.md", "difficulty-rating.json", "gc-slimmed"}
 SKILL_KEEP = {
-    "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md", "checks-digest-sizes.tsv"},
+    "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md", "checks-digest-sizes.tsv", "architectural-guideline-outcome.json"},
     # session-id disambiguates multiple larch-tokens-*.jsonl ledgers for report_tokens_scan.
     "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id", "architectural-guideline-assessment.md"},
-    "review": {"checks-digest-sizes.tsv"},
+    "review": {"checks-digest-sizes.tsv", "architectural-guideline-outcome.json"},
 }
 
 

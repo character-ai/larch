@@ -3,14 +3,42 @@
 
 from __future__ import annotations
 
+import json
 from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import architectural_guidelines
 from larch.core import logging_util
+from larch.core import redact
 from larch.errors import ShipError
 from larch.git import pr_body
 from larch.report import run_logs
+
+OUTCOME_PINNED = "pinned"
+OUTCOME_CLEAN = "clean"
+OUTCOME_DROPPED = "dropped"
+GUIDELINE_SHIP_OUTCOMES = frozenset({OUTCOME_PINNED, OUTCOME_CLEAN, OUTCOME_DROPPED})
+
+REASON_NOTE_PINNED = "note-pinned"
+REASON_CLEAN_NOTE = "clean-note"
+REASON_GUIDELINES_ABSENT = "guidelines-absent"
+REASON_GUIDELINES_INVALID = "guidelines-invalid"
+REASON_NOTE_READ_FAILED = "note-read-failed"
+REASON_NOTE_REDACTION_FAILED = "note-redaction-failed"
+REASON_COMPOSE_MATERIALIZATION_FAILED = "compose-materialization-failed"
+REASON_UNKNOWN = "unknown"
+GUIDELINE_SHIP_REASON_TOKENS = frozenset(
+    {
+        REASON_NOTE_PINNED,
+        REASON_CLEAN_NOTE,
+        REASON_GUIDELINES_ABSENT,
+        REASON_GUIDELINES_INVALID,
+        REASON_NOTE_READ_FAILED,
+        REASON_NOTE_REDACTION_FAILED,
+        REASON_COMPOSE_MATERIALIZATION_FAILED,
+        REASON_UNKNOWN,
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -19,6 +47,125 @@ class GuidelinesGateResult:
     needs_assessment: bool = False
     warning_logged: bool = False
     detail: str = ""
+    guidelines_status: str = ""
+    assessment_kind: str = ""
+    reason: str = ""
+
+
+@dataclass(frozen=True)
+class GuidelinesShipOutcome:
+    schema_version: str
+    phase: str
+    step: str
+    outcome: str
+    reason: str
+    detail: str
+    guidelines_status: str
+    head_sha: str
+    base_ref: str
+    assessment_kind: str
+
+    def as_json(self) -> dict[str, str]:
+        return {
+            "schema_version": self.schema_version,
+            "phase": self.phase,
+            "step": self.step,
+            "outcome": self.outcome,
+            "reason": self.reason,
+            "detail": self.detail,
+            "guidelines_status": self.guidelines_status,
+            "head_sha": self.head_sha,
+            "base_ref": self.base_ref,
+            "assessment_kind": self.assessment_kind,
+        }
+
+
+def _assessment_kind(note: str) -> str:
+    if not note.strip():
+        return ""
+    if note.rstrip("\n") == architectural_guidelines.CLEAN_PRESENTATION_NOTE:
+        return "clean"
+    return "deviation"
+
+
+def _bounded_detail(text: str) -> str:
+    clean = logging_util.sanitize_diagnostic_line(redact.redact_outbound(text or ""))
+    return clean[:500]
+
+
+def _write_json_atomic(*, path: Path, data: dict[str, str]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    tmp = path.with_name(path.name + ".tmp")
+    tmp.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    tmp.replace(path)
+
+
+def _classify_ship_outcome(
+    *,
+    result: GuidelinesGateResult,
+    head_sha: str,
+    base_ref: str,
+) -> GuidelinesShipOutcome:
+    guidelines_status = result.guidelines_status
+    if guidelines_status not in {"present", "absent", "invalid"}:
+        guidelines_status = "present" if result.note else "absent"
+    assessment_kind = result.assessment_kind or _assessment_kind(result.note)
+    reason = result.reason
+    if guidelines_status == "absent":
+        outcome = OUTCOME_CLEAN
+        reason = REASON_GUIDELINES_ABSENT
+        assessment_kind = ""
+    elif guidelines_status == "invalid":
+        outcome = OUTCOME_CLEAN
+        reason = REASON_GUIDELINES_INVALID
+        assessment_kind = ""
+    elif result.note and assessment_kind == "clean":
+        outcome = OUTCOME_CLEAN
+        reason = reason or REASON_CLEAN_NOTE
+    elif result.note:
+        outcome = OUTCOME_PINNED
+        reason = reason or REASON_NOTE_PINNED
+    else:
+        outcome = OUTCOME_DROPPED
+        reason = reason or REASON_COMPOSE_MATERIALIZATION_FAILED
+    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
+        reason = REASON_UNKNOWN
+    return GuidelinesShipOutcome(
+        schema_version="1",
+        phase="implement",
+        step="8",
+        outcome=outcome,
+        reason=reason,
+        detail=_bounded_detail(result.detail),
+        guidelines_status=guidelines_status,
+        head_sha=_bounded_detail(head_sha),
+        base_ref=_bounded_detail(base_ref),
+        assessment_kind=assessment_kind if assessment_kind in {"clean", "deviation"} else "",
+    )
+
+
+def clear_guideline_ship_outcome_sidecar(*, implement_tmpdir: str) -> None:
+    if not implement_tmpdir:
+        return
+    architectural_guidelines.clear_guideline_ship_outcome(Path(implement_tmpdir))
+
+
+def write_guideline_ship_outcome(
+    *,
+    implement_tmpdir: str,
+    result: GuidelinesGateResult,
+    head_sha: str,
+    base_ref: str,
+) -> GuidelinesShipOutcome | None:
+    """Write the durable Step 8 guideline outcome sidecar for terminal gate results."""
+    if result.needs_assessment or not implement_tmpdir:
+        return None
+    outcome = _classify_ship_outcome(result=result, head_sha=head_sha, base_ref=base_ref)
+    _write_json_atomic(
+        path=architectural_guidelines.guideline_ship_outcome_path(Path(implement_tmpdir)),
+        data=outcome.as_json(),
+    )
+    return outcome
 
 
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> bool:
@@ -73,8 +220,19 @@ def _pin_or_invalidate_guidelines_note(
     return False
 
 
-def _read_current_guidelines_note(*, tmpdir: Path, head_sha: str) -> GuidelinesGateResult:
-    if not architectural_guidelines.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha):
+def _read_current_guidelines_note(
+    *,
+    tmpdir: Path,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | None = None,
+) -> GuidelinesGateResult:
+    if not architectural_guidelines.note_consumable(
+        implement_tmpdir=tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    ):
         return GuidelinesGateResult()
     try:
         note = architectural_guidelines.durable_note_path(tmpdir).read_text(
@@ -87,22 +245,97 @@ def _read_current_guidelines_note(*, tmpdir: Path, head_sha: str) -> GuidelinesG
             message=f"architectural-guidelines note read failed: {exc}",
         )
         return GuidelinesGateResult(
-            needs_assessment=True,
+            needs_assessment=False,
             warning_logged=warning_logged,
-            detail="architectural-guidelines assessment required before PR body compose",
+            detail=f"architectural-guidelines note read failed: {exc}",
+            guidelines_status="present",
+            reason=REASON_NOTE_READ_FAILED,
         )
     try:
-        return GuidelinesGateResult(note=pr_body.redact_pr_body(note).strip())
+        redacted_note = pr_body.redact_pr_body(note).strip()
+        metadata = architectural_guidelines.durable_note_metadata(tmpdir)
+        return GuidelinesGateResult(
+            note=redacted_note,
+            guidelines_status=metadata.get("GUIDELINES_STATUS", "present") or "present",
+            assessment_kind=metadata.get("ASSESSMENT_KIND", "") or _assessment_kind(redacted_note),
+        )
     except ShipError as exc:
         warning_logged = _log_guidelines_ship_warning(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines note redaction failed: {exc}",
         )
         return GuidelinesGateResult(
-            needs_assessment=True,
+            needs_assessment=False,
             warning_logged=warning_logged,
-            detail="architectural-guidelines assessment required before PR body compose",
+            detail=f"architectural-guidelines note redaction failed: {exc}",
+            guidelines_status="present",
+            reason=REASON_NOTE_REDACTION_FAILED,
         )
+
+
+def _current_guidelines_result(
+    *,
+    current: GuidelinesGateResult,
+    tmpdir: Path,
+    base_ref: str,
+    repo_root: str | None,
+) -> GuidelinesGateResult | None:
+    if current.note:
+        if repo_root is not None and base_ref and architectural_guidelines.note_fingerprint_stale(
+            tmpdir,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        ):
+            return None
+        return current
+    if current.needs_assessment or current.reason:
+        return current
+    return None
+
+
+def _warning_for_prepared(*, tmpdir: Path, warning: str) -> bool:
+    if not warning:
+        return False
+    return _log_guidelines_ship_warning(
+        implement_tmpdir=tmpdir,
+        message=f"architectural-guidelines compose materialization skipped: {warning}",
+    )
+
+
+def _prepared_guidelines_result(
+    *,
+    prepared: architectural_guidelines.ComposeMaterializationResult,
+    tmpdir: Path,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | None,
+) -> GuidelinesGateResult:
+    if prepared.status == "current":
+        return _read_current_guidelines_note(
+            tmpdir=tmpdir,
+            head_sha=head_sha,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        )
+    if prepared.status == "assessment-required":
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            detail="architectural-guidelines assessment required before PR body compose",
+            guidelines_status=prepared.guidelines_status,
+        )
+    if prepared.status in {"absent", "invalid"}:
+        return GuidelinesGateResult(
+            warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
+            detail=prepared.warning,
+            guidelines_status=prepared.guidelines_status or prepared.status,
+            reason=REASON_GUIDELINES_INVALID if prepared.status == "invalid" else REASON_GUIDELINES_ABSENT,
+        )
+    return GuidelinesGateResult(
+        warning_logged=_warning_for_prepared(tmpdir=tmpdir, warning=prepared.warning),
+        detail=prepared.warning,
+        guidelines_status=prepared.guidelines_status or "present",
+        reason=REASON_COMPOSE_MATERIALIZATION_FAILED,
+    )
 
 
 def load_or_prepare_guidelines_note(
@@ -117,17 +350,18 @@ def load_or_prepare_guidelines_note(
     if not implement_tmpdir or not head_sha:
         return GuidelinesGateResult()
     tmpdir = Path(implement_tmpdir)
-    current = _read_current_guidelines_note(tmpdir=tmpdir, head_sha=head_sha)
-    if current.note:
-        if repo_root is not None and base_ref and architectural_guidelines.note_fingerprint_stale(
-            tmpdir,
+    current = _current_guidelines_result(
+        current=_read_current_guidelines_note(
+            tmpdir=tmpdir,
+            head_sha=head_sha,
             base_ref=base_ref,
             repo_root=repo_root,
-        ):
-            current = GuidelinesGateResult()
-        else:
-            return current
-    if current.needs_assessment:
+        ),
+        tmpdir=tmpdir,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    )
+    if current is not None:
         return current
     prepared = architectural_guidelines.prepare_compose_assessment(
         implement_tmpdir=tmpdir,
@@ -135,20 +369,13 @@ def load_or_prepare_guidelines_note(
         forked_target=forked_target,
         expected_head_sha=head_sha,
     )
-    if prepared.status == "current":
-        return _read_current_guidelines_note(tmpdir=tmpdir, head_sha=head_sha)
-    if prepared.status == "assessment-required":
-        return GuidelinesGateResult(
-            needs_assessment=True,
-            detail="architectural-guidelines assessment required before PR body compose",
-        )
-    warning_logged = False
-    if prepared.warning:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-guidelines compose materialization skipped: {prepared.warning}",
-        )
-    return GuidelinesGateResult(warning_logged=warning_logged)
+    return _prepared_guidelines_result(
+        prepared=prepared,
+        tmpdir=tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    )
 
 
 # Backward-compatible alias for old unit tests. It no longer pins staged notes.

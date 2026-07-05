@@ -34,6 +34,7 @@ larch-logs/
       codex-impl-manifest-raw.json
       plan-review-tally.json
       difficulty-rating.json
+      architectural-guideline-outcome.json
       code-review-tally.json
       review-findings-full.jsonl
       final-summary.md
@@ -90,6 +91,21 @@ artifact before approval, so no stale copy is committed. The artifact publishes
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
 `python/cli.py audit-runs scan-run --skill design`.
+
+### implement architectural guideline outcome
+
+`larch-logs/implement/<RUN_ID>/architectural-guideline-outcome.json` is the
+durable Step 8 compose-time outcome for the implement PR body guideline note.
+It records whether the note was `pinned`, was `clean`, or was `dropped`, plus a
+stable reason token, redacted detail, `head_sha`, `base_ref`,
+`guidelines_status`, and `assessment_kind`.
+
+The artifact is written for terminal Step 8 guideline results. Runs that still
+need the operator's architectural-guideline assessment do not write a partial
+outcome. The audit scan treats missing artifacts below
+`GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION`, and runs that did not reach Step 8,
+as informational. At or above that cutover, Step 8-eligible missing, malformed,
+empty, or symlinked artifacts fail.
 
 ### In-loop refresh sidecars
 
@@ -595,7 +611,7 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 **Default policy (slim)**:
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
-- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
+- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `architectural-guideline-outcome.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
 - The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - The consumer-core keep set for `/review` dirs includes `manifest.json`, `final-summary.md`, `difficulty-rating.json`, and `checks-digest-sizes.tsv`, so digest savings telemetry survives default slimming before enough samples accrue.
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
