@@ -55,6 +55,12 @@ _SITE_LABELS: Final[dict[str, str]] = {
     "ship-pr-ci-merge": "ship-pr CI merge",
     "ship-pr-ci-per-job": "ship-pr CI per-job",
 }
+_NO_CHANGES_STALE_MAIN_AGENT_SITES: Final[frozenset[str]] = frozenset({
+    "step3",
+    "step5-self-review",
+    "step5-mav",
+    "step6",
+})
 _PROMPT_TAIL_BYTES: Final = 60000
 _RUN_EXTERNAL_TIMEOUT: Final = 300
 _LINT_FIX_TOTAL_BUDGET_SECONDS: Final = 600
@@ -231,12 +237,57 @@ def _print_loop_ledger(loop: LoopResult) -> None:
         print(f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={loop.ledger_failure_detail_log}")
 
 
-def _repair_loop_action(status: str) -> str:
-    if status == "ok":
+def _repair_loop_action(
+    loop: LoopResult,
+    *,
+    lint_site: str,
+    checks_log: str,
+    allowed_tmpdir: Path,
+) -> str:
+    if loop.status == "ok":
         return "continue"
-    if status == "main-agent-required":
+    if loop.status == "main-agent-required":
+        return "main-agent-edit"
+    if _populate_no_changes_stale_ledger(
+        loop=loop,
+        lint_site=lint_site,
+        checks_log=checks_log,
+        allowed_tmpdir=allowed_tmpdir,
+    ):
         return "main-agent-edit"
     return "stall"
+
+
+def _site_supports_no_changes_stale_main_agent(site: str) -> bool:
+    return site in _NO_CHANGES_STALE_MAIN_AGENT_SITES
+
+
+def _populate_no_changes_stale_ledger(
+    *,
+    loop: LoopResult,
+    lint_site: str,
+    checks_log: str,
+    allowed_tmpdir: Path,
+) -> bool:
+    if loop.status != "no-changes-stale":
+        return False
+    if not _site_supports_no_changes_stale_main_agent(lint_site):
+        return False
+    log_path = resolve_checks_log_path(
+        candidate=checks_log,
+        allowed_root=allowed_tmpdir,
+    )
+    if log_path is None:
+        return False
+    loop.ledger_ready = True
+    loop.ledger_site = _ledger_site_for_lint_site(lint_site)
+    loop.ledger_trigger = _ledger_trigger_for_lint_site(lint_site)
+    loop.ledger_step = _ledger_step_for_site(lint_site)
+    loop.ledger_phase = _ledger_phase_for_site(lint_site)
+    loop.ledger_dispatcher = "lint-fix-loop"
+    loop.ledger_exit_code = 1
+    loop.ledger_failure_detail_log = str(log_path)
+    return True
 
 
 def _valid_checks_site(site: str) -> bool:
@@ -345,7 +396,12 @@ def checks_repair_loop_main(argv: list[str] | None = None) -> int:
     finally:
         stop_heartbeat.set()
         heartbeat.join(timeout=_REPAIR_LOOP_HEARTBEAT_JOIN_TIMEOUT_S)
-    action = _repair_loop_action(loop.status)
+    action = _repair_loop_action(
+        loop=loop,
+        lint_site=lint_site,
+        checks_log=args.checks_log,
+        allowed_tmpdir=canonical_tmp,
+    )
     print(f"NEXT_ACTION={action}")
     print(f"LOOP_STATUS={loop.status}")
     if loop.stderr_tail_path:
