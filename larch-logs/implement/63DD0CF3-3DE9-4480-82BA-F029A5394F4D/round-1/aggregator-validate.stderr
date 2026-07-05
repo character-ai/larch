@@ -1,0 +1,2 @@
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Treat imported `logging_util` output helpers as sinks (import-aware matching), a')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_3 not traceable to scoped input (first 80 chars: 'Skip lines whose first non-whitespace character is `>`, or restrict inline-templ')
