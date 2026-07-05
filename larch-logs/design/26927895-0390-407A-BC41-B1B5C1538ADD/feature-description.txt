@@ -1,0 +1,67 @@
+# [BUG] Design round Gantt never renders the Gate B apply (gate-b-apply row unwritten)
+
+## Summary
+
+The `/design` final-summary "Round N reviewer timing" Gantt never shows the post-voting **Gate B apply** bar (the coder applying accepted plan-review findings, plus dedup and postplan validation). That span is frequently ~half of a round's wall-clock, so the chart silently under-accounts the round: reviewer and voter bars render, then the window extends into empty space where the apply work happened.
+
+Root cause: the synthetic `gate-b-apply` timing row is **never written**. `_gate_b_apply_start_s` filters candidate rows with `cols[3] != "design"`, but design plan-review vendor rows are recorded with `skill="implement"` (so `col[3] == "implement"`). Every candidate row is skipped, the anchor is never found, the function returns `None`, and `_record_gate_b_apply_timing_from_round_window` bails before recording. The filter and the feature shipped together in #6068, so the feature has been inert in design runs since it landed.
+
+## Original report
+
+Discovered live during a `/design` run. The user observed that the round-timing Gantt covers the whole round and reflects voting, but the phase that runs *after* voting — which took roughly half the round — does not appear on the chart, and asked for the root cause with detailed context and root-cause analysis.
+
+## Reproduction scenario
+
+1. Run `/design` on any issue that yields at least one accepted plan-review finding (so Gate B applies at least once).
+2. After the run, inspect the run's `timing-ledger.tsv`:
+   - `grep -c 'gate-b-apply' timing-ledger.tsv` → `0`.
+   - `awk -F'\t' '$1=="v1"&&$2=="vendor"{print $4}' timing-ledger.tsv | sort -u` → `implement` only (never `design`).
+3. Open the committed `final-summary.md` "Round N reviewer timing" Gantt: reviewer and voter bars render, but there is **no** `*/apply` (gate-b-apply) bar, and the window extends past the last voter into unlabeled empty space.
+
+Confirmed across committed history: `grep -rl 'gate-b-apply' larch-logs/design/*/timing-ledger.tsv` matches **0 of 357** design ledgers.
+
+## Expected behavior
+
+Per #6068's intent (`_CODER_APPLY_TASK_KINDS` includes `gate-b-apply`; `_cap_gantt_rows_reserving_apply` reserves a row so the late-starting apply lane is never truncated), each design round's Gantt should render a `claude/apply` (gate-b-apply) bar spanning `[last reviewer/voter end -> round end]`, so the post-voting apply/dedup/postplan work is visible and the round window is fully accounted for.
+
+## Observed behavior
+
+No `gate-b-apply` row is ever written to the design timing ledger, so no apply bar renders. The round Gantt window (derived from `v1 round` rows, which correctly carry `skill="design"`) extends to the post-apply end, but the tail is an empty gap instead of a labeled bar. The apply period — often ~50% of the round — is invisible.
+
+## Root cause analysis
+
+Two layers, one immediate cause:
+
+1. **Immediate cause — skill-label filter mismatch.** `TimingLedger.record_vendor_task` writes the ledger's skill into `col[3]` (`row = ["v1", "vendor", ts, _san(self.skill), "-", vendor, task_kind, start, end, dur, output, exit, status]`). The design plan-review reviewer, voter, aggregator, and drafter vendor rows are written by a ledger whose skill is **`implement`**, so `col[3] == "implement"` for all of them. `_gate_b_apply_start_s` (in `plan_review_loop.py`) computes the apply-span anchor by scanning vendor rows but skips any row where `cols[3] != "design"`. With every candidate row labeled `implement`, the loop finds no rows, `latest_end_s` stays `None`, and the function returns `None`. `_record_gate_b_apply_timing_from_round_window` then returns before calling `record_vendor_task`, so the `gate-b-apply` row is never appended.
+
+2. **Contributing label inconsistency.** Within a single design run the ledger is internally inconsistent: `v1 round` rows carry `skill="design"` (correct), while `v1 vendor` rows for the same design plan-review carry `skill="implement"`. The apply-anchor search keys on `design`; the actual reviewer rows say `implement`; they never meet.
+
+Why it never surfaced: the `cols[3] != "design"` guard was introduced in the very commit that added the apply-Gantt feature (`b388d30c4`, Fixes #6068). The feature therefore never produced output in design runs — it has been dead code from introduction. The renderer itself is not at fault: `_progress_vendor_rows` does not filter on skill and would render a `gate-b-apply` row if one existed; and `_timing_round_windows` derives the window from `v1 round` rows, so the window already spans the apply period. The only missing piece is the row itself.
+
+## Evidence
+
+- Vendor-row schema: `python/larch/report/timing.py` `record_vendor_task` writes `col[3] = _san(self.skill)`.
+- Live run ledger: 0 `gate-b-apply` rows despite two Gate B applies; all 15 design plan-review vendor rows have `col[3]=="implement"`, 0 have `"design"`; `.gate-b-postapply-ready-*` markers present and `_write_design_round_meta` reached `awaiting-continuation` (so the record path ran).
+- Committed history: 0 of 357 `larch-logs/design/*/timing-ledger.tsv` contain any `gate-b-apply` row.
+- Filter site: `python/larch/review/plan_review_loop.py` `_gate_b_apply_start_s` — `if len(cols) < TIMING_VENDOR_MIN_COLS or cols[0] != "v1" or cols[1] != "vendor" or cols[3] != "design": continue`.
+- Record site: `python/larch/review/plan_review_loop.py` `_record_gate_b_apply_timing_from_round_window` returns when `_gate_b_apply_start_s(...) is None`.
+- Renderer (not buggy): `python/larch/report/progress_report.py` `_progress_vendor_rows` (no skill filter), `_cap_gantt_rows_reserving_apply` (reserves apply lane), and `_timing_round_windows` in `python/larch/report/_progress_report_live.py` (window from `v1 round` rows only).
+- Provenance: `git log -S 'cols[3] != "design"' -- python/larch/review/plan_review_loop.py` → `b388d30c4 Fixes #6068`.
+
+## Affected files
+
+- `python/larch/review/plan_review_loop.py` — `_gate_b_apply_start_s` (over-strict `cols[3] != "design"` filter) and `_record_gate_b_apply_timing_from_round_window`. Primary defect site.
+- Design plan-review timing writers that label vendor rows `skill="implement"` (review dispatch / `launch-*-review` path via `LARCH_TIMING_SKILL`, surfaced through `python/larch/review/plan_review_panel.py`). Source of the mismatched `col[3]`.
+- `python/larch/report/progress_report.py` and `python/larch/report/_progress_report_live.py` — renderer and window derivation; not buggy, but the consumers whose output is empty as a result.
+
+## Suggested fix(es)
+
+- **Minimal, targeted:** correct `_gate_b_apply_start_s` so it does not exclude the real design plan-review vendor rows — drop the `cols[3] != "design"` skill check (the renderer already ignores skill and the ledger is per-run), or match the actual skill the design rows carry. Add a regression that feeds a ledger of reviewer rows labeled `implement` plus a `v1 round` row and asserts a `gate-b-apply` row is written spanning `[last reviewer end -> round end]`.
+- **Correctness-of-label (broader):** record design plan-review reviewer/voter/aggregator/drafter vendor rows with `skill="design"` so the ledger is internally consistent, and keep the anchor filter robust to the actual skill. This is more invasive because the labeling comes from the shared review-dispatch/launcher layer used by both `/design` and `/implement`; audit downstream consumers keyed on `col[3]` (token/cost and timing aggregation, `--skill` reports) before changing it.
+- **End-to-end guard:** add a test that a design run with at least one applied finding yields a `gate-b-apply` ledger row and that `render_phase_detail` renders the apply bar within the round window.
+
+## Open questions
+
+- Is `skill="implement"` on design plan-review vendor rows intentional (shared dispatch) or itself a latent mislabel? The answer decides whether the fix belongs in the filter (`_gate_b_apply_start_s`) or in the row writer.
+- If the vendor rows are relabeled to `design`, which downstream consumers key on `col[3]` and would shift (token/cost reports, `report-tokens --skill`, timing aggregation, calibration)?
+- Does the same inert-filter pattern affect the `/implement` apply lanes, or only design? (`/implement` apply rows use real `*/apply` task kinds recorded as timed vendor tasks, so they likely render; worth a quick confirm.)
