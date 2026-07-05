@@ -20,9 +20,9 @@ Design an implementation plan and review it with the mechanical plan-review pane
 | `--no-dedup` | `false` | Forward to `/larch:issue` when the verbal path creates a tracking issue |
 | `--run-id <ID>` | empty | Optional run identifier |
 
-**Mutual exclusion**: at most one `--per-round-approval` and at most one `--skip-approve` / `-s` may appear on argv; duplicates are hard errors before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive — both may appear together. Any other unrecognized or disallowed leading public `--` flag (including retired `--approve` and `--hard`) is a hard error before Step 0 (never swallowed as positional/verbal feature text).
+**Mutual exclusion**: at most one `--per-round-approval` and at most one `--skip-approve` / `-s` may appear on argv; duplicates are hard errors before Step 0. `--per-round-approval` and `--skip-approve` are **not** mutually exclusive: both may appear together. Any other unrecognized or disallowed leading public `--` flag (including retired `--approve` and `--hard`) is a hard error before Step 0 (never swallowed as positional/verbal feature text).
 **Positional tail**: Step **0-pre** binds this as `POSITIONAL_KIND=issue|verbal|none` and `POSITIONAL_VALUE=<value>`; see `python/larch/design/design_argv.py` for classification details. `POSITIONAL_KIND=verbal` triggers `/larch:issue` first (forward `--no-dedup` when set), then binds `ISSUE_NUMBER` to the created issue and continues as the issue path.
-**Anti-halt continuation reminder.** Follow the step-boundary continuation core in `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md#anti-halt`, plus these `/design` deltas: after every visible output (plans, voting tallies, skip breadcrumbs), IMMEDIATELY continue; never end the turn on a Bash result, status line, deliverable-looking output, summary, handoff, status recap, or "returning to parent" message. For an Immediate-background Bash fence, "after child returns" means after the `<task-notification>` fires; the only allowed pause is the in-flight immediate-background yield after the launch ack. Do not parse stdout, consume result files, or advance steps before that notification. This applies from Step 0 through Step 6 and across sub-step transitions (1c→1d→1d.5→1d.7→2a(folded)→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6). Reach Step 1e Gate A only by re-entry from Gate B(c) or Gate C(b) (each → Step 1e, Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `python/cli.py design step5c` returns with `_publish_rc` 0, 1, or 3, or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46`, and no replacement for the structured `## /design run ...` block. After that driver handoff the only permitted orchestrator text is to follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only when `_publish_rc` is 0, 1, or 3, including `_publish_rc`=1 after plan-block-write failure; it emits shared verbatim final-summary text and sidecars. Do not omit, condense, wrap in `<details>`, or collapse `### Round N reviewer timing` Gantt sections. **Not** gated on `python/cli.py design render-final-summary` exit 0. **Narrow exception — Step 1d.5 and Step 1d.7 only**: after the brainstorm synthesis digest, the free-form discussion loop may yield between operator messages per `references/brainstorm.md`; after the Step 1d.7 design outline, the Refine loop may yield between operator messages per `references/design-outline.md`; never use `ScheduleWakeup`, scripted sleep-polling loops, or Monitor polling on either lane. Gate re-entry and Gate C Approve are explicit non-halt control flow; after Gate C Approve, enter Step 5 immediately with no further user message. **Critical: the implementation plan (Step 2b) is an intermediate deliverable, NOT the end of the design. Plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), post-approval diagram (Step 5b.5), and cleanup (Step 6) must still execute.** Architecture diagram work runs only at Step 5b.5 after Gate C Approve or `--skip-approve` auto-approve. **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). This rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`); a normal sequential `proceed to Step N+1` is the default continuation it reinforces, NOT an exception.
+**Anti-halt continuation reminder.** Follow the step-boundary continuation core in `${CLAUDE_PLUGIN_ROOT}/skills/shared/subskill-invocation.md#anti-halt`, plus these `/design` deltas: after every visible output (plans, voting tallies, skip breadcrumbs), IMMEDIATELY continue; never end the turn on a Bash result, status line, deliverable-looking output, summary, handoff, status recap, or "returning to parent" message. For an Immediate-background Bash fence, "after child returns" means after the `<task-notification>` fires; the only allowed pause is the in-flight immediate-background yield after the launch ack. Do not parse stdout, consume result files, or advance steps before that notification. This applies from Step 0 through Step 6 and across sub-step transitions (1c→1d→1d.5→1d.7→2a(folded)→2b→2b.5→3→3.5→3b→4→4b→5→5b→5b.5→5c.1→5c.5→5c.7→5c.8→6). Reach Step 1e Gate A only by re-entry from Gate B(c) or Gate C(b) (each → Step 1e, Shape 2); first-time entry skips Step 1e because Step 1d.7 outline-approval replaces Shape 1. After Step 5c `python/cli.py design step5c` returns with `_publish_rc` 0, 1, or 3, or after any cancellation outcome's Final summary block has written a non-empty summary file, NEVER write a free-form natural-language recap summary: no "Design complete." line, no artifact bullet list, no parenthetical cost paraphrase such as `~$10.46`, and no replacement for the structured `## /design run ...` block. After that driver handoff the only permitted orchestrator text is to follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only when `_publish_rc` is 0, 1, or 3, including `_publish_rc`=1 after plan-block-write failure; it emits shared verbatim final-summary text and sidecars. Do not omit, condense, wrap in `<details>`, or collapse `### Round N reviewer timing` Gantt sections. **Not** gated on `python/cli.py design render-final-summary` exit 0. **Narrow exception: Step 1d.5 and Step 1d.7 only**: after the brainstorm synthesis digest, the free-form discussion loop may yield between operator messages per `references/brainstorm.md`; after the Step 1d.7 design outline, the Refine loop may yield between operator messages per `references/design-outline.md`; never use `ScheduleWakeup`, scripted sleep-polling loops, or Monitor polling on either lane. Gate re-entry and Gate C Approve are explicit non-halt control flow; after Gate C Approve, enter Step 5 immediately with no further user message. **Critical: the implementation plan (Step 2b) is an intermediate deliverable, NOT the end of the design. Plan review (Step 3), Gate B (Step 3.5), Gate C (Step 4b), finalize (Step 5), post-approval diagram (Step 5b.5), and cleanup (Step 6) must still execute.** Architecture diagram work runs only at Step 5b.5 after Gate C Approve or `--skip-approve` auto-approve. **Step 3 MUST NOT start until Step 2b.5 completes** (including any `AskUserQuestion` branches there). This rule is strictly subordinate to any explicit non-sequential control-flow directive in THIS file (e.g., `skip to Step N`, `bail to cleanup`, `jump back`, `proceed to Step N`); a normal sequential `proceed to Step N+1` is the default continuation it reinforces, NOT an exception.
 
 ## Progress Reporting
 
@@ -30,7 +30,7 @@ Design an implementation plan and review it with the mechanical plan-review pane
 
 - Print a **start line** when entering a step: e.g., `> **🔶 /design 1c: questions**` (the first numbered step after Step 0 setup).
 - Do not print step completion lines; start breadcrumbs are the visible step markers.
-- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** `/design` is always invoked as a standalone skill; `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, and `PARENT_SKILL_PATH` are optional env-driven label prefixes from the outer orchestrator only — they are not a nested `/design` transport or a second skill instance.
+- When `STEP_NUM_PREFIX` is non-empty, prepend it to step numbers: `{STEP_NUM_PREFIX}{local_step}`. When `STEP_PATH_PREFIX` is non-empty, prepend it to breadcrumb paths: `{STEP_PATH_PREFIX} | {step_short_name}`. When `PARENT_SKILL_PATH` is non-empty, print the skill path as `{PARENT_SKILL_PATH}:/design`; otherwise print `/design`. **This rule overrides the literal skill paths, step numbers, and names in `Print:` directives and examples throughout this file.** `/design` is always invoked as a standalone skill; `STEP_NUM_PREFIX`, `STEP_PATH_PREFIX`, and `PARENT_SKILL_PATH` are optional env-driven label prefixes from the outer orchestrator only: they are not a nested `/design` transport or a second skill instance.
 
 **MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get the Step Name Registry (step number → short name mapping for progress breadcrumbs).
 
@@ -50,7 +50,7 @@ The Claude Code Bash tool does NOT preserve shell state between calls. Step 0a w
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-prelude.sh
 ```
 
-**Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences — their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see the maintainer-only sentinel host-table reference.
+**Phase 7 exception**: pure-LLM Steps **1c**, **1d**, and **1e** have no standalone prelude fences: their timing marks and absorbed completion sentinels are folded into adjacent real-work hosts (see **Completion sentinels** below). Step **1d.5** is explicitly **retained** as a standalone prelude because brainstorm paths can launch and collect external Bash work. Step **1d.7** is retained with a dedicated read-only fence for `SKIP_APPROVE_REQUESTED`; see the maintainer-only sentinel host-table reference.
 Wrapper scripts keep the conditional source behavior internally so pre-upgrade in-progress runs degrade silently and unexpected absence surfaces as the standard `set -u` unbound-variable error rather than a corrupted source call. Step 0 parse/setup wrappers create the env file before requiring it.
 Writer contract: `${CLAUDE_PLUGIN_ROOT}/python/session_env.py (session write-design-env)`; harness: `${CLAUDE_PLUGIN_ROOT}/python/test_session_env.py`.
 **Completion sentinels for pause/resume.** Maintainer-only folded sentinel contract, tradeoff, helper-coverage, and host-table details live in the reference. Load `${CLAUDE_PLUGIN_ROOT}/skills/design/references/sentinel-host-table.md` only when editing sentinel host mappings or debugging pause/resume sentinels. Normal `/design` orchestration does not load it.
@@ -69,7 +69,7 @@ Before invoking `/design`, internalize these questions; they guide drafting, rev
 ## Anti-patterns
 
 Consolidated NEVER rules from the steps below. Each gives WHY; step-local mentions remain where they carry context.
-**MANDATORY — READ ENTIRE FILE before composing user-facing `/design` prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing `/design` prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 1. **NEVER bypass folded Step 2a sentinel prep**. **Why:** Step 2b requires sentinels before drafting. **Apply:** the Step 2b drafter wrapper runs folded Step 2a prep, writes `NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty `dialectic-resolutions.md`, and `.completed/step-2a`, then drafts.
 
@@ -81,18 +81,18 @@ Consolidated NEVER rules from the steps below. Each gives WHY; step-local mentio
 5. **NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits.** **Why:** empty output is spurious (`set -m`, #5240); repeats can arrive pre-completion. **Apply in order:** (1) empty output → silent yield; (2) prefix-identical repeat (first 200 chars) for the same wait with the active wait's terminal sentinel absent → silent yield; (3) new or changed non-empty output → one foreground terminal-sentinel probe. Silent yield means call no tool: no Bash/`wc`/sentinel check/`ScheduleWakeup`/"still running" prose. See `skills/shared/design-background-wait.md`.
 6. **NEVER treat an AskUserQuestion no-response fallback as an operator answer.** **Why:** a 60-second platform fallback is no answer. **Apply:** when a `/design` `AskUserQuestion` returns the no-response fallback, do not choose, infer consent or cancellation, refine, or use "best judgment." Re-fire the identical `AskUserQuestion`, retry without a cap, and keep repeats quiet unless the tool must show the prompt. Terse real answers still count.
 
-<!-- step:0 — Session Setup -->
-## Step 0 — Session Setup
+<!-- step:0: Session Setup -->
+## Step 0: Session Setup
 
 Print: `> **🔶 /design 0: setup**`
 
-### 0-pre — Public argv validation (before session setup)
+### 0-pre: Public argv validation (before session setup)
 
 **When**: immediately before Step 0a. No `session setup`, `DESIGN_TMPDIR`, or Final summary block on this path.
 Do not run a separate `python/cli.py design parse-flags` fence. Step 0a's `design step0-session` wrapper runs Step 0-pre before `session setup`: it renders shell-quoted `<PUBLIC_ARGV_WORDS>`, keeps verbal tails positional, and aborts on parse failure. For manual debugging, invoke the raw parser with no leading `--`; a leading `--` stops flag parsing and forces the rest into verbal text.
 On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_KIND`, and `POSITIONAL_VALUE`.
 
-### 0a — Reviewer session (`DESIGN_TMPDIR`)
+### 0a: Reviewer session (`DESIGN_TMPDIR`)
 
 `/design` no longer creates or checks a feature branch; `/implement` owns that lifecycle. Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs. This skill calls `design step0-session` with `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
 
@@ -110,8 +110,8 @@ This writes `$DESIGN_TMPDIR/source-env.sh`, refreshes the stable symlink `~/.cac
 **Degraded-tools gate (#3207).** The Step 0a session wrapper runs the **Degraded-tools gate (Step 0)** procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` immediately after `session write-design-env` succeeds. It invokes `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent degraded-tools-gate` with explicit `--codex-binary-found` / `--codex-present` / `--cursor-binary-found` / `--cursor-present` flags from the session setup envelope and `--skill design`.
 Parse `STEP0_STATUS`, `DEGRADED`, `BOTH_DOWN`, optional `DEGRADED_HARD_FAIL`, and optional `DEGRADED_PROMPT_REQUIRED` from the Step 0a wrapper stdout (ignore unrelated lines). Branch on `STEP0_STATUS` before any later Step 0 work:
 
-- **`ok`** or **`degraded-one-down`** — proceed to Step 0b sub-step 1 (argv/issue binding). `degraded-one-down` means a prior explicit Continue sentinel exists.
-- **`needs-degraded-decision`**: this must be accompanied by `DEGRADED_PROMPT_REQUIRED=true`; the wrapper already printed the explanation block. Fire `AskUserQuestion` with **Continue (reduced panel — unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
+- **`ok`** or **`degraded-one-down`**: proceed to Step 0b sub-step 1 (argv/issue binding). `degraded-one-down` means a prior explicit Continue sentinel exists.
+- **`needs-degraded-decision`**: this must be accompanied by `DEGRADED_PROMPT_REQUIRED=true`; the wrapper already printed the explanation block. Fire `AskUserQuestion` with **Continue (reduced panel: unavailable tools dropped, no cross-tool or Claude padding)** / **Abort**; on **Continue**, write `$DESIGN_TMPDIR/.degraded-tools-gate-prompted` and proceed with reduced-panel dispatch; on **Abort**, run:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0-abort-cleanup
@@ -119,7 +119,7 @@ Parse `STEP0_STATUS`, `DEGRADED`, `BOTH_DOWN`, optional `DEGRADED_HARD_FAIL`, an
 
 and stop (run no further steps). **`degraded-both-down-hard-fail`** stops the skill in every mode with no Continue path. The `.degraded-tools-gate-prompted` sentinel is created only after an explicit Continue on the one-down path, and stale sentinels never permit both-down continuation.
 
-### 0b — Parse argv, issue binding, clarify / already-planned routers, init → `run-params.json`
+### 0b: Parse argv, issue binding, clarify / already-planned routers, init → `run-params.json`
 
 1. Consume only the Step **0-pre** bindings (`partition_requested`, `brainstorm_requested`, `no_dedup_requested`, optional `run_id`, `POSITIONAL_KIND`, `POSITIONAL_VALUE`). Do not re-scan `$ARGUMENTS`, the public argv tail, or allowlist membership here:
    - `POSITIONAL_KIND=issue` → route with `POSITIONAL_VALUE` as the numeric issue id.
@@ -178,7 +178,7 @@ Parameters:
 - after present: parse `FINAL_SUMMARY_PATH` from completed stdout, confirm empty readiness markers, then Read the disk file
 - extra guards: `WAIT` when absent is expected. When present, parse `FINAL_SUMMARY_PATH` from completed stdout, confirm empty readiness markers, then Read the disk file. When absent, yield without `ps` polling.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step-final-summary.sh --outcome "${SUMMARY_OUTCOME:?set SUMMARY_OUTCOME before Final summary block}"
@@ -190,7 +190,7 @@ After this cancellation fence's completed `design-step-final-summary.sh` `<task-
 See sibling contract `${CLAUDE_PLUGIN_ROOT}/python/design_summary.py` (implementation: `python/design_summary.py`).
 Auto error-reporting teardown lives in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md`; load it at Step 5 entry or while debugging failure reporting.
 
-### 0c — Plan-relevant symbol breadcrumb
+### 0c: Plan-relevant symbol breadcrumb
 
 Before plan drafting, run one codebase `Grep` pass for salient symbols from the issue/plan; if zero hits, print a single warning breadcrumb and continue (non-gating).
 After the Step 0c grep pass succeeds, run the folded discussion block fence below before continuing to Step 1c.
@@ -199,24 +199,24 @@ After the Step 0c grep pass succeeds, run the folded discussion block fence belo
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step0c
 ```
 
-<!-- step:1c — Clarifying Questions -->
+<!-- step:1c: Clarifying Questions -->
 
 Print: `> **🔶 /design 1c: questions**`
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely. Execute the Step 1c body in that file.
 `.completed/step-1c` is batch-written by the Step 1d.5 prelude fence when `brainstorm_requested` is true. On brainstorm-off elision, Step 1d.7 writes it before pause-check; folded Step 2a prep inside Step 2b drafter remains an idempotent repair host. It is not written at a Step 1c success boundary.
 
-<!-- step:1d — Design Discussion (Round 1) -->
+<!-- step:1d: Design Discussion (Round 1) -->
 
 Print: `> **🔶 /design 1d: discussion r1**`
 
-Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
+Execute the Step 1d body in `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md`. If already loaded at Step 1c, no need to re-load; otherwise **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/discussion-rounds.md` completely.
 `.completed/step-1d` is batch-written by the Step 1d.5 prelude fence when `brainstorm_requested` is true. On brainstorm-off elision, Step 1d.7 writes it before pause-check; folded Step 2a prep inside Step 2b drafter remains an idempotent repair host. It is not written at a Step 1d success boundary.
-<!-- step:1d.5 — Brainstorm Panel -->
+<!-- step:1d.5: Brainstorm Panel -->
 
 Before running the entry fence, read `$DESIGN_TMPDIR/run-params.json` and apply `_step1d5_brainstorm_requested` semantics: only `brainstorm_requested: true` in a well-formed object means brainstorm-on; missing, malformed, symlinked, or non-`true` values mean brainstorm-off.
 This run-params authority overrides mental Step 0-pre `brainstorm_requested` on `resume@*` paths where Sub-step 5 flag binding was skipped.
-When run-params says brainstorm-off: print `⏩ 1d.5: brainstorm — skipped`; do not run `step1d5 --mode entry`, parse `STEP1D5_ACTION`, read `brainstorm.md`, or run complete mode; continue to Step 1d.7.
+When run-params says brainstorm-off: print `⏩ 1d.5: brainstorm: skipped`; do not run `step1d5 --mode entry`, parse `STEP1D5_ACTION`, read `brainstorm.md`, or run complete mode; continue to Step 1d.7.
 On brainstorm-off elision, Step 1d.7 writes `.completed/step-1c`, `.completed/step-1d`, and `.completed/step-1d.5` before pause-check. When brainstorm-on, entry/complete retain those sentinels.
 
 ```bash
@@ -226,19 +226,19 @@ On brainstorm-off elision, Step 1d.7 writes `.completed/step-1c`, `.completed/st
 If the entry fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.5 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `STEP1D5_ACTION`, do not read `brainstorm.md`, do not run `step1d5 --mode complete`, and do not continue to Step 1d.7.
 When `PAUSE_OK=true` is absent, parse `STEP1D5_ACTION` from the entry fence output. If `STEP1D5_ACTION` is missing or empty, print `**⚠ 1d.5: missing STEP1D5_ACTION from entry fence; aborting /design**` and abort `/design`; do not continue to Step 1d.7, do not read `brainstorm.md`, and do not run `step1d5 --mode complete`.
 If `STEP1D5_ACTION=skip`:
-- If `STEP1D5_SKIP_KIND=already-complete`: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)`.
-- Else: print `⏩ 1d.5: brainstorm — skipped`.
+- If `STEP1D5_SKIP_KIND=already-complete`: print `⏩ 1d.5: brainstorm: skipped (already complete; .brainstorm-done present)`.
+- Else: print `⏩ 1d.5: brainstorm: skipped`.
 - Continue directly to Step 1d.7.
 - Do not read `brainstorm.md`.
 - Do not run `step1d5 --mode complete`; skip completion is owned by entry mode.
 
-If `STEP1D5_ACTION=run`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass — not on skip paths). Then run the existing completion fence before Step 1d.7:
+If `STEP1D5_ACTION=run`: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm.md` completely. Execute the Step 1d.5 body in that file (the `> **🔶 /design 1d.5: brainstorm**` banner prints **only** from that file after guards pass: not on skip paths). Then run the existing completion fence before Step 1d.7:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode complete # lint-consecutive-bash: ok completion marker follows brainstorm body before outline gate
 ```
 
-<!-- step:1d.7 — Design Outline (Outline-Approval Gate) -->
+<!-- step:1d.7: Design Outline (Outline-Approval Gate) -->
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d7
@@ -247,11 +247,11 @@ If `STEP1D5_ACTION=run`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUG
 If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.7 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.
 When `PAUSE_OK=true` is absent, parse `SKIP_APPROVE_REQUESTED` from the fence output. If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`; do not read or execute `references/design-outline.md`.
 Bind `skip_approve_requested` from `SKIP_APPROVE_REQUESTED=`. Always execute `references/design-outline.md` through Output, guideline consultation, and gate presentation when the gate fires. If `true`, write `.outline-approved`, print `⏩ 1d.7: outline: auto-approved (--skip-approve)`, and proceed to folded Step 2a / Step 2b drafter in the same turn via `design-step2b-drafter.sh` without `AskUserQuestion`; if `false`, follow `references/design-outline.md`.
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` completely. Execute the Step 1d.7 body in that file (entry guard prints skip breadcrumb when `.outline-approved` exists; the `> **🔶 /design 1d.7: outline**` banner prints only from that file after the guard; the auto-approve path above is the only `--skip-approve` carve-out from that gate).
 
-<!-- step:1e — Discussion Mode Gate (Gate A) -->
+<!-- step:1e: Discussion Mode Gate (Gate A) -->
 
-**Gate B(c) / Gate C(b) re-entry only** — when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
+**Gate B(c) / Gate C(b) re-entry only**: when control arrives from backward discussion loops, run this fence **before** Step 1e prose:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1e-reentry
@@ -259,22 +259,22 @@ Bind `skip_approve_requested` from `SKIP_APPROVE_REQUESTED=`. Always execute `re
 
 Print: `> **🔶 /design 1e: gate A**`
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely. It is the single normative source for Gate A / B / C prompts, severity rubric, and loop semantics.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely. It is the single normative source for Gate A / B / C prompts, severity rubric, and loop semantics.
 Step 1e Gate A is **reached only via re-entry** from Gate B(c) or Gate C(b) (the post-plan loops). First-time entry from Step 1d / Step 1d.5 is handled by the **Step 1d.7 outline-approval gate**, which replaces Gate A Shape 1.
-**Entry guard**: If control did not arrive from Gate B(c)/Gate C(b), Step 1e must not prompt on a pre-plan path. With `.outline-approved` and no `plan.txt`, print `⏩ 1e: gate A — first-time entry handled by Step 1d.7; proceed to folded Step 2a / Step 2b drafter in the same turn` and launch Step 2b. With no plan and no outline approval, print `⏩ 1e: gate A — outline not yet approved; return to Step 1d.7` and return there. With `plan.txt`, stay post-plan and run Gate A re-entry even if `.outline-approved` is absent.
+**Entry guard**: If control did not arrive from Gate B(c)/Gate C(b), Step 1e must not prompt on a pre-plan path. With `.outline-approved` and no `plan.txt`, print `⏩ 1e: gate A: first-time entry handled by Step 1d.7; proceed to folded Step 2a / Step 2b drafter in the same turn` and launch Step 2b. With no plan and no outline approval, print `⏩ 1e: gate A: outline not yet approved; return to Step 1d.7` and return there. With `plan.txt`, stay post-plan and run Gate A re-entry even if `.outline-approved` is absent.
 **Optional trailer guard (Gate A re-entry rewrites)**: Before direct replacement after discussion, snapshot trailers with `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers`. Preserve strict snapshotted keys or recompute; if empty, introduce none. After the rewrite, run `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site gate-a`. Do not alter first-time Gate A routing.
 
-1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).
+1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).
 2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
-Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt` — do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
+Execute the Gate A body in `approval-gates.md`. When entered from Gate B(c) or Gate C(b) (post-plan), Gate A presents three options (See full plan / Ready for review / Discuss more); selecting **See full plan** re-displays `$DESIGN_TMPDIR/plan.txt` under a `## Latest Design Plan` header and re-fires the same prompt **minus the `See full plan` option** (leaving Ready for review / Discuss more), while **Ready for review** routes to the single Step 3 entry fence with `design-step3-entry.sh --reentry` and proceeds directly to Step 3 with the current `$DESIGN_TMPDIR/plan.txt`: do NOT re-run Step 2a or add a separate Gate A wrapper invocation.
 
-<!-- step:2a — Sentinel Artifact Prep -->
-## Step 2a — Sentinel Artifact Prep
+<!-- step:2a: Sentinel Artifact Prep -->
+## Step 2a: Sentinel Artifact Prep
 
 Step 2a is folded into the Step 2b drafter launcher. Do not run a standalone Step 2a fence. Proceed to the Step 2b breadcrumb and `design-step2b-drafter.sh`; the wrapper repairs or writes sentinel artifacts (`NO_SKETCHES`, `NO_CONTESTED_DECISIONS`, empty legacy `dialectic-resolutions.md`) and `.completed/step-2a`. Pre-existing non-sentinel artifacts cause refusal for inspection before validation or launch. Do NOT call `python/cli.py agent collect-results`.
 
-<!-- step:2b — Design the Implementation Plan -->
+<!-- step:2b: Design the Implementation Plan -->
 
 Print: `> **🔶 /design 2b: full plan**`
 
@@ -290,15 +290,15 @@ Use `timeout: 2100000` on the Bash tool call for this drafter subprocess fence. 
 After the drafter fence, keep `_drafter_fence_out` for diagnostics only. If the `design-step2b-drafter.sh` fence exits non-zero, abort loudly with captured stdout/stderr and do not parse `DRAFTER_NEXT_ACTION`, enter inline fallback, run fail-safe, or continue to Step 3. On exit 0 only, parse the final trusted `DRAFTER_NEXT_ACTION=` row after the final whole-line `STEP2B_DRAFTER_WRAPPER_ROWS_BEGIN=1` delimiter. Fail closed on absent/unknown directives. Do not reconstruct drafter routing from `POSTPLAN_RC`, `POSTPLAN_STATUS`, `DRAFTER_STATUS`, `PAUSE_OK`, preview text, or `.step2b-postplan-inline-retry-pending`.
 Dispatch table for `DRAFTER_NEXT_ACTION` on exit 0 only:
 
-- `step3` — skip inline drafting and the retained terminal postplan fence; continue directly to Step 2b.5 / Step 3 per existing non-exiting rules.
-- `pause-terminal` or `postplan-rc11-pause` — stop `/design` for operator resume; do not run inline drafting, fail-safe, or Step 3.
-- `inline-fallback` — continue with the inline plan drafting instructions below and ensure the inline-written `plan.txt` replaces the drafter attempt.
-- `inline-retry` — run the inline rewrite once, then run the retained terminal postplan fence exactly once.
-- `dirty-tree-recovery` — fire the existing dirty-tree recovery `AskUserQuestion` flow before inline fallback or postplan.
-- `postplan-rc10` — use the existing validator-failure flow.
-- `postplan-rc12-split` — read `$DESIGN_TMPDIR/.drafter-next-action-rc12.txt` for operator prompt text, then use the existing Split / Cancel prompt.
-- `postplan-rc13-partition` — read `$DESIGN_TMPDIR/.drafter-next-action-rc13.txt`, then enter Split-path.
-- `failsafe-missing-rows` — load `references/step2b-drafter-failsafe.md` and run the retained terminal postplan path only; this token is valid only after exit 0 without a trusted postplan action row.
+- `step3`: skip inline drafting and the retained terminal postplan fence; continue directly to Step 2b.5 / Step 3 per existing non-exiting rules.
+- `pause-terminal` or `postplan-rc11-pause`: stop `/design` for operator resume; do not run inline drafting, fail-safe, or Step 3.
+- `inline-fallback`: continue with the inline plan drafting instructions below and ensure the inline-written `plan.txt` replaces the drafter attempt.
+- `inline-retry`: run the inline rewrite once, then run the retained terminal postplan fence exactly once.
+- `dirty-tree-recovery`: fire the existing dirty-tree recovery `AskUserQuestion` flow before inline fallback or postplan.
+- `postplan-rc10`: use the existing validator-failure flow.
+- `postplan-rc12-split`: read `$DESIGN_TMPDIR/.drafter-next-action-rc12.txt` for operator prompt text, then use the existing Split / Cancel prompt.
+- `postplan-rc13-partition`: read `$DESIGN_TMPDIR/.drafter-next-action-rc13.txt`, then enter Split-path.
+- `failsafe-missing-rows`: load `references/step2b-drafter-failsafe.md` and run the retained terminal postplan path only; this token is valid only after exit 0 without a trusted postplan action row.
 
 The retained `design-step2b-postplan.sh` fence and `_postplan_rc` prose apply only to `inline-fallback`, `inline-retry`, and `failsafe-missing-rows`. Do not run it after any successful drafter-fence dispatch. Retained `_postplan_rc=11` still uses `step2b_postplan_main` pause-save semantics, not drafter `DRAFTER_NEXT_ACTION` parsing.
 Drafter inline-retry dispatch is post-apply only. It maps postplan rc `10` to `inline-retry` only when postplan scheduled inline retry: pending sentinel exists, `SCOUT_STALE_CLEARED=true` is in delegated stdout, or `inline_retry_scheduled` is true. Otherwise it emits `postplan-rc10`. Do not describe or perform a `fallback_used` disk re-read after postplan apply.
@@ -312,7 +312,7 @@ Read `$DESIGN_TMPDIR/design-outline.md` only when non-empty and `.outline-approv
 Read non-empty `$DESIGN_TMPDIR/brainstorm.md`; treat it as additive ideation only when it does not conflict with Round 1 refusals.
 Call `python/cli.py architectural-guidelines read` or the in-process helper. If `present`, fold parsed aspirational goals from helper output only; if `absent` or `invalid`, omit guidelines.
 Produce a plan that includes:
-**MANDATORY — READ ENTIRE FILE before drafting the implementation plan: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before drafting the implementation plan: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 - **Files to modify/create**: Use one section with per-file headings. Each heading names exactly one path and starts with `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:`; use `### MAY_UPDATE:` for conditional scope. At least one ASCII space must follow `###`; extra space before `:` is tolerated. Concatenated forms like `###NEW:` are not scout / plan-size headings.
 - **Approach**: Describe the implementation strategy, key decisions, and any trade-offs.
@@ -330,40 +330,40 @@ The launcher `design-step2b-postplan.sh` maps to `python/cli.py design step2b-po
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b-postplan.sh --site step2b --snapshot-original
 ```
 
-Inline retry may come from `DRAFTER_NEXT_ACTION=inline-retry` or the retained postplan fence. If retained output prints `**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**` or leaves `.step2b-postplan-inline-retry-pending`, rewrite `plan.txt` once inline, then rerun the retained postplan fence once. Do not launch another drafter. `.step2b-postplan-inline-retry-done` prevents a second retry; later `_postplan_rc=10` uses the normal validator-failure path.
+Inline retry may come from `DRAFTER_NEXT_ACTION=inline-retry` or the retained postplan fence. If retained output prints `**⚠ 2b: drafter plan failed postplan validation: re-entering inline drafting once**` or leaves `.step2b-postplan-inline-retry-pending`, rewrite `plan.txt` once inline, then rerun the retained postplan fence once. Do not launch another drafter. `.step2b-postplan-inline-retry-done` prevents a second retry; later `_postplan_rc=10` uses the normal validator-failure path.
 On `_postplan_rc=10`, execute **### Plan command validator failure (shared)** with `--site` context `design Step 2b` and **Cancel** semantics returning to Gate A (preserve `$DESIGN_TMPDIR`). Fix-and-retry re-enters this same `--with-plan-size --snapshot-original` fence. On **Override**, run `python/cli.py design step2b-postplan --write-step2b-completion-only` through the launcher, then run the retained **Step 2b.5** procedure before continuing.
 On `_postplan_rc=12`, the driver already printed the size-trigger section. Ask exactly **"Let my panel of agents split this feature for you"** / **"Cancel"** (initial site, no Override). On **Split** or `_postplan_rc=13`, run only **Split-path** in `decompose-panel.md`. Do not re-run display subsections after `printf '%s\n' "${_postplan_out:-}"`. On non-exiting Split returns, write completion via `python/cli.py design step2b-postplan --write-completion-only --include-step2b` before Step 3. Plan drift now logs a warning and exits 0; no operator action.
 
-> **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact — plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
+> **Continue to Step 3 IMMEDIATELY** when `_postplan_rc=0` (or after non-exiting Split/Override paths complete). The implementation plan is an intermediate design artifact: plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
 
-### Step 2b.5 — Plan-size threshold check (named procedure)
+### Step 2b.5: Plan-size threshold check (named procedure)
 
 **Merged callers** (initial Step 2b, Gate B shared post-apply, discussion-round2 / Gate A after-discussion re-emit) use `python/cli.py design postplan-emit --with-plan-size` and skip the retained procedure on clean paths. It writes `STEP2B5_NEXT_ACTION` to `.design-postplan-emit-result.env` and keeps check-size rc `2` warning-only like retained `design step2b5`. **Retained callers** (Override-after-defects and recovery) still invoke this procedure or `python/cli.py plan check-size`. If no baseline exists, the first successful check seeds `drift-baseline.env` from `PLAN_LINES` / `DIFF_LINES`, emits drift false, and later calls compare to it.
 **Callable from**: retained paths and Gate B after validator-defect Override. Gate B and post-plan discussion merged re-emits use `--with-plan-size` instead of standalone Step 2b.5 on success.
 
-1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field — Step 2b.5 does **not** re-parse argv.
+1. Read `partition_requested` from `$DESIGN_TMPDIR/run-params.json` (boolean; default `false` when absent). Bind mental `PARTITION_REQUESTED` from that field: Step 2b.5 does **not** re-parse argv.
 2. Run the launcher fence `design-step2b5.sh`, which maps to `python/cli.py design step2b5`. Capture **the fence stdout** into `_plan_size_out`; the Python verb echoes the inner check-size stdout so prompt-side KV parsing sees the same contract stream. Example:
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step2b5.sh
 ```
-3. **Retained callers that ran items 1–2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch. Then bind `STEP2B5_NEXT_ACTION` from the fence stdout and branch per `step2b5-rc-handling.md`; do not recompute routing from `_plan_size_rc`.
+3. **Retained callers that ran items 1–2 in this turn**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` immediately before dispatch. Then bind `STEP2B5_NEXT_ACTION` from the fence stdout and branch per `step2b5-rc-handling.md`; do not recompute routing from `_plan_size_rc`.
 
-**Retained branch direct-entry when items 1–2 were skipped**: for `SETTLE_NEXT_ACTION=gate-a-hard-size`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Bind `STEP2B5_NEXT_ACTION` from `.design-postplan-emit-result.env` and branch on that action key. Do not route from a wrapper rc when the action row is missing. Do not load it for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`. Override-after-defects always runs items 1–2 and loads the reference before item 3.
+**Retained branch direct-entry when items 1–2 were skipped**: for `SETTLE_NEXT_ACTION=gate-a-hard-size`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md`. Bind `STEP2B5_NEXT_ACTION` from `.design-postplan-emit-result.env` and branch on that action key. Do not route from a wrapper rc when the action row is missing. Do not load it for `SETTLE_NEXT_ACTION=gate-b-hard-size`; Gate B uses `approval-gates.md`. Override-after-defects always runs items 1–2 and loads the reference before item 3.
 On direct-entry paths, bind plan-size KVs from `.design-postplan-emit-result.env` per `step2b5-rc-handling.md`; treat `STEP2B5_NEXT_ACTION` as authoritative. The reference owns soft advisories and branch bodies.
 
 #### Split-path (decomposition panel)
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for panel input-artifact selection, the 3-stage `AskUserQuestion` flow, aggregator path, cycle check, filing, and original-issue close.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely. It is the single normative source for panel input-artifact selection, the 3-stage `AskUserQuestion` flow, aggregator path, cycle check, filing, and original-issue close.
 Execute `decompose-panel.md` Split-path. Its **§2) Dispatch the fixed 8-slot panel** owns the exact `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" decompose panel-dispatch` launch; never skip loading the reference first.
 On approved split that files N issues and closes the original: export `SUMMARY_OUTCOME=approved-partition`, run Final summary, print `**ℹ /design exited: partition into N pieces filed (see #<original> close-comment).**`, and exit 0.
 On **"Refine plan myself (return to caller)"**: run `python/cli.py design step2b-postplan --write-completion-only` through the launcher first (add `--include-step2b` for initial-site merged Split returns), then return to caller. Step 2b.5 from Gate B goes to Step 3b; Step 1c sprawl returns to Step 1d; Step 1d sprawl returns to pre-plan Step 1d.7 outline approval, not Gate A.
 On user pick **"Cancel"**: export `SUMMARY_OUTCOME=cancelled-decompose`, run the Final summary block, print `**ℹ /design cancelled by operator (decomposition panel).**`, and exit **0**.
 On `PANEL_STATUS=panel-failed`: AskUserQuestion (**Retry panel** / **Cancel**). Retry dispatch once. On a second failure, stage `failed-judge-panel`, export `SUMMARY_OUTCOME=failed-judge-panel`, run Final summary, exit 1, and preserve `$DESIGN_TMPDIR`.
 
-> **After Step 2b.5 returns to caller on a non-exiting initial path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact — plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
+> **After Step 2b.5 returns to caller on a non-exiting initial path, continue to Step 3 IMMEDIATELY.** The implementation plan is an intermediate design artifact: plan review, Gate B, rejected-findings reporting, Gate C, and cleanup still must run; architecture diagram work runs only at Step 5b.5 after Gate C approval. → shared/subskill-invocation.md#step-boundary
 At any non-exiting Step 2b.5 success boundary, run `python/cli.py design step2b-postplan --write-completion-only` through the launcher before Step 3 unless the immediately preceding normal postplan wrapper already wrote `.completed/step-2b.5`.
 
-<!-- step:3 — Plan Review -->
+<!-- step:3: Plan Review -->
 
 Print: `> **🔶 /design 3: plan review**`
 
@@ -378,8 +378,8 @@ STEP3_REENTRY_FLAG=""
 **Pre-voting plan re-print (first-time Step 3 entry only)**: emit `$DESIGN_TMPDIR/plan.txt` under `## Plan Candidate for Review`. Use large-plan summary mode from `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` (Gate C). Sentinel `.step3-entry-plan-printed` makes later re-entries skip. If summary mode fires, the user may ask "show full plan" before voting kickoff. **Step 3 ordering (timing vs plan header)**: timing mark runs first; the header/body appear only in following Bash output. Manual QA should expect ledger before preview.
 Hermetic regression coverage for `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review preview` lives in `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py` (harness contract: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`). Script contract: `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`.
 **Review-round cap entry guard**: `python/cli.py plan-review run` solely writes `review-round-count.txt`; per-round loop code in `python/plan_review.py` must not. The driver guards every Step 3 entry, persists result envs, and writes the pending round before launch so crashes or unknown statuses consume the slot. It keeps counts for settled launched rounds, including `panel-failed`, but rolls back on tally errors or `degraded-empty-collector`. On cap hit, it warns, skips review/Gate B, jumps Step 3b → Step 4 → Gate C with existing artifacts.
-**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: static external slots from the panel manifest plus **up to 2 dynamic** slots (Cursor + Codex for at most one scouted archetype). Never skip or abbreviate this step regardless of how straightforward the plan appears — even when the plan is short or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps) — **not** post-merge bugs the plan already addresses.**
-**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. It owns panel topology, static slot identity, semantic dedup, `voting-tally.md`, Finalize artifacts, and deferred MainAgent adjudication. Runtime: `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; main harness: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Prompt rendering: `python/cli.py render plan-review` and `python/cli.py render voter` (coverage `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`). Scout/filter-manifest: Step 2b drafter launchers and `python/plan_scout.py` / `python/test_plan_scout.py`; see Single-pass review in `plan-review.md`. Timing helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review record-round-timing`. Scope anchors: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-block strip-body` and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree scope-marker`; tests: `${CLAUDE_PLUGIN_ROOT}/python/test_issue_wire.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_dirty_tree.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review_panel.py`. **agent-lint S030 pins**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render plan-review`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
+**IMPORTANT: When `STEP3_REVIEW_CAP_REACHED=false`, plan review MUST ALWAYS run the full Step 3 panel: static external slots from the panel manifest plus **up to 2 dynamic** slots (Cursor + Codex for at most one scouted archetype). Never skip or abbreviate this step regardless of how straightforward the plan appears: even when the plan is short or the change seems trivial. Reviewers compare **proposed plan steps** to **current repository evidence** and flag **proposed-change defects** (missing steps, wrong targets, contract gaps): **not** post-merge bugs the plan already addresses.**
+**MANDATORY: READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely. It owns panel topology, static slot identity, semantic dedup, `voting-tally.md`, Finalize artifacts, and deferred MainAgent adjudication. Runtime: `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; main harness: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Prompt rendering: `python/cli.py render plan-review` and `python/cli.py render voter` (coverage `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`). Scout/filter-manifest: Step 2b drafter launchers and `python/plan_scout.py` / `python/test_plan_scout.py`; see Single-pass review in `plan-review.md`. Timing helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review record-round-timing`. Scope anchors: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-block strip-body` and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" dirty-tree scope-marker`; tests: `${CLAUDE_PLUGIN_ROOT}/python/test_issue_wire.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_dirty_tree.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`, `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review_panel.py`. **agent-lint S030 pins**: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" render plan-review`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/scout-plan-archetypes-prompt.txt`, `${CLAUDE_PLUGIN_ROOT}/python/test_rendering.py`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.sh`, `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-brainstorm-prompts.md`.
 Launch **all static + eligible dynamic reviewers in parallel** via `python/cli.py plan-review panel-dispatch` with **`--no-fallback`**: unavailable or failed vendor rows drop through `DROPPED_SLOTS_FILE` instead of cross-vendor or Claude backfill. Static spawn order stays slowest-first: Cursor then Codex; dynamic slots follow the manifest from `python/plan_review.py`. Reviewers get `plan.txt` and `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` (issue narrative stripped of `larch:plan`, plus approved outline). Non-empty brainstorm content goes only to optional non-binding `plan-review-feature-context.txt`. Reviewers report findings only; they never edit files.
 
 ### External Reviewer Setup
@@ -401,7 +401,7 @@ Parameters:
 - extra guards: end the turn with no reviewer table after launch ack
 
 Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
@@ -412,14 +412,14 @@ Plan-review scope anchoring: Step 3 entry creates `$DESIGN_TMPDIR/plan-review-sc
 **Post-loop `NEXT_ACTION` routing table** (read `NEXT_ACTION` from the normalized loop envelope before raw status fields; `.step3-review-result.env` remains the per-round handoff):
 Before parsing the envelope after notification, use this ordered premature-notification contract: empty output → silent yield; prefix-identical repeat (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield; new or changed non-empty output → one foreground probe against `.completed/step-3-terminal`. Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and readable `.step3-review-result.env` exist. Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too; do not advance from `.step3-review-result.env` alone.
 
-- `NEXT_ACTION=step3b` — proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
-- `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=degraded-empty-collector` — print `**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**`, append a bounded `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`, read `$DESIGN_TMPDIR/plan.txt`, the feature description or scope anchor, and relevant code/docs directly, then self-review the plan. Revise `$DESIGN_TMPDIR/plan.txt` in place only when you find a concrete plan defect. If you revise, run the same post-plan validation and settle path used after direct plan revision so `diff-lines.txt`, trailers, and validators stay coherent. Then run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and proceed to Step 3b as below. Do not enter Gate B because there is no findings list to vote or apply.
-- `NEXT_ACTION=step3b-bypass` for all other bypass statuses — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort on non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass`. Covers cap-hit, `LOOP_STATUS=panel-failed`, `LOOP_STATUS=tally-error`, `TALLY_PLAN_REVIEW_STATUS=tally-error`, `tally-error`, and MAV re-tally tally-error. The round counter MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`. When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface. The helper lands pause/resume at Step 3b; Step 3 loop owns `.completed/step-3*`.
-- `NEXT_ACTION=mav` — perform the MainAgent vote/re-tally block below. `design-step3-mav.sh --phase post` refreshes envs, records warnings/timing, and writes the round phase. On successful post, resume the same round with the phase emitted by the wrapper.
-- `NEXT_ACTION=gate-b` — bind `STEP3_RESUME_ROUND` as below, then run the Gate B body for `main-agent-apply-required` or `per-round-approval-required`. `DEDUP_RC` identifies dedup-origin bail-outs.
-- `NEXT_ACTION=postplan-operator` — route `POSTPLAN_RC=10/13` through existing postplan prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase=awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** resume with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --postplan-operator-continue`; **plan-changing Fix-and-retry/autofix:** resume with `--phase awaiting-post-apply`. `POSTPLAN_RC=12` is handled inline as warn-and-continue.
-- `NEXT_ACTION=final-summary:failed-postplan` — set `SUMMARY_OUTCOME=failed-postplan`, run the Final summary block, hard-fail, preserve `$DESIGN_TMPDIR` for repair, and do not transition to Step 3b.
-- `NEXT_ACTION=final-summary:failed-judge-panel` — set `SUMMARY_OUTCOME=failed-judge-panel`, run the Final summary block, hard-fail as `failed-judge-panel`, preserve `$DESIGN_TMPDIR` for repair, and do not transition to Step 3b, Gate C, or Step 5.
+- `NEXT_ACTION=step3b`: proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
+- `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=degraded-empty-collector`: print `**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**`, append a bounded `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`, read `$DESIGN_TMPDIR/plan.txt`, the feature description or scope anchor, and relevant code/docs directly, then self-review the plan. Revise `$DESIGN_TMPDIR/plan.txt` in place only when you find a concrete plan defect. If you revise, run the same post-plan validation and settle path used after direct plan revision so `diff-lines.txt`, trailers, and validators stay coherent. Then run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and proceed to Step 3b as below. Do not enter Gate B because there is no findings list to vote or apply.
+- `NEXT_ACTION=step3b-bypass` for all other bypass statuses: before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and abort on non-zero rc or `STEP3_STATE=refused-partial-gate-b-bypass`. Covers cap-hit, `LOOP_STATUS=panel-failed`, `LOOP_STATUS=tally-error`, `TALLY_PLAN_REVIEW_STATUS=tally-error`, `tally-error`, and MAV re-tally tally-error. The round counter MUST NOT persist when `TALLY_PLAN_REVIEW_STATUS=tally-error`. When `LOOP_STATUS=cap-reached` or `TALLY_PLAN_REVIEW_STATUS=skipped-cap-reached`, do not enter Gate B because stale accepted findings from an earlier round would re-surface. The helper lands pause/resume at Step 3b; Step 3 loop owns `.completed/step-3*`.
+- `NEXT_ACTION=mav`: perform the MainAgent vote/re-tally block below. `design-step3-mav.sh --phase post` refreshes envs, records warnings/timing, and writes the round phase. On successful post, resume the same round with the phase emitted by the wrapper.
+- `NEXT_ACTION=gate-b`: bind `STEP3_RESUME_ROUND` as below, then run the Gate B body for `main-agent-apply-required` or `per-round-approval-required`. `DEDUP_RC` identifies dedup-origin bail-outs.
+- `NEXT_ACTION=postplan-operator`: route `POSTPLAN_RC=10/13` through existing postplan prompts. The loop persists `.step3-round-$STEP3_RESUME_ROUND.phase=awaiting-postplan-operator`. **Non-plan-changing Override/Continue:** resume with `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --postplan-operator-continue`; **plan-changing Fix-and-retry/autofix:** resume with `--phase awaiting-post-apply`. `POSTPLAN_RC=12` is handled inline as warn-and-continue.
+- `NEXT_ACTION=final-summary:failed-postplan`: set `SUMMARY_OUTCOME=failed-postplan`, run the Final summary block, hard-fail, preserve `$DESIGN_TMPDIR` for repair, and do not transition to Step 3b.
+- `NEXT_ACTION=final-summary:failed-judge-panel`: set `SUMMARY_OUTCOME=failed-judge-panel`, run the Final summary block, hard-fail as `failed-judge-panel`, preserve `$DESIGN_TMPDIR` for repair, and do not transition to Step 3b, Gate C, or Step 5.
 
 `STEP3_REVIEW_LOOP_STATUS`, `LOOP_STATUS`, and tally fields remain diagnostic and resume-input fields. If `NEXT_ACTION` is missing after normalization, stop for operator repair instead of reconstructing prompt-side routing from raw status values.
 
@@ -445,7 +445,7 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 
 Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
@@ -461,7 +461,7 @@ If **all reviewers** report no in-scope issues and no OOS observations, the driv
 
 > **Step 3.5 (Gate B) runs only when `NEXT_ACTION=gate-b` or `NEXT_ACTION=postplan-operator`.** Terminal loop routes (`step3b`, `step3b-bypass`, `final-summary:*`) and `mav` skip Step 3.5. After Gate B applies findings, the settle and resume path runs postplan, snapshots, and continuation; do not re-enter Gate B or the retired orchestrator continuation loop.
 
-<!-- step:3.5 — Post-Review Chooser (Gate B) -->
+<!-- step:3.5: Post-Review Chooser (Gate B) -->
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35.sh --step3-review-loop-status "${STEP3_REVIEW_LOOP_STATUS:-}" --loop-status "${LOOP_STATUS:-}"
@@ -471,11 +471,11 @@ Print: `> **🔶 /design 3.5: gate B**`
 
 Bind `approve_requested` from `APPROVE_REQUESTED=`. Gate B apply UX uses it (`false` auto-apply, `true` explicit per-round prompt) per `approval-gates.md` §Gate B. Do not load `approval-gates-explicit.md` here; Gate B loads it only after zero-findings, idempotency guard, and Presentation.
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e).
 
 Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B. Do not jump directly to Step 3b from this post-apply resume branch; the referenced guard routes through settle and the later Step 3 resume fence. Shared post-apply marker semantics and optional-trailer snapshot handling live in `approval-gates.md` §Shared post-apply pipeline.
 
-1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).
+1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at Step 1e).
 2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Execute Gate B in `approval-gates.md`. Its settle wrapper delegates merged post-plan, writing the Step 2b.5 sentinel on clean rc 0; standalone Step 2b.5 remains only for retained callers. Default `approve_requested=false` auto-applies all accepted in-scope findings without `AskUserQuestion`; `true` restores the deferred explicit prompt. Switch-to-discussion routes to Step 1e Gate A. After Gate B post-apply, only `approval-gates.md` §Shared post-apply pipeline step 10 owns loop continuation; do not launch a second Step 3 resume.
@@ -490,7 +490,7 @@ If Round 2-style follow-up questions need to be asked (decisions emerging from t
 
 Loop back through the launcher-only Step 3 resume fence before launching the next review. Invoke `design-step3-review.sh` via `design-run-$PPID.sh` (never `--no-preview`) with `run_in_background: true`, `timeout: 21600000`, and `<task-notification>` wait before parsing. The wrapper owns rehydration/pause checks. Normal runs use the script-internal loop; Step 3.5 must not re-drive continuation.
 
-<!-- step:3b — Finalize plan-review artifacts -->
+<!-- step:3b: Finalize plan-review artifacts -->
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-entry.sh --mode finalize
@@ -506,7 +506,7 @@ Do not classify plans, generate diagrams, write `architecture-diagram.*`, or run
 
 > **Continue to Step 4 IMMEDIATELY via the tail wrapper.** Step 3b finalize is not terminal.
 
-<!-- step:4 — Rejected Plan Review Findings Report -->
+<!-- step:4: Rejected Plan Review Findings Report -->
 
 Print: `> **🔶 /design 4: rejected findings**`
 
@@ -518,7 +518,7 @@ If `STEP4_MODE=foreground`, run the tail in the foreground:
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
 ```
 
-If `STEP4_MODE=background`, **MANDATORY — READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout. Then run the tail with `run_in_background: true` and timeout `900000`:
+If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout. Then run the tail with `run_in_background: true` and timeout `900000`:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
@@ -528,36 +528,36 @@ Stop for repair if `STEP4_MODE` is absent or not `foreground|background`.
 
 If the wrapper output contains a non-empty body between `---LARCH-REJECTED-BEGIN---` and `---LARCH-REJECTED-END---`, re-emit that exact body verbatim with no extra heading or orchestrator-side prose. Do not add a second heading; the wrapper body is authoritative. If the body is empty, continue without printing rejected-findings output.
 
-After rejected findings are handled, IMMEDIATELY continue to Step 4b — do NOT halt or treat this as the end of the design.
+After rejected findings are handled, IMMEDIATELY continue to Step 4b: do NOT halt or treat this as the end of the design.
 
-> **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal — Gate C + issue plan write + cleanup still must run.
+> **Continue to Step 4b IMMEDIATELY.** Rejected-findings output is not terminal: Gate C + issue plan write + cleanup still must run.
 
-<!-- step:4b — Final-Approval Loop (Gate C) -->
+<!-- step:4b: Final-Approval Loop (Gate C) -->
 
 Print: `> **🔶 /design 4b: gate C**`
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e or 3.5).
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/approval-gates.md` completely (if not already loaded at Step 1e or 3.5).
 
-Execute the Gate C body in `approval-gates.md` — `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
+Execute the Gate C body in `approval-gates.md`: `approval-gates.md` is the single normative source for Gate C behavior (Presentation, Prompt, Other-handling, large-plan summary mode).
 
 **Mechanical Gate C plan emit**: `design-step3b-tail.sh` → optional `python/cli.py design dialectic-gatec` → `python/cli.py plan-review preview --variant gatec` mirrors Step 3 thresholds, outline, and bold-note rules. On resume@4b, pause recovery, or entry without fresh tail stdout, emit fingerprint-valid `dialectic-clarifier-digest.md` before the prompt with untrusted advisory framing; same-turn normal path uses tail stdout only.
 
 Before the Gate C `AskUserQuestion`, parse `SKIP_APPROVE_REQUESTED_GATEC=true|false` from the tail wrapper output.
 
-When `_skip_approve_requested_gatec=true`, still run Gate C preview and Presentation (`present-note` pending, optional `--assessment clean` after orchestrator assessment), then print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed to Step 5 without `AskUserQuestion`. When false, fire Gate C per `approval-gates.md`.
+When `_skip_approve_requested_gatec=true`, still run Gate C preview and Presentation (`present-note` pending, optional `--assessment clean` after orchestrator assessment), then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 without `AskUserQuestion`. When false, fire Gate C per `approval-gates.md`.
 
 Then fire Gate C `AskUserQuestion` per `approval-gates.md` only when `_skip_approve_requested_gatec=false`. Load `references/dialectic-clarifier.md` only for fingerprint-valid candidates/status+digest or manual candidates+digest. Under review cap, offer **Approve final design** / **See full plan** / **Discuss further** / **Re-run review panel**; at cap omit re-run. If latest Step 3 envelope is `panel-failed`, print the degraded-review warning and relabel approval as panel-failure acknowledgment. **See full plan** previews `--variant full` and re-prompts without that option. `Other` may request full plan or `debate <decision>: <option A> vs <option B>` / `debate <candidate-id>`; debate prefixes win. Approve proceeds to Step 5. Discuss further re-enters Step 1e Gate A. Re-run review panel routes through `design-step3-entry.sh --reentry` to Step 3 with current `plan.txt`. All loops return through Step 3b, Step 4, and Gate C without diagram generation. Gate C is the only final-approval gate.
 
-> **Continue to Step 5 IMMEDIATELY** once Gate C returns either Approve label. Gate C is not terminal — finalize (OOS filing + plan write) and cleanup still must run.
+> **Continue to Step 5 IMMEDIATELY** once Gate C returns either Approve label. Gate C is not terminal: finalize (OOS filing + plan write) and cleanup still must run.
 
-<!-- step:5 — Finalize design (write plan + file OOS) -->
+<!-- step:5: Finalize design (write plan + file OOS) -->
 
 Print: `> **🔶 /design 5: finalize**`
 
-**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully — that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5c** MUST complete the Step **5b.5** sanitize gate before `larch:plan` write, publish, and rename.
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.
+**Invariant (anti-pattern):** do **not** reorder finalize sub-steps to run the `[DESIGNED]` rename (old Step 5c tail) before OOS filing (Step 5b) completes successfully: that would publish a terminal title while accepted OOS items are not yet filed. Step **5b** MUST run before Step **5b.5**, and Step **5c** MUST complete the Step **5b.5** sanitize gate before `larch:plan` write, publish, and rename.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/finalize-step5.md` completely.
 
-### 5b — File accepted OOS issues
+### 5b: File accepted OOS issues
 
 Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
 
@@ -579,7 +579,7 @@ When annotate returns `annotate-label-failed`, `.oos-priority-label-pending` exi
 
 > **Continue to Step 5b.5 IMMEDIATELY.** The `/larch:issue` Skill tool's `ISSUES_*` machine block, sentinel-write line, and human-readable summary are the SUB-skill's terminal output, not the `/design` machine footer. Step 5b annotate (when /issue was invoked), Step 5b.5 (post-approval diagram), and Step 5c (compose → validate → redact → in-process publish tail) still must run after Step 5b has no pending priority-label work.
 
-### 5b.5 — Post-approval architecture diagram
+### 5b.5: Post-approval architecture diagram
 
 Gate C already returned **Approve** or `--skip-approve` auto-approved, and Step 5b has finished on a success, skip, or non-blocking failure path. Run this step before Step 5c on every happy path.
 
@@ -595,7 +595,7 @@ If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, 
 
 > **Continue to Step 5c IMMEDIATELY** after the skip marker exists or the candidate write/failure-log path is complete.
 
-### 5c — Write `larch:plan` to GitHub + publish
+### 5c: Write `larch:plan` to GitHub + publish
 
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, driver parsing, validator repair routing, WARN replay, and publish-tail decisions.
 
@@ -611,7 +611,7 @@ Parameters:
   - do not parse `.design-publish-result.env` until `step-5c-terminal` is present.
   - do not wait for a second notification once the terminal sentinel is present.
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 21600000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
 
 Invoke `design-step5c.sh` (contract: `design-step5c.md`) for deterministic Step 5c. It delegates to `python/cli.py design step5c`, which calls publish-tail in-process. `python/cli.py design publish` remains the library/legacy verb for validation, redaction, plan block write, diagrams upsert, log publish, and `[DESIGNED]` rename.
 
@@ -627,7 +627,7 @@ Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-pu
 
 Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
 
-### 5d — Final warning replay + footer
+### 5d: Final warning replay + footer
 
 Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
 
@@ -639,15 +639,15 @@ When `PLAN_WRITE_OK=true`, repeat external-reviewer warnings, then emit exactly 
 
 When `PLAN_WRITE_OK=true` and either `SESSION_ID` is empty or `PUBLISH_OK=true`, the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; NEXT REQUIRED: continue`
+`➡️ 5: finalize: plan written to issue #<N>; NEXT REQUIRED: continue`
 
 When `PLAN_WRITE_OK=true`, `SESSION_ID` is non-empty, and `PUBLISH_OK=false`, the footer line is:
 
-`➡️ 5: finalize — plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
+`➡️ 5: finalize: plan written to issue #<N>; log publish incomplete; NEXT REQUIRED: continue`
 
 > **Continue to Step 6 IMMEDIATELY** after the Step 5 footer when `PLAN_WRITE_OK=true`. Step 6 decides whether cleanup is allowed from `PUBLISH_OK`; do not remove `$DESIGN_TMPDIR` from Step 5d when log publish failed.
 
-<!-- step:6 — Cleanup -->
+<!-- step:6: Cleanup -->
 
 Print: `> **🔶 /design 6: cleanup**`
 
@@ -663,11 +663,11 @@ Remove `$DESIGN_TMPDIR` only after the Step 5 machine footer when `PLAN_WRITE_OK
 
 When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, enter this shared branch for Step 2b, Gate B / Step 3.5, discussion-round2, and ordinary Step 5c composed-plan validator defects.
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` immediately after this shared entry condition and before Step 5c special-case evaluation, the autofix fence, or any `_autofix_status` branching.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` immediately after this shared entry condition and before Step 5c special-case evaluation, the autofix fence, or any `_autofix_status` branching.
 
 **Step 5c missing-composition special case.** If `--site` is `design Step 5c` and `[[ ! -s "$DESIGN_TMPDIR/composed-plan.md" ]]`, treat the missing or empty composed plan as the authoritative precondition defect. The exact diagnostic token `composed-plan.md missing or empty` in `VALIDATE_LOG_FILE` is evidence only. Skip `python/cli.py plan validator-autofix`, skip Override, and offer only **Fix-and-retry** and **Cancel**. On **Fix-and-retry**, re-run Step 5c item 1 to compose `$DESIGN_TMPDIR/composed-plan.md`, then re-invoke `design-step5c.sh`. On **Cancel**, preserve `$DESIGN_TMPDIR`, skip `redact secrets`, `python/cli.py named-block write --marker plan`, publish/rename tail items, and Step 6 cleanup.
 
-**Step 5c review-provenance special case.** If `--site` is `design Step 5c`, `VALIDATE_STATUS=defects-found`, `VALIDATE_LOG_FILE` is empty or unset, and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal from the publish tail (not a plan-command validator defect). The driver already emitted `**⚠ 5c: publish refused — review provenance indicates ...**`. Skip `python/cli.py plan validator-autofix`, skip Override, and offer only **Fix-and-retry** and **Cancel**. On **Fix-and-retry**, re-run `/design` from Step 3 so plan review can complete. On **Cancel**, preserve `$DESIGN_TMPDIR`, skip `redact secrets`, `python/cli.py named-block write --marker plan`, publish/rename tail items, and Step 6 cleanup.
+**Step 5c review-provenance special case.** If `--site` is `design Step 5c`, `VALIDATE_STATUS=defects-found`, `VALIDATE_LOG_FILE` is empty or unset, and `VALIDATE_MISSING_SCRIPT_COUNT` is `0` or unset, treat this as review-provenance refusal from the publish tail (not a plan-command validator defect). The driver already emitted `**⚠ 5c: publish refused: review provenance indicates ...**`. Skip `python/cli.py plan validator-autofix`, skip Override, and offer only **Fix-and-retry** and **Cancel**. On **Fix-and-retry**, re-run `/design` from Step 3 so plan review can complete. On **Cancel**, preserve `$DESIGN_TMPDIR`, skip `redact secrets`, `python/cli.py named-block write --marker plan`, publish/rename tail items, and Step 6 cleanup.
 
 **Auto-repair fence.** After the Step 5c special cases do not apply, bind `_validator_target_file` as specified in `validator-failure.md`, then invoke the autofix fence:
 
@@ -678,18 +678,18 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, ente
 Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**. Execute the missing-script summary and option bodies from `validator-failure.md`.
 
 **Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
-- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design driver` — ACTION dispatcher; sibling `design-driver.md`.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan parse-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validator-autofix`, and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan check-size` — plan-command extraction, validation, auto-repair, and size gates; implementation `${CLAUDE_PLUGIN_ROOT}/python/plan_quality.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_quality.py`, plus `skills/design/scripts/test-check-plan-size.md`, `test-invoke-plan-validator`, `test-auto-fix-plan-commands`, and `make test-trailer-helpers` for optional trailers.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design postplan-emit` — Step 2b / re-emit post-plan driver wrapping `ACTION=EMIT_PLAN` and `plan validate`; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_postplan.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_design_postplan.py`.
-- `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv` — Tier 3 opt-in registry; docs `dry-runnable-scripts.md`.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review emit`, `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review tally`, and `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review finalize` — `ACTION=EMIT_PLAN`, `ACTION=TALLY`, `ACTION=FINALIZE`; implementation `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`; `finalize` sibling `finalize-plan.md`; tally uses `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" voting findings-classification-header` / `${CLAUDE_PLUGIN_ROOT}/python/voting.py`.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review gate-b-dedup` — Gate B mechanical dedup and optional-trailer snapshot/validate using `dedup-plan-lines.py` and `python/cli.py plan optional-trailers`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`; Gate B mode/size brake harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-gate-b-apply-mode.sh` (target `test-gate-b-apply-mode`).
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design file-oos-prepare|file-oos-annotate` — OOS staging plus `/issue` stdout annotation; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_oos.py`.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" named-block write --marker plan` — writes `larch:plan`; coverage `python/test_issue_wire.py`.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design log-publish` — publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_log_publish_flow.py`.
-- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params` — persists Step 0 `run-params.json`; sibling `write-run-params.md`.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design route`, `${CLAUDE_PLUGIN_ROOT}/python/cli.py design init-runparams`, and `${CLAUDE_PLUGIN_ROOT}/python/cli.py design parse-flags` — Step 0 route/init/argv drivers; implementations `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_lifecycle.py` and `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_argv.py`; argv harness `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_design_argv.py`.
-- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step5c` — Step 5c orchestration; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_lifecycle.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_design_lifecycle.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py design publish` remains publish-tail library/legacy verb in `${CLAUDE_PLUGIN_ROOT}/python/design_publish.py`, covered by `${CLAUDE_PLUGIN_ROOT}/python/test_design_publish.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review record-round-timing` is the timing helper (sibling `record-plan-review-round-timing.md`; harness `test-record-plan-review-round-timing.sh` / `test-record-plan-review-round-timing.md`).
+- `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design driver`: ACTION dispatcher; sibling `design-driver.md`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan parse-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validator-autofix`, and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan check-size`: plan-command extraction, validation, auto-repair, and size gates; implementation `${CLAUDE_PLUGIN_ROOT}/python/plan_quality.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_quality.py`, plus `skills/design/scripts/test-check-plan-size.md`, `test-invoke-plan-validator`, `test-auto-fix-plan-commands`, and `make test-trailer-helpers` for optional trailers.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design postplan-emit`: Step 2b / re-emit post-plan driver wrapping `ACTION=EMIT_PLAN` and `plan validate`; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_postplan.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_design_postplan.py`.
+- `${CLAUDE_PLUGIN_ROOT}/scripts/dry-runnable-scripts.tsv`: Tier 3 opt-in registry; docs `dry-runnable-scripts.md`.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review emit`, `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review tally`, and `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review finalize`: `ACTION=EMIT_PLAN`, `ACTION=TALLY`, `ACTION=FINALIZE`; implementation `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`; `finalize` sibling `finalize-plan.md`; tally uses `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" voting findings-classification-header` / `${CLAUDE_PLUGIN_ROOT}/python/voting.py`.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review gate-b-dedup`: Gate B mechanical dedup and optional-trailer snapshot/validate using `dedup-plan-lines.py` and `python/cli.py plan optional-trailers`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`; Gate B mode/size brake harness `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-gate-b-apply-mode.sh` (target `test-gate-b-apply-mode`).
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design file-oos-prepare|file-oos-annotate`: OOS staging plus `/issue` stdout annotation; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_oos.py`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" named-block write --marker plan`: writes `larch:plan`; coverage `python/test_issue_wire.py`.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design log-publish`: publishes `$DESIGN_TMPDIR` to `larch-logs/design/<RUN_ID>/` via disposable worktree + PR; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_log_publish_flow.py`.
+- `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session write-run-params`: persists Step 0 `run-params.json`; sibling `write-run-params.md`.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design route`, `${CLAUDE_PLUGIN_ROOT}/python/cli.py design init-runparams`, and `${CLAUDE_PLUGIN_ROOT}/python/cli.py design parse-flags`: Step 0 route/init/argv drivers; implementations `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_lifecycle.py` and `${CLAUDE_PLUGIN_ROOT}/python/larch/design/design_argv.py`; argv harness `${CLAUDE_PLUGIN_ROOT}/python/tests/design/test_design_argv.py`.
+- `${CLAUDE_PLUGIN_ROOT}/python/cli.py design step5c`: Step 5c orchestration; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_lifecycle.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_design_lifecycle.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py design publish` remains publish-tail library/legacy verb in `${CLAUDE_PLUGIN_ROOT}/python/design_publish.py`, covered by `${CLAUDE_PLUGIN_ROOT}/python/test_design_publish.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review record-round-timing` is the timing helper (sibling `record-plan-review-round-timing.md`; harness `test-record-plan-review-round-timing.sh` / `test-record-plan-review-round-timing.md`).
 
 <!-- Retained migration inventory for agent-lint S030 while design Step 2 callers move to python/cli.py design verbs: test-auto-fix-plan-commands.sh. -->
 

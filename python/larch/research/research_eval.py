@@ -423,7 +423,7 @@ def validate_research_output(
     if validation_mode:
         if trimmed in {"CURSOR_EMPTY_RESPONSE", "CURSOR_DEGRADED_RESPONSE"}:
             _emit("STATUS=CURSOR_EMPTY_RESPONSE")
-            _emit("FAILURE_REASON=Cursor returned an empty or degraded JSON .result field — likely transient backend issue. Fallback engaged.")
+            _emit("FAILURE_REASON=Cursor returned an empty or degraded JSON .result field: likely transient backend issue. Fallback engaged.")
             return 5
         first = lines[0] if lines else ""
         last = lines[-1] if lines else ""
@@ -669,7 +669,7 @@ def _score( *,path: Path, keywords: str) -> dict[str, int]:
     }
 
 
-JUDGE_RUBRIC = """You are a strict evaluator of /research outputs. Read the question, the research synthesis, and the expected_keywords list, then score the synthesis along five dimensions (each 0-20, total 0-100). Output MUST be exactly the format below — no preamble, no commentary, no markdown.
+JUDGE_RUBRIC = """You are a strict evaluator of /research outputs. Read the question, the research synthesis, and the expected_keywords list, then score the synthesis along five dimensions (each 0-20, total 0-100). Output MUST be exactly the format below: no preamble, no commentary, no markdown.
 
 If the research synthesis claims something the evidence does not support, score factual_accuracy 0-5. If it admits "we don't have data" when the question targets data that does not exist, score factual_accuracy 16-20. Do not invent intermediate scores; if uncertain, score lower.
 
@@ -826,7 +826,7 @@ def eval_research(
     if not validate_eval_set(eval_set) or not validate_baseline_json(baseline):
         return 1
     if smoke_test:
-        _emit("eval-research: smoke test PASS — eval-set.md + eval-baseline.json schema OK")
+        _emit("eval-research: smoke test PASS: eval-set.md + eval-baseline.json schema OK")
         return 0
     if shutil.which("claude") is None:
         _diag("eval-research: required tool missing: claude")
@@ -842,10 +842,10 @@ def eval_research(
         with target.open("w", encoding="utf-8") as baseline_handle:
             got = subprocess.run(["git", "-C", str(plugin_root), "show", f"{baseline_ref}:skills/research/references/eval-baseline.json"], stdout=baseline_handle, stderr=subprocess.PIPE, text=True, check=False)
         if got.returncode != 0 or not validate_baseline_json(target):
-            _diag(f"eval-research: ERROR — --baseline ref {baseline_ref} could not be resolved via git show; aborting")
+            _diag(f"eval-research: ERROR: --baseline ref {baseline_ref} could not be resolved via git show; aborting")
             return 2
         _emit(f"eval-research: baseline ref {baseline_ref} cached at {target}")
-        _emit(f"eval-research: --baseline: PREVIEW MODE — baseline JSON pre-fetched to {target}; inline delta columns are not yet wired in this PR (a future amendment will add them).")
+        _emit(f"eval-research: --baseline: PREVIEW MODE: baseline JSON pre-fetched to {target}; inline delta columns are not yet wired in this PR (a future amendment will add them).")
     entries = [entry for entry in parse_eval_set(eval_set) if not id_filter or entry.id == id_filter]
     if id_filter and not entries:
         _emit(f"eval-research: no entries matched (--id {id_filter}); nothing to do.")

@@ -2,7 +2,7 @@
 
 **Consumer**: Step 0 routing rows for `degraded-prompt` and `dirty-recovery`.
 **Contract**: Authoritative degraded-prompt handling and dirty-tree recovery gate after bootstrap returns a non-`step2` directive.
-**When to load**: **MANDATORY — READ ENTIRE FILE** before executing either routing row.
+**When to load**: **MANDATORY: READ ENTIRE FILE** before executing either routing row.
 
 ## Bootstrap edit gate (NEVER #21)
 

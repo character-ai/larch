@@ -451,7 +451,7 @@ def _run_gh(*, repo: str, argv: list[str]) -> proc.CommandResult:
 def _append_warning_log(*, design_tmpdir: Path, site: str, tool: str, detail: str) -> None:
     log = design_tmpdir / "execution-issues.md"
     heading = "### Warnings\n"
-    entry = f"- **Step {site} — {tool} failed (exit 1)**:\n  ```\n{detail.rstrip()}\n  ```\n"
+    entry = f"- **Step {site}: {tool} failed (exit 1)**:\n  ```\n{detail.rstrip()}\n  ```\n"
     existing = log.read_text(encoding="utf-8") if log.exists() else ""
     if heading not in existing:
         existing = existing.rstrip() + ("\n\n" if existing.strip() else "") + heading
@@ -647,7 +647,7 @@ def file_oos_prepare_main(argv: Sequence[str]) -> int:
     if not deps_available:
         deps_tsv.unlink(missing_ok=True)
         print(
-            f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode} — graceful-degrade (no caller TSV)",
+            f"file-design-oos: python/cli.py oos file-conflict-deps exit {deps_result.returncode}: graceful-degrade (no caller TSV)",
             file=sys.stderr,
         )
     _emit_kv(key="FILE_DESIGN_OOS_DEPS_AVAILABLE", value="true" if deps_available else "false")

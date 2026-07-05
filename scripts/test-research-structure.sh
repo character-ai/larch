@@ -6,7 +6,7 @@
 #  - The 4-reference symmetric topology survives edits:
 #    skills/research/references/research-phase.md, validation-phase.md,
 #    citation-validation-phase.md, and critique-loop-phase.md all exist.
-#  - Each reference is named on a 'MANDATORY — READ ENTIRE FILE' line in
+#  - Each reference is named on a 'MANDATORY: READ ENTIRE FILE' line in
 #    skills/research/SKILL.md, and the SAME line carries reciprocal
 #    'Do NOT load <each-other-reference>' guards naming the OTHER three
 #    references (line-scoped, presence-not-order).
@@ -85,9 +85,9 @@ check_mandatory_topology() {
   shift
   local -a others=("$@")
   local line
-  line=$(grep -F 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" | grep -F "$target" || true)
+  line=$(grep -F 'MANDATORY: READ ENTIRE FILE' "$SKILL_MD" | grep -F "$target" || true)
   if [[ -z "$line" ]]; then
-    fail "[topology] no MANDATORY — READ ENTIRE FILE line in SKILL.md names '$target'"
+    fail "[topology] no MANDATORY: READ ENTIRE FILE line in SKILL.md names '$target'"
     return
   fi
   PASS=$((PASS + 1))
@@ -280,12 +280,12 @@ contains "$SKILL_MD" 'A leaked hook registration without a fresh `research-*` se
 contains "$SKILL_MD" 'any other active path outcome denies.' '[activation] read-only contract must keep active fail-closed path behavior'
 contains "$SKILL_MD" 'Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping.' '[activation] filing VERIFIED=false branch must remove sentinel'
 contains "$SKILL_MD" 'Remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"` before stopping. Research-result-filing semantics require all items to succeed' '[activation] filing ISSUES_FAILED branch must remove sentinel'
-contains "$SKILL_MD" 'remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"`, print `**⚠ 3.5: auto-issue — /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**`, and proceed to Step 4.' '[activation] auto-issue failure must remove sentinel'
+contains "$SKILL_MD" 'remove `"$RESEARCH_DENY_ACTIVE_SENTINEL"`, print `**⚠ 3.5: auto-issue: /issue failed (REASON=<token>). Research results were not archived to GitHub. Continuing.**`, and proceed to Step 4.' '[activation] auto-issue failure must remove sentinel'
 contains "$SKILL_MD" 'rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"' '[activation] Step 4 cleanup must remove sentinel'
 contains "$RESEARCH_MD" 'rm -f "$RESEARCH_DENY_ACTIVE_SENTINEL"' '[activation] research-phase abort branches must remove sentinel'
 
 gate_line=$(line_for "$SKILL_MD" '**Degraded-tools gate (#3207).**')
-activation_line=$(line_for "$SKILL_MD" '### 0a.5 — Activate read-only Write/Edit hook')
+activation_line=$(line_for "$SKILL_MD" '### 0a.5: Activate read-only Write/Edit hook')
 write_line=$(line_for "$SKILL_MD" 'Write `$RESEARCH_TMPDIR/lane-status.txt`')
 if [[ -n "$gate_line" && -n "$activation_line" && -n "$write_line" \
       && "$gate_line" -lt "$activation_line" && "$activation_line" -lt "$write_line" ]]; then

@@ -7,7 +7,7 @@ allowed-tools: AskUserQuestion, Bash, Read, Grep, Glob
 
 # Review And Fix Skill
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Apply accepted findings produced by `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" review core`.
 

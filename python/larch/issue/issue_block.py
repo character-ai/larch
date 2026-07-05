@@ -69,7 +69,7 @@ def add_blocked_by_main(argv: list[str]) -> int:
     if not repo:
         repo = _repo()
         if not repo:
-            _err("Could not determine repository — pass --repo owner/name")
+            _err("Could not determine repository: pass --repo owner/name")
             return 1
     if re.match(r"^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$", repo) is None:
         _err(f"--repo must be exactly owner/name (got: '{repo}')")
@@ -116,7 +116,7 @@ def add_blocked_by_main(argv: list[str]) -> int:
     except (KeyError, TypeError, ValueError):
         numbers = []
     if int(issue_b) not in numbers:
-        print(f"WARNING=addBlockedBy succeeded but #{issue_b} was not found in the blockedBy payload — relationship status is uncertain", file=sys.stderr)
+        print(f"WARNING=addBlockedBy succeeded but #{issue_b} was not found in the blockedBy payload: relationship status is uncertain", file=sys.stderr)
     print("SUCCESS=true")
     print(f"✓ #{issue_a} is now blocked by #{issue_b}")
     return 0

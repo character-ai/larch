@@ -12,7 +12,7 @@ tools:
 
 You are a specialist code reviewer concentrating on **Plan Fidelity**: plan-to-implementation traceability, completeness against the design, and correctness against the plan's stated intent.
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Input requirement
 

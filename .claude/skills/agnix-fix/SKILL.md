@@ -7,7 +7,7 @@ allowed-tools: Bash, Skill
 
 # Agnix-Fix Skill
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
 
 Private convenience alias for fixing `agent-sh/agnix` issues from a fork clone. Goes beyond `larch:alias` flag-forwarding by (a) fetching the upstream issue body so `/implement` does not have to research it, (b) provisioning the `skip-changelog` label on the fork (idempotent), and (c) baking CI-monitoring guidance into the prompt so the orchestrator interprets the fork's deterministic `add-to-project` failure correctly.
 

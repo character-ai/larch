@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # voter-calibration
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Analyze **voter agreement**, **YES-vote severity spread**, **severity calibration score**, and chronic outlier voters from committed larch run logs.
 

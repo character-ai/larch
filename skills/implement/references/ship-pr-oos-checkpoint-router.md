@@ -2,7 +2,7 @@
 
 **Consumer**: /implement Step 8+ on NEXT_ACTION=oos-pipeline after the Python security-sidecar branch is selected.
 **Contract**: Owns the Step 8+ OOS checkpoint wrapper routing semantics and success bookkeeping contract.
-**When to load**: **MANDATORY — READ ENTIRE FILE** only on the NEXT_ACTION=oos-pipeline branch, before invoking step-8-oos-checkpoint.sh and without assuming any prior OOS pipeline body ran.
+**When to load**: **MANDATORY: READ ENTIRE FILE** only on the NEXT_ACTION=oos-pipeline branch, before invoking step-8-oos-checkpoint.sh and without assuming any prior OOS pipeline body ran.
 
 ## Security sidecar disposition
 

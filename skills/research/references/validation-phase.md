@@ -1,6 +1,6 @@
 # Validation Phase Reference
 
-**Consumer**: `/research` Step 2 — loaded via the `MANDATORY — READ ENTIRE FILE` directive at Step 2 entry in SKILL.md.
+**Consumer**: `/research` Step 2 — loaded via the `MANDATORY: READ ENTIRE FILE` directive at Step 2 entry in SKILL.md.
 
 **Contract**: fixed-shape findings-validation invariant — 3 reviewer lanes: 1 Claude Code Reviewer subagent + 1 Codex + 1 Cursor, with Claude Code Reviewer subagent fallbacks when an external tool is unavailable. Owns the launch-order rule, Cursor and Codex validation-reviewer launch bash blocks with their long reviewer prompts, per-slot fallback rules, the Claude Code Reviewer subagent archetype variable bindings (`{REVIEW_TARGET}` / `{CONTEXT_BLOCK}` / `{OUTPUT_INSTRUCTION}`) for research validation, the process-Claude-findings-immediately rule, Step 2.4 collection with zero-externals branch + runtime-timeout replacement, Codex/Cursor negotiation delegation, and the Finalize Validation procedure.
 

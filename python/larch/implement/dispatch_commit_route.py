@@ -102,14 +102,14 @@ def step5_review_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-5-review").parse_args(argv)
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
-    _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5 — code review"])
+    _invoke_cli(["timing", "telemetry-mark", "--implement-tmpdir", str(implement_tmpdir), "--label", "Step 5: code review"])
     dynamic_cap = _read_session_key_default(implement_tmpdir=implement_tmpdir, key="LARCH_DYNAMIC_ARCHETYPES_MAX", default="") or os.environ.get("LARCH_DYNAMIC_ARCHETYPES_MAX", "") or "1"
     if dynamic_cap not in {"0", "1"}:
         print(f"ERROR: Step 5 banner dynamic_archetypes_cap is non-integer or out of range: {dynamic_cap}", file=sys.stderr)
         return 2
     os.environ["LARCH_DYNAMIC_ARCHETYPES_MAX"] = dynamic_cap
     round_cap = "2"
-    print(f"> **🔶 /implement 5: code review — review-and-fix step5 --mode loop, up to {round_cap} rounds; round 1 full paired reviewer panel; round 2 pruned on round-1 productivity; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap={dynamic_cap}**")
+    print(f"> **🔶 /implement 5: code review: review-and-fix step5 --mode loop, up to {round_cap} rounds; round 1 full paired reviewer panel; round 2 pruned on round-1 productivity; prune-to-empty converges; no round-5 re-probe; dynamic-archetypes cap={dynamic_cap}**")
     return _run_cli_forward(["review-and-fix", "step5", "--implement-tmpdir", str(implement_tmpdir), "--mode", "loop", "--starting-round", "1"])
 
 
@@ -118,7 +118,7 @@ def _step5_round_timing_row_exists(cols: list[str], *, round_decimal: str, start
         len(cols) >= TIMING_LEDGER_MIN_COLUMNS
         and cols[1] == "round"
         and cols[3] == "implement"
-        and cols[4] == "Step 5 — code review"
+        and cols[4] == "Step 5: code review"
         and cols[5] == round_decimal
         and cols[6] == start_s
     )
@@ -223,19 +223,19 @@ _COMMIT_ROUTE_SITES: dict[str, CommitRouteSite] = {
     "step5-self-review": CommitRouteSite(
         stall_step="5",
         bail_reason="review-fix-commit-failed",
-        failure_log_label="Step 5 — self-review commit failed",
+        failure_log_label="Step 5: self-review commit failed",
         porcelain_probe=False,
     ),
     "step5-resume-handoff": CommitRouteSite(
         stall_step="5",
         bail_reason="resume-handoff-commit-failed",
-        failure_log_label="Step 5 — resume handoff commit failed",
+        failure_log_label="Step 5: resume handoff commit failed",
         porcelain_probe=True,
     ),
     "step7": CommitRouteSite(
         stall_step="7",
         bail_reason="review-fix-commit-failed",
-        failure_log_label="Step 7 — review-fix commit failed",
+        failure_log_label="Step 7: review-fix commit failed",
         porcelain_probe=False,
     ),
 }
@@ -568,7 +568,7 @@ def _run_7r_rebase_checkpoint(forked_target: str) -> int:
 _STEP4_COMMIT_SITE = CommitRouteSite(
     stall_step="4",
     bail_reason="implementation-commit-failed",
-    failure_log_label="Step 4 — implementation commit failed",
+    failure_log_label="Step 4: implementation commit failed",
     porcelain_probe=False,
 )
 
@@ -998,7 +998,7 @@ def step5_resume_main(argv: list[str] | None = None) -> int:
     implement_tmpdir = _tmpdir_from_env()
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
-    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 5 — review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
+    subprocess.run([sys.executable, str(_current_cli_path()), "timing", "mark", "Step 5: review handoff"], env={**os.environ, "DESIGN_TMPDIR": "", "LARCH_TIMING_SKILL": "implement"}, check=False)
     round_start_file = implement_tmpdir / f"round-{args.final_round_num}" / "round-start-s"
     if round_start_file.is_file():
         start_s = round_start_file.read_text(encoding="utf-8", errors="replace").strip()

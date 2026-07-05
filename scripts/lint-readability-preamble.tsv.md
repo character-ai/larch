@@ -26,7 +26,7 @@ Both `python3 python/cli.py lint readability-preamble` and the Python test consu
 
 ## Semantics
 
-- **orchestrator-inline**: file-level count of the MANDATORY readability directive with the correct root path form. Public `skills/**` rows must use `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`. Dev-only `.claude/skills/**` rows must use `$PWD/skills/shared/readability-style.md`. When `step_markers` is non-empty, each listed step body (from `<!-- step:<id>` until the next `<!-- step:`) must contain at least one match.
+- **orchestrator-inline**: file-level count of the exact `MANDATORY: READ ENTIRE FILE` readability directive with the correct root path form. Public `skills/**` rows must use `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`. Dev-only `.claude/skills/**` rows must use `$PWD/skills/shared/readability-style.md`. When `step_markers` is non-empty, each listed step body (from `<!-- step:<id>` until the next `<!-- step:`) must contain at least one match.
 - **external-prompt**: exact prompt-line counts. `standard` and `plan-review` use backticked `<READABILITY_STYLE>` lines.
 - **metadata-min-count**: committed floor for the sum of `expected_count` values across counted rows. Lowering the floor is an explicit diff.
 - **skill-exempt**: explicit opt-out for a `SKILL.md` file that composes no prose. `expected_count` must be `0` and a reason is required in `prompt_kind` or `step_markers`.

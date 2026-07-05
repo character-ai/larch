@@ -70,7 +70,7 @@ for needle in [
     'larch.io.read_kvs',
 ]:
     forbid(matrix, needle, 'ship-pr-exit-matrix.md stripped ci-fix body')
-require_near(ci_fix, 'MANDATORY — READ ENTIRE FILE', 're-invoke `step-8-ship.sh`', 'ci-fix procedure read before ship re-entry')
+require_near(ci_fix, 'MANDATORY: READ ENTIRE FILE', 're-invoke `step-8-ship.sh`', 'ci-fix procedure read before ship re-entry')
 
 if errors:
     print('\n'.join(errors), file=sys.stderr)

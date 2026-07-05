@@ -2,7 +2,7 @@
 # Structural regression test for /review skill progressive-disclosure invariants
 # (closes #306, hardened in #318). Asserts that skills/review/SKILL.md +
 # skills/review/references/ topology survives edits:
-#  - Each reference file on disk is named on at least one 'MANDATORY — READ ENTIRE FILE'
+#  - Each reference file on disk is named on at least one 'MANDATORY: READ ENTIRE FILE'
 #    line in SKILL.md (bidirectional orphan detection via filesystem enumeration).
 #  - Baseline expected references (domain-rules.md, voting.md) exist and each is named
 #    on a MANDATORY line (explicit baseline binding for clearer diagnostics).
@@ -126,7 +126,7 @@ done
 
 # ---------------------------------------------------------------------------
 # (3) Every skills/review/references/*.md file on disk is named on at least one
-#     'MANDATORY — READ ENTIRE FILE' line in SKILL.md (bidirectional orphan
+#     'MANDATORY: READ ENTIRE FILE' line in SKILL.md (bidirectional orphan
 #     detection). Match 'references/<basename>' followed by a boundary
 #     character (end of line, whitespace, or a non-filename token like ` ` ) ,
 #     so neither a name-containing-name case (e.g. 'references/my-voting.md'
@@ -136,9 +136,9 @@ done
 #     as a boundary.
 # ---------------------------------------------------------------------------
 # Use `|| true` so grep's exit-1 on zero matches does not abort before fail().
-mandatory_lines=$(grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" || true)
+mandatory_lines=$(grep 'MANDATORY: READ ENTIRE FILE' "$SKILL_MD" || true)
 [[ -n "$mandatory_lines" ]] \
-  || fail "(3) SKILL.md contains zero 'MANDATORY — READ ENTIRE FILE' lines"
+  || fail "(3) SKILL.md contains zero 'MANDATORY: READ ENTIRE FILE' lines"
 
 shopt -s nullglob
 ref_files=( "$REFS_DIR"/*.md )
@@ -160,7 +160,7 @@ for ref_path in "${ref_files[@]}"; do
   # character (anything outside [A-Za-z0-9._-]) so 'references/foo.md.bak' does
   # NOT satisfy the check for 'foo.md'.
   printf '%s\n' "$mandatory_lines" | grep -Eq "references/${escaped}([^A-Za-z0-9._-]|$)" \
-    || fail "(3) no 'MANDATORY — READ ENTIRE FILE' line in SKILL.md references 'references/$ref_basename' — orphan reference under skills/review/references/"
+    || fail "(3) no 'MANDATORY: READ ENTIRE FILE' line in SKILL.md references 'references/$ref_basename' — orphan reference under skills/review/references/"
 done
 
 # ---------------------------------------------------------------------------
@@ -173,7 +173,7 @@ done
 for ref in "${expected_refs[@]}"; do
   escaped=$(escape_regex "$ref")
   printf '%s\n' "$mandatory_lines" | grep -Eq "references/${escaped}([^A-Za-z0-9._-]|$)" \
-    || fail "(4) no 'MANDATORY — READ ENTIRE FILE' line in SKILL.md references 'references/$ref' — baseline step-to-reference binding broken"
+    || fail "(4) no 'MANDATORY: READ ENTIRE FILE' line in SKILL.md references 'references/$ref' — baseline step-to-reference binding broken"
 done
 
 # ---------------------------------------------------------------------------
@@ -189,21 +189,21 @@ done
 #     (4) so 'references/voting.md.bak' can NOT satisfy the pin for 'voting.md'.
 #
 #     (5a) domain-rules.md pinned to the Step 3 entry callsite: one SKILL.md
-#          line contains 'MANDATORY — READ ENTIRE FILE', 'Step 3' (with a
+#          line contains 'MANDATORY: READ ENTIRE FILE', 'Step 3' (with a
 #          word-char boundary so 'Step 3a'/'Step 30'/'Step 3f' do NOT
 #          false-pass), and 'references/domain-rules.md' together.
 #
 #     (5b) voting.md pinned to the rounds 1-3 branch: one SKILL.md line contains
-#          'MANDATORY — READ ENTIRE FILE', 'rounds 1-3' (case-insensitive),
+#          'MANDATORY: READ ENTIRE FILE', 'rounds 1-3' (case-insensitive),
 #          and 'references/voting.md' together.
 #
 #     (5c) Reciprocal rounds-4+ guard: one SKILL.md line contains 'Do NOT load'
 #          and 'references/voting.md' together.
 # ---------------------------------------------------------------------------
-grep 'MANDATORY — READ ENTIRE FILE' "$SKILL_MD" \
+grep 'MANDATORY: READ ENTIRE FILE' "$SKILL_MD" \
   | grep -E 'Step 3([^0-9A-Za-z]|$)' \
   | grep -Eq 'references/domain-rules\.md([^A-Za-z0-9._-]|$)' \
-  || fail "(5a) no single SKILL.md line carries 'MANDATORY — READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken"
+  || fail "(5a) no single SKILL.md line carries 'MANDATORY: READ ENTIRE FILE', 'Step 3' (boundary-anchored), and 'references/domain-rules.md' together — Step 3 entry callsite pin for domain-rules.md is broken"
 
 # (5b/5c) voting.md callsite pins removed in #2207. Code-review voting is now
 # Python-owned (python/cli.py agent dispatch-voters + python/cli.py review tally-code-votes)

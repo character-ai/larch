@@ -627,9 +627,9 @@ def _tool_state(*, binary_found: str, present: str) -> str:
 def _state_phrase(state: str) -> str:
     return {
         "ok": "available",
-        "binary-missing": "UNAVAILABLE — CLI binary not found on PATH",
-        "probe-failed": "UNAVAILABLE — runtime health probe failed (binary present but the auth/quota check did not pass)",
-        "unavailable": "UNAVAILABLE — session health probe did not pass",
+        "binary-missing": "UNAVAILABLE: CLI binary not found on PATH",
+        "probe-failed": "UNAVAILABLE: runtime health probe failed (binary present but the auth/quota check did not pass)",
+        "unavailable": "UNAVAILABLE: session health probe did not pass",
     }.get(state, "unknown")
 
 
@@ -700,9 +700,9 @@ def degraded_tools_gate_main(argv: list[str] | None = None) -> int:
         "skill": args.skill,
     })
     if not ctx.codex_present:
-        _err("agent degraded-tools-gate: ERROR: --codex-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
+        _err("agent degraded-tools-gate: ERROR: --codex-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
     if not ctx.cursor_present:
-        _err("agent degraded-tools-gate: ERROR: --cursor-present resolved empty (caller rehydration bug — read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
+        _err("agent degraded-tools-gate: ERROR: --cursor-present resolved empty (caller rehydration bug: read presence keys from the durable session-env file, not ambient shell state); treating as down (fail-safe)")
     result = degraded_tools_result(
         codex_binary_found=ctx.codex_binary_found,
         codex_present=ctx.codex_present,

@@ -13,7 +13,7 @@ the `/research` skill under the simplified fixed-shape topology
    `references/critique-loop-phase.md`.
 3. `references/adjudication-phase.md` does NOT exist (removed under the
    simplified shape).
-4. Each reference is named on a `MANDATORY — READ ENTIRE FILE` line in
+4. Each reference is named on a `MANDATORY: READ ENTIRE FILE` line in
    `SKILL.md`, and that same line carries reciprocal `Do NOT load <other>`
    guards naming the OTHER three references on the same line (line-scoped,
    presence-not-order).

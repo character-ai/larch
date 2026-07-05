@@ -211,7 +211,7 @@ def _emit_success_envelope(rows: list[tuple[str, str]], *, preflight_tmpdir: Pat
         issue_json_path=issue_json_path,
     )
     if validation_error:
-        print(f"**❌ /implement preflight: malformed success envelope — {validation_error}.**")
+        print(f"**❌ /implement preflight: malformed success envelope: {validation_error}.**")
         return 2
     for key, value in rows:
         print(f"{key}={value}")
@@ -258,9 +258,9 @@ def _print_admission_refusal(kv: dict[str, str]) -> None:
     admission_error = kv.get("ADMISSION_ERROR", "")
     admission_result = kv.get("ADMISSION_RESULT", "missing") or "missing"
     if admission_error:
-        print(f"**❌ /implement preflight: admission blocked — `ADMISSION_ERROR={admission_error}`**")
+        print(f"**❌ /implement preflight: admission blocked: `ADMISSION_ERROR={admission_error}`**")
         return
-    print(f"**❌ /implement preflight: admission blocked — `ADMISSION_RESULT={admission_result}`**")
+    print(f"**❌ /implement preflight: admission blocked: `ADMISSION_RESULT={admission_result}`**")
     if admission_result in {"missing-designed-prefix", "managed-prefix", "report-title"}:
         title = kv.get("TITLE", "")
         if title:
@@ -304,11 +304,11 @@ def _write_fallback_plan(
     if _is_blank(stripped_title):
         if shape == "missing":
             print(
-                f"**❌ /implement --force: issue #{issue} has no larch:plan block, the issue body is empty, and the issue title is empty — nothing to implement. Aborting.**"
+                f"**❌ /implement --force: issue #{issue} has no larch:plan block, the issue body is empty, and the issue title is empty: nothing to implement. Aborting.**"
             )
         else:
             print(
-                f"**❌ /implement --force: issue #{issue} has a malformed larch:plan block, the issue body is empty, and the issue title is empty — nothing to implement. Aborting.**"
+                f"**❌ /implement --force: issue #{issue} has a malformed larch:plan block, the issue body is empty, and the issue title is empty: nothing to implement. Aborting.**"
             )
         raise SystemExit(2)
     try:
@@ -360,7 +360,7 @@ def _validate_design_difficulty(*, plan_path: Path, issue: str, force: bool) -> 
         return ""
     if difficulty.tier_valid(tier):
         return tier
-    message = f"malformed difficulty metadata — `difficulty={tier}`"
+    message = f"malformed difficulty metadata: `difficulty={tier}`"
     if force:
         print(f"**⚠ /implement --force: {message}; ignoring the design prior for issue #{issue}.**")
         return ""
@@ -373,18 +373,18 @@ def _refuse_unreviewed_plan(*, plan_path: Path, issue: str) -> None:
     rounds_completed = _plan_review_meta_value(plan_path=plan_path, key="rounds_completed")
     if review_status in {"panel-init-failed", "panel-skipped"}:
         print(
-            f"**❌ /implement preflight: plan review did not run — `review_status={review_status}`. Re-run /design {issue} before retrying /implement.**"
+            f"**❌ /implement preflight: plan review did not run: `review_status={review_status}`. Re-run /design {issue} before retrying /implement.**"
         )
         raise SystemExit(2)
     if rounds_completed:
         if not rounds_completed.isdigit():
             print(
-                f"**❌ /implement preflight: malformed plan review metadata — `rounds_completed={rounds_completed}`. Re-run /design {issue} before retrying /implement.**"
+                f"**❌ /implement preflight: malformed plan review metadata: `rounds_completed={rounds_completed}`. Re-run /design {issue} before retrying /implement.**"
             )
             raise SystemExit(2)
         if int(rounds_completed) == 0:
             print(
-                f"**❌ /implement preflight: plan review did not run — `rounds_completed=0`. Re-run /design {issue} before retrying /implement.**"
+                f"**❌ /implement preflight: plan review did not run: `rounds_completed=0`. Re-run /design {issue} before retrying /implement.**"
             )
             raise SystemExit(2)
 
@@ -479,7 +479,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
     if malformed:
         if not args.force:
             print(
-                f"**❌ Issue #{issue} has a malformed larch:plan block — `MALFORMED={malformed}`. Run /design {issue} to repair the plan block before retrying /implement.**"
+                f"**❌ Issue #{issue} has a malformed larch:plan block: `MALFORMED={malformed}`. Run /design {issue} to repair the plan block before retrying /implement.**"
             )
             return 2
         fallback_rc = _write_fallback_plan(
@@ -496,7 +496,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         plan_from_extracted_block = False
     elif block_present == "false":
         if not args.force:
-            print(f"**❌ Issue #{issue} has no larch:plan block — run /design {issue} first.**")
+            print(f"**❌ Issue #{issue} has no larch:plan block: run /design {issue} first.**")
             return 2
         fallback_rc = _write_fallback_plan(
             kind="missing-plan",

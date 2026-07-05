@@ -147,9 +147,9 @@ forbid(skill, 'full seven-key envelope', 'SKILL must not require envelope on exi
 
 
 launcher = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
-bootstrap_recovery_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely.'
-self_review_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.'
-bootstrap_recovery_read_degraded = '**MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
+bootstrap_recovery_read = '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely.'
+self_review_read = '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.'
+bootstrap_recovery_read_degraded = '**MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` for degraded-prompt handling before treating absent routing keys as rebase failure.'
 for script in [
     'skills/implement/scripts/step-2-post-dispatch.sh --expected-branch "$BRANCH_NAME"',
     'python/cli.py implement checks-commit-route --checks-site step3 --commit-site step4 --rebase-checkpoint-4r --forked-target "${forked_target:-false}"',
@@ -308,8 +308,8 @@ require('skills/implement/scripts/step-8-ship.sh', 'python/cli.py" git phantom-p
 forbid(skill, launcher + 'scripts/' + 'phantom-probe-with-warn.sh --step 8-pre-ship', 'standalone orchestrator 8-pre-ship fence removed')
 rebase_ref = Path('skills/implement/references/rebase-checkpoint-routing.md').read_text()
 for needle in [
-    '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
-    '**Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
+    '**Orchestrator contract: absorbed `1.r` (Step 0 envelope only)**',
+    '**Orchestrator contract: folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
@@ -414,7 +414,7 @@ require(skill, 'Do not Read `summary-final.md` on the Step 18 path because teard
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from composite stdout.**', 'SKILL Step 18 composite missing-marker warning')
 require(skill, '**⚠ Step 18: EMIT_BODY=true but marker pair missing from finalize stdout.**', 'SKILL Step 18 finalize missing-marker warning')
 require(skill, 'Relay teardown tail records verbatim from captured composite stdout on `NEXT_ACTION=finalize-done`, or from captured finalize stdout on the stall-recovery path.', 'SKILL Step 18 dual tail relay')
-cleanup_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
+cleanup_read = '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step18-cleanup.md` completely.'
 require_near(
     skill,
     cleanup_read,
@@ -623,7 +623,7 @@ if exit_matrix.is_file():
     ci_fix_slice = branch_slice(exit_text, 'ci-fix')
     require_text(ci_fix_slice, 'FORKED_TARGET=true', 'matrix ci-fix branch keeps fork skip')
     require_text(ci_fix_slice, 'ship-pr-ci-fix.md', 'matrix ci-fix branch names child reference')
-    require_text(ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'matrix ci-fix branch carries mandatory-read marker')
+    require_text(ci_fix_slice, 'MANDATORY: READ ENTIRE FILE', 'matrix ci-fix branch carries mandatory-read marker')
     if ci_fix_slice.find('FORKED_TARGET=true') > ci_fix_slice.find('ship-pr-ci-fix.md'):
         checks.append('matrix ci-fix mandatory read must follow fork skip inline text')
     operator_slice = branch_slice(exit_text, 'operator-bail')
@@ -731,7 +731,7 @@ if write_final_ref.is_file():
         require_text(write_final_text, needle, 'write-final-report.md bail-time steps_ran invariant')
 else:
     checks.append('missing skills/implement/scripts/write-final-report.md')
-matrix_read = '**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.'
+matrix_read = '**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-exit-matrix.md` completely.'
 require(skill, matrix_read, 'ship-pr exit matrix Step 8+ entry read')
 require_near(
     skill,
@@ -773,14 +773,14 @@ for needle in [
     'clear the sidecar only after private disposition completes',
     'Expect the checkpoint to stall while `security-oos-observations.md` remains non-empty',
     'complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper',
-    'When `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely',
+    'When `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely',
 ]:
     require(skill, needle, 'SKILL security-sidecar branch or phase14 conflict pin')
 require_near(skill, 'ship-pr-oos-checkpoint-router.md', 'step-8-oos-checkpoint.sh', 'oos router mandatory read before checkpoint fence', 900)
 require_near(skill, '**OOS checkpoint fence.**', 'ship-pr-oos-checkpoint-router.md', 'oos router read before checkpoint fence header', 1500)
 skill_ci_fix_slice = branch_slice(skill_text, 'ci-fix')
 require_text(skill_ci_fix_slice, 'ship-pr-ci-fix.md', 'SKILL ci-fix branch names child reference')
-require_text(skill_ci_fix_slice, 'MANDATORY — READ ENTIRE FILE', 'SKILL ci-fix branch carries mandatory-read marker')
+require_text(skill_ci_fix_slice, 'MANDATORY: READ ENTIRE FILE', 'SKILL ci-fix branch carries mandatory-read marker')
 require_near(skill, 'ship-pr-ci-fix.md', '**operator-bail**', 'ci-fix mandatory read precedes operator-bail skeleton', 900)
 forbid(skill, 'step18a5-filing.md', 'SKILL must not reference retired step18a5-filing.md')
 forbid(skill, '**Post-driver branch table**', 'SKILL post-driver branch table moved to matrix')
@@ -790,7 +790,7 @@ forbid(skill, '**Execution-issues checkpoint**', 'SKILL execution-issues checkpo
 forbid(skill, 'The OOS cap contract lives in', 'SKILL OOS cap contract moved to matrix')
 forbid(skill, 'The active Step 8+ driver writes `finalize-state.sh`', 'SKILL active driver ownership block moved to matrix')
 forbid(skill, '**Python driver routing:**', 'legacy Python driver routing removed')
-forbid(skill, 'MANDATORY — READ ENTIRE FILE on any non-zero active Step 8+ driver exit', 'legacy non-zero driver mandatory block removed')
+forbid(skill, 'MANDATORY: READ ENTIRE FILE on any non-zero active Step 8+ driver exit', 'legacy non-zero driver mandatory block removed')
 for needle in [
     'non-security accepted OOS is filed by the pre-driver `${CLAUDE_PLUGIN_ROOT}/python/cli.py oos file` path before `step-8-ship.sh`',
     'On `NEXT_ACTION=oos-pipeline`, read `$IMPLEMENT_TMPDIR/security-oos-observations.md`',
@@ -883,7 +883,7 @@ forbid(skill, 'Step 0 dirty-tree recovery gate:', 'SKILL dirty-tree gate moved t
 forbid(skill, '.dirty-tree-prompted-step0-plan-materialize', 'SKILL dirty-tree prompt sentinel moved to bootstrap-recovery.md')
 forbid(skill, 'Present the relayed degraded explanation block verbatim (from bootstrap stderr during Step 0)', 'SKILL verbose degraded-prompt table prose moved to bootstrap-recovery.md')
 forbid(skill, 'Enter dirty-tree recovery. Preserve `$IMPLEMENT_TMPDIR`', 'SKILL verbose dirty-recovery table prose moved to bootstrap-recovery.md')
-forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review"', 'SKILL self-review telemetry fence moved to self-review.md')
+forbid(skill, 'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review"', 'SKILL self-review telemetry fence moved to self-review.md')
 forbid(skill, 'python/cli.py review-and-fix write-pre-self-review-snapshot', 'SKILL self-review snapshot fence moved to self-review.md')
 forbid(skill, 'checks-commit-route --checks-site step5-self-review', 'SKILL self-review composite fence moved to self-review.md')
 forbid(skill, 'python/cli.py review-and-fix write-self-review-tally', 'SKILL self-review tally fence moved to self-review.md')
@@ -926,7 +926,7 @@ for needle in [
 
 self_review_text = Path(self_review_ref).read_text()
 for needle in [
-    'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5 — code review" || true',
+    'python/cli.py timing telemetry-mark --implement-tmpdir "$IMPLEMENT_TMPDIR" --label "Step 5: code review" || true',
     'python/cli.py review-and-fix write-pre-self-review-snapshot',
     'python/cli.py implement checks-commit-route --checks-site step5-self-review --commit-site step5-self-review',
     'python/cli.py review-and-fix write-self-review-tally',
@@ -939,8 +939,8 @@ for needle in [
     '$IMPLEMENT_TMPDIR/plan.txt',
     'git diff "$(git merge-base HEAD origin/main)"..HEAD',
     'execution-issues-tracking.md',
-    'correctness — logic errors',
-    'security — injection',
+    'correctness: logic errors',
+    'security: injection',
     'OOS triage policy',
     '### [Code Review] Self-review accepted',
     'rejected-findings.md',

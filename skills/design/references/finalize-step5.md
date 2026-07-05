@@ -10,7 +10,7 @@
 
 Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches on it; Step 5b.5 writes a skip marker or candidate; Step 5c completes diagram sanitize before publish.
 
-**MANDATORY — READ ENTIRE FILE before Step 5 diagram, final plan, summary, or Gate C prose composition: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before Step 5 diagram, final plan, summary, or Gate C prose composition: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Step 5b OOS filing body
 

@@ -1,6 +1,6 @@
 # Discussion Rounds Reference
 
-**MANDATORY — READ ENTIRE FILE before composing Step 1c clarifying questions, Step 1d discussion-round writes, or the post-plan Round 2 sub-round body: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing Step 1c clarifying questions, Step 1d discussion-round writes, or the post-plan Round 2 sub-round body: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 **Consumer**: `/design` Steps 1c, 1d, and the Step 1e Gate A post-plan discussion body reached from Gate B(c) / Gate C(b).
 
@@ -12,7 +12,7 @@
 
 ---
 
-<!-- step:1c — Clarifying Questions -->
+<!-- step:1c: Clarifying Questions -->
 
 Before drafting the plan, use `AskUserQuestion` to resolve ambiguities that affect scope, constraints, or done criteria.
 
@@ -31,7 +31,7 @@ After the user responds, carry those answers through all later steps.
 
 ---
 
-<!-- step:1d — Design Discussion Round 1 -->
+<!-- step:1d: Design Discussion Round 1 -->
 
 Before drafting, stress-test scope and requirements by walking a decision tree one question at a time. Unlike Step 1c batching, Step 1d is sequential: each answer may reshape later questions.
 
@@ -47,7 +47,7 @@ After each answer, apply the **same semantic sprawl heuristic** as Step 1c (Spli
 
 ## Short-circuit
 
-If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1 — no scope decisions require discussion (<elapsed>)` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off. Step 1d.7 always fires on new-plan runs after Step 1d / Step 1d.5, including this short-circuit path; users may use **Refine outline** there to add context before plan drafting.
+If the feature is straightforward with fewer than 2 scope decision branches, print `⏩ 1d: discussion r1: no scope decisions require discussion (<elapsed>)` and proceed to Step 1d.5 (brainstorm panel, when enabled) or Step 1d.7 (outline) when brainstorm is off. Step 1d.7 always fires on new-plan runs after Step 1d / Step 1d.5, including this short-circuit path; users may use **Refine outline** there to add context before plan drafting.
 
 ## Output
 
@@ -56,7 +56,7 @@ Write resolved decisions to `$DESIGN_TMPDIR/discussion-round1.md` using a simple
 ```markdown
 ## Decision 1: <short title>
 - **Question**: <the question asked>
-- **Resolution**: <the answer — from user or codebase>
+- **Resolution**: <the answer: from user or codebase>
 - **Source**: user / codebase
 ```
 
@@ -76,16 +76,16 @@ Record `<N>` decisions resolved.
 
 <!-- post-plan discussion sub-round body (invoked from Step 1e Gate A on re-entry; the legacy <!-- step:3.5 marker is intentionally retained below for tooling that anchors on it) -->
 
-<!-- step:3.5 — Post-Plan Discussion Sub-Round body (referenced from Gate A re-entry) -->
+<!-- step:3.5: Post-Plan Discussion Sub-Round body (referenced from Gate A re-entry) -->
 
 After plan review, stress-test remaining design decisions that were not covered in Round 1, were challenged by reviewers, or were introduced by the plan itself. Gate A invokes this body on each re-entry from Gate B(c) "switch to discussion mode" or Gate C(b) "discuss further"; it is no longer automatic.
 
 ## Inputs
 
 Read these artifacts:
-- `$DESIGN_TMPDIR/discussion-round1.md` — If it exists and is non-empty, use it to identify decisions already covered in Round 1. **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
-- `$DESIGN_TMPDIR/plan.txt` — Latest plan: initial Step 2b output or a post-plan re-entry plan with Gate B findings applied. Read this file, not conversation context.
-- `$DESIGN_TMPDIR/accepted-plan-findings.md` — If it exists and is non-empty, use it to identify decisions reviewers challenged as suboptimal or that required plan revision.
+- `$DESIGN_TMPDIR/discussion-round1.md`: If it exists and is non-empty, use it to identify decisions already covered in Round 1. **If it does not exist or is empty** (Round 1 short-circuited or was skipped), treat all candidate decisions as uncovered by Round 1 and proceed normally.
+- `$DESIGN_TMPDIR/plan.txt`: Latest plan: initial Step 2b output or a post-plan re-entry plan with Gate B findings applied. Read this file, not conversation context.
+- `$DESIGN_TMPDIR/accepted-plan-findings.md`: If it exists and is non-empty, use it to identify decisions reviewers challenged as suboptimal or that required plan revision.
 
 ## Behavior
 
@@ -97,7 +97,7 @@ Unlike Round 1, Round 2 MAY ask about architectural decisions and implementation
 
 ## Short-circuit
 
-If all plan decisions are covered by Round 1 and no reviewer findings challenged them, print `⏩ post-plan discussion — no additional decisions require discussion (<elapsed>)` and return to the calling Gate A prompt (re-fire the "ready for review / discuss more" `AskUserQuestion`). This body is invoked from Gate A's "Discuss more" branch on a post-plan re-entry; control returns to Gate A, NOT to Step 3b. Gate A decides the next destination. "Ready for review" on a post-plan re-entry proceeds to Step 3, not Step 3b.
+If all plan decisions are covered by Round 1 and no reviewer findings challenged them, print `⏩ post-plan discussion: no additional decisions require discussion (<elapsed>)` and return to the calling Gate A prompt (re-fire the "ready for review / discuss more" `AskUserQuestion`). This body is invoked from Gate A's "Discuss more" branch on a post-plan re-entry; control returns to Gate A, NOT to Step 3b. Gate A decides the next destination. "Ready for review" on a post-plan re-entry proceeds to Step 3, not Step 3b.
 
 ## Output
 
@@ -106,13 +106,13 @@ The caller (Gate A) selects the target file: post-plan Gate A re-entries from Ga
 ```markdown
 ## Decision 1: <short title>
 - **Question**: <the question asked>
-- **Resolution**: <the answer — from user or codebase>
+- **Resolution**: <the answer: from user or codebase>
 - **Source**: user / codebase
 ```
 
 **Plan revision authority**: This Gate A re-entry body MAY revise `$DESIGN_TMPDIR/plan.txt` directly from user-resolved decisions, because each change follows from explicit user answers. Preserve or recompute optional `diff_added:`, `diff_deleted:`, and `mechanical_churn:` trailers in the final contiguous metadata block immediately above the required final `diff_lines:` line. Before direct replacement, run `"${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review gate-b-dedup --design-tmpdir "$DESIGN_TMPDIR" --snapshot-trailers` as the pre-rewrite snapshot authority; do not rely on prompt-side keys-only checks. After rewriting, run `"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step35-settle.sh --site discussion-round2`. The wrapper runs dedup, clears stale dialectic artifacts, parses `POSTPLAN_RC=`, forwards `SETTLE_NEXT_ACTION=`, and delegates scout clearing to `python/cli.py design step2b-postplan`. Do not call `dialectic-clear-stale` before settle dedup completes. `gate-a` and `discussion-round2` both map internally to `python/cli.py design step2b-postplan --site discussion-round2`.
 
-1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
+1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
 2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 
 Reviewer findings are NEVER applied here. Gate B owns those. Print the revised plan only if substantive changes were made.

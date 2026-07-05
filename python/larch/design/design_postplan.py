@@ -366,9 +366,9 @@ def postplan_emit_main(argv: Sequence[str]) -> int:
     if step2b5.action == "drift-advisory":
         kvs["PLAN_SIZE_STATUS"] = "drift-advisory"
         flush()
-        print(f"⏩ 2b.5: plan-size — drift advisory (PLAN_LINES={kvs.get('PLAN_LINES','')} DIFF_LINES={kvs.get('DIFF_LINES','')}); proceeding")
+        print(f"⏩ 2b.5: plan-size: drift advisory (PLAN_LINES={kvs.get('PLAN_LINES','')} DIFF_LINES={kvs.get('DIFF_LINES','')}); proceeding")
         return 0
     kvs["PLAN_SIZE_STATUS"] = "under-threshold"
     flush()
-    print(f"⏩ 2b.5: plan-size — under thresholds (PLAN_LINES={kvs.get('PLAN_LINES','')} DIFF_LINES={kvs.get('DIFF_LINES','')})")
+    print(f"⏩ 2b.5: plan-size: under thresholds (PLAN_LINES={kvs.get('PLAN_LINES','')} DIFF_LINES={kvs.get('DIFF_LINES','')})")
     return 0

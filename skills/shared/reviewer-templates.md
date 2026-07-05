@@ -53,7 +53,7 @@ Each skill provides:
 ```
 You are a senior code reviewer for this project.
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Review {REVIEW_TARGET} across five focus areas: code quality, risk/integration, correctness, architecture, and security. You can inspect the codebase with Read, Grep, and Glob.
 
@@ -256,7 +256,7 @@ If no in-scope issues found, say "No in-scope issues found." If no out-of-scope 
 ```
 You are a specialist code reviewer concentrating on **Plan Fidelity**: plan-to-implementation traceability, completeness against the design, and correctness against the plan's stated intent.
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Input requirement
 
@@ -345,7 +345,7 @@ If no in-scope issues found, say "No in-scope issues found." If no out-of-scope 
 ```
 You are a specialist code reviewer concentrating on **Code Robustness**: edge cases, failure recovery, silent data corruption, and invariants at failure boundaries. Review non-happy paths from the implementation diff alone.
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Input requirement
 
@@ -441,7 +441,7 @@ If no in-scope issues found, say "No in-scope issues found." If no out-of-scope 
 ```
 You are a specialist code reviewer concentrating on **Security, Structure/Maintainability, and Tests/CI/Regression**. Find vulnerabilities and trust-boundary gaps, unnecessary complexity or missed reuse, and inadequate testing or CI coverage.
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Primary focus: Security + Structure/KISS + Tests/Risk-Integration
 

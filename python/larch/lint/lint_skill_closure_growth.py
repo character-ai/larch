@@ -47,7 +47,7 @@ CONDITIONAL_SECTIONS_BY_SKILL: dict[str, frozenset[str]] = {
     "implement": frozenset({"Checks Failure Entry Macro", "Durable Bail to Step 18 Macro"}),
 }
 
-MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY\s+(?:[—-]\s+)?READ\s+ENTIRE\s+FILE", re.IGNORECASE)
+MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY:\s+READ\s+ENTIRE\s+FILE", re.IGNORECASE)
 READ_COMPLETELY_RE = re.compile(r"\bread\b(?P<body>.*?\.md.*?)\bcompletely\b", re.IGNORECASE)
 MARKDOWN_PATH_RE = re.compile(
     r"`(?P<ticked>[^`\n]+?\.md)`|(?P<bare>(?:\$\{CLAUDE_PLUGIN_ROOT\}/|\./|/)?[A-Za-z0-9_./{}$+-]+\.md)"

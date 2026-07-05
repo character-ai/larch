@@ -395,9 +395,9 @@ def _validate_parse_result(*, rc: int, data: dict[str, str], stderr_text: str) -
         if error_message:
             print(error_message, file=sys.stderr)
         elif validation_error:
-            print(f"**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.** {validation_error}", file=sys.stderr)
+            print(f"**⚠ /design: unrecognized or disallowed public flag: aborting before session setup.** {validation_error}", file=sys.stderr)
         else:
-            print("**⚠ /design: unrecognized or disallowed public flag — aborting before session setup.**", file=sys.stderr)
+            print("**⚠ /design: unrecognized or disallowed public flag: aborting before session setup.**", file=sys.stderr)
         raise SystemExit(1)
     if rc == 0:
         if validation_error:
@@ -439,7 +439,7 @@ def step0_parse_main(argv: Sequence[str]) -> int:
     ns = _parse_wrapper_args(argv)
     plugin_root = require_plugin_root(ns.plugin_root)
     if not ns.plugin_root:
-        print(f"/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export — skill loader must expand {_TEMPLATE_PLUGIN_ROOT} in the template line before Bash runs; abort", file=sys.stderr)
+        print(f"/design Step 0-pre: CLAUDE_PLUGIN_ROOT is empty after export: skill loader must expand {_TEMPLATE_PLUGIN_ROOT} in the template line before Bash runs; abort", file=sys.stderr)
         return 1
     cache, data = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=data)

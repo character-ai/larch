@@ -10,8 +10,8 @@ EXTERNAL = "Style requirements: `<READABILITY_STYLE>`."
 PLAN_REVIEW = "Style requirements for finding text and OOS Descriptions: `<READABILITY_STYLE>`."
 PUBLIC_PATH = "${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md"
 DEV_PATH = "$PWD/skills/shared/readability-style.md"
-PUBLIC_ORCH = "**MANDATORY — READ ENTIRE FILE before composing fixture text: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
-DEV_ORCH = "**MANDATORY — READ ENTIRE FILE before composing fixture text: `$PWD/skills/shared/readability-style.md`.**"
+PUBLIC_ORCH = "**MANDATORY: READ ENTIRE FILE before composing fixture text: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
+DEV_ORCH = "**MANDATORY: READ ENTIRE FILE before composing fixture text: `$PWD/skills/shared/readability-style.md`.**"
 
 
 def write(path: Path, text: str) -> None:
@@ -51,6 +51,18 @@ def test_prompt_kinds(tmp_path: Path, capsys: pytest.CaptureFixture[str], kind: 
     rc, err = run(tmp_path, capsys)
     assert rc == 0, err
 
+
+
+
+def test_em_dash_mandatory_directive_does_not_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    legacy = PUBLIC_ORCH.replace("MANDATORY:", f"MANDATORY {chr(0x2014)}")
+    manifest(tmp_path, "skills/foo/SKILL.md\torchestrator-inline\t1\t\t\n")
+    write(tmp_path / "skills/foo/SKILL.md", legacy + "\n")
+
+    rc, err = run(tmp_path, capsys)
+
+    assert rc == 1
+    assert "skills/foo/SKILL.md: expected 1 orchestrator-inline readability-style directives, found 0" in err
 
 def test_missing_external_reports_count(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     manifest(tmp_path, "prompt.md\texternal-prompt\t2\tstandard\t\n")

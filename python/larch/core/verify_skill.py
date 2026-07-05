@@ -122,7 +122,7 @@ def main(argv: list[str]) -> int:
             return _emit(verified=False, reason="no_match")
         print(
             f"ERROR: grep failed (exit {result.returncode}) "
-            "— regex may be malformed or file unreadable",
+            "- regex may be malformed or file unreadable",
             file=sys.stderr,
         )
         return 1

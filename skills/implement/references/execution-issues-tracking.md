@@ -6,7 +6,7 @@
 
 **When to load**: MANDATORY immediately before applying OOS triage policy, the `Pre-existing Code Issues` dual-write gate, or filing OOS GitHub issues. Do not load outside those call sites.
 
-**MANDATORY — READ ENTIRE FILE before composing execution issue descriptions, OOS descriptions, or manual filing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing execution issue descriptions, OOS descriptions, or manual filing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Follow-up Work Principle
 

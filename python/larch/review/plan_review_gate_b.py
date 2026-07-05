@@ -144,13 +144,13 @@ def _gate_b_display_rows(tmpdir: Path) -> list[GateBDisplayRow]:
 
 
 def _emit_gate_b_preview(tmpdir: Path) -> int:
-    print("## Plan Review Findings — Review")
+    print("## Plan Review Findings: Review")
     print()
     for row in _gate_b_display_rows(tmpdir):
         print(f"FINDING_{row.finding_id} | {row.display_severity_label} | {row.reviewer_text} | {row.excerpt}")
     for name, header in (
-        ("rejected-findings.md", "## Rejected Findings — Context"),
-        ("oos.md", "## Out-of-Scope Findings — Context"),
+        ("rejected-findings.md", "## Rejected Findings: Context"),
+        ("oos.md", "## Out-of-Scope Findings: Context"),
     ):
         path = tmpdir / name
         text = path.read_text(encoding="utf-8", errors="replace") if path.is_file() and not path.is_symlink() else ""

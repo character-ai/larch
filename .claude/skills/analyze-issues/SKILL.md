@@ -6,7 +6,7 @@ allowed-tools: Bash, Read
 
 # analyze-issues
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**
 
 Generate a backlog-and-process insight report from the current repository's GitHub issues, including coverage stats, category breakdown, cumulative growth, wasteful-work signatures, reviewer/persona effectiveness, fate-adjusted OOS scoring, and ground-truth voter calibration.
 

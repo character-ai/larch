@@ -66,7 +66,7 @@ jobs:
         # `lint-local`. If a dedicated job is removed, drop its hook
         # name from SKIP to restore CI coverage. Issue #1034.
         env:
-          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
+          SKIP: agnix,lint-mermaid-fences,shellcheck,gitleaks,ruff,pyright,agent-lint,lint-skill-invocations,lint-literal-counts,lint-no-raw-stderr-after-quiet-init,lint-gh-body-inline,lint-bash32,bash-syntax-check,check-topology-rule-paths,lint-readability-preamble,lint-em-dash-output,lint-renderer-substitution-safety,lint-skill-md-flag-signature,lint-bare-grep-probe,lint-codex-exec-auth,lint-awk-multibyte-regex
         run: |
           set -euo pipefail
           log="$(mktemp)"

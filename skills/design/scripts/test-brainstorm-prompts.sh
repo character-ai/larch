@@ -38,7 +38,7 @@ for section in '<BRAINSTORM_FRAMING_PROMPT>' '<BRAINSTORM_SCOPE_PROMPT>' '<BRAIN
     ' "$BP" || fail "brainstorm-prompts.md missing readability line in $section"
 done
 
-grep -Fq 'MANDATORY — READ ENTIRE FILE' "$BM" || fail "brainstorm.md missing MANDATORY directive"
+grep -Fq 'MANDATORY: READ ENTIRE FILE' "$BM" || fail "brainstorm.md missing MANDATORY directive"
 # shellcheck disable=SC2016 # literal plugin-root token in skill prose, not shell expansion.
 grep -Fq '${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md' "$BM" \
     || fail "brainstorm.md missing shared readability path literal"

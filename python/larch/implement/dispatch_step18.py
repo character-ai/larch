@@ -124,7 +124,7 @@ def step_18_gate_finalize_main(argv: list[str] | None = None) -> int:
         return 0
 
     _emit_kv(key="STALL_RECOVERY_REQUIRED", value="false")
-    print("⏩ 18a: stall recovery — no stall detected")
+    print("⏩ 18a: stall recovery: no stall detected")
     _normalize_outcome_for_step18(implement_tmpdir, memory_layer=layers.memory, env=env)
 
     # lint-subprocess-via-runner: ok composite must invoke the existing Bash finalize fence verbatim

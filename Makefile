@@ -18,6 +18,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 .PHONY: lint-bash32 test-lint-bash32 lint-gh-body-inline lint-mermaid agent-sync
 .PHONY: lint-bg-wait-coverage test-lint-bg-wait-coverage lint-bg-wait-writer-parity test-lint-bg-wait-writer-parity
 .PHONY: lint-flat-tests test-lint-flat-tests
+.PHONY: lint-em-dash-output test-lint-em-dash-output
 .PHONY: test-step-7a test-step-8-ship test-step-8-oos-checkpoint
 .PHONY: test-stall-recovery-report test-stall-recovery-report-1 test-stall-recovery-report-2 test-stall-recovery-report-3 test-step-18 test-step-18b-final-report
 .PHONY: test-resolve-upstream-larch-repo test-file-failure-report-cross-repo
@@ -34,7 +35,7 @@ PYLINT_JOBS ?= $(shell $(PYTHON) -c 'import os; print(0 if os.sysconf("SC_SEM_NS
 # CI splits `lint` into `lint-only` (pre-commit) and `test-harnesses`
 # (regression harnesses). `lint` remains the local-dev convenience target
 # that runs both, defined in terms of the two split targets to prevent drift.
-lint: test-harnesses lint-bash32 lint-readability-preamble lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-bg-wait-writer-parity lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
+lint: test-harnesses lint-bash32 lint-readability-preamble lint-em-dash-output lint-renderer-substitution-safety lint-skill-md-flag-signature lint-skill-awk-field-refs lint-skill-description-length lint-bare-grep-probe lint-codex-exec-auth lint-consecutive-bash lint-bg-wait-coverage lint-bg-wait-writer-parity lint-awk-multibyte-regex lint-tier1a-size lint-retired-scripts lint-skill-closure-growth lint-only
 
 py-lint: py-lint-main py-typecheck
 
@@ -158,6 +159,13 @@ test-lint-tier1a-size:
 
 lint-readability-preamble:
 	python3 python/cli.py lint readability-preamble
+
+
+lint-em-dash-output:
+	python3 python/cli.py lint em-dash-output
+
+test-lint-em-dash-output:
+	python3 python/cli.py timing harness-mark --label $@ -- python3 -m pytest python/tests/lint/test_lint_em_dash_output.py -q
 
 lint-renderer-substitution-safety:
 	bash scripts/lint-renderer-substitution-safety.sh
