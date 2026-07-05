@@ -1,0 +1,8 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_1 not traceable to scoped input (first 80 chars: 'Route code-review security OOS to the aggregate parent/session tmpdir sidecar, o')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_1 not traceable to scoped input (first 80 chars: 'Route security OOS to the aggregate parent, matching oos_accepted_out.parent, or')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_3 not traceable to scoped input (first 80 chars: 'Read pool, filter to non-security blocks with Result=accepted, dedupe against th')
+warning: fix text for slot 'dyn-dyn-oos-routing' in FINDING_3 not traceable to scoped input (first 80 chars: 'Either remove implement pool writes when emit no longer consumes the pool, or re')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_7 not traceable to scoped input (first 80 chars: 'Count both FINDING_N and OOS_N headings, for example with voting.BALLOT_HEADING_')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_7 not traceable to scoped input (first 80 chars: 'Count both FINDING_N and OOS_N headings, for example with voting.BALLOT_HEADING_')
+warning: fix text for slot 'dyn-dyn-oos-routing' in FINDING_12 not traceable to scoped input (first 80 chars: 'Split the checkpoint: clear non-security disposition when oos-issues.ndjson and ')
+warning: fix text for slot 'dyn-dyn-oos-routing' in FINDING_13 not traceable to scoped input (first 80 chars: 'Align implement promotion with design: only promote main-agent blocks that carry')
