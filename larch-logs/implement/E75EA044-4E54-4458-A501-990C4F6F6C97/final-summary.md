@@ -1,14 +1,16 @@
-## /implement run E75EA044-4E54-4458-A501-990C4F6F6C97: shipping
+## /implement run E75EA044-4E54-4458-A501-990C4F6F6C97: stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:40:50
-- **Cost**: 💰 TOTAL ~$10.86: Claude $2.68, Codex-5.5 $2.13, Codex-mini $2.13, Cursor $2.91, Claude (subprocess) $1.01  |  Tokens: 28038k
+- **Cost**: 💰 TOTAL ~$10.89: Claude $2.68, Codex-5.5 $2.13, Codex-mini $2.13, Cursor $2.91, Claude (subprocess) $1.04  |  Tokens: 28103k
 - **Issue**: #6439: https://github.com/character-ai/larch/issues/6439
+- **PR**: #6446: https://github.com/character-ai/larch/pull/6446
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/2 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +318/-43, larch-logs +701/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -66,7 +68,3 @@ codex/apply                    │                                           █
 6. cursor/testing: 1
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
