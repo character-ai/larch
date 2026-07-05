@@ -14,7 +14,7 @@ Reduce open issue count by merging related issues into combined ones. The primar
 
 | Flag | Default | Purpose |
 |------|---------|---------|
-| `--oos` | off | OOS mode: operate only on open issues with a `[OOS]` title prefix. Checks each item for actuality, discards stale items, then proposes an aggressive combination scheme. See **OOS Mode** section below for the full step flow. |
+| `--oos` | off | OOS mode: operate only on open issues with a `[OOS]` title prefix. Checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, then proposes an aggressive combination scheme. See **OOS Mode** section below for the full step flow. |
 
 When `--oos` is present, skip the standard Steps 1–3 below and follow the **OOS Mode** section instead.
 
@@ -80,7 +80,7 @@ After all groups are applied, print a final tally: `Done — <N> issues combined
 
 ## OOS Mode (`--oos`)
 
-Operates only on open issues whose title starts with the `[OOS]` prefix followed by a space (prefix match, not substring). Fetches them, checks actuality item-by-item, discards stale items, and proposes an aggressive combination.
+Operates only on open issues whose title starts with the `[OOS]` prefix followed by a space (prefix match, not substring). Fetches them, checks actuality and merit item-by-item, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination.
 
 Resolve the target repository once before OOS commands that require `--repo`:
 
@@ -134,7 +134,7 @@ Parse `ISSUES_FILE` and `COUNT` from stdout. If `COUNT=0`, print `No open [OOS] 
 
 Read the JSON file at `$ISSUES_FILE`.
 
-<!-- step:oos-2 — Actuality Check (per item) -->
+<!-- step:oos-2 — Actuality and Merit Check (per item) -->
 
 OOS issues contain one or more items. Items follow two formats:
 
@@ -157,17 +157,22 @@ For each issue, parse its body and extract the individual items. Then for each i
       ```
       On failure, still keep the item as **actual** (not blocked) and emit a warning.
    c. If `STATUS=none` or `STATUS=invalid_path`, the item is **stale** — emit `Discarding item "<title>" from #<N>: referenced file <path> no longer exists.` and skip it.
-   d. If `STATUS=ambiguous`, the item is **actual** (not blocked) — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — implementing issue match ambiguous.` and include it in the oos-3/oos-4 flat list.
+   d. If `STATUS=ambiguous`, the item is **actual** (not blocked) — emit `Keeping item "<title>" from #<N>: referenced file <path> not yet created — implementing issue match ambiguous.` and continue to the merit gate.
 3. If the file exists, read the relevant lines (±20 lines around the stated line when a line number is given). Assess whether the concern is still present:
    - If the code the item describes has been removed or the issue is clearly fixed, mark **stale** and emit a discard message.
    - If uncertain, default to **actual** (keep the item).
-4. Collect all **actual** items that are **not blocked** across all OOS issues into a flat list for oos-3/oos-4. **Blocked** items stay on their source issues — do not include them in deduplication or combination, and never close a source issue solely because its remaining items are blocked.
+4. For each **actual** item that is **not blocked**, judge merit before adding it to the oos-3/oos-4 flat list:
+   - Reject only when the rejection has a concrete cause tied to code you read or to documented repo principles. Use `KARPATHY_CLAUDE.md` §2 and §3 as named anchors.
+   - Proposed low-merit causes include speculative features, single-use abstractions, unrequested flexibility, defensive handling for impossible states, refactors of unbroken code, pure nits, lopsided cost/benefit, or concrete contradictions of documented decisions.
+   - If the evidence is weak, subjective, or uncited, default to **keep**.
+   - For each low-merit item, stage a proposed rejection with the source issue, item title, stable display key, and a 1-3 sentence cause. Do not combine, deduplicate, close, or discard the item until the oos-4 merit batch confirms rejection.
+5. Collect only items that passed both actuality and merit, and are not blocked, into the flat list for oos-3/oos-4. **Blocked** items stay on their source issues. Proposed low-merit items stay only in the staged rejection list until the operator decides the merit batch. Do not include blocked or pending low-merit items in deduplication or combination, and never close a source issue solely because its remaining items are blocked or pending merit confirmation.
 
-Track fully stale source issues while checking actuality. A source is fully stale only when every item in that source is stale and no combined host owns actionable content from it. Keep blocked or still-actionable items open. Build a stale-only closure list with the source issue number, a redacted stale discard summary, proposed close reason `not planned`, and whether a comment file will be used.
+Track pending fully discarded source issues while checking actuality and merit. A source is fully discarded only when every item in that source is stale auto-discarded or confirmed merit-rejected, and no item is blocked, rescued, still actionable, pending merit confirmation, or consumed by a combined host. During oos-2, merit rejections are only proposed, so sources with proposed low-merit items remain pending and must not close yet. Build a pending discarded-source list with the source issue number, a redacted stale discard summary, proposed merit rejection keys and causes, proposed close reason `not planned`, and whether a comment file will be used. Sources whose items are all stale still behave like the previous stale-only closure list.
 
-Do not call raw `gh issue close` from prompt prose. Reserve `python/cli.py combine-issues close-sources` for **post-combination** source closures in oos-7 only: each close comment must keep the human-readable `Combined into #<target>` line and write the durable `larch:combined-away` marker used by `/analyze-issues`. Stale-only closures in oos-2 and oos-4 use `combine-issues close-stale` only and must **not** carry the combined-away marker. Do not invoke `combine-issues close-stale` during oos-2 before approval.
+Do not call raw `gh issue close` from prompt prose. Reserve `python/cli.py combine-issues close-sources` for **post-combination** source closures in oos-7 only: each close comment must keep the human-readable `Combined into #<target>` line and write the durable `larch:combined-away` marker used by `/analyze-issues`. Stale-only and confirmed fully discarded closures in oos-2 and oos-4 use `combine-issues close-stale` only and must **not** carry the combined-away marker. Do not invoke `combine-issues close-stale` during oos-2 before approval.
 
-If no actual items remain after actuality checks, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
+If no kept items remain after actuality and merit checks and no proposed merit rejections are pending, proceed to an approval prompt that shows only stale-only closures. After approval, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues close-stale \
@@ -179,9 +184,9 @@ python3 "$PWD/python/cli.py" combine-issues close-stale \
 
 The comment file must be redacted and should summarize only that issue's stale discard lines. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Report the stale closure tally and stop without entering combination planning. If approval is denied, leave the stale-only sources open, report them as not closed, and stop.
 
-If actual items remain, carry the stale-only closure list forward into oos-4.
+If proposed merit rejections are pending, continue to oos-4 even when zero kept items remain. The oos-4 merit batch must run before any merit-based discard or fully discarded source closure. If kept items remain, carry the pending discarded-source list forward into oos-4.
 
-Emit a summary: `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.` When any blocked items were found, append: `(<B> item(s) kept as blocked by in-flight implementing issues.)`
+Emit a summary: `Actuality and merit check: <K> kept, <M> stale, <P> low-merit pending confirmation across <N> OOS issues.` When any blocked items were found, append: `(<B> item(s) kept as blocked by in-flight implementing issues.)`
 
 <!-- step:oos-3 — Deduplicate -->
 
@@ -189,7 +194,7 @@ Remove duplicate items: two items are duplicates when they reference the same `L
 
 <!-- step:oos-4 — Propose Aggressive Combination Scheme -->
 
-Combine the remaining actual items into the **minimal** number of combined issues subject to one constraint: no single combined issue should be notably too large or risky to implement in one pass (rough heuristic: more than ~15 items or covering >5 unrelated subsystems is too large).
+Combine the remaining kept items into the **minimal** number of combined issues subject to one constraint: no single combined issue should be notably too large or risky to implement in one pass (rough heuristic: more than ~15 items or covering >5 unrelated subsystems is too large). If no kept items remain because all actual items are pending merit decisions, present zero groups and still run the merit and discarded-source approval gate.
 
 Within that constraint, combine **aggressively** — unlike the standard mode, unrelated items may be grouped together if it reduces issue count. Prefer grouping by:
 
@@ -197,17 +202,35 @@ Within that constraint, combine **aggressively** — unlike the standard mode, u
 2. Same severity or focus area.
 3. Any remaining items: pack into a single catch-all combined issue unless it would exceed the size heuristic.
 
+When any proposed merit rejections exist, show them before the combination scheme as one consolidated list:
+
+```text
+Rejected items (merit):
+  <key> (#<source>) - <item title>: <1-3 sentence cause of rejection>
+```
+
+Include every staged merit rejection. The key must be stable within the proposal, such as `A`, `B`, or `item-3`. Do not prompt per item.
+
 For each proposed combined issue:
 
 1. List source issue numbers and item titles.
 2. Draft a combined title (e.g., `[OOS] <brief theme> — <N> items`) and a combined body that uses `### Item N — <title>` format, preserving all actionable content.
-3. Note which source issues will be closed (all source issues whose items are fully consumed).
+3. Note which source issues will be closed. Use the oos-5 handled-item definition: stale auto-discarded, confirmed merit-rejected, or consumed into an approved group. Pending merit, blocked, rescued unconsumed, or otherwise unhandled items keep the source open.
 
-Include fully stale source closures in the operator proposal. Show each stale-only source issue number, close reason `not planned`, the stale discard summary, and whether the close will use a comment file.
+Include stale-only and pending fully discarded source closures in the operator proposal. Show each source issue number, close reason `not planned`, the stale discard summary, proposed merit rejection keys and causes when present, and whether the close will use a comment file. Make clear that sources with pending merit items cannot close unless the operator confirms those merit rejections.
 
-Present the proposed scheme to the user. State that approval covers both creating combined issues for actual items and closing fully stale source issues. Ask: "Apply all groups and stale closures (yes), apply specific groups or stale closures (list), or cancel (no)?"
+Present the proposed scheme to the user. State that approval covers three independent decisions: creating combined issues for kept items, closing stale-only or fully discarded source issues, and confirming the merit rejection batch. Ask: "Apply all groups, discarded-source closures, and merit rejections (yes), apply specific groups or closures and explicitly decide merit rejections, rescue named merit items in free prose, or cancel (no)?"
 
-After approval and before dependency phases, close approved fully stale sources. Prefer per-issue `close-stale` calls when comments differ by issue:
+Merit rejections require an explicit merit batch outcome:
+
+- Approval of the merit batch confirms every listed merit rejection.
+- A free-prose rescue is a merit batch decision: named items return to the kept-item set, and unrescued listed items are confirmed rejected unless the operator cancels.
+- Cancel stops without rejecting merit items.
+- Partial group or stale-closure selections do not confirm any merit rejection. If the operator approves only some groups or closures without an explicit merit decision, all merit rejections remain pending. Sources with pending merit items remain open and ineligible for oos-5.
+
+After any rescue, rerun deduplication and grouping with the final kept-item set. If the kept-item set or grouping changed, re-emit the combination proposal and require explicit operator approval before oos-5 apply. Do not apply a stale proposal that omitted rescued items.
+
+After approval and before dependency phases, close approved stale-only or fully discarded sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
 python3 "$PWD/python/cli.py" combine-issues close-stale \
@@ -217,7 +240,7 @@ python3 "$PWD/python/cli.py" combine-issues close-stale \
   --comment-file "<file>"
 ```
 
-The comment file must be redacted and should summarize only that issue's stale discard lines. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Include partial stale closes in final left-open tallies. Do not let a stale-close partial failure hide later combine results.
+The comment file must be redacted and should summarize only that issue's stale discard lines and confirmed merit rejection causes. The comment must say the items were discarded as stale or out of line with repo principles when merit contributed. For batch calls, use a shared comment only when it is correct for every issue in the batch. Parse `CLOSED_ISSUES` and `PARTIAL` from stdout, and parse redacted `WARNING=` records from stderr. Include partial stale or fully discarded closes in final left-open tallies. Do not let a `close-stale` partial failure hide later combine results.
 
 <!-- step:oos-5 — Apply with Deferred Closure -->
 
@@ -232,7 +255,7 @@ python3 "$PWD/python/cli.py" combine-issues apply \
   --defer-close
 ```
 
-Only list a source issue in `--source-issues` when all of its items were consumed by this run: no item survived actuality check in a different group, no item remains blocked on the source issue, and no item remains uncombined. If a source issue had stale items discarded and every remaining item was consumed into combined issues, it can be deferred for closure. If a source issue contributed items to multiple groups, defer closure until all groups are applied. Never close a source issue that still has blocked items.
+Only list a source issue in `--source-issues` when all of its items were handled by this run. Handled means stale auto-discarded, confirmed merit-rejected, or consumed into an approved group. Blocked-on-source items, pending merit items, rescued items not consumed by an approved group, and uncombined kept items are not handled. If a source issue had stale items discarded or merit items confirmed rejected and every remaining item was consumed into combined issues, it can be deferred for closure. If a source issue contributed items to multiple groups, defer closure until all groups are applied. Never list a source issue in `--source-issues` when it still has blocked items, pending merit items, rescued unconsumed items, or any other unhandled item.
 
 Parse `COMBINED_ISSUE`, `SOURCE_ISSUES`, `SOURCE_TO_COMBINED_JSON_FRAGMENT`, and `CLOSING_DEFERRED` from stdout. Stop using `CLOSED_ISSUES` from apply output as either a per-group tally or the final source-closure tally. Print: `Combined <source refs> → #<new> (source closure deferred).`
 
@@ -240,13 +263,13 @@ Record these state files for the dependency phases:
 
 - `source_to_combined.json`: JSON object accumulated from `SOURCE_TO_COMBINED_JSON_FRAGMENT` values. The first fragment for a source stores a scalar combined issue number. A later fragment for the same source promotes the value to a sorted unique array. An existing array stays an array and receives the sorted unique union. Duplicate combined issue numbers are deduplicated. Preserve scalar values for sources that map to exactly one combined host. Keep the accumulated shape accepted by `_parse_source_to_combined`.
 - `combined_issues.json`: JSON list of objects with `number`, `title`, and `source_issues`.
-- `blocked_sources.json`: JSON object with `blocked_sources`, one object per source that remains blocked or unconsumed. Each object has `source_issue`, `reason`, and optional `blocked_items`.
+- `blocked_sources.json`: JSON object with `blocked_sources`, one object per source that remains blocked, pending, rescued but unconsumed, or otherwise unhandled. Each object has `source_issue`, `reason`, and optional `blocked_items`. Use reasons such as `blocked_on_source`, `merit_pending`, `rescued_unconsumed`, or `uncombined_kept_item`.
 
 Materialize every dependency workflow JSON file before the first dependency command, even on no-op paths:
 
 - `write_results.json`: `{"write_results":[]}`
 - `exception_decisions.json`: `{"decisions":[]}`
-- `blocked_sources.json`: `{"blocked_sources":[]}` when no sources are blocked or unconsumed.
+- `blocked_sources.json`: `{"blocked_sources":[]}` when no sources are blocked, pending, rescued but unconsumed, or otherwise unhandled.
 - `tier2_candidates.json`: `{"candidates":[]}` when Tier-2 is skipped or has no candidates.
 - `existing_edges.json`: `[]` until populated from successful inherited writes.
 - `decided_edges.json`: `{"decisions":[]}` until operator decisions are recorded.
@@ -326,7 +349,7 @@ python3 "$PWD/python/cli.py" combine-issues close-eligible \
   --blocked-sources-file "$BLOCKED_SOURCES_JSON" > "$CLOSE_ELIGIBLE_JSON"
 ```
 
-Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple combined hosts remain ineligible until a canonical closure host is chosen. Partition eligible sources by their `source_to_combined` host. Invoke `close-sources` once per combined issue with only that combined issue's eligible source issues.
+Close only sources emitted in `eligible_by_combined`. Sources mapped to multiple combined hosts remain ineligible until a canonical closure host is chosen. Sources listed in `blocked_sources.json` for `merit_pending`, `blocked_on_source`, `rescued_unconsumed`, `uncombined_kept_item`, or any other unhandled reason are not close-eligible. Partition eligible sources by their `source_to_combined` host. Invoke `close-sources` once per combined issue with only that combined issue's eligible source issues.
 
 `close-eligible` ignores `satisfied_edges`; closed-blocker dependencies do not require writes and do not block source closure.
 
@@ -419,16 +442,18 @@ Print dependency summary counts:
 - Total audit edges written.
 - Duplicate edges skipped and self-edges skipped.
 - Sources closed and sources left open.
-- Stale-only sources closed and stale-only sources left open.
+- Stale-only or fully discarded sources closed and stale-only or fully discarded sources left open.
+- Sources left open due to pending merit rejections.
 - Dependency read failures and dependency write failures.
 
-Count `close-stale CLOSED_ISSUES` separately from `close-sources CLOSED_ISSUES`, then include both in the total closed-source count. If any `close-stale` call returns `PARTIAL=true`, list the affected source issue as left open unless a later successful close is observed. Include redacted stale-close warnings in the run summary. List sources left open with reasons.
+Count `close-stale CLOSED_ISSUES` separately from `close-sources CLOSED_ISSUES`, then include both in the total closed-source count. If any `close-stale` call returns `PARTIAL=true`, list the affected source issue as left open unless a later successful close is observed. Include redacted stale or fully discarded close warnings in the run summary. List sources left open with reasons.
 
 ## Anti-patterns
 
 - **NEVER combine issues without user confirmation.** The analysis is advisory; the user decides which groups to merge. Combining the wrong issues loses important context that is hard to recover.
 - **NEVER combine an issue that has a `[DESIGNING]`, `[IMPLEMENTING]`, `[STALLED]`, or `[DONE]` title prefix, nor legacy `[PLANNED]` / `[IN PROGRESS]` busy titles.** The fetch script filters these out, but if one slips through (e.g., prefix applied after fetch), skip it and warn. Note: `[DESIGNED]` issues are intentionally NOT excluded — they are valid combine candidates (design complete, implementation not yet started).
-- **NEVER discard actionable content from source issues.** The combined body must preserve every concrete task, file reference, and reproduction step from the originals. Summarizing away specifics defeats the purpose.
+- **NEVER discard actionable content while merging source issues into a combined body.** The combined body must preserve every concrete task, file reference, and reproduction step from the originals. Confirmed merit rejections after oos-4 batch approval are permitted discards; summarizing away kept specifics is not.
+- **NEVER auto-apply merit rejections before oos-4 confirmation.** Pending merit items stay open and close-blocking until the operator explicitly approves the merit batch.
 - **NEVER let a newly combined `[OOS]` issue block a non-OOS issue without explicit operator approval.** The safe default is OOS work blocked by non-OOS work.
 - **NEVER write Tier-2 semantic audit edges without explicit operator approval.** Tier-2 output is a proposal, not an auto-write source.
 - **NEVER close a source issue when dependency reads, inherited writes, inherited classifications, blocked-source status, or inherited exception decisions for that source are unresolved.** Fail closed and list the source in the summary.
