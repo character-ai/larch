@@ -1,16 +1,15 @@
-## /implement run 273478E4-2274-47DE-8B52-ACFF19F62C0C: stalled
+## /implement run 273478E4-2274-47DE-8B52-ACFF19F62C0C: pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:45:02
-- **Cost**: 💰 TOTAL ~$98.35: Claude $17.76, Codex-5.5 $63.09, Codex-mini $3.78, Cursor $11.73, Claude (subprocess) $1.99  |  Tokens: 161335k
+- **Cost**: 💰 TOTAL ~$101.20: Claude $20.56, Codex-5.5 $63.09, Codex-mini $3.78, Cursor $11.73, Claude (subprocess) $2.04  |  Tokens: 166299k
 - **Issue**: #6421: https://github.com/character-ai/larch/issues/6421
 - **PR**: #6430: https://github.com/character-ai/larch/pull/6430
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/15 accepted
-- **Lines (PR diff)**: code +1043/-701, larch-logs +1392/-0
+- **Lines (PR diff)**: code +1066/-724, larch-logs +1466/-0
 - **OOS filed**: 0
 - **Exec issues**: 3
 - **Warnings**: 2
@@ -108,3 +107,7 @@ codex/apply              │                                        ████
 These OOS observations reached the vote but were not accepted for filing.
 
 - **Round 2 FINDING_6** (rejected, nit): weighted scoreboard test lacks OOS filing-sink assertions. Concern: The weighted scoreboard test does not assert the out-of-scope filing-sink contents, which makes filing-gate regressions harder to spot when only scoreboard assertions change.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
