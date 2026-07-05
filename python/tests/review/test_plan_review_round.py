@@ -40,7 +40,8 @@ def _write_sidecar(path: Path, rows: list[dict[str, str]]) -> None:
     _ = path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
-def _prune_nit_findings_fake(argv: list[str], *, design: Path) -> subprocess.CompletedProcess[str]:
+def _prune_nit_findings_fake(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    _ = design
     findings_file = Path(argv[argv.index("--findings-file") + 1])
     audit_file = Path(argv[argv.index("--audit-file") + 1])
     security_audit_file = Path(argv[argv.index("--security-audit-file") + 1])
@@ -402,7 +403,7 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
         if argv[:2] == ["review", "aggregate-findings"]:
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
-            return _prune_nit_findings_fake(argv, design=design)
+            return _prune_nit_findings_fake(argv)
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
@@ -631,7 +632,7 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
             _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
-            return _prune_nit_findings_fake(argv, design=design)
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -827,7 +828,7 @@ def _install_execute_round_fake(
                 return subprocess.CompletedProcess(argv, 0, "REASON=validation-failed\nAGGREGATED=false\n", "")
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
-            return _prune_nit_findings_fake(argv, design=design)
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -1788,7 +1789,7 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
         if argv[:2] == ["review", "aggregate-findings"]:
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
-            return _prune_nit_findings_fake(argv, design=design)
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             voter_called["hit"] = True
             return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")

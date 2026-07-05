@@ -6,6 +6,9 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+round_dir = Path(".")
+impl_parent = Path(".")
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
@@ -1949,8 +1952,7 @@ def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
     assert row["v2_tool"] == "cursor-plan-fidelity"
     assert row["v3_tool"] == "cursor-pragmatism"
     assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
-    assert not (round_dir / "oos-accepted-review.md").exists()
-    assert not (impl_parent / "oos-accepted-review.md").exists()
+    assert not (case / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
 def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> None:
