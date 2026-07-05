@@ -37,11 +37,11 @@
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 39231,
-    "closure_estimated_tokens": 39347,
+    "closure_content_estimated_tokens": 39230,
+    "closure_estimated_tokens": 39346,
     "closure_lines": 1239,
-    "conditional_content_estimated_tokens": 66480,
-    "conditional_estimated_tokens": 66580,
+    "conditional_content_estimated_tokens": 26127,
+    "conditional_estimated_tokens": 26186,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -53,13 +53,12 @@
       "skills/implement/references/phantom-probe.md",
       "skills/implement/references/execution-issues-tracking.md",
       "skills/implement/references/architectural-guidelines-present.md",
-      "SECURITY.md",
       "skills/implement/references/ship-pr-oos-checkpoint-router.md",
       "skills/implement/references/ship-pr-ci-fix.md",
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 1233,
+    "conditional_lines": 730,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -71,8 +70,8 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 30132,
-    "skill_md_estimated_tokens": 30212,
+    "skill_md_content_estimated_tokens": 30131,
+    "skill_md_estimated_tokens": 30211,
     "skill_md_lines": 816
   },
   {
