@@ -170,9 +170,7 @@ def _propagate_assignment_names(
             targets = _assignment_targets(node)
             if not targets:
                 continue
-            if isinstance(value, ast.Name) and value.id in breadcrumb_writer_names:
-                changed |= _add_new_targets(targets, breadcrumb_writer_names)
-            elif _is_breadcrumb_writer_constructor(value, logging_util_names, breadcrumb_writer_names):
+            if (isinstance(value, ast.Name) and value.id in breadcrumb_writer_names) or _is_breadcrumb_writer_constructor(value, logging_util_names, breadcrumb_writer_names):
                 changed |= _add_new_targets(targets, breadcrumb_writer_names)
             elif _is_logging_util_sink_reference(value, logging_util_names) or (
                 isinstance(value, ast.Name) and value.id in sink_names
