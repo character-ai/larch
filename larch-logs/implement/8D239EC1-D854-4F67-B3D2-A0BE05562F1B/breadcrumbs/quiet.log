@@ -24,6 +24,8 @@ design-log-sweep: PR #6443 skipped-not-green - required checks status pending
 design-log-sweep: PR #6441 skipped-not-green - required checks status pending
 === larch-quiet-ship.py-66147.log ===
 === larch-quiet-ship.py-66542.log ===
+=== larch-quiet-ship.py-98838.log ===
+=== larch-quiet-ship.py-99646.log ===
 === larch-quiet-tracking-issue-upsert-summary-58754.log ===
 === larch-quiet-tracking-issue-upsert-summary-65565.log ===
 === larch-quiet-tracking-issue-upsert-summary-98045.log ===
