@@ -2304,7 +2304,7 @@ def test_render_phase_detail_prefers_review_tally_env_for_oos_fileable(tmp_path:
 
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
 
-    assert "| 1 | 0 | 0 | 4 | 1 |" in rendered
+    assert "| 1 | 0 | 0 | 3 | 1 |" in rendered
 
 
 def test_write_implement_round_meta_prefers_review_tally_env_for_oos_fileable(tmp_path: Path) -> None:
@@ -2479,6 +2479,34 @@ def test_render_phase_detail_shows_canonical_decomposition_footnote(tmp_path: Pa
     assert "13 out-of-scope" in rendered
     assert "8 nit-pruned" in rendered
     assert "tally_canonical" in rendered
+
+
+def test_render_phase_detail_footnote_includes_oos_proposed_and_fileable_split(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    r1.mkdir(parents=True)
+    (r1 / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "1", "REJECTED_COUNT": "0", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_PROPOSED_COUNT": "3", "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "tally_canonical": {
+                "ACCEPTED_COUNT": "1", "REJECTED_COUNT": "0", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_PROPOSED_COUNT": "3", "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "nit_pruned_count": "0",
+            "summary": {"panel": {"total_slot_count": 3}},
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "Finding decomposition (canonical, scope-aware)" in rendered
+    assert "4 out-of-scope (3 OOS proposed, 1 OOS fileable)" in rendered
 
 
 def test_render_phase_detail_dual_timing_windows(tmp_path: Path) -> None:

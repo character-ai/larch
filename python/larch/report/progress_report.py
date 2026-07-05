@@ -265,7 +265,7 @@ def _phase_round_from_meta(
         number=round_num,
         suggestions=accepted + rejected + exonerated + neutral,
         accepted=accepted,
-        oos_proposed=oos_proposed + oos_rejected,
+        oos_proposed=oos_proposed,
         oos_accepted=oos_fileable,
         reviewers=reviewers,
         seconds=seconds,
@@ -799,6 +799,8 @@ def render_phase_detail(
             f"round {row.number}: {row.inscope + oos} finding(s) = {row.inscope} in-scope "
             f"(voted; matches the headline X/Y accepted) + {oos} out-of-scope"
         )
+        if row.oos_proposed or row.oos_accepted:
+            seg += f" ({row.oos_proposed} OOS proposed, {row.oos_accepted} OOS fileable)"
         if row.nit_pruned:
             seg += f" (incl. {row.nit_pruned} nit-pruned)"
         decomp_segments.append(seg)
