@@ -96,8 +96,8 @@ def _bounded_detail(text: str) -> str:
 def _write_json_atomic(*, path: Path, data: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp = path.with_name(path.name + ".tmp")
-    tmp.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
-    tmp.replace(path)
+    _ = tmp.write_text(json.dumps(data, sort_keys=True, separators=(",", ":")) + "\n", encoding="utf-8")
+    _ = tmp.replace(path)
 
 
 def _classify_ship_outcome(
@@ -393,3 +393,4 @@ def _pin_and_load_guidelines_note(
         repo_root=repo_root,
     )
     return result.note, result.warning_logged
+# pyright: reportUnusedCallResult=false

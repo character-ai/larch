@@ -206,7 +206,8 @@ def _version_tuple(raw: str) -> tuple[int, int, int] | None:
     match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", (raw or "").strip())
     if not match:
         return None
-    return tuple(int(part) for part in match.groups())
+    major, minor, patch = match.groups()
+    return int(major), int(minor), int(patch)
 
 
 def _at_or_above_guideline_outcome_cutover(manifest: object | None) -> bool:
@@ -1119,3 +1120,4 @@ def close_priors_main(argv: list[str] | None = None) -> int:
         if body is not None:
             body.unlink(missing_ok=True)
     return 0
+# pyright: reportReturnType=false

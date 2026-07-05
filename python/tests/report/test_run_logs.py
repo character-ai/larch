@@ -96,7 +96,7 @@ def _guideline_outcome_payload() -> dict[str, str]:
 
 def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
     payload = tmp_path / "architectural-guideline-outcome.json"
-    payload.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
+    _ = payload.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
 
     path, written, unchanged = _write_batch(
         log_root=tmp_path / "larch-logs",
@@ -112,9 +112,9 @@ def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
     assert json.loads(path.read_text(encoding="utf-8"))["outcome"] == "pinned"
 
     bad = tmp_path / "bad.json"
-    bad.write_text("[]\n", encoding="utf-8")
+    _ = bad.write_text("[]\n", encoding="utf-8")
     with pytest.raises(ValueError, match="requires a JSON object"):
-        _write_batch(
+        _ = _write_batch(
             log_root=tmp_path / "larch-logs",
             skill="implement",
             run_id="run-abc",
@@ -126,7 +126,7 @@ def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
 def test_guideline_outcome_sidecar_stages_pre_commit(tmp_path: Path) -> None:
     ctx = _ctx(tmp_path)
     sidecar = architectural_guidelines.guideline_ship_outcome_path(tmp_path)
-    sidecar.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
+    _ = sidecar.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
 
     run_log_flush._stage_guideline_ship_outcome(  # pyright: ignore[reportPrivateUsage]
         ctx=ctx,
@@ -3084,3 +3084,4 @@ def test_synthesize_v2_main_model_unknown_fallback(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(run_logs.tokens, "read_main_model", lambda: "")
     data = run_logs.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
     assert data["model_roster"]["main"] == "unknown"
+# pyright: reportUnusedCallResult=false

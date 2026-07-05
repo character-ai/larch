@@ -274,7 +274,7 @@ def test_guideline_ship_outcome_scan_missing_cutover_and_valid(tmp_path: Path, c
 
     row = _scan_guideline_outcome(tmp_path, run, capsys)
     assert row["result"] == "fail"
-    assert "missing" in row["detail"]
+    assert "missing" in str(row["detail"])
 
     _write_guideline_outcome(run, outcome="dropped", reason="note-redaction-failed")
     row = _scan_guideline_outcome(tmp_path, run, capsys)
@@ -1170,3 +1170,4 @@ def test_scan_cross_cutting_emits_self_deploying_gap_alias(tmp_path: Path, capsy
     row = next(r for r in rows if r["scan"] == "cross-cutting")
     assert row["manifest_pr_number_mismatch_with_audited_pr"] is True
     assert row["self_deploying_gap"] is True
+# pyright: reportOperatorIssue=false

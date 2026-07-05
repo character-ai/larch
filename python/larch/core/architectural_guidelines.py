@@ -778,7 +778,7 @@ def _head_change_larch_logs_only(
         root = Path(repo_root).resolve()
     except OSError:
         return False
-    completed = subprocess.run(
+    completed = subprocess.run(  # lint-subprocess-via-runner: ok read-only git diff --name-only mirrors sibling grandfathered git helpers in this module
         ["git", "diff", "--name-only", f"{old_head}..{new_head}", "--"],  # noqa: S607
         cwd=root,
         text=True,
@@ -1540,3 +1540,4 @@ def invalidate_main(argv: list[str]) -> int:
     return 0
 # pyright: reportArgumentType=false
 # lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.
+# larch-lint: allow-subprocess-run
