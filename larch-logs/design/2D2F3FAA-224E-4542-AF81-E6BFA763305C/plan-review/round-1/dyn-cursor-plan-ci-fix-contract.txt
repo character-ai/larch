@@ -1,0 +1,58 @@
+Reviewing the plan against the ci-fix path and related contracts in the codebase.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	risk-integration	scripts/test-implement-step8-exit3-first-fixer.sh:47-58	Parallel ci-fix harness still pins singular Step 6 needle but is absent from the plan file list	The plan only lists MAY_UPDATE for scripts/test-implement-structure.sh. scripts/test-implement-step8-exit3-first-fixer.sh also require()s 'Make the minimal repo edit' and runs on Makefile test-harnesses-2. Rewording Step 6 without updating this harness breaks CI even if structure tests pass.	Add ### UPDATED: scripts/test-implement-step8-exit3-first-fixer.sh: replace the Step 6 needle with the same stable all-failures phrase used in ship-pr-ci-fix.md; add bash scripts/test-implement-step8-exit3-first-fixer.sh to Testing strategy.
+1	in_scope	major	architecture	skills/implement/references/ship-pr-ci-fix.md:4-4	Contract header still encodes minimal repair after Step 6 becomes an all-failures rule	The plan rewords numbered step 6 only. Line 4 **Contract** still says minimal repair, which is the same single-fix semantics the issue removes and which agents read before steps 5-12.	Extend the ship-pr-ci-fix.md edit to reword line 4 Contract prose to match the all-revealed-failures-before-push rule (for example repair all actionable failures revealed in the capture).
+1	in_scope	minor	correctness	scripts/test-implement-structure.sh:686-709	MAY_UPDATE understates a mandatory structure assertion update	Step 6 wording change necessarily breaks require_text(ci_fix_text, 'Make the minimal repo edit', ...) at lines 709 (and the exit-matrix stale-prose guard at 600). Listing the harness under ### MAY_UPDATE makes the pin move easy to skip while CI shard 3 still requires it.	Promote scripts/test-implement-structure.sh to ### UPDATED: and require replacing both Step 6 needles with one shared stable phrase from the new rule.
+
+## Findings
+
+### 1. risk-integration — `scripts/test-implement-step8-exit3-first-fixer.sh:47-58`
+
+The plan updates `scripts/test-implement-structure.sh` only as `MAY_UPDATE`, but a second harness pins the same stale Step 6 phrase and is not listed at all:
+
+```47:58:scripts/test-implement-step8-exit3-first-fixer.sh
+for needle in [
+    '# Ship PR autonomous CI-fix',
+    ...
+    'gh run-logs',
+    ...
+    'Make the minimal repo edit',
+    'git add --',
+```
+
+That script is wired into `Makefile` `test-harnesses-2` (line 687). Any Step 6 reword without updating this file will fail CI independently of `test-implement-structure.sh`.
+
+**Suggested revision:** Add `### UPDATED: scripts/test-implement-step8-exit3-first-fixer.sh` and run it in Testing strategy alongside the structure harness.
+
+### 2. architecture — `skills/implement/references/ship-pr-ci-fix.md:4`
+
+The plan targets Step 6 singular wording at line 17 but leaves the normative Contract header unchanged:
+
+```4:4:skills/implement/references/ship-pr-ci-fix.md
+**Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, minimal repair, checks, commit, refresh, push, and ship re-entry procedure.
+```
+
+After implementation, the file would simultaneously promise full-log capture (Step 5) and an all-failures repair rule (new Step 6) while still defining the procedure as `minimal repair` at the top. That is the hidden single-fix workflow the issue called out.
+
+**Suggested revision:** Reword line 4 to describe repairing every actionable failure revealed in the capture before push, using the same terms as the new Step 6.
+
+### 3. correctness — `scripts/test-implement-structure.sh:686-709`
+
+The structure harness hard-requires the old Step 6 phrase in the ci-fix body:
+
+```686:709:scripts/test-implement-structure.sh
+    for needle in [
+        ...
+        'gh run-logs',
+        ...
+        'Make the minimal repo edit',
+        'git add -- <paths>',
+```
+
+The plan’s Step 6 change will always break this assertion. Calling the harness `MAY_UPDATE` is weaker than the integration contract needs: CI always runs it on shard 3.
+
+**Suggested revision:** Promote `scripts/test-implement-structure.sh` to `### UPDATED:` and pin one stable substring from the new all-failures Step 6 in both the ci-fix body block (line 709) and any mirrored needle list.
+
+---
+
+**Coherence assessment (no additional in-scope gaps):** The core three-way contract is otherwise aligned. `python/larch/git/gh.py:1772-1850` is the sole `gh run-logs` implementation path for ci-fix Step 5 (`ship-pr-ci-fix.md:16`). Removing the 100-line slice and updating `python/tests/git/test_gh.py:1207-1216` matches the issue reproduction. Step 6 hard-rule prose plus structure pins are the right procedural complement, provided both harnesses and the Contract header move with Step 6. The plan correctly keeps exit codes, Step 5 command shape, redaction ownership, and ci_monitor tailing (`python/larch/implement/ci_monitor.py:1000-1029`) out of scope.
