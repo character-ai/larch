@@ -6,7 +6,7 @@ allowed-tools: Bash
 
 # cleanup
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Remove stale larch session temp directories from `~/.cache/larch/sessions/` (the canonical location), from `/tmp` (legacy fallback), and from the process temp root `$TMPDIR` resolves to (on macOS this is a per-user path distinct from `/tmp`, and it is where bare `tempfile.mkdtemp()`/`mkstemp()` calls actually land; see issue #5923). Retention is age-based (`LARCH_CLEANUP_RETENTION_DAYS`, default 7): directories are removed only when no file within the bounded `maxdepth 5` nested-activity scan is newer than the cutoff, so a directory with fresh deep activity is retained. Matching loose top-level files under either temp root are removed by top-level age and pattern match. Symlinked top-level session or pattern entries are skipped. Also reaps dangling `current-design-env-*.sh` symlinks in the sessions parent. Always runnable — multiple concurrent Claude sessions do not block cleanup.
 

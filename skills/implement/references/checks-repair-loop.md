@@ -1,6 +1,6 @@
 **Consumer**: `/implement` checks-failure orchestrator at folded Step 3, Step 5 self-review, Step 5 MAV, Step 5 coder-main-agent-required, and Step 6 sites.
 **Contract**: normative `checks repair-loop` invocation, stdout KV parse-and-branch rules (`NEXT_ACTION`, optional tail and ledger keys), outer main-agent-edit re-entry, and default stall routing.
-**When to load**: **MANDATORY — READ ENTIRE FILE** before handling `STATUS=fail` at any of those sites; do not invoke `checks repair-loop` or branch on repair outcomes without loading this file first.
+**When to load**: **MANDATORY: READ ENTIRE FILE** before handling `STATUS=fail` at any of those sites; do not invoke `checks repair-loop` or branch on repair outcomes without loading this file first.
 
 ## 1. Structural gate, all sites
 

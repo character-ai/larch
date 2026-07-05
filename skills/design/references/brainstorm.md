@@ -1,10 +1,10 @@
 # Brainstorm panel (Step 1d.5)
 
-**Consumer**: `/design` Step **1d.5** — runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline — Gate A re-entry only post-plan) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv or the Step 0b `Brainstorm:` title-prefix auto-enable.
+**Consumer**: `/design` Step **1d.5**: runs after Step **1d** (Round 1 discussion) and before Step **1d.7** (Design Outline: Gate A re-entry only post-plan) when `brainstorm_requested` is true in `$DESIGN_TMPDIR/run-params.json` or set in Step 0 by argv or the Step 0b `Brainstorm:` title-prefix auto-enable.
 
 **Contract**: one-shot per invocation via `$DESIGN_TMPDIR/.brainstorm-done`. Produces additive `$DESIGN_TMPDIR/brainstorm.md` (never load-bearing for downstream automation). Downstream readers: **Step 2b** (plan drafting) and **Step 3** (plan-review feature context merged by `plan-review-loop.sh` when `brainstorm.md` exists).
 
-**When to load**: only when Step **1d.5** executes — do not preload during Step 0.
+**When to load**: only when Step **1d.5** executes: do not preload during Step 0.
 
 ---
 
@@ -25,15 +25,15 @@ Step 1d.5 **overrides** the generic “never halt after Bash” anxiety **only**
 ## Entry guard
 
 1. Read `$DESIGN_TMPDIR/run-params.json` → boolean `brainstorm_requested` (default **false** when absent).
-2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm — skipped` and **skip** this entire step (go to Step **1d.7**).
-3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm — skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1d.7**).
+2. If `brainstorm_requested` is not true: print `⏩ 1d.5: brainstorm: skipped` and **skip** this entire step (go to Step **1d.7**).
+3. If `$DESIGN_TMPDIR/.brainstorm-done` exists: print `⏩ 1d.5: brainstorm: skipped (already complete; .brainstorm-done present)` and **skip** this entire step (go to Step **1d.7**).
 4. Print `> **🔶 /design 1d.5: brainstorm**`.
 
 ---
 
-## MANDATORY — read prompts file first
+## MANDATORY: read prompts file first
 
-**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm-prompts.md` completely before assembling slot prompts. It holds `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, and `<BRAINSTORM_PRAGMATIC_PROMPT>`.
+**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/brainstorm-prompts.md` completely before assembling slot prompts. It holds `<BRAINSTORM_FRAMING_PROMPT>`, `<BRAINSTORM_SCOPE_PROMPT>`, and `<BRAINSTORM_PRAGMATIC_PROMPT>`.
 
 ---
 
@@ -47,8 +47,8 @@ If `$DESIGN_TMPDIR/discussion-round1.md` exists and is non-empty, read it and pr
 
 | Slot | Tool order | Output file (deterministic) | Timing kind | Prompt body token |
 |------|------------|------------------------------|-------------|-------------------|
-| Framing | Read `ORDER=` from `design.brainstorm_framing` | **`$DESIGN_TMPDIR/cursor-brainstorm-output.txt`** — canonical **framing** staging file; parent **Write**s here no matter which external actually ran (waterfall / Agent fallback). | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
-| Scope | Read `ORDER=` from `design.brainstorm_scope` | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`** — canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
+| Framing | Read `ORDER=` from `design.brainstorm_framing` | **`$DESIGN_TMPDIR/cursor-brainstorm-output.txt`**: canonical **framing** staging file; parent **Write**s here no matter which external actually ran (waterfall / Agent fallback). | `cursor-brainstorm` / `codex-brainstorm` | `<BRAINSTORM_FRAMING_PROMPT>` |
+| Scope | Read `ORDER=` from `design.brainstorm_scope` | **`$DESIGN_TMPDIR/codex-brainstorm-output.txt`**: canonical **scope** staging file; parent **Write**s here no matter which external actually ran. | `codex-brainstorm` / `cursor-brainstorm` | `<BRAINSTORM_SCOPE_PROMPT>` |
 | Pragmatic | Always Claude (primary) | in-session compose (no external path) | _(none)_ | `<BRAINSTORM_PRAGMATIC_PROMPT>` |
 
 Before each external slot launch, run `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_framing` or `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" external-defaults role --role design.brainstorm_scope`. Parse `ORDER=` as the registry-backed waterfall for that slot. Iterate the order with the existing availability gates and Agent-text fallbacks, then pick the first eligible external tool. Pragmatic brainstorming stays parent-session Claude and has no registry lookup.
@@ -57,7 +57,7 @@ Spawn slowest-first when two externals are queued in one wave, based on the reso
 
 ### Agent-returns-text + parent-writes-file (mandatory)
 
-External review **Agent** fallbacks return **text only** to the parent session. The parent MUST **Write** that returned text to the canonical staging file for that ideation slot (`cursor-brainstorm-output.txt` for framing, `codex-brainstorm-output.txt` for scope) **before** synthesis — never instruct a subagent to write these files directly.
+External review **Agent** fallbacks return **text only** to the parent session. The parent MUST **Write** that returned text to the canonical staging file for that ideation slot (`cursor-brainstorm-output.txt` for framing, `codex-brainstorm-output.txt` for scope) **before** synthesis: never instruct a subagent to write these files directly.
 
 ---
 
@@ -74,14 +74,14 @@ The launcher `.meta` file's `STDERR_SINK=` value must point at the matching fail
 
 **Framing** (when the registry-selected tool is external and available):
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/cursor-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/cursor-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_FRAMING_ASSEMBLED_PROMPT>" # lint-consecutive-bash: ok framing and scope examples use distinct outputs
 ```
 
 **Scope** (when the registry-selected tool is external and available):
 
-**⚠ Immediate-background required — set `run_in_background: true` and `timeout: 1260000`.**
+**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 1260000`.**
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolved> --output "$DESIGN_TMPDIR/codex-brainstorm-output.txt" --stderr-sink "$DESIGN_TMPDIR/codex-brainstorm-launch.failure.log" --timeout 1200 --timing-task-kind <resolved>-brainstorm --prompt "<BRAINSTORM_SCOPE_ASSEMBLED_PROMPT>"
 ```
@@ -94,7 +94,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolv
 
 **Do not copy-paste a fence verbatim.** The argv below is illustrative only: list **only** the canonical staging paths (`cursor-brainstorm-output.txt` / `codex-brainstorm-output.txt`) for slots you **actually launched as externals** this wave (parent-only / Agent-text fallbacks are **not** launches). Use dynamic argv: one path when a single external ran, two when both ran. Use `timeout: 1260000` on the foreground Bash tool call so the orchestrator does not kill collection before `agent collect-results --timeout 1260` finishes inside the launcher.
 
-**Example — one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
+**Example: one external** (e.g. Cursor framing ran; Codex scope was parent-written in-session):
 
 ```bash
 # lint-consecutive-bash: ok one-external and two-external collect examples are intentionally distinct
@@ -102,7 +102,7 @@ python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" agent launch-review --tool <resolv
   "$DESIGN_TMPDIR/cursor-brainstorm-output.txt"
 ```
 
-**Example — two externals** (both Cursor framing and Codex scope launched as externals):
+**Example: two externals** (both Cursor framing and Codex scope launched as externals):
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" step1d5 --mode collect -- \
@@ -129,7 +129,7 @@ If the env file contains `RECOVERY_REQUIRED=true`, run the non-skippable operato
 
 ---
 
-**MANDATORY — READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing the synthesis and any free-form discussion-loop response: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Synthesis → `brainstorm.md`
 
@@ -155,11 +155,11 @@ If the env file contains `RECOVERY_REQUIRED=true`, run the non-skippable operato
 
 ## Free-form discussion loop (after synthesis)
 
-### Branch order — classify-message-first
+### Branch order: classify-message-first
 
-1. **Terminal / ready** — If the operator message is **standalone primary-intent** (“done”, “ready for gate”, “let’s move on”) **and** it is **not** negated, conditional, or carrying an embedded refinement (“don’t X yet, but …”), then: write `$DESIGN_TMPDIR/.brainstorm-done`, print a one-line acknowledgment, and **continue to Step 1d.7 in the same turn** without re-printing the full synthesis document.
-2. **Refinement** — If they want edits (add idea, merge, reorder): **mutate** `brainstorm.md`, print an `## Updated Brainstorm Digest` with changed bullets only, then **end the turn**.
-3. **Ambiguous** — If intent is unclear, `AskUserQuestion` with exactly two clarified options (no secrets in option text).
+1. **Terminal / ready**: If the operator message is **standalone primary-intent** (“done”, “ready for gate”, “let’s move on”) **and** it is **not** negated, conditional, or carrying an embedded refinement (“don’t X yet, but …”), then: write `$DESIGN_TMPDIR/.brainstorm-done`, print a one-line acknowledgment, and **continue to Step 1d.7 in the same turn** without re-printing the full synthesis document.
+2. **Refinement**: If they want edits (add idea, merge, reorder): **mutate** `brainstorm.md`, print an `## Updated Brainstorm Digest` with changed bullets only, then **end the turn**.
+3. **Ambiguous**: If intent is unclear, `AskUserQuestion` with exactly two clarified options (no secrets in option text).
 
 **Termination vocabulary disambiguation**: Treat “done / ready / proceed” as terminal **only** when it is the **standalone primary intent** of the message. Messages that negate, defer, or bundle refinements (“not yet”, “also change …”, “done but fix …”) → **refinement** path, not terminal.
 

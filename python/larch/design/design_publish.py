@@ -700,7 +700,7 @@ def publish_core(argv: Sequence[str]) -> int:
         blocked_reason = f"{review_status} without .completed/step-3"
     if blocked_reason:
         print(
-            f"**⚠ 5c: publish refused — review provenance indicates {blocked_reason};"
+            f"**⚠ 5c: publish refused: review provenance indicates {blocked_reason};"
             " plan review did not complete; re-run /design**",
             flush=True,
         )

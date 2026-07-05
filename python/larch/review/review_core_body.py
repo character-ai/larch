@@ -915,7 +915,7 @@ def _review_core_body(
         _restore_oos(review_tmpdir=review_tmpdir, stem="prune-skipped", session_env_path=session_env_path)
         _ensure_prune_sidecars(review_tmpdir=review_tmpdir, round_num=round_num)
         _flush_round_log(review_tmpdir=review_tmpdir, run_id=run_id, round_num=round_num)
-        logging_util.diagnostic(f"→ review: round {round_num} skipped — all reviewer combos pruned")
+        logging_util.diagnostic(f"→ review: round {round_num} skipped: all reviewer combos pruned")
         prune_skipped_rows = dispatch_scout_rows + _core_common_rows(status="prune-skipped", round_num=round_num, review_tmpdir=review_tmpdir, panel_mode=panel_mode, panel_shape=panel_shape)
         return ReviewCoreResult(0, ReviewCoreStatus.prune_skipped, prune_skipped_rows)
 

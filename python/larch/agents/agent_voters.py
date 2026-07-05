@@ -350,7 +350,7 @@ def _dispatch_waterfall(*, opts: Options, manifest: str, ctx_args: Sequence[str]
         env=panel_env,
     )
     if result.returncode != 0:
-        _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode} — proceeding with partial or empty result")
+        _err(f"agent dispatch-voters: agent dispatch-waterfall exited {result.returncode}: proceeding with partial or empty result")
     return result.stdout
 
 

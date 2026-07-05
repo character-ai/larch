@@ -401,6 +401,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "skill-awk-field-refs"): ("larch.lint.lint_skill_awk_field_refs", "main"),
     ("lint", "skill-description-length"): ("larch.lint.lint_skill_description_length", "main"),
     ("lint", "readability-preamble"): ("larch.lint.lint_readability_preamble", "main"),
+    ("lint", "em-dash-output"): ("larch.lint.lint_em_dash_output", "main"),
     ("lint", "gh-body-inline"): ("larch.lint.lint_gh_body_inline", "main"),
     ("lint", "complexity-baseline"): ("larch.lint.lint_complexity_baseline", "main"),
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main"),

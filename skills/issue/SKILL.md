@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Write
 
 # Issue Skill
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Create one or more GitHub issues in the current repository with **LLM-based semantic duplicate detection**. Two modes:
 

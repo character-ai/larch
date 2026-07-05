@@ -9,8 +9,8 @@ from typing import Any
 from larch.core import alias_skill
 from larch.core import proc
 
-PUBLIC_STYLE_LINE = "**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
-DEV_STYLE_LINE = "**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**"
+PUBLIC_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
+DEV_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**"
 
 
 def _result(argv: list[str], returncode: int = 0, stdout: str = "", stderr: str = "") -> proc.CommandResult:

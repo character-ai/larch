@@ -9,8 +9,8 @@ from pathlib import Path
 
 from larch.core import proc
 
-PUBLIC_STYLE_LINE = "**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
-DEV_STYLE_LINE = "**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**"
+PUBLIC_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**"
+DEV_STYLE_LINE = "**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `$PWD/skills/shared/readability-style.md`.**"
 
 
 def generate_main(argv: list[str]) -> int:

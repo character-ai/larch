@@ -1164,7 +1164,7 @@ def check_voter_parse_rate(
             diag_file.write_text("\n".join(lines) + "\n", encoding="utf-8")
         if log_mode == "log":
             _plain_diagnostic(
-                f"**⚠ Voter {voter_tool}: {judge_error_count}/{len(ids)} ballot items returned JUDGE_ERROR — voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {voter_path}.**"
+                f"**⚠ Voter {voter_tool}: {judge_error_count}/{len(ids)} ballot items returned JUDGE_ERROR: voter likely produced prose without FINDING_N:/OOS_N: VOTE lines. Check voter output at {voter_path}.**"
             )
             if not should_suppress_parse_rate_issue_append(voter_path=voter_path, base_tmp=review_tmpdir):
                 proc.run(

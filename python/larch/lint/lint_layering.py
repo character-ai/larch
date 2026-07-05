@@ -570,7 +570,7 @@ def _run_check(
         print(
             f"{finding.file}:{finding.qualified_symbol} imports from {finding.imported_package} "
             f"occurrence {finding.occurrence}; "
-            "this violates the larch package layering contract — add a baseline entry with a reason or refactor",
+            "this violates the larch package layering contract: add a baseline entry with a reason or refactor",
             file=sys.stderr,
         )
     return 1 if new_findings else 0

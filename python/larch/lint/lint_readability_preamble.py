@@ -16,7 +16,7 @@ MANIFEST_COLUMN_COUNT = 5
 COUNTED_VARIANTS = {"orchestrator-inline", "external-prompt"}
 METADATA_FLOOR_VARIANT = "metadata-min-count"
 SKILL_EXEMPT_VARIANT = "skill-exempt"
-MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY\s+[—-]\s+READ\s+ENTIRE\s+FILE", re.IGNORECASE)
+MANDATORY_DIRECTIVE_RE = re.compile(r"MANDATORY:\s+READ\s+ENTIRE\s+FILE", re.IGNORECASE)
 
 
 @dataclass(frozen=True)
@@ -105,8 +105,9 @@ def check_step_placement(*, text: str, rel_path: str, step_markers: str) -> bool
         found_marker = False
         count = 0
         failed = False
+        marker_re = re.compile(rf"^<!--\s*step:{re.escape(step_id)}(?:\s|:)")
         for line in lines:
-            if line.startswith(f"<!-- step:{step_id} "):
+            if marker_re.match(line):
                 if in_step and found_marker and count < 1:
                     print(
                         f'{rel_path}: step "{step_id}": expected >=1 orchestrator-inline readability-style directive in step body, found 0',

@@ -160,7 +160,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     plugin_root = require_plugin_root(ns.plugin_root)
     cache, parsed = _parse_and_persist(ns=ns, plugin_root=plugin_root)
     _emit_parse_kvs(cache=cache, data=parsed)
-    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0 — session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
+    _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     setup = subprocess.run(
         _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-branch-check", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,
@@ -181,7 +181,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     design_path = Path(design_tmpdir)
     (design_path / ".design-step0-parsed.env").write_bytes(cache.read_bytes())
     env: dict[str, str] = {**os.environ, "DESIGN_TMPDIR": design_tmpdir, "IMPLEMENT_TMPDIR": os.environ.get("IMPLEMENT_TMPDIR", "")}
-    _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0 — session setup"), env=env)
+    _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0: session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
     wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid)
@@ -505,7 +505,7 @@ def step0_route_main(argv: Sequence[str]) -> int:
     route = route_env.get("ROUTE", "")
     if route_env.get("BRAINSTORM_PREFIX") == "true":
         env["brainstorm_requested"] = "true"
-        print("**ℹ /design: detected Brainstorm title prefix — auto-enabling brainstorm mode (run-params `brainstorm_requested=true`) even though --brainstorm was not on argv.**")  # noqa: RUF001
+        print("**ℹ /design: detected Brainstorm title prefix: auto-enabling brainstorm mode (run-params `brainstorm_requested=true`) even though --brainstorm was not on argv.**")  # noqa: RUF001
     if route == "cancel-pause-load":
         result_env_path = design_tmpdir / ".design-route-result.env"
         if result_env_path.is_file():
@@ -621,7 +621,7 @@ def step0_abort_cleanup_main(argv: Sequence[str]) -> int:
         print("/design Step 0 abort-cleanup: DESIGN_TMPDIR required", file=sys.stderr)
         return 1
     design_tmpdir = Path(env["DESIGN_TMPDIR"])
-    print("**⚠ /design: aborted by operator — external tool unhealthy; re-run once it recovers.**")
+    print("**⚠ /design: aborted by operator: external tool unhealthy; re-run once it recovers.**")
     _append_failure(plugin_root=plugin_root, design_tmpdir=design_tmpdir, site="design Step 0", tool="degraded-tools-gate", exit_code=0, category="Warnings", output_file=design_tmpdir / "execution-issues.md")
     return subprocess.run(_cli_cmd(plugin_root, "session", "cleanup-tmpdir", "--dir", str(design_tmpdir)), check=False).returncode
 

@@ -32,16 +32,16 @@ def fixture_project(root: Path) -> None:
         root,
         design=(
             "Design root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
         ),
         implement=(
             "Implement root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
         review=(
             "Review root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
-            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
         ),
     )
     write(root, "skills/design/references/flags.md", "flag one\nflag two\n")
@@ -86,7 +86,7 @@ def test_direct_mandatory_markdown_references_are_counted(tmp_path: Path) -> Non
         tmp_path,
         design=(
             "root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/a.md` and `${CLAUDE_PLUGIN_ROOT}/skills/design/references/b.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/a.md` and `${CLAUDE_PLUGIN_ROOT}/skills/design/references/b.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/a.md", "a\n")
@@ -106,9 +106,9 @@ def test_conditional_references_are_reported_by_text_rules(tmp_path: Path) -> No
         tmp_path,
         design=(
             "root\n"
-            "If `MODE=extra`: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n"
-            "- When `MODE=extra`, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/bullet.md` completely.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/always.md` completely.\n"
+            "If `MODE=extra`: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n"
+            "- When `MODE=extra`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/bullet.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/always.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/conditional.md", "conditional\n")
@@ -209,8 +209,8 @@ def test_branch_only_routing_table_rows_are_excluded(tmp_path: Path) -> None:
         tmp_path,
         implement=(
             "root\n"
-            "| `ROUTE=repair` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/repair.md` completely. |\n"
-            "| general | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/general.md` completely. |\n"
+            "| `ROUTE=repair` | **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/repair.md` completely. |\n"
+            "| general | **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/general.md` completely. |\n"
         ),
     )
     write(tmp_path, "skills/implement/references/repair.md", "repair\n")
@@ -227,8 +227,8 @@ def test_branch_context_bullets_are_excluded(tmp_path: Path) -> None:
         tmp_path,
         implement=(
             "root\n"
-            "- **`stall`**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall.md` completely.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/always.md` completely.\n"
+            "- **`stall`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/stall.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/always.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/stall.md", "stall\n")
@@ -247,11 +247,11 @@ def test_design_split_path_section_closes_at_step_comment(tmp_path: Path) -> Non
             "root\n"
             "### Step 2b.5 — Plan-size threshold check\n"
             "#### Split-path (decomposition panel)\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/decompose-panel.md` completely.\n"
             "##### Nested split heading\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/nested.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/nested.md` completely.\n"
             "<!-- step:3 — Plan Review -->\n"
-            "**MANDATORY — READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE before launching reviewers**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/plan-review.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/decompose-panel.md", "decompose\n")
@@ -273,9 +273,9 @@ def test_design_validator_failure_section_is_conditional_until_next_peer_heading
         design=(
             "root\n"
             "### Plan command validator failure (shared)\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/validator-failure.md` completely.\n"
             "### Plan helper contracts\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/always.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/always.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/validator-failure.md", "validator\n")
@@ -292,7 +292,7 @@ def test_suffix_condition_marks_settle_dispatch_conditional(tmp_path: Path) -> N
         tmp_path,
         design=(
             "root\n"
-            "1. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).\n"
+            "1. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/settle-rc-dispatch.md` completely (if not already loaded at discussion-round2).\n"
         ),
     )
     write(tmp_path, "skills/design/references/settle-rc-dispatch.md", "settle\n")
@@ -308,7 +308,7 @@ def test_retained_prefix_marks_step2b5_rc_handling_conditional(tmp_path: Path) -
         tmp_path,
         design=(
             "root\n"
-            "3. **Retained callers that ran items 1-2 in this turn**: **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` completely.\n"
+            "3. **Retained callers that ran items 1-2 in this turn**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/step2b5-rc-handling.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/step2b5-rc-handling.md", "rc\n")
@@ -325,7 +325,7 @@ def test_session_start_registry_tsv_references_are_counted(tmp_path: Path) -> No
         design=(
             "root\n"
             "**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/step-name-registry.tsv` to get names.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/scripts/step-name-registry.tsv", "1\tone\n")
@@ -346,7 +346,7 @@ def test_arbitrary_non_markdown_references_are_ignored(tmp_path: Path) -> None:
         design=(
             "root\n"
             "**MANDATORY at session start**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/helper.py` to get names.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/scripts/helper.py", "print('helper')\n")
@@ -360,12 +360,12 @@ def test_arbitrary_non_markdown_references_are_ignored(tmp_path: Path) -> None:
 def test_referenced_file_references_are_not_recursed_into(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
-        design="**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/a.md` completely.\n",
+        design="**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/a.md` completely.\n",
     )
     write(
         tmp_path,
         "skills/design/references/a.md",
-        "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/nested.md` completely.\n",
+        "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/nested.md` completely.\n",
     )
     write(tmp_path, "skills/design/references/nested.md", "nested\n")
 
@@ -378,7 +378,7 @@ def test_only_directive_read_clause_is_harvested(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
         design=(
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/primary.md` completely. Harness `${CLAUDE_PLUGIN_ROOT}/skills/design/references/harness.md`.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/primary.md` completely. Harness `${CLAUDE_PLUGIN_ROOT}/skills/design/references/harness.md`.\n"
         ),
     )
     write(tmp_path, "skills/design/references/primary.md", "primary\n")
@@ -392,7 +392,7 @@ def test_only_directive_read_clause_is_harvested(tmp_path: Path) -> None:
 def test_missing_referenced_markdown_fails_closed(tmp_path: Path) -> None:
     write_roots(
         tmp_path,
-        design="**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/missing.md` completely.\n",
+        design="**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/missing.md` completely.\n",
     )
 
     with pytest.raises(ScanError):
@@ -404,7 +404,7 @@ def test_conditional_runtime_markdown_operands_are_skipped(tmp_path: Path) -> No
         tmp_path,
         implement=(
             "root\n"
-            "If main agent finds a pre-existing code issue, **MANDATORY — READ ENTIRE FILE** before dual-writing to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.\n"
+            "If main agent finds a pre-existing code issue, **MANDATORY: READ ENTIRE FILE** before dual-writing to `$IMPLEMENT_TMPDIR/oos-accepted-main-agent.md`: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/execution-issues-tracking.md`.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/execution-issues-tracking.md", "tracking\n")
@@ -422,7 +422,7 @@ def test_conditional_runtime_only_markdown_operand_does_not_fail(tmp_path: Path)
         tmp_path,
         implement=(
             "root\n"
-            "If needed, **MANDATORY — READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
+            "If needed, **MANDATORY: READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
         ),
     )
 
@@ -437,7 +437,7 @@ def test_eager_runtime_only_markdown_operand_fails_closed(tmp_path: Path) -> Non
         tmp_path,
         implement=(
             "root\n"
-            "**MANDATORY — READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
+            "**MANDATORY: READ ENTIRE FILE** before continuing: `$IMPLEMENT_TMPDIR/runtime-only.md`.\n"
         ),
     )
 
@@ -450,7 +450,7 @@ def test_oos_pipeline_runtime_operand_branch_collects_only_repo_reference(tmp_pa
         tmp_path,
         implement=(
             "root\n"
-            "- **`oos-pipeline`**: Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`. **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely.\n"
+            "- **`oos-pipeline`**: Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/ship-pr-oos-checkpoint-router.md", "router\n")
@@ -472,7 +472,7 @@ def test_oos_pipeline_line_671_does_not_harvest_security_md(tmp_path: Path) -> N
             "- **`oos-pipeline`**: security sidecar disposition only. Read "
             "`$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` "
             "`## Security Findings in OOS Workflows` privately. "
-            "**MANDATORY — READ ENTIRE FILE**: Read "
+            "**MANDATORY: READ ENTIRE FILE**: Read "
             "`${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` "
             "completely before the `step-8-oos-checkpoint.sh` fence.\n"
         ),
@@ -607,8 +607,8 @@ def test_review_baseline_tracked_file_may_move_from_eager_to_conditional(
         "skills/review/SKILL.md",
         (
             "Review root with enough padding for a later conditional demotion\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
-            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
         ),
     )
     _ = write_baseline_from_live(tmp_path)
@@ -617,8 +617,8 @@ def test_review_baseline_tracked_file_may_move_from_eager_to_conditional(
         "skills/review/SKILL.md",
         (
             "Review root\n"
-            "If needed, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
-            "If heavy, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
+            "If needed, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "If heavy, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/heavy-worker.md` completely.\n"
         ),
     )
 
@@ -726,16 +726,16 @@ def test_report_mode_prints_all_ratcheted_targets(tmp_path: Path, capsys: pytest
         tmp_path,
         design=(
             "Design root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
-            "If extra, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "If extra, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n"
         ),
         implement=(
             "Implement root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
         review=(
             "Review root\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/design/references/flags.md", "flag one\nflag two\n")
@@ -769,9 +769,9 @@ def test_rebase_or_bootstrap_mandatory_reads_stay_excluded(tmp_path: Path) -> No
         tmp_path,
         implement=(
             "root\n"
-            "**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing`. Missing KVs fail closed: **MANDATORY — READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`.\n"
-            "| `BOOTSTRAP_NEXT=degraded-prompt` | **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. |\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+            "**Conditional routing reference**: for absorbed checkpoint `1.r`, branch only on `BOOTSTRAP_NEXT=rebase-routing`. Missing KVs fail closed: **MANDATORY: READ ENTIRE FILE** `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/rebase-checkpoint-routing.md`.\n"
+            "| `BOOTSTRAP_NEXT=degraded-prompt` | **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/bootstrap-recovery.md` completely. |\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/rebase-checkpoint-routing.md", "rebase\n")
@@ -793,9 +793,9 @@ def test_implement_macro_sections_are_conditional_until_next_peer_heading(tmp_pa
         implement=(
             "root\n"
             "## Checks Failure Entry Macro\n"
-            "2. **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.\n"
+            "2. **MANDATORY: READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/checks-repair-loop.md`.\n"
             "## Step 5\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/checks-repair-loop.md", "checks\n")
@@ -813,11 +813,11 @@ def test_implement_macro_conditional_state_survives_nested_heading_only(tmp_path
         implement=(
             "root\n"
             "## Durable Bail to Step 18 Macro\n"
-            "**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`; follow durable bail.\n"
+            "**MANDATORY: READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/step5-review-branches.md`; follow durable bail.\n"
             "### Nested macro detail\n"
-            "**MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/nested.md`.\n"
+            "**MANDATORY: READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/nested.md`.\n"
             "## Step 18\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/self-review.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/step5-review-branches.md", "branches\n")
@@ -840,7 +840,7 @@ def test_review_step0_narrow_eager_patterns_are_counted(tmp_path: Path) -> None:
             "root\n"
             "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
             "Run the procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md`: invoke gate.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/review/references/domain-rules.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
@@ -864,7 +864,7 @@ def test_design_step0_shared_narrow_patterns_are_counted(tmp_path: Path) -> None
             "root\n"
             "Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs.\n"
             "Run the procedure in `${CLAUDE_PLUGIN_ROOT}/skills/shared/external-reviewers.md` immediately.\n"
-            "**MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
+            "**MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/flags.md` completely.\n"
         ),
     )
     write(tmp_path, "skills/shared/session-setup-output.md", "setup\n")
@@ -966,7 +966,7 @@ def test_force_requested_false_preflight_audit_is_eager(tmp_path: Path) -> None:
         tmp_path,
         implement=(
             "root\n"
-            "**When `force_requested=false` (only)** — **MANDATORY — READ ENTIRE FILE** at Preflight item 4: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md`.\n"
+            "**When `force_requested=false` (only)** — **MANDATORY: READ ENTIRE FILE** at Preflight item 4: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/preflight-plan-audit.md`.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/preflight-plan-audit.md", "audit\n")
@@ -982,7 +982,7 @@ def test_force_requested_true_branch_stays_conditional(tmp_path: Path) -> None:
         tmp_path,
         implement=(
             "root\n"
-            "**When `force_requested=true` (only)** — **MANDATORY — READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/force-mode.md`.\n"
+            "**When `force_requested=true` (only)** — **MANDATORY: READ ENTIRE FILE**: `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/force-mode.md`.\n"
         ),
     )
     write(tmp_path, "skills/implement/references/force-mode.md", "force\n")
@@ -1090,7 +1090,7 @@ def test_review_conditional_growth_is_ratcheted(tmp_path: Path, capsys: pytest.C
 
 def test_design_conditional_growth_is_report_only(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     fixture_project(tmp_path)
-    write(tmp_path, "skills/design/SKILL.md", "If extra, **MANDATORY — READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n")
+    write(tmp_path, "skills/design/SKILL.md", "If extra, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/design/references/conditional.md` completely.\n")
     write(tmp_path, "skills/design/references/conditional.md", "conditional\n")
     _ = write_baseline_from_live(tmp_path)
     with (tmp_path / "skills/design/references/conditional.md").open("a", encoding="utf-8") as handle:

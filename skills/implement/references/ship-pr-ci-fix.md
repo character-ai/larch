@@ -2,7 +2,7 @@
 
 **Consumer**: /implement Step 8+ on NEXT_ACTION=ci-fix.
 **Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, minimal repair, checks, commit, refresh, reassessment, push, and ship re-entry procedure.
-**When to load**: **MANDATORY — READ ENTIRE FILE** only on NEXT_ACTION=ci-fix after fork and repo-unavailable skips are ruled out or before applying that branch's autonomous repair body. Load this before any autonomous repair step that may re-invoke `step-8-ship.sh`. Any autonomous repair path ending in ship re-invoke must run the foreground stale-handoff clear from SKILL.md Step 8+ immediately before the background launcher fence.
+**When to load**: **MANDATORY: READ ENTIRE FILE** only on NEXT_ACTION=ci-fix after fork and repo-unavailable skips are ruled out or before applying that branch's autonomous repair body. Load this before any autonomous repair step that may re-invoke `step-8-ship.sh`. Any autonomous repair path ending in ship re-invoke must run the foreground stale-handoff clear from SKILL.md Step 8+ immediately before the background launcher fence.
 
 This reference retains the Python driver non-zero routing contract for exit-3 CI handoffs. The `ci-fix` action covers `first-fixer-non-health`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable`. `ci-fix-exhausted` remains operator-bail.
 

@@ -621,6 +621,13 @@ repos:
         pass_filenames: false
         always_run: true
 
+      - id: lint-em-dash-output
+        name: lint emitted em dashes
+        entry: python3 python/cli.py lint em-dash-output
+        language: system
+        pass_filenames: false
+        always_run: true
+
       - id: lint-renderer-substitution-safety
         name: lint renderer substitution safety
         entry: bash scripts/lint-renderer-substitution-safety.sh

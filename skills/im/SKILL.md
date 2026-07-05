@@ -5,7 +5,7 @@ argument-hint: "<arguments>"
 allowed-tools: Skill, Read
 ---
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Auto-generated alias created by larch /alias. Invokes /implement with preset flags.
 

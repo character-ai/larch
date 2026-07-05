@@ -1,8 +1,8 @@
 # Approval Gates Reference
 
-**MANDATORY — READ ENTIRE FILE before composing Gate A discussion prose, Gate B findings presentation and apply-all rewrite, or Gate C approval prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing Gate A discussion prose, Gate B findings presentation and apply-all rewrite, or Gate C approval prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
-**Consumer**: `/design` Step 1e (Gate A — discussion-mode loop), Step 3.5 (Gate B — post-review chooser), and Step 4b (Gate C — final-approval loop).
+**Consumer**: `/design` Step 1e (Gate A: discussion-mode loop), Step 3.5 (Gate B: post-review chooser), and Step 4b (Gate C: final-approval loop).
 
 **Contract**: single source for the three approval gates around design review. Gate A is the **post-plan re-entry** discussion prompt. Gate B applies accepted in-scope findings, auto-applying by default (`approve_requested=false`) or asking Apply all / Go through each / Switch to discussion mode under `--per-round-approval` (`approve_requested=true`). Gate C is the final approval prompt and asks only when `skip_approve_requested=false`. Reviewers always see the latest plan after approved/applied feedback.
 
@@ -20,7 +20,7 @@ Run renderer commands as `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design r
 
 ---
 
-## Gate A — Discussion Mode Loop (Step 1e)
+## Gate A: Discussion Mode Loop (Step 1e)
 
 **When**: **Re-entry-only** from Gate B option (c) "switch to discussion mode" or Gate C option (b) "discuss further". First-time Step 1d / Step 1d.5 entry is replaced by the **Step 1d.7 outline-approval gate**; see `${CLAUDE_PLUGIN_ROOT}/skills/design/references/design-outline.md` for Approve/Refine/Cancel.
 
@@ -42,7 +42,7 @@ Re-entry is post-plan. Write new resolved decisions to `$DESIGN_TMPDIR/discussio
 
 ---
 
-## Gate B — Post-Review Chooser (Step 3.5)
+## Gate B: Post-Review Chooser (Step 3.5)
 
 **When**: after Step 3 review completes with accepted findings or the script-internal Step 3 loop needs prompt-side recovery. `python/plan_review.py` returns accepted findings to Gate B for inline application by the invoking `/design` agent. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
 
@@ -64,7 +64,7 @@ KV binding:
 
 ### Zero-findings short-circuit
 
-When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5: Gate B — no accepted findings; nothing to apply`. This fires before mode resolution, presentation, prompts, or plan apply.
+When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5: Gate B: no accepted findings; nothing to apply`. This fires before mode resolution, presentation, prompts, or plan apply.
 
 - **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If empty or non-numeric, treat that as a Step 3 routing error. Resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`.
 
@@ -98,14 +98,14 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.m
 ### Presentation
 
 1. Run `python/cli.py plan-review gate-b-counts --design-tmpdir "$DESIGN_TMPDIR"` and bind counts from stdout KVs.
-2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings — Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
+2. Run `python/cli.py plan-review preview --design-tmpdir "$DESIGN_TMPDIR" --variant gate-b` and emit stdout verbatim. Preview owns the `## Plan Review Findings: Review` header, findings rows, and rejected/OOS context. Do not print that header again in Presentation.
 
 ### Explicit-mode load gate
 
 Run only after accepted findings exist, the Resume idempotency guard does not route to the post-apply-only settle path, and Presentation completes.
 
 - **`approve_requested=false` (default):** do not load `skills/design/references/approval-gates-explicit.md`; continue directly to `### Apply-all body`.
-- **`approve_requested=true` (`--per-round-approval`):** **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/approval-gates-explicit.md` completely immediately before firing the explicit `AskUserQuestion` or one-by-one iteration.
+- **`approve_requested=true` (`--per-round-approval`):** **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/approval-gates-explicit.md` completely immediately before firing the explicit `AskUserQuestion` or one-by-one iteration.
 
 ### Prompt
 
@@ -133,7 +133,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
 6. Do not pass `STEP3_RESUME_ROUND` before it is bound. If surrounding prose already has a validated round variable, pass it with `--round-num`; otherwise let the wrapper derive the Gate B round from `FINAL_ROUND_NUM`, `STEP3_REVIEW_ROUND_NUM`, then `ROUND_NUM`.
 7. `design-step35-settle.sh` calls `python/cli.py design step2b-postplan --site gate-b` internally after dedup succeeds. The wrapper owns the post-dedup apply-ready marker, Gate B phase writes, `POSTPLAN_RC=` parsing, and no-`plan-after-round-N.txt` contract. It forwards the Python action row. Scout-manifest clearing remains owned by `python/cli.py design step2b-postplan`.
 8. Settle-wrapper dispatch:
-   1. **MANDATORY — READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
+   1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
    2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 9. Before leaving the post-apply path, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If empty or non-numeric, stop for operator repair as a Step 3 routing error. Do not call `design-step3-review.sh` yet; step 9 only determines or binds `STEP3_RESUME_ROUND`.
 10. Only when the settle wrapper returns rc `0`, a retained drift Continue settles, or a non-exiting Split/Override path completes without skill exit, resume once through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`. The script-internal loop runs continuation from `awaiting-continuation` and owns any terminal Step 3b transition.
@@ -144,9 +144,9 @@ Gate B's plan revision may branch the merged driver fence. `--partition` maps to
 
 ---
 
-## Gate C — Final-Approval Loop (Step 4b)
+## Gate C: Final-Approval Loop (Step 4b)
 
-**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note` and `python/cli.py architectural-guidelines persist-design-assessment`. Then print `⏩ 4b: Gate C — auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
+**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note` and `python/cli.py architectural-guidelines persist-design-assessment`. Then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
 
 **When** (`skip_approve_requested=false`): after Step 4 completes. Any Gate B settled path that continues the design reaches Step 3b finalize → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" reaches Gate C only after Gate A **Ready for review**, a new review, and that review's settled Gate B path. On default auto-apply, post-review discussion happens through Gate C **Discuss further** after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B but still continue through Step 3b → Step 4 → Step 4b with current artifacts. `panel-init-failed` never reaches Gate C.
 

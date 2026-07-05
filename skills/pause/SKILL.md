@@ -5,7 +5,7 @@ description: Use when the operator wants to pause a live /design session and sav
 
 # /larch:pause
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Pause a running `/design` session on this Claude PID. Takes no arguments.
 

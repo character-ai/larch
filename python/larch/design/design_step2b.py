@@ -172,7 +172,7 @@ def _postplan_decide(
             if plan_summary_exists:
                 unlinks.append(paths.plan_summary)
             rows.append("SCOUT_STALE_CLEARED=true\n")
-            rows.append("**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n")
+            rows.append("**⚠ 2b: drafter plan failed postplan validation: re-entering inline drafting once**\n")
         rows.extend(
             f"{key}={validate[key]}\n"
             for key in ("VALIDATE_STATUS", "VALIDATE_DEFECT_COUNT", "VALIDATE_SKIPPED_COUNT", "VALIDATE_UNSAFE_TOKEN_COUNT", "VALIDATE_LOG_FILE")
@@ -787,7 +787,7 @@ def _warn_step2b_missing_scout_if_needed(*, status_text: str, design_tmpdir: Pat
             "--category",
             "Warnings",
             "--entry",
-            f"Step 2b — drafter dynamic-archetype manifest missing or invalid ({scout_reason}); static plan reviewers only.",
+            f"Step 2b: drafter dynamic-archetype manifest missing or invalid ({scout_reason}); static plan reviewers only.",
         ],
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
@@ -895,7 +895,7 @@ def _handle_step2b_drafter_inline_fallback(*, design_tmpdir: Path, plugin_root: 
         (design_tmpdir / "plan-summary.md").unlink()
     _clear_scout_manifests(design_tmpdir)
     _write_text(path=design_tmpdir / ".step2b-plan-source", text="inline\n")
-    print(f"**⚠ 2b: drafter subprocess failed — falling back to inline drafting (vendor={vendor_result.vendor})**")
+    print(f"**⚠ 2b: drafter subprocess failed: falling back to inline drafting (vendor={vendor_result.vendor})**")
     print(f"DRAFTER_VENDOR={vendor_result.vendor}")
     _emit_drafter_next_action("inline-fallback")
     _write_text(path=design_tmpdir / "step2b-drafter-fallback.log", text=f"Step 2b drafter fallback: {vendor_result.skip_reason or f'rc-{drafter_rc}'}\n")
@@ -935,7 +935,7 @@ def step2b_drafter_main(argv: Sequence[str]) -> int:
     if pause_rc is not None:
         return pause_rc
     _seed_step2b_drafter_fallback_state(run.design_tmpdir)
-    _maybe_timing_mark(label="design Step 2b — plan", ctx=run.ctx)
+    _maybe_timing_mark(label="design Step 2b: plan", ctx=run.ctx)
     vendor_result = _resolve_step2b_drafter_vendor()
     _reset_step2b_drafter_artifacts(run.design_tmpdir)
     feature_rc = _validate_step2b_drafter_feature_description(run.design_tmpdir)

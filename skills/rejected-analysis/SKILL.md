@@ -7,7 +7,7 @@ allowed-tools: Bash, Read, Write, Agent, Skill
 
 # rejected-analysis
 
-**MANDATORY — READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
+**MANDATORY: READ ENTIRE FILE before composing user-facing prose: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 Recover **verified real** rejected code-review findings from committed run logs, then file the smallest safe set of issues.
 

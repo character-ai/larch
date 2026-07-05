@@ -16,7 +16,7 @@ fail() {
 grep -Fq 'plan-review run' "$SKILL_MD" \
     || fail 'SKILL.md must invoke plan-review run'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
-grep -Fq '`NEXT_ACTION=step3b-bypass` for all other bypass statuses — before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`' "$SKILL_MD" \
+grep -Fq '`NEXT_ACTION=step3b-bypass` for all other bypass statuses: before jumping to Step 3b, run `design-step3-gate-b-bypass.sh`' "$SKILL_MD" \
     || fail 'SKILL missing NEXT_ACTION Gate-B-bypass prose'
 # shellcheck disable=SC2016 # Markdown literal contains backticks intentionally.
 grep -Fq 'Covers cap-hit, `LOOP_STATUS=panel-failed`' "$SKILL_MD" \

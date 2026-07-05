@@ -24,7 +24,7 @@ Skills load in three layers. Respect the layering when you decide where content 
 
 - **Metadata (always in memory).** `name` + `description` only. ~100 tokens. This is the only layer the harness sees before deciding whether to trigger the skill.
 - **SKILL.md body (loaded after triggering).** Decision trees, invariants, and wiring. Keep SKILL.md under 500 lines when possible — add a `references/` layer when approaching the limit.
-- **Resources (loaded on demand).** `scripts/` for deterministic executable logic, `references/` for docs loaded via explicit `MANDATORY — READ ENTIRE FILE` triggers embedded in workflow steps, `assets/` for templates/fonts/icons.
+- **Resources (loaded on demand).** `scripts/` for deterministic executable logic, `references/` for docs loaded via explicit `MANDATORY: READ ENTIRE FILE` triggers embedded in workflow steps, `assets/` for templates/fonts/icons.
 
 Rules:
 
@@ -116,7 +116,7 @@ A well-formed larch skill satisfies every bullet below. Use this list during ski
 - **Pattern match** — the skill structure has a clear primary pattern from Section VIII (named hybrids like "Process + Tool" are acceptable when documented); structure feels coherent end-to-end.
 - **Section III compliance** — all non-trivial shell logic lives in `.sh` wrappers; no direct command calls or consecutive Bash tool calls in the body.
 - **Description triggers reliably** — under the intended use cases (e.g., "the user says 'review my PR'") the description's keywords match; under adjacent use cases that should NOT trigger, they do not.
-- **No orphan references** — every `references/*.md` file is loaded by at least one workflow step via a `MANDATORY — READ ENTIRE FILE` trigger; unused references are deleted.
+- **No orphan references** — every `references/*.md` file is loaded by at least one workflow step via a `MANDATORY: READ ENTIRE FILE` trigger; unused references are deleted.
 
 ## Update triggers
 

@@ -1,6 +1,6 @@
 # Research Phase Reference
 
-**Consumer**: `/research` Step 1 — loaded via the `MANDATORY — READ ENTIRE FILE` directive at Step 1 entry in SKILL.md.
+**Consumer**: `/research` Step 1 — loaded via the `MANDATORY: READ ENTIRE FILE` directive at Step 1 entry in SKILL.md.
 
 **Contract**: fixed-shape research-lane topology. Planner pre-pass is always on; the planner decomposes `RESEARCH_QUESTION` into 2–4 focused subquestions. Four research lanes — one per named angle (architecture / edge cases / external comparisons / security) — run Codex-first with a per-lane Claude `Agent` fallback when Codex is unavailable or fails. Cursor is NOT used in the research phase (it remains a validation reviewer). Owns the four named angle-prompt literals, the launch bash blocks, the per-lane fallback rules, Step 1.4 collection, and Step 1.5 synthesis with the orchestrator-owned reduced-diversity banner.
 

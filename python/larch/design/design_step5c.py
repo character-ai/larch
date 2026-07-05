@@ -466,7 +466,7 @@ def _auto_compose_plan_md(design_tmpdir: Path) -> None:
     plan_txt = design_tmpdir / "plan.txt"
     if not plan_txt.is_file() or plan_txt.stat().st_size == 0:
         _core_diagnostic(
-            "**⚠ Step 5c auto-compose: plan.txt missing or empty — "
+            "**⚠ Step 5c auto-compose: plan.txt missing or empty: "
             "compose composed-plan.md manually before retrying**"
         )
         return
@@ -551,7 +551,7 @@ def step5c_core(argv: Sequence[str]) -> tuple[int, list[str]]:
         ctx = Ctx.from_mapping({**os.environ, **env, **normalized_overrides})
         write_terminal_sentinel = True
         if not (design_tmpdir / ".completed" / "step-5b").is_file():
-            _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b — OOS filing incomplete; repair Step 5b before publish**")
+            _core_diagnostic("**⚠ Step 5c: missing .completed/step-5b: OOS filing incomplete; repair Step 5b before publish**")
             return 1, []
         if (design_tmpdir / ".pause-requested").is_file():
             write_terminal_sentinel = False

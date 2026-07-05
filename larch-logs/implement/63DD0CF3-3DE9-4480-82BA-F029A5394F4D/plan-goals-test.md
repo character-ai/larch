@@ -1,0 +1,362 @@
+## Goal
+Implement issue #6296: [IMPLEMENTING] Lock readability: de-em-dash the MANDATORY directive line and add an em-dash output lint.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Use a narrow lock, not a whole-repo prose scrub.
+
+1. Change the shared directive shape from `MANDATORY <separator> READ ENTIRE FILE` to `MANDATORY: READ ENTIRE FILE`.
+2. Update the readability preamble lint and closure-growth scanner so U+2014 no longer matches. Prefer one exact colon form for the directive. Run `make lint-skill-closure-growth` before refreshing the closure baseline to ensure the colon sweep covers all scanner-relevant files.
+3. Sweep every generated or checked readability directive line so the existing preamble lint stays green. Include all shell harnesses that grep or pin the old literal, and all `.claude/skills/*/SKILL.md` dev skills scanned by the preamble lint.
+4. Add a new lint for emitted U+2014 output. Keep scope precise:
+   - Python runtime files under `python/larch/**/*.py`.
+   - Direct output call sinks: `print`, `_emit`, `_diag`, `_err`, `_core_diagnostic`, `sys.stdout.write`, `sys.stderr.write`, `logging_util.emit`, `logging_util.emit_kv`, `logging_util.diagnostic`, and `BreadcrumbWriter.emit`.
+   - F-string literal parts and normal string literals in those output calls.
+   - Skill markdown status-print literals: `Print: \`...\`` bodies (including `⏩`- and other glyph-prefixed content inside the backtick literal), line-leading `⏩`-prefix lines, and inline backtick-delimited print templates on lines matching `print \`...\`` or `Print: \`...\``.
+   - Exclude docs, test fixtures, quoted file content, `larch-logs/`, and non-output prose.
+5. Prerequisite hard gate: em-dash scrub issues MUST merge before this PR enables `lint-em-dash-output` in CI. This PR does NOT include the in-scope output scrub. Gate acceptance on `python3 python/cli.py lint em-dash-output` passing on the scrubbed baseline.
+6. Add a small inline suppression format only if needed: `lint-em-dash-output: ok <reason>`. Require a non-empty reason.
+7. Wire the new lint as `python3 python/cli.py lint em-dash-output`, a Makefile target, a pre-commit local hook, and CI coverage through the existing `lint-local` path.
+8. After editing `skills/shared/reviewer-templates.md` and the non-generated reviewer agent files, regenerate the four generated agents and the pre-rendered reviewer prompts, then run `python3 python/cli.py generate check`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/alias_skill.py
+
+Replace `PUBLIC_STYLE_LINE` and `DEV_STYLE_LINE` with colon directive strings.
+
+### UPDATED: python/larch/lint/lint_readability_preamble.py
+
+Replace `MANDATORY_DIRECTIVE_RE` with an exact colon form. Update anchor matching and diagnostics only as needed.
+
+### UPDATED: python/larch/lint/lint_skill_closure_growth.py
+
+Switch the mandatory-directive regex to the colon form. Run `make lint-skill-closure-growth` to verify counts before refreshing the closure baseline.
+
+### UPDATED: python/tests/core/test_alias_skill.py
+
+Update expected public and dev generated alias style lines.
+
+### UPDATED: python/tests/lint/test_lint_readability_preamble.py
+
+Update fixture directive constants. Add a regression test proving U+2014 in the directive no longer counts.
+
+### UPDATED: python/tests/lint/test_lint_skill_closure_growth.py
+
+Update all fixture directive constant strings from em-dash to colon form.
+
+### NEW: python/larch/lint/lint_em_dash_output.py
+
+Implement the scoped U+2014 output lint. Use `lint_common.run_file_lint` where it fits.
+
+Python AST sinks: `print`, `_emit`, `_diag`, `_err`, `_core_diagnostic`, `sys.stdout.write`, `sys.stderr.write`, `logging_util.emit`, `logging_util.emit_kv`, `logging_util.diagnostic`, `BreadcrumbWriter.emit`. Check string literals and f-string constant parts in those call arguments.
+
+Markdown scanner: scan `Print: \`...\`` bodies, line-leading `⏩`-prefix lines, and inline backtick print templates on lines matching `print \`...\`` or `Print: \`...\`` in `skills/**/*.md` and `agents/**/*.md`. Extract the backtick-delimited payload and check for U+2014.
+
+### NEW: python/tests/lint/test_lint_em_dash_output.py
+
+Cover:
+- clean Python output string.
+- Python `print("bad U+2014 text")` fails.
+- Python f-string literal part with U+2014 fails.
+- non-output Python string containing U+2014 does not fail.
+- `logging_util.emit`/`diagnostic` call with U+2014 fails.
+- `_err("... — ...")` fails.
+- `BreadcrumbWriter.emit(...)` with U+2014 fails.
+- skill markdown `Print: \`...\`` literal with U+2014 fails.
+- inline `print \`⏩ ... — ...\`` template fails.
+- `⏩`-prefix line with U+2014 fails.
+- quoted prose or fenced non-output content does not fail.
+- suppression requires a non-empty reason.
+
+### UPDATED: python/larch/cli.py
+
+Register `("lint", "em-dash-output")`.
+
+### UPDATED: Makefile
+
+Add `lint-em-dash-output` and `test-lint-em-dash-output` phony targets. Add `lint-em-dash-output` to local `lint`. Add the test target to an existing harness shard only if project convention requires custom lint pytest wrappers there; otherwise rely on `py-test`.
+
+### UPDATED: .pre-commit-config.yaml
+
+Add a local hook for `python3 python/cli.py lint em-dash-output`. Use `pass_filenames: false` and `always_run: true` unless the implementation supports precise file filtering.
+
+### UPDATED: .github/workflows/ci.yaml
+
+Add the new hook to the external `lint` job `SKIP` list so it does not run there. Do not add it to the `lint-local` skip list. That keeps CI coverage in the local hook job.
+
+### UPDATED: docs/linting.md
+
+Document the new lint, its scope, exclusions, suppression format, Makefile target, and test file.
+
+### UPDATED: scripts/lint-readability-preamble.tsv.md
+
+Update directive wording in semantics if it names the old separator shape.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Update pinned readability directive literals to the colon form.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+
+### UPDATED: scripts/test-review-structure.sh
+
+
+### UPDATED: scripts/test-research-structure.sh
+
+
+### UPDATED: scripts/test-implement-step8-exit3-first-fixer.sh
+
+
+### UPDATED: scripts/test-plan-adequacy-audit.sh
+
+
+### UPDATED: skills/design/scripts/test-brainstorm-prompts.sh
+
+
+### UPDATED: skills/research/references/citation-validation-phase.md
+
+Replace `⏩`-prefixed status-print literals containing U+2014 with colon separator.
+
+### UPDATED: skills/shared/progress-reporting.md
+
+
+### UPDATED: skills/design/SKILL.md
+
+Replace readability directive separators with colons.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+
+### UPDATED: skills/design/references/design-outline.md
+
+
+### UPDATED: skills/design/references/brainstorm.md
+
+
+### UPDATED: skills/design/references/discussion-rounds.md
+
+
+### UPDATED: skills/design/references/finalize-step5.md
+
+
+### UPDATED: skills/alias/SKILL.md
+
+
+### UPDATED: skills/block-issue/SKILL.md
+
+
+### UPDATED: skills/bug/SKILL.md
+
+
+### UPDATED: skills/cleanup/SKILL.md
+
+
+### UPDATED: skills/deps/SKILL.md
+
+
+### UPDATED: skills/difficulty-calibration/SKILL.md
+
+
+### UPDATED: skills/fluff-analysis/SKILL.md
+
+
+### UPDATED: skills/gc-run-logs/SKILL.md
+
+
+### UPDATED: skills/im/SKILL.md
+
+
+### UPDATED: skills/implement/SKILL.md
+
+
+### UPDATED: skills/implement/references/execution-issues-tracking.md
+
+
+### UPDATED: skills/implement/references/stall-recovery.md
+
+
+### UPDATED: skills/implement/scripts/write-final-report.md
+
+
+### UPDATED: skills/issue/SKILL.md
+
+
+### UPDATED: skills/pause/SKILL.md
+
+
+### UPDATED: skills/rejected-analysis/SKILL.md
+
+
+### UPDATED: skills/report-tokens/SKILL.md
+
+
+### UPDATED: skills/research/SKILL.md
+
+
+### UPDATED: skills/review/SKILL.md
+
+
+### UPDATED: skills/review-and-fix/SKILL.md
+
+
+### UPDATED: skills/set-up-forked-open-source-repo/SKILL.md
+
+
+### UPDATED: skills/status/SKILL.md
+
+
+### UPDATED: skills/upgrade-larch/SKILL.md
+
+
+### UPDATED: skills/voter-calibration/SKILL.md
+
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+Replace readability directive separators with colons. After editing, regenerate the four generated reviewer agent files.
+
+### UPDATED: .claude/skills/agnix-fix/SKILL.md
+
+
+### UPDATED: .claude/skills/combine-issues/SKILL.md
+
+
+### UPDATED: .claude/skills/larch-size/SKILL.md
+
+
+### UPDATED: .claude/skills/release/SKILL.md
+
+
+### UPDATED: .claude/skills/audit-runs/SKILL.md
+
+
+### UPDATED: .claude/skills/analyze-bugs/SKILL.md
+
+
+### UPDATED: .claude/skills/analyze-issues/SKILL.md
+
+
+### UPDATED: .claude/skills/rebalance-tests/SKILL.md
+
+
+### UPDATED: agents/reviewer-security.md
+
+Replace readability directive separators with colons (hand-edited file).
+
+### UPDATED: agents/reviewer-structure.md
+
+
+### UPDATED: agents/reviewer-edge-cases.md
+
+
+### UPDATED: agents/reviewer-correctness.md
+
+
+### UPDATED: agents/reviewer-testing.md
+
+
+### UPDATED: agents/code-reviewer.md
+
+Regenerate via `python3 python/cli.py generate code-reviewer-agent` (do not hand-edit).
+
+### UPDATED: agents/reviewer-plan-fidelity.md
+
+Regenerate via `python3 python/cli.py generate reviewer-plan-fidelity-agent` (do not hand-edit).
+
+### UPDATED: agents/reviewer-code-robustness.md
+
+Regenerate via `python3 python/cli.py generate reviewer-code-robustness-agent` (do not hand-edit).
+
+### UPDATED: agents/reviewer-security-structure-tests.md
+
+Regenerate via `python3 python/cli.py generate reviewer-security-structure-tests-agent` (do not hand-edit).
+
+### UPDATED: agents/pre-rendered/
+
+Regenerate all pre-rendered reviewer prompt bodies via `python3 python/cli.py generate pre-rendered-reviewer-prompts`. Do not hand-edit `agents/pre-rendered/*.txt` files.
+
+## Edge cases
+
+- Do not flag U+2014 in docs or quoted examples unless the text is clearly emitted output.
+- Do not flag U+2014 inside file content templates that are written as user data rather than printed or prompt-emitted status text.
+- Do not let a broad grep-based lint block existing historical fixtures.
+- Keep `<READABILITY_STYLE>` prompt lines unchanged. They are external prompt substitution contracts, not the mandatory directive line.
+- Preserve exact paths and backticked tokens in directive lines.
+
+## Failure modes
+
+- A broad lint can create noisy failures across docs and fixtures. Keep first-pass scope tied to output calls and status-print patterns.
+- A partial directive sweep can fail `lint readability-preamble`.
+- CI can miss the hook if it is skipped in both `lint` and `lint-local`. Add the skip only to the external `lint` job.
+- Python AST scanning can miss string variables later printed. Accept this first-pass limit unless tests show a common emitted-string pattern needs coverage.
+- Not running `generate check` after agent template edits leaves stale pre-rendered bodies that fail CI.
+- Enabling `lint-em-dash-output` before scrub prerequisite issues merge will fail CI immediately.
+
+## Testing strategy
+
+Prerequisite hard gate: verify em-dash scrub issues have merged before running `lint em-dash-output` on the full tree. Do not wire CI until baseline is clean.
+
+Run focused tests first:
+- `python3 -m pytest python/tests/core/test_alias_skill.py python/tests/lint/test_lint_readability_preamble.py python/tests/lint/test_lint_skill_closure_growth.py python/tests/lint/test_lint_em_dash_output.py -q`
+- `python3 python/cli.py lint readability-preamble`
+- `python3 python/cli.py lint em-dash-output`
+
+After closure-growth scanner edit:
+- `make lint-skill-closure-growth`
+
+After agent and template edits:
+- `python3 python/cli.py generate code-reviewer-agent`
+- `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+- `python3 python/cli.py generate reviewer-code-robustness-agent`
+- `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+- `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `python3 python/cli.py generate check`
+
+Then run relevant lint wiring:
+- `make lint-readability-preamble`
+- `make lint-em-dash-output`
+- `pre-commit run lint-readability-preamble lint-em-dash-output --all-files`
+
+If Makefile test wiring is added:
+- `make test-lint-readability-preamble`
+- `make test-lint-em-dash-output`
+
+## Acceptance
+
+Prerequisite hard gate: verify em-dash scrub issues have merged before running `lint em-dash-output` on the full tree. Do not wire CI until baseline is clean.
+
+Run focused tests first:
+- `python3 -m pytest python/tests/core/test_alias_skill.py python/tests/lint/test_lint_readability_preamble.py python/tests/lint/test_lint_skill_closure_growth.py python/tests/lint/test_lint_em_dash_output.py -q`
+- `python3 python/cli.py lint readability-preamble`
+- `python3 python/cli.py lint em-dash-output`
+
+After closure-growth scanner edit:
+- `make lint-skill-closure-growth`
+
+After agent and template edits:
+- `python3 python/cli.py generate code-reviewer-agent`
+- `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+- `python3 python/cli.py generate reviewer-code-robustness-agent`
+- `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+- `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `python3 python/cli.py generate check`
+
+Then run relevant lint wiring:
+- `make lint-readability-preamble`
+- `make lint-em-dash-output`
+- `pre-commit run lint-readability-preamble lint-em-dash-output --all-files`
+
+If Makefile test wiring is added:
+- `make test-lint-readability-preamble`
+- `make test-lint-em-dash-output`
+
+mechanical_churn: true
+diff_lines: 650
+
+## Test plan
+(no test plan section in plan-file)
