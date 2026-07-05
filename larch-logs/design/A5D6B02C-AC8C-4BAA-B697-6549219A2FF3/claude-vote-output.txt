@@ -1,0 +1,9 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the plan already mandates scripts/test-implement-fence-shape.sh updates with ordering slices; adding structure-harness pins would broaden coverage of SKILL.md prose ordering but is not necessary for feature correctness; gate 4 test finding defaults OOS
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- the plan adds a Python CLI verb invoked from SKILL.md fences with fence-shape harness verification; that satisfies accepted FINDING_10's intent of Python-enforced routing; residual prose-dependency applies to all SKILL.md orchestration and is not unique to this feature path
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- the plan explicitly chose stall-on-no-metadata as the safe fallback; accepted round 1 FINDING_4 listed "or unmerged paths" only in one reviewer's suggestion, not the consensus requirement; adding unmerged-path detection goes beyond what the accepted finding strictly required
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- branch mismatch before the ship checkout guard is an abnormal-recovery edge case not on the normal feature execution path; not raised in round 1; defensive guard is OOS robustness
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- substantively duplicates prior-round FINDING_11 and FINDING_12 which were voted OOS; rubric bars re-raising OOS duplicates
