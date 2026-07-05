@@ -1976,6 +1976,37 @@ def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> 
     assert "refusing destructive rebuild" in result.stderr
 
 
+def test_emit_tally_refuses_destructive_oos_rebuild_with_malformed_sink(tmp_path: Path) -> None:
+    case = tmp_path / "oos-malformed"
+    case.mkdir()
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=1\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("### OOS_1: lingering source\n- **Concern**: rebuild from here.\n", encoding="utf-8")
+    _ = (case / "oos-accepted-review.md").write_text("malformed accepted sink\n", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 1
+    assert "refusing destructive rebuild" in result.stderr
+
+
 def test_emit_tally_fallback_counts_legacy_rows(tmp_path: Path) -> None:
     case = tmp_path / "legacy-tally"
     case.mkdir()

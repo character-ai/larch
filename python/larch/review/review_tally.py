@@ -1378,10 +1378,11 @@ def emit_tally(argv: list[str]) -> int:
         )
         + "\n"
     )
+    sink_has_content = oos_accepted_file.is_file() and oos_accepted_file.stat().st_size > 0
     sink_count = _non_security_oos_count(oos_accepted_file)
-    if sink_count >= oos_accepted_count and sink_count > 0:
+    if sink_has_content and sink_count >= oos_accepted_count:
         pass
-    elif 0 < sink_count < oos_accepted_count:
+    elif sink_has_content and sink_count < oos_accepted_count:
         print(f"emit-tally: OOS_ACCEPTED_COUNT={oos_accepted_count} but accepted sink has {sink_count} non-security block(s); refusing destructive rebuild", file=sys.stderr)
         return 1
     elif Path(args.oos_file).is_file():
