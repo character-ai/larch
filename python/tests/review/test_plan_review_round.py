@@ -45,11 +45,6 @@ def _prune_nit_findings_fake(argv: list[str], *, design: Path) -> subprocess.Com
     audit_file = Path(argv[argv.index("--audit-file") + 1])
     security_audit_file = Path(argv[argv.index("--security-audit-file") + 1])
     text = findings_file.read_text(encoding="utf-8", errors="replace") if findings_file.is_file() else ""
-    if findings_file.name == "findings-oos.md":
-        kept_lines = [line for line in text.splitlines() if not line.startswith("### ")]
-        _ = findings_file.write_text("\n".join(kept_lines) + ("\n" if kept_lines else ""), encoding="utf-8")
-        return subprocess.CompletedProcess(argv, 0, "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=ok\n", "")
-
     blocks: list[str] = []
     current: list[str] = []
     for line in text.splitlines():
@@ -1791,10 +1786,6 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
             ]
             return subprocess.CompletedProcess(argv, 0, _collector_text(records), "")
         if argv[:2] == ["review", "aggregate-findings"]:
-            _ = (design / "oos-dropped-before-vote.md").write_text(
-                "### FINDING_1: Drop this nit\n- **Severity**: nit\n- **Concern**: becomes empty after prune\n\n",
-                encoding="utf-8",
-            )
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
         if argv[:2] == ["review", "prune-nit-findings"]:
             return _prune_nit_findings_fake(argv, design=design)
@@ -1819,8 +1810,10 @@ def test_execute_round_zero_findings_short_circuits_with_partial_failure(
     assert values["LOOP_STATUS"] == "zero-findings-degraded-panel"
     assert values["DEGRADED_PANEL"] == "0"
     assert voter_called["hit"] is False
-    assert "Keep this OOS stream" in (design / "findings-oos.md").read_text(encoding="utf-8")
-    assert "Drop this nit" in (design / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "Keep this OOS stream" not in (design / "findings-oos.md").read_text(encoding="utf-8")
+    assert "Keep this OOS stream" not in (design / "ballot.txt").read_text(encoding="utf-8")
+    audit_text = (design / "plan-review" / "round-6" / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "Keep this OOS stream" in audit_text
 
 
 def test_execute_round_zero_findings_clears_stale_tally_artifacts(
