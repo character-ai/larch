@@ -912,6 +912,7 @@ def _review_core_body(
     if threshold_ok == "false":
         for name in ("accepted-findings.md", "rejected-findings.md", "oos-accepted-review.md"):
             _write_text(path=review_tmpdir / name, text="")
+        _write_text(path=review_tmpdir / "oos.md", text="")
         tally_file = review_tmpdir / "review-core-panel-failed-tally.env"
         _write_text(path=tally_file, text="ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nEXONERATED_COUNT=0\nNEUTRAL_COUNT=0\n")
         emit_args = ["--tally-file", str(tally_file), "--accepted-findings-file", str(review_tmpdir / "accepted-findings.md"), "--oos-file", str(review_tmpdir / "oos.md"), "--review-tmpdir", str(review_tmpdir), "--round", str(round_num), "--mode", mode, "--scout-status", scout_status, "--dynamic-slots", dynamic_slots, "--static-slot-count", static_slot_count]

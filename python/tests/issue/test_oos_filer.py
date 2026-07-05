@@ -786,6 +786,27 @@ def test_capped_oversized_rollup_files_one_summarized_issue(tmp_path: Path, monk
     assert "(part " not in create_calls[0]
 
 
+def test_cap_one_oversized_single_item_is_summarized_without_split(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "1")
+    monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)
+    _setup(tmp_path)
+    large_body = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1)
+    _write_oos(tmp_path, f"### OOS_1: Oversized singleton\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    fake = FakeCli(tmp_path)
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) == 1
+    assert len(fake.created_bodies) == 1
+    assert oos_filer._body_bytes(fake.created_bodies[0]) <= config.GITHUB_ISSUE_BODY_MAX_BYTES
+    assert "full detail remains in the run logs" in fake.created_bodies[0]
+
+
 def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "2")
     monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)

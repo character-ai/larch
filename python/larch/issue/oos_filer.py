@@ -713,6 +713,10 @@ def _body_files_for_item(*, tmpdir: Path, item_index: int, fields: dict[str, str
         body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
     out_dir = tmpdir / "oos-issue-bodies"
     out_dir.mkdir(parents=True, exist_ok=True)
+    if os.environ.get("OOS_ISSUES_PER_RUN_CAP") == "1":
+        out = out_dir / f"oos-body-{item_index}-part1.txt"
+        out.write_text(_summarize_to_github_limit(body), encoding="utf-8")
+        return [out]
     if _is_capped_rollup_body(body):
         out = out_dir / f"oos-body-{item_index}-part1.txt"
         out.write_text(_summarize_to_github_limit(body), encoding="utf-8")

@@ -302,6 +302,26 @@ def test_review_core_body_threshold_failure_includes_dispatch_scout_rows(tmp_pat
     assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
 
 
+def test_review_core_body_threshold_failure_clears_public_oos_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-threshold-oos",
+        extra_env={
+            "TEST_COLLECTOR_VARIANT": "empty-with-oos",
+            "TEST_THRESHOLD_OK": "false",
+        },
+    )
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert not (tmp_path / "body-threshold-oos" / "oos.md").read_text(encoding="utf-8").strip()
+
+
 def test_review_core_body_proposer_map_failed_has_no_classification(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -423,14 +443,8 @@ def test_review_core_body_aggregate_zero_second_path_merges_dispatch_rows(
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
 
 
-def test_review_core_body_all_oos_dispatches_voters(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    collect = tmp_path / "collect-oos-findings.sh"
-    _write_executable(
-        collect,
-        """#!/usr/bin/env bash
+def _all_oos_collect_stub_body() -> str:
+    return """#!/usr/bin/env bash
 set -euo pipefail
 findings=""
 while [[ $# -gt 0 ]]; do
@@ -454,8 +468,15 @@ cat > "$findings" <<'EOF'
 - **Suggested revision**: file separately
 EOF
 printf 'FINDINGS_COUNT=1\\nOOS_COUNT=1\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\n'
-""",
-    )
+"""
+
+
+def test_review_core_body_all_oos_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
     aggregate = tmp_path / "aggregate-pass-through.sh"
     _write_executable(
         aggregate,
@@ -482,6 +503,56 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
     assert "VOTER_1_TOOL" in keys
     audit = tmp_path / "body-all-oos" / "oos-dropped-before-vote.md"
     assert not audit.exists()
+
+
+def test_review_core_body_all_oos_validation_exhausted_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
+    stubs = _write_review_core_stubs(tmp_path / "body-all-oos-agg-exhaust-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-all-oos-agg-exhaust",
+        extra_env={
+            "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.aggregator_validation_exhausted
+    assert "VOTER_1_TOOL" in keys
+    assert not (tmp_path / "body-all-oos-agg-exhaust" / "oos-dropped-before-vote.md").exists()
+
+
+def test_review_core_body_all_oos_empty_merge_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
+    stubs = _write_review_core_stubs(tmp_path / "body-all-oos-agg-zero-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-all-oos-agg-zero",
+        extra_env={
+            "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_zero"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status in {review_pipeline.ReviewCoreStatus.ok, review_pipeline.ReviewCoreStatus.fix_required}
+    assert "VOTER_1_TOOL" in keys
+    assert not (tmp_path / "body-all-oos-agg-zero" / "oos-dropped-before-vote.md").exists()
 
 
 def test_review_core_body_cap_reached_round_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
