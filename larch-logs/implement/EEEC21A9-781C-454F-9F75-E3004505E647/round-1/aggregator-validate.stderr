@@ -1,0 +1,5 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add test with `CONFLICT_FILES` in state allowlisted phase14 flag `rebase_in_prog')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add fixture with valid phase14 flag, `rebase_in_progress=True`, and conflict met')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_1 not traceable to scoped input (first 80 chars: 'Add test with allowlisted phase14 + in-progress rebase with conflict metadata; e')
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_5 not traceable to scoped input (first 80 chars: 'Dedupe on `dedupe_key` with `display_text` fallback and add a truncation-collisi')
+warning: fix text for slot 'cursor-specialist-testing' in FINDING_10 not traceable to scoped input (first 80 chars: 'Monkeypatch `_ship_pre_fix_write_ok_sentinel` to raise; assert rc != 0 and no `N')
