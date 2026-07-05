@@ -274,13 +274,6 @@ class _Tally:
         result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=self.eligible)
         return yes, no, judge_error, result
 
-    @staticmethod
-    def _is_security(block: str | Path) -> bool:
-        try:
-            return voting.is_security_block(block)
-        except SystemExit:
-            return False
-
     def _attribution_labels(self) -> list[str]:
         labels: list[str] = []
         seen: set[str] = set()
@@ -729,7 +722,7 @@ class _Tally:
             )
 
     def _artifact_text_for_item(self, *, item_id: str, block: Path) -> str:
-        block_text = block.read_text(encoding="utf-8", errors="replace")
+        block_text = block.read_text(encoding="utf-8")
         reviewer_line = voting.reviewer_line_for_item(item_id=item_id, map_file=self.proposer_map_file)
         return voting.restore_reviewer_attribution(block_text=block_text, reviewer_line=reviewer_line)
 
@@ -787,10 +780,9 @@ class _Tally:
                 result=result,
                 vote_inputs=(votes, severities),
             )
-            security = self._is_security(block)
-            block_text = Path(block).read_text(encoding="utf-8", errors="replace")
             artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
-            reroute_marker = _finding_oos_reroute_marker(block_text=block_text, neutral_rescued=neutral_rescued)
+            security = voting.is_security_block_text(artifact_text)
+            reroute_marker = _finding_oos_reroute_marker(block_text=artifact_text, neutral_rescued=neutral_rescued)
 
             _record_plan_review_artifact_chunks(
                 item=(kind, result, reroute_marker, item_id, artifact_text, security),

@@ -1599,13 +1599,13 @@
     "file": "larch/design/design_step5b.py",
     "code": "C901",
     "qualified_symbol": "step5b_annotate_main",
-    "metric": 13
+    "metric": 12
   },
   {
     "file": "larch/design/design_step5b.py",
     "code": "PLR0911",
     "qualified_symbol": "step5b_annotate_main",
-    "metric": 9
+    "metric": 8
   },
   {
     "file": "larch/design/design_step5c.py",
@@ -5793,7 +5793,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "emit_tally",
-    "metric": 61
+    "metric": 62
   },
   {
     "file": "larch/review/review_tally.py",

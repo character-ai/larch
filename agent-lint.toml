@@ -277,6 +277,7 @@ exclude = [
   "skills/design/scripts/design-step3-entry.sh",
   "skills/design/scripts/design-step3-entry.md",
   "skills/design/scripts/test-design-step3-entry.sh",
+  "skills/design/scripts/test-design-step3-entry.md",
   "skills/design/scripts/design-step3-review.sh",
   "skills/design/scripts/design-step3-review.md",
   "skills/design/scripts/test-design-step3-review.sh",

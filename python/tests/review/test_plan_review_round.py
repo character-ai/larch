@@ -18,6 +18,8 @@ from typing import TYPE_CHECKING
 
 from larch.agents import collect_results
 from larch.review import plan_review_round
+from larch.review import plan_review_tally
+from larch.review import voting
 from larch.review import review_aggregate
 from test_support import make_zero_findings_plan_review_fake_cli
 
@@ -36,6 +38,41 @@ def _write_sidecar(path: Path, rows: list[dict[str, str]]) -> None:
     lines = ["\t".join(cols)]
     lines.extend("\t".join(row.get(col, "") for col in cols) for row in rows)
     _ = path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+def _write_neutralized_tally_case(
+    tmp_path: Path,
+    attributed_text: str,
+) -> tuple[Path, Path, Path, Path]:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(attributed_text, encoding="utf-8")
+    map_file = tmp_path / "proposer-map.tsv"
+    voting.write_proposer_map(ballot_file=ballot, map_file=map_file)
+    _ = ballot.write_text(
+        voting.neutralize_reviewer_attribution(text=attributed_text),
+        encoding="utf-8",
+    )
+    voter = tmp_path / "voter.txt"
+    _ = voter.write_text("OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    findings_out = tmp_path / "findings-classification.tsv"
+    return ballot, map_file, voter, findings_out
+
+
+def _run_plan_review_tally(case: Path, ballot: Path, map_file: Path, voter: Path, findings_out: Path) -> int:
+    return plan_review_tally.main(
+        [
+            "--ballot-file",
+            str(ballot),
+            "--design-tmpdir",
+            str(case),
+            "--findings-classification-out",
+            str(findings_out),
+            "--proposer-map-file",
+            str(map_file),
+            "--voter",
+            f"1:Claude:{voter}",
+        ]
+    )
 
 
 def test_compose_findings_parses_keyvalue_collector(tmp_path: Path) -> None:
@@ -197,6 +234,196 @@ def test_compose_findings_empty_collector_text(tmp_path: Path) -> None:
     assert fail_count == 0
     assert in_scope == ""
     assert oos_md == ""
+
+
+def test_compose_findings_lazily_materializes_structured_sidecar(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = tmp_path
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    _ = reviewer_file.write_text("structured finding prose\n", encoding="utf-8")
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        assert argv[:4] == ["eval", "validate-research-output", "--structured-reviewer-mode", "--write-structured"]
+        sidecar = Path(argv[4])
+        _write_sidecar(
+            sidecar,
+            [
+                {
+                    "scope": "in_scope",
+                    "severity": "important",
+                    "focus_area": "correctness",
+                    "location": "plan.md",
+                    "what": "Lazy sidecar finding",
+                    "scenario_or_breakage": "collector skipped structured validation",
+                    "suggested_fix": "materialize the sidecar before composing",
+                }
+            ],
+        )
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
+        design=design,
+        collect_text=_collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(reviewer_file),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        manifest=design / "plan-review-slots.ndjson",
+    )
+
+    assert ok_count == 1
+    assert fail_count == 0
+    assert "Lazy sidecar finding" in in_scope
+    assert oos_md == ""
+
+
+def test_compose_findings_keeps_ok_when_lazy_structured_materialization_fails(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    reviewer_file = tmp_path / "cursor-plan-arch-output.txt"
+    _ = reviewer_file.write_text("Looks good overall; no structured rows.\n", encoding="utf-8")
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        return subprocess.CompletedProcess(argv, 5, "structured records not found\n", "")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    in_scope, oos_md, ok_count, fail_count = plan_review_round._compose_findings_from_collector(
+        design=tmp_path,
+        collect_text=_collector_text(
+            [
+                collect_results.CollectorRecord(
+                    reviewer_file=str(reviewer_file),
+                    tool="cursor",
+                    status="OK",
+                    exit_code="0",
+                )
+            ]
+        ),
+        manifest=tmp_path / "plan-review-slots.ndjson",
+    )
+
+    assert ok_count == 1
+    assert fail_count == 0
+    assert in_scope == ""
+    assert oos_md == ""
+
+
+def test_execute_round_collect_results_omits_structured_reviewer_validation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    design = tmp_path
+    plan_file = design / "plan.txt"
+    feature_file = design / "feature.txt"
+    reviewer_file = design / "cursor-plan-arch-output.txt"
+    _ = plan_file.write_text("plan\n", encoding="utf-8")
+    _ = feature_file.write_text("feature\n", encoding="utf-8")
+    _ = reviewer_file.write_text("Looks good overall.\n", encoding="utf-8")
+    collect_argvs: list[list[str]] = []
+
+    def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
+        del env
+        if argv[:2] == ["plan-review", "panel-dispatch"]:
+            paths_file = design / "plan-review-panel-paths.txt"
+            _ = paths_file.write_text(str(reviewer_file) + "\n", encoding="utf-8")
+            _ = (design / "plan-review-slots.ndjson").write_text(
+                f'{{"slot":"cursor-plan-arch","tool":"cursor","output":"{reviewer_file}"}}\n',
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(argv, 0, f"PANEL_PRUNED_EMPTY=false\nPANEL_PATHS_FILE={paths_file}\n", "")
+        if argv[:2] == ["agent", "collect-results"]:
+            collect_argvs.append(argv[:])
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                _collector_text(
+                    [
+                        collect_results.CollectorRecord(
+                            reviewer_file=str(reviewer_file),
+                            tool="cursor",
+                            status="OK",
+                            exit_code="0",
+                        )
+                    ]
+                ),
+                "",
+            )
+        if argv[:2] == ["eval", "validate-research-output"]:
+            return subprocess.CompletedProcess(argv, 5, "structured records not found\n", "")
+        if argv[:2] == ["review", "aggregate-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        raise AssertionError(f"unexpected argv: {argv}")
+
+    monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
+
+    rc, values = plan_review_round.execute_round(
+        design=design,
+        round_num=1,
+        prune_round_num=1,
+        codex_present="false",
+        cursor_present="true",
+        plan_file=plan_file,
+        feature_file=feature_file,
+    )
+
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "zero-findings-degraded-panel"
+    assert collect_argvs
+    assert "--substantive-validation" in collect_argvs[0]
+    assert "--validation-mode" in collect_argvs[0]
+    assert "--structured-reviewer-validation" not in collect_argvs[0]
+
+
+def test_plan_review_tally_classifies_security_from_restored_attribution(
+    tmp_path: Path,
+) -> None:
+    attributed = """### OOS_1: Deferred security follow-up
+- **Reviewer**: Cursor-Security focus-area=security
+- **Concern**: Private hardening detail.
+- **Suggested revision**: Route privately.
+"""
+    ballot, map_file, voter, findings_out = _write_neutralized_tally_case(tmp_path, attributed)
+
+    rc = _run_plan_review_tally(tmp_path, ballot, map_file, voter, findings_out)
+
+    assert rc == 0
+    assert not (tmp_path / "oos.md").read_text(encoding="utf-8").strip()
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+    assert not (tmp_path / "oos-aggregate-pool.md").exists()
+
+
+def test_plan_review_tally_security_classifier_failure_aborts_without_public_oos(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    attributed = """### OOS_1: Deferred follow-up
+- **Reviewer**: Cursor-Arch
+- **Concern**: Public follow-up unless classifier fails.
+- **Suggested revision**: File later.
+"""
+    ballot, map_file, voter, findings_out = _write_neutralized_tally_case(tmp_path, attributed)
+
+    def fail_security_classifier(_text: str) -> bool:
+        raise RuntimeError("classifier unavailable")
+
+    monkeypatch.setattr(voting, "is_security_block_text", fail_security_classifier)
+
+    rc = _run_plan_review_tally(tmp_path, ballot, map_file, voter, findings_out)
+
+    assert rc == 2
+    assert not (tmp_path / "oos.md").read_text(encoding="utf-8").strip()
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+    assert not (tmp_path / "oos-aggregate-pool.md").exists()
 
 
 def test_compose_findings_counts_failures_without_dropping_ok(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

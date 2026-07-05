@@ -266,7 +266,7 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         )
         if _step5b_issues_failed(oos_issue_stdout):
             print("**⚠ /design: OOS filing completed with ISSUES_FAILED>0; see execution-issues and oos-issue.stdout.txt**")
-        if status in {"annotate-failed-empty-stdout", "annotate-skipped-empty-stdout"} and warn:
+        if status == "annotate-failed-empty-stdout" and warn:
             return _step5b_handle_empty_stdout_retry(
                 plugin_root=plugin_root,
                 design_tmpdir=design_tmpdir,
@@ -291,15 +291,6 @@ def step5b_annotate_main(argv: Sequence[str]) -> int:
         if not label_only and not _step5b_annotate_sequencing_error(oos_issue_stdout):
             _step5b_mark_complete(design_tmpdir)
         return ann_rc
-
-    if status == "annotate-skipped-empty-stdout" and warn:
-        return _step5b_handle_empty_stdout_retry(
-            plugin_root=plugin_root,
-            design_tmpdir=design_tmpdir,
-            stderr_path=stderr_path,
-            exit_code=0,
-            verb="skipped",
-        )
 
     if (design_tmpdir / ".oos-priority-label-pending").is_file():
         print("STEP5B_STATUS=annotate-label-failed")

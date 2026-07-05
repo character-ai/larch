@@ -12,6 +12,7 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.review import review_tally
+from larch.review import review_core_body
 import review_test_support as rts
 from larch.review import voting
 
@@ -874,6 +875,180 @@ def test_emit_tally_preserves_existing_oos_accepted_sink(tmp_path: Path) -> None
 
     assert result.returncode == 0, result.stderr
     assert sink.read_text(encoding="utf-8") == preserved
+
+
+def test_emit_tally_preserves_promoted_sink_on_same_run_reentry(tmp_path: Path) -> None:
+    parent = tmp_path / "impl-parent"
+    case = parent / "round-2"
+    case.mkdir(parents=True)
+    _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=0\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text(
+        """### OOS_1: [OUT_OF_SCOPE] stale round-local source
+- **Concern**: must not rebuild from this lingering file.
+""",
+        encoding="utf-8",
+    )
+    sink = case / "oos-accepted-review.md"
+    preserved = """### OOS_1: promoted one
+- **Concern**: keep one.
+
+### OOS_2: promoted two
+- **Concern**: keep two.
+"""
+    _ = sink.write_text(preserved, encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--session-env-path",
+        str(parent / "session-env.sh"),
+        "--round",
+        "2",
+        "--mode",
+        "diff",
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "OOS_FILING_COUNT=2" in result.stdout
+    assert sink.read_text(encoding="utf-8") == preserved
+    assert (parent / "oos-accepted-review.md").read_text(encoding="utf-8") == preserved
+
+
+def test_review_core_body_threads_session_env_to_emit_and_parent_copy(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    review_dir = tmp_path / "round-1"
+    parent = tmp_path / "impl-parent"
+    session_env = parent / "session-env.sh"
+    parent.mkdir()
+    _ = session_env.write_text("", encoding="utf-8")
+    reviewer_file = review_dir / "cursor-plan-arch-output.txt"
+    voter_file = review_dir / "voter.txt"
+    emitted_args: list[list[str]] = []
+
+    def fake_call_maybe_override(
+        *,
+        command: str,
+        review_name: str,
+        args: list[str],
+    ) -> subprocess.CompletedProcess[str]:
+        del command
+        if review_name == "gather-context":
+            return subprocess.CompletedProcess(args, 0, "MODE=diff\nCOMMIT_COUNT=1\n", "")
+        if review_name == "dispatch-panel":
+            review_dir.mkdir(parents=True, exist_ok=True)
+            _ = reviewer_file.write_text("reviewer output\n", encoding="utf-8")
+            manifest = review_dir / "panel-manifest.ndjson"
+            _ = manifest.write_text(f'{{"slot":"cursor-plan-arch","output":"{reviewer_file}"}}\n', encoding="utf-8")
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                f"EXTERNAL_OUTPUT_FILES={reviewer_file}\nPANEL_MANIFEST={manifest}\nPANEL_MODE=waterfall\n"
+                "PANEL_SHAPE=hard\nPANEL_TIER=MODERATE\nSTATIC_SLOT_COUNT=1\nDYNAMIC_SLOTS=0\n",
+                "",
+            )
+        if review_name == "collect-findings":
+            _ = (review_dir / "findings.md").write_text(
+                "### FINDING_1: Core path finding\n"
+                "- **Reviewer(s)**: Cursor-Arch\n"
+                "- **Severity**: major\n"
+                "- **Concern**: Exercise emit handoff.\n"
+                "- **Proposed resolution**: Keep session-env forwarding.\n",
+                encoding="utf-8",
+            )
+            _ = (review_dir / "oos.md").write_text("", encoding="utf-8")
+            _ = (review_dir / "collector-results.env").write_text(
+                f"REVIEWER_FILE={reviewer_file}\nTOOL=cursor\nSTATUS=OK\nEXIT_CODE=0\n\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(args, 0, "FINDINGS_COUNT=1\n", "")
+        if review_name == "check-reviewer-failure-threshold":
+            return subprocess.CompletedProcess(args, 0, "THRESHOLD_OK=true\n", "")
+        if review_name == "aggregate-findings":
+            return subprocess.CompletedProcess(args, 0, "REASON=ok\nAGGREGATED=true\nMERGED_COUNT=1\n", "")
+        if review_name == "prune-nit-findings":
+            return subprocess.CompletedProcess(args, 0, "PRUNED_COUNT=0\nINSCOPE_REMAINING=1\nSTATUS=ok\n", "")
+        if review_name == "tally-code-votes":
+            accepted = review_dir / "accepted-findings.md"
+            tally_file = review_dir / "review-tally.env"
+            _ = accepted.write_text("### FINDING_1: accepted\n", encoding="utf-8")
+            _ = tally_file.write_text("ACCEPTED_COUNT=1\nREJECTED_COUNT=0\n", encoding="utf-8")
+            return subprocess.CompletedProcess(
+                args,
+                0,
+                f"TALLY_STATUS=ok\nACCEPTED_COUNT=1\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\n"
+                f"TALLY_FILE={tally_file}\nACCEPTED_FINDINGS_FILE={accepted}\n",
+                "",
+            )
+        raise AssertionError(f"unexpected review command: {review_name}")
+
+    def fake_run_python_cli(argv: list[str]) -> subprocess.CompletedProcess[str]:
+        if argv[:3] == ["agent", "dispatch-voters", "--ballot-file"]:
+            _ = voter_file.write_text(
+                "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n",
+                encoding="utf-8",
+            )
+            return subprocess.CompletedProcess(
+                argv,
+                0,
+                f"DISPATCH_OK=true\nVOTER_1_PATH={voter_file}\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\n",
+                "",
+            )
+        raise AssertionError(f"unexpected python cli: {argv}")
+
+    def fake_emit_tally(
+        *,
+        commands: object,
+        args: list[str],
+        out_file: Path,
+        runner: object = None,
+    ) -> dict[str, str]:
+        del commands, runner
+        emitted_args.append(args[:])
+        text = "### OOS_1: parent copy\n- **Concern**: copied.\n"
+        _ = (review_dir / "oos-accepted-review.md").write_text(text, encoding="utf-8")
+        _ = out_file.write_text("EMIT_OK=true\nOOS_FILING_COUNT=1\n", encoding="utf-8")
+        return {"EMIT_OK": "true", "OOS_FILING_COUNT": "1"}
+
+    monkeypatch.setattr(review_core_body, "_call_maybe_override", fake_call_maybe_override)
+    monkeypatch.setattr(review_core_body, "_run_python_cli", fake_run_python_cli)
+    monkeypatch.setattr(review_core_body, "_emit_tally", fake_emit_tally)
+
+    rc = review_core_body.review_core(
+        [
+            "--mode",
+            "diff",
+            "--output-dir",
+            str(review_dir),
+            "--session-env-path",
+            str(session_env),
+            "--codex-available",
+            "false",
+            "--cursor-available",
+            "true",
+        ]
+    )
+
+    assert rc == 0
+    assert emitted_args
+    assert "--session-env-path" in emitted_args[0]
+    assert emitted_args[0][emitted_args[0].index("--session-env-path") + 1] == str(session_env)
+    assert (parent / "oos-accepted-review.md").read_text(encoding="utf-8") == (
+        "### OOS_1: parent copy\n- **Concern**: copied.\n"
+    )
 
 
 def test_tally_zero_voters_main_agent_vote_required(tmp_path: Path) -> None:
@@ -1780,6 +1955,37 @@ def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> 
     oos = case / "oos.md"
     _ = oos.write_text("", encoding="utf-8")
     _ = (case / "oos-accepted-review.md").write_text("### OOS_1: Existing\n- **Concern**: keep\n", encoding="utf-8")
+
+    result = run_review(
+        "emit-tally",
+        "--tally-file",
+        str(tally),
+        "--accepted-findings-file",
+        str(accepted),
+        "--oos-file",
+        str(oos),
+        "--review-tmpdir",
+        str(case),
+        "--round",
+        "1",
+        "--mode",
+        "description",
+    )
+
+    assert result.returncode == 1
+    assert "refusing destructive rebuild" in result.stderr
+
+
+def test_emit_tally_refuses_destructive_oos_rebuild_with_malformed_sink(tmp_path: Path) -> None:
+    case = tmp_path / "oos-malformed"
+    case.mkdir()
+    tally = case / "tally.env"
+    _ = tally.write_text("ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nOOS_ACCEPTED_COUNT=1\n", encoding="utf-8")
+    accepted = case / "accepted.md"
+    _ = accepted.write_text("", encoding="utf-8")
+    oos = case / "oos.md"
+    _ = oos.write_text("### OOS_1: lingering source\n- **Concern**: rebuild from here.\n", encoding="utf-8")
+    _ = (case / "oos-accepted-review.md").write_text("malformed accepted sink\n", encoding="utf-8")
 
     result = run_review(
         "emit-tally",

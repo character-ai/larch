@@ -198,6 +198,41 @@ def _rows_from_structured(path: Path) -> list[dict[str, str]]:
         return []
 
 
+def _structured_sidecar_candidates(*, reviewer_file: str, sidecar: str) -> list[Path]:
+    candidates: list[Path] = []
+    if sidecar:
+        candidates.append(Path(sidecar))
+    candidates.extend([Path(f"{reviewer_file}.tsv"), Path(f"{reviewer_file}.jsonl")])
+    return candidates
+
+
+def _existing_structured_sidecar(*, reviewer_file: str, sidecar: str) -> Path | None:
+    for candidate in _structured_sidecar_candidates(reviewer_file=reviewer_file, sidecar=sidecar):
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _lazy_materialize_structured_sidecar(*, reviewer_file: str, tool: str) -> Path | None:
+    if not reviewer_file or not Path(reviewer_file).is_file():
+        return None
+    suffix = ".tsv" if tool in {"cursor", "codex"} else ".jsonl"
+    sidecar = Path(f"{reviewer_file}{suffix}")
+    result = _run_cli(
+        argv=[
+            "eval",
+            "validate-research-output",
+            "--structured-reviewer-mode",
+            "--write-structured",
+            str(sidecar),
+            reviewer_file,
+        ]
+    )
+    if result.returncode != 0 or not sidecar.is_file():
+        return None
+    return sidecar
+
+
 def _is_oos_scope(scope: str) -> bool:
     return scope in {"out_of_scope", "out-of-scope", "oos"}
 
@@ -463,10 +498,10 @@ def _compose_findings_from_collector(
             )
             continue
         ok_count += 1
-        structured = Path(sidecar) if sidecar and Path(sidecar).is_file() else Path(f"{rf}.tsv")
-        if not structured.is_file():
-            structured = Path(f"{rf}.jsonl")
-        rows = _rows_from_structured(structured)
+        structured = _existing_structured_sidecar(reviewer_file=rf, sidecar=sidecar)
+        if structured is None:
+            structured = _lazy_materialize_structured_sidecar(reviewer_file=rf, tool=tool)
+        rows = _rows_from_structured(structured) if structured is not None else []
         for row in rows:
             scope, sev, focus, loc, what, scen, fix = _structured_finding_fields(row)
             if _is_oos_scope(scope):
@@ -864,7 +899,6 @@ def execute_round(
                 _COLLECT_TIMEOUT,
                 "--substantive-validation",
                 "--validation-mode",
-                "--structured-reviewer-validation",
                 "--paths-file",
                 str(paths_path),
             ],

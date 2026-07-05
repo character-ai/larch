@@ -30,6 +30,24 @@ grep -Fq 'Feature request text' "$D_OK/plan-review-scope-anchor.txt" || fail 'su
 rm -rf "$D_OK"
 pass 'Step 3 entry writes scope anchor from stripped issue body'
 
+D_REENTRY=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-entry-reentry.XXXXXX")
+prepare_entry_tmpdir "$D_REENTRY"
+printf 'stale aggregate pool\n' >"$D_REENTRY/oos-aggregate-pool.md"
+cat >"$D_REENTRY/issue-body.txt" <<'EOF'
+Feature request text
+EOF
+set +e
+env CLAUDE_PLUGIN_ROOT="$ROOT" DESIGN_TMPDIR="$D_REENTRY" ISSUE_NUMBER=9 ISSUE_TITLE='Feature' \
+  "$ENTRY" --reentry 2>"$D_REENTRY/stderr.log"
+reentry_rc=$?
+set -e
+[[ "$reentry_rc" -eq 0 ]] || fail "entry reentry rc=$reentry_rc stderr=$(cat "$D_REENTRY/stderr.log")"
+if [[ -s "$D_REENTRY/oos-aggregate-pool.md" ]]; then
+  fail 'reentry must remove or empty stale oos-aggregate-pool.md'
+fi
+rm -rf "$D_REENTRY"
+pass 'Step 3 reentry resets stale OOS aggregate pool'
+
 D_EMPTY=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-entry-empty.XXXXXX")
 prepare_entry_tmpdir "$D_EMPTY"
 cat >"$D_EMPTY/issue-body.txt" <<'EOF'
