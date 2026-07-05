@@ -290,6 +290,7 @@ def test_cli_registry_has_implement_and_launcher_verbs() -> None:
     assert _REGISTRY[("implement", "step-18-gate-finalize")] == ("larch.implement.implement_dispatch", "step_18_gate_finalize_main")
     assert _REGISTRY[("implement", "run-step-checks")] == ("larch.implement.implement_dispatch", "run_step_checks_main")
     assert _REGISTRY[("ship", "pre-driver")] == ("larch.implement.implement_dispatch", "ship_pre_driver_main")
+    assert _REGISTRY[("ship", "pre-fix-rebase")] == ("larch.implement.implement_dispatch", "ship_pre_fix_rebase_main")
     assert _REGISTRY[("ship", "route-exit")] == ("larch.implement.implement_dispatch", "ship_route_exit_main")
     assert _REGISTRY[("execution-issues", "flush-safety-net")] == ("larch.issue.execution_issues", "flush_execution_issues_safety_net_main")
     assert _REGISTRY[("agent", "launch-codex-implement")] == ("larch.agents.agents", "launch_codex_implement_main")
@@ -677,6 +678,269 @@ def test_ship_route_exit_rc_file_wins_and_multiline_detail_uses_file(
     assert "DETAIL_FILE=" in env
     assert "DETAIL=line one" not in env
     assert "ledger_ready=true" in env
+
+
+def _write_pre_fix_state(tmp: Path, *, forked: str = "false", repo: str = "owner/repo", run_id: str = "run-1") -> None:
+    (tmp / "ship-pr-state.sh").write_text(
+        "PHASE=ci-initial\n"
+        "BRANCH_NAME=feature/pre-fix\n"
+        "ISSUE_NUMBER=123\n"
+        f"RUN_ID={run_id}\n"
+        f"REPO={repo}\n"
+        "REPO_UNAVAILABLE=false\n"
+        f"FORKED_TARGET={forked}\n"
+        "MERGE=true\n"
+        "DRAFT=false\n"
+        "MANIFEST_PATH=\n"
+        "TOOL_LABEL=codex\n"
+        "NO_ADMIN_FALLBACK=false\n"
+        "NO_LOGS_COMMIT=false\n"
+        "PR_NUMBER=44\n"
+        "PR_URL=https://github.com/owner/repo/pull/44\n"
+        "PR_TITLE=Implement feature\n"
+        "PR_CLOSED=false\n"
+        "DESIGN_ONLY_DONE=false\n"
+        "DEFERRED=false\n"
+        "DONE_RENAME_APPLIED=false\n"
+        "REBASE_COUNT=2\n"
+        "FIX_ATTEMPTS=3\n"
+        "ITERATION=4\n"
+        "TRANSIENT_RETRIES=1\n"
+        "OOS_PENDING=false\n",
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.parametrize(("action", "expected"), [("ci-fix", True), ("reship", True), ("operator-bail", False), ("conflict-fix", False), ("stall", False), ("complete", False)])
+def test_ship_route_exit_marks_pre_fix_rebase_required_for_autonomous_actions(tmp_path: Path, action: str, expected: bool) -> None:
+    tmp = _session(tmp_path)
+
+    dispatch_ship._write_ship_route_handoff(
+        implement_tmpdir=tmp,
+        payload={"outcome": "NEEDS_USER_INPUT", "needs_user_reason": "fixture"},
+        action=action,
+    )
+
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert ("PRE_FIX_REBASE_REQUIRED=true\n" in env) is expected
+
+
+@pytest.mark.parametrize(("forked", "base_remote"), [("false", "origin"), ("true", "upstream")])
+def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    forked: str,
+    base_remote: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp, forked=forked)
+    calls: list[dict[str, object]] = []
+
+    def fake_rebase_and_push(**kwargs: object) -> object:
+        calls.append(kwargs)
+        return object()
+
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=ok\nNEXT_ACTION=continue\n"
+    assert len(calls) == 1
+    call = calls[0]
+    assert call["repo"] == "owner/repo"
+    assert call["run_id"] == "run-1"
+    assert call["cwd"] == str(tmp_path)
+    assert call["tmpdir"] == str(tmp)
+    assert call["base_remote"] == base_remote
+    assert call["base_ref"] == "main"
+    assert call["defer_push"] is False
+    assert call["allow_conflict_fix"] is True
+    assert call["enable_pre_push_handoff"] is True
+
+
+def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text("pending\n", encoding="utf-8")
+    calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: calls.append("probe") or False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: calls.append("rebase"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n"
+    assert calls == []
+
+
+def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
+        handle.write(
+            "RESUME_PHASE=ship-pr-rrr-phase14\n"
+            "CALLER_KIND=ship_pr_pre_push\n"
+            "CONFLICT_FILES=python/a.py,docs/b.md\n"
+        )
+    (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
+    rebase_calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: rebase_calls.append("rebase"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=conflict\nNEXT_ACTION=conflict-fix\n"
+    assert rebase_calls == []
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_RUN_ID=99\n" in env
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in env
+    assert "CALLER_KIND=ship_pr_pre_push\n" in env
+    assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in env
+    assert "PRE_FIX_REBASE_STATUS=conflict\n" in env
+    assert "NEXT_ACTION=conflict-fix\n" in env
+
+
+def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    rebase_calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: rebase_calls.append("rebase"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=stall\nNEXT_ACTION=stall\n"
+    assert rebase_calls == []
+
+
+def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
+
+    def fake_rebase_and_push(**_kwargs: object) -> object:
+        raise dispatch_ship.PrePushConflictHandoff(
+            conflict_files=("python/a.py", "docs/b.md"),
+            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+        )
+
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=conflict\nNEXT_ACTION=conflict-fix\n"
+    state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "PHASE=rebase\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+    assert "CALLER_KIND=ship_pr_pre_push\n" in state
+    assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in state
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_RUN_ID=99\n" in env
+    assert "NEXT_ACTION=conflict-fix\n" in env
+
+
+@pytest.mark.parametrize("exc", [dispatch_ship.Stalled("fetch failed"), dispatch_ship.TransientNetworkError("fetch transient")])
+def test_ship_pre_fix_rebase_stall_exceptions_emit_stall(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    exc: Exception,
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+
+    def fake_rebase_and_push(**_kwargs: object) -> object:
+        raise exc
+
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "PRE_FIX_REBASE_STATUS=stall\n" in out
+    assert "NEXT_ACTION=stall\n" in out
+    assert "DETAIL=fetch" in out
+
+
+def test_ship_pre_fix_rebase_missing_state_fails_without_next_action(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp, repo="")
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc != 0
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
+
+
+def test_ship_pre_fix_rebase_missing_tmpdir_fails_without_next_action(capsys: pytest.CaptureFixture[str]) -> None:
+    rc = implement_dispatch.ship_pre_fix_rebase_main(["--implement-tmpdir", "/no/such/tmpdir"])
+
+    assert rc != 0
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
 
 
 def test_step8_oos_checkpoint_success_writes_stats_stamp_and_clears_state(

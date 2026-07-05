@@ -34,7 +34,7 @@ CANONICAL_GUARD = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:
 AWK_FALLBACK_PREFIX = '[ -z "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -n "${IMPLEMENT_TMPDIR:-}" ] && [ -f "$IMPLEMENT_TMPDIR/session-env.sh" ] && CLAUDE_PLUGIN_ROOT=$(awk '
 LAUNCHER_PREFIX = '"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" '
 EXPECTED_OLD = 2
-EXPECTED_NEW = 20
+EXPECTED_NEW = 22
 
 def old_logical_commands(body):
     commands = []
@@ -209,6 +209,30 @@ for (_, end_a, _), (start_b, _, _) in zip(fences, fences[1:]):
 
 if old_count != EXPECTED_OLD or new_count != EXPECTED_NEW:
     errors.append(f'expected old={EXPECTED_OLD} new={EXPECTED_NEW} bash fences, found old={old_count} new={new_count}')
+
+
+skill_text = path.read_text()
+try:
+    reship_start = skill_text.index('- **`reship`**:')
+    oos_start = skill_text.index('- **`oos-pipeline`**:', reship_start)
+    reship_slice = skill_text[reship_start:oos_start]
+    reship_pre_fix = reship_slice.index('ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"')
+    reship_continue = reship_slice.index('`NEXT_ACTION=continue` proceeds to the stale-handoff clear')
+    if reship_pre_fix > reship_continue:
+        errors.append('reship branch must require ship pre-fix-rebase before stale-handoff clear')
+except ValueError as exc:
+    errors.append(f'reship branch must document ship pre-fix-rebase ordering: {exc}')
+try:
+    ci_fix_start = skill_text.index('- **`ci-fix`**:')
+    conflict_start = skill_text.index('- **`conflict-fix`**', ci_fix_start)
+    ci_fix_slice = skill_text[ci_fix_start:conflict_start]
+    ci_fix_pre_fix = ci_fix_slice.index('ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"')
+    ci_fix_load = ci_fix_slice.index('Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md`')
+    if ci_fix_pre_fix > ci_fix_load:
+        errors.append('ci-fix branch must require ship pre-fix-rebase before loading ship-pr-ci-fix.md')
+except ValueError as exc:
+    errors.append(f'ci-fix branch must document ship pre-fix-rebase before ci-fix load: {exc}')
+
 
 resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()
 if 'LARCH_CLAUDE_PID="$PPID" "${CLAUDE_PLUGIN_ROOT}/skills/implement/scripts/step-0-bootstrap.sh" --mode resume' not in resume_text:

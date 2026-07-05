@@ -63,6 +63,14 @@ def test_dispatch_ship_pre_driver_calls_implement_dispatch() -> None:
     assert rc == 0
 
 
+def test_dispatch_ship_pre_fix_rebase_calls_implement_dispatch() -> None:
+    mock_main = MagicMock(return_value=0)
+    with patch.dict("sys.modules", {"larch.implement.implement_dispatch": MagicMock(ship_pre_fix_rebase_main=mock_main)}):
+        rc = cli.main(["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"])
+    mock_main.assert_called_once_with(["--implement-tmpdir", "/tmp/x"])
+    assert rc == 0
+
+
 def test_dispatch_ship_design_log_calls_design_log_main() -> None:
     mock_main = MagicMock(return_value=0)
     with patch.dict("sys.modules", {"larch.design.design_log_ship": MagicMock(main=mock_main)}):
@@ -230,6 +238,7 @@ def test_machine_stdout_entrypoints_disable_inherited_quiet(monkeypatch: pytest.
         (["checks", "repair-loop", "--help"], "larch.implement.checks", "checks_repair_loop_main"),
         (["session", "resolve-implement-tmpdir", "--cwd", "/tmp/repo"], "larch.state.session_env", "resolve_implement_tmpdir_main"),
         (["ship", "pre-driver"], "larch.implement.implement_dispatch", "ship_pre_driver_main"),
+        (["ship", "pre-fix-rebase", "--implement-tmpdir", "/tmp/x"], "larch.implement.implement_dispatch", "ship_pre_fix_rebase_main"),
         (["ship", "route-exit"], "larch.implement.implement_dispatch", "ship_route_exit_main"),
         (["implement", "commit-route"], "larch.implement.implement_dispatch", "commit_route_main"),
         (["implement", "step-6-entry"], "larch.implement.implement_dispatch", "step6_entry_main"),
