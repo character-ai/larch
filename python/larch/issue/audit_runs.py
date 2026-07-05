@@ -18,9 +18,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from larch.issue import oos_disposition
 from larch.core import config
+from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
 from larch.core import proc
 from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR
-from larch.implement.ship_guidelines import GUIDELINE_SHIP_OUTCOMES, GUIDELINE_SHIP_REASON_TOKENS
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -295,31 +295,22 @@ def _guideline_ship_outcome_scan_obj(*, name: str, pr: int, run_dir: Path) -> di
         data = json.loads(raw)
     except (OSError, json.JSONDecodeError) as exc:
         return {"scan": name, "pr": pr, "result": "fail", "detail": f"guideline outcome artifact malformed: {exc}"}
-    if not isinstance(data, dict):
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome artifact must be a JSON object"}
-    if str(data.get("schema_version") or "") != "1":
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome schema_version must be 1"}
-    outcome = str(data.get("outcome") or "")
-    reason = str(data.get("reason") or "")
-    guidelines_status = str(data.get("guidelines_status") or "")
-    head_sha = str(data.get("head_sha") or "")
-    if outcome not in GUIDELINE_SHIP_OUTCOMES:
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome token is unknown"}
-    if guidelines_status not in {"present", "absent", "invalid"}:
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome guidelines_status is unknown"}
-    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome reason token is unknown"}
-    if not head_sha:
-        return {"scan": name, "pr": pr, "result": "fail", "detail": "guideline outcome head_sha is empty"}
+    reason = validate_guideline_ship_outcome_record(data)
+    if reason is not None:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": reason}
+    typed = data
+    outcome = str(typed.get("outcome") or "")
+    reason_token = str(typed.get("reason") or "")
+    guidelines_status = str(typed.get("guidelines_status") or "")
     obj: dict[str, object] = {
         "scan": name,
         "pr": pr,
         "result": "pass",
         "outcome": outcome,
-        "reason": reason,
+        "reason": reason_token,
         "guidelines_status": guidelines_status,
     }
-    assessment_kind = str(data.get("assessment_kind") or "")
+    assessment_kind = str(typed.get("assessment_kind") or "")
     if assessment_kind:
         obj["assessment_kind"] = assessment_kind
     return obj

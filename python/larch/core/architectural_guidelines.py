@@ -88,6 +88,78 @@ class ComposeMaterializationResult:
     warning: str = ""
 
 
+def validate_guideline_ship_outcome_record(data: object) -> str | None:
+    from larch.implement.ship_guidelines import (
+        GUIDELINE_SHIP_OUTCOMES,
+        GUIDELINE_SHIP_REASON_TOKENS,
+        OUTCOME_CLEAN,
+        OUTCOME_DROPPED,
+        OUTCOME_PINNED,
+        REASON_CLEAN_NOTE,
+        REASON_COMPOSE_MATERIALIZATION_FAILED,
+        REASON_GUIDELINES_ABSENT,
+        REASON_GUIDELINES_INVALID,
+        REASON_NOTE_PINNED,
+        REASON_NOTE_READ_FAILED,
+        REASON_NOTE_REDACTION_FAILED,
+        REASON_UNKNOWN,
+    )
+
+    if not isinstance(data, dict):
+        return "guideline outcome artifact must be a JSON object"
+    if str(data.get("schema_version") or "") != "1":
+        return "guideline outcome schema_version must be 1"
+    phase = str(data.get("phase") or "")
+    step = str(data.get("step") or "")
+    base_ref = str(data.get("base_ref") or "")
+    outcome = str(data.get("outcome") or "")
+    reason = str(data.get("reason") or "")
+    guidelines_status = str(data.get("guidelines_status") or "")
+    assessment_kind = str(data.get("assessment_kind") or "")
+    if phase != "implement":
+        return "guideline outcome phase must be implement"
+    if step != "8":
+        return "guideline outcome step must be 8"
+    if not base_ref:
+        return "guideline outcome base_ref is empty"
+    if outcome not in GUIDELINE_SHIP_OUTCOMES:
+        return "guideline outcome token is unknown"
+    if guidelines_status not in {"present", "absent", "invalid"}:
+        return "guideline outcome guidelines_status is unknown"
+    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
+        return "guideline outcome reason token is unknown"
+    if assessment_kind not in {"", "clean", "deviation"}:
+        return "guideline outcome assessment_kind is unknown"
+    if guidelines_status == "absent":
+        if outcome != OUTCOME_CLEAN or reason != REASON_GUIDELINES_ABSENT or assessment_kind:
+            return "guideline outcome fields are inconsistent for absent guidelines"
+        return None
+    if guidelines_status == "invalid":
+        if outcome != OUTCOME_CLEAN or reason != REASON_GUIDELINES_INVALID or assessment_kind:
+            return "guideline outcome fields are inconsistent for invalid guidelines"
+        return None
+    if outcome == OUTCOME_CLEAN:
+        if reason != REASON_CLEAN_NOTE or assessment_kind != "clean":
+            return "guideline outcome fields are inconsistent for clean guidelines"
+        return None
+    if outcome == OUTCOME_PINNED:
+        if reason != REASON_NOTE_PINNED or assessment_kind != "deviation":
+            return "guideline outcome fields are inconsistent for pinned guidelines"
+        return None
+    if outcome == OUTCOME_DROPPED:
+        if assessment_kind:
+            return "guideline outcome fields are inconsistent for dropped guidelines"
+        if guidelines_status != "present" or reason not in {
+            REASON_NOTE_READ_FAILED,
+            REASON_NOTE_REDACTION_FAILED,
+            REASON_COMPOSE_MATERIALIZATION_FAILED,
+            REASON_UNKNOWN,
+        }:
+            return "guideline outcome fields are inconsistent for dropped guidelines"
+        return None
+    return "guideline outcome fields are inconsistent"
+
+
 def _run_git_toplevel(candidate: Path) -> Path | None:
     try:
         completed = subprocess.run(

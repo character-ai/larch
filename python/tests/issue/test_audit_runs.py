@@ -245,24 +245,31 @@ def _scan_guideline_outcome(tmp_path: Path, run: Path, capsys: pytest.CaptureFix
     return json.loads(capsys.readouterr().out.splitlines()[0])
 
 
-def _write_guideline_outcome(run: Path, *, outcome: str = "pinned", reason: str = "note-pinned") -> None:
-    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text(
-        json.dumps(
-            {
-                "schema_version": "1",
-                "phase": "implement",
-                "step": "8",
-                "outcome": outcome,
-                "reason": reason,
-                "detail": "",
-                "guidelines_status": "present",
-                "head_sha": "abc123",
-                "base_ref": "origin/main",
-                "assessment_kind": "deviation",
-            }
-        ),
-        encoding="utf-8",
-    )
+def _write_guideline_outcome(
+    run: Path,
+    *,
+    outcome: str = "pinned",
+    reason: str = "note-pinned",
+    **overrides: object,
+) -> None:
+    assessment_kind = "deviation"
+    if outcome == "clean":
+        assessment_kind = "clean" if reason == "clean-note" else ""
+    elif outcome == "dropped":
+        assessment_kind = ""
+    payload = {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": outcome,
+        "reason": reason,
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": assessment_kind,
+    } | overrides
+    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text(json.dumps(payload), encoding="utf-8")
 
 
 def test_guideline_ship_outcome_scan_missing_cutover_and_valid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -327,6 +334,36 @@ def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys
     )
     row = _scan_guideline_outcome(tmp_path, run, capsys)
     assert row["result"] == "fail"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"phase": "design"}, "phase must be implement"),
+        ({"step": "7"}, "step must be 8"),
+        ({"base_ref": ""}, "base_ref is empty"),
+        ({"outcome": "dropped", "reason": "note-pinned"}, "fields are inconsistent for dropped guidelines"),
+    ],
+)
+def test_guideline_ship_outcome_scan_rejects_schema_mismatches(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _write_guideline_outcome(run, **overrides)
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert message in str(row["detail"])
 
 
 def test_scan_codex_round1_adherence_allows_round_two_generic_and_specialist(tmp_path: Path, capsys: pytest.CaptureFixture[str]):

@@ -79,18 +79,30 @@ def test_run_dir_rejects_invalid_run_id(tmp_path: Path) -> None:
         run_logs._run_dir(log_root=tmp_path / "larch-logs", skill="implement", run_id="../evil")  # pyright: ignore[reportPrivateUsage, reportUnusedCallResult]
 
 
-def _guideline_outcome_payload() -> dict[str, str]:
+def _guideline_outcome_payload(
+    *,
+    outcome: str = "pinned",
+    reason: str = "note-pinned",
+    assessment_kind: str | None = None,
+) -> dict[str, str]:
+    if assessment_kind is None:
+        if outcome == "clean":
+            assessment_kind = "clean" if reason == "clean-note" else ""
+        elif outcome == "pinned":
+            assessment_kind = "deviation"
+        else:
+            assessment_kind = ""
     return {
         "schema_version": "1",
         "phase": "implement",
         "step": "8",
-        "outcome": "pinned",
-        "reason": "note-pinned",
+        "outcome": outcome,
+        "reason": reason,
         "detail": "",
         "guidelines_status": "present",
         "head_sha": "abc123",
         "base_ref": "origin/main",
-        "assessment_kind": "deviation",
+        "assessment_kind": assessment_kind,
     }
 
 
@@ -120,6 +132,36 @@ def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
             run_id="run-abc",
             batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
             input_file=str(bad),
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({**_guideline_outcome_payload(), "phase": "design"}, "phase must be implement"),
+        ({**_guideline_outcome_payload(), "step": "7"}, "step must be 8"),
+        ({**_guideline_outcome_payload(), "base_ref": ""}, "base_ref is empty"),
+        (
+            {**_guideline_outcome_payload(), "outcome": "dropped", "reason": "note-pinned"},
+            "fields are inconsistent for dropped guidelines",
+        ),
+    ],
+)
+def test_guideline_outcome_batch_rejects_schema_mismatches(
+    tmp_path: Path,
+    payload: dict[str, str],
+    message: str,
+) -> None:
+    path = tmp_path / "architectural-guideline-outcome.json"
+    _ = path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        _ = _write_batch(
+            log_root=tmp_path / "larch-logs",
+            skill="implement",
+            run_id="run-abc",
+            batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+            input_file=str(path),
         )
 
 

@@ -15,6 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
+from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
 from larch.core import redact
 from larch import io as larch_io
 from larch.errors import ShipError
@@ -229,6 +230,10 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
         data = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError(f"batch {batch} requires a JSON object")
+        if batch == config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME:
+            reason = validate_guideline_ship_outcome_record(data)
+            if reason is not None:
+                raise ValueError(f"batch {batch} requires a valid guideline outcome artifact: {reason}")
     elif sanitizer == "json-lines":
         for line in text.splitlines():
             if not line.strip():
