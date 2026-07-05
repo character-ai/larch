@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:36:55
-- **Cost**: 💰 TOTAL ~$34.41: Claude $1.46, Codex-5.5 $26.42, Codex-mini $0.69, Cursor $5.11, Claude (subprocess) $0.73  |  Tokens: 58427k
+- **Cost**: 💰 TOTAL ~$35.22: Claude $2.27, Codex-5.5 $26.42, Codex-mini $0.69, Cursor $5.11, Claude (subprocess) $0.73  |  Tokens: 60680k
 - **Issue**: #6407: https://github.com/character-ai/larch/issues/6407
 - **PR**: #6418: https://github.com/character-ai/larch/pull/6418
 - **Plan review**: N/A
@@ -69,7 +69,3 @@ These OOS observations reached the vote but were not accepted for filing.
 - **Round 1 FINDING_5** (rejected, latent): checkpoint only checks the top-level sidecar path. Concern: `python/larch/issue/file_oos.py` only inspects the top-level sidecar path, so nested design-export copies would not gate on `rc=3`.
 - **Round 1 FINDING_9** (rejected, latent): rejected-counting needs regression coverage for ### subheadings. Concern: `python/larch/issue/file_oos.py` now treats `###` subheadings as in-section in `_count_rejected_from_ndjson`, but there is no targeted regression test for rejected blocks that contain nested headings.
 - **Round 1 FINDING_10** (rejected, nit): rc=3 bash path is outside the CI harness matrix. Concern: `skills/implement/scripts/test-oos-disposition-gate.sh` adds an updated bash `rc=3` case that is not exercised by the test-harnesses CI matrix, so the bash contract can diverge from enforced CI behavior.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
