@@ -19,6 +19,7 @@ from larch.report import run_logs
 from larch.implement import ship
 from larch.implement import ship_guidelines
 from larch.implement import ship_pr
+from larch.implement import ship_resume
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
@@ -5374,6 +5375,61 @@ def test_load_or_prepare_guidelines_note_requests_compose_assessment(
     assert result.detail == "architectural-guidelines assessment required before PR body compose"
 
 
+def test_load_or_prepare_guidelines_note_requests_assessment_on_redaction_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ship.architectural_guidelines.write_implement_note(
+        implement_tmpdir=tmp_path,
+        note_text="Consulted note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
+        base_ref="origin/main",
+    )
+
+    def fail_redact(_note: str) -> str:
+        raise ShipError("redaction failed for PR body")
+
+    monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
+
+    result = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    assert result.note == ""
+    assert result.needs_assessment is True
+    assert result.warning_logged is True
+
+
+def test_load_or_prepare_guidelines_note_requests_assessment_on_prepare_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = ship.architectural_guidelines.ComposeMaterializationResult(
+        status="failed",
+        head_sha="head",
+        base_ref="origin/main",
+        warning="missing remote ref",
+    )
+    monkeypatch.setattr(
+        ship_guidelines.architectural_guidelines,
+        "prepare_compose_assessment",
+        lambda **_kwargs: prepared,
+    )
+
+    result = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    assert result.note == ""
+    assert result.needs_assessment is True
+    assert result.warning_logged is True
+
+
 def test_pin_or_invalidate_guidelines_note_clears_retired_artifacts(tmp_path: Path) -> None:
     ship.architectural_guidelines.write_staged_assessment(
         implement_tmpdir=tmp_path,
@@ -5720,6 +5776,28 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
     assert result.outcome is Outcome.OK
     assert order.index("gate") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
+
+
+def test_guidelines_assessment_resume_without_pr_number_uses_pre_pr_compose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=guidelines-assessment\nBRANCH_NAME=feat\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "feat")
+
+    resume = ship_resume._resume_plan(
+        ctx=_ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert resume.start == "pre-pr-compose"
+    assert resume.pr_number is None
+    assert resume.pr_url == ""
 
 
 

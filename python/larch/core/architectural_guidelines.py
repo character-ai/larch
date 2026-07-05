@@ -672,8 +672,6 @@ _INVALIDATE_ARTIFACTS = (
     LEGACY_WARNING_ENV,
     STAGED_ASSESSMENT,
     STAGED_ASSESSMENT_ENV,
-    MATERIALIZED_DIFF,
-    MATERIALIZE_ENV,
     DURABLE_NOTE,
     DURABLE_NOTE_ENV,
     DROPPED_NOTE_ARTIFACT,
@@ -785,7 +783,16 @@ def _compose_precheck_result(
             warning="HEAD changed before architectural-guidelines compose materialization",
         )
     if current_head and note_consumable(implement_tmpdir=implement_tmpdir, head_sha=current_head):
-        return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+        if root is None:
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+        metadata = durable_note_metadata(implement_tmpdir)
+        stored_base_ref = metadata.get("BASE_REF", "")
+        if stored_base_ref and not note_fingerprint_stale(
+            implement_tmpdir,
+            base_ref=stored_base_ref,
+            repo_root=root,
+        ):
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
     result = read_guidelines(repo_root=root)
     if result.status == "absent":
         return None, ComposeMaterializationResult(status="absent", head_sha=current_head, guidelines_status="absent")

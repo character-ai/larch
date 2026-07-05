@@ -86,7 +86,11 @@ def _read_current_guidelines_note(*, tmpdir: Path, head_sha: str) -> GuidelinesG
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines note read failed: {exc}",
         )
-        return GuidelinesGateResult(warning_logged=warning_logged)
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            warning_logged=warning_logged,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
     try:
         return GuidelinesGateResult(note=pr_body.redact_pr_body(note).strip())
     except ShipError as exc:
@@ -94,7 +98,11 @@ def _read_current_guidelines_note(*, tmpdir: Path, head_sha: str) -> GuidelinesG
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines note redaction failed: {exc}",
         )
-        return GuidelinesGateResult(warning_logged=warning_logged)
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            warning_logged=warning_logged,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
 
 
 def load_or_prepare_guidelines_note(
@@ -106,12 +114,20 @@ def load_or_prepare_guidelines_note(
     forked_target: bool = False,
 ) -> GuidelinesGateResult:
     """Return the current durable note or prepare compose-time assessment input."""
-    _ = base_ref
     if not implement_tmpdir or not head_sha:
         return GuidelinesGateResult()
     tmpdir = Path(implement_tmpdir)
     current = _read_current_guidelines_note(tmpdir=tmpdir, head_sha=head_sha)
-    if current.note or current.warning_logged:
+    if current.note:
+        if repo_root is not None and base_ref and architectural_guidelines.note_fingerprint_stale(
+            tmpdir,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        ):
+            current = GuidelinesGateResult()
+        else:
+            return current
+    if current.needs_assessment:
         return current
     prepared = architectural_guidelines.prepare_compose_assessment(
         implement_tmpdir=tmpdir,
@@ -131,7 +147,11 @@ def load_or_prepare_guidelines_note(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines compose materialization skipped: {prepared.warning}",
         )
-        return GuidelinesGateResult(warning_logged=warning_logged)
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            warning_logged=warning_logged,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
     return GuidelinesGateResult()
 
 

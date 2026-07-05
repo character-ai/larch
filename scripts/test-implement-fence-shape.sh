@@ -232,6 +232,17 @@ try:
         errors.append('ci-fix branch must require ship pre-fix-rebase before loading ship-pr-ci-fix.md')
 except ValueError as exc:
     errors.append(f'ci-fix branch must document ship pre-fix-rebase before ci-fix load: {exc}')
+try:
+    guidelines_start = skill_text.index('- **`guidelines-assessment`**:')
+    reship_start = skill_text.index('- **`reship`**:', guidelines_start)
+    guidelines_slice = skill_text[guidelines_start:reship_start]
+    write_compose = guidelines_slice.index('step-architectural-guidelines-write-compose.sh')
+    stale_clear = guidelines_slice.index('foreground stale-handoff clear')
+    relaunch = guidelines_slice.index('relaunch `step-8-ship.sh`')
+    if not (write_compose < stale_clear < relaunch):
+        errors.append('guidelines-assessment branch must run step-architectural-guidelines-write-compose.sh before stale-handoff clear and step-8-ship.sh relaunch')
+except ValueError as exc:
+    errors.append(f'guidelines-assessment branch must document compose-write ordering: {exc}')
 
 
 resume_text = Path('skills/implement/references/bootstrap-recovery.md').read_text()
