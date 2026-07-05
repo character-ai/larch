@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:10:00
-- **Cost**: 💰 TOTAL ~$4.77: Claude $0.57, Codex-5.5 $1.40, Codex-mini $0.72, Cursor $1.80, Claude (subprocess) $0.28  |  Tokens: 9820k
+- **Cost**: 💰 TOTAL ~$5.08: Claude $0.88, Codex-5.5 $1.40, Codex-mini $0.72, Cursor $1.80, Claude (subprocess) $0.28  |  Tokens: 10616k
 - **Issue**: #6437: https://github.com/character-ai/larch/issues/6437
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -55,3 +55,7 @@ codex/validity-vote                │                                   ██�
 - (no accepted-point score attributed to a reviewer slot)
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
