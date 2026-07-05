@@ -285,11 +285,20 @@ def test_security_sidecar_does_not_block_non_security_oos(tmp_path: Path, monkey
     (tmp_path / "security-oos-observations.md").write_text("private\n", encoding="utf-8")
     _write_oos(tmp_path, "### OOS_1: Public follow-up\n- **Description**: File this public item.\n")
     fake = FakeCli(tmp_path)
-    rc, _payload = _run(tmp_path, fake, monkeypatch)
+    fake.checkpoint_rc = 3
+    buf = io.StringIO()
+    with contextlib.redirect_stdout(buf):
+        rc, _payload = _run(tmp_path, fake, monkeypatch)
+    payload = json.loads(buf.getvalue())
 
-    assert rc == 0
+    assert rc == 3
+    assert payload["status"] == "security_sidecar_present"
+    assert payload["step9a1_stamped"] is False
+    assert payload["urls"] == ["https://github.com/owner/repo/issues/101"]
+    assert payload["run_statistics_written"] is True
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
     assert "File this public item" in fake.created_bodies[0]
+    assert "https://github.com/owner/repo/issues/101" in (tmp_path / "larch-logs" / "implement" / "run-1" / "oos-issues.ndjson").read_text(encoding="utf-8")
 
 
 def test_already_filed_block_is_excluded_from_create_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -862,22 +871,34 @@ def test_split_to_github_limit_multibyte_over_byte_limit() -> None:
     assert all(oos_filer._body_bytes(chunk) <= config.GITHUB_ISSUE_BODY_MAX_BYTES for chunk in chunks)
 
 
-def test_body_files_for_item_oversized_body_is_split(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
+def test_body_files_for_cap_one_rolls_surplus_without_multipart(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "1")
     _setup(tmp_path)
-    large_body = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES + 1)
-    _write_oos(tmp_path, f"### OOS_1: Big finding\n- **Description**: {large_body}\n- **Phase**: implement\n")
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First finding\n"
+        "- **Description**: First body.\n"
+        "- **Phase**: implement\n\n"
+        "### OOS_2: Second finding\n"
+        "- **Description**: Second body.\n"
+        "- **Phase**: implement\n\n"
+        "### OOS_3: Third finding\n"
+        "- **Description**: Third body.\n"
+        "- **Phase**: implement\n",
+    )
     fake = FakeCli(tmp_path)
     rc, _payload = _run(tmp_path, fake, monkeypatch)
     assert rc == 0
     create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
-    assert len(create_calls) > 1
-    assert all(oos_filer._body_bytes(body) <= config.GITHUB_ISSUE_BODY_MAX_BYTES for body in fake.created_bodies)
-    reassembled = "".join(
-        body.replace(oos_filer._BODY_PART_FOOTER, "").replace(oos_filer._BODY_PART_HEADER, "")
-        for body in fake.created_bodies
-    )
-    assert large_body in reassembled
+    assert len(create_calls) == 1
+    assert len(fake.created_bodies) == 1
+    body = fake.created_bodies[0]
+    assert "capped rollup of 3 entries" in body
+    assert "First body." in body
+    assert "Second body." in body
+    assert "Third body." in body
+    assert oos_filer._BODY_PART_FOOTER not in body
+    assert oos_filer._BODY_PART_HEADER not in body
 
 
 def test_multipart_retry_preserves_all_part_urls_in_ndjson(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

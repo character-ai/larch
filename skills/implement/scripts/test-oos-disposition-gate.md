@@ -26,5 +26,6 @@ Harness prelude asserts `oos-disposition-checkpoint.sh` is executable (`[ -x "$C
 - Design path: `--design-tmpdir` strict URL pass; `--design-tmpdir` unresolved OOS (exit 1)
 - Design path: `design-export/` fallback pass; `design-export/` unresolved OOS (exit 1)
 - Missing `--design-tmpdir` value (exit 2, logs under implement tmpdir)
+- Security sidecar only (exit 3): non-security disposition is clear, but private `SECURITY.md` disposition remains required.
 
 Makefile target: `test-oos-disposition-gate` (one target covers both scripts).

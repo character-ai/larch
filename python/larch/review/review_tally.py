@@ -902,6 +902,14 @@ def tally_code_votes(argv: list[str]) -> int:
                 else:
                     judge_error += 1
         result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=effective)
+        text = _read(block)
+        artifact_text = _artifact_text_for_item(item_id=item_id, block=block, map_file=proposer_map_file)
+        is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
+        if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
+            is_oos = True
+            drift += 1
+        if is_oos:
+            result = voting.classify_oos_result(yes=yes, no=no, exonerate=0, eligible=effective)
         if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
             under_quorum_items.append(item_id)
         voter_votes, voter_severities = _voter_votes_and_severities(
@@ -932,14 +940,6 @@ def tally_code_votes(argv: list[str]) -> int:
             )
         except voting.TallyError as exc:
             return _error(f"tally-code-votes: {exc}")
-        text = _read(block)
-        artifact_text = _artifact_text_for_item(item_id=item_id, block=block, map_file=proposer_map_file)
-        is_oos = item_id.startswith("OOS_") or bool(re.search(r"\[(OUT_OF_SCOPE|OOS)\]", text.splitlines()[0] if text.splitlines() else ""))
-        if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
-            is_oos = True
-            drift += 1
-        if is_oos:
-            result = voting.classify_oos_result(yes=yes, no=no, exonerate=0, eligible=effective)
         tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
         _record_classification_and_ledger(
             class_tsv=class_tsv,

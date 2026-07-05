@@ -453,7 +453,7 @@ def _count_rejected_from_ndjson(path: Path) -> int:
             if is_rej:
                 in_rejected = True
                 continue
-            if in_rejected and line.startswith("##") and not is_rej:
+            if in_rejected and re.match(r"^##(?!#)", line) and not is_rej:
                 break
             if in_rejected:
                 tail.append(line)
@@ -548,13 +548,15 @@ def resolve_implement_run_id(tmpdir: Path, *, state: dict[str, str] | None = Non
 
 
 def resolve_implement_run_id_for_disposition(tmpdir: Path, *, state: dict[str, str] | None = None) -> str:
-    run_id = resolve_implement_run_id(tmpdir, state=state)
+    if state is None:
+        state = _read_kv_file(path=tmpdir / "ship-pr-state.sh") | _read_kv_file(path=tmpdir / "finalize-state.sh")
+    run_id = state.get("RUN_ID", "")
     if run_id:
         return run_id
     session_id = tmpdir / "session-id"
     if session_id.is_file():
         return session_id.read_text(encoding="utf-8").strip()
-    return ""
+    return resolve_implement_run_id(tmpdir, state=state)
 
 
 def _append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str) -> None:
@@ -565,6 +567,16 @@ def _append_failure_log(*, log: Path, site: str, tool: str, rc: int, output: str
             handle.write(output.rstrip() + "\n")
 
 
+def _preparse_implement_tmpdir(argv: list[str] | None) -> Path | None:
+    values = list(argv or [])
+    for index, value in enumerate(values):
+        if value == "--implement-tmpdir" and index + 1 < len(values):
+            candidate = values[index + 1]
+            if candidate and not candidate.startswith("--"):
+                return Path(candidate)
+    return None
+
+
 def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(prog="cli.py oos disposition-checkpoint")
     parser.add_argument("--implement-tmpdir", required=True)
@@ -572,6 +584,11 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
+        tmpdir_hint = _preparse_implement_tmpdir(argv)
+        if tmpdir_hint is not None:
+            msg = "oos-disposition-checkpoint: invalid arguments"
+            (tmpdir_hint / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+            _append_failure_log(log=tmpdir_hint / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
         return 2
     tmpdir = Path(args.implement_tmpdir)
     if not tmpdir.exists():
@@ -614,13 +631,10 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     accepted = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
     filed = [tmpdir / "oos-issues-created.md"]
     strict = [tmpdir / "oos-accepted-main-agent.md", design_path, tmpdir / "oos-accepted-review.md"]
+    security_sidecar_present = False
     if not forked and not repo_unavailable:
         security_sidecar = tmpdir / "security-oos-observations.md"
-        if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
-            msg = "implement: security-routed manifest OOS requires private SECURITY.md disposition; refusing all-clear checkpoint"
-            (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
-            _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
-            return 2
+        security_sidecar_present = security_sidecar.is_file() and security_sidecar.stat().st_size > 0
         non_sec = count_non_security(tuple(str(p) for p in accepted if p.is_file()))
         if non_sec > 0 and (ndjson is None or not ndjson.is_file()):
             msg = "implement: non-security accepted OOS requires a resolved oos-issues.ndjson path for disposition gate (--oos-issues-ndjson); batch missing or undiscoverable"
@@ -632,10 +646,26 @@ def disposition_checkpoint_main(argv: list[str] | None = None) -> int:
     except ValueError as exc:
         msg = str(exc)
         (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+        (tmpdir / "oos-disposition-gate.stderr.log").write_text(msg + "\n", encoding="utf-8")
         _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-validation", tool="oos-disposition-checkpoint", rc=2, output=msg)
         return 2
     if rc != 0:
+        non_sec = count_non_security(tuple(str(p) for p in accepted))
+        filed_count = _count_urls_in_files(filed + ([ndjson] if ndjson else [])) + _count_urls_in_files(strict, strict=True)
+        rejected = _count_rejected_from_ndjson(ndjson) if ndjson else 0
+        inline = _count_inline_triage(commit_range)
+        (tmpdir / "oos-disposition-gate.stderr.log").write_text(
+            f"oos-disposition-gate: FAIL non_security_oos={non_sec} filed_urls={filed_count} "
+            f"inline_triage_lines={inline} rejected_oos_markers={rejected} (commit-range {commit_range})\n",
+            encoding="utf-8",
+        )
         _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint", tool="oos-disposition-gate", rc=rc, output="")
+        return rc
+    if security_sidecar_present:
+        msg = "implement: security sidecar present; non-security OOS disposition cleared, private SECURITY.md disposition still required"
+        (tmpdir / "oos-disposition-checkpoint.stderr.log").write_text(msg + "\n", encoding="utf-8")
+        _append_failure_log(log=tmpdir / "execution-issues.md", site="step-8-oos-checkpoint-security-sidecar", tool="oos-disposition-checkpoint", rc=3, output=msg)
+        return 3
     return rc
 
 

@@ -56,7 +56,7 @@ mkitmp() {
 TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-disposition-gate.XXXXXX")
 GIT_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-git.XXXXXX")
 ORPHAN_TMP=$(mktemp -d "${TMPDIR:-/tmp}/test-oos-gate-orphan.XXXXXX")
-trap 'rm -rf "$TMP" "$GIT_TMP" "$ORPHAN_TMP" "${TMPDIRS[@]}"' EXIT
+trap 'rm -rf "$TMP" "$GIT_TMP" "$ORPHAN_TMP" ${TMPDIRS[@]+"${TMPDIRS[@]}"}' EXIT
 
 # --- Isolated repo: one commit, no Inline-triage (for fail + controlled ranges) ---
 (
@@ -218,7 +218,7 @@ assert_rc "unbulleted security focus-area passes without URLs" 0 "$rc"
 
 py_count=$(
   PYTHONPATH="$SCRIPT_DIR/../../../python" \
-    python3 -c 'import file_oos, sys; print(file_oos.count_non_security((sys.argv[1],)))' \
+    python3 -c 'from larch.issue import file_oos; import sys; print(file_oos.count_non_security((sys.argv[1],)))' \
     "$TMP/sec-unbulleted.md"
 )
 if [ "$py_count" = "0" ]; then
@@ -620,7 +620,7 @@ set -e
 assert_rc "checkpoint disposition gap exit 1" 1 "$rc"
 if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap/execution-issues.md" \
   && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap/execution-issues.md" \
-  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap/execution-issues.md" \
+  && grep -Fq 'oos-disposition-gate' "$_impl_gap/execution-issues.md" \
   && grep -Fq 'Tool Failures' "$_impl_gap/execution-issues.md" \
   && [ -s "$_impl_gap/oos-disposition-gate.stderr.log" ]; then
   pass "checkpoint disposition gap logs Tool Failures"
@@ -648,7 +648,7 @@ set -e
 assert_rc "checkpoint legacy FINDING disposition gap exit 1" 1 "$rc"
 if grep -Fq 'step-8-oos-checkpoint' "$_impl_gap_legacy/execution-issues.md" \
   && ! grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_gap_legacy/execution-issues.md" \
-  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_gap_legacy/execution-issues.md" \
+  && grep -Fq 'oos-disposition-gate' "$_impl_gap_legacy/execution-issues.md" \
   && grep -Fq 'Tool Failures' "$_impl_gap_legacy/execution-issues.md" \
   && [ -s "$_impl_gap_legacy/oos-disposition-gate.stderr.log" ]; then
   pass "checkpoint legacy FINDING disposition gap logs Tool Failures"
@@ -769,7 +769,7 @@ set -e
 assert_rc "checkpoint ambiguous ndjson exit 2" 2 "$rc"
 if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_amb/execution-issues.md" \
   && grep -Fq 'Tool Failures' "$_impl_amb/execution-issues.md" \
-  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_amb/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint' "$_impl_amb/execution-issues.md" \
   && [ -s "$_impl_amb/oos-disposition-checkpoint.stderr.log" ]; then
   pass "checkpoint ambiguity logs validation failure"
 else
@@ -969,14 +969,14 @@ rc=$?
 set -e
 assert_rc "checkpoint missing design-tmpdir value exit 2" 2 "$rc"
 if grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_missing_design/execution-issues.md" \
-  && grep -Fq 'oos-disposition-checkpoint.sh' "$_impl_missing_design/execution-issues.md" \
+  && grep -Fq 'oos-disposition-checkpoint' "$_impl_missing_design/execution-issues.md" \
   && grep -Fq 'Tool Failures' "$_impl_missing_design/execution-issues.md"; then
   pass "checkpoint missing design-tmpdir value logs under implement tmpdir"
 else
   fail "checkpoint missing design-tmpdir value did not log under implement tmpdir"
 fi
 
-# --- Case: checkpoint security sidecar refuses all-clear ---
+# --- Case: checkpoint security sidecar leaves private-disposition status ---
 _impl_sec=$(mkitmp)
 printf '### Security OOS: Private audit\n- **focus-area**: security-hardening\n' \
   >"$_impl_sec/security-oos-observations.md"
@@ -987,13 +987,13 @@ set +e
 )
 rc=$?
 set -e
-assert_rc "checkpoint security sidecar exit 2" 2 "$rc"
-if grep -Fq 'security-routed manifest OOS requires private SECURITY.md disposition' \
+assert_rc "checkpoint security sidecar exit 3" 3 "$rc"
+if grep -Fq 'security sidecar present; non-security OOS disposition cleared' \
   "$_impl_sec/oos-disposition-checkpoint.stderr.log" \
-  && grep -Fq 'step-8-oos-checkpoint-validation' "$_impl_sec/execution-issues.md"; then
-  pass "checkpoint security sidecar logs validation failure"
+  && grep -Fq 'step-8-oos-checkpoint-security-sidecar' "$_impl_sec/execution-issues.md"; then
+  pass "checkpoint security sidecar logs private-disposition status"
 else
-  fail "checkpoint security sidecar missing validation log or checkpoint stderr"
+  fail "checkpoint security sidecar missing private-disposition log or checkpoint stderr"
 fi
 
 if [ "$FAIL" -ne 0 ]; then

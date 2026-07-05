@@ -710,6 +710,11 @@ def test_tally_security_oos_holdback(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
     assert not (case / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
+    assert "Privilege escalation" in (case / "security-oos-observations.md").read_text(encoding="utf-8")
+    assert "Privilege escalation" not in (case / "oos.md").read_text(encoding="utf-8")
+    class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
+    rows = voting.voter_agreement_rows_from_tsv(class_file.read_text(encoding="utf-8"), panel_kind="code-review").rows
+    assert rows[0]["voting_result"] == "accepted"
 
 
 def test_tally_public_oos_pool_skips_security_items(tmp_path: Path) -> None:

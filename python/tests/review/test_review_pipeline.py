@@ -198,6 +198,40 @@ def test_direct_oos_findings_stay_on_ballot(tmp_path: Path) -> None:
     assert not (tmp_path / "oos-dropped-direct.md").exists()
 
 
+def test_prepare_pruned_ballot_missing_file_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ctx = review_core_body.ReviewCoreBranchContext(
+        commands=review_core_body.ReviewCommands("", "", "", "", "", "", "", "", ""),
+        review_tmpdir=tmp_path,
+        round_num=1,
+        mode="diff",
+        cursor_available="true",
+        codex_available="true",
+        session_env_path="",
+        panel_manifest="",
+        collector_results=tmp_path / "collector.env",
+        not_substantive=0,
+        panel_mode="normal",
+        panel_shape="simple",
+        scout_status="none",
+        dynamic_slots="0",
+        static_slot_count="0",
+        run_id="",
+        prune_ledger="",
+        rows=[],
+    )
+    monkeypatch.setattr(review_core_body, "_prune_nits_for_ballot", lambda **_kwargs: object())
+
+    result = review_core_body._prepare_pruned_ballot(ctx, findings_file=tmp_path / "missing.md")
+
+    assert result is not None
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert ("THRESHOLD_REASON", "ballot-read-failed") in result.rows
+
+
 
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     result = _run_review_core_body_direct(tmp_path, monkeypatch, findings=0, accepted=0, outdir_name="body-zero")

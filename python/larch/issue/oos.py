@@ -93,7 +93,7 @@ def _is_vote_tally_eligible(block: str) -> bool:
             found_result = True
             if _ACCEPTED_RESULT_RE.search(line):
                 found_accepted = True
-    return not found_result or found_accepted
+    return found_result and found_accepted
 
 
 def _classify_security(block: str) -> bool:
