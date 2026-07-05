@@ -1,0 +1,6 @@
+finding_id	reviewer_slots	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	scope
+FINDING_1	cursor-specialist-correctness|codex-specialist-correctness|cursor-specialist-edge-cases|codex-specialist-edge-cases|codex-specialist-testing	accepted	YES	true	minor	weak	false	codex-validity	YES	true	minor	good	false	codex-plan-fidelity	YES	true	minor	adequate	false	codex-pragmatism	in_scope
+FINDING_2	cursor-specialist-edge-cases|cursor-specialist-testing	accepted	YES	true	minor	weak	false	codex-validity	YES	true	minor	adequate	false	codex-plan-fidelity	YES	true	minor	weak	false	codex-pragmatism	in_scope
+FINDING_3	cursor-specialist-edge-cases	rejected	NO	true	nit	adequate	false	codex-validity	NO	true	nit	adequate	false	codex-plan-fidelity	NO	partially-true	nit	weak	false	codex-pragmatism	oos
+FINDING_4	codex-specialist-edge-cases	rejected	NO	true	nit	adequate	false	codex-validity	NO	partially-true	nit	adequate	false	codex-plan-fidelity	JUDGE_ERROR				true	codex-pragmatism	oos
+FINDING_5	cursor-specialist-testing	rejected	NO	true	nit	adequate	false	codex-validity	NO	true	nit	adequate	false	codex-plan-fidelity	JUDGE_ERROR				true	codex-pragmatism	oos

@@ -511,7 +511,7 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
         [
             block
             for block in _aggregate_oos_blocks(_read(main_agent))
-            if not voting.is_security_block_text(block) and voting.artifact_marked_fileable(block)
+            if not voting.is_security_block_text(block)
         ]
         if main_agent is not None and main_agent.is_file()
         else []

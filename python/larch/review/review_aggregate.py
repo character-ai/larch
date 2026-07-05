@@ -995,10 +995,8 @@ def aggregate_findings_main(argv: list[str]) -> int:
 def _parse_prune_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="prune-nit-findings", add_help=True)
     parser.add_argument("--findings-file", required=True)
-    parser.add_argument("--oos-file", default="")
     parser.add_argument("--audit-file", default="")
     parser.add_argument("--security-audit-file", default="")
-    parser.add_argument("--input-mode", choices=("code", "plan"), default="code")
     return parser.parse_args(argv)
 
 

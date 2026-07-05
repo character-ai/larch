@@ -728,8 +728,6 @@ def _drop_nits_before_plan_vote(*, design: Path, round_num: int, path: Path) -> 
             "prune-nit-findings",
             "--findings-file",
             str(path),
-            "--input-mode",
-            "plan",
             "--audit-file",
             str(round_dir / "oos-dropped-before-vote.md"),
             "--security-audit-file",

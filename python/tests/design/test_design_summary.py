@@ -225,7 +225,7 @@ def test_render_final_summary_appends_review_detail_to_stdout_and_upsert(
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     stdout = capsys.readouterr().out
     assert "## Review Phase Detail" in body
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 05s | N/A | 1 |" in body
+    assert "| 1 | 4 | 2 | 1 | 0 | 1m 05s | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" in body
     assert "```\n" in body
     assert "## Review Phase Detail" in stdout
@@ -327,7 +327,7 @@ def test_render_final_summary_missing_timing_keeps_table_without_gantt(
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
     assert "## Review Phase Detail" in body
-    assert "| 1 | 4 | 2 | 2 | 1 | N/A | N/A | 1 |" in body
+    assert "| 1 | 4 | 2 | 1 | 0 | N/A | N/A | 1 |" in body
     assert "### Round 1 reviewer timing" not in body
 
 

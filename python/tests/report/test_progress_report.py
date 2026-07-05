@@ -2201,6 +2201,7 @@ def _write_round_meta(round_dir: Path, accepted: int = 2, rejected: int = 1, rev
                 "REJECTED_COUNT": str(rejected),
                 "EXONERATED_COUNT": "0",
                 "NEUTRAL_COUNT": "1",
+                "OOS_PROPOSED_COUNT": "1",
                 "OOS_ACCEPTED_COUNT": "1",
                 "OOS_REJECTED_COUNT": "1",
             },
@@ -2232,14 +2233,108 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 110, 190)
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing, findings_file=findings)
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
-    assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **N/A** | **3** |" in rendered
+    assert "| 1 | 4 | 2 | 1 | 1 | 1m 40s | N/A | 3 |" in rendered
+    assert "| **Total (round-sum)** | **4** | **2** | **1** | **1** | **1m 40s** | **N/A** | **3** |" in rendered
     assert "1. codex/slot-1: 1" in rendered
     assert "**Reviewer slot failures**: 1" in rendered
     assert "- codex/slot-1: 1" in rendered
     assert "### Round 1 reviewer timing" in rendered
     # Issue #4882: round-meta without a canonical block emits no decomposition footnote (backward compat).
     assert "Finding decomposition (canonical, scope-aware)" not in rendered
+
+
+def test_render_phase_detail_splits_oos_proposed_and_fileable_from_classification(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    r1.mkdir(parents=True)
+    (r1 / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "0",
+                "REJECTED_COUNT": "0",
+                "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0",
+                "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "0",
+            },
+            "summary": {"panel": {"total_slot_count": 1}},
+        }) + "\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.code_review_classification_header().split("\t")
+    cols = dict.fromkeys(header, "")
+    cols.update({
+        "finding_id": "OOS_1",
+        "voting_result": "accepted",
+        "v1_vote": "YES",
+        "v1_severity": "minor",
+        "scope": "oos",
+    })
+    (r1 / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n" + "\t".join(cols[name] for name in header) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "| Round | Suggestions | Accepted | OOS proposed | OOS fileable |" in rendered
+    assert "| 1 | 0 | 0 | 1 | 0 |" in rendered
+
+
+def test_render_phase_detail_prefers_review_tally_env_for_oos_fileable(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    r1.mkdir(parents=True)
+    (r1 / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "0",
+                "REJECTED_COUNT": "0",
+                "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0",
+                "OOS_PROPOSED_COUNT": "3",
+                "OOS_ACCEPTED_COUNT": "9",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "summary": {"panel": {"total_slot_count": 1}},
+        }) + "\n",
+        encoding="utf-8",
+    )
+    (r1 / "review-tally.env").write_text("OOS_ACCEPTED_COUNT=1\n", encoding="utf-8")
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "| 1 | 0 | 0 | 3 | 1 |" in rendered
+
+
+def test_write_implement_round_meta_prefers_review_tally_env_for_oos_fileable(tmp_path: Path) -> None:
+    round_dir = tmp_path / "review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "review-tally.env").write_text(
+        "ACCEPTED_COUNT=0\nREJECTED_COUNT=0\nNEUTRAL_COUNT=0\nOOS_ACCEPTED_COUNT=2\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+    cols = dict.fromkeys(header, "")
+    cols.update({
+        "finding_id": "OOS_1",
+        "voting_result": "accepted",
+        "v1_vote": "YES",
+        "v1_severity": "minor",
+        "scope": "oos",
+    })
+    (round_dir / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n" + "\t".join(cols[name] for name in header) + "\n",
+        encoding="utf-8",
+    )
+
+    assert progress_report.write_implement_round_meta(round_dir) == 0
+    meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+
+    assert meta["tally"]["OOS_PROPOSED_COUNT"] == "1"
+    assert meta["tally"]["OOS_ACCEPTED_COUNT"] == "2"
+    assert meta["tally_canonical"]["OOS_PROPOSED_COUNT"] == "1"
+    assert meta["tally_canonical"]["OOS_ACCEPTED_COUNT"] == "2"
 
 
 def test_render_phase_detail_merges_collector_and_dynamic_dropped_failures(tmp_path: Path) -> None:
@@ -2386,6 +2481,34 @@ def test_render_phase_detail_shows_canonical_decomposition_footnote(tmp_path: Pa
     assert "tally_canonical" in rendered
 
 
+def test_render_phase_detail_footnote_includes_oos_proposed_and_fileable_split(tmp_path: Path) -> None:
+    root = tmp_path / "review"
+    r1 = root / "round-1"
+    r1.mkdir(parents=True)
+    (r1 / "round-meta.json").write_text(
+        json.dumps({
+            "tally": {
+                "ACCEPTED_COUNT": "1", "REJECTED_COUNT": "0", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_PROPOSED_COUNT": "3", "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "tally_canonical": {
+                "ACCEPTED_COUNT": "1", "REJECTED_COUNT": "0", "EXONERATED_COUNT": "0",
+                "NEUTRAL_COUNT": "0", "OOS_PROPOSED_COUNT": "3", "OOS_ACCEPTED_COUNT": "1",
+                "OOS_REJECTED_COUNT": "1",
+            },
+            "nit_pruned_count": "0",
+            "summary": {"panel": {"total_slot_count": 3}},
+        }) + "\n",
+        encoding="utf-8",
+    )
+
+    rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement")
+
+    assert "Finding decomposition (canonical, scope-aware)" in rendered
+    assert "4 out-of-scope (3 OOS proposed, 1 OOS fileable)" in rendered
+
+
 def test_render_phase_detail_dual_timing_windows(tmp_path: Path) -> None:
     root = tmp_path / "rounds"
     _write_round_meta(root / "round-1")
@@ -2409,7 +2532,8 @@ def test_write_round_meta_helpers(tmp_path: Path) -> None:
     assert progress_report.write_implement_round_meta(round_dir) == 0
     meta = (round_dir / "round-meta.json").read_text(encoding="utf-8")
     assert '"ACCEPTED_COUNT": "1"' in meta
-    assert '"OOS_ACCEPTED_COUNT": "1"' in meta
+    assert '"OOS_PROPOSED_COUNT": "1"' in meta
+    assert '"OOS_ACCEPTED_COUNT": "0"' in meta
     assert '"total_slot_count": 1' in meta
     # Issue #4882: no classification TSV present, so only the raw tally is recorded (backward compat).
     assert "tally_canonical" not in meta
@@ -2428,17 +2552,21 @@ def test_write_implement_round_meta_records_canonical_decomposition(tmp_path: Pa
     )
     header = progress_report.voting.findings_classification_header().split("\t")
 
-    def row(finding_id: str, result: str, scope: str) -> str:
+    def row(finding_id: str, result: str, scope: str, severity: str = "") -> str:
         cols = dict.fromkeys(header, "")
         cols.update({"finding_id": finding_id, "voting_result": result, "scope": scope})
+        if result == "accepted":
+            cols.update({"v1_vote": "YES", "v1_severity": severity or "minor"})
         return "\t".join(cols[name] for name in header)
 
     # FINDING_3 voted rejected but is scope=oos: the raw tally counts it in-scope, canonical counts OOS.
+    # OOS_1 is accepted with only minor YES severity: proposed, but not fileable.
     (round_dir / "findings-classification.tsv").write_text(
         "\t".join(header) + "\n"
         + row("FINDING_1", "accepted", "in_scope") + "\n"
         + row("FINDING_2", "rejected", "in_scope") + "\n"
-        + row("FINDING_3", "rejected", "oos") + "\n",
+        + row("FINDING_3", "rejected", "oos") + "\n"
+        + row("OOS_1", "accepted", "oos", "minor") + "\n",
         encoding="utf-8",
     )
     (round_dir / "prune-nit.env").write_text("PRUNED_COUNT=1\nINSCOPE_REMAINING=2\n", encoding="utf-8")
@@ -2447,9 +2575,13 @@ def test_write_implement_round_meta_records_canonical_decomposition(tmp_path: Pa
     meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
     # Raw tally counts FINDING_3 by id-prefix as an in-scope rejection (the #4882 over-count).
     assert meta["tally"]["REJECTED_COUNT"] == "2"
+    assert meta["tally"]["OOS_PROPOSED_COUNT"] == "1"
+    assert meta["tally"]["OOS_ACCEPTED_COUNT"] == "0"
     # Canonical (scope-aware) splits it out: 1 in-scope rejected, 1 OOS rejected.
     assert meta["tally_canonical"]["ACCEPTED_COUNT"] == "1"
     assert meta["tally_canonical"]["REJECTED_COUNT"] == "1"
+    assert meta["tally_canonical"]["OOS_PROPOSED_COUNT"] == "1"
+    assert meta["tally_canonical"]["OOS_ACCEPTED_COUNT"] == "0"
     assert meta["tally_canonical"]["OOS_REJECTED_COUNT"] == "1"
     assert meta["nit_pruned_count"] == "1"
 
@@ -2475,11 +2607,41 @@ def test_write_design_round_meta_security_oos_and_panel(tmp_path: Path, monkeypa
     monkeypatch.setattr(progress_report.voting, "is_security_block", lambda _path: True)
     assert progress_report.write_design_round_meta(round_dir) == 0
     meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+    assert meta["tally"]["OOS_PROPOSED_COUNT"] == "0"
     assert meta["tally"]["OOS_ACCEPTED_COUNT"] == "0"
     assert meta["summary"]["panel"]["total_slot_count"] == 1
     assert "collector-failure-1" in meta["collector"]
     assert meta["revise"]["status"] == "ok-fallback"
     assert meta["revise"]["tier"] == "primary"
+
+
+def test_write_design_round_meta_records_oos_proposed_and_fileable_split(tmp_path: Path) -> None:
+    round_dir = tmp_path / "plan-review" / "round-1"
+    round_dir.mkdir(parents=True)
+    (round_dir / "voting-tally.md").write_text(
+        "## Findings\n\n| Item | Result |\n|--|--|\n| OOS_1 | accepted |\n",
+        encoding="utf-8",
+    )
+    header = progress_report.voting.findings_classification_header().split("\t")
+    cols = dict.fromkeys(header, "")
+    cols.update({
+        "finding_id": "OOS_1",
+        "finding_reviewers": "Cursor-Arch",
+        "voting_result": "accepted",
+        "v1_vote": "YES",
+        "v1_severity": "minor",
+        "scope": "oos",
+    })
+    (round_dir / "findings-classification.tsv").write_text(
+        "\t".join(header) + "\n" + "\t".join(cols[name] for name in header) + "\n",
+        encoding="utf-8",
+    )
+
+    assert progress_report.write_design_round_meta(round_dir) == 0
+    meta = json.loads((round_dir / "round-meta.json").read_text(encoding="utf-8"))
+
+    assert meta["tally"]["OOS_PROPOSED_COUNT"] == "1"
+    assert meta["tally"]["OOS_ACCEPTED_COUNT"] == "0"
 
 
 def test_render_phase_detail_top_reviewers_from_classification(tmp_path: Path) -> None:
@@ -2810,7 +2972,7 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "## Review Phase Detail" in rendered
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
+    assert "| 1 | 4 | 2 | 1 | 1 | 1m 40s | N/A | 3 |" in rendered
     assert "### Round 1 reviewer timing" in rendered
     assert "```" in rendered
     assert "codex/codex-review" in rendered

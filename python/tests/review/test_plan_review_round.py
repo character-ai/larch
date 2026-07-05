@@ -41,6 +41,7 @@ def _write_sidecar(path: Path, rows: list[dict[str, str]]) -> None:
 
 
 def _prune_nit_findings_fake(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    assert "--input-mode" not in argv
     findings_file = Path(argv[argv.index("--findings-file") + 1])
     audit_file = Path(argv[argv.index("--audit-file") + 1])
     security_audit_file = Path(argv[argv.index("--security-audit-file") + 1])
