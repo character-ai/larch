@@ -1,0 +1,26 @@
+### FINDING_1: Synthesized stale-fallback ledger must be marked ready
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Cursor-dyn-Repair Loop Contract
+- **Severity**: blocking
+- **Concern**: When `no-changes-stale` is synthesized, the loop can populate ledger fields but still leave `ledger_ready` false, so `_print_loop_ledger` emits nothing and stall-recovery misses the required escalation metadata.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In checks_repair_loop_main, only set action=main-agent-edit when the stale-fallback helper sets loop.ledger_ready=True via _resolve_ledger_failure_detail_log_path; otherwise keep NEXT_ACTION=stall and LOOP_STATUS=no-changes-stale
+  - From Cursor-Pragmatic: In the no-changes-stale fallback helper, set loop.ledger_ready=True before _print_loop_ledger; add LINT_FIX_LEDGER_READY=true to the planned test assertions
+  - From Cursor-dyn-Repair Loop Contract: In checks_repair_loop_main after synthesizing ledger fields for no-changes-stale fallback, set loop.ledger_ready=True. Add assert "LINT_FIX_LEDGER_READY=true" in to the step6 fallback test list alongside the other LINT_FIX_LEDGER_* assertions.
+
+### FINDING_2: checks-repair-loop contract doc needs a firm update
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The orchestrator contract doc is marked MAY_UPDATE even though the plan changes the stdout pair used by supported step6 fallback, so implementers may miss a normative contract change.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Promote skills/implement/references/checks-repair-loop.md to ### UPDATED and add a short §3/§4 note that supported sites may return NEXT_ACTION=main-agent-edit with LOOP_STATUS=no-changes-stale while following the same main-agent-edit branch
+
+### FINDING_3: Failure-detail log source and validation are underspecified
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Repair Loop Contract, Codex-dyn-Repair Loop Contract
+- **Severity**: important
+- **Concern**: The plan does not firmly define which redacted log should back `LINT_FIX_LEDGER_FAILURE_DETAIL_LOG` in dispatch-first repair loops, nor does it require canonicalization/validation before printing it; that can leave the main-agent escalation tied to stale or invalid diagnostics.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In checks_repair_loop_main, track the terminal failing redacted log (wrap `checks_runner` to retain the last failed `redacted_log_path`, and/or wrap `fixer` to retain the last dispatched log). Resolve ledger detail via `_resolve_ledger_failure_detail_log_path` on that terminal path. Update tests to assert the post-recheck log (e.g. `fail.redacted.log`), not only `--checks-log`.
+  - From Cursor-Pragmatic: Resolve args.checks_log with _resolve_ledger_failure_detail_log_path(allowed_tmpdir=canonical_tmp, run_parent=...); if resolution returns None, keep NEXT_ACTION=stall per the plan’s validation-failure edge case
+  - From Cursor-Requirements: Record the last validated dispatch log on LoopResult inside run_check_fix_loop (e.g. last_dispatch_log updated before each fixer call) and synthesize ledger_failure_detail_log from that path in checks_repair_loop_main; update the step6 test to assert the final redacted log (fail_log), not only the initial checks_log
+  - From Cursor-dyn-Repair Loop Contract: Require ledger synthesis to call resolve_checks_log_path on args.checks_log (same allowed_root as startup). In the step6 test assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={checks_log}" and not fail_log.
+  - From Codex-dyn-Repair Loop Contract: Call the existing resolver, or add an explicit validation check, before synthesizing the no-changes-stale ledger; stall if it fails.

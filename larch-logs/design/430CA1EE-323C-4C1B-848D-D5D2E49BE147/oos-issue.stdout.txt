@@ -1,0 +1,7 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6428
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6428
+ISSUE_1_ID=4813930179
+ISSUE_1_TITLE=Short-circuit structural ruff failures before external lint-fix dispatch in checks repair-loop
