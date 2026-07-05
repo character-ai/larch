@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	18113	4529	13320	3330	4793	1199		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	13451	3363	13032	3258	419	105		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	13442	3361	13023	3256	419	105		0	0
+design Step 3	phase1	1	dyn-codex-plan-final-report-contract	plan-review	codex	dyn-codex-plan-final-report-contract.txt	13827	3457	12898	3225	929	233		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	18104	4526	13311	3328	4793	1199		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	13464	3366	13045	3262	419	105		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	18128	4532	13335	3334	4793	1199		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	18126	4532	13333	3334	4793	1199		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	13466	3367	13047	3262	419	105		0	0
+design Step 3	phase1	1	dyn-cursor-plan-final-report-contract	plan-review	cursor	dyn-cursor-plan-final-report-contract.txt	18489	4623	13186	3297	5303	1326		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	21836	5459	4465	1117	17371	4343	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	10727	2682	8904	2226	1823	456		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	10727	2682	8904	2226	1823	456		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	10727	2682	8904	2226	1823	456		0	0

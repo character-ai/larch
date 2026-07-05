@@ -1,0 +1,27 @@
+## Proposed Design Outline
+
+### Goals
+- Always emit `Outcome:` as the first bullet in the final report for both `/design` and `/implement`.
+- Map success outcomes to `DONE`, `stalled` to `STALLED`, and all other outcomes to their raw value.
+- Drop the `Mode:` bullet from `/implement` final reports.
+
+### Non-goals
+- Changing the heading line (`## /implement run ...: <outcome>`).
+- Modifying the outcome enum or normalization logic.
+- Changing design-only or other skill final reports beyond the `Outcome:`/`Mode:` changes.
+
+### Approach sketch
+- Add `_map_outcome_display(outcome)` helper in `pr_body.py`.
+- Update `render_run_summary` to always emit `- **Outcome**: {display}` as the first bullet.
+- Remove the `if skill != "design": lines.append("- **Mode**:")` emit.
+- Update `_summary_stalled_outcome_index` regex in `final_report.py` to match both `stalled` and `STALLED`.
+- Update assertions in `test-write-final-report.sh` to match new behavior.
+
+### Surfaces in scope
+- `python/larch/git/pr_body.py`
+- `python/larch/report/final_report.py`
+- `skills/implement/scripts/test-write-final-report.sh`
+- `skills/implement/scripts/write-final-report.md`
+
+### Open questions
+- None.
