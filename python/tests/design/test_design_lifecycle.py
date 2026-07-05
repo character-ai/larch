@@ -2020,7 +2020,7 @@ def test_postplan_executor_rc_10_inline_retry_stdout_lines_golden(
         "POSTPLAN_RC=10\n"
         "POSTPLAN_STATUS=validate-failed\n"
         "SCOUT_STALE_CLEARED=true\n"
-        "**⚠ 2b: drafter plan failed postplan validation — re-entering inline drafting once**\n"
+        "**⚠ 2b: drafter plan failed postplan validation: re-entering inline drafting once**\n"
         "VALIDATE_STATUS=defects-found\n"
         "VALIDATE_DEFECT_COUNT=1\n"
     )
