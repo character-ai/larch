@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 01:31:49
-- **Cost**: 💰 TOTAL ~$52.31: Claude $4.05, Codex-5.5 $26.81, Codex-mini $3.99, Cursor $16.23, Claude (subprocess) $1.23  |  Tokens: 113444k
+- **Cost**: 💰 TOTAL ~$53.12: Claude $4.83, Codex-5.5 $26.81, Codex-mini $3.99, Cursor $16.23, Claude (subprocess) $1.26  |  Tokens: 115754k
 - **Issue**: #6369: https://github.com/character-ai/larch/issues/6369
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 9/12 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6395
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/97464860-B31E-4C2A-97D2-A5DB83FEB225/`
@@ -102,3 +102,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_2** (latent): Ballot parse errors fail open. Concern: _ballot_block_count swallows read/parse errors as zero blocks, so corrupt or unreadable ballots can be treated as empty and skip voting instead of failing closed.
 - **Round 2 OOS_3** (nit): Design OOS one-YES acceptance lacks assertion. Concern: Design two-judge OOS acceptance at one YES is not asserted on oos-accepted-design.md, so accept_oos regressions could ship with only implement-side coverage.
 - **Round 2 OOS_4** (nit): Retired shard assignment still references removed test. Concern: Retired pre-vote gate test nodeid remains in shard assignments after test removal, so shard coverage drifts until rebalance.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
