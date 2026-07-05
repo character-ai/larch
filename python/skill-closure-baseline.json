@@ -37,11 +37,11 @@
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 40072,
-    "closure_estimated_tokens": 40190,
-    "closure_lines": 1260,
-    "conditional_content_estimated_tokens": 25511,
-    "conditional_estimated_tokens": 25568,
+    "closure_content_estimated_tokens": 39296,
+    "closure_estimated_tokens": 39409,
+    "closure_lines": 1226,
+    "conditional_content_estimated_tokens": 25510,
+    "conditional_estimated_tokens": 25567,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -57,7 +57,7 @@
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 709,
+    "conditional_lines": 708,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -70,9 +70,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 30304,
-    "skill_md_estimated_tokens": 30384,
-    "skill_md_lines": 816
+    "skill_md_content_estimated_tokens": 29378,
+    "skill_md_estimated_tokens": 29453,
+    "skill_md_lines": 780
   },
   {
     "closure_content_estimated_tokens": 44442,

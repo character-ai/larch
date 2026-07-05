@@ -10,7 +10,6 @@ import subprocess
 import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
-from unittest.mock import Mock
 import pytest
 
 from larch.core import config
@@ -20,6 +19,7 @@ from larch.report import run_logs
 from larch.implement import ship
 from larch.implement import ship_guidelines
 from larch.implement import ship_pr
+from larch.implement import ship_resume
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled
 from larch.outcomes import Outcome, StepResult
 from larch.core.proc import CommandResult, ProcRunner
@@ -210,14 +210,7 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
 
     assert result.terminal is None
     assert result.rebase_count == 5
-    assert pin_calls == [
-        {
-            "implement_tmpdir": str(tmp_path),
-            "head_sha": "post-rebase-head",
-            "base_ref": "origin/main",
-            "repo_root": str(tmp_path),
-        },
-    ]
+    assert not pin_calls
     assert _read_state(state)["PHASE"] == "rebase"
 
 
@@ -288,18 +281,11 @@ def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monke
 
     assert result.terminal is None
     assert result.rebase_count == 5
-    assert pin_calls == [
-        {
-            "implement_tmpdir": str(tmp_path),
-            "head_sha": "post-rebase-head",
-            "base_ref": "origin/main",
-            "repo_root": str(tmp_path),
-        },
-    ]
+    assert not pin_calls
     assert _read_state(state)["PHASE"] == "rebase"
 
 
-def test_ship_rebase_phase_preserves_guidelines_note_after_unchanged_diff_rebase(
+def test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -324,6 +310,10 @@ def test_ship_rebase_phase_preserves_guidelines_note_after_unchanged_diff_rebase
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     git("add", "README.md")
     git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
     git("branch", "-M", "main")
     git("remote", "add", "origin", str(repo))
     git("update-ref", "refs/remotes/origin/main", "HEAD")
@@ -419,20 +409,15 @@ def test_ship_rebase_phase_preserves_guidelines_note_after_unchanged_diff_rebase
         base_remote="origin",
         base_ref="main",
     )
-    durable_metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
     assert result.terminal is None
     assert result.rebase_count == 1
     assert post_rebase_head != pre_rebase_head
     assert rebased_diff == initial_diff
-    assert ship.architectural_guidelines.note_consumable(
+    assert not ship.architectural_guidelines.note_consumable(
         implement_tmpdir=tmp_path,
         head_sha=post_rebase_head,
     )
-    assert (
-        tmp_path / ship.architectural_guidelines.DURABLE_NOTE
-    ).read_text(encoding="utf-8") == "Guideline deviation note\n"
-    assert durable_metadata["HEAD_SHA"] == post_rebase_head
-    assert durable_metadata["ASSESSED_HEAD_SHA"] == post_rebase_head
+    assert ship.architectural_guidelines.staged_assessment_present(tmp_path)
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
 
 
@@ -503,14 +488,7 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
 
     data = _read_state(state)
     assert new_count == 2
-    assert pin_calls == [
-        {
-            "implement_tmpdir": str(tmp_path),
-            "head_sha": "phase14-head",
-            "base_ref": "origin/main",
-            "repo_root": str(tmp_path),
-        },
-    ]
+    assert not pin_calls
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
@@ -597,14 +575,7 @@ def test_ship_phase14_rebase_rebased_retains_guidelines_note(
 
     data = _read_state(state)
     assert new_count == 2
-    assert pin_calls == [
-        {
-            "implement_tmpdir": str(tmp_path),
-            "head_sha": "phase14-head",
-            "base_ref": "origin/main",
-            "repo_root": str(tmp_path),
-        },
-    ]
+    assert not pin_calls
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
@@ -5358,395 +5329,121 @@ def test_ci_local_unfixable_compound_reason_is_preserved_for_ledger() -> None:
     assert data["ledger_trigger"] == detail
 
 
-def test_pin_and_load_guidelines_note_returns_consumable_note(tmp_path: Path) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="Consulted note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-    assert note == "Consulted note"
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
 
-
-def test_pin_and_load_guidelines_note_returns_drop_notice_on_fingerprint_mismatch(tmp_path: Path) -> None:
-    ship.architectural_guidelines.write_staged_assessment(
+def test_load_or_prepare_guidelines_note_returns_current_durable_note(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value="mismatch",
+        note_text="Consulted note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
         base_ref="origin/main",
-        diff_text="implementation diff",
     )
 
-    note, warning_logged = ship._pin_and_load_guidelines_note(
+    result = ship_guidelines.load_or_prepare_guidelines_note(
         implement_tmpdir=str(tmp_path),
         head_sha="head",
         base_ref="origin/main",
     )
 
-    assert note == ship.architectural_guidelines.dropped_note_message()
-    assert warning_logged is True
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
-    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
+    assert result.note == "Consulted note"
+    assert result.needs_assessment is False
+    assert result.warning_logged is False
 
 
-def test_pin_and_load_guidelines_note_recovers_when_diff_changes_with_repo(
+def test_load_or_prepare_guidelines_note_requests_compose_assessment(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    def fake_materialize(*_args: object, **_kwargs: object) -> str:
-        return live_diff
-
-    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
-
-    note = _pin_guidelines_note_text(
-        implement_tmpdir=str(tmp_path),
+    prepared = ship.architectural_guidelines.ComposeMaterializationResult(
+        status="assessment-required",
         head_sha="head",
         base_ref="origin/main",
-        repo_root=str(repo),
-    )
-
-    assert note == "staged note"
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
-    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-
-
-def test_pin_and_load_guidelines_note_reuses_one_live_diff(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    staged_diff = "stale staged diff"
-    live_diffs = iter(["current live diff", "newer live diff", "third live diff"])
-    calls: list[str] = []
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    def fake_materialize(repo_root: Path, *, base_remote: str, base_ref: str) -> str:
-        assert repo_root == repo
-        calls.append(f"{base_remote}/{base_ref}")
-        return next(live_diffs)
-
-    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", fake_materialize)
-
-    note = _pin_guidelines_note_text(
-        implement_tmpdir=str(tmp_path),
-        head_sha="head",
-        base_ref="origin/main",
-        repo_root=str(repo),
-    )
-
-    assert note == "staged note"
-    assert calls == ["origin/main"]
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
-    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == "current live diff"
-
-
-def test_pin_and_load_guidelines_note_empty_fingerprint_fails_after_live_materialize(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    staged_diff = "stale staged diff"
-    live_diff = "current live diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(staged_diff),
-        base_ref="origin/main",
-        diff_text=staged_diff,
-    )
-    _replace_guidelines_sidecar_value(tmp_path, key="DIFF_FINGERPRINT", value="")
-    repo = tmp_path / "repo"
-    repo.mkdir()
-    materialize_mock = Mock(return_value=live_diff)
-    monkeypatch.setattr(ship.architectural_guidelines, "materialize_implementation_diff", materialize_mock)
-
-    note, warning_logged = ship._pin_and_load_guidelines_note(
-        implement_tmpdir=str(tmp_path),
-        head_sha="head",
-        base_ref="origin/main",
-        repo_root=str(repo),
-    )
-
-    materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
-    assert note == ship.architectural_guidelines.dropped_note_message()
-    assert warning_logged is True
-    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
-
-
-def test_pin_and_load_guidelines_note_returns_drop_notice_on_write_failure(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-
-    def fail_write_note(**_kwargs: object) -> None:
-        raise OSError("durable write failed")
-
-    monkeypatch.setattr(ship.architectural_guidelines, "write_implement_note", fail_write_note)
-
-    note, warning_logged = ship._pin_and_load_guidelines_note(
-        implement_tmpdir=str(tmp_path),
-        head_sha="head",
-        base_ref="origin/main",
-    )
-
-    assert note == ship.architectural_guidelines.dropped_note_message()
-    assert warning_logged is True
-    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-    assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in issues
-
-
-def test_handle_stale_guidelines_note_logs_warning_when_persist_fails(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint("staged diff"),
-        base_ref="origin/main",
-        diff_text="staged diff",
+        diff_fingerprint=ship.architectural_guidelines.diff_fingerprint("diff"),
+        diff_path=tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF,
+        guidelines_status="present",
     )
     monkeypatch.setattr(
         ship_guidelines.architectural_guidelines,
-        "maybe_persist_dropped_note_before_invalidate",
-        lambda *_args, **_kwargs: False,
+        "prepare_compose_assessment",
+        lambda **_kwargs: prepared,
     )
 
-    note, warning_logged = ship_guidelines._handle_stale_guidelines_note(  # pyright: ignore[reportPrivateUsage]
-        tmpdir=tmp_path,
-        staged_present=True,
-    )
-
-    assert note == ""
-    assert warning_logged is True
-    issues = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
-    assert "architectural-guidelines drop notice persist failed before invalidate" in issues
-
-
-def test_pin_and_load_guidelines_note_refreshes_after_real_git_base_moves(tmp_path: Path) -> None:
-    repo = tmp_path / "repo"
-    repo.mkdir()
-
-    def git(*args: str) -> str:
-        completed = subprocess.run(["git", *args], cwd=repo, text=True, capture_output=True, check=False)
-        assert completed.returncode == 0, completed.stderr or completed.stdout
-        return completed.stdout.strip()
-
-    git("init")
-    git("config", "user.name", "Larch Test")
-    git("config", "user.email", "larch@example.invalid")
-    (repo / "README.md").write_text("base\n", encoding="utf-8")
-    git("add", "README.md")
-    git("commit", "-m", "base")
-    git("branch", "-M", "main")
-    git("remote", "add", "origin", str(repo))
-    base_sha = git("rev-parse", "HEAD")
-    git("update-ref", "refs/remotes/origin/main", base_sha)
-    (repo / "README.md").write_text("base\nimplementation\n", encoding="utf-8")
-    git("add", "README.md")
-    git("commit", "-m", "implementation")
-    head_sha = git("rev-parse", "HEAD")
-    initial_diff = ship.architectural_guidelines.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
-    assert initial_diff
-    initial_fingerprint = ship.architectural_guidelines.diff_fingerprint(initial_diff)
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="moving note\n",
-        assessed_head_sha=head_sha,
-        diff_fingerprint_value=initial_fingerprint,
-        base_ref="origin/main",
-        diff_text=initial_diff,
-    )
-
-    note, warning_logged = ship._pin_and_load_guidelines_note(
+    result = ship_guidelines.load_or_prepare_guidelines_note(
         implement_tmpdir=str(tmp_path),
-        head_sha=head_sha,
+        head_sha="head",
         base_ref="origin/main",
-        repo_root=str(repo),
     )
 
-    assert note == "moving note"
-    assert warning_logged is False
-    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8")
-    git("update-ref", "refs/remotes/origin/main", head_sha)
-    ship.architectural_guidelines.write_staged_assessment(
+    assert result.note == ""
+    assert result.needs_assessment is True
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+
+
+def test_load_or_prepare_guidelines_note_requests_assessment_on_redaction_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
-        assessment_text="moving note\n",
-        assessed_head_sha=head_sha,
-        diff_fingerprint_value=initial_fingerprint,
+        note_text="Consulted note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
         base_ref="origin/main",
-        diff_text=initial_diff,
     )
 
-    refreshed_note, refreshed_warning_logged = ship._pin_and_load_guidelines_note(
+    def fail_redact(_note: str) -> str:
+        raise ShipError("redaction failed for PR body")
+
+    monkeypatch.setattr(ship.pr_body, "redact_pr_body", fail_redact)
+
+    result = ship_guidelines.load_or_prepare_guidelines_note(
         implement_tmpdir=str(tmp_path),
-        head_sha=head_sha,
+        head_sha="head",
         base_ref="origin/main",
-        repo_root=str(repo),
     )
 
-    assert refreshed_note == "moving note"
-    assert refreshed_warning_logged is False
-    assert (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).read_text(encoding="utf-8") == ""
-    durable_metadata = ship.architectural_guidelines.durable_note_metadata(tmp_path)
-    assert durable_metadata["DIFF_FINGERPRINT"] == ship.architectural_guidelines.diff_fingerprint("")
+    assert result.note == ""
+    assert result.needs_assessment is True
+    assert result.warning_logged is True
 
 
-def test_pin_and_load_guidelines_note_skips_stale_or_missing(tmp_path: Path) -> None:
-    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
-    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
-    (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).write_text("note\n", encoding="utf-8")
-    (tmp_path / ship.architectural_guidelines.DURABLE_NOTE_ENV).write_text(
-        "STATUS=present\nHEAD_SHA=other\n",
-        encoding="utf-8",
+def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    prepared = ship.architectural_guidelines.ComposeMaterializationResult(
+        status="failed",
+        head_sha="head",
+        base_ref="origin/main",
+        warning="missing remote ref",
     )
-    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == ""
-    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
+    monkeypatch.setattr(
+        ship_guidelines.architectural_guidelines,
+        "prepare_compose_assessment",
+        lambda **_kwargs: prepared,
+    )
+
+    result = ship_guidelines.load_or_prepare_guidelines_note(
+        implement_tmpdir=str(tmp_path),
+        head_sha="head",
+        base_ref="origin/main",
+    )
+
+    assert result.note == ""
+    assert result.needs_assessment is False
+    assert result.warning_logged is True
 
 
-def test_pin_and_load_guidelines_note_stale_durable_returns_drop_notice(tmp_path: Path) -> None:
-    diff_text = "implementation diff"
+def test_pin_or_invalidate_guidelines_note_clears_retired_artifacts(tmp_path: Path) -> None:
     ship.architectural_guidelines.write_staged_assessment(
         implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
+        assessment_text="note\n",
         assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint("diff"),
         base_ref="origin/main",
-        diff_text=diff_text,
+        diff_text="diff",
     )
-    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).write_text("changed diff", encoding="utf-8")
-
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-
-    assert note == ship.architectural_guidelines.dropped_note_message()
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == note
-    assert not ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-
-
-def test_pin_and_load_guidelines_note_success_clears_prior_drop_marker(tmp_path: Path) -> None:
     assert ship.architectural_guidelines.persist_dropped_note_notice(tmp_path, notice_text="old marker\n")
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="fresh note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-
-    assert note == "fresh note"
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
-
-
-def test_pin_and_load_guidelines_note_falls_back_to_existing_drop_marker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("preseeded notice\n", encoding="utf-8")
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value="mismatch",
-        base_ref="origin/main",
-        diff_text="implementation diff",
-    )
-    monkeypatch.setattr(ship.architectural_guidelines, "persist_dropped_note_notice", lambda *_args, **_kwargs: False)
-
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-
-    assert note == "preseeded notice"
-
-
-def test_pin_and_load_guidelines_note_stale_path_falls_back_to_existing_drop_marker(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="staged note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).unlink()
-    (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT_ENV).unlink()
-    (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).write_text("preseeded notice\n", encoding="utf-8")
-    monkeypatch.setattr(ship.architectural_guidelines, "note_fingerprint_stale", lambda *_args, **_kwargs: True)
-    monkeypatch.setattr(
-        ship.architectural_guidelines,
-        "maybe_persist_dropped_note_before_invalidate",
-        lambda *_args, **_kwargs: False,
-    )
-
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-
-    assert note == "preseeded notice"
-
-
-
-def test_pin_or_invalidate_guidelines_note_pins_current_head(tmp_path: Path) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
 
     warning_logged = ship_guidelines._pin_or_invalidate_guidelines_note(
         implement_tmpdir=str(tmp_path),
@@ -5755,90 +5452,26 @@ def test_pin_or_invalidate_guidelines_note_pins_current_head(tmp_path: Path) -> 
     )
 
     assert warning_logged is False
-    assert ship.architectural_guidelines.note_consumable(implement_tmpdir=tmp_path, head_sha="head")
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
+    assert not (tmp_path / ship.architectural_guidelines.DROPPED_NOTE_ARTIFACT).exists()
+    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
-def test_pin_or_invalidate_guidelines_note_invalidates_without_head(tmp_path: Path) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
+def test_invalidate_guidelines_note_clears_note_without_drop_notice(tmp_path: Path) -> None:
+    ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
-        assessment_text="note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        note_text="note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
         base_ref="origin/main",
-        diff_text=diff_text,
     )
+    assert ship.architectural_guidelines.persist_dropped_note_notice(tmp_path, notice_text="old marker\n")
 
-    warning_logged = ship_guidelines._pin_or_invalidate_guidelines_note(
-        implement_tmpdir=str(tmp_path),
-        head_sha="",
-        base_ref="origin/main",
-    )
+    warning_logged = ship_guidelines._invalidate_guidelines_note(str(tmp_path))
 
     assert warning_logged is False
-    assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
-
-def test_invalidate_guidelines_note_clears_pinned_note(tmp_path: Path) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    assert ship.architectural_guidelines.pin_note_from_staged(tmp_path, head_sha="head", base_ref="origin/main")
-    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
-    assert not (tmp_path / ship.architectural_guidelines.STAGED_ASSESSMENT).exists()
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
-
-
-def test_invalidate_guidelines_note_persists_drop_notice_from_durable_note(tmp_path: Path) -> None:
-    ship.architectural_guidelines.write_implement_note(
-        implement_tmpdir=tmp_path,
-        note_text="note\n",
-        head_sha="head",
-        metadata={
-            "ASSESSED_HEAD_SHA": "old",
-            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff"),
-        },
-        base_ref="origin/main",
-    )
-
-    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
-
-    assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ship.architectural_guidelines.dropped_note_message()
-    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
-
-
-def test_invalidate_guidelines_note_persist_failure_still_invalidates(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    ship.architectural_guidelines.write_implement_note(
-        implement_tmpdir=tmp_path,
-        note_text="note\n",
-        head_sha="head",
-        metadata={
-            "ASSESSED_HEAD_SHA": "old",
-            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff"),
-        },
-        base_ref="origin/main",
-    )
-    monkeypatch.setattr(
-        ship.architectural_guidelines,
-        "maybe_persist_dropped_note_before_invalidate",
-        lambda *_args, **_kwargs: False,
-    )
-
-    ship_guidelines._invalidate_guidelines_note(str(tmp_path))
-
     assert ship.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
-    assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
 def _write_minimal_final_report_state(tmp_path: Path) -> None:
@@ -5854,22 +5487,19 @@ def _stub_final_report_cost_and_assessment(monkeypatch: pytest.MonkeyPatch) -> N
     monkeypatch.setattr(final_report.exec_issue_detail, "assess_issue_details", lambda *_args, **_kwargs: {})
 
 
-def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
+def test_guidelines_invalidate_removes_note_from_final_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_final_report_state(tmp_path)
     _stub_final_report_cost_and_assessment(monkeypatch)
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
+    ship.architectural_guidelines.write_implement_note(
         implement_tmpdir=tmp_path,
-        assessment_text="Guideline note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
+        note_text="Guideline note\n",
+        head_sha="head",
+        metadata={"ASSESSED_HEAD_SHA": "head", "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint("diff")},
         base_ref="origin/main",
-        diff_text=diff_text,
     )
-    assert _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main") == "Guideline note"
 
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
@@ -5877,12 +5507,11 @@ def test_guidelines_pin_success_then_invalidate_survives_to_final_report(
 
     assert (rc, err) == (0, "")
     summary = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "## Architectural guidelines" in summary
-    assert ship.architectural_guidelines.dropped_note_message() in summary
+    assert "## Architectural guidelines" not in summary
     assert not (tmp_path / ship.architectural_guidelines.DURABLE_NOTE).exists()
 
 
-def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
+def test_guidelines_staged_mismatch_does_not_create_drop_notice_for_final_report(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5896,17 +5525,12 @@ def test_guidelines_pin_failure_notice_survives_ship_invalidate_to_final_report(
         base_ref="origin/main",
         diff_text="implementation diff",
     )
-    note = _pin_guidelines_note_text(implement_tmpdir=str(tmp_path), head_sha="head", base_ref="origin/main")
-    assert note == ship.architectural_guidelines.dropped_note_message()
-
     ship_guidelines._invalidate_guidelines_note(str(tmp_path))
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
 
     assert (rc, err) == (0, "")
-    assert ship.architectural_guidelines.dropped_note_message() in (
-        tmp_path / "summary-final.md"
-    ).read_text(encoding="utf-8")
+    assert "## Architectural guidelines" not in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
 def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -5954,46 +5578,284 @@ def _stub_happy_ship_mocks(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
 
 
-def test_fresh_ship_passes_guidelines_note_to_compose_pr_body(
+def test_fresh_ship_passes_compose_guidelines_note_to_pr_body(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="Guideline deviation note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
     _stub_happy_ship_mocks(monkeypatch)
     order: list[str] = []
     compose_calls: list[dict[str, object]] = []
-    real_pin = ship._pin_and_load_guidelines_note
 
-    def spy_pin(
-        implement_tmpdir: str,
-        head_sha: str,
-        base_ref: str,
-        *,
-        repo_root: str | None = None,
-    ) -> tuple[str, bool]:
-        order.append("pin")
-        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guideline deviation note")
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
         compose_calls.append(dict(kwargs))
         return "body"
 
-    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", spy_pin)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
-    assert order.index("pin") < order.index("compose")
+    assert order.index("gate") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Guideline deviation note"
 
+
+def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    git("switch", "main")
+    (repo / "main.txt").write_text("base\nmain advance\n", encoding="utf-8")
+    git("add", "main.txt")
+    git("commit", "-m", "main advance")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    git("switch", "feature")
+
+    compose_calls: list[dict[str, object]] = []
+    head_before = git("rev-parse", "HEAD")
+    head_after = ""
+
+    def fake_postbump(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        ctx: RunContext,
+        cwd: str | None = None,
+    ) -> ship.finalize.FinalizeResult:
+        del ctx, cwd
+        nonlocal head_after
+        git("rebase", "origin/main")
+        head_after = git("rev-parse", "HEAD")
+        prepared = ship.architectural_guidelines.prepare_compose_assessment(
+            implement_tmpdir=tmp_path,
+            repo_root=repo,
+            expected_head_sha=head_after,
+        )
+        assert prepared.status == "assessment-required"
+        ship.architectural_guidelines.write_compose_assessment(
+            implement_tmpdir=tmp_path,
+            assessment_text="Compose assessment",
+            repo_root=repo,
+        )
+        return ship.finalize.FinalizeResult(Outcome.OK, "ok")
+
+    def fake_compose(**kwargs: object) -> str:
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=False, branch="feature", branch_name="feature", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert head_before != head_after
+    assert compose_calls[0].get("architectural_guidelines_note") == "Compose assessment"
+
+
+def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    git("switch", "main")
+    (repo / "main.txt").write_text("base\nmain advance\n", encoding="utf-8")
+    git("add", "main.txt")
+    git("commit", "-m", "main advance")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    git("switch", "feature")
+
+    compose_calls: list[dict[str, object]] = []
+    head_after_postbump = ""
+    head_after_merge_rebase = ""
+
+    def fake_postbump(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        ctx: RunContext,
+        cwd: str | None = None,
+    ) -> ship.finalize.FinalizeResult:
+        nonlocal head_after_postbump
+        del ctx, cwd
+        git("rebase", "origin/main")
+        head_after_postbump = git("rev-parse", "HEAD")
+        prepared = ship.architectural_guidelines.prepare_compose_assessment(
+            implement_tmpdir=tmp_path,
+            repo_root=repo,
+            expected_head_sha=head_after_postbump,
+        )
+        assert prepared.status == "assessment-required"
+        ship.architectural_guidelines.write_compose_assessment(
+            implement_tmpdir=tmp_path,
+            assessment_text="Compose assessment",
+            repo_root=repo,
+        )
+        return ship.finalize.FinalizeResult(Outcome.OK, "ok")
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        nonlocal head_after_merge_rebase
+        del runner, repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        git("rebase", "origin/main")
+        head_after_merge_rebase = git("rev-parse", "HEAD")
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    def fake_monitor(*_args: object, **_kwargs: object) -> object:
+        git("switch", "main")
+        (repo / "main-again.txt").write_text("base\nmain advance\nmain again\n", encoding="utf-8")
+        git("add", "main-again.txt")
+        git("commit", "-m", "main again")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("update-ref", "refs/remotes/upstream/main", "HEAD")
+        git("switch", "feature")
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": True,
+                "failed_run_id": None,
+                "transient_rerun_attempted": False,
+                "ci_fix_rebase_pending": False,
+            },
+        )()
+
+    def fake_compose(**kwargs: object) -> str:
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=True, branch="feature", branch_name="feature", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-guidelines-assessment"
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert head_after_postbump
+    assert head_after_merge_rebase
+    assert head_after_postbump != head_after_merge_rebase
+    assert compose_calls[0].get("architectural_guidelines_note") == "Compose assessment"
 
 def test_guidelines_pin_warning_flushes_before_pr_body(
     monkeypatch: pytest.MonkeyPatch,
@@ -6002,9 +5864,9 @@ def test_guidelines_pin_warning_flushes_before_pr_body(
     _stub_happy_ship_mocks(monkeypatch)
     order: list[str] = []
 
-    def fake_pin(*_args: object, **_kwargs: object) -> tuple[str, bool]:
-        order.append("pin")
-        return "Guidelines dropped", True
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
     def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
         order.append("flush")
@@ -6018,7 +5880,7 @@ def test_guidelines_pin_warning_flushes_before_pr_body(
         order.append("ensure")
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
-    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", fake_pin)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
@@ -6026,8 +5888,8 @@ def test_guidelines_pin_warning_flushes_before_pr_body(
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    post_pin_flush = order.index("flush", order.index("pin"))
-    assert order.index("pin") < post_pin_flush < order.index("compose") < order.index("ensure")
+    post_gate_flush = order.index("flush", order.index("gate"))
+    assert order.index("gate") < post_gate_flush < order.index("compose") < order.index("ensure")
 
 
 def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
@@ -6038,8 +5900,8 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
     ensure_calls = 0
     flush_calls = 0
 
-    def fake_pin(*_args: object, **_kwargs: object) -> tuple[str, bool]:
-        return "Guidelines dropped", True
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
     def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
         nonlocal flush_calls
@@ -6053,7 +5915,7 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
         ensure_calls += 1
         return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
 
-    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", fake_pin)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure)
 
@@ -6071,97 +5933,23 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     merge: bool,
 ) -> None:
     _stub_happy_ship_mocks(monkeypatch)
-    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
-    monkeypatch.setattr(ship.finalize, "postbump", lambda *_a, **_k: type("R", (), {"outcome": Outcome.OK})())
     order: list[str] = []
 
-    real_flush = _REAL_FLUSH_LOGS_PRE
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", warning_logged=True)
 
-    def capturing_flush(
-        *,
-        runner: RecordingRunner,
-        ctx: RunContext,
-        cwd: str | None = None,
-        strict_final_report: bool = False,
-    ) -> run_logs.RefreshSkip:
-        order.append("flush-after-pin" if "pin" in order else "flush-before-pin")
-        return real_flush(runner=runner, ctx=ctx, cwd=cwd, strict_final_report=strict_final_report)
+    def fake_flush(**_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
 
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", capturing_flush)
-    monkeypatch.setattr(run_logs, "flush_logs_pre", capturing_flush)
-
-    def noop(*_args: object, **_kwargs: object) -> None:
-        return None
-
-    def fake_commit(
-        *_args: object,
-        **_kwargs: object,
-    ) -> CommandResult:
-        return CommandResult(("git", "commit"), 0, "", "", 0.01)
-
-    monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)
-    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)
-    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)
-    monkeypatch.setattr(run_log_flush, "_render_token_timing_batches", noop)
-    monkeypatch.setattr(run_log_flush, "_refresh_difficulty_record", noop)
-    monkeypatch.setattr(run_log_flush, "_stage_vendor_failure_diagnostics", noop)
-    monkeypatch.setattr(run_log_flush, "_stage_ship_route_handoff", noop)
-    monkeypatch.setattr(run_log_flush, "_reconcile_stalled_summary_backstop", noop)
-
-    ctx = _ctx(tmp_path, merge=merge)
-    _ = run_logs.init_run(ctx)
-    _ = (tmp_path / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="Guideline deviation note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
-    monkeypatch.setattr(
-        ship.architectural_guidelines,
-        "write_implement_note",
-        lambda *_args, **_kwargs: (_ for _ in ()).throw(OSError("durable write failed")),
-    )
-    real_pin = ship._pin_and_load_guidelines_note
-
-    def spy_pin(
-        implement_tmpdir: str,
-        head_sha: str,
-        base_ref: str,
-        *,
-        repo_root: str | None = None,
-    ) -> tuple[str, bool]:
-        order.append("pin")
-        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
-
-    def fake_compose(**kwargs: object) -> str:  # noqa: ARG001  # pylint: disable=unused-argument
+    def fake_compose(**_kwargs: object) -> str:
         order.append("compose")
         return "body"
 
-    def fake_ensure_pr(
-        *,
-        runner: object,  # noqa: ARG001  # pylint: disable=unused-argument
-        ctx: RunContext,  # noqa: ARG001  # pylint: disable=unused-argument
-        body: str,  # noqa: ARG001  # pylint: disable=unused-argument
-        title: str,  # noqa: ARG001  # pylint: disable=unused-argument
-        cwd: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
-        base: str | None = None,  # noqa: ARG001  # pylint: disable=unused-argument
-    ) -> object:
-        order.append("ensure")
-        run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
-        batch = run_dir / "execution-issues.ndjson"
-        assert batch.is_file()
-        assert "architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation" in batch.read_text(encoding="utf-8")
-        assert (tmp_path / ".execution-issues-flushed.sha").is_file()
-        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
-
-    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", spy_pin)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
-    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
     if merge:
         monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: ship.ShipResult(Outcome.OK, detail="ok"))
     else:
@@ -6170,7 +5958,7 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     result = ship.run_ship(_ctx(tmp_path, merge=merge), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.OK
-    assert order.index("pin") < order.index("flush-after-pin") < order.index("compose") < order.index("ensure")
+    assert order.index("gate") < order.index("flush", order.index("gate")) < order.index("compose")
 
 
 def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
@@ -6201,19 +5989,10 @@ def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
     assert ensure_calls == 1
 
 
-def test_open_pr_resume_pins_guidelines_note_before_compose(
+def test_open_pr_resume_runs_guidelines_gate_before_compose(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    diff_text = "implementation diff"
-    ship.architectural_guidelines.write_staged_assessment(
-        implement_tmpdir=tmp_path,
-        assessment_text="Resume note\n",
-        assessed_head_sha="old",
-        diff_fingerprint_value=ship.architectural_guidelines.diff_fingerprint(diff_text),
-        base_ref="origin/main",
-        diff_text=diff_text,
-    )
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
@@ -6236,24 +6015,17 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     order: list[str] = []
     compose_calls: list[dict[str, object]] = []
-    real_pin = ship._pin_and_load_guidelines_note
 
-    def spy_pin(
-        implement_tmpdir: str,
-        head_sha: str,
-        base_ref: str,
-        *,
-        repo_root: str | None = None,
-    ) -> tuple[str, bool]:
-        order.append("pin")
-        return real_pin(implement_tmpdir=implement_tmpdir, head_sha=head_sha, base_ref=base_ref, repo_root=repo_root)
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Resume note")
 
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
         compose_calls.append(dict(kwargs))
         return "body"
 
-    monkeypatch.setattr(ship, "_pin_and_load_guidelines_note", spy_pin)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     result = ship.run_ship(
         _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
@@ -6261,8 +6033,120 @@ def test_open_pr_resume_pins_guidelines_note_before_compose(
         cwd=str(tmp_path),
     )
     assert result.outcome is Outcome.OK
-    assert order.index("pin") < order.index("compose")
+    assert order.index("gate") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
+
+
+def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    head_sha = git("rev-parse", "HEAD")
+    diff_text = ship.architectural_guidelines.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ship.architectural_guidelines.write_implement_note(
+        implement_tmpdir=tmp_path,
+        note_text="Consulted note\n",
+        head_sha=head_sha,
+        metadata={
+            "ASSESSED_HEAD_SHA": head_sha,
+            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint(diff_text),
+            "BASE_REF": "origin/main",
+        },
+        base_ref="origin/main",
+    )
+    (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).write_text(diff_text, encoding="utf-8")
+    tree_sha = git("rev-parse", "HEAD^{tree}")
+    moved_main = subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "main advance"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert moved_main
+    git("update-ref", "refs/remotes/origin/main", moved_main)
+    git("update-ref", "refs/remotes/upstream/main", moved_main)
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feature\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "feature")
+    monkeypatch.setattr(
+        ship_resume.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feature"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    assert ship.architectural_guidelines.note_fingerprint_stale(tmp_path, base_ref="origin/main", repo_root=repo)
+    stale_gate = ship.GuidelinesGateResult(
+        needs_assessment=True,
+        detail="architectural-guidelines assessment required before PR body compose",
+    )
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_kwargs: stale_gate)
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run before reassessment")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feature", branch_name="feature", merge=False, repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-guidelines-assessment"
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+
+
+def test_guidelines_assessment_resume_without_pr_number_uses_pre_pr_compose(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=guidelines-assessment\nBRANCH_NAME=feat\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "feat")
+
+    resume = ship_resume._resume_plan(
+        ctx=_ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert resume.start == "pre-pr-compose"
+    assert resume.pr_number is None
+    assert resume.pr_url == ""
+
 
 
 def test_pin_and_load_guidelines_note_logs_redaction_failure(
@@ -6325,3 +6209,4 @@ def test_guidelines_warning_append_failure_warns_stderr(
     assert note == ""
     assert warning_logged is False
     assert "architectural-guidelines warning append failed: append failed" in captured.err
+# pyright: reportUnusedFunction=false

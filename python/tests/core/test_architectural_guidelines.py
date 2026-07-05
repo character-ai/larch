@@ -5,11 +5,9 @@ from __future__ import annotations
 
 import subprocess
 from pathlib import Path
-from typing import TYPE_CHECKING
 from unittest.mock import Mock
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 from larch.core import architectural_guidelines as ag
 
@@ -460,7 +458,7 @@ def test_note_readable_any_head_rejects_symlinked_durable_artifacts(tmp_path: Pa
     assert not ag.note_readable_any_head(meta_tmpdir)
 
 
-def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) -> None:
+def test_dropped_notice_round_trips_and_clears_on_invalidation(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
     assert ag.read_dropped_note_notice(tmpdir) == "dropped"
@@ -477,7 +475,7 @@ def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) ->
     assert ag.durable_note_present(tmpdir)
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
     ag.invalidate_implement_note(tmpdir)
-    assert ag.read_dropped_note_notice(tmpdir) == "dropped"
+    assert ag.read_dropped_note_notice(tmpdir) == ""
     assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
     assert not (tmpdir / ag.DURABLE_NOTE).exists()
 
@@ -542,10 +540,10 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
         metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
     )
-    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+    assert ag.read_dropped_note_notice(tmpdir) == ""
     assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda _text: "replacement")
-    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+    assert ag.read_dropped_note_notice(tmpdir) == ""
 
     ag.clear_dropped_note_notice(tmpdir)
     ag.invalidate_implement_note(tmpdir)
@@ -557,7 +555,7 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
         base_ref="origin/main",
         diff_text="diff",
     )
-    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
 
 
 def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
@@ -704,9 +702,7 @@ def test_pin_note_from_staged_for_current_head_refreshes_from_live_diff(
 
     materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
     assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
     durable_metadata = ag.durable_note_metadata(tmpdir)
     assert durable_metadata["HEAD_SHA"] == "head-b"
     assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
@@ -766,9 +762,7 @@ def test_pin_note_from_live_diff_refreshes_staged_and_durable_metadata(tmp_path:
     )
 
     assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
     durable_metadata = ag.durable_note_metadata(tmpdir)
     assert durable_metadata["HEAD_SHA"] == "head-b"
     assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
@@ -903,6 +897,161 @@ def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
 
 
+def test_note_fingerprint_stale_ignores_stale_snapshot_when_base_moves(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "feature")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="fresh note\n",
+        head_sha=head_sha,
+        metadata={
+            "ASSESSED_HEAD_SHA": head_sha,
+            "DIFF_FINGERPRINT": ag.diff_fingerprint(diff_text),
+            "BASE_REF": "origin/main",
+        },
+        base_ref="origin/main",
+    )
+    (tmpdir / ag.MATERIALIZED_DIFF).write_text(diff_text, encoding="utf-8")
+    tree_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    moved_main = subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "move main"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert moved_main
+    _git(repo, "update-ref", "refs/remotes/origin/main", moved_main)
+    _git(repo, "update-ref", "refs/remotes/upstream/main", moved_main)
+
+    assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
+
+
+def test_prepare_compose_assessment_rematerializes_when_durable_note_fingerprint_stale(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\nfirst change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "change-a")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="fresh note\n",
+        head_sha=head_sha,
+        metadata={
+            "ASSESSED_HEAD_SHA": head_sha,
+            "DIFF_FINGERPRINT": ag.diff_fingerprint(diff_text),
+            "BASE_REF": "origin/main",
+        },
+        base_ref="origin/main",
+    )
+    tree_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    moved_main = subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "move main"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert moved_main
+    _git(repo, "update-ref", "refs/remotes/origin/main", moved_main)
+    _git(repo, "update-ref", "refs/remotes/upstream/main", moved_main)
+
+    result = ag.prepare_compose_assessment(
+        implement_tmpdir=tmpdir,
+        repo_root=repo,
+        expected_head_sha=head_sha,
+    )
+
+    assert result.status == "assessment-required"
+    assert result.head_sha == head_sha
+    assert result.base_ref == "origin/main"
+    assert result.diff_fingerprint == ag.diff_fingerprint("")
+    assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == ""
+
+
+def test_write_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\ncompose\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "compose")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    tmpdir = tmp_path / "implement"
+
+    assert ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha).status == "assessment-required"
+    ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo)
+
+    assert (tmpdir / ag.DURABLE_NOTE).read_text(encoding="utf-8") == "Compose assessment\n"
+    assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha)
+
+
+def test_write_compose_assessment_rejects_head_drift(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / ag.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\ncompose\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "compose")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    tmpdir = tmp_path / "implement"
+
+    assert ag.prepare_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha).status == "assessment-required"
+    (repo / "README.md").write_text("base\ncompose\nfollow-up\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "drift")
+
+    with pytest.raises(ValueError, match="HEAD changed after compose materialization"):
+        ag.write_compose_assessment(implement_tmpdir=tmpdir, assessment_text="Compose assessment", repo_root=repo)
+
+
 def test_prepare_absent_emits_status_without_diff(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
@@ -1022,12 +1171,14 @@ def test_prepare_invalidates_stale_artifacts_before_reading(
         metadata={"ASSESSED_HEAD_SHA": "head-a", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
     )
+    (tmpdir / ag.MATERIALIZED_DIFF).write_text("snapshot\n", encoding="utf-8")
+    (tmpdir / ag.MATERIALIZE_ENV).write_text("STATUS=present\n", encoding="utf-8")
     assert ag.prepare_main(["--repo-root", str(repo), "--implement-tmpdir", str(tmpdir)]) == 0
     assert capsys.readouterr().out == "ARCHITECTURAL_GUIDELINES_STATUS=absent\n"
     assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
     assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
-    assert not (tmpdir / ag.MATERIALIZED_DIFF).exists()
-    assert not (tmpdir / ag.MATERIALIZE_ENV).exists()
+    assert (tmpdir / ag.MATERIALIZED_DIFF).exists()
+    assert (tmpdir / ag.MATERIALIZE_ENV).exists()
     assert not (tmpdir / ag.DURABLE_NOTE).exists()
     assert not (tmpdir / ag.DURABLE_NOTE_ENV).exists()
 

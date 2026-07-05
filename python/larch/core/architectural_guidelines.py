@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from larch.core import config
 from larch.issue import issue_wire
 from larch.state import session_env
 
@@ -30,7 +31,6 @@ MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
 DURABLE_NOTE = "architectural-guideline-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
 DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"
-DROPPED_NOTE_MESSAGE = "The architectural guideline note was dropped because HEAD drifted after staging."
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
@@ -55,6 +55,20 @@ class ArchitecturalGuidelinesResult:
         if self.status not in _STATUS_VALUES:
             msg = f"unsupported architectural guideline status: {self.status}"
             raise ValueError(msg)
+
+
+@dataclass(frozen=True)
+class ComposeMaterializationResult:
+    """Result of the Step 8 compose-time guideline materialization gate."""
+
+    status: str
+    head_sha: str = ""
+    base_ref: str = ""
+    diff_fingerprint: str = ""
+    diff_path: Path | None = None
+    guidelines_status: str = ""
+    guidelines_path: str = ""
+    warning: str = ""
 
 
 def _run_git_toplevel(candidate: Path) -> Path | None:
@@ -332,7 +346,12 @@ def note_readable_any_head(implement_tmpdir: Path) -> bool:
 
 
 def dropped_note_message() -> str:
-    return DROPPED_NOTE_MESSAGE
+    """Return legacy drop-note text.
+
+    Compose-time assessment no longer surfaces a fallback notice when HEAD
+    changes. Keep the function for temporary legacy callers, but make it inert.
+    """
+    return ""
 
 
 def persist_dropped_note_notice(implement_tmpdir: Path, *, notice_text: str) -> bool:
@@ -373,15 +392,27 @@ def clear_dropped_note_notice(implement_tmpdir: Path) -> None:
 
 
 def maybe_persist_dropped_note_before_invalidate(implement_tmpdir: Path, *, redact_fn: Callable[[str], str]) -> bool:
-    if not staged_assessment_present(implement_tmpdir) and not durable_note_present(implement_tmpdir):
-        return False
-    try:
-        redacted = redact_fn(dropped_note_message()).strip()
-    except Exception:
-        return False
-    if not redacted:
-        return False
-    return persist_dropped_note_notice(implement_tmpdir, notice_text=redacted)
+    _ = implement_tmpdir, redact_fn
+    return False
+
+
+def clear_staged_and_dropped_artifacts(implement_tmpdir: Path) -> None:
+    """Clear retired staged-assessment and drop-notice artifacts."""
+    for name in (
+        LEGACY_WARNING,
+        LEGACY_WARNING_ENV,
+        STAGED_ASSESSMENT,
+        STAGED_ASSESSMENT_ENV,
+        DROPPED_NOTE_ARTIFACT,
+    ):
+        path = implement_tmpdir / name
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            elif _artifact_still_present(path):
+                path.unlink()
+        except OSError:
+            pass
 
 
 def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer; bundling its pin-metadata fields would churn 14 call sites
@@ -412,8 +443,9 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
 
 
 def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
-    """Write the durable Phase B note and HEAD-pinned metadata."""
+    """Write the durable compose-time note and HEAD-pinned metadata."""
     _write_text_atomic(path=durable_note_path(implement_tmpdir), text=note_text)
+    diff_snapshot = metadata.get("DIFF_SNAPSHOT", "")
     meta = "\n".join(
         [
             "STATUS=present",
@@ -421,12 +453,13 @@ def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: st
             f"ASSESSED_HEAD_SHA={_env_escape(metadata.get('ASSESSED_HEAD_SHA', ''))}",
             f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
             f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
+            f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
             f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
             "",
         ]
     )
     _write_text_atomic(path=_durable_meta_path(implement_tmpdir), text=meta)
-    clear_dropped_note_notice(implement_tmpdir)
+    clear_staged_and_dropped_artifacts(implement_tmpdir)
 
 
 def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
@@ -639,13 +672,10 @@ _INVALIDATE_ARTIFACTS = (
     LEGACY_WARNING_ENV,
     STAGED_ASSESSMENT,
     STAGED_ASSESSMENT_ENV,
-    MATERIALIZED_DIFF,
-    MATERIALIZE_ENV,
     DURABLE_NOTE,
     DURABLE_NOTE_ENV,
+    DROPPED_NOTE_ARTIFACT,
 )
-# DROPPED_NOTE_ARTIFACT is intentionally not listed here. It preserves the
-# user-facing drop notice after staged and durable guideline files are cleared.
 
 
 def _artifact_still_present(path: Path) -> bool:
@@ -698,19 +728,170 @@ def note_fingerprint_stale(
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
-    diff_path = _diff_path(implement_tmpdir)
-    if diff_path.is_file() and not diff_path.is_symlink():
-        try:
-            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return True
-        if diff_fingerprint(snapshot_text) == stored_fp:
-            return False
-    root = Path(repo_root).resolve() if repo_root is not None else None
+    if repo_root is None:
+        return True
+    root = Path(repo_root).resolve()
     live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
     if live_fp is None:
         return True
     return live_fp != stored_fp
+
+
+def _write_compose_materialization_metadata(
+    *,
+    implement_tmpdir: Path,
+    materialized: ComposeMaterializationResult,
+) -> None:
+    written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    diff_path = materialized.diff_path or _diff_path(implement_tmpdir)
+    _write_text_atomic(
+        path=implement_tmpdir / MATERIALIZE_ENV,
+        text="\n".join(
+            [
+                "STATUS=present",
+                f"HEAD_SHA={_env_escape(materialized.head_sha)}",
+                f"ASSESSED_HEAD_SHA={_env_escape(materialized.head_sha)}",
+                f"BASE_REF={_env_escape(materialized.base_ref)}",
+                f"DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
+                f"GUIDELINES_STATUS={_env_escape(materialized.guidelines_status)}",
+                f"GUIDELINES_PATH={_env_escape(materialized.guidelines_path)}",
+                f"WRITTEN_AT={written_at}",
+                "",
+            ]
+        ),
+    )
+
+
+def _compose_precheck_result(
+    *,
+    implement_tmpdir: Path,
+    root: Path | None,
+    current_head: str,
+    expected_head_sha: str,
+) -> tuple[ArchitecturalGuidelinesResult | None, ComposeMaterializationResult | None]:
+    if expected_head_sha and current_head and expected_head_sha != current_head:
+        return None, ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            warning="HEAD changed before architectural-guidelines compose materialization",
+        )
+    if current_head and note_consumable(implement_tmpdir=implement_tmpdir, head_sha=current_head):
+        if root is None:
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+        metadata = durable_note_metadata(implement_tmpdir)
+        stored_base_ref = metadata.get("BASE_REF", "")
+        if stored_base_ref and not note_fingerprint_stale(
+            implement_tmpdir,
+            base_ref=stored_base_ref,
+            repo_root=root,
+        ):
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+    result = read_guidelines(repo_root=root)
+    if result.status in {"absent", "invalid"}:
+        return None, ComposeMaterializationResult(
+            status=result.status,
+            head_sha=current_head,
+            guidelines_status=result.status,
+            warning=result.warning if result.status == "invalid" else "",
+        )
+    if root is None:
+        return None, ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            guidelines_status=result.status,
+            warning="could not resolve repo root",
+        )
+    return result, None
+
+
+def prepare_compose_assessment(
+    *,
+    implement_tmpdir: Path,
+    repo_root: str | Path | None = None,
+    forked_target: bool = False,
+    expected_head_sha: str = "",
+) -> ComposeMaterializationResult:
+    """Prepare Step 8 compose-time evidence for prompt-authored assessment."""
+    implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    clear_staged_and_dropped_artifacts(implement_tmpdir)
+    root = _resolve_repo_root(repo_root)
+    current_head = _current_head(root, verify_commit=True) if root is not None else ""
+    result, precheck = _compose_precheck_result(
+        implement_tmpdir=implement_tmpdir,
+        root=root,
+        current_head=current_head,
+        expected_head_sha=expected_head_sha,
+    )
+    if precheck is not None:
+        return precheck
+    if result is None:
+        return ComposeMaterializationResult(status="failed", head_sha=current_head, warning="guidelines precheck failed")
+    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
+    base_label = f"{base_remote}/{base_ref}"
+    try:
+        diff_text = materialize_implementation_diff(root, base_remote=base_remote, base_ref=base_ref)
+    except (OSError, RuntimeError) as exc:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=base_label,
+            guidelines_status=result.status,
+            warning=str(exc).replace("\n", " "),
+        )
+    materialized = ComposeMaterializationResult(
+        status="assessment-required",
+        head_sha=current_head,
+        base_ref=base_label,
+        diff_fingerprint=diff_fingerprint(diff_text),
+        diff_path=_diff_path(implement_tmpdir),
+        guidelines_status=result.status,
+        guidelines_path=str(result.path or ""),
+    )
+    try:
+        _write_text_atomic(path=_diff_path(implement_tmpdir), text=diff_text)
+        _write_compose_materialization_metadata(
+            implement_tmpdir=implement_tmpdir,
+            materialized=materialized,
+        )
+    except OSError as exc:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=base_label,
+            guidelines_status=result.status,
+            warning=str(exc).replace("\n", " "),
+        )
+    return materialized
+
+
+def write_compose_assessment(
+    *,
+    implement_tmpdir: Path,
+    assessment_text: str,
+    repo_root: str | Path | None = None,
+) -> None:
+    """Write a prompt-authored compose-time assessment as the durable note."""
+    normalized = _normalize_assessment_text(assessment_text)
+    if not normalized.strip():
+        raise ValueError("assessment-file: content must not be empty")
+    metadata = _read_env(implement_tmpdir / MATERIALIZE_ENV)
+    materialized_head = metadata.get("HEAD_SHA", "")
+    if not materialized_head:
+        raise ValueError("compose materialization metadata is missing HEAD_SHA")
+    root = _resolve_repo_root(repo_root)
+    current_head = _current_head(root, verify_commit=True)
+    if current_head != materialized_head:
+        raise ValueError("HEAD changed after compose materialization; rerun Step 8")
+    if metadata.get("STATUS") != "present":
+        raise ValueError("compose materialization metadata is not present")
+    write_implement_note(
+        implement_tmpdir=implement_tmpdir,
+        note_text=normalized,
+        head_sha=materialized_head,
+        metadata=metadata,
+        base_ref=metadata.get("BASE_REF", ""),
+    )
 
 
 def _bool_arg(value: str) -> bool:
@@ -940,6 +1121,88 @@ def prepare_main(argv: list[str]) -> int:
     )
 
 
+def _emit_compose_prepare_result(*, result: ComposeMaterializationResult, implement_tmpdir: Path, repo_root: str | Path | None) -> None:
+    print(f"ARCHITECTURAL_GUIDELINES_COMPOSE_STATUS={result.status}")
+    for key, value in (
+        ("ARCHITECTURAL_GUIDELINES_HEAD_SHA", result.head_sha),
+        ("ARCHITECTURAL_GUIDELINES_BASE_REF", result.base_ref),
+        ("ARCHITECTURAL_GUIDELINES_DIFF_FINGERPRINT", result.diff_fingerprint),
+        ("ARCHITECTURAL_GUIDELINES_DIFF_PATH", str(result.diff_path) if result.diff_path is not None else ""),
+        ("ARCHITECTURAL_GUIDELINES_WARNING", result.warning),
+    ):
+        if value:
+            print(f"{key}={value}")
+    guidelines = read_guidelines(repo_root=repo_root)
+    print(f"ARCHITECTURAL_GUIDELINES_STATUS={guidelines.status}")
+    if guidelines.status != "present":
+        return
+    _emit_present_guidelines(guidelines)
+    diff_path = result.diff_path or _diff_path(implement_tmpdir)
+    if not diff_path.is_file() or diff_path.is_symlink():
+        return
+    try:
+        diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if diff_text:
+        sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines_diff", text=diff_text))
+
+
+def prepare_compose_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines prepare-compose")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--expected-head-sha", default="")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_GUIDELINES_COMPOSE_STATUS=failed")
+        print("ARCHITECTURAL_GUIDELINES_WARNING=missing implement tmpdir")
+        return 2
+    result = prepare_compose_assessment(
+        implement_tmpdir=Path(args.implement_tmpdir),
+        repo_root=args.repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        expected_head_sha=args.expected_head_sha,
+    )
+    _emit_compose_prepare_result(
+        result=result,
+        implement_tmpdir=Path(args.implement_tmpdir),
+        repo_root=args.repo_root,
+    )
+    return 1 if result.status == "failed" else 0
+
+
+def write_compose_assessment_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines write-compose-assessment")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--repo-root")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--assessment-file")
+    source.add_argument("--assessment-text")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=failed")
+        print("ARCHITECTURAL_GUIDELINES_WARNING=missing implement tmpdir")
+        return 2
+    try:
+        if args.assessment_file:
+            assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
+        else:
+            assessment_text = str(args.assessment_text or "")
+        write_compose_assessment(
+            implement_tmpdir=Path(args.implement_tmpdir),
+            assessment_text=assessment_text,
+            repo_root=args.repo_root,
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=failed")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=ok")
+    return 0
+
+
 def write_staged_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-staged-assessment")
     parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
@@ -1024,3 +1287,5 @@ def invalidate_main(argv: list[str]) -> int:
         return 2
     print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=ok")
     return 0
+# pyright: reportArgumentType=false
+# lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.

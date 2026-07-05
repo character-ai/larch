@@ -13,12 +13,8 @@ import sys
 from pathlib import Path
 from typing import Any
 
-from larch.core import architectural_guidelines
-from larch.core import config
-
 SUMMARY_BEGIN = "---LARCH-SUMMARY-FINAL-BEGIN---"
 SUMMARY_END = "---LARCH-SUMMARY-FINAL-END---"
-_ARCHITECTURAL_GUIDELINES_PIN_DONE = ".architectural-guidelines-pin-done"
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 
 
@@ -78,16 +74,6 @@ def _resolve_tmpdir(value: str | None) -> Path:
 
 def _run(argv: list[str], *, env: dict[str, str], stdout: Any = None, stderr: Any = None) -> subprocess.CompletedProcess[str]:
     return subprocess.run(argv, text=True, env=env, stdout=stdout, stderr=stderr, check=False)
-
-
-def _post_merge_context(tmpdir: Path) -> bool:
-    if (tmpdir / "post-merge-sentinel").is_file():
-        return True
-    for state_name in ("ship-pr-state.sh", "finalize-state.sh"):
-        merge_result = _read_key(path=tmpdir / state_name, key="MERGE_RESULT", default="")
-        if merge_result in config.POST_MERGE_MERGE_RESULTS:
-            return True
-    return False
 
 
 def _append_failure(
@@ -222,43 +208,6 @@ def _step_16a_slack(*, tmpdir: Path, plugin_root: Path, env: dict[str, str], cli
         )
 
 
-def _pin_architectural_guidelines_note_best_effort(*, tmpdir: Path, env: dict[str, str]) -> str:
-    """Pin the staged architectural-guidelines note for the current HEAD when possible."""
-    try:
-        state = tmpdir / "ship-pr-state.sh"
-        base_ref = _read_key(path=state, key="BASE_REF", default="")
-        head = _run(["git", "rev-parse", "HEAD"], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        repo = _run(["git", "rev-parse", "--show-toplevel"], env=env, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
-        if head.returncode != 0 or repo.returncode != 0 or not head.stdout.strip() or not repo.stdout.strip():
-            return "failed"
-        current_head = head.stdout.strip()
-        if _post_merge_context(tmpdir) and architectural_guidelines.note_readable_any_head(tmpdir):
-            note_head = architectural_guidelines.durable_note_metadata(tmpdir).get("HEAD_SHA", "")
-            if note_head and note_head != current_head:
-                return "skipped"
-        pinned = architectural_guidelines.pin_note_from_staged_for_current_head(
-            tmpdir,
-            head_sha=current_head,
-            base_ref=base_ref,
-            repo_root=repo.stdout.strip(),
-        )
-        return "ok" if pinned else "skipped"
-    except Exception:
-        return "failed"
-
-
-def _pin_architectural_guidelines_note_once(*, tmpdir: Path, env: dict[str, str]) -> str:
-    """Pin the staged architectural-guidelines note once across closeout paths."""
-    sentinel = tmpdir / _ARCHITECTURAL_GUIDELINES_PIN_DONE
-    if sentinel.is_file():
-        return "skipped"
-    pin_status = _pin_architectural_guidelines_note_best_effort(tmpdir=tmpdir, env=env)
-    if pin_status == "ok":
-        with suppress(OSError):
-            sentinel.touch()
-    return pin_status
-
-
 def step_16_16a(argv: list[str] | None = None) -> int:
     """Rejected findings replay and Slack notify without final-report write."""
     parser = argparse.ArgumentParser(prog="cli.py implement step-16-16a")
@@ -274,8 +223,6 @@ def step_16_16a(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
-    pin_status = _pin_architectural_guidelines_note_once(tmpdir=tmpdir, env=env)
-    print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={pin_status}", file=sys.stderr)
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])
@@ -408,8 +355,6 @@ def step_16_17(argv: list[str] | None = None) -> int:
         return rc
     env = _env_for(tmpdir=tmpdir, plugin_root=plugin_root)
     cli = str(plugin_root / "python" / "cli.py")
-    pin_status = _pin_architectural_guidelines_note_once(tmpdir=tmpdir, env=env)
-    print(f"ARCHITECTURAL_GUIDELINES_PIN_STATUS={pin_status}", file=sys.stderr)
     step16_log = tmpdir / "step16-write-rejected.failure.log"
     try:
         step_16(["--implement-tmpdir", str(tmpdir)])

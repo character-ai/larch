@@ -1,0 +1,5 @@
+warning: fix text for slot 'dyn-dyn-compose-gate' in FINDING_2 not traceable to scoped input (first 80 chars: 'After any in-driver rebase that changes HEAD, route through the same compose gat')
+warning: fix text for slot 'dyn-dyn-compose-gate' in FINDING_3 not traceable to scoped input (first 80 chars: 'Treat a durable note as consumable only when HEAD_SHA matches and the stored fin')
+warning: fix text for slot 'cursor-specialist-correctness' in FINDING_6 not traceable to scoped input (first 80 chars: 'Remove the retired prepare wrapper from SKILL.md frontmatter, or narrow the harn')
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_6 not traceable to scoped input (first 80 chars: 'Remove the retired wrapper from the comment or update the harness to ignore non-')
+warning: fix text for slot 'dyn-dyn-compose-gate' in FINDING_13 not traceable to scoped input (first 80 chars: 'Remove MATERIALIZE_ENV/MATERIALIZED_DIFF from legacy prepare invalidation, or ma')

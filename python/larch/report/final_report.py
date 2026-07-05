@@ -19,10 +19,8 @@ from larch.core import architectural_guidelines
 from larch.state import closeout
 from larch.core import config
 from larch.report import exec_issue_detail
-from larch import errors
 from larch import io as larch_io
 from larch.git import pr_body
-from larch.git import repo_roots
 from larch.report import report_tokens_cost
 from larch.report import review_phase_detail
 from larch.review.batch_report import _count_code_review_findings  # pyright: ignore[reportPrivateUsage]
@@ -146,48 +144,9 @@ def _current_head_sha() -> str:
     return completed.stdout.strip() if completed.returncode == 0 else ""
 
 
-def _session_env_value(*, session: Path, key: str) -> str:
-    if not session.is_file() or session.is_symlink():
-        return ""
-    for line in session.read_text(encoding="utf-8", errors="replace").splitlines():
-        field, sep, value = line.partition("=")
-        if sep and field == key:
-            return value.strip().strip("'\"")
-    return ""
-
-
-def _keepalive_clone_path(implement_tmpdir: Path) -> str:
-    keepalive = implement_tmpdir / ".larch-keepalive"
-    return _session_env_value(session=keepalive, key="CLONE_PATH")
-
-
-def _implement_repo_root(implement_tmpdir: Path) -> Path | None:
-    session = implement_tmpdir / "session-env.sh"
-    for key in ("CLAUDE_PROJECT_DIR", "REPO_CWD"):
-        cleaned = _session_env_value(session=session, key=key)
-        if cleaned:
-            root = repo_roots.consumer_repo_root(Path(cleaned))
-            if root is not None:
-                return root
-            try:
-                return Path(cleaned).resolve()
-            except OSError:
-                pass
-    clone = _keepalive_clone_path(implement_tmpdir)
-    if clone:
-        root = repo_roots.consumer_repo_root(Path(clone))
-        if root is not None:
-            return root
-    return repo_roots.consumer_repo_root()
-
-
 def _format_architectural_guidelines_section(text: str) -> str:
     stripped = text.strip()
     return "## Architectural guidelines\n\n" + stripped + "\n" if stripped else ""
-
-
-def _log_guidelines_warning(message: str) -> None:
-    print(f"ARCHITECTURAL_GUIDELINES_WARNING={message}", file=sys.stderr)
 
 
 def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) -> str:
@@ -202,63 +161,14 @@ def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) ->
     return _format_architectural_guidelines_section(redacted)
 
 
-def _format_redacted_dropped_note_notice(notice: str) -> str:
-    if not notice:
-        return ""
-    try:
-        redacted = pr_body.redact_pr_body(notice)
-    except errors.ShipError as exc:
-        _log_guidelines_warning(f"architectural-guidelines drop notice redaction failed: {exc}")
-        return ""
-    return _format_architectural_guidelines_section(redacted)
-
-
-def _persist_drop_notice_and_invalidate(implement_tmpdir: Path) -> str:
-    persisted = architectural_guidelines.maybe_persist_dropped_note_before_invalidate(
-        implement_tmpdir,
-        redact_fn=pr_body.redact_pr_body,
-    )
-    try:
-        architectural_guidelines.invalidate_implement_note(implement_tmpdir)
-    except OSError as exc:
-        _log_guidelines_warning(f"architectural-guidelines invalidate failed: {exc}")
-    notice = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
-    if persisted or notice:
-        return _format_redacted_dropped_note_notice(notice)
-    return ""
-
-
 def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     head_sha = _current_head_sha()
-    section = ""
-    if head_sha:
-        consumable = architectural_guidelines.note_consumable(implement_tmpdir=implement_tmpdir, head_sha=head_sha)
-        meta = architectural_guidelines.durable_note_metadata(implement_tmpdir) if consumable else {}
-        note_base_ref = meta.get("BASE_REF", "")
-        stale = False
-        if consumable:
-            stale = architectural_guidelines.note_fingerprint_stale(
-                implement_tmpdir,
-                base_ref=note_base_ref,
-                repo_root=_implement_repo_root(implement_tmpdir),
-            )
-            if not stale:
-                section = _read_consumable_architectural_guidelines_section(implement_tmpdir)
-        if not section and not consumable and architectural_guidelines.note_readable_any_head(implement_tmpdir):
-            section = _read_consumable_architectural_guidelines_section(implement_tmpdir)
-            if section:
-                architectural_guidelines.clear_dropped_note_notice(implement_tmpdir)
-        if not section and not (consumable and stale):
-            dropped = architectural_guidelines.read_dropped_note_notice(implement_tmpdir)
-            if dropped:
-                section = _format_redacted_dropped_note_notice(dropped)
-        if not section:
-            staged_present = architectural_guidelines.staged_assessment_present(implement_tmpdir)
-            durable_present = architectural_guidelines.durable_note_present(implement_tmpdir)
-            has_guideline_artifacts = staged_present or durable_present
-            if has_guideline_artifacts and (not consumable or stale):
-                section = _persist_drop_notice_and_invalidate(implement_tmpdir)
-    return section
+    if head_sha and architectural_guidelines.note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    ):
+        return _read_consumable_architectural_guidelines_section(implement_tmpdir)
+    return ""
 
 
 def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:

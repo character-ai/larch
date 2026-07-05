@@ -1,8 +1,9 @@
-"""Architectural guidelines note pin/load/invalidate helpers for ship-pr."""
+"""Architectural guidelines compose-time note helpers for ship-pr."""
 # pyright: reportUnusedFunction=false
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from pathlib import Path
 
 from larch.core import architectural_guidelines
@@ -10,6 +11,14 @@ from larch.core import logging_util
 from larch.errors import ShipError
 from larch.git import pr_body
 from larch.report import run_logs
+
+
+@dataclass(frozen=True)
+class GuidelinesGateResult:
+    note: str = ""
+    needs_assessment: bool = False
+    warning_logged: bool = False
+    detail: str = ""
 
 
 def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> bool:
@@ -26,31 +35,18 @@ def _log_guidelines_ship_warning(*, implement_tmpdir: Path, message: str) -> boo
 
 
 def _invalidate_guidelines_note(implement_tmpdir: str) -> bool:
+    """Legacy no-drop invalidation helper kept for compatibility tests."""
     if not implement_tmpdir:
         return False
     tmpdir = Path(implement_tmpdir)
-    warning_logged = False
-    should_persist = (
-        architectural_guidelines.staged_assessment_present(tmpdir)
-        or architectural_guidelines.durable_note_present(tmpdir)
-    )
     try:
-        persisted = architectural_guidelines.maybe_persist_dropped_note_before_invalidate(
-            tmpdir,
-            redact_fn=pr_body.redact_pr_body,
-        )
-        if should_persist and not persisted:
-            warning_logged = _log_guidelines_ship_warning(
-                implement_tmpdir=tmpdir,
-                message="architectural-guidelines drop notice persist failed before invalidate",
-            ) or warning_logged
         architectural_guidelines.invalidate_implement_note(tmpdir)
     except OSError as exc:
-        warning_logged = _log_guidelines_ship_warning(
+        return _log_guidelines_ship_warning(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines invalidate failed: {exc}",
-        ) or warning_logged
-    return warning_logged
+        )
+    return False
 
 
 def _pin_or_invalidate_guidelines_note(
@@ -60,121 +56,26 @@ def _pin_or_invalidate_guidelines_note(
     base_ref: str,
     repo_root: str | None = None,
 ) -> bool:
-    if not implement_tmpdir:
-        return False
-    tmpdir = Path(implement_tmpdir)
-    if head_sha and architectural_guidelines.pin_note_from_staged_for_current_head(
-        tmpdir,
-        head_sha=head_sha,
-        base_ref=base_ref,
-        repo_root=repo_root,
-    ):
-        return False
-    return _invalidate_guidelines_note(implement_tmpdir)
+    """Legacy no-op pre-push hook.
+
+    Compose-time assessment owns note freshness. Rebase, merge, and CI-fix paths
+    must not pin, invalidate, or emit a fallback note outside the compose gate.
+    """
+    _ = (head_sha, base_ref, repo_root)
+    if implement_tmpdir:
+        try:
+            architectural_guidelines.clear_staged_and_dropped_artifacts(Path(implement_tmpdir))
+        except OSError as exc:
+            return _log_guidelines_ship_warning(
+                implement_tmpdir=Path(implement_tmpdir),
+                message=f"architectural-guidelines stale-artifact cleanup failed: {exc}",
+            )
+    return False
 
 
-def _read_persisted_guidelines_drop_notice(tmpdir: Path) -> str:
-    return architectural_guidelines.read_dropped_note_notice(tmpdir).strip()
-
-
-def _persist_guidelines_drop_notice(tmpdir: Path) -> tuple[str, bool]:
-    try:
-        redacted = pr_body.redact_pr_body(architectural_guidelines.dropped_note_message()).strip()
-    except ShipError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-guidelines drop notice redaction failed: {exc}",
-        )
-        return "", warning_logged
-    if not redacted:
-        return "", False
-    if architectural_guidelines.persist_dropped_note_notice(tmpdir, notice_text=redacted):
-        return redacted, False
-    return _read_persisted_guidelines_drop_notice(tmpdir), False
-
-
-def _handle_unconsumable_guidelines_note(*, tmpdir: Path, staged_present: bool) -> tuple[str, bool]:
-    notice = _read_persisted_guidelines_drop_notice(tmpdir)
-    if notice:
-        return notice, False
-    if not staged_present:
-        return "", False
-    notice, warning_logged = _persist_guidelines_drop_notice(tmpdir)
-    if notice:
-        return notice, warning_logged
-    warning_logged = _log_guidelines_ship_warning(
-        implement_tmpdir=tmpdir,
-        message="architectural-guidelines drop notice persist failed after pin skip",
-    ) or warning_logged
-    return "", warning_logged
-
-
-def _handle_stale_guidelines_note(*, tmpdir: Path, staged_present: bool) -> tuple[str, bool]:
-    should_persist = staged_present or architectural_guidelines.durable_note_present(tmpdir)
-    persisted = False
-    warning_logged = False
-    if should_persist:
-        persisted = architectural_guidelines.maybe_persist_dropped_note_before_invalidate(
-            tmpdir,
-            redact_fn=pr_body.redact_pr_body,
-        )
-        if not persisted:
-            warning_logged = _log_guidelines_ship_warning(
-                implement_tmpdir=tmpdir,
-                message="architectural-guidelines drop notice persist failed before invalidate",
-            ) or warning_logged
-    try:
-        architectural_guidelines.invalidate_implement_note(tmpdir)
-    except OSError as exc:
-        warning_logged = _log_guidelines_ship_warning(
-            implement_tmpdir=tmpdir,
-            message=f"architectural-guidelines invalidate failed: {exc}",
-        )
-    if persisted:
-        return _read_persisted_guidelines_drop_notice(tmpdir), warning_logged
-    notice = _read_persisted_guidelines_drop_notice(tmpdir)
-    return notice or "", warning_logged
-
-
-def _pin_and_load_guidelines_note(
-    *,
-    implement_tmpdir: str,
-    head_sha: str,
-    base_ref: str,
-    repo_root: str | None = None,
-) -> tuple[str, bool]:
-    if not implement_tmpdir or not head_sha:
-        return "", False
-    tmpdir = Path(implement_tmpdir)
-    warning_logged = False
-    staged_present = architectural_guidelines.staged_assessment_present(tmpdir)
-    if architectural_guidelines.staged_assessment_path(tmpdir).is_file():
-        pinned_now = architectural_guidelines.pin_note_from_staged_for_current_head(
-            tmpdir,
-            head_sha=head_sha,
-            base_ref=base_ref,
-            repo_root=repo_root,
-        )
-        if not pinned_now:
-            warning_logged = _log_guidelines_ship_warning(
-                implement_tmpdir=tmpdir,
-                message="architectural-guidelines pin-note-from-staged skipped or failed fingerprint validation",
-            ) or warning_logged
+def _read_current_guidelines_note(*, tmpdir: Path, head_sha: str) -> GuidelinesGateResult:
     if not architectural_guidelines.note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha):
-        note, logged = _handle_unconsumable_guidelines_note(
-            tmpdir=tmpdir,
-            staged_present=staged_present,
-        )
-        return note, warning_logged or logged
-    meta: dict[str, str] = architectural_guidelines.durable_note_metadata(tmpdir)
-    note_base_ref = base_ref or meta.get("BASE_REF", "")
-    if architectural_guidelines.note_fingerprint_stale(
-        tmpdir,
-        base_ref=note_base_ref,
-        repo_root=repo_root,
-    ):
-        note, logged = _handle_stale_guidelines_note(tmpdir=tmpdir, staged_present=staged_present)
-        return note, warning_logged or logged
+        return GuidelinesGateResult()
     try:
         note = architectural_guidelines.durable_note_path(tmpdir).read_text(
             encoding="utf-8",
@@ -184,13 +85,84 @@ def _pin_and_load_guidelines_note(
         warning_logged = _log_guidelines_ship_warning(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines note read failed: {exc}",
-        ) or warning_logged
-        return "", warning_logged
+        )
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            warning_logged=warning_logged,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
     try:
-        return pr_body.redact_pr_body(note).strip(), warning_logged
+        return GuidelinesGateResult(note=pr_body.redact_pr_body(note).strip())
     except ShipError as exc:
         warning_logged = _log_guidelines_ship_warning(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines note redaction failed: {exc}",
-        ) or warning_logged
-        return "", warning_logged
+        )
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            warning_logged=warning_logged,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
+
+
+def load_or_prepare_guidelines_note(
+    *,
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | None = None,
+    forked_target: bool = False,
+) -> GuidelinesGateResult:
+    """Return the current durable note or prepare compose-time assessment input."""
+    if not implement_tmpdir or not head_sha:
+        return GuidelinesGateResult()
+    tmpdir = Path(implement_tmpdir)
+    current = _read_current_guidelines_note(tmpdir=tmpdir, head_sha=head_sha)
+    if current.note:
+        if repo_root is not None and base_ref and architectural_guidelines.note_fingerprint_stale(
+            tmpdir,
+            base_ref=base_ref,
+            repo_root=repo_root,
+        ):
+            current = GuidelinesGateResult()
+        else:
+            return current
+    if current.needs_assessment:
+        return current
+    prepared = architectural_guidelines.prepare_compose_assessment(
+        implement_tmpdir=tmpdir,
+        repo_root=repo_root,
+        forked_target=forked_target,
+        expected_head_sha=head_sha,
+    )
+    if prepared.status == "current":
+        return _read_current_guidelines_note(tmpdir=tmpdir, head_sha=head_sha)
+    if prepared.status == "assessment-required":
+        return GuidelinesGateResult(
+            needs_assessment=True,
+            detail="architectural-guidelines assessment required before PR body compose",
+        )
+    warning_logged = False
+    if prepared.warning:
+        warning_logged = _log_guidelines_ship_warning(
+            implement_tmpdir=tmpdir,
+            message=f"architectural-guidelines compose materialization skipped: {prepared.warning}",
+        )
+    return GuidelinesGateResult(warning_logged=warning_logged)
+
+
+# Backward-compatible alias for old unit tests. It no longer pins staged notes.
+def _pin_and_load_guidelines_note(
+    *,
+    implement_tmpdir: str,
+    head_sha: str,
+    base_ref: str,
+    repo_root: str | None = None,
+) -> tuple[str, bool]:
+    result = load_or_prepare_guidelines_note(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+        base_ref=base_ref,
+        repo_root=repo_root,
+    )
+    return result.note, result.warning_logged

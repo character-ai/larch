@@ -12,7 +12,6 @@ from pathlib import Path
 
 from larch.agents import agents
 from larch.implement import ci_monitor
-from larch.implement import ship_guidelines
 from larch.core import coder_delta_guards
 from larch.core import config
 from larch.git import git
@@ -97,10 +96,9 @@ def _reconstruct_ctx(*, args: argparse.Namespace, repo_root: Path) -> RunContext
 
 
 def _invalidate_guidelines_before_ci_push(args: argparse.Namespace) -> bool:
-    # CI-fix pushes carry real delta_paths, so the staged assessment never covered
-    # that diff; invalidate directly instead of re-pinning a stale note.
-    implement_tmpdir = str(getattr(args, "implement_tmpdir", "") or "")
-    return ship_guidelines._invalidate_guidelines_note(implement_tmpdir)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+    # Compose-time assessment owns note freshness on the next Step 8 relaunch.
+    _ = args
+    return False
 
 
 def _write_failure_log(*, output_dir: Path, text: str) -> Path:

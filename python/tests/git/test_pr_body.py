@@ -1549,11 +1549,11 @@ def test_compose_pr_body_includes_guideline_note_before_mermaid() -> None:
     assert body.index("## Architectural guidelines") < body.index("## Code Flow Diagram")
 
 
-def test_compose_pr_body_includes_guideline_drop_notice() -> None:
-    notice = "The architectural guideline note was dropped because HEAD drifted after staging."
-    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=notice)
+def test_compose_pr_body_includes_guideline_deviation_note() -> None:
+    note = "- G-Example-1: intentionally deviates because the target API requires it."
+    body = pr_body.compose_pr_body(summary="- x", architectural_guidelines_note=note)
     assert "## Architectural guidelines" in body
-    assert notice in body
+    assert note in body
 
 
 def test_compose_pr_body_redacts_guideline_note() -> None:
