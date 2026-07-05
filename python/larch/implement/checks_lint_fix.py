@@ -89,6 +89,20 @@ _COMPLEXITY_BASELINE_NEW_REGRESSION_RE: Final = re.compile(
     rf"(?P<code>{_COMPLEXITY_BASELINE_CODES_RE}) \(new\)$",
     re.MULTILINE,
 )
+_STRUCTURAL_RUFF_CODES: Final[frozenset[str]] = frozenset({
+    "C901",
+    "PLR0911",
+    "PLR0912",
+    "PLC0415",
+})
+_STRUCTURAL_RUFF_CODES_RE: Final = "|".join(
+    re.escape(code) for code in sorted(_STRUCTURAL_RUFF_CODES)
+)
+_STRUCTURAL_RUFF_DIAGNOSTIC_RE: Final = re.compile(
+    rf"^{_COMPLEXITY_BASELINE_PATH_RE}:\d+(?::\d+)?: "
+    rf"(?P<code>{_STRUCTURAL_RUFF_CODES_RE})\b",
+    re.MULTILINE,
+)
 
 
 def _ledger_site_for_lint_site(site: str) -> str:
@@ -449,10 +463,7 @@ def _read_log_tail(*, path: Path, max_bytes: int) -> str:
     return text
 
 
-def _is_complexity_baseline_regression_log(log_path: Path) -> bool:
-    text = _read_log_text_bounded(path=log_path, max_bytes=_PROMPT_TAIL_BYTES)
-    if text is None:
-        return False
+def _is_complexity_baseline_regression_text(text: str) -> bool:
     if _COMPLEXITY_BASELINE_COMMAND_RE.search(text) is None:
         return False
     if _COMPLEXITY_BASELINE_METRIC_REGRESSION_RE.search(text) is not None:
@@ -461,7 +472,18 @@ def _is_complexity_baseline_regression_log(log_path: Path) -> bool:
         match.group("code")
         for match in _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.finditer(text)
     )
-    return bool(new_codes) and any(code != "PLR0911" for code in new_codes)
+    return bool(new_codes)
+
+
+def _lint_fix_fast_fail_reason(log_path: Path) -> str | None:
+    text = _read_log_text_bounded(path=log_path, max_bytes=_PROMPT_TAIL_BYTES)
+    if text is None:
+        return None
+    if _is_complexity_baseline_regression_text(text):
+        return "complexity-baseline-regression"
+    if _STRUCTURAL_RUFF_DIAGNOSTIC_RE.search(text) is not None:
+        return "structural-ruff-failure"
+    return None
 
 
 def _sanitize_log_fence(text: str) -> str:
@@ -1174,6 +1196,53 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             head_changed=False,
             coder_tool=None,
         )
+    if log_path.stat().st_size == 0:
+        return FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+        )
+    fast_fail_reason = _lint_fix_fast_fail_reason(log_path)
+    if fast_fail_reason is not None:
+        return FixOutcome(
+            status="main-agent-required",
+            delta_paths=(),
+            failure_reason=fast_fail_reason,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+            ledger_ready=True,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=1,
+            ledger_failure_detail_log=str(ledger_log_path),
+        )
+    if claude_present is None:
+        probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
+        claude_present = _binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=probe_root, binary="claude")
+    if not claude_present and not codex_present and not cursor_present:
+        return FixOutcome(
+            status="main-agent-required",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool=None,
+            ledger_ready=True,
+            ledger_site=_ledger_site_for_lint_site(site),
+            ledger_trigger=_ledger_trigger_for_lint_site(site),
+            ledger_step=_ledger_step_for_site(site),
+            ledger_phase=_ledger_phase_for_site(site),
+            ledger_dispatcher="lint-fix-loop",
+            ledger_exit_code=0,
+            ledger_failure_detail_log=str(ledger_log_path),
+        )
     scripts = plugin_scripts_dir()
     agent_cli = _agent_cli()
     if not agent_cli.is_file():
@@ -1184,44 +1253,6 @@ def _run_lint_fix_impl(  # noqa: C901,PLR0911,PLR0912,PLR0913,PLR0915,RUF100
             commit_sha=None,
             head_changed=False,
             coder_tool=None,
-        )
-    if log_path.stat().st_size == 0:
-        return FixOutcome(
-            status="no-changes",
-            delta_paths=(),
-            failure_reason=None,
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
-        )
-    complexity_baseline_regression = _is_complexity_baseline_regression_log(log_path)
-    if not complexity_baseline_regression and claude_present is None:
-        probe_root = Path(allowed_tmpdir) if allowed_tmpdir is not None else Path(run_parent).resolve().parent
-        claude_present = _binary_flag(name="CLAUDE_BINARY_FOUND", implement_tmpdir=probe_root, binary="claude")
-    if complexity_baseline_regression or (
-        not claude_present and not codex_present and not cursor_present
-    ):
-        failure_reason = (
-            "complexity-baseline-regression"
-            if complexity_baseline_regression
-            else None
-        )
-        ledger_exit_code = 1 if complexity_baseline_regression else 0
-        return FixOutcome(
-            status="main-agent-required",
-            delta_paths=(),
-            failure_reason=failure_reason,
-            commit_sha=None,
-            head_changed=False,
-            coder_tool=None,
-            ledger_ready=True,
-            ledger_site=_ledger_site_for_lint_site(site),
-            ledger_trigger=_ledger_trigger_for_lint_site(site),
-            ledger_step=_ledger_step_for_site(site),
-            ledger_phase=_ledger_phase_for_site(site),
-            ledger_dispatcher="lint-fix-loop",
-            ledger_exit_code=ledger_exit_code,
-            ledger_failure_detail_log=str(ledger_log_path),
         )
     cwd = repo_root
     site_label = _site_label(site)
