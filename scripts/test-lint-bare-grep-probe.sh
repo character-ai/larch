@@ -219,6 +219,10 @@ assert_fence_line_violation "no-path if rg" 'if rg -q PATTERN --type py; then ec
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path if ripgrep" 'if ripgrep -q PATTERN; then echo found; fi' \
     "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "standalone ! rg no-path" '! rg -q PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "standalone ! rg parent ascent" '! rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
 assert_fence_line_violation "no-path if ! rg" 'if ! rg -q PATTERN --type py; then echo missing; fi' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path if ! ripgrep" 'if ! ripgrep -q PATTERN; then echo missing; fi' \
@@ -269,6 +273,8 @@ assert_fence_line_violation "quoted stdin marker is not stdin-safe" "rg -n PATTE
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "quoted redirect tokens are not stdin-safe" 'rg -n PATTERN "<" /dev/null' \
     "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "quoted pipe-stderr token is not a path" "rg PATTERN '|&'" \
+    "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "commented stdin marker is not stdin-safe" 'rg -n PATTERN # < /dev/null' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "rg -e without path rejected" 'rg -e PATTERN' \
@@ -313,6 +319,8 @@ assert_fence_line_allowed "path command rg" 'command rg -n PATTERN python/'
 assert_fence_line_allowed "path command ripgrep" 'command ripgrep -n PATTERN skills/'
 assert_fence_line_allowed "path if rg" 'if rg -q PATTERN python/; then echo found; fi'
 assert_fence_line_allowed "path if ! ripgrep" 'if ! ripgrep -q PATTERN skills/; then echo missing; fi'
+assert_fence_line_violation "then-headed no-path rg" 'if true; then rg -q PATTERN; fi' \
+    "no-path rg/grep probe may block on stdin"
 assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi'
 assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi'
 assert_fence_line_allowed "path subshell grep" '( grep -n PATTERN file.txt ) || true'
@@ -329,6 +337,39 @@ assert_fence_line_allowed "stdin-safe rg" 'rg -n PATTERN --type py < /dev/null'
 assert_fence_line_allowed "redirected command grep with path" "command grep -v '^VALIDATION_' \"\$LANE_STATUS_FILE\" > \"\$LANE_STATUS_TMP\" || true"
 assert_fence_line_allowed "redirected rg with later safe path" 'rg -n PATTERN < /dev/null python/'
 assert_fence_line_allowed "piped rg allowed" 'cat file.txt | rg PATTERN'
+assert_fence_line_allowed "piped stderr rg allowed" 'cat file.txt |& rg PATTERN'
+assert_fence_line_violation "right-hand fallback rg parent ascent" 'false || rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "right-hand fallback command grep parent ascent" 'false || command grep PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "right-hand fallback bare grep" 'false || grep PATTERN file.txt' \
+    "bare top-level grep in bash fence"
+assert_fence_line_violation "semicolon rg parent ascent after non-grep" 'echo done; rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "logical-and rg parent ascent" 'true && rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "later pipeline rg parent ascent" 'cat file.txt | rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "safe first candidate unsafe later candidate" 'rg PATTERN python/; rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "rg split file parent ascent" 'rg -f ../patterns target/' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "rg long file parent ascent" 'rg --file ../patterns target/' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "rg long file equals parent ascent" 'rg --file=../patterns target/' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "rg attached file parent ascent" 'rg -f../patterns target/' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "rg split file parent ascent without path" 'rg -f ../patterns' \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "grep split include no path rejected" "command grep --include '*.py' PATTERN" \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "grep split exclude no path rejected" "command grep --exclude '*.py' PATTERN" \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "grep split include parent ascent" "command grep --include '*.py' PATTERN ../root" \
+    "parent-directory ascent in grep-family path operand"
+assert_fence_line_violation "grep split exclude parent ascent" "command grep --exclude '*.py' PATTERN ../root" \
+    "parent-directory ascent in grep-family path operand"
 assert_fence_line_allowed "rg -e with path allowed" 'rg -e PATTERN python/'
 assert_fence_line_allowed "command grep -e with path allowed" 'command grep -e PATTERN file.txt'
 assert_fence_line_allowed "command grep -l with path allowed" 'command grep -l PATTERN file.txt'
