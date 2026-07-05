@@ -1244,12 +1244,6 @@
   {
     "file": "larch/design/design_oos.py",
     "code": "C901",
-    "qualified_symbol": "file_oos_annotate_main",
-    "metric": 15
-  },
-  {
-    "file": "larch/design/design_oos.py",
-    "code": "C901",
     "qualified_symbol": "file_oos_prepare_main",
     "metric": 18
   },
@@ -1274,12 +1268,6 @@
   {
     "file": "larch/design/design_oos.py",
     "code": "PLR0912",
-    "qualified_symbol": "file_oos_annotate_main",
-    "metric": 14
-  },
-  {
-    "file": "larch/design/design_oos.py",
-    "code": "PLR0912",
     "qualified_symbol": "file_oos_prepare_main",
     "metric": 17
   },
@@ -1287,7 +1275,7 @@
     "file": "larch/design/design_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "file_oos_annotate_main",
-    "metric": 69
+    "metric": 57
   },
   {
     "file": "larch/design/design_oos.py",
@@ -3765,7 +3753,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "C901",
     "qualified_symbol": "_file",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3777,7 +3765,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0911",
     "qualified_symbol": "_file",
-    "metric": 8
+    "metric": 9
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3789,7 +3777,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0912",
     "qualified_symbol": "_file",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3819,7 +3807,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0915",
     "qualified_symbol": "_file",
-    "metric": 68
+    "metric": 72
   },
   {
     "file": "larch/issue/oos_filer.py",

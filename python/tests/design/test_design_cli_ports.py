@@ -42,6 +42,7 @@ ARCHITECTURAL_GUIDELINES_EXPECTED = {
     ("architectural-guidelines", "prepare"): ("larch.core.architectural_guidelines", "prepare_main"),
     ("architectural-guidelines", "prepare-compose"): ("larch.core.architectural_guidelines", "prepare_compose_main"),
     ("architectural-guidelines", "write-compose-assessment"): ("larch.core.architectural_guidelines", "write_compose_assessment_main"),
+    ("architectural-guidelines", "append-deviation-note"): ("larch.core.architectural_guidelines", "append_deviation_note_main"),
     ("architectural-guidelines", "write-staged-assessment"): ("larch.core.architectural_guidelines", "write_staged_assessment_main"),
     ("architectural-guidelines", "pin-note-from-staged"): ("larch.core.architectural_guidelines", "pin_note_from_staged_main"),
     ("architectural-guidelines", "invalidate"): ("larch.core.architectural_guidelines", "invalidate_main"),

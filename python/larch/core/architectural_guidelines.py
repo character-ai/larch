@@ -1,10 +1,11 @@
 """ARCHITECTURAL_GUIDELINES.md reader and implement note helpers."""
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false
 
 from __future__ import annotations
 
 import argparse
 import hashlib
+import json
 import os
 import re
 import shutil
@@ -16,9 +17,18 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
+from larch import io as larch_io
 from larch.core import config
+from larch.errors import ShipError
 from larch.issue import issue_wire
+from larch.report import exec_issue_detail  # lint-layering: ok append helper must match run-log flush warning dedupe.
+from larch.report.run_log_batch import (  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
+    _normalize_body_for_hash,
+    _redact_batch_payload,
+    append_execution_issue,
+)
 from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
@@ -39,6 +49,11 @@ _HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
+_RUN_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+_EXECUTION_WARNINGS_CATEGORY = "Warnings"
+_APPEND_DEVIATION_OK = "ok"
+_APPEND_DEVIATION_DUPLICATE = "duplicate"
+_APPEND_DEVIATION_FAILED = "failed"
 
 
 @dataclass(frozen=True)
@@ -892,6 +907,171 @@ def write_compose_assessment(
         metadata=metadata,
         base_ref=metadata.get("BASE_REF", ""),
     )
+
+
+def _format_deviation_warning_entry(note: str) -> str:
+    lines: list[str] = []
+    for raw_line in note.splitlines():
+        stripped = raw_line.strip()
+        if not stripped:
+            continue
+        lines.append(stripped if stripped.startswith("- ") else f"- {stripped}")
+    if not lines:
+        raise ValueError("note-file: content must not be empty")
+    return "\n".join(lines)
+
+
+def _warning_chunk_keys(body: str) -> set[str]:
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
+    keys: set[str] = set()
+    for chunk in execution_issue_chunks(body.splitlines()):
+        chunk_body = "\n".join(chunk)
+        for key in exec_issue_detail.structured_body_dedupe_keys(chunk_body, _EXECUTION_WARNINGS_CATEGORY):
+            keys.add(f"{_EXECUTION_WARNINGS_CATEGORY}\0{key}")
+    return keys
+
+
+def _warning_chunk_source_shas(body: str) -> set[str]:
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
+    shas: set[str] = set()
+    for chunk in execution_issue_chunks(body.splitlines()):
+        chunk_body = "\n".join(chunk)
+        normalized = _normalize_body_for_hash(chunk_body)
+        if normalized:
+            shas.add(hashlib.sha256(normalized.encode("utf-8")).hexdigest())
+    return shas
+
+
+def _section_body_lines(markdown: str, category: str) -> list[str]:
+    lines: list[str] = []
+    in_target = False
+    for line in markdown.splitlines():
+        if line.startswith("### "):
+            if in_target:
+                break
+            in_target = line == f"### {category}"
+            continue
+        if in_target:
+            lines.append(line)
+    return lines
+
+
+def _existing_warning_keys_from_markdown(path: Path) -> set[str]:
+    if not path.is_file() or path.is_symlink():
+        return set()
+    try:
+        text = path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set()
+    body = "\n".join(_section_body_lines(text, _EXECUTION_WARNINGS_CATEGORY))
+    if not body.strip():
+        return set()
+    return _warning_chunk_keys(_redact_batch_payload(body))
+
+
+def _valid_run_id(run_id: str) -> bool:
+    return bool(run_id and ".." not in run_id and "/" not in run_id and "\\" not in run_id and _RUN_ID_RE.fullmatch(run_id))
+
+
+def _read_session_run_id(implement_tmpdir: Path) -> str:
+    run_id = larch_io.read_kv(
+        path=implement_tmpdir / "parent-issue.md",
+        key="RUN_ID",
+        default="",
+        first_match=True,
+        cr_strip="strip",
+        on_error_default=True,
+        reject_symlink=True,
+    ).strip()
+    if _valid_run_id(run_id):
+        return run_id
+    session_id = implement_tmpdir / "session-id"
+    if not session_id.is_file() or session_id.is_symlink():
+        return ""
+    try:
+        run_id = session_id.read_text(encoding="utf-8", errors="replace").strip()
+    except OSError:
+        return ""
+    return run_id if _valid_run_id(run_id) else ""
+
+
+def _existing_warning_source_shas(batch_text: str) -> set[str]:
+    shas: set[str] = set()
+    for raw in batch_text.splitlines():
+        try:
+            parsed: object = json.loads(raw)
+        except json.JSONDecodeError:
+            continue
+        if not isinstance(parsed, dict):
+            continue
+        row = cast("dict[str, object]", parsed)
+        sha = row.get("source_sha256")
+        if row.get("category") == _EXECUTION_WARNINGS_CATEGORY and isinstance(sha, str):
+            shas.add(sha)
+    return shas
+
+
+def _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir: Path) -> tuple[set[str], set[str]]:
+    run_id = _read_session_run_id(implement_tmpdir)
+    if not run_id:
+        return set(), set()
+    batch_path = implement_tmpdir / "larch-logs" / "implement" / run_id / "execution-issues.ndjson"
+    if not batch_path.is_file() or batch_path.is_symlink():
+        return set(), set()
+    try:
+        batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return set(), set()
+    from larch.report.run_log_flush import _existing_execution_issue_keys as existing_execution_issue_keys  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
+    return existing_execution_issue_keys(batch_text), _existing_warning_source_shas(batch_text)
+
+
+def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
+    """Append a guideline deviation warning unless the run already has the same warning."""
+    entry = _format_deviation_warning_entry(note)
+    redacted_entry = _redact_batch_payload(entry)
+    issue_log = implement_tmpdir / "execution-issues.md"
+    existing_keys = _existing_warning_keys_from_markdown(issue_log)
+    ndjson_keys, ndjson_shas = _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir)
+    known_keys = existing_keys | ndjson_keys
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
+    kept_chunks: list[str] = []
+    for chunk in execution_issue_chunks(redacted_entry.splitlines()):
+        chunk_body = "\n".join(chunk)
+        chunk_keys = _warning_chunk_keys(chunk_body)
+        chunk_shas = _warning_chunk_source_shas(chunk_body)
+        if chunk_keys <= known_keys or (chunk_shas and chunk_shas <= ndjson_shas):
+            continue
+        kept_chunks.append(chunk_body)
+        known_keys.update(chunk_keys)
+        ndjson_shas.update(chunk_shas)
+    if not kept_chunks:
+        return _APPEND_DEVIATION_DUPLICATE
+    try:
+        append_execution_issue(log_file=issue_log, category=_EXECUTION_WARNINGS_CATEGORY, entry="\n".join(kept_chunks))
+    except OSError:
+        return _APPEND_DEVIATION_FAILED
+    return _APPEND_DEVIATION_OK
+
+
+def append_deviation_note_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-guidelines append-deviation-note")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--note-file", required=True)
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print(f"ARCHITECTURAL_GUIDELINES_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
+        print("ARCHITECTURAL_GUIDELINES_WARNING=missing implement tmpdir")
+        return 2
+    try:
+        note_text = _read_regular_text_no_follow(Path(args.note_file))
+        status = append_deviation_note(Path(args.implement_tmpdir), note_text)
+    except (OSError, UnicodeDecodeError, ValueError, ShipError) as exc:
+        print(f"ARCHITECTURAL_GUIDELINES_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
+        print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    print(f"ARCHITECTURAL_GUIDELINES_APPEND_STATUS={status}")
+    return 1 if status == _APPEND_DEVIATION_FAILED else 0
 
 
 def _bool_arg(value: str) -> bool:
