@@ -800,6 +800,7 @@ for needle in [
     'after security-sidecar disposition when applicable and before or at the Step 8 OOS checkpoint wrapper on the `oos-pipeline` branch, or after pre-driver `oos file` on the normal path',
 ]:
     require(skill, needle, 'NEVER #14/#15 Python OOS split pin')
+require('skills/implement/references/oos-pipeline.md', 'Do not ask the operator for confirmation before the batch call, and do not use `AskUserQuestion` here. Accepted non-security OOS disposition is automatic for this checkpoint.', 'legacy OOS pipeline must not ask confirmation before issue batch')
 cleanup_ref = Path('skills/implement/references/step18-cleanup.md').read_text()
 for needle in [
     'Resolve `STALL_TRACKING` from four layers',
