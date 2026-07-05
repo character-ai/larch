@@ -17,6 +17,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
+from typing import cast
 
 from larch import io as larch_io
 from larch.core import config
@@ -1000,13 +1001,15 @@ def _existing_warning_source_shas(batch_text: str) -> set[str]:
     shas: set[str] = set()
     for raw in batch_text.splitlines():
         try:
-            row = json.loads(raw)
+            parsed: object = json.loads(raw)
         except json.JSONDecodeError:
             continue
-        if not isinstance(row, dict):
+        if not isinstance(parsed, dict):
             continue
-        if row.get("category") == _EXECUTION_WARNINGS_CATEGORY and isinstance(row.get("source_sha256"), str):
-            shas.add(row["source_sha256"])
+        row = cast("dict[str, object]", parsed)
+        sha = row.get("source_sha256")
+        if row.get("category") == _EXECUTION_WARNINGS_CATEGORY and isinstance(sha, str):
+            shas.add(sha)
     return shas
 
 
