@@ -1810,9 +1810,10 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
 
     assert result.outcome is Outcome.STALLED
     assert result.detail == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-    # No flush: post-ensure re-flush skipped on resume, terminal snapshot skipped
-    # on the recoverable NO_CHECKS bail -- HEAD does not move.
-    assert not flush_calls
+    # One pre-PR guideline-outcome flush runs before ensure_pr. The post-ensure
+    # re-flush is skipped on resume, and the terminal snapshot is skipped on the
+    # recoverable NO_CHECKS bail, so HEAD advances at most once (outcome sidecar).
+    assert flush_calls == [True]
     assert not snapshot_calls
     # Only the idempotent reconcile push is issued.
     assert push_calls == [True]
@@ -6331,8 +6332,15 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kw: None)
+    monkeypatch.setattr(ship, "clear_guideline_ship_outcome_sidecar", lambda **_kw: None)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
     result = ship.run_ship(
         _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
         runner=RecordingRunner(),
