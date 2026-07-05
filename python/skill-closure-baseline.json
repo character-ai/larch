@@ -1,7 +1,7 @@
 [
   {
-    "closure_content_estimated_tokens": 53269,
-    "closure_estimated_tokens": 53436,
+    "closure_content_estimated_tokens": 53295,
+    "closure_estimated_tokens": 53461,
     "closure_lines": 1868,
     "conditional_content_estimated_tokens": 17927,
     "conditional_estimated_tokens": 18000,
@@ -32,16 +32,16 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25225,
-    "skill_md_estimated_tokens": 25280,
+    "skill_md_content_estimated_tokens": 25251,
+    "skill_md_estimated_tokens": 25305,
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 40059,
-    "closure_estimated_tokens": 40177,
+    "closure_content_estimated_tokens": 40072,
+    "closure_estimated_tokens": 40190,
     "closure_lines": 1260,
-    "conditional_content_estimated_tokens": 25504,
-    "conditional_estimated_tokens": 25561,
+    "conditional_content_estimated_tokens": 25511,
+    "conditional_estimated_tokens": 25568,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -70,13 +70,13 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 30291,
-    "skill_md_estimated_tokens": 30371,
+    "skill_md_content_estimated_tokens": 30304,
+    "skill_md_estimated_tokens": 30384,
     "skill_md_lines": 816
   },
   {
-    "closure_content_estimated_tokens": 44400,
-    "closure_estimated_tokens": 44583,
+    "closure_content_estimated_tokens": 44442,
+    "closure_estimated_tokens": 44625,
     "closure_lines": 2426,
     "conditional_content_estimated_tokens": 0,
     "conditional_estimated_tokens": 0,

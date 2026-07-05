@@ -1282,6 +1282,22 @@ def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pyt
     assert "blocker|major|minor|nit|uncertain" in text
 
 
+def test_oos_proposal_instruction_mentions_legitimacy_standard() -> None:
+    text = rendering.oos_proposal_instruction()
+    assert "highest-legitimacy concrete items" in text
+    assert "legitimacy standard at proposal time" in text
+
+
+def test_render_voter_oos_rules_mention_genuine_concrete_non_duplicate(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    text = _render_voter_text(tmp_path, capsys)
+    assert "Vote YES when the OOS observation is genuine, concrete, and non-duplicate" in text
+    assert "vote NO for style, noise, duplicates, false positives, or speculative items with no concrete trigger" in text
+    assert "Remedies are informational; do not vote NO for remedy disagreement." in text
+
+
 def test_render_voter_finding_oos_grammar_is_frozen(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     correctness = "true|partially-true|false-positive|uncertain"

@@ -143,10 +143,9 @@ def _assert_emit_stdout_matches_rows(
     assert out.splitlines() == [f"{key}={value}" for key, value in result.rows]
 
 
-def test_pre_vote_oos_gate_drops_prefixed_oos_and_renumbers(tmp_path: Path) -> None:
+def test_oos_prefixed_findings_stay_on_ballot(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
-    _ = findings.write_text(
-        """### FINDING_1: In-scope parser regression
+    original = """### FINDING_1: In-scope parser regression
 - **Reviewer(s)**: stub
 - **Concern**: first body stays intact
 
@@ -163,122 +162,41 @@ def test_pre_vote_oos_gate_drops_prefixed_oos_and_renumbers(tmp_path: Path) -> N
 ### FINDING_4: Fix [OUT_OF_SCOPE] marker parsing in body titles
 - **Reviewer(s)**: stub
 - **Concern**: title marker is not at the front
-""",
-        encoding="utf-8",
-    )
+"""
+    _ = findings.write_text(original, encoding="utf-8")
 
-    gate = review_pipeline._apply_pre_vote_oos_gate(findings_file=findings, review_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-
-    assert gate.dropped_count == 2
-    assert gate.remaining_count == 2
-    rewritten = findings.read_text(encoding="utf-8")
-    assert re.findall(r"### FINDING_(\d+):", rewritten) == ["1", "2"]
-    assert "In-scope parser regression" in rewritten
-    assert "Fix [OUT_OF_SCOPE] marker parsing in body titles" in rewritten
-    assert "Follow-up cleanup" not in rewritten
-    assert "Sensitive cleanup" not in rewritten
-    audit = (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
-    assert "### OOS_1: [OUT_OF_SCOPE] Follow-up cleanup" in audit
-    assert "- **Concern**: dropped body bytes stay intact" in audit
-    assert "Sensitive cleanup" not in audit
-    security_audit = (tmp_path / "oos-dropped-security-local.md").read_text(encoding="utf-8")
-    assert "### OOS_1: [OUT_OF_SCOPE] [security] Sensitive cleanup" in security_audit
-    assert "- **Concern**: keep this local only" in security_audit
-    assert "Follow-up cleanup" not in security_audit
-    env = (tmp_path / "pre-vote-oos-gate.env").read_text(encoding="utf-8")
-    assert "PRE_VOTE_OOS_DROPPED_COUNT=2\n" in env
-    assert f"PRE_VOTE_OOS_DROPPED_FILE={tmp_path / 'oos-dropped-before-vote.md'}\n" in env
-    assert "PRE_VOTE_FINDINGS_REMAINING=2\n" in env
-    assert "STATUS=ok\n" in env
+    assert review_pipeline._ballot_block_count(findings) == 4  # pyright: ignore[reportPrivateUsage]
+    assert findings.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "oos-dropped-before-vote.md").exists()
+    assert not (tmp_path / "pre-vote-oos-gate.env").exists()
 
 
-def test_pre_vote_oos_gate_keeps_all_security_drops_local(tmp_path: Path) -> None:
+def test_security_oos_prefixed_findings_stay_on_ballot(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
-    _ = findings.write_text(
-        """### FINDING_1: [OUT_OF_SCOPE] Security cleanup
+    original = """### FINDING_1: [OUT_OF_SCOPE] Security cleanup
 - **Reviewer(s)**: stub
 - **Concern**: local sidecar only
 - **Focus area**: security
-""",
-        encoding="utf-8",
-    )
-
-    gate = review_pipeline._apply_pre_vote_oos_gate(findings_file=findings, review_tmpdir=tmp_path)  # pyright: ignore[reportPrivateUsage]
-
-    assert gate.dropped_count == 1
-    assert gate.remaining_count == 0
-    assert findings.read_text(encoding="utf-8") == ""
-    assert (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8") == ""
-    security_audit = (tmp_path / "oos-dropped-security-local.md").read_text(encoding="utf-8")
-    assert "### OOS_1: [OUT_OF_SCOPE] Security cleanup" in security_audit
-    assert "- **Concern**: local sidecar only" in security_audit
-    env = (tmp_path / "pre-vote-oos-gate.env").read_text(encoding="utf-8")
-    assert "PRE_VOTE_OOS_DROPPED_COUNT=1\n" in env
-    assert f"PRE_VOTE_OOS_DROPPED_FILE={tmp_path / 'oos-dropped-before-vote.md'}\n" in env
-    assert "PRE_VOTE_FINDINGS_REMAINING=0\n" in env
-    assert "STATUS=ok\n" in env
-
-
-def test_prune_nit_then_pre_vote_gate_clears_stale_parent_audit_when_no_drops(tmp_path: Path) -> None:
-    parent = tmp_path / "parent"
-    parent.mkdir()
-    review_tmpdir = tmp_path / "review"
-    review_tmpdir.mkdir()
-    findings = review_tmpdir / "findings.md"
-    original_findings = """### FINDING_1: In-scope parser regression
-- **Reviewer(s)**: stub
-- **Concern**: first body stays intact
 """
-    _ = findings.write_text(original_findings, encoding="utf-8")
-    parent_audit = parent / "oos-dropped-before-vote.md"
-    _ = parent_audit.write_text("### OOS_1: stale prior round\n", encoding="utf-8")
-    session_env = parent / "session.env"
-    _ = session_env.write_text("SESSION=stub\n", encoding="utf-8")
-    commands = review_pipeline.ReviewCommands(
-        gather="",
-        dispatch="",
-        collect="",
-        threshold="",
-        aggregate="",
-        tally="",
-        emit="",
-        prune_nits="prune-stub",
-        dispatch_voters="",
-    )
+    _ = findings.write_text(original, encoding="utf-8")
 
-    class Runner:
-        def run(
-            self,
-            argv: Sequence[str],
-            *,
-            timeout: float | None = None,
-            cwd: str | None = None,
-            env: Mapping[str, str] | None = None,
-            check: bool = False,
-            stdout: int | None = None,
-            stderr: int | None = None,
-        ) -> proc.CommandResult:
-            _ = timeout, cwd, env, check, stdout, stderr
-            assert argv[0] == "prune-stub"
-            return proc.CommandResult(
-                tuple(str(item) for item in argv),
-                0,
-                "PRUNED_COUNT=0\nINSCOPE_REMAINING=1\nSTATUS=skipped\n",
-                "",
-                0.0,
-            )
+    assert review_pipeline._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
+    assert findings.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "oos-dropped-security-local.md").exists()
 
-    _prune_result, gate = review_pipeline._prune_nit_then_pre_vote_gate(  # pyright: ignore[reportPrivateUsage]
-        commands=commands,
-        review_tmpdir=review_tmpdir,
-        runner=Runner(),
-        session_env_path=str(session_env),
-    )
 
-    assert gate.dropped_count == 0
-    assert (review_tmpdir / "oos-dropped-before-vote.md").read_text(encoding="utf-8") == ""
-    assert parent_audit.read_text(encoding="utf-8") == ""
-    assert findings.read_text(encoding="utf-8") == original_findings
+def test_direct_oos_findings_stay_on_ballot(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    original = """### OOS_1: Direct out-of-scope item
+- **Reviewer(s)**: stub
+- **Concern**: direct ballot rows should count.
+"""
+    _ = findings.write_text(original, encoding="utf-8")
+
+    assert review_pipeline._ballot_block_count(findings) == 1  # pyright: ignore[reportPrivateUsage]
+    assert findings.read_text(encoding="utf-8") == original
+    assert not (tmp_path / "oos-dropped-direct.md").exists()
+
 
 
 def test_review_core_body_zero_findings_returns_ordered_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -384,6 +302,26 @@ def test_review_core_body_threshold_failure_includes_dispatch_scout_rows(tmp_pat
     assert keys.index("REVIEW_CORE_STATUS") > keys.index("PANEL_PRUNED_EMPTY")
 
 
+def test_review_core_body_threshold_failure_clears_public_oos_artifact(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-threshold-oos",
+        extra_env={
+            "TEST_COLLECTOR_VARIANT": "empty-with-oos",
+            "TEST_THRESHOLD_OK": "false",
+        },
+    )
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
+    assert not (tmp_path / "body-threshold-oos" / "oos.md").read_text(encoding="utf-8").strip()
+
+
 def test_review_core_body_proposer_map_failed_has_no_classification(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -433,7 +371,7 @@ def test_review_core_body_validation_exhausted_proposer_map_failed_has_no_classi
     assert result.rows[threshold_idx] == ("THRESHOLD_REASON", "proposer-map-failed")
 
 
-def test_review_core_body_validation_exhausted_tally_fail_has_no_voter_rows(
+def test_review_core_body_validation_exhausted_tally_fail_has_voter_rows(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -454,7 +392,7 @@ def test_review_core_body_validation_exhausted_tally_fail_has_no_voter_rows(
     assert result.rc == 2
     assert result.status == review_pipeline.ReviewCoreStatus.panel_failed
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
-    assert "VOTER_1_TOOL" not in keys
+    assert "VOTER_1_TOOL" in keys
     assert "FINDINGS_CLASSIFICATION_TSV_FILE" not in keys
 
 
@@ -501,19 +439,12 @@ def test_review_core_body_aggregate_zero_second_path_merges_dispatch_rows(
     assert result.rc == 0
     assert result.status == review_pipeline.ReviewCoreStatus.ok
     assert keys[:3] == ["SCOUT_STATUS", "DYNAMIC_SLOTS", "PANEL_PRUNED_EMPTY"]
-    assert ("PRE_VOTE_FINDINGS_REMAINING", 1) in result.rows
     assert "VOTER_1_TOOL" in keys
     assert keys.index("VOTER_1_TOOL") < keys.index("FINDINGS_CLASSIFICATION_TSV_FILE") < keys.index("REVIEW_CORE_STATUS")
 
 
-def test_review_core_body_pre_vote_gate_all_oos_skips_voters(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-) -> None:
-    collect = tmp_path / "collect-oos-findings.sh"
-    _write_executable(
-        collect,
-        """#!/usr/bin/env bash
+def _all_oos_collect_stub_body() -> str:
+    return """#!/usr/bin/env bash
 set -euo pipefail
 findings=""
 while [[ $# -gt 0 ]]; do
@@ -537,8 +468,15 @@ cat > "$findings" <<'EOF'
 - **Suggested revision**: file separately
 EOF
 printf 'FINDINGS_COUNT=1\\nOOS_COUNT=1\\nDIRTY_DETECTED=false\\nCOLLECT_OK=true\\n'
-""",
-    )
+"""
+
+
+def test_review_core_body_all_oos_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
     aggregate = tmp_path / "aggregate-pass-through.sh"
     _write_executable(
         aggregate,
@@ -552,7 +490,7 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
         tmp_path,
         monkeypatch,
         findings=1,
-        outdir_name="body-pre-vote-all-oos",
+        outdir_name="body-all-oos",
         extra_env={
             "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
             "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(aggregate),
@@ -561,12 +499,60 @@ printf 'AGGREGATED=true\\nINPUT_COUNT=1\\nMERGED_COUNT=1\\nREASON=ok\\n'
     keys = _review_core_row_keys(result)
 
     assert result.rc == 0
-    assert result.status == review_pipeline.ReviewCoreStatus.zero_findings
-    assert ("PRE_VOTE_OOS_DROPPED_COUNT", 1) in result.rows
-    assert ("PRE_VOTE_FINDINGS_REMAINING", 0) in result.rows
-    assert "VOTER_1_TOOL" not in keys
-    audit = tmp_path / "body-pre-vote-all-oos" / "oos-dropped-before-vote.md"
-    assert "### OOS_1: [OUT_OF_SCOPE] Unrelated cleanup" in audit.read_text(encoding="utf-8")
+    assert result.status in {review_pipeline.ReviewCoreStatus.ok, review_pipeline.ReviewCoreStatus.fix_required}
+    assert "VOTER_1_TOOL" in keys
+    audit = tmp_path / "body-all-oos" / "oos-dropped-before-vote.md"
+    assert not audit.exists()
+
+
+def test_review_core_body_all_oos_validation_exhausted_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
+    stubs = _write_review_core_stubs(tmp_path / "body-all-oos-agg-exhaust-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-all-oos-agg-exhaust",
+        extra_env={
+            "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_exhausted"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 2
+    assert result.status == review_pipeline.ReviewCoreStatus.aggregator_validation_exhausted
+    assert "VOTER_1_TOOL" in keys
+    assert not (tmp_path / "body-all-oos-agg-exhaust" / "oos-dropped-before-vote.md").exists()
+
+
+def test_review_core_body_all_oos_empty_merge_dispatches_voters(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    collect = tmp_path / "collect-oos-findings.sh"
+    _write_executable(collect, _all_oos_collect_stub_body())
+    stubs = _write_review_core_stubs(tmp_path / "body-all-oos-agg-zero-stubs")
+    result = _run_review_core_body_direct(
+        tmp_path,
+        monkeypatch,
+        findings=1,
+        outdir_name="body-all-oos-agg-zero",
+        extra_env={
+            "REVIEW_CORE_COLLECT_FINDINGS_SH": str(collect),
+            "REVIEW_CORE_AGGREGATE_FINDINGS_SH": str(stubs["aggregate_zero"]),
+        },
+    )
+    keys = _review_core_row_keys(result)
+
+    assert result.rc == 0
+    assert result.status in {review_pipeline.ReviewCoreStatus.ok, review_pipeline.ReviewCoreStatus.fix_required}
+    assert "VOTER_1_TOOL" in keys
+    assert not (tmp_path / "body-all-oos-agg-zero" / "oos-dropped-before-vote.md").exists()
 
 
 def test_review_core_body_cap_reached_round_two(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

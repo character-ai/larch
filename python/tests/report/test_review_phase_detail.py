@@ -150,98 +150,120 @@ def test_render_implement_review_detail_prefers_run_log_root_without_completed_r
     assert "| 1 | 2 | 2 | 0 | 0 |" not in detail
 
 
-def _write_dropped_oos(path: Path, *, title: str, severity: str = "latent", concern: str = "Needs a follow-up.") -> None:
+def _write_rejected_oos(path: Path, *, title: str, severity: str = "latent", concern: str = "Needs a follow-up.") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
         f"### OOS_1: {title}\n"
         "- **Reviewer(s)**: codex-specialist-correctness\n"
         f"- **Severity**: {severity}\n"
         f"- **Concern**: {concern}\n"
-        "- **Suggested revisions (informational for voters; coder decides)**:\n",
+        "- **Suggested revisions (informational for voters; coder decides)**:\n"
+        "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n",
         encoding="utf-8",
     )
 
 
-def test_render_dropped_oos_candidate_section_lists_public_candidates(tmp_path: Path) -> None:
-    _write_dropped_oos(
-        tmp_path / "round-1" / "oos-dropped-before-vote.md",
+def test_render_rejected_oos_audit_section_lists_public_candidates(tmp_path: Path) -> None:
+    _write_rejected_oos(
+        tmp_path / "round-1" / "oos.md",
         title="[OUT_OF_SCOPE] retry gap",
         severity="important",
         concern="`python/example.py:10` misses the retry branch. It predates this diff.",
     )
 
-    section = review_phase_detail.render_dropped_oos_candidate_section(tmp_path)
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
-    assert "## Dropped OOS candidates" in section
-    assert "These pre-vote OOS candidates were not filed automatically." in section
-    assert "- **Round 1 OOS_1** (important): retry gap." in section
+    assert "## Rejected OOS audit" in section
+    assert "These OOS observations reached the vote but were not accepted for filing." in section
+    assert "- **Round 1 OOS_1** (rejected, important): retry gap." in section
     assert "Concern: `python/example.py:10` misses the retry branch." in section
 
 
-def test_render_dropped_oos_candidate_section_skips_security_candidates(tmp_path: Path) -> None:
+def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: Path) -> None:
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()
-    _ = (round_dir / "oos-dropped-before-vote.md").write_text(
+    _ = (round_dir / "oos.md").write_text(
         "### OOS_1: [OUT_OF_SCOPE] [security] token leak\n"
         "- **Reviewer(s)**: codex-specialist-security\n"
         "- **Severity**: important\n"
-        "- **Concern**: private detail.\n\n"
+        "- **Concern**: private detail.\n"
+        "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n\n"
         "### OOS_2: [OUT_OF_SCOPE] public follow-up\n"
         "- **Reviewer(s)**: codex-specialist-correctness\n"
         "- **Severity**: latent\n"
-        "- **Concern**: public detail.\n",
+        "- **Concern**: public detail.\n"
+        "Vote tally: YES=1 NO=1 JUDGE_ERROR=0 Result=neutral\n",
         encoding="utf-8",
     )
 
-    section = review_phase_detail.render_dropped_oos_candidate_section(tmp_path)
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
     assert "public follow-up" in section
     assert "private detail" not in section
     assert "Round 1 OOS_1" not in section
 
 
-def test_render_dropped_oos_candidate_section_keeps_security_md_titled_public_candidates(tmp_path: Path) -> None:
+def test_render_rejected_oos_audit_section_keeps_security_md_titled_public_candidates(tmp_path: Path) -> None:
     # A title that merely starts with "SECURITY.md" (documentation-drift, not a
     # security-sensitive finding) must not be misclassified as security-routed.
-    _write_dropped_oos(
-        tmp_path / "round-1" / "oos-dropped-before-vote.md",
+    _write_rejected_oos(
+        tmp_path / "round-1" / "oos.md",
         title="[OUT_OF_SCOPE] SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption",
         severity="important",
         concern="docs/linting.md moved to DIGEST_FILE-first consumption but SECURITY.md was not updated.",
     )
 
-    section = review_phase_detail.render_dropped_oos_candidate_section(tmp_path)
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
     assert "SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption" in section
 
 
-def test_render_dropped_oos_candidate_section_caps_candidates(tmp_path: Path) -> None:
+def test_render_rejected_oos_audit_section_lists_legacy_finding_block(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    _ = (round_dir / "oos.md").write_text(
+        "### FINDING_1: legacy scope drift\n"
+        "- **Reviewer(s)**: codex-specialist-correctness\n"
+        "- **Severity**: minor\n"
+        "- **Concern**: moved into oos.md without an OOS tag.\n"
+        "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n",
+        encoding="utf-8",
+    )
+
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
+
+    assert "Round 1 FINDING_1" in section
+    assert "legacy scope drift" in section
+
+
+def test_render_rejected_oos_audit_section_caps_candidates(tmp_path: Path) -> None:
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()
     blocks: list[str] = []
-    for idx in range(review_phase_detail.DROPPED_OOS_CANDIDATE_LIMIT + 1):
+    for idx in range(review_phase_detail.REJECTED_OOS_AUDIT_LIMIT + 1):
         blocks.append(
             f"### OOS_{idx + 1}: [OUT_OF_SCOPE] item {idx + 1}\n"
             "- **Reviewer(s)**: codex-specialist-correctness\n"
             "- **Severity**: nit\n"
             f"- **Concern**: concern {idx + 1}.\n"
+            "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n"
         )
-    _ = (round_dir / "oos-dropped-before-vote.md").write_text("\n".join(blocks), encoding="utf-8")
+    _ = (round_dir / "oos.md").write_text("\n".join(blocks), encoding="utf-8")
 
-    section = review_phase_detail.render_dropped_oos_candidate_section(tmp_path)
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
-    assert f"Round 1 OOS_{review_phase_detail.DROPPED_OOS_CANDIDATE_LIMIT}" in section
-    assert f"Round 1 OOS_{review_phase_detail.DROPPED_OOS_CANDIDATE_LIMIT + 1}" not in section
-    assert "- **Additional candidates**: 1 omitted by the final-summary cap." in section
+    assert f"Round 1 OOS_{review_phase_detail.REJECTED_OOS_AUDIT_LIMIT}" in section
+    assert f"Round 1 OOS_{review_phase_detail.REJECTED_OOS_AUDIT_LIMIT + 1}" not in section
+    assert "- **Additional audit rows**: 1 omitted by the final-summary cap." in section
 
 
-def test_render_implement_review_detail_appends_dropped_oos_candidates(
+def test_render_implement_review_detail_appends_rejected_oos_audit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     run_id = "run-3794"
     run_dir = tmp_path / "larch-logs" / "implement" / run_id
-    _write_dropped_oos(run_dir / "round-1" / "oos-dropped-before-vote.md", title="[OUT_OF_SCOPE] closeout gap")
+    _write_rejected_oos(run_dir / "round-1" / "oos.md", title="[OUT_OF_SCOPE] closeout gap")
 
     def fake_render(*_args: object, **_kwargs: object) -> str:
         return "## Review Phase Detail\nreview detail\n"
@@ -250,5 +272,5 @@ def test_render_implement_review_detail_appends_dropped_oos_candidates(
 
     detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=tmp_path, run_id=run_id)
 
-    assert "## Review Phase Detail\nreview detail\n\n## Dropped OOS candidates" in detail
+    assert "## Review Phase Detail\nreview detail\n\n## Rejected OOS audit" in detail
     assert "closeout gap" in detail

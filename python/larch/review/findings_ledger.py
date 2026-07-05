@@ -185,8 +185,9 @@ def prompt_section(ledger_root: Path, *, role: str) -> str:
         rules = (
             f"If a ballot item duplicates a {suppress} ledger entry with no materially new evidence, "
             "vote NO. Do not down-vote an `accepted` duplicate on this basis. `oos` duplicates "
-            "should not be re-raised as new OOS; vote NO if they reach the ballot. Vote NO on OOS "
-            "ballot items that fail the OOS Acceptance Rubric materiality gate, even when they are not duplicates."
+            "should not be re-raised as new OOS; vote NO if they reach the ballot. For OOS ballot "
+            "items, accept genuine, concrete, non-duplicate observations and vote NO for style, noise, "
+            "false positives, duplicates, or speculation with no concrete trigger."
         )
     note = "\nLedger truncated to the most recent rows that fit the prompt budget.\n" if truncated else "\n"
     return (

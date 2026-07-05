@@ -846,6 +846,27 @@ def accept_finding(*, yes: int, no: int, exonerate: int, eligible: int) -> bool:
     return yes >= 2  # noqa: PLR2004
 
 
+
+def accept_oos(*, yes: int, no: int, exonerate: int, eligible: int) -> bool:
+    _ = no, exonerate
+    if eligible <= 0:
+        return False
+    if eligible == 1:
+        return yes == 1
+    if eligible == 2:  # noqa: PLR2004
+        return yes >= 1
+    return yes >= 2  # noqa: PLR2004
+
+
+def classify_oos_result(*, yes: int, no: int, exonerate: int, eligible: int) -> str:
+    if eligible <= 0:
+        return "rejected"
+    if accept_oos(yes=yes, no=no, exonerate=exonerate, eligible=eligible):
+        return "accepted"
+    if yes > 0:
+        return "neutral"
+    return "rejected"
+
 def accept_finding_main(argv: list[str]) -> int:
     if len(argv) != 4:  # noqa: PLR2004
         return _error("usage: accept-finding <yes> <no> <exonerate> <eligible>")

@@ -857,9 +857,9 @@ def oos_proposal_instruction() -> str:
     return """OOS proposal cap:
 - Report every in-scope finding you identify; in-scope findings are uncapped.
 - Report at most 3 `out_of_scope` / `[OUT_OF_SCOPE]` proposals per reviewer.
-- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- If more than 3 OOS candidates exist, keep only the highest-legitimacy concrete items under `skills/shared/oos-acceptance-rubric.md`.
 - Do not summarize, count, or append overflow OOS items.
-- Apply the OOS Acceptance Rubric materiality gate at proposal time. Automatic NO examples include style-only or polish-only items, speculative portability for untargeted shells, platforms, or tool versions, and cleanup or consistency work with no named future cost."""
+- Apply the OOS Acceptance Rubric legitimacy standard at proposal time. Automatic NO examples include style-only or polish-only items, duplicates, false positives, speculative items with no concrete trigger, and cleanup or consistency work with no named future cost."""
 
 
 def _oos_proposal_instruction() -> str:
@@ -1223,7 +1223,7 @@ def render_voter_main(argv: list[str]) -> int:
         if ledger_section:
             payload_bytes += _byte_len(ledger_section)
         out.extend(_section_lines(ledger_section))
-        oos_rule = "apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, issue-overhead test, and default-deny. Remedies are informational; do not vote NO for remedy disagreement."
+        oos_rule = "apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES when the OOS observation is genuine, concrete, and non-duplicate; vote NO for style, noise, duplicates, false positives, or speculative items with no concrete trigger. Remedies are informational; do not vote NO for remedy disagreement."
         if args.id_grammar == "finding-only":
             out.append(f"For items prefixed with `[OUT_OF_SCOPE]`: {oos_rule}")
         else:

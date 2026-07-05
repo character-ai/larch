@@ -176,10 +176,16 @@ def _aggregate_trigger_fires(blocks: list[str]) -> bool:
 def _promote_aggregate_oos_pool(*, accepted_path: Path, pool_path: Path) -> None:
     accepted_text = accepted_path.read_text(encoding="utf-8", errors="replace") if accepted_path.is_file() else ""
     accepted_blocks = [block for block in _aggregate_oos_blocks(accepted_text) if not _is_security_block_text(block)]
-    pool_blocks = [
-        block for block in _aggregate_oos_blocks(pool_path.read_text(encoding="utf-8", errors="replace"))
-        if not _is_security_block_text(block)
-    ] if pool_path.is_file() else []
+    pool_blocks = (
+        [
+            block
+            for block in _aggregate_oos_blocks(pool_path.read_text(encoding="utf-8", errors="replace"))
+            if not _is_security_block_text(block)
+            and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
+        ]
+        if pool_path.is_file()
+        else []
+    )
     seen = {_aggregate_block_identity(block) for block in accepted_blocks}
     trigger_blocks = list(accepted_blocks)
     for block in pool_blocks:

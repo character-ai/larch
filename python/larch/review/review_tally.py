@@ -33,8 +33,6 @@ _CLASSIFICATION_HEADER = (
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
 _OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):", re.MULTILINE)
 _OOS_POOL_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_\d+:", re.MULTILINE)
-_AGGREGATE_HIGH_SEVERITIES = {"blocking", "important"}
-_AGGREGATE_LATENT_THRESHOLD = 3
 
 
 def _error(message: str) -> int:
@@ -457,14 +455,6 @@ def _normalize_oos_header_text(*, text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
 
-def _body_severity_from_text(text: str) -> str:
-    for line in text.splitlines():
-        match = re.match(r"^[\s-]*\*\*Severity\*\*:\s*(.*?)\s*$", line)
-        if match:
-            return match.group(1).strip().lower()
-    return ""
-
-
 def _aggregate_parent(*, review_tmpdir: Path, session_env_path: str = "", implement_tmpdir: str = "") -> Path:
     if session_env_path:
         return Path(session_env_path).parent
@@ -507,17 +497,6 @@ def _append_oos_pool_candidate(*, pool_file: Path, text: str) -> None:
         _ = handle.write(separator + text.rstrip("\n") + "\n")
 
 
-def _aggregate_trigger_fires(blocks: list[str]) -> bool:
-    latent = 0
-    for block in blocks:
-        severity = _body_severity_from_text(block)
-        if severity in _AGGREGATE_HIGH_SEVERITIES:
-            return True
-        if severity == "latent":
-            latent += 1
-    return latent >= _AGGREGATE_LATENT_THRESHOLD
-
-
 def _next_oos_number(text: str) -> int:
     numbers = [int(match.group(1)) for match in _OOS_HEADER_RE.finditer(text)]
     return max(numbers, default=0) + 1
@@ -525,26 +504,25 @@ def _next_oos_number(text: str) -> int:
 
 def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | None = None) -> None:
     sink_text = _read(sink) if sink.is_file() else ""
-    sink_blocks = [block for block in _aggregate_oos_blocks(sink_text) if not voting.is_security_block_text(block)]
-    pool_blocks = [block for block in _aggregate_oos_blocks(_read(pool)) if not voting.is_security_block_text(block)] if pool.is_file() else []
+    accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(sink_text)}
     main_blocks = (
         [block for block in _aggregate_oos_blocks(_read(main_agent)) if not voting.is_security_block_text(block)]
         if main_agent is not None and main_agent.is_file()
         else []
     )
-    seen: set[str] = set()
-    trigger_blocks: list[str] = []
-    for block in [*sink_blocks, *pool_blocks, *main_blocks]:
-        identity = _aggregate_block_identity(block)
-        if identity and identity not in seen:
-            seen.add(identity)
-            trigger_blocks.append(block)
-    if not _aggregate_trigger_fires(trigger_blocks):
-        return
-    accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(sink_text)}
+    pool_blocks = (
+        [
+            block
+            for block in _aggregate_oos_blocks(_read(pool))
+            if not voting.is_security_block_text(block)
+            and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
+        ]
+        if pool.is_file()
+        else []
+    )
     next_num = _next_oos_number(sink_text)
     promoted: list[str] = []
-    for block in pool_blocks:
+    for block in [*main_blocks, *pool_blocks]:
         identity = _aggregate_block_identity(block)
         if not identity or identity in accepted_seen:
             continue
@@ -665,9 +643,12 @@ def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: st
     }
 
 
-def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, artifact: str, security: bool) -> None:
+def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, security_sidecar: Path, artifact: str, security: bool, accepted: bool) -> None:
+    if security:
+        _append(path=security_sidecar, text=artifact)
+        return
     _append(path=oos_file, text=artifact)
-    if not security:
+    if accepted:
         _append_oos_pool_candidate(pool_file=pool_file, text=artifact)
 
 
@@ -734,6 +715,7 @@ def tally_code_votes(argv: list[str]) -> int:
     accepted_file = review_tmpdir / "accepted-findings.md"
     rejected_file = review_tmpdir / "rejected-findings.md"
     oos_accepted_file = review_tmpdir / "oos-accepted-review.md"
+    security_oos_file = (Path(args.session_env_path).parent if args.session_env_path else oos_accepted_file.parent) / "security-oos-observations.md"
     oos_file = review_tmpdir / "oos.md"
     voting_tally_file = review_tmpdir / "voting-tally.md"
     tally_env = review_tmpdir / "review-tally.env"
@@ -922,7 +904,6 @@ def tally_code_votes(argv: list[str]) -> int:
         result = voting.classify_result(yes=yes, no=no, exonerate=0, eligible=effective)
         if effective >= _MIN_DEGRADABLE_PANEL and (yes + no) < quorum:
             under_quorum_items.append(item_id)
-        tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
         voter_votes, voter_severities = _voter_votes_and_severities(
             cells,
             voter_tools=args.voter_tools,
@@ -957,6 +938,9 @@ def tally_code_votes(argv: list[str]) -> int:
         if not is_oos and _scope_drift(block=block, scope_files=args.scope_files, plan_file=args.plan_file):
             is_oos = True
             drift += 1
+        if is_oos:
+            result = voting.classify_oos_result(yes=yes, no=no, exonerate=0, eligible=effective)
+        tally_lines.append(f"| {item_id} | {yes} | {no} | {judge_error} | {result} |\n")
         _record_classification_and_ledger(
             class_tsv=class_tsv,
             classification_row=_classification_row(
@@ -996,8 +980,10 @@ def tally_code_votes(argv: list[str]) -> int:
                 _record_public_oos_artifact(
                     oos_file=oos_file,
                     pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                    security_sidecar=security_oos_file,
                     artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} ({reroute_marker})\n\n",
                     security=security,
+                    accepted=False,
                 )
                 oos_rejected += 1
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome="oos" if neutral_rescued else result)
@@ -1012,8 +998,10 @@ def tally_code_votes(argv: list[str]) -> int:
             _record_public_oos_artifact(
                 oos_file=oos_file,
                 pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
+                security_sidecar=security_oos_file,
                 artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n",
                 security=security,
+                accepted=result == "accepted",
             )
             if result == "accepted":
                 if not security:
@@ -1467,3 +1455,4 @@ def log_phase(argv: list[str]) -> int:
 
 def log_phase_main(argv: list[str]) -> int:
     return log_phase(argv)
+# pyright: reportUnusedFunction=false

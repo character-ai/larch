@@ -21,7 +21,7 @@ End-to-end: fetch the vetted `larch:plan`, materialize artifacts, implement, val
 
 Two invariants enforced across multiple steps. Anchor cross-step questions here; do not re-derive inline.
 
-1. **Step 9a.1 OOS Sentinel Idempotency** — re-running `/implement` in the same session MUST NOT double-file OOS issues. **Enforcement**: Step 9a.1 checks `$IMPLEMENT_TMPDIR/oos-issues-created.md`, recovers prior URLs and tallies from it, and avoids a second `/issue` call. **Why**: `/issue` semantic dedup is a nondeterministic backstop; the sentinel is the byte-exact guard.
+1. **Step 9a.1 OOS Sentinel Idempotency** — re-running `/implement` in the same session MUST NOT double-file the unifying `[OOS]` issue for vote-accepted non-security OOS. **Enforcement**: Step 9a.1 checks `$IMPLEMENT_TMPDIR/oos-issues-created.md`, recovers prior URLs and tallies from it, and avoids a second `/issue` call. **Why**: `/issue` semantic dedup is a nondeterministic backstop; the sentinel is the byte-exact guard.
 
 **Fork-mode carve-out for Invariant #1**: when `forked_target=true`, Step 9a.1 does not call `/issue`; accepted OOS items stay in final-report text. CI comparison uses `upstream/main` via `python/cli.py push rebase --base-remote upstream --base-ref main` and `python/cli.py ci status --base-remote upstream --base-ref main`.
 

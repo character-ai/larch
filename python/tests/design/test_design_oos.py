@@ -673,6 +673,7 @@ def test_prepare_promotes_important_pool_item(
         """### FINDING_1: important one
 - **Severity**: important
 - **Concern**: one.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -706,6 +707,7 @@ def test_prepare_promotes_pool_before_skip_sentinel(
         """### FINDING_1: pool item
 - **Severity**: important
 - **Concern**: promote before skip.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -743,6 +745,7 @@ def test_prepare_counts_accepted_and_pool_latent_items(
         """### FINDING_1: latent three
 - **Severity**: latent
 - **Concern**: three.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -770,10 +773,12 @@ def test_prepare_multi_round_pool_accumulates_latent_items(
         """### FINDING_1: latent one
 - **Severity**: latent
 - **Concern**: one.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_2: latent two
 - **Severity**: latent
 - **Concern**: two.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -789,18 +794,22 @@ def test_prepare_multi_round_pool_accumulates_latent_items(
         """### FINDING_1: latent one
 - **Severity**: latent
 - **Concern**: one.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_2: latent two
 - **Severity**: latent
 - **Concern**: two.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_3: latent three
 - **Severity**: latent
 - **Concern**: three.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_4: latent four
 - **Severity**: latent
 - **Concern**: four.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -1174,14 +1183,17 @@ def test_prepare_promotes_three_latent_pool_items(tmp_path: Path, monkeypatch: p
         """### FINDING_1: latent one
 - **Severity**: latent
 - **Concern**: one.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_2: latent two
 - **Severity**: latent
 - **Concern**: two.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
 ### FINDING_3: latent three
 - **Severity**: latent
 - **Concern**: three.
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 """,
         encoding="utf-8",
     )
@@ -1208,6 +1220,34 @@ def test_prepare_two_latent_pool_items_do_not_trigger(tmp_path: Path, monkeypatc
 ### FINDING_2: latent two
 - **Severity**: latent
 - **Concern**: two.
+""",
+        encoding="utf-8",
+    )
+
+    rc = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path)])
+
+    assert rc == 0
+    assert _kv(capsys.readouterr().out)["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
+
+
+def test_prepare_rejected_pool_items_do_not_promote(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+    _stub_design_oos_prepare_commands(monkeypatch)
+    _ = (tmp_path / "oos-aggregate-pool.md").write_text(
+        """### FINDING_1: rejected one
+- **Severity**: important
+- **Concern**: one.
+Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
+
+### FINDING_2: rejected two
+- **Severity**: important
+- **Concern**: two.
+Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
+
+### FINDING_3: rejected three
+- **Severity**: important
+- **Concern**: three.
+Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
 """,
         encoding="utf-8",
     )

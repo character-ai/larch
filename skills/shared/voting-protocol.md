@@ -80,7 +80,7 @@ Customize the `{VOTER_ROLE}` and `{REVIEW_CONTEXT}` per skill:
 
 <!-- OOS voter rubric: canonical runtime voter text is emitted by python/cli.py render voter. Keep OOS paragraph parity across skills/design/SKILL.md (Step 3 MAV), skills/implement/references/step5-review-branches.md (Step 5 MAV), and this voting-protocol template manually. -->
 
-For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES only when the problem passes the backlog-relative materiality gate: impact floor, concrete trigger, issue-overhead test, and default-deny. Suggested remedies are informational only; do not vote NO for remedy disagreement. The future implementer of the OOS issue chooses the remedy.
+For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skills/shared/oos-acceptance-rubric.md`). Vote YES when the OOS observation is legitimate, concrete, and non-duplicate. Vote NO for false positives, duplicates, style or polish noise, and speculative items with no concrete trigger. Suggested remedies are informational only; do not vote NO for remedy disagreement. The future implementer of the OOS issue chooses the remedy.
 
 ```
 You are a {VOTER_ROLE} on a voting panel. For each proposed change to {REVIEW_CONTEXT}, vote YES or NO:
@@ -93,7 +93,7 @@ Default-deny. If unsure, vote NO. "Legitimate but not necessary" is a NO.
 
 Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are Out-of-Scope signals, not acceptance signals.
 
-**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording; the paragraph above is the canonical shared clause. Here, YES means file a future GitHub issue and NO means trivial, incorrect, or not worth tracking. OOS items are never implemented in this PR. Vote YES only for concrete, important observations worth a durable issue, such as a specific file:line or reproducible failure mode.
+**OOS / `[OUT_OF_SCOPE]` / plan `OOS_N:` rows:** Runtime prompts use `python/cli.py render voter` for grammar-specific OOS wording; the paragraph above is the canonical shared clause. Here, YES means a legitimate, concrete, non-duplicate observation worth tracking; NO means false, duplicate, style/polish noise, or speculative with no concrete trigger. OOS items are never implemented in this PR.
 
 {BALLOT}
 
@@ -186,7 +186,7 @@ For OOS items, votes mean:
 - **YES**: This observation deserves a GitHub issue for future attention.
 - **NO**: Not worth tracking — the observation is trivial or incorrect.
 
-With 2+ YES votes, an OOS item is **accepted** and `/implement` Step 9a.1 files it as a GitHub issue via `/issue` batch mode. In `/review` description mode, accepted OOS items are local artifacts for the operator to file manually via `/issue`; no automatic filing occurs. Otherwise, the item remains a PR-body observation.
+OOS uses OOS-specific thresholds: one YES accepts in a one-judge panel, one or more YES votes accept in a two-judge panel, and two or more YES votes accept in a three-judge panel. Accepted non-security OOS rolls into one `[OOS]` issue for `/implement`; `/design` files accepted non-security OOS during Step 5b. In `/review` description mode, accepted OOS items are local artifacts for the operator to file manually via `/issue`; no automatic filing occurs. Otherwise, the item remains an audit observation.
 
 **OOS items are never implemented in the current PR**. Accepted OOS creates issues only, separating "fix now" in-scope findings from "fix later" OOS observations.
 
@@ -212,7 +212,7 @@ The scoreboard adds OOS columns:
 
 ### OOS Security Tag
 
-Accepted OOS items can be tagged as **security findings** that are held locally and never filed as public GitHub issues. The detection contract is shared between `/design` plan review (`python/cli.py plan-review tally` / `python/voting.py`) and `/review` code review (`review tally-code-votes`) via `python/voting.py::is_security_block`:
+Security-tagged OOS items are held locally and never filed as public GitHub issues, whether accepted, neutral, or rejected. The detection contract is shared between `/design` plan review (`python/cli.py plan-review tally` / `python/voting.py`) and `/review` code review (`review tally-code-votes`) via `python/voting.py::is_security_block`:
 
 - **Canonical token**: a block is security-tagged when its body contains at least one **unfenced** occurrence of `focus-area\s*=\s*security` (case-insensitive, optional whitespace around `=`).
 - **Dedicated field token**: a line-start `focus-area` field also routes as security when its value begins with `security` (including `security-hardening` style values), with optional bold/backtick markup around the label or value and either `:` or `=` as the separator.
