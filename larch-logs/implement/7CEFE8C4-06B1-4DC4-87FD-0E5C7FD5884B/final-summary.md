@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:11:06
-- **Cost**: 💰 TOTAL ~$4.31: Claude $0.46, Codex-5.5 $1.13, Codex-mini $0.38, Cursor $1.92, Claude (subprocess) $0.42  |  Tokens: 8352k
+- **Cost**: 💰 TOTAL ~$4.63: Claude $0.78, Codex-5.5 $1.13, Codex-mini $0.38, Cursor $1.92, Claude (subprocess) $0.42  |  Tokens: 9180k
 - **Issue**: #6385: https://github.com/character-ai/larch/issues/6385
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -62,3 +62,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): Existing negative-path coverage remains intact. Concern: Existing negative-path coverage for `_gate_b_apply_start_s` still spans the empty/unreadable ledger, boundary/at-or-after `end_s`, duplicate output basename, and marker-without-vendor-rows cases via `_write_design_vendor_timing`.
 - **Round 1 OOS_6** (nit): No CI or shard-matrix changes are needed. Concern: The new tests stay in the existing `python/tests/review/test_plan_review.py` collection and run under the standard pytest shard fallback, so this change does not require CI workflow or shard-matrix updates.
 - **Round 1 OOS_7** (latent): renderer end-to-end coverage is still optional. Concern: The optional renderer check was not extended to cover write→render for `skill="implement"` reviewer rows, so `test_render_phase_detail_design_gantt_labels_gate_b_apply` still hand-inserts a `gate-b-apply` row with `skill="design"` and does not validate the fi…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
