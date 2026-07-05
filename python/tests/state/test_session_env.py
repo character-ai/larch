@@ -354,6 +354,61 @@ def test_write_design_env_explicit_repo_root_wins_over_ambient(tmp_path: Path) -
     assert f"export REPO_ROOT={explicit_root}" in out.read_text(encoding="utf-8")
 
 
+def test_write_design_env_refresh_prefers_prior_repo_root_over_ambient(tmp_path: Path) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    prior_root = tmp_path / "prior"
+    ambient_project = tmp_path / "ambient-project"
+    ambient_repo = tmp_path / "ambient-repo"
+    out = tmp_path / "source-env.sh"
+    base_env = {
+        "HOME": str(home),
+        "XDG_CACHE_HOME": str(tmp_path / "xdg"),
+        "CLAUDE_PLUGIN_ROOT": "/tmp/plugin",
+        "CLAUDE_PROJECT_DIR": str(ambient_project),
+        "REPO_ROOT": str(ambient_repo),
+    }
+    seed = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--repo-root",
+        str(prior_root),
+        "--claude-pid",
+        "12345",
+        env=base_env,
+    )
+    assert seed.returncode == 0, seed.stderr
+    refresh = run_cli(
+        "write-design-env",
+        "--output",
+        str(out),
+        "--design-tmpdir",
+        str(design),
+        "--session-id",
+        "sid-1",
+        "--claude-pid",
+        "12345",
+        env=base_env,
+    )
+    assert refresh.returncode == 0, refresh.stderr
+    source = subprocess.run(
+        ["bash", "-c", f"source {out}; printf '%s' \"$REPO_ROOT\""],
+        text=True,
+        capture_output=True,
+        env=clean_env(),
+        check=False,
+    )
+    assert source.stdout == str(prior_root)
+    assert f"export REPO_ROOT={prior_root}" in out.read_text(encoding="utf-8")
+
+
 def test_write_design_env_refresh_recovers_prior_quoted_repo_root(tmp_path: Path) -> None:
     home = tmp_path / "home"
     home.mkdir()

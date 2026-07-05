@@ -561,9 +561,11 @@ def _base_design_writer_values(args: argparse.Namespace, *, prior_file: Path | N
     }
     if args.repo:
         values["REPO"] = args.repo
-    repo_root = args.repo_root.strip() or os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    repo_root = args.repo_root.strip()
     if not repo_root and prior_file is not None:
         repo_root = _recover_prior_design_value(key="REPO_ROOT", prior_file=prior_file)
+    if not repo_root:
+        repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
     if repo_root:
         _validate_repo_root_value(value=repo_root, flag="--repo-root")
         values["REPO_ROOT"] = repo_root
