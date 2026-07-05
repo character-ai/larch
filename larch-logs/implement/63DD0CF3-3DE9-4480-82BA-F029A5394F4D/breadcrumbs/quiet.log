@@ -10,6 +10,9 @@ design-log-sweep: PR #6356 merged - merge succeeded
 === larch-quiet-cli.py-48500.log ===
 === larch-quiet-cli.py-50357.log ===
 === larch-quiet-cli.py-51339.log ===
+=== larch-quiet-cli.py-56897.log ===
+=== larch-quiet-cli.py-57775.log ===
+=== larch-quiet-cli.py-58292.log ===
 === larch-quiet-cli.py-63902.log ===
 === larch-quiet-cli.py-81542.log ===
 === larch-quiet-cli.py-83800.log ===
@@ -87,4 +90,5 @@ ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED
 === larch-quiet-tracking-issue-upsert-summary-31940.log ===
 === larch-quiet-tracking-issue-upsert-summary-34595.log ===
 === larch-quiet-tracking-issue-upsert-summary-50038.log ===
+=== larch-quiet-tracking-issue-upsert-summary-58241.log ===
 === larch-quiet-tracking-issue-upsert-summary-85467.log ===
