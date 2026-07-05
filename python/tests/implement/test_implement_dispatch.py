@@ -37,6 +37,7 @@ from larch.core import config
 from larch.core import process_identity
 from larch.core import logging_util
 from larch.implement.bg_wait import _write_bg_wait_marker
+from larch.outcomes import Outcome
 from larch.report import run_logs
 
 if TYPE_CHECKING:
@@ -49,7 +50,11 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
     (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-    _write_bg_wait_marker(tmpdir=tmp_path, step="implement-step3-checks", timeout_s=15600)
+    _write_bg_wait_marker(
+        tmpdir=tmp_path,
+        step="implement-step3-checks",
+        timeout_s=dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000,
+    )
 
     marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
     assert "STEP=implement-step3-checks\n" in marker_text
@@ -74,7 +79,7 @@ def test_checks_commit_route_step3_clears_stale_sidecars_before_marker_write(
     def spy_write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
         assert tmpdir == tmp
         assert step == "implement-step3-checks"
-        assert timeout_s == 15600
+        assert timeout_s == dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000
         assert not stale_sentinel.exists()
         assert not probe_denials.exists()
         original_write(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
@@ -93,7 +98,7 @@ def test_checks_commit_route_step3_clears_stale_sidecars_before_marker_write(
     rc = dispatch_commit_route.checks_commit_route_main(["--checks-site", "step3", "--commit-site", "step4"])
 
     assert rc == 0
-    assert "TIMEOUT_S=15600\n" in seen["marker"]
+    assert f"TIMEOUT_S={dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000}\n" in seen["marker"]
     assert stale_sentinel.is_file()
     assert stale_sentinel.read_text(encoding="utf-8") == ""
     assert not (tmp / ".bg-wait-active").exists()
@@ -122,6 +127,7 @@ def test_run_step_checks_main_arms_step3_bg_wait_marker(tmp_path: Path, monkeypa
     assert dispatch_commit_route.run_step_checks_main(["--site", "step3"]) == 0
 
     assert seen["marker"]
+    assert f"TIMEOUT_S={dispatch_leg.CHECKS_STEP3_BG_WAIT_TIMEOUT_S}\n" in seen["marker"]
     assert (tmp / ".completed" / "step-3-terminal").exists()
     assert not (tmp / ".bg-wait-active").exists()
 
@@ -714,6 +720,7 @@ def _write_pre_fix_state(tmp: Path, *, forked: str = "false", repo: str = "owner
 @pytest.mark.parametrize(("action", "expected"), [("ci-fix", True), ("reship", True), ("operator-bail", False), ("conflict-fix", False), ("stall", False), ("complete", False)])
 def test_ship_route_exit_marks_pre_fix_rebase_required_for_autonomous_actions(tmp_path: Path, action: str, expected: bool) -> None:
     tmp = _session(tmp_path)
+    (tmp / ".ship-pre-fix-rebase-ok").write_text("stale\n", encoding="utf-8")
 
     dispatch_ship._write_ship_route_handoff(
         implement_tmpdir=tmp,
@@ -723,6 +730,7 @@ def test_ship_route_exit_marks_pre_fix_rebase_required_for_autonomous_actions(tm
 
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert ("PRE_FIX_REBASE_REQUIRED=true\n" in env) is expected
+    assert (tmp / ".ship-pre-fix-rebase-ok").exists() is not expected
 
 
 @pytest.mark.parametrize(("forked", "base_remote"), [("false", "origin"), ("true", "upstream")])
@@ -766,6 +774,42 @@ def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
     assert call["defer_push"] is False
     assert call["allow_conflict_fix"] is True
     assert call["enable_pre_push_handoff"] is True
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
+
+
+def test_ship_pre_fix_rebase_successful_physical_rebase_increments_count(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+
+    def fake_rebase_and_push(**_kwargs: object) -> dispatch_ship.rebase.RebaseResult:
+        return dispatch_ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=ok\nNEXT_ACTION=continue\n"
+    assert "REBASE_COUNT=3\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
 
 
 @pytest.mark.parametrize(
@@ -863,8 +907,13 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
 ) -> None:
     tmp = _session(tmp_path)
     _write_pre_fix_state(tmp)
-    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text("pending\n", encoding="utf-8")
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
     calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: calls.append("branch") or "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: calls.append("repo") or "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: calls.append("probe") or False)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: calls.append("rebase"))
 
@@ -877,7 +926,76 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
 
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n"
-    assert not calls
+    assert calls == ["branch", "repo", "probe"]
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
+
+
+@pytest.mark.parametrize(
+    "flag_text",
+    [
+        "",
+        "RESUME_PHASE=wrong\nREASON=mergeStateStatus=DIRTY\n",
+        "RESUME_PHASE=ship-pr-rrr-phase14\nREASON=postbump-rebase-conflict\n",
+    ],
+)
+def test_ship_pre_fix_rebase_phase14_invalid_flags_do_not_skip(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    flag_text: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(flag_text, encoding="utf-8")
+    rebase_calls: list[bool] = []
+
+    def fake_rebase_and_push(**_kwargs: object) -> object:
+        rebase_calls.append(True)
+        return object()
+
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=ok\nNEXT_ACTION=continue\n"
+    assert rebase_calls == [True]
+
+
+def test_ship_pre_fix_rebase_phase14_valid_flag_with_rebase_in_progress_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=BEHIND\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: True)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: pytest.fail("rebase should not run"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=stall\nNEXT_ACTION=stall\n"
+    assert not (tmp / ".ship-pre-fix-rebase-ok").exists()
 
 
 def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
@@ -917,6 +1035,8 @@ def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
     assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in env
     assert "PRE_FIX_REBASE_STATUS=conflict\n" in env
     assert "NEXT_ACTION=conflict-fix\n" in env
+    assert "PHASE=rebase\n" in (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
 
 
 def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
@@ -926,6 +1046,7 @@ def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
 ) -> None:
     tmp = _session(tmp_path)
     _write_pre_fix_state(tmp)
+    (tmp / ".ship-pre-fix-rebase-ok").write_text("stale\n", encoding="utf-8")
     rebase_calls: list[str] = []
     monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
     monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
@@ -942,6 +1063,7 @@ def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=stall\nNEXT_ACTION=stall\n"
     assert not rebase_calls
+    assert not (tmp / ".ship-pre-fix-rebase-ok").exists()
 
 
 def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff(
@@ -982,6 +1104,50 @@ def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert "FAILED_RUN_ID=99\n" in env
     assert "NEXT_ACTION=conflict-fix\n" in env
+
+
+@pytest.mark.parametrize("helper", ["state", "handoff"])
+def test_ship_pre_fix_rebase_conflict_handoff_write_failures_emit_no_next_action(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    helper: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+
+    def fake_rebase_and_push(**_kwargs: object) -> object:
+        raise dispatch_ship.PrePushConflictHandoff(
+            conflict_files=("python/a.py",),
+            resume_phase=config.SHIP_PR_RRR_RESUME_PHASE,
+            caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
+        )
+
+    def fail_state(**_kwargs: object) -> None:
+        raise dispatch_ship.ShipError("state failed")
+
+    def fail_handoff(**_kwargs: object) -> None:
+        raise OSError("handoff failed")
+
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    if helper == "state":
+        monkeypatch.setattr(dispatch_ship, "_ship_pre_fix_write_conflict_state", fail_state)
+    else:
+        monkeypatch.setattr(dispatch_ship, "_ship_pre_fix_patch_handoff", fail_handoff)
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc != 0
+    assert "NEXT_ACTION=" not in capsys.readouterr().out
+    assert not (tmp / ".ship-pre-fix-rebase-ok").exists()
 
 
 @pytest.mark.parametrize("exc", [dispatch_ship.Stalled("fetch failed"), dispatch_ship.TransientNetworkError("fetch transient")])
@@ -1468,7 +1634,7 @@ def test_step18_gate_finalize_abandoned_checks_marker_breaks_out_without_finaliz
         dead.wait()
         dead_pid = dead.pid
     (tmp / ".bg-wait-active").write_text(
-        f"PID={dead_pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S=15600\n",
+        f"PID={dead_pid}\nCLAUDE_PID=1\nSTART_EPOCH=0\nSTEP=implement-step3-checks\nTIMEOUT_S={dispatch_leg.CHECKS_STEP3_BG_WAIT_TIMEOUT_S}\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(
@@ -3296,8 +3462,10 @@ def test_checks_step5_resume_ok_envelope_runs_resume_without_continue_action(
 
 
 def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
+    assert implement_dispatch.CHECKS_DEADLINE_MS == implement_dispatch._CHECKS_DEADLINE_MS
+    assert implement_dispatch.CHECKS_STEP3_BG_WAIT_TIMEOUT_S == implement_dispatch.CHECKS_DEADLINE_MS // 1000
     assert implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS == (
-        implement_dispatch._CHECKS_DEADLINE_MS
+        implement_dispatch.CHECKS_DEADLINE_MS
         + implement_dispatch._COMMIT_ROUTE_DEADLINE_MS
         + implement_dispatch._REBASE_CHECKPOINT_DEADLINE_MS
         + implement_dispatch._COMPOSITE_OUTER_SLACK_MS

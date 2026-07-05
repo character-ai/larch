@@ -72,6 +72,8 @@ from larch.implement.dispatch_helpers import (
 # --- leg execution and process management ---
 from larch.implement.dispatch_leg import (
     CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS,
+    CHECKS_DEADLINE_MS,
+    CHECKS_STEP3_BG_WAIT_TIMEOUT_S,
     CHECKS_STEP5_RESUME_OUTER_TIMEOUT_MS,
     TIMING_LEDGER_MIN_COLUMNS,
     CommitRouteOutcome,

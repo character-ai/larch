@@ -380,14 +380,18 @@ printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_exec/fin
 cat > "$impl_exec/execution-issues.md" <<'EOF'
 ### External Reviewer Issues
 - **findings aggregator**: ballot merge failed
+### Warnings
+- post-flush warning
 EOF
 cat > "$impl_exec/larch-logs/implement/run-exec/execution-issues.ndjson" <<'JSON'
 {"category":"Warnings","body":"- **Step design Step 5 — tracking failed (exit 1)**:\n  ```\nwarn\n  ```"}
 JSON
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec.md" \
       "$HELPER" --implement-tmpdir "$impl_exec")
-assert_contains '- **Exec issues**: 0' "$(cat "$TMP_ROOT/content-exec.md")" 'run-dir execution issues path keeps exec issue count at zero'
-assert_contains '- **Warnings**: 1' "$(cat "$TMP_ROOT/content-exec.md")" 'run-dir execution issues path counts warning bodies'
+assert_contains '- **Exec issues**: 1' "$(cat "$TMP_ROOT/content-exec.md")" 'merged execution issues count live exec issue'
+assert_contains '- **Warnings**: 2' "$(cat "$TMP_ROOT/content-exec.md")" 'merged execution issues count run-dir and live warnings'
+assert_contains 'findings aggregator: ballot merge failed' "$(cat "$TMP_ROOT/content-exec.md")" 'merged execution issues include live exec detail'
+assert_contains 'post-flush warning' "$(cat "$TMP_ROOT/content-exec.md")" 'merged execution issues include post-flush live warning'
 
 rm -f "$impl_exec/execution-issues.md"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec-ndjson.md" \
