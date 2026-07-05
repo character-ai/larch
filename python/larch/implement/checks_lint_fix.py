@@ -98,6 +98,10 @@ _STRUCTURAL_RUFF_CODES: Final[frozenset[str]] = frozenset({
 _STRUCTURAL_RUFF_CODES_RE: Final = "|".join(
     re.escape(code) for code in sorted(_STRUCTURAL_RUFF_CODES)
 )
+_STRUCTURAL_RUFF_HUMAN_HEADER_RE: Final = re.compile(
+    rf"^\s*(?P<code>{_STRUCTURAL_RUFF_CODES_RE})\b",
+    re.MULTILINE,
+)
 _STRUCTURAL_RUFF_DIAGNOSTIC_RE: Final = re.compile(
     rf"^{_COMPLEXITY_BASELINE_PATH_RE}:\d+(?::\d+)?: "
     rf"(?P<code>{_STRUCTURAL_RUFF_CODES_RE})\b",
@@ -481,6 +485,8 @@ def _lint_fix_fast_fail_reason(log_path: Path) -> str | None:
         return None
     if _is_complexity_baseline_regression_text(text):
         return "complexity-baseline-regression"
+    if _STRUCTURAL_RUFF_HUMAN_HEADER_RE.search(text) is not None:
+        return "structural-ruff-failure"
     if _STRUCTURAL_RUFF_DIAGNOSTIC_RE.search(text) is not None:
         return "structural-ruff-failure"
     return None

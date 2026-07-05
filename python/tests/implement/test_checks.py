@@ -1547,6 +1547,42 @@ def test_run_lint_fix_structural_ruff_diagnostics_fast_fail(
     assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
 
 
+@pytest.mark.parametrize(
+    "log_text",
+    [
+        "C901 `transform_file` is too complex (11 > 10)\n"
+        " --> python/larch/report/retro_fix_cursor.py:65:5\n",
+    ],
+)
+def test_run_lint_fix_structural_ruff_human_block_fast_fail(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    log_text: str,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    log = tmp_path / "checks.log"
+    _ = log.write_text(log_text, encoding="utf-8")
+    dispatch_calls = _install_lint_fix_dispatch_failures(monkeypatch)
+    runner = StubRunner()
+
+    outcome = checks.run_lint_fix(
+        runner,
+        site="step6",
+        checks_log=str(log),
+        repo_root=str(repo),
+        claude_present=True,
+        codex_present=True,
+        cursor_present=True,
+        allowed_tmpdir=_lint_fix_dirs(tmp_path)[0],
+        run_parent=_lint_fix_dirs(tmp_path)[1],
+    )
+
+    _assert_structural_fast_fail(outcome, log)
+    assert not dispatch_calls
+    assert runner.calls == _timing_record_calls(runner, task_kind="claude-lint-fix")
+
+
 def test_run_lint_fix_complexity_baseline_metric_growth_fast_fail(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
