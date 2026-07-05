@@ -2154,6 +2154,12 @@ def test_tally_plan_review_security_oos_routes_to_private_sidecar(tmp_path: Path
     assert "Sensitive follow-up" not in (design / "oos.md").read_text(encoding="utf-8")
     accepted = (design / "oos-accepted-design.md").read_text(encoding="utf-8") if (design / "oos-accepted-design.md").exists() else ""
     assert "Sensitive follow-up" not in accepted
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    severity_records = voting.compute_voter_severity_distribution(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert voting.render_voter_severity_scoreboard(severity_records) in tally
 
 
 def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path) -> None:

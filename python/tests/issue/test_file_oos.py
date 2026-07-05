@@ -277,6 +277,49 @@ def test_disposition_checkpoint_mixed_security_and_public_returns_rc3_after_gate
     assert "security sidecar present" in (tmp_path / "oos-disposition-checkpoint.stderr.log").read_text(encoding="utf-8")
 
 
+def test_disposition_checkpoint_mixed_security_and_public_missing_ndjson_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _ = (tmp_path / "security-oos-observations.md").write_text("# security observation\n", encoding="utf-8")
+    _ = (tmp_path / "oos-accepted-main-agent.md").write_text(
+        "### OOS_1: Public follow-up\n"
+        "- **Description**: File publicly.\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-accepted-review.md").write_text("", encoding="utf-8")
+    _ = (tmp_path / "oos-accepted-design.md").write_text("", encoding="utf-8")
+    _ = (tmp_path / "ship-pr-state.sh").write_text("FORKED_TARGET=false\nREPO_UNAVAILABLE=false\n", encoding="utf-8")
+    _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
+    (tmp_path / "larch-logs" / "implement" / "run-1").mkdir(parents=True)
+
+    class Result:
+        def __init__(self, returncode: int, stdout: str = "") -> None:
+            self.returncode = returncode
+            self.stdout = stdout
+            self.stderr = ""
+
+    def fake_run(argv: list[str], **_kwargs: object) -> Result:
+        if argv[:3] == ["git", "merge-base", "HEAD"]:
+            return Result(1, "")
+        if argv[:4] == ["git", "rev-parse", "--verify", "origin/main"]:
+            return Result(0, "abc123\n")
+        return Result(0, "")
+
+    def forbidden_gate(**_kwargs: object) -> int:
+        raise AssertionError("disposition_gate must not run when oos-issues.ndjson is missing")
+
+    monkeypatch.setattr(file_oos.subprocess, "run", fake_run)
+    monkeypatch.setattr(file_oos, "disposition_gate", forbidden_gate)
+
+    rc = file_oos.disposition_checkpoint_main(["--implement-tmpdir", str(tmp_path)])
+
+    assert rc == 2
+    assert "non-security accepted OOS requires a resolved oos-issues.ndjson path" in (
+        tmp_path / "oos-disposition-checkpoint.stderr.log"
+    ).read_text(encoding="utf-8")
+
+
 def test_issue_cap_rejects_malformed_batch(tmp_path: Path) -> None:
     bad = tmp_path / "bad.md"
     _ = bad.write_text("### Item one\n- **Description**: not oos shaped\n", encoding="utf-8")
