@@ -206,8 +206,8 @@ scan_file() {
         function is_grep_family(value) {
             return value == "grep" || value == "rg" || value == "ripgrep"
         }
-        function candidate_index(    i) {
-            i = skip_assignments(1)
+        function advance_to_command_start(start_i,    i) {
+            i = skip_assignments(start_i)
             if (tok[i] == "if") {
                 i++
                 if (tok[i] == "!") i++
@@ -221,18 +221,20 @@ scan_file() {
                 i++
                 i = skip_assignments(i)
             }
-            return is_grep_family(tok[i]) ? i : 0
+            return i
         }
-        function is_bare_wrapper_grep(idx,    i) {
+        function is_bare_wrapper_grep(idx, seg_start,    i) {
             if (tok[idx] != "grep") return 0
-            if (idx > 1 && tok[idx - 1] == "command") return 0
+            if (idx > seg_start && tok[idx - 1] == "command") return 0
 
-            i = skip_assignments(1)
+            i = skip_assignments(seg_start)
             if (i == idx) return 1
+            if (tok[i] == "(") return 0
             if (tok[i] == "if") {
                 i++
                 if (tok[i] == "!") i++
                 i = skip_assignments(i)
+                if (tok[i] == "(") return 0
                 if (i == idx) return 1
             }
             if (tok[i] == "{") {
@@ -315,11 +317,6 @@ scan_file() {
                 base == "--include" || base == "--exclude" ||
                 base == "--exclude-dir"
         }
-        function is_pattern_option(value,    base) {
-            base = option_base(value)
-            return base == "-e" || base == "--regexp" ||
-                base == "-f" || base == "--file"
-        }
         function has_equals_value(value) {
             return index(value, "=") > 0
         }
@@ -329,49 +326,18 @@ scan_file() {
         function has_parent_ascent_segment(value) {
             return value ~ /(^|\/)\.\.(\/|$)/
         }
-        function has_parent_ascent_path(cmd, idx,    i, value, pattern_seen, end_options) {
-            pattern_seen = 0
-            end_options = 0
-
-            for (i = idx + 1; i <= nt; i++) {
-                value = tok[i]
-                if (!tok_quoted[i] && is_command_boundary(value)) break
-                if (!tok_quoted[i] && is_redirect(value)) {
-                    i = skip_redirect_operand(i)
-                    continue
-                }
-
-                if (!end_options && value == "--") {
-                    end_options = 1
-                    continue
-                }
-                if (!end_options && value ~ /^-/ && value != "-") {
-                    if (is_pattern_option(value)) {
-                        pattern_seen = 1
-                        if (!has_equals_value(value) && !has_attached_short_value(value) &&
-                            i + 1 <= nt &&
-                            !is_argv_terminator(tok[i + 1])) {
-                            i++
-                        }
-                    } else if (option_takes_value(cmd, value) &&
-                        !has_equals_value(value) && !has_attached_short_value(value) &&
-                        i + 1 <= nt &&
-                        !is_argv_terminator(tok[i + 1])) {
-                        i++
-                    }
-                    continue
-                }
-
-                if (!pattern_seen) {
-                    pattern_seen = 1
-                } else if (!is_quoted_operator_operand(i) &&
-                    has_parent_ascent_segment(value)) {
-                    return 1
-                }
-            }
-            return 0
+        function short_pattern_base(value) {
+            if (value ~ /^-e.+/) return "-e"
+            if (value ~ /^-f.+/) return "-f"
+            return ""
         }
-        function has_explicit_path(cmd, idx,    i, value, pattern_seen, end_options) {
+        function option_value(value, base,    eq) {
+            eq = index(value, "=")
+            if (eq) return substr(value, eq + 1)
+            if (base == "-e" || base == "-f") return substr(value, 3)
+            return ""
+        }
+        function argv_walk(cmd, idx, mode,    i, value, pattern_seen, end_options, base, attached_base, opt_value) {
             pattern_seen = 0
             end_options = 0
 
@@ -388,17 +354,26 @@ scan_file() {
                     continue
                 }
                 if (!end_options && value ~ /^-/ && value != "-") {
-                    if (is_pattern_option(value)) {
+                    base = option_base(value)
+                    attached_base = short_pattern_base(value)
+                    if (base == "-e" || base == "--regexp" || attached_base == "-e") {
                         pattern_seen = 1
-                        if (!has_equals_value(value) && !has_attached_short_value(value) &&
-                            i + 1 <= nt &&
-                            !is_argv_terminator(tok[i + 1])) {
+                        if (!has_equals_value(value) && attached_base == "" &&
+                            i + 1 <= nt && !is_argv_terminator(tok[i + 1])) {
                             i++
+                        }
+                    } else if (base == "-f" || base == "--file" || attached_base == "-f") {
+                        pattern_seen = 1
+                        if (has_equals_value(value) || attached_base == "-f") {
+                            opt_value = option_value(value, attached_base ? attached_base : base)
+                            if (mode == "parent" && has_parent_ascent_segment(opt_value)) return 1
+                        } else if (i + 1 <= nt && !is_argv_terminator(tok[i + 1])) {
+                            i++
+                            if (mode == "parent" && has_parent_ascent_segment(tok[i])) return 1
                         }
                     } else if (option_takes_value(cmd, value) &&
                         !has_equals_value(value) && !has_attached_short_value(value) &&
-                        i + 1 <= nt &&
-                        !is_argv_terminator(tok[i + 1])) {
+                        i + 1 <= nt && !is_argv_terminator(tok[i + 1])) {
                         i++
                     }
                     continue
@@ -406,11 +381,29 @@ scan_file() {
 
                 if (!pattern_seen) {
                     pattern_seen = 1
+                } else if (mode == "parent") {
+                    if (!is_quoted_operator_operand(i) && has_parent_ascent_segment(value)) return 1
                 } else {
                     if (is_stdin_operand(value)) return 0
                     if (is_quoted_operator_operand(i)) return 0
                     return 1
                 }
+            }
+            return 0
+        }
+        function has_parent_ascent_path(cmd, idx) {
+            return argv_walk(cmd, idx, "parent")
+        }
+        function has_explicit_path(cmd, idx) {
+            return argv_walk(cmd, idx, "path")
+        }
+        function is_segment_separator(value) {
+            return value == "|" || value == "||" || value == "&&" ||
+                value == ";" || value == "&" || value == "|&"
+        }
+        function next_segment_separator(start_i,    i) {
+            for (i = start_i; i <= nt; i++) {
+                if (!tok_quoted[i] && is_segment_separator(tok[i])) return i
             }
             return 0
         }
@@ -433,25 +426,30 @@ scan_file() {
             if (line ~ /^[[:space:]]*#/) next
 
             tokenize(line)
-            candidate = candidate_index()
-            if (!candidate) next
-
-            if (is_bare_wrapper_grep(candidate)) {
-                if (tok[skip_assignments(1)] == "if") {
-                    report_wrapper("if grep ... ; then")
-                } else {
-                    report_wrapper("bare grep statement")
+            seg_start = 1
+            last_separator = ""
+            while (seg_start <= nt) {
+                candidate = advance_to_command_start(seg_start)
+                separator = next_segment_separator(seg_start)
+                if (candidate <= nt && (separator == 0 || candidate < separator) &&
+                    is_grep_family(tok[candidate])) {
+                    pipe_fed = last_separator == "|" || last_separator == "|&"
+                    if (!pipe_fed && is_bare_wrapper_grep(candidate, seg_start)) {
+                        if (tok[skip_assignments(seg_start)] == "if") {
+                            report_wrapper("if grep ... ; then")
+                        } else {
+                            report_wrapper("bare grep statement")
+                        }
+                    } else if (has_parent_ascent_path(tok[candidate], candidate)) {
+                        report_parent_ascent(tok[candidate])
+                    } else if (!pipe_fed && !has_stdin_devnull(candidate) &&
+                        !has_explicit_path(tok[candidate], candidate)) {
+                        report_stdin(tok[candidate])
+                    }
                 }
-                next
-            }
-            if (has_parent_ascent_path(tok[candidate], candidate)) {
-                report_parent_ascent(tok[candidate])
-                next
-            }
-            if (has_stdin_devnull(candidate)) next
-            if (!has_explicit_path(tok[candidate], candidate)) {
-                report_stdin(tok[candidate])
-                next
+                if (!separator) break
+                last_separator = tok[separator]
+                seg_start = separator + 1
             }
         }
         END { exit violations ? 1 : 0 }

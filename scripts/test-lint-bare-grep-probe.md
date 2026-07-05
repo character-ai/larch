@@ -15,6 +15,17 @@ the lint contract, including:
   shapes.
 - Multi-path parent-ascent violations where the first path is safe and a later
   path contains `../`.
+- Multi-segment scanning for right-hand fallback, semicolon, logical-and, and
+  later-pipeline candidates.
+- Non-grep-family segment starts, such as `echo done; rg`, do not stop scanning.
+- Safe earlier candidates do not stop later candidate scanning.
+- `|&` pipe-stderr forms are pipe-fed: no-path probes are allowed, and
+  parent-ascent operands still fail.
+- Segment-relative bare-wrapper detection, including
+  `false || grep PATTERN file.txt`.
+- `-f` / `--file` parent-ascent cases for split, equals, and attached-short
+  forms.
+- Split `--include` / `--exclude` fixtures use `grep`, not `rg`.
 - Parent-ascent checks before `< /dev/null` short-circuit.
 - No-path `if rg`, `if ripgrep`, `if ! rg`, `if ! ripgrep`,
   `if ! command rg`, and other `if` / `if !` grep-family violations.
@@ -26,8 +37,8 @@ the lint contract, including:
 - Brace-group `{ rg ...; }`, `{ ripgrep ...; }`, `{ grep ...; }`,
   `{ command rg ...; }`, `{ command ripgrep ...; }`, and
   `{ command grep ...; }` violations.
-- Argv truncation at `||`, `|`, `&`, `&&`, `;`, `|&`, and redirects so suffix
-  tokens do not false-allow no-path probes.
+- Per-segment scanning across `||`, `|`, `&`, `&&`, `;`, and `|&` boundaries,
+  plus redirect truncation so suffix tokens do not false-allow no-path probes.
 - Unquoted `< /dev/null` short-circuit before `<` redirect truncation.
 - False stdin-safe short-circuit cases where `< /dev/null` appears only in a
   quoted echo, quoted redirect token, inline comment, or comment substring.

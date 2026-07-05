@@ -39,8 +39,12 @@ scanned. Exit codes are `0` clean, `1` violations, `2` CLI / root errors.
 
 ## Detection
 
-Inside a fenced `bash` / `sh` / `shell` block, the linter flags bare wrapper
-forms:
+Inside a fenced `bash` / `sh` / `shell` block, the linter scans every
+grep-family command segment on a physical line. Non-grep-family segments are
+skipped without stopping the scan. The command boundaries are unquoted `||`,
+`&&`, `;`, `|`, `|&`, and `&`.
+
+The linter flags bare wrapper forms:
 
 - `grep PATTERN FILE` (bare statement, with or without `|| X`, `> tmp`, etc.)
 - `if grep ... ; then` and `if ! grep ... ; then`
@@ -51,27 +55,39 @@ an explicit path operand or an unquoted `< /dev/null` redirect. This applies to
 `grep`, `rg`, and `ripgrep`, including `command`, subshell, and brace wraps.
 The same candidate parsing rejects `..` path segments in grep-family path
 operands, including later operands when the first path is safe. It checks all
-path operands after the pattern, not only the first path. Pattern operands and
-option values are not path operands, so `-e "../pattern"` and
-`--include="../*.py"` do not trigger this rule.
+path operands after the pattern, not only the first path. It also checks
+`-f` / `--file` pattern-file values for parent ascents in split
+(`-f VALUE`, `--file VALUE`), equals (`--file=VALUE`), and attached-short
+(`-fVALUE`) forms. `-e` / `--regexp` values remain pattern text, not path
+operands. Other option values are not path operands, so `-e "../pattern"` and
+`--include="../*.py"` do not trigger this rule. Split `--include` and
+`--exclude` value consumption applies to `grep`, not `rg`.
 
 Subshell wrap (`( grep ... )`, `( ripgrep ... )`, `( command rg ... )`) does not
 exempt no-path probes from the stdin rule. It only addresses the wrapper-exit
-trap for bare `grep`. `cmd | rg`, `cmd | ripgrep`, and `cmd | grep` remain
-allowed because stdin is pipe-fed, matching piped `grep`.
+trap for bare `grep`. `cmd | rg`, `cmd | ripgrep`, `cmd | grep`, and their
+`|&` pipe-stderr forms remain allowed because stdin is pipe-fed. Parent-ascent
+operands on pipe-fed probes still fail.
+
+Bare-wrapper detection is segment-relative. `grep` is bare when it is the first
+command word in a segment, not only at line start.
 
 Evaluation order:
 
 - Bare wrapper `grep` is reported before path checks.
 - Parent-directory ascent path checks run before the `< /dev/null`
   short-circuit, so `rg PATTERN ../root < /dev/null` still fails.
+- Parent-directory ascent path checks also run on pipe-fed candidates, so
+  `cat file | rg PATTERN ../root` fails.
 - An unquoted `< /dev/null` redirect on the candidate command segment
   short-circuits to allowed before terminator truncation.
 - Quoted, commented, or echo-only substrings containing `< /dev/null` do not
   count.
-- Only after the stdin check fails does argv parsing truncate at unquoted `|`,
-  `||`, `&&`, `;`, `&`, `|&`, and redirects (`>`, `>>`, `<`, `2>`, `>&`, and
-  similar forms) before path detection.
+- A safe candidate does not stop line scanning. Later grep-family segments on
+  the same line are still checked.
+- Only after the stdin check fails does argv parsing truncate at unquoted
+  redirects (`>`, `>>`, `<`, `2>`, `>&`, and similar forms) before path
+  detection.
 
 The rule is shape-based and line-based. Option parsing is conservative and
 focused on common grep and ripgrep flags, including split pairs (`--type py`),
@@ -88,12 +104,14 @@ or static-pattern lines only; use it narrowly and include a reviewable reason.
 ## Limitations
 
 - The scan is intentionally line-based. Multi-line grep invocations with
-  backslash continuations are matched only by their first line.
+  backslash continuations are matched only by their first line. Continuation
+  line operands are not joined.
 - The fence detector recognizes the canonical opener
   ```` ```bash ```` / ```` ```sh ```` / ```` ```shell ```` only. Indented or
   language-tagged variants (`bash {.shell}`) are not detected.
 - The linter does not analyze whether a given grep invocation can actually
   return exit 1 in practice; the rule is shape-based, not semantic.
+- Absolute search roots are not bounded by this lint. Use known bounded roots.
 
 ## Primary callers
 
