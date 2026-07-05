@@ -5467,6 +5467,52 @@ def test_guideline_ship_outcome_sidecar_dropped(tmp_path: Path) -> None:
     assert data["detail"] == "redaction failed"
 
 
+def test_guideline_ship_outcome_present_empty_note_classifies_dropped(tmp_path: Path) -> None:
+    outcome = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(guidelines_status="present"),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+
+    assert outcome is not None
+    assert outcome.outcome == ship_guidelines.OUTCOME_DROPPED
+    assert outcome.guidelines_status == "present"
+    data = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["outcome"] == "dropped"
+    assert data["guidelines_status"] == "present"
+
+
+def test_guideline_ship_outcome_missing_status_does_not_infer_from_note(tmp_path: Path) -> None:
+    outcome = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(note="Deviation note"),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+
+    assert outcome is not None
+    assert outcome.outcome == ship_guidelines.OUTCOME_CLEAN
+    assert outcome.reason == ship_guidelines.REASON_GUIDELINES_ABSENT
+    assert outcome.guidelines_status == "absent"
+    data = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["outcome"] == "clean"
+    assert data["reason"] == ship_guidelines.REASON_GUIDELINES_ABSENT
+    assert data["guidelines_status"] == "absent"
+
+
+def test_guideline_ship_outcome_blank_head_sha_raises_before_write(tmp_path: Path) -> None:
+    with pytest.raises(OSError, match="head_sha is empty"):
+        ship_guidelines.write_guideline_ship_outcome(
+            implement_tmpdir=str(tmp_path),
+            result=ship.GuidelinesGateResult(guidelines_status="absent"),
+            head_sha=" \t",
+            base_ref="origin/main",
+        )
+
+    assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
+
+
 def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
@@ -6164,6 +6210,32 @@ def test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr(
 
     assert result.outcome is Outcome.STALLED
     assert "architectural-guidelines outcome sidecar write failed" in result.detail
+    assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
+
+
+def test_open_pr_resume_blank_head_sha_stalls_before_ensure_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "")
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_guidelines_note",
+        lambda **_kwargs: ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present"),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert "architectural-guidelines outcome sidecar write failed" in result.detail
+    assert "head_sha is empty" in result.detail
     assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
 
 

@@ -108,6 +108,7 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
     phase = str(d.get("phase") or "")
     step = str(d.get("step") or "")
     base_ref = str(d.get("base_ref") or "")
+    head_sha = str(d.get("head_sha") or "")
     outcome = str(d.get("outcome") or "")
     reason = str(d.get("reason") or "")
     guidelines_status = str(d.get("guidelines_status") or "")
@@ -118,6 +119,8 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
         return "guideline outcome step must be 8"
     if not base_ref:
         return "guideline outcome base_ref is empty"
+    if not head_sha.strip():
+        return "guideline outcome head_sha is empty"
     if outcome not in GUIDELINE_SHIP_OUTCOMES:
         return "guideline outcome token is unknown"
     if guidelines_status not in {"present", "absent", "invalid"}:

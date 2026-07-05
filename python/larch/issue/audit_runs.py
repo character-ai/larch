@@ -235,7 +235,11 @@ def _manifest_empty_steps(manifest: object | None) -> bool:
 
 
 def _manifest_bail_signal(*, run_dir: Path, manifest: object | None, pr: int = 0) -> bool:
-    if stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=manifest, pr=pr):
+    cli_pr_evidence: object | None = {"pr_number": pr} if pr > 0 else None
+    if stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=manifest, pr=pr) or (
+        cli_pr_evidence is not None
+        and stale_bail_heading_with_pr_evidence(run_dir=run_dir, manifest=cli_pr_evidence, pr=pr)
+    ):
         return False
     fs = run_dir / "final-summary.md"
     if not fs.is_file():
@@ -264,24 +268,24 @@ def implement_step9a1_reachable(run_dir: Path, manifest: dict[str, object] | Non
     return _run_has(run_dir, "run-statistics.md") if chain else True
 
 
-def implement_step8_reachable(run_dir: Path, manifest: dict[str, object] | None) -> bool:
+def implement_step8_reachable(run_dir: Path, manifest: dict[str, object] | None, *, pr: int = 0) -> bool:
     """Return true when the implement run reached the Step 8 artifact phase."""
     _sr_raw, sr = _manifest_steps(manifest)
     if sr.get("step8") is False:
         return False
-    if _manifest_empty_steps(manifest) and _manifest_bail_signal(run_dir=run_dir, manifest=manifest) and not _run_has(run_dir, "version-bump-reasoning.md"):
+    if _manifest_empty_steps(manifest) and _manifest_bail_signal(run_dir=run_dir, manifest=manifest, pr=pr) and not _run_has(run_dir, "version-bump-reasoning.md"):
         return False
-    return _run_has(run_dir, "version-bump-reasoning.md") or _run_has(run_dir, "final-summary.md") or implement_step9a1_reachable(run_dir, manifest, chain=True)
+    return _run_has(run_dir, "version-bump-reasoning.md") or _run_has(run_dir, "final-summary.md") or implement_step9a1_reachable(run_dir, manifest, chain=True, pr=pr)
 
 
 def _guideline_ship_outcome_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
     manifest = _read_json_file(run_dir / "manifest.json")
-    if (run_dir / "gc-slimmed").exists() and not (run_dir / GUIDELINE_SHIP_OUTCOME_SIDECAR).exists():
+    path = run_dir / GUIDELINE_SHIP_OUTCOME_SIDECAR
+    if (run_dir / "gc-slimmed").exists() and not path.exists() and not path.is_symlink():
         return {"scan": name, "pr": pr, "result": "informational", "detail": "gc-slimmed run lacks guideline outcome artifact"}
     manifest_dict = manifest if isinstance(manifest, dict) else None
-    if manifest_dict is None or not implement_step8_reachable(run_dir, manifest_dict):
+    if manifest_dict is None or not implement_step8_reachable(run_dir, manifest_dict, pr=pr):
         return {"scan": name, "pr": pr, "result": "informational", "detail": "run did not reach implement Step 8"}
-    path = run_dir / GUIDELINE_SHIP_OUTCOME_SIDECAR
     if not path.exists() and not path.is_symlink():
         if not _at_or_above_guideline_outcome_cutover(manifest):
             return {"scan": name, "pr": pr, "result": "informational", "detail": "pre-cutover run lacks guideline outcome artifact"}
@@ -696,7 +700,7 @@ def _scan_required( *,run_dir: Path, pr: int, required: Path | None) -> dict[str
             if empty_steps() and bail_signal() and not (has("token-report.json") or has("timing-report.json") or has("execution-issues.ndjson") or has("session-transcript.jsonl")): return False
             return has("token-report.json") or has("timing-report.json") or has("execution-issues.ndjson") or has("session-transcript.jsonl") or cond("step8")
         if c == "step8":
-            return implement_step8_reachable(run_dir, manifest_dict)
+            return implement_step8_reachable(run_dir, manifest_dict, pr=pr)
         if c == "step9a1":
             return implement_step9a1_reachable(run_dir, manifest_dict, chain=chain, pr=pr)
         if c == "exn-agg-validate-fail":
