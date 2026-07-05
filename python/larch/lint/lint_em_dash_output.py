@@ -111,7 +111,26 @@ def _is_breadcrumb_writer_constructor(
     return False
 
 
-def _collect_sink_metadata(tree: ast.AST) -> tuple[set[str], set[str], set[str]]:
+def _collect_from_import_names(
+    node: ast.ImportFrom,
+    logging_util_names: set[str],
+    sink_names: set[str],
+    breadcrumb_writer_names: set[str],
+) -> None:
+    if node.module == "larch.core":
+        for alias in node.names:
+            if alias.name == "logging_util":
+                logging_util_names.add(alias.asname or alias.name)
+    elif node.module == "larch.core.logging_util":
+        for alias in node.names:
+            target = alias.asname or alias.name
+            if alias.name in LOGGING_UTIL_SINKS:
+                sink_names.add(target)
+            elif alias.name == "BreadcrumbWriter":
+                breadcrumb_writer_names.add(target)
+
+
+def _collect_import_names(tree: ast.AST) -> tuple[set[str], set[str], set[str]]:
     logging_util_names = {"logging_util"}
     sink_names = set(NAME_SINKS)
     breadcrumb_writer_names = {"BreadcrumbWriter", "breadcrumb_writer", "writer"}
@@ -121,17 +140,25 @@ def _collect_sink_metadata(tree: ast.AST) -> tuple[set[str], set[str], set[str]]
                 if alias.name == "larch.core.logging_util":
                     logging_util_names.add(alias.asname or alias.name.rsplit(".", maxsplit=1)[-1])
         elif isinstance(node, ast.ImportFrom):
-            if node.module == "larch.core":
-                for alias in node.names:
-                    if alias.name == "logging_util":
-                        logging_util_names.add(alias.asname or alias.name)
-            elif node.module == "larch.core.logging_util":
-                for alias in node.names:
-                    target = alias.asname or alias.name
-                    if alias.name in LOGGING_UTIL_SINKS:
-                        sink_names.add(target)
-                    elif alias.name == "BreadcrumbWriter":
-                        breadcrumb_writer_names.add(target)
+            _collect_from_import_names(node, logging_util_names, sink_names, breadcrumb_writer_names)
+    return logging_util_names, sink_names, breadcrumb_writer_names
+
+
+def _add_new_targets(targets: list[ast.Name], names: set[str]) -> bool:
+    added = False
+    for target in targets:
+        if target.id not in names:
+            names.add(target.id)
+            added = True
+    return added
+
+
+def _propagate_assignment_names(
+    tree: ast.AST,
+    sink_names: set[str],
+    breadcrumb_writer_names: set[str],
+    logging_util_names: set[str],
+) -> None:
     assignments = [node for node in ast.walk(tree) if isinstance(node, (ast.Assign, ast.AnnAssign))]
     changed = True
     while changed:
@@ -144,24 +171,18 @@ def _collect_sink_metadata(tree: ast.AST) -> tuple[set[str], set[str], set[str]]
             if not targets:
                 continue
             if isinstance(value, ast.Name) and value.id in breadcrumb_writer_names:
-                for target in targets:
-                    if target.id not in breadcrumb_writer_names:
-                        breadcrumb_writer_names.add(target.id)
-                        changed = True
-                continue
-            if _is_breadcrumb_writer_constructor(value, logging_util_names, breadcrumb_writer_names):
-                for target in targets:
-                    if target.id not in breadcrumb_writer_names:
-                        breadcrumb_writer_names.add(target.id)
-                        changed = True
-                continue
-            if _is_logging_util_sink_reference(value, logging_util_names) or (
+                changed |= _add_new_targets(targets, breadcrumb_writer_names)
+            elif _is_breadcrumb_writer_constructor(value, logging_util_names, breadcrumb_writer_names):
+                changed |= _add_new_targets(targets, breadcrumb_writer_names)
+            elif _is_logging_util_sink_reference(value, logging_util_names) or (
                 isinstance(value, ast.Name) and value.id in sink_names
             ):
-                for target in targets:
-                    if target.id not in sink_names:
-                        sink_names.add(target.id)
-                        changed = True
+                changed |= _add_new_targets(targets, sink_names)
+
+
+def _collect_sink_metadata(tree: ast.AST) -> tuple[set[str], set[str], set[str]]:
+    logging_util_names, sink_names, breadcrumb_writer_names = _collect_import_names(tree)
+    _propagate_assignment_names(tree, sink_names, breadcrumb_writer_names, logging_util_names)
     return sink_names, breadcrumb_writer_names, logging_util_names
 
 
