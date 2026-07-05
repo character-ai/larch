@@ -3,14 +3,14 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:33:40
-- **Cost**: 💰 TOTAL ~$17.29: Claude $7.11, Codex-5.5 $5.64, Codex-mini $1.73, Cursor $1.90, Claude (subprocess) $0.91  |  Tokens: 40977k
+- **Cost**: 💰 TOTAL ~$17.87: Claude $7.69, Codex-5.5 $5.64, Codex-mini $1.73, Cursor $1.90, Claude (subprocess) $0.91  |  Tokens: 42776k
 - **Issue**: #6376: https://github.com/character-ai/larch/issues/6376
 - **PR**: #6416: https://github.com/character-ai/larch/pull/6416
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/4 accepted
-- **Lines (PR diff)**: code +341/-4, larch-logs +871/-0
+- **Lines (PR diff)**: code +346/-21, larch-logs +898/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -75,3 +75,7 @@ These OOS observations reached the vote but were not accepted for filing.
 - **Round 1 FINDING_10** (rejected, nit): Registry and CI expectations need lockstep updates. Concern: The new verb has to stay aligned across `_REGISTRY`, `_MACHINE_STDOUT_KEYS`, and `ARCHITECTURAL_GUIDELINES_EXPECTED`, or CI and machine-stdout expectations can drift.
 - **Round 1 FINDING_11** (rejected, nit): Harness pins only the helper presence and bare-append block. Concern: The harness check confirms the helper exists and that bare `execution-issues append` is blocked, but it does not independently exercise the end-to-end regression path.
 - **Round 1 FINDING_13** (rejected, latent): Partial-overlap and chunk-redaction coverage is still missing. Concern: The new tests cover single-bullet idempotency and post-flush replay, but they do not cover multi-bullet partial overlap or chunk-then-redact parity with the flush path.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
