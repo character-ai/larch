@@ -2,16 +2,16 @@
 
 - **Mode**: N/A
 - **Duration**: 00:29:41
-- **Cost**: 💰 TOTAL ~$9.66: Claude $0.68, Codex-5.5 $2.56, Codex-mini $2.84, Cursor $3.20, Claude (subprocess) $0.38  |  Tokens: 23360k
+- **Cost**: 💰 TOTAL ~$9.91: Claude $0.90, Codex-5.5 $2.56, Codex-mini $2.84, Cursor $3.20, Claude (subprocess) $0.41  |  Tokens: 23960k
 - **Issue**: #6426: https://github.com/character-ai/larch/issues/6426
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6438
 - **Exec issues**: 0
-- **Warnings**: 2
+- **Warnings**: 3
 - **Run logs**: `larch-logs/implement/8D239EC1-D854-4F67-B3D2-A0BE05562F1B/`
 - **Main agent model**: claude-sonnet-4-6
 - **Effort**: max
@@ -21,9 +21,10 @@
 
 ## Exec Issues and Warnings
 Exec Issues (0):
-Warnings (2):
+Warnings (3):
   1. Step 7a.1 — 1 explicit plan-listed path(s) untouched by the working-tree delta before dispatcher commit. First 10: python/larch/implement/ship.py
   2. Step agent dispatch-voters codex-pragmatism: agent launch-review --tool codex (voter parse-rate check; label codex-pragmatism) warning (exit 0)
+  3. oos file: Codex combine failed; filing the pre-combine OOS batch.
 
 ## Review Phase Detail
 
