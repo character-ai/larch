@@ -2884,7 +2884,7 @@ def test_preview_gate_b_rows_context_truncation_and_no_plan_body(tmp_path: Path)
     _ = (tmp_path / "oos.md").write_text("oos context\n", encoding="utf-8")
     proc = run_cli("plan-review", "preview", "--design-tmpdir", str(tmp_path), "--variant", "gate-b")
     assert proc.returncode == 0, proc.stderr
-    assert proc.stdout.startswith("## Plan Review Findings — Review\n\n")
+    assert proc.stdout.startswith("## Plan Review Findings: Review\n\n")
     assert "FINDING_1 | High | Cursor-Arch | " + ("x" * 200) in proc.stdout
     assert "FINDING_3 | Low | Codex-Arch | short concern" in proc.stdout
     assert "SHOULD_NOT_PRINT" not in proc.stdout
