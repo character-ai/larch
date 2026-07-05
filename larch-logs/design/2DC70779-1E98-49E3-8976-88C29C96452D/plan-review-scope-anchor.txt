@@ -1,0 +1,70 @@
+These 8 gaps were surfaced as OOS candidates during the `/implement` review for issue #6304 (run 3A7C4943). They extend the parent-ascent linter added in that PR. Each item is a distinct limitation of `scripts/lint-bare-grep-probe.sh`.
+
+**1. (important) Unsafe right-hand `||` fallback not checked**
+
+Candidate selection only inspects the first grep-family command on a line. An unsafe search on the right-hand side of `||` can bypass the `../` guard entirely.
+
+**2. (important) Pattern-file operands skip ascent checks**
+
+The path guard does not inspect `-f` / `--file` operands. A parent-ascent path hidden in a pattern-file argument evades detection.
+
+**3. (latent) Later pipeline or semicolon commands skipped**
+
+Grep-family commands after a pipe or semicolon on the same line are never checked for `../` operands.
+
+**4. (important) Split-value ripgrep options can bypass the guard**
+
+Split-value forms for `--include` and `--exclude` can be misparsed, letting a parent-ascent operand slip past the no-path guard.
+
+**5. (latent) Duplicated argv walkers can drift**
+
+The explicit-path and parent-ascent checks use separate argv parsing loops. A future option-parser edit could update one but not the other, reintroducing missed `../` operands or stdin false positives.
+
+**6. (latent) Continuation-line probes escape line-based scanning**
+
+The line-based scan cannot see `../` on continuation lines, so multiline fenced probes can bypass parent-ascent detection.
+
+**7. (latent) Absolute search roots remain unbounded**
+
+The linter still allows unbounded absolute search roots. A probe can recurse through a huge tree without any `..` segments.
+
+**8. (nit) Stale `test-lint-bare-grep-probe` docs row**
+
+The documentation inventory row for `make test-lint-bare-grep-probe` points at an outdated shard name and no longer matches the current test setup.
+
+---
+
+*Surfaced as OOS candidates in run 3A7C4943 (issue #6304). Not filed automatically — OOS auto-filing fix (#6291) postdates larch v52.4.10.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Extend parent-ascent detection to grep-family commands after `||`, `|`, `;`, and `&&`.
+- Check `-f`/`--file` operand paths for `../` segments.
+- Fix split-value option-parsing edge cases that let a parent-ascent operand bypass detection.
+- Merge the two near-identical argv-walker functions to cut drift risk.
+
+### Non-goals
+- Multiline/continuation-line scanning (line-based limitation; document only).
+- Absolute-root bounding (design decision; document only).
+- Changing wrapper-exit trap logic or stdin-path behavior.
+- Updating any CI workflow YAML or shard assignments.
+
+### Approach sketch
+- In `scripts/lint-bare-grep-probe.sh`: extend the awk script to scan tokens after `||`, `|`, `;`, `&&` for grep-family candidates (gap 1 and 3 together).
+- Add `../` checks for `-f`/`--file` split-value operands in the path-inspection logic (gap 2).
+- Audit and fix the `--include`/`--exclude` split-value tokenizer path to ensure `../` operands are not silently skipped (gap 4).
+- Refactor `has_parent_ascent_path` and `has_explicit_path` to share a common inner token-walk helper (gap 5).
+- Extend `## Limitations` in `lint-bare-grep-probe.md` for gaps 6 and 7.
+- Add regression test cases in `scripts/test-lint-bare-grep-probe.sh`.
+
+### Surfaces in scope
+- `scripts/lint-bare-grep-probe.sh`
+- `scripts/test-lint-bare-grep-probe.sh`
+- `scripts/lint-bare-grep-probe.md`
+- `scripts/test-lint-bare-grep-probe.md`
+
+### Open questions
+- Gap 4 exact trigger: identify the specific token sequence where `--include`/`--exclude` split-value form lets a `../` path slip through (requires tracing `option_takes_value` vs. `is_pattern_option` behavior in the awk tokenizer during drafting).

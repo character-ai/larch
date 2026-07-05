@@ -1,0 +1,46 @@
+Reviewing the awk scanner implementation against the plan. I'll read the relevant scripts and tests first.
+Checking git diff for awk scanner changes and any uncommitted work.
+Verifying edge cases in the current scanner and whether the plan covers them.
+Checking how `is_bare_wrapper_grep` behaves for right-hand segments and whether the plan addresses it:
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh:226-244	Multi-candidate loop must make bare-wrapper detection segment-relative	Plan requires segment-start bare `grep` reporting, but `is_bare_wrapper_grep()` always normalizes from token 1 via `skip_assignments(1)` and only treats `{` group prefixes. A later-segment bare grep such as `echo ok || grep -q PAT file` or `false || ( grep -q PAT file )` never matches `i == idx`, so the wrapper trap is skipped while parent-ascent/no-path may still run.	Pass each candidate its segment-start index into `is_bare_wrapper_grep()` (or equivalent) and compare `idx` only against skips from that boundary: assignments, optional leading `if`/`!`, `(`, `{`, then `command`.
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh:209-224	Segment discovery must repeat prefix normalization at every boundary, not only after shell operators	Proposed discovery covers `||`, `&&`, `;`, `|`, `|&`, and group openers, but not the prefix chain `candidate_index()` already uses. Right-hand forms like `false || LC_ALL=C rg -n PAT ../python` or `true || command grep -r PAT ../python` can fail to bind the grep-family token if the new loop only advances past operators without `skip_assignments`, optional `if`/`!`, openers, and `command`.	Define one `advance_to_command_start(i)` used for the first candidate and every post-boundary restart; reuse it in the multi-candidate iterator before testing `is_grep_family`.
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh:348-362	Shared argv walker must parent-ascent-check `-f`/`--file` operand values, including equals forms	Gap 2 is `-f`/`--file` evasion. Today pattern options consume a split value or keep an equals value without calling `has_parent_ascent_segment` on that operand. Plan lists `rg -f ../patterns` and equals-form tests but the refactor bullet only says "share argv walking," not that ascent runs on pattern-file option values during option scan. An implementer could still only scan post-pattern path operands and leave `rg -f=../patterns` or `rg --file=../patterns` allowed.	In the shared walker option branch, when `option_base` is `-f` or `--file`, test the split next token or the substring after `=` with `has_parent_ascent_segment` before continuing; keep `-e`/`--regexp` values pattern-only.
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh:285-316	Split `--include`/`--exclude` consumption must stay grep-scoped in the shared walker	Gap 4 is grep `--include`/`--exclude` misparsing (e.g. `grep --include ../dir PATTERN` false-allowing no-path when the include value is mistaken for a path). Plan says to normalize split include/exclude but does not tie it to `cmd == "grep"`. Ripgrep has no `--include`; applying grep-only flags in the shared rg table can mis-consume tokens on rare `rg --include ...` fence lines.	Keep `--include`/`--exclude`/`--exclude-dir` value consumption in the grep branch only; add an explicit regression `grep --include ../dir PATTERN` (no path) to the test list.
+1	out_of_scope	latent	correctness	scripts/lint-bare-grep-probe.sh:252-256	`then` is a argv terminator but not a multi-candidate segment boundary	Same-line `if true; then rg PATTERN` tokenizes with `then` before `rg`. `candidate_index()` already misses this shape; a boundary loop that only splits on `||`, `&&`, `;`, `|`, and openers will still miss post-`then` grep-family commands.	Pre-existing line-based limit; document or defer unless single-line `if ...; then rg` becomes common in fences.
+
+## Findings
+
+### 1. correctness — `scripts/lint-bare-grep-probe.sh:226-244`
+
+The plan calls for scanning every grep-family **segment** and keeping segment-start bare `grep` reporting, but `is_bare_wrapper_grep()` is anchored to the **line** start. It always calls `skip_assignments(1)` and only recognizes a `{` group prefix, not a per-segment `(`. Right-hand bare grep such as `echo ok || grep -q PAT file` will not satisfy `i == idx`, so the wrapper trap is skipped even though the plan says segment-start bare `grep` should still be reported (except pipe-fed allowances).
+
+**Suggested revision:** Pass a `segment_start` index into bare-wrapper detection and run the same prefix skips from that index only.
+
+### 2. correctness — `scripts/lint-bare-grep-probe.sh:209-224`
+
+Segment discovery after `||`, `&&`, `;`, `|`, and `|&` is necessary but not sufficient. The current first-candidate finder also skips env assignments, optional leading `if`/`!`, group openers, and `command` before testing `is_grep_family`. The plan’s segment-discovery bullet does not require repeating that chain at each boundary. Planned tests include `|| command grep ... ../root` but not env-prefixed right-hand candidates; without shared prefix normalization, `false || LC_ALL=C rg ... ../root` can be missed.
+
+**Suggested revision:** Add one shared `advance_to_command_start(i)` helper used for the initial candidate and every post-boundary restart.
+
+### 3. correctness — `scripts/lint-bare-grep-probe.sh:348-362`
+
+Gap 2 (`-f` / `--file`) needs parent-ascent on the **pattern-file operand**, not only on post-pattern search roots. The duplicated walkers today treat `-f` / `--file` as pattern options and consume split values without calling `has_parent_ascent_segment` on them; equals forms keep the ascent inside the same token. The plan’s tests cover `rg -f ../patterns`, `rg --file ../patterns`, and equals forms, but the refactor step only says to share argv walking. That leaves room to implement post-pattern scanning only and still pass some cases while missing `-f=../patterns`.
+
+**Suggested revision:** Pin the shared walker contract: on `-f` / `--file` (split or `=`), run `has_parent_ascent_segment` on the file operand during option scan.
+
+### 4. correctness — `scripts/lint-bare-grep-probe.sh:285-316`
+
+Gap 4 is specifically about **grep** split `--include` / `--exclude` letting a no-path probe slip through when the include value is parsed as a path operand (`grep --include ../dir PATTERN`). The plan says to normalize split include/exclude but does not scope it to `cmd == "grep"`. The existing `option_takes_value` already keeps those flags grep-only; the shared walker must preserve that split and should name the concrete bypass fixture in tests.
+
+**Suggested revision:** Scope include/exclude consumption to grep in the shared helper and add `grep --include ../dir PATTERN` as a named no-path violation case.
+
+### 5. [OUT_OF_SCOPE] correctness — `scripts/lint-bare-grep-probe.sh:252-256`
+
+`then` is already an argv terminator in `is_command_boundary()` but not a multi-candidate segment boundary. Same-line `if true; then rg PATTERN` is not covered by the planned operator list and is already missed by `candidate_index()`. This is a pre-existing line-based limitation, not one of gaps 1–5.
+
+---
+
+**Pipe-fed stdin:** The plan’s contract (allow `cmd | rg PATTERN`, still flag `cmd | rg PATTERN ../root`, parent-ascent before `< /dev/null`) is sound. The main regression risk is implementing `pipe_fed` from the segment’s immediate `|` / `|&` boundary only, not from any earlier pipe on the line; the plan’s doc bullet already states that intent.
+
+**Minimum-change:** Gaps 6–7 correctly stay limitations-only; optional `docs/linting.md` shard fix is appropriately `MAY_UPDATE`.

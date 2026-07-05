@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20711	5178	13357	3340	7354	1839		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15157	3790	13060	3265	2097	525		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20702	5176	13348	3337	7354	1839		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15181	3796	13084	3271	2097	525		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15166	3792	13069	3268	2097	525		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20726	5182	13372	3343	7354	1839		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15179	3795	13082	3271	2097	525		0	0
+design Step 3	phase1	1	dyn-codex-plan-awk-parser-guard	plan-review	codex	dyn-codex-plan-awk-parser-guard.txt	15504	3876	12935	3234	2569	643		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20724	5181	13370	3343	7354	1839		0	0
+design Step 3	phase1	1	dyn-cursor-plan-awk-parser-guard	plan-review	cursor	dyn-cursor-plan-awk-parser-guard.txt	21049	5263	13223	3306	7826	1957		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	27296	6824	4509	1128	22787	5697	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	12818	3205	9065	2267	3753	939		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	12818	3205	9065	2267	3753	939		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	12818	3205	9065	2267	3753	939		0	0

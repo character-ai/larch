@@ -1,0 +1,3 @@
+warning: fix text for slot 'Cursor-Innovation' in FINDING_2 not traceable to scoped input (first 80 chars: 'When deciding a candidate is pipe-fed, treat the immediately preceding unquoted ')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_3 not traceable to scoped input (first 80 chars: 'Make `is_bare_wrapper_grep` take the segment boundary index from `advance_to_com')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_3 not traceable to scoped input (first 80 chars: 'Rebase `is_bare_wrapper_grep` (or pass `segment_start`) so bare-wrapper detectio')
