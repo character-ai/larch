@@ -1,0 +1,1 @@
+Plan targets the approved scope. It hardens pre-fix rebase routing, single-sources Step 3 timeouts, fixes execution-issue source precedence, wires an existing harness into CI shards, and updates the SECURITY marker example.

@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan updates SKILL.md (the orchestrator guide) with the sentinel guard; exit-matrix staleness is uncertain as a bypass risk vs. documentation inconsistency; stall-vs-bail routing destination is implementation guidance not a plan defect; round-2 default-deny applies
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan mandates "Phase14 flag with allowed REASON passes checkout/repo guards before skip" which subsumes rebase_in_progress ordering; PHASE=rebase assertion in state file is an implementation-level detail the plan's conflict-path write already implies; not a plan-mandated gap
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- plan parses RESUME_PHASE from flag KVs but gates only on REASON; adding RESUME_PHASE to the allow condition adds depth but the plan's REASON-only allowlist is the accepted gate from r1 FINDING_2; sentinel-write-on-skip is addressed because the plan's "valid terminal decision (continue or conflict-fix)" covers the allowlisted skip path
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- substantively duplicates r1 FINDING_5 OOS (same root risk: inline Python import in shell script can fail in consumer repos); no materially new evidence beyond framing it as a test gap rather than an import-path guarantee
