@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- Broader wrapper coverage may be real, but it exceeds the scoped runtime surfaces for this lock and belongs out of scope.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- This restates the already-accepted runtime scrub problem; it is not a new necessary plan change.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- This is the same runtime-scrub scope concern already covered by the accepted fix, so it does not add a distinct necessary gate.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Shell printf breadcrumbs are outside the scoped Python and markdown output surfaces for this plan.
+OOS_2: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- This shell breadcrumb is outside the planned scanner surfaces, so it is out of scope here.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The path may be real, but it is a latent future coverage issue and not necessary for this feature to ship.
+OOS_4: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- Shell printf output is outside the em-dash-output lint scope defined for this lock.
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- Documentation prose about the old separator is not emitted output and does not block the feature.

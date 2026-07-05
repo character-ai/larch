@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- shell printf paths are outside the issue's python/skill-markdown lint scope and do not block this lock's acceptance
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate shell-breadcrumb gap outside stated lint scope; not filing-worthy for this feature
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- latent future-coverage gap with no current U+2014 emit sites; robustness only
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicates OOS_2; shell output outside the planned lint contract
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- non-emitted documentation prose; cosmetic consistency not required for the lock

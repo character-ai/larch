@@ -1,0 +1,7 @@
+warning: fix text for slot 'Cursor-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: '`Extend the markdown scanner to also flag em-dash inside inline \\`print \\`…\\`\\` ')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`Extend \\`lint_em_dash_output.py\\` to scan em-dash inside backtick status-print ')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`Reword step 5 to require scrubbing every in-scope emitted surface (Python sinks')
+warning: fix text for slot 'Cursor-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: '`Scrub those dict literals in the prerequisite pass and either treat known bread')
+warning: fix text for slot 'Cursor-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: '`Add \\`_err(\\` to the AST sink list (or treat it as an alias of \\`print\\` to std')
+warning: fix text for slot 'Cursor-Pragmatic' in FINDING_2 not traceable to scoped input (first 80 chars: '`Add \\`_core_diagnostic\\` (and any other thin stderr wrappers in \\`python/larch/')
+warning: fix text for slot 'Cursor-Requirements' in FINDING_3 not traceable to scoped input (first 80 chars: '`Add ### UPDATED rows for each reference above; replace MANDATORY — READ ENTIRE ')
