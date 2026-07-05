@@ -1288,6 +1288,21 @@ def test_oos_proposal_instruction_mentions_legitimacy_standard() -> None:
     assert "legitimacy standard at proposal time" in text
 
 
+def test_checked_in_reviewer_prompt_surfaces_use_legitimacy_cap() -> None:
+    surfaces = [
+        REPO_ROOT / "skills" / "shared" / "reviewer-templates.md",
+        REPO_ROOT / "agents" / "code-reviewer.md",
+        *sorted((REPO_ROOT / "agents").glob("reviewer-*.md")),
+        *sorted((REPO_ROOT / "agents" / "pre-rendered").glob("reviewer-*-body.txt")),
+    ]
+
+    assert surfaces
+    for path in surfaces:
+        text = path.read_text(encoding="utf-8")
+        assert "highest-legitimacy concrete items" in text, str(path)
+        assert "highest-materiality" not in text, str(path)
+
+
 def test_render_voter_oos_rules_mention_genuine_concrete_non_duplicate(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

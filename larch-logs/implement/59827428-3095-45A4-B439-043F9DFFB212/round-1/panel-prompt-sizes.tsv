@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	1	dyn-dyn-oos-rollup	specialist	cursor	dyn-dyn-oos-rollup-output.txt	29846	7462	9986	2497	19860	4965		0	0
+implement Step 5	phase1	1	dyn-dyn-oos-rollup-codex	specialist	codex	dyn-dyn-oos-rollup-codex-output.txt	29846	7462	9986	2497	19860	4965		0	0
+implement Step 5	phase1	1	correctness	specialist	codex	codex-specialist-correctness-output.txt	33163	8291	13747	3437	19416	4854	agents/reviewer-correctness.md	5811	1453
+implement Step 5	phase1	1	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	33429	8358	14013	3504	19416	4854	agents/reviewer-edge-cases.md	6114	1529
+implement Step 5	phase1	1	testing	specialist	cursor	cursor-specialist-testing-output.txt	32871	8218	13455	3364	19416	4854	agents/reviewer-testing.md	5581	1396
+implement Step 5	phase1	1	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	33429	8358	14013	3504	19416	4854	agents/reviewer-edge-cases.md	6114	1529
+implement Step 5	phase1	1	testing	specialist	codex	codex-specialist-testing-output.txt	32871	8218	13455	3364	19416	4854	agents/reviewer-testing.md	5581	1396
+implement Step 5	phase1	1	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	33163	8291	13747	3437	19416	4854	agents/reviewer-correctness.md	5811	1453
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	8845	2212	4174	1044	4671	1168	agents/orchestrator-aggregator.md	4397	1100
+implement Step 5	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	8667	2167	8403	2101	264	66		0	0
+implement Step 5	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	9013	2254	8749	2188	264	66		0	0
+implement Step 5	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	8724	2181	8460	2115	264	66		0	0
+review.fix_coder	review.fix_coder	1	implementer	implementer	codex	coder-output.log	1746	437	170	43	1576	394		0	0

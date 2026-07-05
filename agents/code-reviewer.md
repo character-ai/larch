@@ -195,7 +195,7 @@ A numbered list of issues that should be fixed in this PR. For each finding:
 
 ### Out-of-Scope Observations
 - Report at most 3 OOS observations.
-- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- If more than 3 OOS candidates exist, keep only the highest-legitimacy concrete items under `skills/shared/oos-acceptance-rubric.md`.
 - Do not summarize, count, or append overflow OOS items.
 
 A numbered list of pre-existing issues or concerns beyond the scope of this PR that are worth future attention. For each observation:

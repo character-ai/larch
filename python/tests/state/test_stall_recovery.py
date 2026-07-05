@@ -1616,6 +1616,25 @@ def test_normalize_issue_env_dedup_success(tmp_path: Path, capsys: pytest.Captur
     assert "ISSUE_NUMBER=456" in (tmp_path / "stall-recovery-issue.env").read_text(encoding="utf-8")
 
 
+def test_normalize_issue_env_dedup_success_accepts_bare_duplicate_url(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    issue_out = tmp_path / "issue.out"
+    _ = issue_out.write_text(
+        "ISSUES_CREATED=0\nISSUES_FAILED=0\nISSUE_DUPLICATE=1\nISSUE_DUPLICATE_OF_URL=https://github.com/example/repo/issues/456\n",
+        encoding="utf-8",
+    )
+    rc = stall_recovery.normalize_issue_env_main([
+        "--implement-tmpdir", str(tmp_path),
+        "--issue-stdout-file", str(issue_out),
+        "--issue-exit-code", "0",
+    ])
+    assert rc == 0
+    assert "NORMALIZED=true" in capsys.readouterr().out
+    assert "ISSUE_NUMBER=456" in (tmp_path / "stall-recovery-issue.env").read_text(encoding="utf-8")
+
+
 def test_normalize_issue_env_failed_filing(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     issue_out = tmp_path / "issue.out"
     _ = issue_out.write_text("ISSUES_FAILED=1\n", encoding="utf-8")

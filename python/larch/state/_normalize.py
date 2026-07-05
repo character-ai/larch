@@ -42,7 +42,7 @@ _STALE_FINALIZE_OUTCOME_KEYS = frozenset(
 
 _ISSUE_STDOUT_KEY_RE = re.compile(
     r"^(ISSUES_(CREATED|FAILED|DEDUPLICATED)|"
-    r"ISSUE_1_(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL))="
+    r"ISSUE_(?:1_)?(FAILED|NUMBER|URL|DUPLICATE|DUPLICATE_OF_NUMBER|DUPLICATE_OF_URL))="
 )
 _ISSUE_STDOUT_KEY_LIKE_RE = re.compile(r"^[A-Z][A-Z0-9_]*=")
 
@@ -342,15 +342,14 @@ def normalize_issue_env(args: argparse.Namespace) -> int:
         return fail("issue-1-failed")
     issue_number = filtered.get("ISSUE_1_NUMBER", "")
     issue_url = filtered.get("ISSUE_1_URL", "")
-    duplicate = filtered.get("ISSUE_1_DUPLICATE", "")
-    duplicate_number = filtered.get("ISSUE_1_DUPLICATE_OF_NUMBER", "")
-    duplicate_url = filtered.get("ISSUE_1_DUPLICATE_OF_URL", "")
+    duplicate = filtered.get("ISSUE_1_DUPLICATE", "") or filtered.get("ISSUE_DUPLICATE", "")
+    duplicate_number = filtered.get("ISSUE_1_DUPLICATE_OF_NUMBER", "") or filtered.get("ISSUE_DUPLICATE_OF_NUMBER", "")
+    duplicate_url = filtered.get("ISSUE_1_DUPLICATE_OF_URL", "") or filtered.get("ISSUE_DUPLICATE_OF_URL", "")
     if (
         (_truthy(duplicate) or not issue_number)
-        and duplicate_number
         and (_issue_value_is_url(duplicate_url) or not _issue_value_is_url(issue_url))
     ):
-        issue_number = duplicate_number
+        issue_number = duplicate_number or (_issue_url_number(duplicate_url) or "")
         issue_url = duplicate_url
     if not issue_number or not issue_number.isdigit():
         return fail("issue-number-missing")

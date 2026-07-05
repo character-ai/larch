@@ -73,7 +73,7 @@ Numbered list: severity (`**Blocking**` / `**Important**` / `**Nit**` / `**Laten
 
 ### Out-of-Scope Observations
 - Report at most 3 OOS observations.
-- If more than 3 OOS candidates exist, keep only the highest-materiality items under `skills/shared/oos-acceptance-rubric.md`.
+- If more than 3 OOS candidates exist, keep only the highest-legitimacy concrete items under `skills/shared/oos-acceptance-rubric.md`.
 - Do not summarize, count, or append overflow OOS items.
 
 Numbered list of pre-existing issues worth surfacing. Use the same format plus why it is out of scope.

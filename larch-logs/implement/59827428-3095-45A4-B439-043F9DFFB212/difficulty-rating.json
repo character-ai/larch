@@ -1,0 +1,29 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": true,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": true,
+  "escalations": [
+    {
+      "from_tier": "MODERATE",
+      "round": 2,
+      "to_tier": "HARD",
+      "trigger": "structural-loc"
+    }
+  ],
+  "floors_applied": [],
+  "implement_tier": "MODERATE",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "MODERATE",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Touches generated reviewer prompts, OOS filing idempotency, final-report audit logic, and focused regression tests.",
+  "round_cap": 2,
+  "schema_version": 1
+}
