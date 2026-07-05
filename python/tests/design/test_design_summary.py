@@ -142,7 +142,7 @@ def _install_final_summary_env(
             out_file = Path(args[args.index("--output-file") + 1])
             _ = out_file.write_text(
                 "## /design run design-run-1: approved\n\n"
-                "- **Outcome**: approved\n"
+                "- **Outcome**: DONE\n"
                 "<!-- larch:run-summary v=1 -->\n",
                 encoding="utf-8",
             )
@@ -509,6 +509,7 @@ def test_render_final_summary_degraded_fallback_includes_issue_count_bullets(
 
     assert rc == 0
     body = (tmp_path / "final-summary.md").read_text(encoding="utf-8")
+    assert "- **Outcome**: DONE" in body
     assert "- **Exec issues**: 1" in body
     assert "- **Warnings**: 2" in body
     assert "## Exec Issues and Warnings" in body

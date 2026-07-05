@@ -17,6 +17,7 @@ from larch.calibration import difficulty
 from larch.report import exec_issue_detail
 from larch.report import review_phase_detail
 from larch.design.design_publish import review_provenance
+from larch.git.pr_body import _map_outcome_display  # pyright: ignore[reportPrivateUsage]
 from larch.report.report_tokens_cost import CODEX_MINI_MODEL
 
 
@@ -645,7 +646,7 @@ def render_final_summary_main(argv: Sequence[str]) -> int:
         with out_file.open("w", encoding="utf-8") as fh:
             fh.write(f"## /design run {run_id}: {outcome}\n\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write("**⚠ Degraded fallback: full renderer failed.**\n\n")  # pyright: ignore[reportUnusedCallResult]
-            fh.write(f"- **Outcome**: {outcome}\n")  # pyright: ignore[reportUnusedCallResult]
+            fh.write(f"- **Outcome**: {_map_outcome_display(outcome)}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write(f"- **Duration**: {duration}\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write("- **Cost**: N/A\n")  # pyright: ignore[reportUnusedCallResult]
             fh.write(f"- **Exec issues**: {exec_issues}\n")  # pyright: ignore[reportUnusedCallResult]

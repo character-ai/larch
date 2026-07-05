@@ -532,7 +532,7 @@ def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
 
 def _summary_stalled_outcome_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
-        if re.match(r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$", line.rstrip("\n")):
+        if re.match(r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$", line.rstrip("\n"), re.IGNORECASE):
             return idx
     return None
 
@@ -581,9 +581,15 @@ def reconcile_stalled_summary_from_manifest(run_dir: Path) -> bool:
     heading = line.rstrip("\n").rstrip()
     rewritten_heading = re.sub(r"(?:\s—|:)\s*stalled$", f": {outcome}", heading)
     lines[heading_idx] = rewritten_heading + newline
-    del lines[outcome_idx]
+    outcome_line = lines[outcome_idx]
+    outcome_newline = "\n" if outcome_line.endswith("\n") else ""
+    lines[outcome_idx] = f"- **Outcome**: DONE{outcome_newline}"
     rewritten = "".join(lines)
-    if "- **Outcome**: stalled" in rewritten:
+    if re.search(
+        r"^[ \t]*-[ \t]+\*\*Outcome\*\*:[ \t]*stalled[ \t]*$",
+        rewritten,
+        re.MULTILINE | re.IGNORECASE,
+    ):
         return False
     larch_io.atomic_write(summary, rewritten, prefix=".final-summary-", nofollow=True)
     return True

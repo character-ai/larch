@@ -57,6 +57,24 @@ _DIAGRAM_RETRY_DELAY_SECONDS = 10
 _WARNING_TAIL_LIMIT = 500
 _PY_CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _LAUNCHER_FAILURE_LABEL_RE = re.compile(r"^[A-Za-z0-9_-]+$")
+_IMPLEMENT_SUCCESS_OUTCOMES = frozenset({
+    "merged",
+    "force-merged-externally",
+    "pr-created",
+    "pr-created-draft",
+    "design-only",
+    "forked-dry-run",
+})
+_DESIGN_SUCCESS_OUTCOMES = frozenset({"approved", "approved-partition"})
+_SUCCESS_OUTCOMES = _IMPLEMENT_SUCCESS_OUTCOMES | _DESIGN_SUCCESS_OUTCOMES
+
+
+def _map_outcome_display(outcome: str) -> str:
+    if outcome in _SUCCESS_OUTCOMES:
+        return "DONE"
+    if outcome == "stalled":
+        return "STALLED"
+    return outcome
 
 
 def _bounded_warning_detail(text: str) -> str:
@@ -552,12 +570,9 @@ def render_run_summary(**kwargs: object) -> str:
     if not run_logs_path and run_id != "unknown" and outcome not in {"failed-publish", "publish-skipped"}:
         run_logs_path = f"larch-logs/{skill}/{run_id}/"
     lines = [f"## /{skill} run {run_id}: {outcome}", ""]
-    if outcome.startswith(("bailed", "stalled", "cancelled-", "failed-")) or outcome == "publish-skipped":
-        lines.append(f"- **Outcome**: {outcome}")
-    if skill != "design":
-        lines.append(f"- **Mode**: {kwargs.get('mode') or 'N/A'}")
-        if kwargs.get("workflow_path"):
-            lines.append(f"- **Path**: {kwargs.get('workflow_path')}")
+    lines.append(f"- **Outcome**: {_map_outcome_display(outcome)}")
+    if skill != "design" and kwargs.get("workflow_path"):
+        lines.append(f"- **Path**: {kwargs.get('workflow_path')}")
     if force:
         lines.append("- Force: true")
     lines.extend([
