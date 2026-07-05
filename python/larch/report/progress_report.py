@@ -234,7 +234,7 @@ def _phase_round_from_meta(
     rejected = _as_int(tally.get("REJECTED_COUNT", counts.get("total_rejected")))
     exonerated = _as_int(tally.get("EXONERATED_COUNT", counts.get("total_exonerated")))
     neutral = _as_int(tally.get("NEUTRAL_COUNT", counts.get("total_neutral")))
-    oos_proposed, oos_fileable, oos_rejected = _meta_oos_counts(round_dir=round_dir, tally=tally)
+    oos_proposed, oos_fileable, _oos_rejected = _meta_oos_counts(round_dir=round_dir, tally=tally)
     reviewers = _as_int(panel.get("total_slot_count"))
     if reviewers == 0:
         reviewers = _as_int(panel.get("static_slot_count")) + _as_int(panel.get("dynamic_slot_count"))
