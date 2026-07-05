@@ -227,6 +227,58 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
     assert kv_prepare["FILE_DESIGN_OOS_STATUS"] != "skip-sentinel"
 
 
+def test_annotate_cap1_rollup_maps_single_url_to_every_original(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    accepted = tmp_path / "oos-accepted-design.md"
+    _ = accepted.write_text(
+        "### OOS_1: alpha\n- desc\n\n"
+        "### OOS_2: beta\n- desc\n",
+        encoding="utf-8",
+    )
+    _ = (tmp_path / "oos-design-filing-order.txt").write_text("1\n2\n", encoding="utf-8")
+    _ = (tmp_path / "oos-combined.md").write_text(
+        "### OOS_1: rollup\n"
+        "- **Focus area**: architecture\n"
+        "- **Description**: combined follow-up.\n",
+        encoding="utf-8",
+    )
+    stdout_file = tmp_path / "oos-issue.stdout.txt"
+    _ = stdout_file.write_text(
+        "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"
+        "ISSUES_FAILED=0\n",
+        encoding="utf-8",
+    )
+    cache = tmp_path / "cache.md"
+
+    def _stub_cache(_issue: str) -> Path:
+        return cache
+
+    monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache)
+
+    rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
+    assert rc == 0
+    kv = _kv(capsys.readouterr().out)
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-complete"
+    accepted_text = accepted.read_text(encoding="utf-8")
+    assert accepted_text.count("- **Filed URL**: https://github.com/acme/repo/issues/101") == 2
+    sentinel_text = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in sentinel_text
+    assert "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/101" in sentinel_text
+
+    def unexpected_run_cli(*_args: str, **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        raise AssertionError("prepare rerun should skip refiling via sentinel")
+
+    monkeypatch.setattr(design_oos, "_run_cli", unexpected_run_cli)
+    rc_prepare = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
+    assert rc_prepare == 0
+    kv_prepare = _kv(capsys.readouterr().out)
+    assert kv_prepare["FILE_DESIGN_OOS_STATUS"] == "skip-sentinel"
+    assert accepted.read_text(encoding="utf-8").count("- **Filed URL**: https://github.com/acme/repo/issues/101") == 2
+
+
 def test_annotate_empty_stdout_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     rc = design_oos.file_oos_annotate_main(
         ["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(tmp_path / "missing.txt")],

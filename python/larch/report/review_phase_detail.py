@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+import csv
 import os
 import re
 from pathlib import Path
@@ -108,17 +109,35 @@ def _vote_result(block: str) -> str:
     return match.group(1).lower() if match else "unknown"
 
 
+def _classification_vote_results(path: Path) -> dict[str, str]:
+    try:
+        with path.open(encoding="utf-8", newline="") as handle:
+            reader = csv.DictReader(handle, delimiter="\t")
+            if not reader.fieldnames or "finding_id" not in reader.fieldnames or "voting_result" not in reader.fieldnames:
+                return {}
+            results: dict[str, str] = {}
+            for row in reader:
+                finding_id = (row.get("finding_id") or "").strip()
+                result = (row.get("voting_result") or "").strip().lower()
+                if finding_id and result:
+                    results[finding_id] = result
+            return results
+    except (OSError, csv.Error):
+        return {}
+
+
 def _rejected_oos_audit_from_file(path: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
+    classification_results = _classification_vote_results(path.parent / "findings-classification.tsv")
     candidates: list[str] = []
     for match in _REJECTED_OOS_BLOCK_RE.finditer(text):
         oos_id = match.group(1)
         title = _clean_oos_title(match.group(2), oos_id)
         block = match.group(0)
-        result = _vote_result(block)
+        result = classification_results.get(oos_id) or _vote_result(block)
         if result == "accepted" or voting.is_security_block_text(block):
             continue
         severity = _field_value(block, "Severity") or "unknown"

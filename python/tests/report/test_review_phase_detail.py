@@ -163,6 +163,14 @@ def _write_rejected_oos(path: Path, *, title: str, severity: str = "latent", con
     )
 
 
+def _write_classification(path: Path, *, finding_id: str = "OOS_1", result: str = "rejected") -> None:
+    path.write_text(
+        "finding_id\treviewer_slots\tvoting_result\tscope\n"
+        f"{finding_id}\tcodex-specialist-correctness\t{result}\toos\n",
+        encoding="utf-8",
+    )
+
+
 def test_render_rejected_oos_audit_section_lists_public_candidates(tmp_path: Path) -> None:
     _write_rejected_oos(
         tmp_path / "round-1" / "oos.md",
@@ -177,6 +185,33 @@ def test_render_rejected_oos_audit_section_lists_public_candidates(tmp_path: Pat
     assert "These OOS observations reached the vote but were not accepted for filing." in section
     assert "- **Round 1 OOS_1** (rejected, important): retry gap." in section
     assert "Concern: `python/example.py:10` misses the retry branch." in section
+
+
+def test_render_rejected_oos_audit_section_prefers_tsv_without_footer(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    _ = (round_dir / "oos.md").write_text(
+        "### OOS_1: [OUT_OF_SCOPE] retry gap\n"
+        "- **Reviewer(s)**: codex-specialist-correctness\n"
+        "- **Severity**: important\n"
+        "- **Concern**: footer drift removed the result line.\n",
+        encoding="utf-8",
+    )
+    _write_classification(round_dir / "findings-classification.tsv", result="rejected")
+
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
+
+    assert "- **Round 1 OOS_1** (rejected, important): retry gap." in section
+
+
+def test_render_rejected_oos_audit_section_tsv_accepted_beats_footer(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    _write_rejected_oos(round_dir / "oos.md", title="[OUT_OF_SCOPE] stale rejected footer")
+    _write_classification(round_dir / "findings-classification.tsv", result="accepted")
+
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
+
+    assert section == ""
 
 
 def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: Path) -> None:
@@ -195,6 +230,7 @@ def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: P
         "Vote tally: YES=1 NO=1 JUDGE_ERROR=0 Result=neutral\n",
         encoding="utf-8",
     )
+    _write_classification(round_dir / "findings-classification.tsv", finding_id="OOS_1", result="rejected")
 
     section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 

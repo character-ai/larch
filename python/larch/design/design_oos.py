@@ -697,6 +697,54 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
     return url_by_idx, dup_by_idx, failed, issues_failed_count
 
 
+def _cap1_rollup_url(
+    *,
+    order: list[str],
+    combined_path: Path,
+    successful_slots: list[tuple[str, str]],
+    has_failures: bool,
+) -> str:
+    if len(order) <= 1 or has_failures:
+        return ""
+    if len(_parse_post_cap_combined_blocks(combined_path)) != 1:
+        return ""
+    if len(successful_slots) != 1:
+        return ""
+    index, url = successful_slots[0]
+    return url if index == "1" else ""
+
+
+def _annotate_accepted_urls(
+    *,
+    order: list[str],
+    accepted_text: str,
+    slot_urls: dict[str, str],
+    failed_indices: set[str],
+    rollup_url: str,
+) -> tuple[str, list[str]]:
+    text = accepted_text
+    map_lines: list[str] = []
+    for index, os_number in enumerate(order, start=1):
+        key = str(index)
+        if key in failed_indices:
+            continue
+        url = rollup_url or slot_urls.get(key, "")
+        if not url:
+            continue
+        span = _block_range(text=text, os_number=os_number)
+        if span is None:
+            continue
+        block = text[span[0]:span[1]]
+        if _FILED_URL_LINE_RE.search(block):
+            if rollup_url:
+                map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
+            continue
+        new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
+        text = text[:span[0]] + new_block + text[span[1]:]
+        map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
+    return text, map_lines
+
+
 def _parse_post_cap_combined_blocks(combined_path: Path) -> list[str]:
     if not combined_path.is_file():
         return []
@@ -978,28 +1026,31 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
     stdout_text = stdout_path.read_text(encoding="utf-8", errors="replace")
     url_by_idx, dup_by_idx, failed_indices, issues_failed_count = _parse_issue_stdout(stdout_text)
     accepted_text = accepted.read_text(encoding="utf-8")
-    map_lines: list[str] = []
-    for index, os_number in enumerate(order, start=1):
-        key = str(index)
-        if key in failed_indices:
-            continue
-        url = url_by_idx.get(key) or dup_by_idx.get(key)
-        if not url:
-            continue
-        span = _block_range(text=accepted_text, os_number=os_number)
-        if span is None:
-            continue
-        block = accepted_text[span[0]:span[1]]
-        if _FILED_URL_LINE_RE.search(block):
-            continue
-        new_block = block.rstrip("\n") + f"\n- **Filed URL**: {url}\n"
-        accepted_text = accepted_text[:span[0]] + new_block + accepted_text[span[1]:]
-        map_lines.append(f"OOS_FILE_MAP\t{os_number}\t{url}")
+    combined_path = design_tmpdir / "oos-combined.md"
+    successful_slots = [
+        (index, url)
+        for mapping in (url_by_idx, dup_by_idx)
+        for index, url in mapping.items()
+        if url
+    ]
+    rollup_url = _cap1_rollup_url(
+        order=order,
+        combined_path=combined_path,
+        successful_slots=successful_slots,
+        has_failures=bool(failed_indices) or issues_failed_count > 0,
+    )
+    slot_urls = {**dup_by_idx, **url_by_idx}
+    accepted_text, map_lines = _annotate_accepted_urls(
+        order=order,
+        accepted_text=accepted_text,
+        slot_urls=slot_urls,
+        failed_indices=failed_indices,
+        rollup_url=rollup_url,
+    )
     _ = accepted.write_text(accepted_text, encoding="utf-8")
     sentinel_body = "\n".join(map_lines) + ("\n" if map_lines else "")
     complete_sentinel = design_tmpdir / "oos-issues-created.md"
     _ = complete_sentinel.write_text(sentinel_body, encoding="utf-8")
-    combined_path = design_tmpdir / "oos-combined.md"
     label_rc = _apply_priority_labels_only(
         design_tmpdir=design_tmpdir,
         combined_path=combined_path,
