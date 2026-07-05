@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the suite already has a background-& regression, so this added test is not necessary
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dropping & is a scope reduction, not required for the stated feature path
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dropping & is a scope reduction, not required for the stated feature path
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dropping & is a scope reduction, not required for the stated feature path
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dropping & is a scope reduction, not required for the stated feature path

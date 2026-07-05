@@ -1,0 +1,2 @@
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/lint-bare-grep-probe.sh:252-255	Segment discovery still omits the background operator `&` from the new candidate-start set.	A line like `echo ok & rg -n PATTERN` would still leave the right-hand grep-family command unscanned, so an unsafe probe can evade the lint even after the refactor.	Extend the segment-start walker to treat `&` as a boundary too, and add a regression for a right-hand command after backgrounding.

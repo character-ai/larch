@@ -1,0 +1,7 @@
+1	the multi-segment awk scan still needs segment-local restart and the same wrapper/prefix peeling at each boundary; otherwise later `||`/`;`/pipe-fed candidates can be skipped, safe first segments can terminate the line early, and bare-wrapper or no-path regressions can hide on the rhs.
+1	gap 4 is a grep option-parsing bug, so the tests need real `grep` split-value cases instead of dead `rg --include` / `rg --exclude` shapes that can pass without exercising the parser.
+1	the `-f` / `--file` path guard still needs to inspect the option value itself, including split and equals forms, and the test list needs a no-follow-on-path regression so a pure pattern-file probe cannot evade the parent-ascent check.
+2	the multi-candidate loop can still stop scanning after ordinary commands that are not grep-family, which would leave later `||`, `;`, or pipeline-separated probes unchecked.
+2	the pipe-fed predicate appears to recognize only `|`, so `|&` producers could be misclassified and either false-positive on allowed inputs or miss the intended pipe-fed exemption.
+2	bare-wrapper detection is still described as line-start oriented, so a `grep` after `||` or `;` on the right-hand side can evade the bare-wrapper check even if the multi-candidate loop reaches it.
+2	the parent-ascent guard covers split and long-form pattern-file operands, but attached short `-fvalue` forms can still hide a `../` path in the value and bypass the check.

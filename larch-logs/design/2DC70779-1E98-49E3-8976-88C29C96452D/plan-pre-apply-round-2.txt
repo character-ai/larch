@@ -1,0 +1,112 @@
+## Approach
+
+Implement the minimum linter extension for gaps 1-5.
+
+- Keep the scanner line-based.
+- Scan every grep-family command segment on a line, not only the first candidate.
+- Preserve existing piped-stdin allowance for `cmd | rg PATTERN`.
+- Still check parent-ascent operands on piped, fallback, chained, and semicolon-separated grep-family commands.
+- Treat right-hand `||`, `&&`, `;`, `|`, `|&`, and `&` command starts as new candidate segments.
+- At each segment boundary, restart candidate prefix peeling (skip assignments, optional `if`/`!`, `(`, `{`, `command`) relative to that boundary start; do not reuse the previous segment's index.
+- Per-candidate evaluation order: bare wrapper (segment-relative) → parent-ascent (always) → if pipe-fed skip no-path and devnull checks → else devnull short-circuit then explicit-path check. A safe pass (pipe-fed no-path, devnull, explicit-path) does NOT stop the line; continue to the next candidate segment.
+- Check `-f`/`--file` option values for `../` segments in both split (`-f VALUE`) and equals (`--file=VALUE`) forms. Run the same `has_parent_ascent_segment()` check on the consumed value before continuing; leave `-e`/`--regexp` values unchecked.
+- Fix split-value `--include` / `--exclude` parsing for `grep` (not `rg`) so option values cannot hide a later path or shift pattern/path detection.
+- Refactor the duplicated argv walkers into one shared helper used by explicit-path and parent-ascent checks.
+- Document gaps 6 and 7 as limitations only.
+
+## Files to modify/create
+
+### UPDATED: scripts/lint-bare-grep-probe.sh
+
+Refactor the awk scanner.
+
+- Replace `candidate_index()` single-candidate flow with a multi-candidate loop. Add `advance_to_command_start(start_i)` (or equivalent) that skips assignments, `if`/`!`, `(`, `{`, `command` from a given start index; reuse it for the first candidate and every post-boundary restart.
+- After each candidate is evaluated (safe or flagged), scan the remaining tokens for the next unquoted `||`, `&&`, `;`, `|`, `|&`, or `&` separator and restart with `advance_to_command_start` at the token following that separator. Unquoted `(` and `{` after a separator also restart.
+- Track whether a candidate has pipe-fed stdin (preceded by unquoted `|`) so no-path piped probes remain allowed; still flag parent-ascent operands on those probes.
+- Keep bare-wrapper `grep` reporting for segment-relative bare `grep`, except pipe-fed forms that existing tests allow.
+- Share argv walking between explicit-path and parent-ascent checks.
+- In the shared argv walker option branch: when `option_base` is `-f` or `--file`, call `has_parent_ascent_segment()` on the split next-token value or the substring after `=`; report parent-ascent if found, then continue. Leave `-e`/`--regexp` values unchecked.
+- Normalize option handling for split `grep --include VALUE` and `grep --exclude VALUE` so they consume one option value consistently; keep `--include`/`--exclude` in the grep-only branch of `option_takes_value`, not the `rg` branch.
+- Preserve existing report text unless a new reason string is needed.
+
+### UPDATED: scripts/test-lint-bare-grep-probe.sh
+
+Add regression cases.
+
+- Unsafe right-hand `|| rg PATTERN ../root` is flagged.
+- Unsafe right-hand `|| command grep PATTERN ../root` is flagged.
+- `false || grep PATTERN file.txt` is flagged (bare-wrapper on RHS).
+- Later `&&`, `;`, and pipeline grep-family commands with `../` operands are flagged.
+- Safe first candidate plus unsafe later candidate on the same line is flagged (safe pass must not terminate the line).
+- Piped no-path `cat file | rg PATTERN` remains allowed.
+- `cat file |& rg PATTERN` remains allowed (pipe-stderr form).
+- Piped `cat file | rg PATTERN ../root` is flagged (parent-ascent on pipe-fed probe).
+- `rg -f ../patterns target/`, `rg --file ../patterns target/`, and equals forms are flagged.
+- `rg -f ../patterns` with no follow-on path operand is flagged (pure pattern-file probe evades explicit-path check).
+- Pattern strings such as `rg -e "../pattern" target/` remain allowed.
+- Split `grep --include VALUE` and `grep --exclude VALUE` cases cover both no-path detection and parent-ascent detection; `rg --include` / `rg --exclude` shapes are not used for gap-4 fixtures.
+- Refactor parity tests prove explicit-path and parent-ascent walkers still agree on redirects, `--`, stdin aliases, and quoted operator operands.
+
+### UPDATED: scripts/lint-bare-grep-probe.md
+
+Update the contract.
+
+- State that every grep-family command segment on a physical line is scanned, and that a safe pass on one candidate does not prevent later candidates from being checked.
+- Describe command boundaries covered: `||`, `&&`, `;`, `|`, `|&`, and `&`.
+- Document that pipe-fed no-path probes remain allowed, but parent-ascent path operands on those probes still fail.
+- Document `-f` / `--file` parent-ascent checks, including the pure pattern-file case with no follow-on path.
+- Clarify split option-value handling, noting that `--include`/`--exclude` value consumption applies to `grep` only.
+- Expand `## Limitations` to say continuation-line operands are not joined and absolute search roots are not bounded.
+- Update `docs/linting.md` row 29 stale argv-truncation-only description to reflect per-segment scanning.
+
+### UPDATED: scripts/test-lint-bare-grep-probe.md
+
+Update the harness contract to list the new regression coverage.
+
+- Mention right-hand fallback, semicolon, logical-and, and later-pipeline candidates.
+- Note that safe passes on earlier candidates do not stop line scanning.
+- Mention `|&` pipe-stderr form (allowed when no path operand, flagged on parent-ascent).
+- Mention `-f` / `--file` parent-ascent cases, including the no-follow-on-path shape.
+- State that split `--include`/`--exclude` fixtures use `grep`, not `rg`.
+- Retire the existing "Argv truncation at `||`, `|`, `&`..." coverage bullet and replace it with the multi-segment scanning description.
+- Keep the current `test-harnesses-N` wording.
+
+### MAY_UPDATE: docs/linting.md
+
+Only update if the current checkout still has stale text for `make test-lint-bare-grep-probe`.
+
+- Direct inspection confirmed row 304 says `test-harnesses-15`; the Makefile wires this harness through `test-harnesses-2`. Correct that row.
+- Row 29 describes argv parsing as "ignoring suffix tokens after `||`, `|`, `&&`, and `;`" which conflicts with per-segment scanning. Update to say every grep-family segment on the line is scanned.
+- Prefer generic `one test-harnesses-N shard` unless the docs nearby require the concrete shard.
+
+## Edge cases
+
+- Quoted operator-like patterns such as `rg '|' path/` must stay valid.
+- `-e "../pattern"` must not become a false positive.
+- `--include="../*.py"` for grep may remain allowed if treated as a glob option value, not a search root.
+- `rg PATTERN < /dev/null` remains allowed.
+- `rg PATTERN ../root < /dev/null` still fails because parent-ascent checks run before the stdin short-circuit.
+- `false || grep PATTERN file.txt` must flag bare-wrapper even though the preceding `false ||` means it rarely executes.
+- A line that has a safe first candidate (e.g., `command grep PATTERN .`) and an unsafe second candidate (e.g., `; rg PATTERN ../root`) must still fail.
+
+## Failure modes
+
+- Over-scanning pipe-fed probes could reintroduce false positives for existing safe `cmd | rg PATTERN` forms.
+- Under-consuming split option values can shift pattern/path detection and either miss a real path or flag a pattern.
+- Segment-restart index errors can cause the same candidate to be evaluated twice or skipped entirely.
+- Refactoring the shared argv walker can change stdin behavior for `-` and `/dev/stdin`.
+- Bare wrapper `grep` logic can become too broad if it flags pipe-fed grep forms that the current contract allows.
+
+## Testing strategy
+
+Run changed-file checks only.
+
+- `bash scripts/test-lint-bare-grep-probe.sh`
+- `bash scripts/lint-bare-grep-probe.sh`
+- `make test-lint-bare-grep-probe`
+- `make lint-bare-grep-probe`
+- `shellcheck scripts/lint-bare-grep-probe.sh scripts/test-lint-bare-grep-probe.sh`
+- If Markdown files change, run the repo's normal Markdown lint path for those files.
+
+difficulty: MODERATE
+diff_lines: 280
