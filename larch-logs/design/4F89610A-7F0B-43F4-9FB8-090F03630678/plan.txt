@@ -1,0 +1,67 @@
+## Approach
+
+Follow the approved outline. `NO_SKETCHES` is present, so draft from direct repository inspection.
+
+Keep the fix inside `issue create-one`. This makes the prefix deterministic even if `/design`, `/implement`, or a future caller forgets `--title-prefix "[OOS]"`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/issue/issue_create.py
+
+- Add a small helper near `_normalize_title_prefix`, for example `_is_oos_issue_body(body_content: str) -> bool`.
+- Detect only the existing OOS issue template body:
+  - body starts with `## Out-of-Scope Observation`
+  - allow no new public flag or CLI shape change
+- Move `final_title` calculation until after `body_content` is read.
+- Compute the effective prefix:
+  - start from `parsed.get("title_prefix")`
+  - if it is empty and `_is_oos_issue_body(body_content)` is true, use `[OOS]`
+- Keep using `_normalize_title_prefix`.
+  - This preserves case-insensitive deduplication.
+  - This avoids double-prefixing when the title already starts with `[OOS]`.
+- Preserve existing redaction behavior.
+  - Redact title as today.
+  - Read and redact body as today.
+  - Apply auto-prefix before dry-run output and before `gh issue create`.
+
+### UPDATED: python/tests/issue/test_issue_create.py
+
+Add focused regression tests near existing `create_one_main` tests.
+
+Cover:
+- OOS template body plus no `--title-prefix` yields `ISSUE_TITLE=[OOS] <title>` in dry-run output.
+- OOS template body plus an already-prefixed title does not double-prefix.
+- Non-OOS body plus no `--title-prefix` keeps the title unchanged.
+
+Use dry-run tests to avoid GitHub side effects. Reuse the existing fake `proc.run` pattern.
+
+### UPDATED: skills/issue/SKILL.md
+
+Update the Step 6 note around `issue create-one` output.
+
+State that `issue create-one` enforces `[OOS]` for bodies starting with the OOS template even when the caller omitted `--title-prefix`, and still uses the same title-prefix normalization for deduplication.
+
+Do not change the `/issue` public flags or argument hint.
+
+## Edge cases
+
+- Caller passes `--title-prefix "[OOS]"`: unchanged path.
+- Title already starts with `[OOS]`: normalization prevents duplicate prefix.
+- Lowercase or mixed-case existing prefix: current case-insensitive check still applies.
+- Generic issue body with OOS-like prose later in the body: no auto-prefix unless the body starts with the OOS template heading.
+- Empty body: no auto-prefix.
+
+## Failure modes
+
+- If prefix detection runs before body read, the bug remains. Place final title computation after body loading.
+- If detection runs before redaction and redaction changes leading content in a future case, behavior may drift. Prefer detecting after the body content variable is finalized.
+- If the helper matches too broadly, ordinary issues may get `[OOS]`. Keep the predicate narrow.
+
+## Testing strategy
+
+- Run `python3 -m pytest python/tests/issue/test_issue_create.py -q`.
+- Run the changed-file Python lint target if available in the local workflow, or `make py-lint` if no narrower target is present.
+- If markdown lint is available, run it for `skills/issue/SKILL.md`.
+
+difficulty: MODERATE
+diff_lines: 45

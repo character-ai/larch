@@ -1,0 +1,24 @@
+## Proposed Design Outline
+
+### Goals
+- Ensure OOS issues always receive the `[OOS]` title prefix regardless of whether the calling orchestrator passes `--title-prefix`
+- Enforce the prefix at a deterministic code layer, not solely in prompt instructions
+
+### Non-goals
+- Changing the `/implement` Python path (`oos_filer.py`), which already hardcodes the prefix
+- Adding new flags or changing the public interface of `/issue` or `issue create-one`
+- Fixing unrelated OOS filing failures
+
+### Approach sketch
+- In `issue_create.py` `create_one_main`: after reading the body file, detect OOS-format bodies (starting with `## Out-of-Scope Observation`) and auto-apply `[OOS]` prefix when no `--title-prefix` was provided
+- Existing `_normalize_title_prefix` dedup logic prevents double-prefix when caller correctly passes the flag
+- Update `/issue` SKILL.md Step 6 doc note to mention the auto-enforcement
+- Add a regression test in `test_issue_create.py`
+
+### Surfaces in scope
+- `python/larch/issue/issue_create.py` (code fix)
+- `skills/issue/SKILL.md` (doc note)
+- `python/tests/issue/test_issue_create.py` (test)
+
+### Open questions
+- None.
