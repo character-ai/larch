@@ -636,6 +636,7 @@ def test_main_advanced_ci_initial_write_omits_monitor_head_fields(
         encoding="utf-8",
     )
     _open_pr_merge_loop_stubs(monkeypatch)
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     merge_results = [
         config.MERGE_RESULT_MAIN_ADVANCED,
         config.MERGE_RESULT_DRIVER_ALREADY_MERGED,
@@ -2264,6 +2265,7 @@ def test_stale_merged_flags_with_open_pr_resume_open_path(
     )
     seen: dict[str, object] = {}
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     monkeypatch.setattr(
         ship.gh,
         "pr_view",
