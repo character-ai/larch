@@ -1,0 +1,52 @@
+# Simplify OOS filing: 3-level severity, source emit-cut, judge file gate
+
+## Problem
+
+OOS (out-of-scope) filing has gotten out of hand. Every PR produces a large OOS list, most of it low value. We spend reviewer **output** tokens generating it and judge **input** tokens voting on it, then file too much of it.
+
+## Goal
+
+File far fewer OOS items and cut token cost. Drop low-value items at the source, and gate filing on independent judge severity. Token cost is a primary driver: save reviewer output tokens and judge input tokens.
+
+## Design (converged)
+
+**1. Unified 3-level severity scale: `major` > `minor` > `nit`.**
+This replaces the two scales in use today: the reviewer 4-scale (`blocking`, `important`, `nit`, `latent`) and the judge 5-scale (`blocker`, `major`, `minor`, `nit`, `uncertain`). No `latent`, no `uncertain`. Both proposer and judge must pick a known level. `major` absorbs the old `blocker`; `nit` absorbs the old `latent` and `trivial`. Open naming choice: use `blocker`, `minor`, `nit` instead if we want to keep the stop-ship word for in-scope. `/design` settles it.
+
+The collapse is lossless. The pipeline only ever branches three ways: **file**, **log**, **drop**. So `blocker` vs `major` (both file) and `nit` vs `trivial` (both drop) are distinctions the machinery already discards.
+
+**2. Reviewer emit-cut (top 2 of 3).**
+Reviewers emit only `major` and `minor`. They never emit `nit`. This is the main token win: fewer output tokens generated, fewer input tokens on the ballot. It applies to both in-scope and OOS reviewer output.
+
+**3. Mechanical pre-aggregator filter.**
+Deterministically drop any `nit` that slips through, right before the aggregator and ballot. Soft emit-cut plus a hard mechanical backstop (the `oos-dropped-before-vote.md` lineage).
+
+**4. Judges assign their own severity** on the same 3-scale. Forced choice, independent of the reviewer's label. Keeping `minor` on the ballot is deliberate: it lets judges rescue a reviewer-underrated `minor` up to `major` and file it. That two-way correction is the reason point 5 has judges rate independently.
+
+**5. File gate.**
+File an OOS item only if the panel accepts it at the active voting tier AND a strict majority of YES voters rate it `major`. Keep today's degraded-panel OOS thresholds (1/1, 1+/2, 2+/3). This is not a hard 2+ floor. Everything else (accepted-but-`minor`, rejected, neutral) is logged and flushed with the logs.
+
+**6. Hide rejected and logged OOS from the final report.**
+Only filed items appear. Keep the underlying audit data (`round-*/oos.md`, the classification TSV): `/fluff-analysis`, `/rejected-analysis`, and `/voter-calibration` consume it. Just stop rendering the `## Rejected OOS audit` section in the human summary.
+
+## Implementation surfaces
+
+- `python/larch/review/review_types.py`: `JudgeSeverity` becomes `{major, minor, nit}` (drop `blocker`, `uncertain`).
+- Reviewer allowed-set: `_ALLOWED_SEVERITIES` / `_STRUCTURED_GATE_B_*` in `python/larch/research/research_eval.py` and `python/larch/review/plan_review_gate_b.py` repoint to the unified set (drop `latent`, `blocking`, `important`).
+- `python/larch/review/voting.py`: `HIGH_SEVERITIES` becomes `{major}`.
+- `python/larch/rendering/rendering.py`: the `render voter` severity string and panel-severity rubric become `major|minor|nit`.
+- `skills/shared/reviewer-templates.md` and the pre-rendered agent bodies: emit instruction becomes "emit `major` and `minor` only; never `nit`".
+- New mechanical `nit` filter before the aggregator (`design_oos.py` / `review_core_body.py` path).
+- Final report: drop the `## Rejected OOS audit` section (`docs/run-logs.md` plus renderer); keep the data.
+- Severity-floor prose cleanup wherever it names `latent` or `uncertain` (`reviewer-templates.md`, voter prompts, `review-acceptance-rubric.md`, `oos-acceptance-rubric.md`).
+- Reconcile with #6028 ("Surface dropped OOS candidates in final summaries"). Dropped `nit`s are meant to be silent, so decide how that section interacts.
+
+## Accepted tradeoffs
+
+- **Source drop is unrecoverable.** Judges never see dropped `nit`s. A real issue a reviewer mislabels `nit` is gone before any judge sees it. Accepted for token savings.
+- **`minor` costs judge input tokens** but can only ever be logged, never filed. Kept deliberately for judge rescue-up and a vetted log.
+- **Losing the `blocker`-vs-`major` label is cosmetic.** `HIGH_SEVERITIES` already treats them the same, security routing uses a separate text classifier (not severity), and calibration already groups them.
+
+## Next step
+
+This issue is the WHAT. Run `/design` on it to produce the vetted implementation plan.

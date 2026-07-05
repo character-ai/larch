@@ -1,0 +1,1 @@
+Unify reviewer and judge severity to `major|minor|nit`, drop reviewer-emitted `nit` before voting, gate OOS filing on accepted plus strict-majority `major`, and hide rejected/logged OOS from final summaries while keeping audit artifacts.

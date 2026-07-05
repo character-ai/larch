@@ -1,0 +1,15 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- plan does not specify snapshot ordering and the conditional ("if the snapshot is taken before") cannot be confirmed without code; default-deny
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=true
+FINDING_6: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_8: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor non-goals explicitly exclude changes to points logic; concern is already addressed by plan boundary
+FINDING_10: NO CORRECTNESS=uncertain SEVERITY=uncertain QUALITY=adequate UNCERTAIN=true -- self-review bypass paths are unverified without reading code; default-deny
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round 1 OOS_2 (same file, same latent-reroute concern, already dispatched as OOS)
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- nit-level harness update; duplicate of round 1 OOS_5 concern
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round 1 OOS_2 and ballot OOS_1; same latent-reroute dead-code concern
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of round 1 OOS_2 and ballot OOS_1
