@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:26:10
-- **Cost**: 💰 TOTAL ~$13.12: Claude $0.70, Codex-5.5 $6.87, Codex-mini $1.13, Cursor $3.04, Claude (subprocess) $1.38  |  Tokens: 26350k
+- **Cost**: 💰 TOTAL ~$13.51: Claude $1.09, Codex-5.5 $6.87, Codex-mini $1.13, Cursor $3.04, Claude (subprocess) $1.38  |  Tokens: 27411k
 - **Issue**: #6322: https://github.com/character-ai/larch/issues/6322
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -67,3 +67,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (nit): PR-body redaction tests still use em-dash markers. Concern: The PR-body redaction test mocks still encode the em-dash truncation marker, so the test suite continues to model the older punctuation even though the production helpers were out of scope.
 - **Round 1 OOS_6** (latent): Write-final-report harness is not in CI. Concern: The bash write-final-report harness is not exercised by the reported make target, so this check remains implement-local while CI only covers pytest.
 - **Round 1 OOS_7** (nit): PR-body truncation markers still use em dashes. Concern: The PR-body truncation markers remain on the em-dash form in the redaction helper, leaving a rare redaction path with non-compliant punctuation.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
