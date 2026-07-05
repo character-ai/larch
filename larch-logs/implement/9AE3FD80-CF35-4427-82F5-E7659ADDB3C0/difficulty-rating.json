@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": null,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "medium",
+  "design_tier": null,
+  "escalated_round": null,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Touches design/review lifecycle paths, OOS filing preservation, structured reviewer validation, security routing, and mixed Python plus shell harness coverage.",
+  "round_cap": 2,
+  "schema_version": 1
+}
