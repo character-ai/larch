@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:25:57
-- **Cost**: 💰 TOTAL ~$13.62: Claude $0.52, Codex-5.5 $7.53, Codex-mini $2.20, Cursor $2.89, Claude (subprocess) $0.48  |  Tokens: 33357k
+- **Cost**: 💰 TOTAL ~$14.17: Claude $1.07, Codex-5.5 $7.53, Codex-mini $2.20, Cursor $2.89, Claude (subprocess) $0.48  |  Tokens: 34638k
 - **Issue**: #6374: https://github.com/character-ai/larch/issues/6374
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -68,3 +68,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (latent): publish-time refresh still omits `--repo-root`. Concern: Publish-time `write-design-env` refresh still runs without `--repo-root`, so it remains dependent on fallback precedence instead of an explicit propagated root.
 - **Round 1 OOS_3** (latent): Step 2b drafting still lacks an explicit repo root. Concern: The Step 2b drafting path still invokes `python/cli.py architectural-guidelines read` without an explicit `--repo-root` from `source-env.sh`, so drafting can still omit guidelines input when the cwd is the plugin checkout.
 - **Round 1 OOS_4** (nit): root resolution is inconsistent across the design lifecycle. Concern: Final-summary / failure-report root resolution already prefers `CLAUDE_PROJECT_DIR`, then env `REPO_ROOT`, then `source-env.sh`, then `git rev-parse`, while Step 0 capture and `write-design-env` refresh use a different precedence chain, so root resolution is…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
