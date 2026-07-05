@@ -315,7 +315,7 @@ Audit recently-merged larch run logs for the selected skill (`--skill=design|imp
 
 **Source**: [`.claude/skills/combine-issues/SKILL.md`](../.claude/skills/combine-issues/SKILL.md)
 
-Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality, discards stale items, and proposes an aggressive combination scheme.
+Reduce open issue count by merging related open issues into combined ones (closing the sources), so fewer, broader issues mean fewer `/design` + `/implement` cycles. Good candidates share a code area, apply a similar change pattern across files, overlap in scope, or are small sequential dependencies. Post-combination `close-sources` comments include the durable `larch:combined-away` marker used by `/analyze-issues` combined-away docking; stale-only `close-stale` must not carry it. `--oos` switches to OOS mode: it operates only on issues whose title starts with `[OOS]`, checks each item for actuality and merit, discards stale items, stages low-merit rejections for approval, and proposes an aggressive combination scheme.
 
 ### `/larch-size`
 

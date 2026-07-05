@@ -1,6 +1,6 @@
 ---
 name: combine-issues
-description: "Use when combining open issues to reduce issue count and token cost. Use /combine-issues --oos for OOS issues; verifies actuality and proposes combined replacements."
+description: "Use when combining open issues to reduce issue count and token cost. Use /combine-issues --oos for OOS issues; checks actuality and merit before aggressive combinations."
 allowed-tools: Bash, Read, Write
 ---
 
@@ -219,16 +219,33 @@ For each proposed combined issue:
 
 Include stale-only and pending fully discarded source closures in the operator proposal. Show each source issue number, close reason `not planned`, the stale discard summary, proposed merit rejection keys and causes when present, and whether the close will use a comment file. Make clear that sources with pending merit items cannot close unless the operator confirms those merit rejections.
 
-Present the proposed scheme to the user. State that approval covers three independent decisions: creating combined issues for kept items, closing stale-only or fully discarded source issues, and confirming the merit rejection batch. Ask: "Apply all groups, discarded-source closures, and merit rejections (yes), apply specific groups or closures and explicitly decide merit rejections, rescue named merit items in free prose, or cancel (no)?"
+Present the proposed scheme to the user. State that approval covers three independent decisions: creating combined issues for kept items, closing stale-only or fully discarded source issues, and confirming the merit rejection batch. Ask: "Apply all groups, discarded-source closures, and merit rejections (yes), apply specific groups or closures and explicitly decide merit rejections, rescue by stable key (e.g. A or #12/A), or cancel (no)?"
 
-Merit rejections require an explicit merit batch outcome:
+Rescue matching (key-only):
 
-- Approval of the merit batch confirms every listed merit rejection.
-- A free-prose rescue is a merit batch decision: named items return to the kept-item set, and unrescued listed items are confirmed rejected unless the operator cancels.
-- Cancel stops without rejecting merit items.
-- Partial group or stale-closure selections do not confirm any merit rejection. If the operator approves only some groups or closures without an explicit merit decision, all merit rejections remain pending. Sources with pending merit items remain open and ineligible for oos-5.
+- **Rescue matching uses stable display keys only.** Match against the keys shown in the `Rejected items (merit)` list (e.g., `A`, `B`, `item-3`). Do not match item titles or description substrings. When bare keys collide across sources, require `#source/key` form (e.g., `#12/A`).
+- **Zero-match rescue**: keep all staged merit rejections pending; emit `Rescue matched no keys; all rejections remain pending.` Return to the operator for explicit keys or cancel. Do not confirm any rejection from that rescue text.
+- **Multi-match rescue**: matched items stay on the staged rejection list. They are neither rescued nor confirmed rejected until the operator confirms the exact intended keys. Emit a re-confirmation prompt listing the matched items and their sources. Matched-but-unconfirmed items stay merit-pending and close-blocking.
+- **Unambiguous unique-key rescue**: the named item moves to the kept-item set; unrescued listed items remain for the merit batch confirmation step.
 
-After any rescue, rerun deduplication and grouping with the final kept-item set. If the kept-item set or grouping changed, re-emit the combination proposal and require explicit operator approval before oos-5 apply. Do not apply a stale proposal that omitted rescued items.
+Single-response ordering rule: in a single operator response, resolve rescue matching, including any multi-match key confirmation, before any merit-batch confirmation, including Apply all. Exclude confirmed-rescued keys from rejection. Apply all does not confirm merit rejections while any rescue text is zero-match or multi-match ambiguous.
+
+Merit batch timing:
+
+- Batch approval confirms rejection only for keys neither rescued nor left pending from unresolved rescue matching.
+- Merit batch cannot run while any multi-match rescue awaits key confirmation.
+- Confirmed rescued keys move from the staged rejection list to the kept-item set. Cancel leaves all merit rejections pending.
+
+Deduplication timing:
+
+- Rerun deduplication and grouping **only after confirmed rescues**. Do not trigger dedup after a zero-match or multi-match rescue attempt before key confirmation.
+
+Post-rescue regrouping:
+
+- After any confirmed rescue, rerun oos-3 deduplication and rebuild groups from the final kept-item set.
+- If rescue changed kept-item membership or grouping partitions, re-present the combination scheme (groups, bodies, and tied stale-only closures) and require explicit operator approval again. A prior Apply all or partial approval does not authorize oos-5 apply or stale-only closes tied to the pre-rescue scheme.
+- Do not enter oos-5 or close stale-only sources tied to a changed scheme until the operator approves the updated proposal with bodies matching the final kept set.
+- Ordering: confirmed rescue → regroup → re-present and re-approve when the scheme changed → merit-batch confirmation for keys still staged → oos-5 only after regroup re-approval (when needed) and merit-batch resolution.
 
 After approval and before dependency phases, close approved stale-only or fully discarded sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
