@@ -2852,12 +2852,10 @@ def test_emit_tally_promotes_fileable_main_agent_oos(tmp_path: Path) -> None:
         """### OOS_1: main major one
 - **Severity**: major
 - **Concern**: two.
-Vote tally: YES=1 NO=0 Result=accepted Fileable=true
 
 ### OOS_2: main major two
 - **Severity**: major
 - **Concern**: three.
-Vote tally: YES=1 NO=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -2889,5 +2887,7 @@ Vote tally: YES=1 NO=0 Result=accepted Fileable=true
     assert result.returncode == 0, result.stderr
     assert "OOS_FILING_COUNT=2" in result.stdout
     text = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
-    assert "main major" in text
+    assert text.count("### OOS_") == 2
+    assert "main major one" in text
+    assert "main major two" in text
     assert "reviewer minor" not in text

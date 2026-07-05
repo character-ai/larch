@@ -416,8 +416,6 @@ def _prune_nits_for_ballot(
         args=[
             "--findings-file",
             str(ballot_file),
-            "--input-mode",
-            "code",
             "--audit-file",
             str(review_tmpdir / "oos-dropped-before-vote.md"),
             "--security-audit-file",

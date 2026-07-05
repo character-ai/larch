@@ -59,6 +59,8 @@ MIN_TSV_RESULT_COLS = 3
 LABEL_MAP_MIN_COLS = 2
 MD_RESULT_COL_FROM_END = 2
 MD_FALLBACK_RESULT_COL_FROM_END = 3
+OOS_FILEABLE_COUNT_INDEX = 6
+CLASSIFICATION_VOTE_RE = re.compile(r"^v([0-9]+)_vote$")
 
 _MD_TABLE_SEP_RE = re.compile(r"^\|[ :\-|]+\|$")
 _MD_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
@@ -122,6 +124,100 @@ def _completed_round_dirs(rounds_root: Path) -> list[Path]:
     return sorted([p for p in candidates if _round_number(p) is not None], key=lambda p: _round_number(p) or 0)
 
 
+def _review_tally_fileable_count(round_dir: Path) -> int | None:
+    env = _read_simple_env(round_dir / "review-tally.env")
+    if "OOS_ACCEPTED_COUNT" not in env:
+        return None
+    raw = env.get("OOS_ACCEPTED_COUNT", "")
+    return _as_int(raw)
+
+
+def _classification_vote_columns(header: list[str]) -> list[int]:
+    indexes: list[int] = []
+    for column in header:
+        match = CLASSIFICATION_VOTE_RE.fullmatch(column)
+        if match:
+            indexes.append(int(match.group(1)))
+    return sorted(indexes)
+
+
+def _classification_row_fileable(*, cols: dict[str, str], header: list[str]) -> bool:
+    vote_indexes = _classification_vote_columns(header)
+    votes = [cols.get(f"v{index}_vote", "") for index in vote_indexes]
+    severities = [cols.get(f"v{index}_severity", "") for index in vote_indexes]
+    return voting.oos_fileable_from_votes(
+        cols.get("voting_result", ""),
+        yes_votes=votes,
+        severities=severities,
+    )
+
+
+def _classification_row_is_security(*, round_dir: Path, item: str) -> bool:
+    block = _extract_oos_block(round_dir=round_dir, oos_id=item)
+    return bool(block and voting.is_security_block_text(block))
+
+
+def _classification_oos_split(round_dir: Path) -> tuple[int, int, int] | None:
+    path = round_dir / "findings-classification.tsv"
+    lines = _read_lines_best_effort(path)
+    if not lines:
+        return None
+    header = [col.strip() for col in lines[0].split("\t")]
+    proposed = rejected = fileable = 0
+    saw_oos = False
+    for line in lines[1:]:
+        raw_cols = [col.strip() for col in line.split("\t")]
+        if len(raw_cols) < MIN_TSV_RESULT_COLS:
+            continue
+        cols = {name: raw_cols[idx] if idx < len(raw_cols) else "" for idx, name in enumerate(header)}
+        item = cols.get("finding_id", raw_cols[0])
+        result = cols.get("voting_result", raw_cols[2] if len(raw_cols) >= MIN_TSV_RESULT_COLS else "")
+        if not result or _classification_row_in_scope(cols=cols, header=header):
+            continue
+        saw_oos = True
+        if _classification_row_is_security(round_dir=round_dir, item=item):
+            continue
+        if result == "accepted":
+            proposed += 1
+            if _classification_row_fileable(cols=cols, header=header):
+                fileable += 1
+        else:
+            rejected += 1
+    return (proposed, rejected, fileable) if saw_oos else None
+
+
+def _artifact_oos_split(round_dir: Path) -> tuple[int, int, int] | None:
+    counts, source = _round_counts(round_dir)
+    if not source:
+        return None
+    classification = _classification_oos_split(round_dir)
+    env_fileable = _review_tally_fileable_count(round_dir)
+    if classification is not None:
+        proposed, rejected, class_fileable = classification
+        return proposed, rejected, env_fileable if env_fileable is not None else class_fileable
+    adjusted = _adjust_design_security_oos(round_dir=round_dir, counts=counts, source=source)
+    proposed = adjusted[4]
+    rejected = adjusted[5]
+    return proposed, rejected, env_fileable if env_fileable is not None else 0
+
+
+def _meta_oos_counts(*, round_dir: Path, tally: dict[str, object]) -> tuple[int, int, int]:
+    artifact = _artifact_oos_split(round_dir)
+    env_fileable = _review_tally_fileable_count(round_dir)
+    if "OOS_PROPOSED_COUNT" in tally:
+        proposed = _as_int(tally.get("OOS_PROPOSED_COUNT"))
+        fileable = env_fileable if env_fileable is not None else _as_int(tally.get("OOS_ACCEPTED_COUNT"))
+        rejected = _as_int(tally.get("OOS_REJECTED_COUNT"))
+        return proposed, fileable, rejected
+    if artifact is not None:
+        proposed, rejected, artifact_fileable = artifact
+        fileable = env_fileable if env_fileable is not None else artifact_fileable
+        return proposed, fileable, rejected
+    proposed = _as_int(tally.get("OOS_ACCEPTED_COUNT"))
+    rejected = _as_int(tally.get("OOS_REJECTED_COUNT"))
+    return proposed, env_fileable or 0, rejected
+
+
 def _phase_round_from_meta(
     round_dir: Path,
     *,
@@ -138,8 +234,7 @@ def _phase_round_from_meta(
     rejected = _as_int(tally.get("REJECTED_COUNT", counts.get("total_rejected")))
     exonerated = _as_int(tally.get("EXONERATED_COUNT", counts.get("total_exonerated")))
     neutral = _as_int(tally.get("NEUTRAL_COUNT", counts.get("total_neutral")))
-    oos_accepted = _as_int(tally.get("OOS_ACCEPTED_COUNT"))
-    oos_rejected = _as_int(tally.get("OOS_REJECTED_COUNT"))
+    oos_proposed, oos_fileable, oos_rejected = _meta_oos_counts(round_dir=round_dir, tally=tally)
     reviewers = _as_int(panel.get("total_slot_count"))
     if reviewers == 0:
         reviewers = _as_int(panel.get("static_slot_count")) + _as_int(panel.get("dynamic_slot_count"))
@@ -164,13 +259,14 @@ def _phase_round_from_meta(
             + _as_int(canonical.get("NEUTRAL_COUNT"))
             + _as_int(canonical.get("EXONERATED_COUNT"))
         )
-        oos_total = _as_int(canonical.get("OOS_ACCEPTED_COUNT")) + _as_int(canonical.get("OOS_REJECTED_COUNT"))
+        canonical_oos_proposed = _as_int(canonical.get("OOS_PROPOSED_COUNT", canonical.get("OOS_ACCEPTED_COUNT")))
+        oos_total = canonical_oos_proposed + _as_int(canonical.get("OOS_REJECTED_COUNT"))
     return _PhaseRound(
         number=round_num,
         suggestions=accepted + rejected + exonerated + neutral,
         accepted=accepted,
-        oos_proposed=oos_accepted + oos_rejected,
-        oos_accepted=oos_accepted,
+        oos_proposed=oos_proposed + oos_rejected,
+        oos_accepted=oos_fileable,
         reviewers=reviewers,
         seconds=seconds,
         cost=cost,
@@ -665,7 +761,7 @@ def render_phase_detail(
     lines = [
         "## Review Phase Detail",
         "",
-        "| Round | Suggestions | Accepted | OOS proposed | OOS accepted | Time | Cost | Reviewers |",
+        "| Round | Suggestions | Accepted | OOS proposed | OOS fileable | Time | Cost | Reviewers |",
         "|--:|--:|--:|--:|--:|:--|--:|--:|",
     ]
     lines.extend(
@@ -1738,22 +1834,27 @@ def _round_difficulty_object(round_dir: Path) -> dict[str, object]:
     return object_data
 
 def _round_meta_object(
-    *, counts: tuple[int, int, int, int, int, int],
+    *, counts: tuple[int, ...],
     panel_count: int,
     collector: str = "",
     revise: dict[str, str | None] | None = None,
-    canonical: tuple[int, int, int, int, int, int] | None = None,
+    canonical: tuple[int, ...] | None = None,
     nit_pruned: int = 0,
     difficulty_obj: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts
+    accepted, rejected, neutral, exonerated, oos_accepted, oos_rejected = counts[:6]
+    tally_oos_proposed = oos_accepted
+    tally_oos_fileable = (
+        counts[OOS_FILEABLE_COUNT_INDEX] if len(counts) > OOS_FILEABLE_COUNT_INDEX else oos_accepted
+    )
     obj: dict[str, object] = {
         "tally": {
             "ACCEPTED_COUNT": str(accepted),
             "REJECTED_COUNT": str(rejected),
             "EXONERATED_COUNT": str(exonerated),
             "NEUTRAL_COUNT": str(neutral),
-            "OOS_ACCEPTED_COUNT": str(oos_accepted),
+            "OOS_PROPOSED_COUNT": str(tally_oos_proposed),
+            "OOS_ACCEPTED_COUNT": str(tally_oos_fileable),
             "OOS_REJECTED_COUNT": str(oos_rejected),
         },
         "summary": {"panel": {"total_slot_count": panel_count}},
@@ -1770,13 +1871,20 @@ def _round_meta_object(
     # scope-aware decomposition alongside it (matching code-review-tally.json) so the run-summary can
     # reconcile the two and downstream joins do not see a contradiction.
     if canonical is not None:
-        c_accepted, c_rejected, c_neutral, c_exonerated, c_oos_accepted, c_oos_rejected = canonical
+        c_accepted, c_rejected, c_neutral, c_exonerated, c_oos_accepted, c_oos_rejected = canonical[:6]
+        c_oos_proposed = c_oos_accepted
+        c_oos_fileable = (
+            canonical[OOS_FILEABLE_COUNT_INDEX]
+            if len(canonical) > OOS_FILEABLE_COUNT_INDEX
+            else c_oos_accepted
+        )
         obj["tally_canonical"] = {
             "ACCEPTED_COUNT": str(c_accepted),
             "REJECTED_COUNT": str(c_rejected),
             "EXONERATED_COUNT": str(c_exonerated),
             "NEUTRAL_COUNT": str(c_neutral),
-            "OOS_ACCEPTED_COUNT": str(c_oos_accepted),
+            "OOS_PROPOSED_COUNT": str(c_oos_proposed),
+            "OOS_ACCEPTED_COUNT": str(c_oos_fileable),
             "OOS_REJECTED_COUNT": str(c_oos_rejected),
         }
         obj["nit_pruned_count"] = str(nit_pruned)
@@ -1797,6 +1905,10 @@ def _canonical_decomposition(round_dir: Path) -> tuple[tuple[int, int, int, int,
     if not tsv.is_file() or not _tsv_has_data_rows(tsv):
         return None, 0
     canonical = _parse_classification_tsv(tsv)
+    oos_split = _classification_oos_split(round_dir)
+    if oos_split is not None:
+        oos_proposed, oos_rejected, _oos_fileable = oos_split
+        canonical = (*canonical[:4], oos_proposed, oos_rejected)
     nit_pruned = 0
     prune_env = round_dir / "prune-nit.env"
     if prune_env.is_file():
@@ -1846,13 +1958,15 @@ def write_design_round_meta(round_dir: Path) -> int:
         counts, source = _round_counts(round_dir)
         if source:
             counts = _adjust_design_security_oos(round_dir=round_dir, counts=counts, source=source)
+        oos_split = _artifact_oos_split(round_dir) or (counts[4], counts[5], 0)
+        meta_counts = (*counts[:4], oos_split[0], oos_split[1], oos_split[2])
         panel_count = _materialize_design_panel_manifest(round_dir)
         env = _read_simple_env(round_dir / "round-summary.env")
         failures = _as_int(env.get("COLLECT_FAILURE_COUNT"))
         collector = _design_collector_field(round_dir=round_dir, failure_count=failures)
         revise_env = _read_simple_env(round_dir / "revise" / "revise.env")
         meta = _round_meta_object(
-            counts=counts,
+            counts=meta_counts,
             panel_count=panel_count,
             collector=collector,
             revise={
@@ -1874,12 +1988,25 @@ def write_implement_round_meta(round_dir: Path) -> int:
         return 0
     try:
         counts, _source = _round_counts(round_dir)
+        oos_split = _artifact_oos_split(round_dir) or (counts[4], counts[5], 0)
+        meta_counts = (*counts[:4], oos_split[0], oos_split[1], oos_split[2])
         panel_count = _count_panel_manifest(round_dir / "panel-manifest.ndjson")
         canonical, nit_pruned = _canonical_decomposition(round_dir)
+        canonical_oos_split = _classification_oos_split(round_dir)
+        env_fileable = _review_tally_fileable_count(round_dir)
+        canonical_meta = canonical
+        if canonical_oos_split is not None:
+            canonical_fileable = env_fileable if env_fileable is not None else canonical_oos_split[2]
+            canonical_meta = (
+                *(canonical or (0, 0, 0, 0, 0, 0))[:4],
+                canonical_oos_split[0],
+                canonical_oos_split[1],
+                canonical_fileable,
+            )
         meta = _round_meta_object(
-            counts=counts,
+            counts=meta_counts,
             panel_count=panel_count,
-            canonical=canonical,
+            canonical=canonical_meta,
             nit_pruned=nit_pruned,
             difficulty_obj=_round_difficulty_object(round_dir),
         )

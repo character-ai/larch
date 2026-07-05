@@ -1485,6 +1485,7 @@ def test_review_core_default_prune_nits_uses_review_cli() -> None:
     assert retired_prune not in text
     assert "command=commands.prune_nits" in text
     assert 'review_name="prune-nit-findings"' in text
+    assert '"--input-mode"' not in text
 
 
 def test_review_core_prune_nit_subprocess_succeeds(tmp_path: Path) -> None:

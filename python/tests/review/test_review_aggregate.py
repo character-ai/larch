@@ -1542,7 +1542,7 @@ def test_prune_nit_code_mode_drops_and_preserves_remaining_ids(tmp_path: Path) -
         encoding="utf-8",
     )
 
-    result = run_review("prune-nit-findings", "--findings-file", str(findings), "--input-mode", "code")
+    result = run_review("prune-nit-findings", "--findings-file", str(findings))
 
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout
@@ -1563,8 +1563,6 @@ def test_prune_nit_disabled_is_noop(tmp_path: Path) -> None:
         "prune-nit-findings",
         "--findings-file",
         str(findings),
-        "--input-mode",
-        "code",
         env={"LARCH_PRUNE_NITS_DISABLED": "1"},
     )
 
@@ -1608,10 +1606,6 @@ def test_prune_nit_plan_mode_drops_and_renumbers(tmp_path: Path) -> None:
         "prune-nit-findings",
         "--findings-file",
         str(findings),
-        "--oos-file",
-        str(oos),
-        "--input-mode",
-        "plan",
     )
 
     assert result.returncode == 0, result.stderr
@@ -1647,10 +1641,6 @@ def test_prune_nit_plan_audit_failure_restores_findings(
     rc = review_aggregate.prune_nit_findings([
         "--findings-file",
         str(findings),
-        "--oos-file",
-        str(oos),
-        "--input-mode",
-        "plan",
     ])
 
     stdout = capsys.readouterr().out
@@ -1682,8 +1672,6 @@ def test_prune_nit_security_rows_stay_out_of_public_audit(tmp_path: Path) -> Non
         "prune-nit-findings",
         "--findings-file",
         str(findings),
-        "--input-mode",
-        "code",
         "--audit-file",
         str(public_audit),
         "--security-audit-file",
