@@ -877,7 +877,7 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
 
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=skip\nNEXT_ACTION=continue\n"
-    assert calls == []
+    assert not calls
 
 
 def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
@@ -909,7 +909,7 @@ def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
 
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=conflict\nNEXT_ACTION=conflict-fix\n"
-    assert rebase_calls == []
+    assert not rebase_calls
     env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
     assert "FAILED_RUN_ID=99\n" in env
     assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in env
@@ -941,7 +941,7 @@ def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
 
     assert rc == 0
     assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=stall\nNEXT_ACTION=stall\n"
-    assert rebase_calls == []
+    assert not rebase_calls
 
 
 def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff(
