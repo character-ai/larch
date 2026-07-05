@@ -1,0 +1,2 @@
+# [BUG] /design (and likely /implement) explicitly ask for confirmation to file [OOS] item, but should not ask for confirmation, and should just do it
+
