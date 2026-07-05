@@ -17,6 +17,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
+from larch.core import config
 from larch.issue import issue_wire
 from larch.state import session_env
 
@@ -1152,7 +1153,7 @@ def prepare_compose_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines prepare-compose")
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--expected-head-sha", default="")
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
@@ -1175,7 +1176,7 @@ def prepare_compose_main(argv: list[str]) -> int:
 
 def write_compose_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-compose-assessment")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--repo-root")
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--assessment-file")
