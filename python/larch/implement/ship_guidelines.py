@@ -147,11 +147,7 @@ def load_or_prepare_guidelines_note(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines compose materialization skipped: {prepared.warning}",
         )
-        return GuidelinesGateResult(
-            needs_assessment=True,
-            warning_logged=warning_logged,
-            detail="architectural-guidelines assessment required before PR body compose",
-        )
+        return GuidelinesGateResult(warning_logged=warning_logged)
     return GuidelinesGateResult()
 
 

@@ -310,6 +310,10 @@ def test_ship_rebase_phase_defers_guidelines_refresh_to_compose_gate(
     (repo / "README.md").write_text("base\n", encoding="utf-8")
     git("add", "README.md")
     git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
     git("branch", "-M", "main")
     git("remote", "add", "origin", str(repo))
     git("update-ref", "refs/remotes/origin/main", "HEAD")
@@ -5403,7 +5407,7 @@ def test_load_or_prepare_guidelines_note_requests_assessment_on_redaction_failur
     assert result.warning_logged is True
 
 
-def test_load_or_prepare_guidelines_note_requests_assessment_on_prepare_failure(
+def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5426,7 +5430,7 @@ def test_load_or_prepare_guidelines_note_requests_assessment_on_prepare_failure(
     )
 
     assert result.note == ""
-    assert result.needs_assessment is True
+    assert result.needs_assessment is False
     assert result.warning_logged is True
 
 
@@ -5597,6 +5601,261 @@ def test_fresh_ship_passes_compose_guidelines_note_to_pr_body(
     assert result.outcome is Outcome.OK
     assert order.index("gate") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Guideline deviation note"
+
+
+def test_run_ship_postbump_rebase_writes_compose_note_and_uses_it_in_pr_body(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    git("switch", "main")
+    (repo / "main.txt").write_text("base\nmain advance\n", encoding="utf-8")
+    git("add", "main.txt")
+    git("commit", "-m", "main advance")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    git("switch", "feature")
+
+    compose_calls: list[dict[str, object]] = []
+    head_before = git("rev-parse", "HEAD")
+    head_after = ""
+
+    def fake_postbump(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        ctx: RunContext,
+        cwd: str | None = None,
+    ) -> ship.finalize.FinalizeResult:
+        del ctx, cwd
+        nonlocal head_after
+        git("rebase", "origin/main")
+        head_after = git("rev-parse", "HEAD")
+        prepared = ship.architectural_guidelines.prepare_compose_assessment(
+            implement_tmpdir=tmp_path,
+            repo_root=repo,
+            expected_head_sha=head_after,
+        )
+        assert prepared.status == "assessment-required"
+        ship.architectural_guidelines.write_compose_assessment(
+            implement_tmpdir=tmp_path,
+            assessment_text="Compose assessment",
+            repo_root=repo,
+        )
+        return ship.finalize.FinalizeResult(Outcome.OK, "ok")
+
+    def fake_compose(**kwargs: object) -> str:
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=False, branch="feature", branch_name="feature", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert head_before != head_after
+    assert compose_calls[0].get("architectural_guidelines_note") == "Compose assessment"
+
+
+def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    (repo / ship.architectural_guidelines.GUIDELINES_FILENAME).write_text(
+        "### G-python-1: Keep small\n- Why: minimal change.\n- Deviate when: never\n",
+        encoding="utf-8",
+    )
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    git("switch", "main")
+    (repo / "main.txt").write_text("base\nmain advance\n", encoding="utf-8")
+    git("add", "main.txt")
+    git("commit", "-m", "main advance")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("update-ref", "refs/remotes/upstream/main", "HEAD")
+    git("switch", "feature")
+
+    compose_calls: list[dict[str, object]] = []
+    head_after_postbump = ""
+    head_after_merge_rebase = ""
+
+    def fake_postbump(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        ctx: RunContext,
+        cwd: str | None = None,
+    ) -> ship.finalize.FinalizeResult:
+        nonlocal head_after_postbump
+        del ctx, cwd
+        git("rebase", "origin/main")
+        head_after_postbump = git("rev-parse", "HEAD")
+        prepared = ship.architectural_guidelines.prepare_compose_assessment(
+            implement_tmpdir=tmp_path,
+            repo_root=repo,
+            expected_head_sha=head_after_postbump,
+        )
+        assert prepared.status == "assessment-required"
+        ship.architectural_guidelines.write_compose_assessment(
+            implement_tmpdir=tmp_path,
+            assessment_text="Compose assessment",
+            repo_root=repo,
+        )
+        return ship.finalize.FinalizeResult(Outcome.OK, "ok")
+
+    def fake_rebase_and_push(
+        *,
+        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        repo: str,
+        run_id: str,
+        cwd: str,
+        tmpdir: str,
+        base_remote: str,
+        base_ref: str,
+        allow_conflict_fix: bool,
+        enable_pre_push_handoff: bool,
+    ) -> object:
+        nonlocal head_after_merge_rebase
+        del runner, repo, run_id, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        git("rebase", "origin/main")
+        head_after_merge_rebase = git("rev-parse", "HEAD")
+        return ship.rebase.RebaseResult(
+            outcome=Outcome.OK,
+            rebased=True,
+            pushed=True,
+            new_version=None,
+            attempts=1,
+            detail="",
+        )
+
+    def fake_monitor(*_args: object, **_kwargs: object) -> object:
+        git("switch", "main")
+        (repo / "main-again.txt").write_text("base\nmain advance\nmain again\n", encoding="utf-8")
+        git("add", "main-again.txt")
+        git("commit", "-m", "main again")
+        git("update-ref", "refs/remotes/origin/main", "HEAD")
+        git("update-ref", "refs/remotes/upstream/main", "HEAD")
+        git("switch", "feature")
+        return type(
+            "M",
+            (),
+            {
+                "result": StepResult(Outcome.OK),
+                "action": "wait",
+                "goto_rebase": True,
+                "failed_run_id": None,
+                "transient_rerun_attempted": False,
+                "ci_fix_rebase_pending": False,
+            },
+        )()
+
+    def fake_compose(**kwargs: object) -> str:
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship.finalize, "postbump_preflight", lambda *_a, **_k: ship.finalize.PostbumpPreflight(ok=True))
+    monkeypatch.setattr(ship.finalize, "postbump", fake_postbump)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship, "reconcile_committed_stalled_summary_if_recovered", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: git("rev-parse", "HEAD"))
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})(),
+    )
+    monkeypatch.setattr(ship.ci_monitor, "monitor", fake_monitor)
+    monkeypatch.setattr(ship.rebase, "rebase_and_push", fake_rebase_and_push)
+    monkeypatch.setattr(ship, "_post_ensure_flush_and_push", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, merge=True, branch="feature", branch_name="feature", repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-guidelines-assessment"
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert head_after_postbump
+    assert head_after_merge_rebase
+    assert head_after_postbump != head_after_merge_rebase
+    assert compose_calls[0].get("architectural_guidelines_note") == "Compose assessment"
 
 def test_guidelines_pin_warning_flushes_before_pr_body(
     monkeypatch: pytest.MonkeyPatch,
@@ -5776,6 +6035,95 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
     assert result.outcome is Outcome.OK
     assert order.index("gate") < order.index("compose")
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
+
+
+def test_open_pr_resume_requests_reassessment_for_stale_durable_guidelines_note(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo(repo)
+
+    def git(*args: str) -> str:
+        completed = subprocess.run(
+            ["git", *args],
+            cwd=repo,
+            text=True,
+            capture_output=True,
+            check=False,
+        )
+        assert completed.returncode == 0, completed.stderr or completed.stdout
+        return completed.stdout.strip()
+
+    (repo / "README.md").write_text("base\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "base")
+    git("branch", "-M", "main")
+    git("remote", "add", "origin", str(repo))
+    git("remote", "add", "upstream", str(repo))
+    head_sha = git("rev-parse", "HEAD")
+    git("update-ref", "refs/remotes/origin/main", head_sha)
+    git("update-ref", "refs/remotes/upstream/main", head_sha)
+    git("switch", "-c", "feature")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    git("add", "README.md")
+    git("commit", "-m", "feature")
+    head_sha = git("rev-parse", "HEAD")
+    diff_text = ship.architectural_guidelines.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    ship.architectural_guidelines.write_implement_note(
+        implement_tmpdir=tmp_path,
+        note_text="Consulted note\n",
+        head_sha=head_sha,
+        metadata={
+            "ASSESSED_HEAD_SHA": head_sha,
+            "DIFF_FINGERPRINT": ship.architectural_guidelines.diff_fingerprint(diff_text),
+            "BASE_REF": "origin/main",
+        },
+        base_ref="origin/main",
+    )
+    (tmp_path / ship.architectural_guidelines.MATERIALIZED_DIFF).write_text(diff_text, encoding="utf-8")
+    tree_sha = git("rev-parse", "HEAD^{tree}")
+    moved_main = subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "main advance"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert moved_main
+    git("update-ref", "refs/remotes/origin/main", moved_main)
+    git("update-ref", "refs/remotes/upstream/main", moved_main)
+    state_file = tmp_path / "ship-pr-state.sh"
+    state_file.write_text(
+        "PHASE=ci-initial\nBRANCH_NAME=feature\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(ship_resume.git, "current_branch", lambda *_a, **_k: "feature")
+    monkeypatch.setattr(
+        ship_resume.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feature"})(),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    assert ship.architectural_guidelines.note_fingerprint_stale(tmp_path, base_ref="origin/main", repo_root=repo)
+    stale_gate = ship.GuidelinesGateResult(
+        needs_assessment=True,
+        detail="architectural-guidelines assessment required before PR body compose",
+    )
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_kwargs: stale_gate)
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run before reassessment")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feature", branch_name="feature", merge=False, repo="o/r"),
+        runner=RecordingRunner(),
+        cwd=str(repo),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-guidelines-assessment"
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
 
 
 def test_guidelines_assessment_resume_without_pr_number_uses_pre_pr_compose(

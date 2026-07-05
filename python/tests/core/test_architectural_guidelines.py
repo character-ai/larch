@@ -900,6 +900,52 @@ def test_note_fingerprint_stale_returns_true_when_git_diff_unavailable(
     assert "ARCHITECTURAL_GUIDELINES_WARNING=missing remote ref" in capsys.readouterr().err
 
 
+def test_note_fingerprint_stale_ignores_stale_snapshot_when_base_moves(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / "README.md").write_text("base\nfeature\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "feature")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    ag.write_implement_note(
+        implement_tmpdir=tmpdir,
+        note_text="fresh note\n",
+        head_sha=head_sha,
+        metadata={
+            "ASSESSED_HEAD_SHA": head_sha,
+            "DIFF_FINGERPRINT": ag.diff_fingerprint(diff_text),
+            "BASE_REF": "origin/main",
+        },
+        base_ref="origin/main",
+    )
+    (tmpdir / ag.MATERIALIZED_DIFF).write_text(diff_text, encoding="utf-8")
+    tree_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD^{tree}"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    moved_main = subprocess.run(
+        ["git", "-C", str(repo), "commit-tree", tree_sha, "-p", head_sha, "-m", "move main"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    assert moved_main
+    _git(repo, "update-ref", "refs/remotes/origin/main", moved_main)
+    _git(repo, "update-ref", "refs/remotes/upstream/main", moved_main)
+
+    assert ag.note_fingerprint_stale(tmpdir, base_ref="origin/main", repo_root=repo)
+
+
 def test_prepare_compose_assessment_rematerializes_when_durable_note_fingerprint_stale(
     tmp_path: Path,
 ) -> None:

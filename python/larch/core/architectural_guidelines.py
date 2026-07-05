@@ -728,15 +728,9 @@ def note_fingerprint_stale(
     stored_fp = meta.get("DIFF_FINGERPRINT", "")
     if not stored_fp or not base_ref:
         return False
-    diff_path = _diff_path(implement_tmpdir)
-    if diff_path.is_file() and not diff_path.is_symlink():
-        try:
-            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
-        except OSError:
-            return True
-        if diff_fingerprint(snapshot_text) == stored_fp:
-            return False
-    root = Path(repo_root).resolve() if repo_root is not None else None
+    if repo_root is None:
+        return True
+    root = Path(repo_root).resolve()
     live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
     if live_fp is None:
         return True
