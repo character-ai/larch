@@ -1995,6 +1995,44 @@ def test_ship_pre_driver_oos_failure_uses_distinct_action(
     ]
 
 
+def test_ship_pre_driver_security_sidecar_payload_routes_to_oos_pipeline(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    results = [
+        subprocess.CompletedProcess(["guard"], 0, "", ""),
+        subprocess.CompletedProcess(["seed"], 0, "", ""),
+        subprocess.CompletedProcess(
+            ["oos"],
+            3,
+            '{"status":"security_sidecar_present","step9a1_stamped":false}\n',
+            "checkpoint rc3\n",
+        ),
+    ]
+    calls: list[list[str]] = []
+
+    def fake_run_cli(args: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        calls.append(list(args))
+        return results.pop(0)
+
+    monkeypatch.setattr(implement_dispatch, "_run_cli_capture", fake_run_cli)
+    monkeypatch.setattr(dispatch_ship, "_run_cli_capture", fake_run_cli)
+
+    assert implement_dispatch.ship_pre_driver_main([]) == 3
+
+    captured = capsys.readouterr()
+    assert captured.out == "NEXT_ACTION=oos-pipeline\n"
+    assert "security_sidecar_present" in captured.err
+    assert calls == [
+        ["implement", "step-8-python-guard"],
+        ["implement", "step-8-seed-initial"],
+        ["oos", "file", "--implement-tmpdir", str(tmp)],
+    ]
+
+
 def test_ship_pre_driver_success_skips_seed_when_state_has_kv(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,

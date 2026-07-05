@@ -232,12 +232,12 @@ def _ensure_prune_sidecars(*, review_tmpdir: Path, round_num: int) -> None:
 
 
 
-def _ballot_block_count(ballot_file: Path) -> int:
+def _ballot_block_count(ballot_file: Path) -> int | None:
     try:
         text = ballot_file.read_text(encoding="utf-8", errors="replace")
         return sum(1 for line in text.splitlines() if voting.BALLOT_HEADING_RE.match(line))
     except (OSError, ValueError):
-        return 0
+        return None
 
 
 def _log_review_core_issue(*, review_tmpdir: Path, message: str) -> None:
@@ -660,7 +660,10 @@ def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, vot
 def _prepare_pruned_ballot(ctx: ReviewCoreBranchContext, *, findings_file: Path | None = None) -> ReviewCoreResult | None:
     _prune_nits_for_ballot(commands=ctx.commands, review_tmpdir=ctx.review_tmpdir, runner=ctx.runner, findings_file=findings_file)
     ballot_file = findings_file or ctx.review_tmpdir / "findings.md"
-    if _ballot_block_count(ballot_file) == 0:
+    block_count = _ballot_block_count(ballot_file)
+    if block_count is None:
+        return _post_gate_panel_failed_exit_from_context(ctx, threshold_reason="ballot-read-failed")
+    if block_count == 0:
         return _zero_findings_from_context(ctx)
     return None
 

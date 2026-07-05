@@ -117,6 +117,7 @@ _PUBLISH_EXCLUDE_NAMES = frozenset({
     "findings-ledger.tsv",
     "claude-source.env",
     "source-env.sh",
+    "security-oos-observations.md",
 })
 
 # Whole subtrees of raw transcripts (plan-autofix drafts) or internal step

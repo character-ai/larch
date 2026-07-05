@@ -2084,6 +2084,84 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
     assert voting.render_voter_severity_scoreboard(severity_records) in tally
 
 
+def test_tally_plan_review_two_judge_oos_one_yes_is_accepted(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### OOS_1: Follow-up cleanup
+- **Reviewer**: Codex-Pragmatic
+- **Concern**: File this follow-up.
+""",
+        encoding="utf-8",
+    )
+    yes = tmp_path / "yes.txt"
+    no = tmp_path / "no.txt"
+    _ = yes.write_text("OOS_1: YES SEVERITY=minor\n", encoding="utf-8")
+    _ = no.write_text("OOS_1: NO SEVERITY=minor\n", encoding="utf-8")
+    design = tmp_path / "design-oos-one-yes"
+    design.mkdir()
+
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(yes),
+        str(no),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "Follow-up cleanup" in (design / "oos-accepted-design.md").read_text(encoding="utf-8")
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    row = voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows[0]
+    assert row["voting_result"] == "accepted"
+
+
+def test_tally_plan_review_security_oos_routes_to_private_sidecar(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### OOS_1: [security] Sensitive follow-up
+- **Reviewer**: Codex-Security
+- **focus-area**: security
+- **Concern**: Keep this private.
+""",
+        encoding="utf-8",
+    )
+    voters = [tmp_path / f"v{idx}.txt" for idx in range(1, 4)]
+    for voter in voters:
+        _ = voter.write_text("OOS_1: YES SEVERITY=major\n", encoding="utf-8")
+    design = tmp_path / "design-security-oos"
+    design.mkdir()
+
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        *(str(voter) for voter in voters),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    sidecar = (design / "security-oos-observations.md").read_text(encoding="utf-8")
+    assert "Sensitive follow-up" in sidecar
+    assert "Sensitive follow-up" not in (design / "oos.md").read_text(encoding="utf-8")
+    accepted = (design / "oos-accepted-design.md").read_text(encoding="utf-8") if (design / "oos-accepted-design.md").exists() else ""
+    assert "Sensitive follow-up" not in accepted
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    severity_records = voting.compute_voter_severity_distribution(
+        voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
+    )
+    tally = (design / "voting-tally.md").read_text(encoding="utf-8")
+    assert voting.render_voter_severity_scoreboard(severity_records) in tally
+
+
 def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _write_tally_ballot(ballot)

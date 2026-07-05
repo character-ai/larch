@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import argparse
+import contextlib
 import hashlib
 import json
 import os
@@ -28,6 +29,7 @@ _CLI = Path(__file__).resolve().parents[2] / "cli.py"
 _GITHUB_URL_RE = re.compile(r"https://[^\s|)]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"^[ \t]*-[ \t]+\*\*Filed[ \t]URL\*\*[ \t]*:[ \t]+(https://[^\s]+/issues/\d+)", re.MULTILINE)
 _INTRA_BATCH_DEP_FIELD_COUNT = 2
+_SECURITY_SIDECAR_CHECKPOINT_RC = 3
 _BODY_PART_FOOTER = "\n\n*[Continued in a follow-up issue.]*"
 _BODY_PART_HEADER = "\n\n*[Continuation of a prior out-of-scope issue.]*\n\n"
 
@@ -411,6 +413,23 @@ def _after_checkpoint(
 ) -> tuple[int, dict[str, object]]:
     checkpoint = _run_disposition_checkpoint(tmpdir)
     urls = [issue.url for issue in filed]
+    if checkpoint.returncode == _SECURITY_SIDECAR_CHECKPOINT_RC:
+        stats = _write_run_statistics(
+            tmpdir=tmpdir,
+            run_id=run_id,
+            filed_count=len(filed) if filed_count is None else filed_count,
+        ) if urls else tmpdir / "run-statistics.md"
+        with contextlib.suppress(RuntimeError):
+            _ = _stamp_manifest(tmpdir, run_id, value=False)
+        return _SECURITY_SIDECAR_CHECKPOINT_RC, {
+            "status": "security_sidecar_present",
+            "accepted_count": accepted_count,
+            "filed_count": len(filed) if filed_count is None else filed_count,
+            "deduplicated_count": len([issue for issue in filed if issue.duplicate]),
+            "urls": urls,
+            "run_statistics_written": bool(urls and stats.is_file()),
+            "step9a1_stamped": False,
+        }
     if checkpoint.returncode != 0:
         try:
             stamped = _stamp_manifest(tmpdir, run_id, value=False)

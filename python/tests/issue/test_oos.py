@@ -163,19 +163,20 @@ def test_normalize_header_cli_validation_exit_2(tmp_path: Path) -> None:
 
 def test_oos_serialize_harness_fixture_exact_counts(tmp_path: Path) -> None:
     counts, output = _serialize_text(tmp_path, FIXTURE_FINDINGS)
-    assert counts == (5, 3)
-    for title in [
+    assert counts == (1, 3)
+    assert "Result accepted cleanup" in output
+    for absent in [
         "Public cleanup",
-        "Result accepted cleanup",
         "ordinary security cleanup",
         "Cited security heading",
         "Prose result token",
+        "Secret issue",
+        "Rejected cleanup",
+        "tagged title",
+        "Backtick value",
     ]:
-        assert title in output
-    for absent in ["Secret issue", "Rejected cleanup", "tagged title", "Backtick value"]:
         assert absent not in output
-    for seq in range(1, 6):
-        assert f"### OOS_{seq}:" in output
+    assert "### OOS_1:" in output
 
 
 def test_oos_serialize_result_rejected_skipped(tmp_path: Path) -> None:
@@ -226,9 +227,9 @@ Vote tally: YES=3 NO=0 Result=accepted
 Vote tally: YES=3 NO=0 Result=accepted
 """,
     )
-    assert counts == (4, 0)
-    assert "NotResult stays eligible" in output
-    assert "NoResult stays eligible" in output
+    assert counts == (2, 0)
+    assert "NotResult stays eligible" not in output
+    assert "NoResult stays eligible" not in output
     assert "Accepted extra rejected" not in output
     assert "Accepted trailing space" in output
     assert "Accepted end" in output
@@ -249,23 +250,35 @@ Vote tally: YES=1 NO=1 Result=neutral
     assert output == ""
 
 
-def test_oos_serialize_prose_result_not_rejected(tmp_path: Path) -> None:
+def test_oos_serialize_prose_result_without_tally_not_eligible(tmp_path: Path) -> None:
     counts, output = _serialize_text(
         tmp_path,
         """### FINDING_1: [OUT_OF_SCOPE] Prose result
 - **Concern**: Mentions Result=rejected in prose.
 """,
     )
-    assert counts == (1, 0)
-    assert "Prose result" in output
+    assert counts == (0, 0)
+    assert output == ""
+
+
+def test_oos_serialize_requires_vote_tally_line(tmp_path: Path) -> None:
+    counts, output = _serialize_text(
+        tmp_path,
+        """### FINDING_1: [OUT_OF_SCOPE] No tally
+- **Concern**: This lacks an explicit vote tally.
+""",
+    )
+    assert counts == (0, 0)
+    assert "No tally" not in output
 
 
 def test_oos_serialize_body_cited_security_heading_is_not_security(tmp_path: Path) -> None:
     counts, output = _serialize_text(
         tmp_path,
-        """### FINDING_1: [OUT_OF_SCOPE] Body cited heading
+"""### FINDING_1: [OUT_OF_SCOPE] Body cited heading
 - **Concern**: Example follows.
 ### Example [security] policy
+Vote tally: YES=3 NO=0 Result=accepted
 """,
     )
     assert counts == (1, 0)
@@ -308,7 +321,7 @@ def test_oos_is_security_tagged_space_separated_focus_area() -> None:
 
 
 def test_oos_serialize_creates_output_parent_directory(tmp_path: Path) -> None:
-    findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\n")
+    findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\nVote tally: YES=1 NO=0 Result=accepted\n")
     output = tmp_path / "missing" / "nested" / "oos.md"
     assert not output.parent.exists()
     assert oos.oos_serialize(findings_file=findings, output_file=output) == (1, 0)
@@ -343,7 +356,7 @@ def test_oos_serialize_classifier_failure_no_partial_sink(
 
 
 def test_oos_serialize_cli_via_subprocess(tmp_path: Path) -> None:
-    findings = _write_findings(tmp_path, "### FINDING_1: [OUT_OF_SCOPE] CLI accepted\n")
+    findings = _write_findings(tmp_path, "### FINDING_1: [OUT_OF_SCOPE] CLI accepted\nVote tally: YES=1 NO=0 Result=accepted\n")
     output = tmp_path / "oos.md"
     result = _run_cli([
         "oos",

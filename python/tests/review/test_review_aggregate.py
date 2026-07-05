@@ -719,7 +719,7 @@ def test_aggregate_preamble_slip_failure_retries_then_succeeds(tmp_path: Path) -
 
 def test_aggregate_preamble_slip_failure_exhausts_retry_budget_without_stall(tmp_path: Path) -> None:
     # Issue #5503: when the preamble-slip class never recovers, the aggregator must degrade with
-    # REASON=validation-failed (graceful; continues to the pre-vote gate) rather than the old
+    # REASON=validation-failed (graceful; continues to post-aggregate voting) rather than the old
     # REASON=validation-exhausted, which stalled Step 5 after a single attempt.
     findings = tmp_path / "in-preamble-exhaust.md"
     _ = findings.write_text(_PREAMBLE_SLIP_INPUT, encoding="utf-8")
@@ -804,7 +804,7 @@ def test_aggregate_narrow_trigger_failure_retries_then_succeeds(tmp_path: Path) 
 
 def test_aggregate_narrow_trigger_failure_exhausts_retry_budget_without_stall(tmp_path: Path) -> None:
     # Issue #5606: when the narrow-trigger class never recovers, the aggregator must degrade with
-    # REASON=validation-failed (graceful; continues to the pre-vote gate) rather than the old
+    # REASON=validation-failed (graceful; continues to post-aggregate voting) rather than the old
     # REASON=validation-exhausted, which stalled Step 5 after a single attempt. Recovery must not rely
     # on raising _AGGREGATE_VALIDATION_RETRIES, and no best-attempt invalid merge is applied.
     findings = tmp_path / "in-narrow-exhaust.md"
