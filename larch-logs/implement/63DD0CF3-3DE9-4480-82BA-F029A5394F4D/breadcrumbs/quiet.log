@@ -3,6 +3,8 @@
 === larch-quiet-cli.py-31386.log ===
 design-log-sweep: PR #6356 merged - merge succeeded
 === larch-quiet-cli.py-32037.log ===
+=== larch-quiet-cli.py-34253.log ===
+=== larch-quiet-cli.py-34627.log ===
 === larch-quiet-cli.py-36726.log ===
 === larch-quiet-cli.py-45698.log ===
 === larch-quiet-cli.py-48500.log ===
@@ -27,8 +29,12 @@ design-log-sweep: PR #6356 merged - merge succeeded
 === larch-quiet-sessionstart-health.sh-64463.log ===
 === larch-quiet-sessionstart-health.sh-98392.log ===
 === larch-quiet-ship.py-13126.log ===
+=== larch-quiet-ship.py-33256.log ===
+ship.py: pr-create: PR
+ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=first-fixer-non-health
 === larch-quiet-ship.py-57535.log ===
 === larch-quiet-ship.py-88649.log ===
 === larch-quiet-tracking-issue-upsert-summary-31940.log ===
+=== larch-quiet-tracking-issue-upsert-summary-34595.log ===
 === larch-quiet-tracking-issue-upsert-summary-50038.log ===
 === larch-quiet-tracking-issue-upsert-summary-85467.log ===
