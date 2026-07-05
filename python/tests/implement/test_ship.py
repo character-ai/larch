@@ -210,7 +210,7 @@ def test_ship_rebase_phase_success_increments_rebase_count(tmp_path: Path, monke
 
     assert result.terminal is None
     assert result.rebase_count == 5
-    assert pin_calls == []
+    assert not pin_calls
     assert _read_state(state)["PHASE"] == "rebase"
 
 
@@ -281,7 +281,7 @@ def test_ship_rebase_phase_rebased_retains_guidelines_note(tmp_path: Path, monke
 
     assert result.terminal is None
     assert result.rebase_count == 5
-    assert pin_calls == []
+    assert not pin_calls
     assert _read_state(state)["PHASE"] == "rebase"
 
 
@@ -488,7 +488,7 @@ def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, mon
 
     data = _read_state(state)
     assert new_count == 2
-    assert pin_calls == []
+    assert not pin_calls
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"
@@ -575,7 +575,7 @@ def test_ship_phase14_rebase_rebased_retains_guidelines_note(
 
     data = _read_state(state)
     assert new_count == 2
-    assert pin_calls == []
+    assert not pin_calls
     assert not flag.is_file()
     assert data["PHASE"] == "ci-initial"
     assert data["REBASE_COUNT"] == "2"

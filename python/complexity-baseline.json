@@ -2733,19 +2733,19 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 46
+    "metric": 49
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 21
+    "metric": 24
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 49
+    "metric": 52
   },
   {
     "file": "larch/implement/ship.py",
@@ -2757,7 +2757,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 163
+    "metric": 170
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -2787,19 +2787,19 @@
     "file": "larch/implement/ship_resume.py",
     "code": "C901",
     "qualified_symbol": "_resume_plan",
-    "metric": 26
+    "metric": 27
   },
   {
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0911",
     "qualified_symbol": "_resume_plan",
-    "metric": 23
+    "metric": 24
   },
   {
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0912",
     "qualified_symbol": "_resume_plan",
-    "metric": 25
+    "metric": 26
   },
   {
     "file": "larch/implement/ship_resume.py",
@@ -2811,7 +2811,7 @@
     "file": "larch/implement/ship_resume.py",
     "code": "PLR0915",
     "qualified_symbol": "_resume_plan",
-    "metric": 57
+    "metric": 58
   },
   {
     "file": "larch/implement/ship_seed.py",
@@ -3573,7 +3573,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "C901",
     "qualified_symbol": "create_one_main",
-    "metric": 19
+    "metric": 17
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3615,7 +3615,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0911",
     "qualified_symbol": "create_one_main",
-    "metric": 13
+    "metric": 12
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3639,7 +3639,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0912",
     "qualified_symbol": "create_one_main",
-    "metric": 19
+    "metric": 17
   },
   {
     "file": "larch/issue/issue_create.py",
@@ -3681,7 +3681,7 @@
     "file": "larch/issue/issue_create.py",
     "code": "PLR0915",
     "qualified_symbol": "create_one_main",
-    "metric": 60
+    "metric": 55
   },
   {
     "file": "larch/issue/issue_create.py",
