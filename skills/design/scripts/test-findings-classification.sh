@@ -26,21 +26,21 @@ write_ballot() {
     cat > "$path" <<'EOF'
 ### FINDING_1: First finding
 - **Reviewer(s)**: Cursor-Pragmatic	Codex-Arch
-- **Severity**: important
+- **Severity**: major
 - **Focus area**: correctness
 - **Location**: src/a
 - **Concern**: first concern.
 
 ### FINDING_2: Second finding
 - **Reviewer**: Claude-Plan
-- **Severity**: important
+- **Severity**: major
 - **Focus area**: correctness
 - **Location**: src/b
 - **Concern**: second concern.
 
 ### FINDING_10: Tenth finding
 - **Reviewer**: Cursor-Plan
-- **Severity**: important
+- **Severity**: major
 - **Focus area**: correctness
 - **Location**: src/c
 - **Concern**: tenth concern.
@@ -432,7 +432,7 @@ mkdir -p "$W6/design"
 cat > "$W6/ballot.md" <<'EOF'
 ### FINDING_1: Formula reviewer
 - **Reviewer**: =HYPERLINK("https://evil.example")
-- **Severity**: important
+- **Severity**: major
 - **Focus area**: correctness
 - **Location**: src/a
 - **Concern**: formula reviewer.

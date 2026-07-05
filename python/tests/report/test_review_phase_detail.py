@@ -150,7 +150,7 @@ def test_render_implement_review_detail_prefers_run_log_root_without_completed_r
     assert "| 1 | 2 | 2 | 0 | 0 |" not in detail
 
 
-def _write_rejected_oos(path: Path, *, title: str, severity: str = "latent", concern: str = "Needs a follow-up.") -> None:
+def _write_rejected_oos(path: Path, *, title: str, severity: str = "minor", concern: str = "Needs a follow-up.") -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     _ = path.write_text(
         f"### OOS_1: {title}\n"
@@ -175,7 +175,7 @@ def test_render_rejected_oos_audit_section_lists_public_candidates(tmp_path: Pat
     _write_rejected_oos(
         tmp_path / "round-1" / "oos.md",
         title="[OUT_OF_SCOPE] retry gap",
-        severity="important",
+        severity="major",
         concern="`python/example.py:10` misses the retry branch. It predates this diff.",
     )
 
@@ -183,7 +183,7 @@ def test_render_rejected_oos_audit_section_lists_public_candidates(tmp_path: Pat
 
     assert "## Rejected OOS audit" in section
     assert "These OOS observations reached the vote but were not accepted for filing." in section
-    assert "- **Round 1 OOS_1** (rejected, important): retry gap." in section
+    assert "- **Round 1 OOS_1** (rejected, major): retry gap." in section
     assert "Concern: `python/example.py:10` misses the retry branch." in section
 
 
@@ -193,7 +193,7 @@ def test_render_rejected_oos_audit_section_prefers_tsv_without_footer(tmp_path: 
     _ = (round_dir / "oos.md").write_text(
         "### OOS_1: [OUT_OF_SCOPE] retry gap\n"
         "- **Reviewer(s)**: codex-specialist-correctness\n"
-        "- **Severity**: important\n"
+        "- **Severity**: major\n"
         "- **Concern**: footer drift removed the result line.\n",
         encoding="utf-8",
     )
@@ -201,7 +201,7 @@ def test_render_rejected_oos_audit_section_prefers_tsv_without_footer(tmp_path: 
 
     section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
-    assert "- **Round 1 OOS_1** (rejected, important): retry gap." in section
+    assert "- **Round 1 OOS_1** (rejected, major): retry gap." in section
 
 
 def test_render_rejected_oos_audit_section_tsv_accepted_beats_footer(tmp_path: Path) -> None:
@@ -220,7 +220,7 @@ def test_render_rejected_oos_audit_section_falls_back_on_malformed_tsv(tmp_path:
     _ = (round_dir / "oos.md").write_text(
         "### OOS_1: [OUT_OF_SCOPE] fallback candidate\n"
         "- **Reviewer(s)**: codex-specialist-correctness\n"
-        "- **Severity**: important\n"
+        "- **Severity**: major\n"
         "- **Concern**: footer fallback remains available.\n"
         "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n",
         encoding="utf-8",
@@ -229,7 +229,7 @@ def test_render_rejected_oos_audit_section_falls_back_on_malformed_tsv(tmp_path:
 
     section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
 
-    assert "- **Round 1 OOS_1** (rejected, important): fallback candidate." in section
+    assert "- **Round 1 OOS_1** (rejected, major): fallback candidate." in section
 
 
 def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: Path) -> None:
@@ -238,12 +238,12 @@ def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: P
     _ = (round_dir / "oos.md").write_text(
         "### OOS_1: [OUT_OF_SCOPE] [security] token leak\n"
         "- **Reviewer(s)**: codex-specialist-security\n"
-        "- **Severity**: important\n"
+        "- **Severity**: major\n"
         "- **Concern**: private detail.\n"
         "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n\n"
         "### OOS_2: [OUT_OF_SCOPE] public follow-up\n"
         "- **Reviewer(s)**: codex-specialist-correctness\n"
-        "- **Severity**: latent\n"
+        "- **Severity**: minor\n"
         "- **Concern**: public detail.\n"
         "Vote tally: YES=1 NO=1 JUDGE_ERROR=0 Result=neutral\n",
         encoding="utf-8",
@@ -263,7 +263,7 @@ def test_render_rejected_oos_audit_section_keeps_security_md_titled_public_candi
     _write_rejected_oos(
         tmp_path / "round-1" / "oos.md",
         title="[OUT_OF_SCOPE] SECURITY.md still documents REDACTED_LOG_FILE-only failure consumption",
-        severity="important",
+        severity="major",
         concern="docs/linting.md moved to DIGEST_FILE-first consumption but SECURITY.md was not updated.",
     )
 
@@ -311,7 +311,7 @@ def test_render_rejected_oos_audit_section_caps_candidates(tmp_path: Path) -> No
     assert "- **Additional audit rows**: 1 omitted by the final-summary cap." in section
 
 
-def test_render_implement_review_detail_appends_rejected_oos_audit(
+def test_render_implement_review_detail_omits_rejected_oos_audit(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -326,5 +326,6 @@ def test_render_implement_review_detail_appends_rejected_oos_audit(
 
     detail = review_phase_detail.render_implement_review_detail(implement_tmpdir=tmp_path, run_id=run_id)
 
-    assert "## Review Phase Detail\nreview detail\n\n## Rejected OOS audit" in detail
-    assert "closeout gap" in detail
+    assert detail == "## Review Phase Detail\nreview detail\n"
+    assert "Rejected OOS audit" not in detail
+    assert "closeout gap" not in detail

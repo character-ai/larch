@@ -1483,7 +1483,8 @@ def test_review_core_default_prune_nits_uses_review_cli() -> None:
     text = REVIEW_CORE_BODY.read_text(encoding="utf-8")
     retired_prune = "/".join(("skills", "review", "scripts", "prune-nit-findings.sh"))  # noqa: FLY002
     assert retired_prune not in text
-    assert '_call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings"' in text
+    assert "command=commands.prune_nits" in text
+    assert 'review_name="prune-nit-findings"' in text
 
 
 def test_review_core_prune_nit_subprocess_succeeds(tmp_path: Path) -> None:

@@ -461,6 +461,7 @@ _ROUND_ARTIFACT_ALLOW = (
     "rejected-findings.md",
     "oos.md",
     "oos-accepted-review.md",
+    "oos-dropped-before-vote.md",
     "review-round-summary.md",
     "voting-tally.md",
     "aggregator-validate.stderr",

@@ -28,6 +28,7 @@ from larch.review.review_types import JudgeSeverity, ReviewVote
 # Calibration-only constants (private; not re-exported to voting.py callers).
 
 _SEVERITY_VALUES = {severity.value for severity in JudgeSeverity}
+_LEGACY_SEVERITY_MAP = {"blocker": JudgeSeverity.major.value, "uncertain": ""}
 
 _CODE_REVIEW_COMPACT_CLASSIFICATION_HEADER = (
     "finding_id\treviewer_slots\tvoting_result\tv1_vote\tv1_correctness\tv1_severity\tv1_quality\tv1_uncertain\tv2_vote\tv2_correctness\tv2_severity\tv2_quality\tv2_uncertain\tv3_vote\tv3_correctness\tv3_severity\tv3_quality\tv3_uncertain"
@@ -76,11 +77,9 @@ _CALIBRATION_SNAPSHOT_HEADER = (
     "tool",
     "yes_votes",
     "valid_yes_severity_count",
-    "blocker",
     "major",
     "minor",
     "nit",
-    "uncertain",
     "missing_severity",
     "high_rate",
     "calibration_score",
@@ -94,6 +93,7 @@ _CALIBRATION_SNAPSHOT_HEADER = (
 
 def valid_panel_severity(token: str) -> str | None:
     normalized = token.strip().lower()
+    normalized = _LEGACY_SEVERITY_MAP.get(normalized, normalized)
     return normalized if normalized in _SEVERITY_VALUES else None
 
 
@@ -110,11 +110,9 @@ class VoterCalibrationStat:
     tool: str
     yes_votes: int
     valid_yes_severity_count: int
-    blocker: int
     major: int
     minor: int
     nit: int
-    uncertain: int
     missing_severity: int
     high_rate: float | None
     calibration_score: float | None
@@ -429,11 +427,9 @@ def compute_voter_severity_distribution(
                     "voter": voter,
                     "panel": panel,
                     "yes_votes": 0,
-                    "blocker": 0,
                     "major": 0,
                     "minor": 0,
                     "nit": 0,
-                    "uncertain": 0,
                     "missing_severity": 0,
                     "valid_yes_severity_count": 0,
                     "high_rate": None,
@@ -455,7 +451,7 @@ def compute_voter_severity_distribution(
     for record in records:
         valid_count = int(record["valid_yes_severity_count"])
         if valid_count:
-            high = int(record["blocker"]) + int(record["major"])
+            high = int(record["major"])
             high_rate = high / valid_count
             record["high_rate"] = high_rate
             record["calibration_score"] = severity_calibration_score(
@@ -632,11 +628,9 @@ def voter_calibration_stats_from_logs(*, log_root: Path, window: int) -> list[Vo
                 tool=tool,
                 yes_votes=int(record.get("yes_votes") or 0),
                 valid_yes_severity_count=valid_count,
-                blocker=int(record.get("blocker") or 0),
                 major=int(record.get("major") or 0),
                 minor=int(record.get("minor") or 0),
                 nit=int(record.get("nit") or 0),
-                uncertain=int(record.get("uncertain") or 0),
                 missing_severity=int(record.get("missing_severity") or 0),
                 high_rate=float(high_rate_obj) if high_rate_obj is not None else None,
                 calibration_score=float(score_obj) if score_obj is not None else None,
@@ -666,11 +660,9 @@ def write_voter_calibration_stats(*, path: Path, stats: Iterable[VoterCalibratio
                         stat.tool,
                         stat.yes_votes,
                         stat.valid_yes_severity_count,
-                        stat.blocker,
                         stat.major,
                         stat.minor,
                         stat.nit,
-                        stat.uncertain,
                         stat.missing_severity,
                         _format_snapshot_float(stat.high_rate),
                         _format_snapshot_float(stat.calibration_score),
@@ -719,11 +711,9 @@ def read_voter_calibration_stats(path: Path) -> dict[str, VoterCalibrationStat]:
                 for key in (
                     "yes_votes",
                     "valid_yes_severity_count",
-                    "blocker",
                     "major",
                     "minor",
                     "nit",
-                    "uncertain",
                     "missing_severity",
                 )
             }
@@ -736,11 +726,9 @@ def read_voter_calibration_stats(path: Path) -> dict[str, VoterCalibrationStat]:
                 tool=tool,
                 yes_votes=ints["yes_votes"] or 0,
                 valid_yes_severity_count=valid_count,
-                blocker=ints["blocker"] or 0,
                 major=ints["major"] or 0,
                 minor=ints["minor"] or 0,
                 nit=ints["nit"] or 0,
-                uncertain=ints["uncertain"] or 0,
                 missing_severity=ints["missing_severity"] or 0,
                 high_rate=_float_cell(row=row, key="high_rate"),
                 calibration_score=_float_cell(row=row, key="calibration_score"),
@@ -973,18 +961,17 @@ def render_voter_scoreboard(records: Iterable[dict[str, object]]) -> str:
 def render_voter_severity_scoreboard(records: Iterable[dict[str, object]]) -> str:
     rows = list(records)
     buf = "## Voter Severity Scoreboard\n\n"
-    buf += "| Panel | Voter | YES Votes | Blocker | Major | Minor | Nit | Uncertain | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n"
-    buf += "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|\n"
+    buf += "| Panel | Voter | YES Votes | Major | Minor | Nit | Missing Severity | High Rate | Calibration Score | Uncalibrated |\n"
+    buf += "|---|---|---:|---:|---:|---:|---:|---:|---:|---|\n"
     if not rows:
-        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n"
+        buf += "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |\n"
         buf += "\nSeverity calibration is undefined when no accepted or rejected finding has at least two parseable YES/NO voter cells.\n"
         return buf
     for record in rows:
         buf += (
             f"| {record['panel']} | {record['voter']} | {record['yes_votes']} | "
-            f"{record['blocker']} | {record['major']} | {record['minor']} | "
-            f"{record['nit']} | {record['uncertain']} | {record['missing_severity']} | "
-            f"{_format_rate(record['high_rate'])} | {_format_rate(record['calibration_score'])} | "
+            f"{record['major']} | {record['minor']} | {record['nit']} | "
+            f"{record['missing_severity']} | {_format_rate(record['high_rate'])} | {_format_rate(record['calibration_score'])} | "
             f"{str(bool(record['uncalibrated'])).lower()} |\n"
         )
     return buf

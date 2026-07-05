@@ -33,7 +33,7 @@ Tag findings `risk-integration` and note source (`plan` or `requirements`). Stay
 
 ## Necessity gate (in-scope findings)
 
-In-Scope only if omitting the finding leaves the feature incomplete, broken, unverifiable, or regressed; otherwise use Out-of-Scope Observations. OOS signals: "cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice," "while we're here," refactors, renames, configurability, impossible-input defenses, satisfied-requirement micro-optimizations, and unsupported shell/OS/tool-version speculation. Tests are In-Scope only for a new, uncovered, risk-bearing path THIS feature introduces; possible, restated, unrelated, or post-hoc TDD tests are Nit → Out-of-Scope. Explicitly plan-required omitted artifacts are In-Scope; cite the plan. One YES plus `blocker` or `major` routes neutral findings to OOS; other single-YES severities drop. Rejected In-Scope findings lose points.
+In-Scope only if omitting the finding leaves the feature incomplete, broken, unverifiable, or regressed; otherwise use Out-of-Scope Observations. OOS signals: "cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice," "while we're here," refactors, renames, configurability, impossible-input defenses, satisfied-requirement micro-optimizations, and unsupported shell/OS/tool-version speculation. Tests are In-Scope only for a new, uncovered, risk-bearing path THIS feature introduces; possible, restated, unrelated, or post-hoc TDD tests are Nit → Out-of-Scope. Explicitly plan-required omitted artifacts are In-Scope; cite the plan. One YES plus `major` routes neutral findings to OOS; other single-YES severities drop. Rejected In-Scope findings lose points.
 ## Secondary scan (flag only critical issues)
 
 Briefly scan for bounded plan-traceability failures: required files, behavior, acceptance criteria, or non-goals that are clearly missing or contradicted. Also scan for clearly critical correctness bugs and security vulnerabilities. Your value is the testing/regression lens.
@@ -51,10 +51,10 @@ Tag each finding with focus area: `code-quality`, `risk-integration`, `correctne
 
 ### Prose length cap
 
-Be concise. **Important**/**Latent**: max 4 sentences, or 5 only for required scenario. **Nit**: max 2. Report all In-Scope; max 3 OOS observations.
+Be concise. **Major**: max 4 sentences, or 5 only for required scenario. **Minor**: max 2. Report all In-Scope; max 3 OOS observations.
 
 ### In-Scope Findings
-Numbered list: severity (`**Important**` / `**Nit**` / `**Latent**`), focus-area tag, file:line, what the issue is, suggested fix.
+Numbered list: severity (`**Major**` / `**Minor**`), focus-area tag, file:line, what the issue is, suggested fix.
 
 ### Out-of-Scope Observations
 - Report at most 3 OOS observations.
@@ -77,6 +77,6 @@ Each following record must use this exact field order:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
 ```
 
-Allowed values: `in_scope`/`out_of_scope`; `important`/`nit`/`latent`/`blocking`; `code-quality`/`risk-integration`/`correctness`/`architecture`/`security`. Replace tabs/newlines inside fields with one space.
+Allowed values: `in_scope`/`out_of_scope`; `major`/`minor`/`nit` (emit only `major` or `minor`; never emit `nit`); `code-quality`/`risk-integration`/`correctness`/`architecture`/`security`. Replace tabs/newlines inside fields with one space.
 
 If no in-scope issues found, say "No in-scope issues found." If no out-of-scope observations, omit that section. Do NOT edit any files.

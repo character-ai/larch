@@ -6,11 +6,10 @@ import json
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 from larch.review import review_aggregate
 import review_test_support as rts
-import shutil
 
 if TYPE_CHECKING:
     import pytest
@@ -34,7 +33,7 @@ def _aggregate_env(tmp_path: Path, **extra: str) -> dict[str, str]:
 # (it is "exclusively out of scope"); cursor-a-output.txt raises an in-scope finding.
 _OOS_ATTR_INPUT = """### FINDING_1: In-scope bug
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug needing a fix
 - **Suggested revision**: fix it
 
@@ -48,14 +47,14 @@ _OOS_ATTR_INPUT = """### FINDING_1: In-scope bug
 # Promotes the exclusively-OOS reviewer (cursor-b) into a non-OOS block -> rc=2 OOS-attribution failure.
 _OOS_ATTR_FAIL = """### FINDING_1: In-scope bug
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug needing a fix
 - **Suggested revision**: fix it"""
 
 # Keeps the exclusively-OOS reviewer in its own [OUT_OF_SCOPE] block -> validation passes.
 _OOS_ATTR_SUCCESS = """### FINDING_1: In-scope bug
 - **Reviewer(s)**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug needing a fix
 - **Suggested revision**: fix it
 
@@ -69,13 +68,13 @@ _OOS_ATTR_SUCCESS = """### FINDING_1: In-scope bug
 # required code-mode Severity line fails validation for a NON-OOS-attribution reason.
 _NON_OOS_INPUT = """### FINDING_1: In-scope bug A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug A
 - **Suggested revision**: fix A
 
 ### FINDING_2: In-scope bug B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug B
 - **Suggested revision**: fix B
 """
@@ -89,14 +88,14 @@ _NON_OOS_FAIL = """### FINDING_1: Merged in-scope
 # Issue #5077: drops cursor-b from every reviewer line -> "input reviewers missing from merge output".
 _MISSING_REVIEWER_FAIL = """### FINDING_1: Merged in-scope
 - **Reviewer(s)**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
 # Keeps both in-scope reviewers in the merged block -> validation passes.
 _MISSING_REVIEWER_SUCCESS = """### FINDING_1: Merged in-scope
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
@@ -104,14 +103,14 @@ _MISSING_REVIEWER_SUCCESS = """### FINDING_1: Merged in-scope
 # attribution line". The block is otherwise well-formed (valid heading + code-mode Severity), so the
 # missing-attribution check fires before any other validation branch.
 _MISSING_ATTRIBUTION_FAIL = """### FINDING_1: Merged in-scope
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
 # Restores the reviewer-attribution line with both in-scope reviewers -> validation passes.
 _MISSING_ATTRIBUTION_SUCCESS = """### FINDING_1: Merged in-scope
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
@@ -121,13 +120,13 @@ _MISSING_ATTRIBUTION_SUCCESS = """### FINDING_1: Merged in-scope
 # stall Step 5 after a single attempt.
 _PREAMBLE_SLIP_INPUT = """### FINDING_1: In-scope bug A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug A
 - **Suggested revision**: fix A
 
 ### FINDING_2: In-scope bug B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug B
 - **Suggested revision**: fix B
 """
@@ -139,7 +138,7 @@ _PREAMBLE_SLIP_FAIL = """Aggregator narrative: FINDING_1 and FINDING_2 describe 
 # Emits both in-scope reviewers in a conforming merged block -> validation passes.
 _PREAMBLE_SLIP_SUCCESS = """### FINDING_1: Merged in-scope
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
@@ -150,13 +149,13 @@ _PREAMBLE_SLIP_SUCCESS = """### FINDING_1: Merged in-scope
 # attempt with REASON=validation-exhausted.
 _NARROW_TRIGGER_INPUT = """### FINDING_1: In-scope bug A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug A
 - **Suggested revision**: fix A
 
 ### FINDING_2: In-scope bug B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: real bug B
 - **Suggested revision**: fix B
 """
@@ -172,7 +171,7 @@ LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"""
 # Emits both in-scope reviewers in a conforming merged block -> validation passes.
 _NARROW_TRIGGER_SUCCESS = """### FINDING_1: Merged in-scope
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: merged concern
 - **Suggested revision**: fix"""
 
@@ -962,7 +961,7 @@ def test_validation_retry_prompt_is_failure_class_aware() -> None:
     assert "every input reviewer must still appear" in oos_prompt
     assert "omit that reviewer slot" not in oos_prompt
 
-    generic_err = "output block missing - **Severity**: blocking|important|latent|nit line\n"
+    generic_err = "output block missing - **Severity**: major|minor|nit line\n"
     generic_prompt = review_aggregate._validation_retry_prompt(base_prompt="BASE", validator_error=generic_err, attempt=2, max_attempts=3)  # pyright: ignore[reportPrivateUsage]
     assert "Fix exactly the error reported above" in generic_prompt
     assert "preserving every input reviewer slot" in generic_prompt
@@ -993,13 +992,13 @@ def test_validate_aggregate_output_accepts_output_suffix_variant(tmp_path: Path)
     _ = input_path.write_text(
         """### FINDING_1: Dup A
 - **Reviewer(s)**: cursor-specialist-correctness-output
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 - **Suggested revision**: fix
 
 ### FINDING_2: Dup B
 - **Reviewer(s)**: codex-specialist-correctness-output
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug other words
 - **Suggested revision**: fix
 """,
@@ -1008,7 +1007,7 @@ def test_validate_aggregate_output_accepts_output_suffix_variant(tmp_path: Path)
     _ = output_path.write_text(
         """### FINDING_1: Merged correctness bug
 - **Reviewer(s)**: cursor-specialist-correctness, codex-specialist-correctness
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 - **Suggested revision**: fix
 """,
@@ -1029,13 +1028,13 @@ def test_aggregate_reconciles_output_suffix_slot_mismatch(tmp_path: Path) -> Non
     _ = findings.write_text(
         """### FINDING_1: Dup A
 - **Reviewer(s)**: cursor-specialist-correctness-output
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 - **Suggested revision**: fix
 
 ### FINDING_2: Dup B
 - **Reviewer(s)**: codex-specialist-correctness-output
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug other words
 - **Suggested revision**: fix
 """,
@@ -1057,7 +1056,7 @@ out=$(jq -r '.output' "$slots")
 cat >"$out" <<'OUT'
 ### FINDING_1: Merged correctness bug
 - **Reviewer(s)**: cursor-specialist-correctness, codex-specialist-correctness
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 - **Suggested revision**: fix
 OUT
@@ -1132,19 +1131,19 @@ def test_aggregate_plan_mode_preserves_scope_reduction_block(tmp_path: Path) -> 
     _ = findings.write_text(
         """### FINDING_1:
 - **Reviewer(s)**: scope-slot
-- **Severity**: important
+- **Severity**: major
 - **Concern**: [SCOPE-REDUCTION] remove unrelated scope. Scenario: bloat
 - **Proposed resolution**: remove it
 
 ### FINDING_2:
 - **Reviewer(s)**: merge-a
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test. Scenario: bug returns
 - **Proposed resolution**: add test
 
 ### FINDING_3:
 - **Reviewer(s)**: merge-b
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test duplicate. Scenario: bug returns
 - **Proposed resolution**: add test
 """,
@@ -1207,13 +1206,13 @@ def test_aggregate_invalid_scope_anchor_warns_and_omits_block(tmp_path: Path) ->
     _ = findings.write_text(
         """### FINDING_1:
 - **Reviewer(s)**: merge-a
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test. Scenario: bug returns
 - **Proposed resolution**: add test
 
 ### FINDING_2:
 - **Reviewer(s)**: merge-b
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test duplicate. Scenario: bug returns
 - **Proposed resolution**: add test
 """,
@@ -1465,18 +1464,18 @@ def test_aggregate_round_dir_stamps_failure_pointer(tmp_path: Path) -> None:
     assert "See plan-review/round-1/aggregator-validate.stderr in the committed run log." in issues_text
 
 
-def test_aggregate_code_mode_accepts_blocking_severity(tmp_path: Path) -> None:
-    findings = tmp_path / "in-blocking.md"
+def test_aggregate_code_mode_accepts_major_severity(tmp_path: Path) -> None:
+    findings = tmp_path / "in-major.md"
     _ = findings.write_text(
         """### FINDING_1: Block A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same issue
 - **Suggested revision**: fix
 
 ### FINDING_2: Block B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: latent
+- **Severity**: minor
 - **Concern**: same issue other words
 - **Suggested revision**: fix
 
@@ -1497,9 +1496,9 @@ while [[ $# -gt 0 ]]; do
 done
 out=$(jq -r '.output' "$slots")
 cat >"$out" <<'EOF'
-### FINDING_1: merged blocking
+### FINDING_1: merged major
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: blocking
+- **Severity**: major
 - **Concern**: normalized concern
 - **Suggested revision**: fix
 
@@ -1526,14 +1525,14 @@ printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_FILES_PATH=%s\\nALL_
 
     assert result.returncode == 0, result.stderr
     assert "AGGREGATED=true" in result.stdout
-    assert "- **Severity**: blocking" in findings.read_text(encoding="utf-8")
+    assert "- **Severity**: major" in findings.read_text(encoding="utf-8")
 
 
-def test_prune_nit_code_mode_marks_oos_and_preserves_ids(tmp_path: Path) -> None:
+def test_prune_nit_code_mode_drops_and_preserves_remaining_ids(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     _ = findings.write_text(
         """### FINDING_1: Important
-- **Severity**: important
+- **Severity**: major
 - **Concern**: keep
 
 ### FINDING_2: Nit title
@@ -1548,9 +1547,11 @@ def test_prune_nit_code_mode_marks_oos_and_preserves_ids(tmp_path: Path) -> None
     assert result.returncode == 0, result.stderr
     assert "PRUNED_COUNT=1" in result.stdout
     text = findings.read_text(encoding="utf-8")
-    assert "### FINDING_2: [OUT_OF_SCOPE] Nit title" in text
+    assert "Nit title" not in text
     assert "### FINDING_1:" in text
-    assert "### FINDING_2:" in text
+    assert "### FINDING_2:" not in text
+    audit = (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "### FINDING_2: Nit title" in audit
 
 
 def test_prune_nit_disabled_is_noop(tmp_path: Path) -> None:
@@ -1583,21 +1584,21 @@ def test_prune_nit_no_blocks_ok(tmp_path: Path) -> None:
     assert "PRUNED_COUNT=0" in result.stdout
 
 
-def test_prune_nit_plan_mode_moves_to_oos_and_renumbers(tmp_path: Path) -> None:
+def test_prune_nit_plan_mode_drops_and_renumbers(tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     oos = tmp_path / "oos.md"
     _ = findings.write_text(
-        """### FINDING_1: Keep important
-- **Severity**: important
+        """### FINDING_1: Keep major
+- **Severity**: major
 - **Concern**: keep
 
 ### FINDING_2: Move nit
 - **Severity**: nit
 - **Concern**: move
 
-### FINDING_3: Keep latent
-- **Severity**: latent
-- **Concern**: keep latent
+### FINDING_3: Keep minor
+- **Severity**: minor
+- **Concern**: keep minor
 """,
         encoding="utf-8",
     )
@@ -1617,13 +1618,15 @@ def test_prune_nit_plan_mode_moves_to_oos_and_renumbers(tmp_path: Path) -> None:
     assert "PRUNED_COUNT=1" in result.stdout
     text = findings.read_text(encoding="utf-8")
     assert "Move nit" not in text
-    assert "### FINDING_2: Keep latent" in text
+    assert "### FINDING_2: Keep minor" in text
     oos_text = oos.read_text(encoding="utf-8")
     assert "### OOS_1: Existing" in oos_text
-    assert "### OOS_2: Move nit" in oos_text
+    assert "Move nit" not in oos_text
+    audit = (tmp_path / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "### FINDING_2: Move nit" in audit
 
 
-def test_prune_nit_plan_oos_replace_failure_restores_findings(
+def test_prune_nit_plan_audit_failure_restores_findings(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -1634,17 +1637,12 @@ def test_prune_nit_plan_oos_replace_failure_restores_findings(
     original_oos = "### OOS_1: Existing\n- **Concern**: old\n"
     _ = findings.write_text(original_findings, encoding="utf-8")
     _ = oos.write_text(original_oos, encoding="utf-8")
-    real_move = shutil.move
-    calls = {"count": 0}
 
-    def flaky_move(src: str, dst: str) -> Any:
-        calls["count"] += 1
-        if calls["count"] == 2:
-            raise OSError("simulated oos move failure")
-        return real_move(src, dst)
+    def fail_audit(**_kwargs: object) -> None:
+        raise OSError("simulated audit failure")
 
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
-    monkeypatch.setattr(review_aggregate.shutil, "move", flaky_move)
+    monkeypatch.setattr(review_aggregate, "_append_prune_audit", fail_audit)
 
     rc = review_aggregate.prune_nit_findings([
         "--findings-file",
@@ -1662,6 +1660,40 @@ def test_prune_nit_plan_oos_replace_failure_restores_findings(
     assert "INSCOPE_REMAINING=0" in stdout
     assert findings.read_text(encoding="utf-8") == original_findings
     assert oos.read_text(encoding="utf-8") == original_oos
+
+
+def test_prune_nit_security_rows_stay_out_of_public_audit(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: Public nit
+- **Severity**: nit
+- **Concern**: public cleanup
+
+### FINDING_2: [OUT_OF_SCOPE] Security nit
+- **Severity**: nit
+- **Concern**: focus-area=security keep private
+""",
+        encoding="utf-8",
+    )
+    public_audit = tmp_path / "oos-dropped-before-vote.md"
+    security_audit = tmp_path / "security-oos-observations.md"
+
+    result = run_review(
+        "prune-nit-findings",
+        "--findings-file",
+        str(findings),
+        "--input-mode",
+        "code",
+        "--audit-file",
+        str(public_audit),
+        "--security-audit-file",
+        str(security_audit),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Public nit" in public_audit.read_text(encoding="utf-8")
+    assert "Security nit" in security_audit.read_text(encoding="utf-8")
+    assert "Security nit" not in public_audit.read_text(encoding="utf-8")
 
 
 def test_aggregate_default_dispatch_argv_uses_python_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
@@ -1740,7 +1772,7 @@ out=$(jq -r '.output' "$slots")
 cat >"$out" <<'OUT'
 ### FINDING_1: merged
 - **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 - **Suggested revisions (informational for voters; coder decides)**:
   - From cursor-a-output.txt: invented fix text not in any input
@@ -1778,19 +1810,19 @@ def test_aggregate_plan_scope_reduction_parity_rejects_accidental_merge(tmp_path
     _ = findings.write_text(
         """### FINDING_1:
 - **Reviewer(s)**: scope-slot
-- **Severity**: important
+- **Severity**: major
 - **Concern**: [SCOPE-REDUCTION] remove unrelated scope. Scenario: bloat
 - **Proposed resolution**: remove it
 
 ### FINDING_2:
 - **Reviewer(s)**: merge-a
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test. Scenario: bug returns
 - **Proposed resolution**: add test
 
 ### FINDING_3:
 - **Reviewer(s)**: merge-b
-- **Severity**: important
+- **Severity**: major
 - **Concern**: add missing regression test duplicate. Scenario: bug returns
 - **Proposed resolution**: add test
 """,
@@ -1863,12 +1895,12 @@ def test_aggregate_forwards_panel_artifact_dir_and_env(tmp_path: Path) -> None:
     findings.write_text(
         """### FINDING_1: Dup A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 
 ### FINDING_2: Dup B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 """,
         encoding="utf-8",
@@ -1884,7 +1916,7 @@ def test_aggregate_forwards_panel_artifact_dir_and_env(tmp_path: Path) -> None:
         "slots=''\n"
         'while [ $# -gt 0 ]; do case "$1" in --slots-file) slots="$2"; shift 2;; *) shift;; esac; done\n'
         "out=$(python3 - <<'PY2' \"$slots\"\nimport json, sys\nrow=json.loads(open(sys.argv[1], encoding='utf-8').readline())\nprint(row['output'])\nPY2\n)\n"
-        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: important\n- **Concern**: merged\nEOF\n"
+        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: major\n- **Concern**: merged\nEOF\n"
         "printf 'DISPATCH_OK=true\nALL_OUTPUT_FILES=%s\nALL_OUTPUT_TOOLS=cursor\n' \"$out\"\n",
         encoding="utf-8",
     )
@@ -1939,7 +1971,7 @@ def _write_aggregate_dispatch_with_tsv(tmp_path: Path) -> Path:
         "cat >\"$out\" <<'EOF'\n"
         "### FINDING_1: Merged\n"
         "- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n"
-        "- **Severity**: important\n"
+        "- **Severity**: major\n"
         "- **Concern**: merged\n"
         "EOF\n"
         "PYTHONPATH="
@@ -1975,12 +2007,12 @@ def test_aggregate_materializes_panel_prompt_sizes_plan_mode(tmp_path: Path) -> 
     findings.write_text(
         """### FINDING_1: Dup A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 
 ### FINDING_2: Dup B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 """,
         encoding="utf-8",
@@ -2026,12 +2058,12 @@ def test_aggregate_materializes_panel_prompt_sizes_code_mode(tmp_path: Path) -> 
     findings.write_text(
         """### FINDING_1: Dup A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 
 ### FINDING_2: Dup B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 """,
         encoding="utf-8",
@@ -2073,12 +2105,12 @@ def test_aggregate_resolves_round_subdir_for_panel_artifact(tmp_path: Path) -> N
     findings_path.write_text(
         """### FINDING_1: Dup A
 - **Reviewer**: cursor-a-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 
 ### FINDING_2: Dup B
 - **Reviewer**: cursor-b-output.txt
-- **Severity**: important
+- **Severity**: major
 - **Concern**: same bug
 """,
         encoding="utf-8",
@@ -2093,7 +2125,7 @@ def test_aggregate_resolves_round_subdir_for_panel_artifact(tmp_path: Path) -> N
         "slots=''\n"
         'while [ $# -gt 0 ]; do case "$1" in --panel-artifact-dir) artifact="$2"; shift 2;; --slots-file) slots="$2"; shift 2;; *) shift;; esac; done\n'
         "out=$(python3 - <<'PY2' \"$slots\"\nimport json, sys\nrow=json.loads(open(sys.argv[1], encoding='utf-8').readline())\nprint(row['output'])\nPY2\n)\n"
-        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: important\n- **Concern**: merged\nEOF\n"
+        "cat >\"$out\" <<'EOF'\n### FINDING_1: Merged\n- **Reviewer(s)**: cursor-a-output.txt, cursor-b-output.txt\n- **Severity**: major\n- **Concern**: merged\nEOF\n"
         "printf 'DISPATCH_OK=true\\nALL_OUTPUT_FILES=%s\\nALL_OUTPUT_TOOLS=cursor\\n' \"$out\"\n",
         encoding="utf-8",
     )

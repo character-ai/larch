@@ -154,12 +154,13 @@ def _compose_finding_block(
     finding_num: int | None = None,
     oos_num: int | None = None,
 ) -> str:
+    severity = severity or "minor"
     if oos_num is not None:
         return (
             f"### OOS_{oos_num}: {what}\n"
             f"- **Description**: {what}. Scenario: {scenario}\n"
             f"- **Reviewer**: {slot}\n"
-            f"- **Severity**: {severity or 'nit'}\n"
+            f"- **Severity**: {severity}\n"
             f"- **Focus area**: {focus}\n"
             f"- **Location**: {location}\n"
             f"- **Phase**: design\n\n"
@@ -168,7 +169,7 @@ def _compose_finding_block(
     return (
         f"### FINDING_{num}:\n"
         f"- **Reviewer(s)**: {slot}\n"
-        f"- **Severity**: {severity or 'nit'}\n"
+        f"- **Severity**: {severity}\n"
         f"- **Focus area**: {focus}\n"
         f"- **Location**: {location}\n"
         f"- **Concern**: {what}. Scenario: {scenario}\n"
@@ -718,6 +719,27 @@ def _compose_attributed_ballot(*, design: Path, oos_md: str) -> str:
     return "\n\n".join(parts) + ("\n" if parts else "")
 
 
+def _drop_nits_before_plan_vote(*, design: Path, round_num: int, path: Path) -> str:
+    round_dir = design / "plan-review" / f"round-{round_num}"
+    round_dir.mkdir(parents=True, exist_ok=True)
+    result = _run_cli(
+        argv=[
+            "review",
+            "prune-nit-findings",
+            "--findings-file",
+            str(path),
+            "--input-mode",
+            "plan",
+            "--audit-file",
+            str(round_dir / "oos-dropped-before-vote.md"),
+            "--security-audit-file",
+            str(design / "security-oos-observations.md"),
+        ],
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+    return result.stdout
+
+
 def _aggregation_ok_for_voting(agg_kv: dict[str, str], *, returncode: int = 0) -> bool:
     if returncode != 0:
         return False
@@ -936,6 +958,11 @@ def execute_round(
     _ = (design / "findings-oos.md").write_text(oos_md, encoding="utf-8")
     findings_path = design / "findings-in-scope.md"
     _ = findings_path.write_text(in_scope, encoding="utf-8")
+    out_lines.append(_drop_nits_before_plan_vote(design=design, round_num=round_num, path=findings_path))
+    oos_path = design / "findings-oos.md"
+    out_lines.append(_drop_nits_before_plan_vote(design=design, round_num=round_num, path=oos_path))
+    in_scope = findings_path.read_text(encoding="utf-8", errors="replace") if findings_path.is_file() else ""
+    oos_md = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else ""
 
     agg = _run_cli(
         argv=[
@@ -984,6 +1011,9 @@ def execute_round(
         for k, v in values.items():
             _emit(key=k, value=v)
         return 1, values
+    out_lines.append(_drop_nits_before_plan_vote(design=design, round_num=round_num, path=findings_path))
+    out_lines.append(_drop_nits_before_plan_vote(design=design, round_num=round_num, path=oos_path))
+    oos_md = oos_path.read_text(encoding="utf-8", errors="replace") if oos_path.is_file() else ""
     try:
         ballot_text = _compose_attributed_ballot(design=design, oos_md=oos_md)
         _ = ballot.write_text(ballot_text, encoding="utf-8")
@@ -1003,16 +1033,13 @@ def execute_round(
             _emit(key=k, value=v)
         return 2, values
 
-    # Issue #5032: when reviewers collected OK (ok_count > 0) but every one reported no
-    # findings, the composed ballot has no FINDING_/OOS_ rows and there is nothing to vote
-    # on. Short-circuit to the same benign zero-findings-degraded-panel outcome as the
-    # PANEL_PRUNED_EMPTY branch instead of dispatching voters against an empty ballot:
-    # empty-ballot voting inevitably degrades, and the voter-dispatch failure gate below
-    # would otherwise map the converged round to panel-failed before the benign
-    # _classify_round_loop_status could run. The ok_count == 0 empty-collection case is left
-    # to the existing voter-dispatch / classifier path so its loud degraded-empty-collector
-    # outcome (issue #4790) is preserved.
-    if ok_count > 0 and fail_count == 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
+    # Issue #5032: when reviewers collected OK (ok_count > 0) but every surviving review
+    # pruned down to an empty ballot, there is nothing left to vote on. Short-circuit to the
+    # same benign zero-findings-degraded-panel outcome as the PANEL_PRUNED_EMPTY branch
+    # instead of dispatching voters against an empty ballot. The ok_count == 0 empty-
+    # collection case is left to the existing voter-dispatch / classifier path so its loud
+    # degraded-empty-collector outcome (issue #4790) is preserved.
+    if ok_count > 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
         values.update(
             {
                 "LOOP_STATUS": "zero-findings-degraded-panel",

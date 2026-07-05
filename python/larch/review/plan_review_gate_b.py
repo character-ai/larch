@@ -8,11 +8,10 @@ from pathlib import Path
 
 from larch.review.plan_review_common import AcceptedFinding, GateBDisplayRow, GateBSeveritySummary
 
-_STRUCTURED_GATE_B_SEVERITIES = {"blocking", "important", "latent", "nit"}
+_STRUCTURED_GATE_B_SEVERITIES = {"major", "minor", "nit"}
 _GATE_B_LABELS_STRUCTURED = {
-    "blocking": "High",
-    "important": "High",
-    "latent": "Medium",
+    "major": "High",
+    "minor": "Medium",
     "nit": "Low",
 }
 _GATE_B_BUCKET_ORDER = ("Low", "Medium", "High", "Critical")

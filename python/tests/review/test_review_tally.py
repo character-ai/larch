@@ -216,7 +216,7 @@ def test_tally_three_voter_mixed_outcomes(tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="ACCEPTED_COUNT") == "1"
     assert rts.kv_get(stdout=result.stdout, key="REJECTED_COUNT") == "1"
-    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "1"
+    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
     assert "FINDING_1: First in-scope finding" in (case / "accepted-findings.md").read_text(encoding="utf-8")
     assert "FINDING_2" in (case / "rejected-findings.md").read_text(encoding="utf-8")
     ledger_rows = _tsv_rows(case / "findings-ledger.tsv")
@@ -407,9 +407,9 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
 - **Concern**: Minor issue.
 - **Suggested revision**: Fix.
 
-### FINDING_3: Co-proposed blocker
+### FINDING_3: Co-proposed major
 - **Reviewer(s)**: Codex-Arch, Cursor-Testing
-- **Concern**: Shared blocker.
+- **Concern**: Shared major.
 - **Suggested revision**: Fix.
 
 ### FINDING_4: Neutral in-scope
@@ -432,17 +432,17 @@ def test_tally_weighted_scoreboard_major_oos_and_coproposers(tmp_path: Path) -> 
     yes_votes = (
         "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
-        "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
-        "OOS_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
     )
     no_votes = (
         "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
         "FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n"
-        "FINDING_3: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
-        "OOS_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+        "OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
         "OOS_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false\n"
     )
     _ = (case / "cursor-vote-output.txt").write_text(yes_votes, encoding="utf-8")
@@ -591,7 +591,7 @@ def test_tally_scope_drift_oos_scoring_stays_flat(tmp_path: Path) -> None:
         encoding="utf-8",
     )
     _ = (case / "scope-files.txt").write_text("python/cli.py\n", encoding="utf-8")
-    votes = "FINDING_1: YES CORRECTNESS=true SEVERITY=blocker QUALITY=good UNCERTAIN=false\n"
+    votes = "FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n"
     for name in ("cursor-vote-output.txt", "codex-vote-output.txt", "claude-vote-output.txt"):
         _ = (case / name).write_text(votes, encoding="utf-8")
 
@@ -662,7 +662,7 @@ def test_tally_excludes_narrative_only_voter_parse_rate_check(tmp_path: Path) ->
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
     assert "| code-review | v1 |" in tally
     assert "| code-review | v2 |" in tally
-    assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
+    assert "| code-review | v3 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
     class_file = Path(rts.kv_get(stdout=result.stdout, key="FINDINGS_CLASSIFICATION_TSV_FILE") or "")
     assert class_file.is_file()
     class_text = class_file.read_text(encoding="utf-8")
@@ -1358,7 +1358,7 @@ def test_tally_code_review_voter_agreement_scoreboard_three_slot(tmp_path: Path)
     assert "## Voter Agreement Scoreboard" in tally
     assert "## Voter Severity Scoreboard" in tally
     assert tally.index("## Voter Agreement Scoreboard") < tally.index("## Voter Severity Scoreboard")
-    assert "| code-review | cursor-plan-fidelity | 2 | 0 | 2 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in tally
+    assert "| code-review | cursor-plan-fidelity | 2 | 2 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in tally
     for record in tsv_records:
         rate = "n/a" if record["agreement_rate"] is None else f"{float(record['agreement_rate']):.3f}"  # pyright: ignore[reportArgumentType]
         line = (
@@ -1529,24 +1529,24 @@ def test_tally_code_review_mav_retally_ledger_lifecycle(tmp_path: Path) -> None:
     assert rows[0]["outcome"] == "rejected"
 
 
-def test_tally_accepted_latent_finding_ledger_outcome_is_accepted(tmp_path: Path) -> None:
-    case = tmp_path / "latent-accepted"
+def test_tally_accepted_minor_finding_ledger_outcome_is_accepted(tmp_path: Path) -> None:
+    case = tmp_path / "minor-accepted"
     case.mkdir()
     _ = (case / "ballot.md").write_text(
-        """### FINDING_1: Latent accepted item
+        """### FINDING_1: Minor accepted item
 - **Reviewer**: Codex-Correctness
-- **Severity**: latent
-- **Concern**: Real but latent concern.
+- **Severity**: minor
+- **Concern**: Real but minor concern.
 - **Suggested revision**: Fix later.
 """,
         encoding="utf-8",
     )
     _ = (case / "v1.txt").write_text(
-        "FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=good UNCERTAIN=false\n",
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false\n",
         encoding="utf-8",
     )
     _ = (case / "v2.txt").write_text(
-        "FINDING_1: YES CORRECTNESS=true SEVERITY=latent QUALITY=adequate UNCERTAIN=false\n",
+        "FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false\n",
         encoding="utf-8",
     )
     result = run_review(
@@ -1948,6 +1948,8 @@ def test_tally_three_slot_claude_fallback_single_quorum(tmp_path: Path) -> None:
     assert row["v1_tool"] == "claude"
     assert row["v2_tool"] == "cursor-plan-fidelity"
     assert row["v3_tool"] == "cursor-pragmatism"
+    assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
+    assert not (case / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
 def test_emit_tally_refuses_destructive_oos_rebuild_mismatch(tmp_path: Path) -> None:
@@ -2224,7 +2226,7 @@ def test_tally_oos_seq_seeded_from_accumulated_oos(tmp_path: Path) -> None:
 """,
         encoding="utf-8",
     )
-    _ = (round_dir / "cursor-oos-output.txt").write_text("OOS_1: YES\n", encoding="utf-8")
+    _ = (round_dir / "cursor-oos-output.txt").write_text("OOS_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
 
     result = run_review(
         "tally-code-votes",
@@ -2608,9 +2610,9 @@ def test_tally_code_votes_keeps_rejected_oos_out_of_public_oos_pool(tmp_path: Pa
     case.mkdir(parents=True)
     _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
     _ = (case / "ballot.md").write_text(
-        """### OOS_1: [OUT_OF_SCOPE] important follow-up
+        """### OOS_1: [OUT_OF_SCOPE] major follow-up
 - **Reviewer**: Codex-Correctness
-- **Severity**: important
+- **Severity**: major
 - **Concern**: File this after aggregate evaluation.
 """,
         encoding="utf-8",
@@ -2635,7 +2637,7 @@ def test_tally_code_votes_keeps_rejected_oos_out_of_public_oos_pool(tmp_path: Pa
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
     pool = parent / "oos-aggregate-pool.md"
-    assert not pool.exists() or "important follow-up" not in pool.read_text(encoding="utf-8")
+    assert not pool.exists() or "major follow-up" not in pool.read_text(encoding="utf-8")
     assert not (parent / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
@@ -2647,7 +2649,7 @@ def test_tally_code_votes_routes_security_oos_to_session_root(tmp_path: Path) ->
     _ = (case / "ballot.md").write_text(
         """### FINDING_1: [OUT_OF_SCOPE] [security] Sensitive cleanup
 - **Reviewer**: Codex-Correctness
-- **Severity**: latent
+- **Severity**: minor
 - **Concern**: keep this local only.
 """,
         encoding="utf-8",
@@ -2674,22 +2676,22 @@ def test_tally_code_votes_routes_security_oos_to_session_root(tmp_path: Path) ->
     assert "Sensitive cleanup" not in (case / "oos.md").read_text(encoding="utf-8")
 
 
-def test_emit_tally_promotes_three_latent_pool_items_after_vote_rebuild(tmp_path: Path) -> None:
+def test_emit_tally_ignores_non_fileable_pool_items_after_vote_rebuild(tmp_path: Path) -> None:
     parent = tmp_path / "impl-parent"
     case = parent / "round-1"
     case.mkdir(parents=True)
     _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
     _ = (parent / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: minor
 - **Concern**: one.
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: minor
 - **Concern**: two.
 
-### FINDING_3: latent three
-- **Severity**: latent
+### FINDING_3: minor three
+- **Severity**: minor
 - **Concern**: three.
 """,
         encoding="utf-8",
@@ -2733,9 +2735,9 @@ def test_emit_tally_promotes_accepted_pool_items_after_vote_rebuild(tmp_path: Pa
     _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
     _ = (parent / "oos-aggregate-pool.md").write_text(
         """### FINDING_1: pool follow-up
-- **Severity**: important
+- **Severity**: major
 - **Concern**: file this after aggregate evaluation.
-Vote tally: YES=3 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=3 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -2779,16 +2781,16 @@ def test_emit_tally_preserves_serialized_oos_before_pool_promotion(tmp_path: Pat
     case.mkdir(parents=True)
     _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
     _ = (parent / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: minor
 - **Concern**: one.
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: minor
 - **Concern**: two.
 
-### FINDING_3: latent three
-- **Severity**: latent
+### FINDING_3: minor three
+- **Severity**: minor
 - **Concern**: three.
 """,
         encoding="utf-8",
@@ -2801,7 +2803,7 @@ def test_emit_tally_preserves_serialized_oos_before_pool_promotion(tmp_path: Pat
     _ = oos.write_text(
         """### FINDING_1: [OUT_OF_SCOPE] serialized follow-up
 - **Concern**: serialize first.
-Vote tally: YES=3 NO=0 Result=accepted
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -2830,30 +2832,32 @@ Vote tally: YES=3 NO=0 Result=accepted
     parent_sink = (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
     assert local_sink.count("### OOS_") == 1
     assert "serialized follow-up" in local_sink
-    assert "latent three" not in local_sink
+    assert "minor three" not in local_sink
     assert parent_sink == local_sink
 
 
-def test_emit_tally_counts_main_agent_latents_toward_trigger(tmp_path: Path) -> None:
+def test_emit_tally_promotes_fileable_main_agent_oos(tmp_path: Path) -> None:
     parent = tmp_path / "impl-parent-main"
     case = parent / "round-1"
     case.mkdir(parents=True)
     _ = (parent / "session-env.sh").write_text("", encoding="utf-8")
     _ = (parent / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: reviewer latent
-- **Severity**: latent
+        """### FINDING_1: reviewer minor
+- **Severity**: minor
 - **Concern**: one.
 """,
         encoding="utf-8",
     )
     _ = (parent / "oos-accepted-main-agent.md").write_text(
-        """### OOS_1: main latent one
-- **Severity**: latent
+        """### OOS_1: main major one
+- **Severity**: major
 - **Concern**: two.
+Vote tally: YES=1 NO=0 Result=accepted Fileable=true
 
-### OOS_2: main latent two
-- **Severity**: latent
+### OOS_2: main major two
+- **Severity**: major
 - **Concern**: three.
+Vote tally: YES=1 NO=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -2885,5 +2889,5 @@ def test_emit_tally_counts_main_agent_latents_toward_trigger(tmp_path: Path) -> 
     assert result.returncode == 0, result.stderr
     assert "OOS_FILING_COUNT=2" in result.stdout
     text = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
-    assert "main latent" in text
-    assert "reviewer latent" not in text
+    assert "main major" in text
+    assert "reviewer minor" not in text

@@ -753,7 +753,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     nit = sum(1 for sev in severities if sev == "nit")
     non_nit = max(0, accepted - nit)
     if structured:
-        high = sum(1 for sev in severities if sev in {"blocking", "important"})
+        high = sum(1 for sev in severities if sev == "major")
     else:
         high = sum(1 for block in blocks if re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE))
     prior_keys = _read_applied_finding_keys(tmpdir=tmpdir, before_round=review_count)
@@ -764,7 +764,7 @@ def plan_review_continuation(argv: Sequence[str]) -> int:
     nit_new = sum(1 for sev, is_new in zip(severities, new_flags, strict=True) if is_new and sev == "nit")
     non_nit_new = max(0, new_count - nit_new)
     if structured:
-        high_new = sum(1 for sev, is_new in zip(severities, new_flags, strict=True) if is_new and sev in {"blocking", "important"})
+        high_new = sum(1 for sev, is_new in zip(severities, new_flags, strict=True) if is_new and sev == "major")
     else:
         high_new = sum(1 for block, is_new in zip(blocks, new_flags, strict=True) if is_new and re.search(r"critical|\bhigh\b|data loss|regression|missing required", block, re.IGNORECASE))
     plan_text = (tmpdir / "plan.txt").read_text(encoding="utf-8", errors="replace") if (tmpdir / "plan.txt").is_file() else ""

@@ -2,7 +2,7 @@
 
 An out-of-scope (OOS) observation should be accepted when it is genuine,
 concrete, and non-duplicate. Accepted OOS is not implemented in the current
-change; it is tracked for follow-up in the OOS filing path.
+change. It enters the filing path only when the severity gate below also passes.
 
 ## YES
 
@@ -35,6 +35,12 @@ OOS uses the OOS-specific panel thresholds: one YES accepts in a one-judge panel
 one or more YES votes accept in a two-judge panel, and two or more YES votes
 accept in a three-judge panel. In-scope findings keep their stricter acceptance
 thresholds.
+
+## Filing gate
+
+Acceptance is not enough to file an OOS item. File it only when the accepted OOS
+also has a strict majority of YES voters rating severity `major`. Accepted OOS
+with YES voters rating only `minor` or `nit` stays in logs and is not filed.
 
 ## Suggested fixes
 

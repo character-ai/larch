@@ -171,7 +171,7 @@ def test_substantive_structured_summary_and_cursor_response(capsys: pytest.Captu
     structured = tmp_path / "cursor-structured.txt"
     _ = structured.write_text(
         "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
-        "1\tin_scope\tImportant\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n",
+        "1\tin_scope\tmajor\tcorrectness\tfoo.sh:7\tbad branch\tinput fails\tadd guard\n",
         encoding="utf-8",
     )
     _write_done(structured)
@@ -183,7 +183,7 @@ def test_substantive_structured_summary_and_cursor_response(capsys: pytest.Captu
     blocks = _parse_blocks(capsys.readouterr().out)
     assert blocks[0]["STATUS"] == "OK"
     assert blocks[0]["STRUCTURED_SIDECAR"] == f"{structured}.tsv"
-    assert (tmp_path / "cursor-structured.txt.tsv").read_text(encoding="utf-8").splitlines()[1].split("\t")[2] == "important"
+    assert (tmp_path / "cursor-structured.txt.tsv").read_text(encoding="utf-8").splitlines()[1].split("\t")[2] == "major"
     assert blocks[1]["STATUS"] == "CURSOR_EMPTY_RESPONSE"
 
     assert collect_results.collect_results_main(["--timeout", "1", "--structured-reviewer-validation", "--summary-only", str(structured)]) == 0

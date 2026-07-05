@@ -54,7 +54,7 @@ Valid vote tokens are `YES` and `NO`; legacy stray `EXONERATE` maps to `NO`. If 
 
 Dispatchers warn when effective voters fall below the expected panel size. For `/review` and `/implement` Step 5, expected size is the three-slot code-review panel when Cursor or Codex lanes are available, or **one Claude fallback voter** when neither external lane is active. Code-review voters waterfall Codex, then Cursor, then Claude. A single-Claude fallback is intentional and warns only if that expected judge fails. (`/design` still back-fills unavailable externals to keep expected size three.) `effective` means not `failed` and substantive enough to contribute valid vote lines after retries. On the three-slot code-review path, `ELIGIBLE_VOTERS` and `EFFECTIVE_VOTERS` count only substantive non-empty voter files after parse-rate removal; empty placeholders keep `vN_tool` attribution but do not inflate quorum.
 
-After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `python/voting.py::classify_result` owns classification; tally scripts map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `blocker` or `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped.
+After thresholding, each finding becomes `accepted`, `neutral` (≥1 YES but below threshold; -0.25 points unless neutral rescue routes it to OOS), or `rejected` (0 YES; −1 point). `python/voting.py::classify_result` owns classification; tally scripts map labels to KV and JSON at emission. Neutral rescue keeps `Result=neutral` in the vote table, but routes a single-YES `major` neutral to OOS artifacts with `scope=oos`. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
 
 ## Voter Panel Composition
 
@@ -89,7 +89,7 @@ You are a {VOTER_ROLE} on a voting panel. For each proposed change to {REVIEW_CO
 
 Default-deny. If unsure, vote NO. "Legitimate but not necessary" is a NO.
 
-**Severity floor (mandatory):** Vote **NO** on any *in-scope* nit; nits never clear necessity. Treat latent findings as NO unless they are genuine Correctness defects on the feature execution path or Introduced-regressions (gates 2/3); latent plus merely-real is NO. OOS rows are judged only for filing-worthiness.
+**Severity floor (mandatory):** Vote **NO** on any *in-scope* nit; nits never clear necessity. OOS rows are judged only for filing-worthiness.
 
 Do NOT vote YES for cleaner, more robust, more consistent, more flexible, more idiomatic, best-practice, already-met performance, or speculative portability changes. Those are Out-of-Scope signals, not acceptance signals.
 
@@ -128,9 +128,9 @@ After tallying votes, compute a score for each **original reviewer** (not voters
 
 | Vote pattern | Points | Description |
 |---|---|---|
-| Accepted in-scope finding with a strict majority of YES voters rating `blocker` or `major` on their `vN_severity` cell | +2 | High-impact finding validated by YES voters |
+| Accepted in-scope finding with a strict majority of YES voters rating `major` on their `vN_severity` cell | +2 | High-impact finding validated by YES voters |
 | Other accepted in-scope finding | +1 | Finding was validated by the panel |
-| Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed. Single-YES `blocker` or `major` neutrals route to OOS instead. |
+| Neutral (≥1 YES, not accepted) | -0.25 | Insufficient support, but not unanimously dismissed. Single-YES `major` neutrals route to OOS instead. |
 | Rejected (0 YES) | −1 | Finding was unanimously dismissed by the panel |
 
 Severity for competition points comes from panel `vN_severity` cells attached to recorded panel votes. `body_severity` never affects points. If a deduplicated finding was proposed by multiple reviewers, **all** contributing reviewers receive the same weighted points for that finding. Reviewer pruning remains unweighted accepted-minus-rejected count math and does not apply the neutral penalty.

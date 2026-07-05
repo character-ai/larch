@@ -258,8 +258,8 @@ write_common_inputs "$DCAP"
 printf '2\n' >"$DCAP/review-round-count.txt"
 cat >"$DCAP/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Important
-- **Severity**: important
-- **Concern**: important issue
+- **Severity**: major
+- **Concern**: major issue
 EOF
 cont_out=$(run_continuation "$DCAP" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=false$' || fail 'continuation cap should stop'
@@ -306,32 +306,32 @@ cont_out=$(run_continuation "$DHIGH" false)
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'high fallback should continue'
 printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'high fallback reason missing'
 
-echo "=== continuation helper recognizes structured important severity ==="
-DIMP="$TMPROOT/continuation-structured-important"
+echo "=== continuation helper recognizes structured major severity ==="
+DIMP="$TMPROOT/continuation-structured-major"
 write_common_inputs "$DIMP"
 printf '1\n' >"$DIMP/review-round-count.txt"
 cat >"$DIMP/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Important structured
-- **Severity**: important
-- **Concern**: structured important issue
+### FINDING_1: Major structured
+- **Severity**: major
+- **Concern**: structured major issue
 EOF
 cont_out=$(run_continuation "$DIMP" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured important should continue'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured important reason missing'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured major should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured major reason missing'
 
-echo "=== continuation helper recognizes structured blocking severity ==="
-DBLOCK="$TMPROOT/continuation-structured-blocking"
+echo "=== continuation helper recognizes structured major severity ==="
+DBLOCK="$TMPROOT/continuation-structured-major-second"
 write_common_inputs "$DBLOCK"
 printf '1\n' >"$DBLOCK/review-round-count.txt"
 cat >"$DBLOCK/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Blocking structured
-- **Severity**: blocking
+### FINDING_1: Major structured
+- **Severity**: major
 - **Concern**: neutral wording with no high fallback keywords
 EOF
 cont_out=$(run_continuation "$DBLOCK" false)
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured blocking should continue'
-printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured blocking reason missing'
-printf '%s\n' "$cont_out" | grep -q '^HIGH_ACCEPTED_COUNT=1$' || fail 'structured blocking should count as high'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE=true$' || fail 'structured major should continue'
+printf '%s\n' "$cont_out" | grep -q '^PLAN_REVIEW_CONTINUE_REASON=high-accepted$' || fail 'structured major reason missing'
+printf '%s\n' "$cont_out" | grep -q '^HIGH_ACCEPTED_COUNT=1$' || fail 'structured major should count as high'
 
 echo "=== continuation helper escalates two new high findings to HARD ==="
 DESC="$TMPROOT/continuation-escalates-high"
@@ -344,12 +344,12 @@ TALLY_PLAN_REVIEW_STATUS=ok
 DEGRADED_PANEL=0
 EOF
 cat >"$DESC/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Important structured one
-- **Severity**: important
+### FINDING_1: Major structured one
+- **Severity**: major
 - **Concern**: first new issue
 
-### FINDING_2: Blocking structured two
-- **Severity**: blocking
+### FINDING_2: Major structured two
+- **Severity**: major
 - **Concern**: second new issue
 EOF
 cont_out=$(run_continuation "$DESC" false)
@@ -378,8 +378,8 @@ DSMALL="$TMPROOT/continuation-small-clean"
 write_common_inputs "$DSMALL"
 printf '1\n' >"$DSMALL/review-round-count.txt"
 cat >"$DSMALL/accepted-plan-findings.md" <<'EOF'
-### FINDING_1: Latent cleanup
-- **Severity**: latent
+### FINDING_1: Minor cleanup
+- **Severity**: minor
 - **Concern**: small cleanup
 EOF
 cont_out=$(run_continuation "$DSMALL" false)
@@ -393,8 +393,8 @@ printf '1\n' >"$DNONNIT/review-round-count.txt"
 : >"$DNONNIT/accepted-plan-findings.md"
 for n in 1 2 3 4 5 6; do
     cat >>"$DNONNIT/accepted-plan-findings.md" <<EOF
-### FINDING_${n}: Latent ${n}
-- **Severity**: latent
+### FINDING_${n}: Minor ${n}
+- **Severity**: minor
 - **Concern**: cleanup ${n}
 
 EOF
@@ -513,7 +513,7 @@ run_driver "$DCHAIN" "$chain_stub" >/dev/null
 printf 'prior round artifact\n' >"$DCHAIN/plan-review/round-1/keep.txt"
 cat >"$DCHAIN/accepted-plan-findings.md" <<'EOF'
 ### FINDING_1: Important
-- **Severity**: important
+- **Severity**: major
 - **Concern**: second review needed
 EOF
 cont_out=$(run_continuation "$DCHAIN" false)

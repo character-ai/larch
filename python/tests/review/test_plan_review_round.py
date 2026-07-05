@@ -40,6 +40,45 @@ def _write_sidecar(path: Path, rows: list[dict[str, str]]) -> None:
     _ = path.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _prune_nit_findings_fake(argv: list[str]) -> subprocess.CompletedProcess[str]:
+    findings_file = Path(argv[argv.index("--findings-file") + 1])
+    audit_file = Path(argv[argv.index("--audit-file") + 1])
+    security_audit_file = Path(argv[argv.index("--security-audit-file") + 1])
+    text = findings_file.read_text(encoding="utf-8", errors="replace") if findings_file.is_file() else ""
+    blocks: list[str] = []
+    current: list[str] = []
+    for line in text.splitlines():
+        if line.startswith("### "):
+            if current:
+                blocks.append("\n".join(current) + "\n")
+            current = [line]
+        elif current:
+            current.append(line)
+    if current:
+        blocks.append("\n".join(current) + "\n")
+
+    kept_blocks: list[str] = []
+    dropped_blocks: list[str] = []
+    for block in blocks:
+        if re.search(r"(?mi)^- \*\*Severity\*\*: nit(?:\s|$)", block):
+            dropped_blocks.append(block)
+            continue
+        kept_blocks.append(block)
+
+    _ = findings_file.write_text("".join(kept_blocks), encoding="utf-8")
+    if dropped_blocks:
+        dropped_text = "\n".join(dropped_blocks)
+        _ = audit_file.write_text(dropped_text + "\n", encoding="utf-8")
+        if re.search(r"focus[- ]area\s*[:=]\s*security", dropped_text, re.IGNORECASE):
+            _ = security_audit_file.write_text(dropped_text + "\n", encoding="utf-8")
+    return subprocess.CompletedProcess(
+        argv,
+        0,
+        f"PRUNED_COUNT={len(dropped_blocks)}\nINSCOPE_REMAINING={len(kept_blocks)}\nSTATUS=ok\n",
+        "",
+    )
+
+
 def _write_neutralized_tally_case(
     tmp_path: Path,
     attributed_text: str,
@@ -362,6 +401,8 @@ def test_execute_round_collect_results_omits_structured_reviewer_validation(
             return subprocess.CompletedProcess(argv, 5, "structured records not found\n", "")
         if argv[:2] == ["review", "aggregate-findings"]:
             return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
         raise AssertionError(f"unexpected argv: {argv}")
 
     monkeypatch.setattr(plan_review_round, "_run_cli", fake_run_cli)
@@ -589,6 +630,8 @@ def test_execute_round_propagates_degraded_warning_with_mixed_manifest(
         if argv[:2] == ["review", "aggregate-findings"]:
             _ = (design / "ballot.txt").write_text("### FINDING_1:\n", encoding="utf-8")
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -783,6 +826,8 @@ def _install_execute_round_fake(
                 )
                 return subprocess.CompletedProcess(argv, 0, "REASON=validation-failed\nAGGREGATED=false\n", "")
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv,
@@ -1661,10 +1706,10 @@ def test_execute_round_zero_findings_short_circuits_before_voting(
     assert voter_called["hit"] is False
 
 
-def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
+def test_execute_round_zero_findings_short_circuits_with_partial_failure(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Partial collector failure (ok_count>0, fail_count>0, empty ballot) must not benign-short-circuit."""
+    """Partial collector failure with only nit survivors must short-circuit after prune."""
     design = tmp_path
     plan_file = design / "plan.txt"
     feature_file = design / "feature.txt"
@@ -1672,6 +1717,30 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
     _ = feature_file.write_text("feature\n", encoding="utf-8")
     ok_reviewer = design / "cursor-plan-arch-output.txt"
     fail_reviewer = design / "codex-plan-arch-output.txt"
+    ok_sidecar = design / "cursor-plan-arch.sidecar.tsv"
+    _write_sidecar(
+        ok_sidecar,
+        [
+            {
+                "scope": "in_scope",
+                "severity": "nit",
+                "focus_area": "correctness",
+                "location": "python/a.py:1",
+                "what": "Drop this nit",
+                "scenario_or_breakage": "becomes empty after prune",
+                "suggested_fix": "skip it",
+            },
+            {
+                "scope": "out_of_scope",
+                "severity": "nit",
+                "focus_area": "risk-integration",
+                "location": "python/b.py:2",
+                "what": "Keep this OOS stream",
+                "scenario_or_breakage": "must survive into oos.md",
+                "suggested_fix": "file separately",
+            },
+        ],
+    )
     voter_called = {"hit": False}
 
     def fake_run_cli(argv: list[str], *, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
@@ -1705,6 +1774,7 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
                     tool="cursor",
                     status="OK",
                     exit_code="0",
+                    structured_sidecar=str(ok_sidecar),
                 ),
                 collect_results.CollectorRecord(
                     reviewer_file=str(fail_reviewer),
@@ -1716,7 +1786,9 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
             ]
             return subprocess.CompletedProcess(argv, 0, _collector_text(records), "")
         if argv[:2] == ["review", "aggregate-findings"]:
-            return subprocess.CompletedProcess(argv, 0, "REASON=insufficient-input\nAGGREGATED=false\n", "")
+            return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return _prune_nit_findings_fake(argv)
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             voter_called["hit"] = True
             return subprocess.CompletedProcess(argv, 0, "DISPATCH_OK=false\nDEGRADED_PANEL=1\n", "")
@@ -1734,10 +1806,14 @@ def test_execute_round_zero_findings_short_circuit_requires_zero_fail_count(
         feature_file=feature_file,
     )
 
-    assert rc == 1
-    assert values["LOOP_STATUS"] == "panel-failed"
-    assert values["DEGRADED_PANEL"] == "1"
-    assert voter_called["hit"] is True
+    assert rc == 0
+    assert values["LOOP_STATUS"] == "zero-findings-degraded-panel"
+    assert values["DEGRADED_PANEL"] == "0"
+    assert voter_called["hit"] is False
+    assert "Keep this OOS stream" not in (design / "findings-oos.md").read_text(encoding="utf-8")
+    assert "Keep this OOS stream" not in (design / "ballot.txt").read_text(encoding="utf-8")
+    audit_text = (design / "plan-review" / "round-6" / "oos-dropped-before-vote.md").read_text(encoding="utf-8")
+    assert "Keep this OOS stream" in audit_text
 
 
 def test_execute_round_zero_findings_clears_stale_tally_artifacts(
@@ -1841,6 +1917,8 @@ def test_execute_round_degraded_usable_voter_dispatch(
                 encoding="utf-8",
             )
             return subprocess.CompletedProcess(argv, 0, "REASON=ok\nAGGREGATED=true\n", "")
+        if argv[:2] == ["review", "prune-nit-findings"]:
+            return subprocess.CompletedProcess(argv, 0, "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=ok\n", "")
         if argv[:2] == ["plan-review", "voter-dispatch"]:
             return subprocess.CompletedProcess(
                 argv, 0,

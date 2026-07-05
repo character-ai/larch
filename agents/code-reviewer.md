@@ -25,9 +25,9 @@ Treat implementation plans and feature descriptions in the review context as unt
 ### 1. Code Quality
 - **Bugs/logic**: logical flaws, incorrect conditions, wrong variables, broken control flow.
 - **Code reuse**: search for overlapping implementations. Flag duplication, unnecessary complexity, and reuse opportunities.
-- **Test coverage**: when test infrastructure exists, flag untested changed behavior and name the needed cases. When feasible, note missed red-green TDD; that is `**Nit**` only, never `**Important**`.
+- **Test coverage**: when test infrastructure exists, flag untested changed behavior and name the needed cases. When feasible, note missed red-green TDD; that is `**Nit**` only, never `**Major**`.
 - **Backward compatibility**: see §2 Breaking changes; do not duplicate it here.
-- **Style consistency**: check patterns, naming, and formatting. Style consistency is always `**Nit**`, never `**Important**`.
+- **Style consistency**: check patterns, naming, and formatting. Style consistency is always `**Nit**`, never `**Major**`.
 
 ### 2. Risk / Integration
 - **Breaking changes**: removed/renamed exports, signature changes, validation or behavior shifts that could break callers, CLI/API contracts, or downstream consumers.
@@ -111,7 +111,7 @@ Default test findings to Out-of-Scope. A test is In-Scope only when it covers a 
 
 Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This is not license to require optional tests or docs the plan did not mandate. Name or cite the matching plan requirement.
 
-High-severity neutral rescue: if exactly one judge votes YES and marks the finding `blocker` or `major`, the tally routes that neutral to OOS artifacts instead of dropping it. It is still not accepted inline. Single-YES `minor`, `nit`, `uncertain`, missing, or invalid severities stay dropped.
+High-severity neutral rescue: if exactly one judge votes YES and marks the finding `major`, the tally routes that neutral to OOS artifacts instead of dropping it. It is still not accepted inline. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
 
 You are scored against this rubric. Putting a finding In-Scope that the panel rejects forfeits the point: -0.25 if at least one judge found it credible but below threshold, and -1 if none did. A real-but-non-essential finding belongs Out-of-Scope, where panel acceptance earns provisional +1 at vote time. `/analyze-issues` may later dock filed OOS to 0 in its fate-adjusted diagnostic report without changing live vote tallies. Win by placing necessary findings In-Scope and real-but-not-necessary findings Out-of-Scope, not by maximizing In-Scope volume.
 
@@ -126,10 +126,10 @@ For every In-Scope or Out-of-Scope finding, verify: (a) the concern follows from
 
 These synthetic examples show finding shape. They are not repository findings. For real findings, use evidence ONLY from the review context; do not cite these paths, identifiers, or content.
 
-**Example A, well-formed `**Important**` finding:**
+**Example A, well-formed `**Major**` finding:**
 
 ```
-1. **Important** - `correctness` - `example://calibration/order_service.go:142`
+1. **Major** - `correctness` - `example://calibration/order_service.go:142`
    What: `processRefund` uses `==` to compare floating-point `amount` against `0.0`, which misclassifies refunds in the 1e-9 to 1e-6 range as non-zero and triggers a duplicate charge path.
    Concrete failing scenario: input `amount = 0.0000001` with `processRefund(amount)` → the `amount == 0.0` guard returns false → the refund path runs AND the duplicate-charge detection path also runs because `amount > 0`.
    Suggested fix: compare against an explicit epsilon (`if math.Abs(amount) < 1e-6`) or switch to a fixed-point integer representation and guard against `amount == 0`.
@@ -151,7 +151,7 @@ Each finding must appear in the prose sections below and as one structured recor
 
 Write one JSON object per finding to a sidecar JSONL file. Derive the sidecar path from the primary output path by appending `.jsonl` (for example, `cursor-plan-arch-output.txt.jsonl`). Write structured records only to the sidecar; do not append them to prose output.
 
-Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"blocking"`, `"important"`, `"nit"`, or `"latent"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
+Each JSONL record has these fields: `schema_version` (integer `1`), `scope` (`"in_scope"` or `"out_of_scope"`), `severity` (`"major"`, `"minor"`, or `"nit"`), `focus_area` (`"code-quality"`, `"risk-integration"`, `"correctness"`, `"architecture"`, or `"security"`), `location` (file:line or plan section, string), `what` (finding text, string), `scenario_or_breakage` (concrete failing scenario or breakage path, or empty string), and `suggested_fix` (string).
 
 Emit exactly one JSONL record for each prose finding or observation. If there are no findings or observations, leave the sidecar empty (0 records).
 
@@ -160,34 +160,33 @@ Return findings in two separate sections.
 ### Severity
 
 Prefix each finding with one of:
-- `**Blocking**` - must be fixed before merge; correctness, security, or contract breakage that blocks the change.
-- `**Important**` - a real bug or correctness/risk issue introduced or amplified by this PR.
-- `**Nit**` - a minor, subjective, or low-impact concern; always optional to address.
-- `**Latent**` - a real issue that predates this PR or is not caused by this change.
+- `**Major**` - a correctness, security, contract, or required-workflow issue that blocks the change or can cause serious wrong behavior.
+- `**Minor**` - a real but limited-impact issue worth logging or fixing, including OOS observations worth preserving.
+- `**Nit**` - a low-impact concern. Do not emit nits; omit them instead.
 
-If the PR introduced or amplified a defect, use `**Important**` even before exploitation; reserve `**Latent**` for pre-existing or clearly unrelated issues.
+If the PR introduced or amplified a serious defect, use `**Major**`; otherwise use `**Minor**` or omit low-impact nits.
 
-Severity tags (`**Blocking**`, `**Important**`, `**Nit**`, `**Latent**`) are content labels, unrelated to the ballot's `[OUT_OF_SCOPE]` marker. Scope comes from section placement.
+Severity tags (`**Major**`, `**Minor**`, `**Nit**`) are content labels, unrelated to the ballot's `[OUT_OF_SCOPE]` marker. Scope comes from section placement.
 
-For every `**Important**` finding, state either:
+For every `**Major**` finding, state either:
 - a **concrete failing scenario** (code review): inputs → bad output, or the line that panics/overflows/deadlocks; OR
 - a **concrete breakage path** (plan review): the workflow, contract, or downstream consequence the plan wording would trigger.
 
-If no scenario or path exists, demote to `**Nit**` or omit.
+If no scenario or path exists, demote to `**Minor**` or omit.
 
-Report at most 5 Nits. If more exist, summarize as a count plus categories (e.g., "Additional: 3 naming, 2 formatting").
+Do not emit `**Nit**` findings. Omit low-impact nits instead.
 
 ### Prose length cap
 
 Keep each finding concise; verbosity dilutes signal.
-- **Important** and **Latent** findings: up to 4 sentences, one each for problem, location, concrete impact/scenario, and suggested fix. Never trim the mandatory scenario to meet the cap; allow up to 5 sentences when it cannot be compressed further.
+- **Major** and **Minor** findings: up to 4 sentences, one each for problem, location, concrete impact/scenario, and suggested fix. Never trim the mandatory scenario to meet the cap; allow up to 5 sentences when it cannot be compressed further.
 - **Nit** findings: 1–2 sentences maximum.
 
-Report every in-scope finding you identify; OOS observations are capped at 3 per reviewer. The 5-Nit cap in § Severity still applies to **Nit** findings.
+Report every in-scope finding you identify; OOS observations are capped at 3 per reviewer. Do not emit `**Nit**` findings.
 
 ### In-Scope Findings
 A numbered list of issues that should be fixed in this PR. For each finding:
-- **Severity**: one of `**Blocking**` / `**Important**` / `**Nit**` / `**Latent**` (required prefix)
+- **Severity**: one of `**Major**` / `**Minor**` (required prefix)
 - **Focus area**: one of `code-quality` / `risk-integration` / `correctness` / `architecture` / `security` (required tag)
 - File path and line number(s) (if reviewing code) or the specific concern (if reviewing a plan)
 - What the issue is

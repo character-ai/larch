@@ -485,6 +485,8 @@ def _aggregate_block_identity(block: str) -> str:
 
 
 def _append_oos_pool_candidate(*, pool_file: Path, text: str) -> None:
+    if not voting.artifact_marked_fileable(text):
+        return
     identity = _aggregate_block_identity(text)
     if not identity:
         return
@@ -506,7 +508,11 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
     sink_text = _read(sink) if sink.is_file() else ""
     accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(sink_text)}
     main_blocks = (
-        [block for block in _aggregate_oos_blocks(_read(main_agent)) if not voting.is_security_block_text(block)]
+        [
+            block
+            for block in _aggregate_oos_blocks(_read(main_agent))
+            if not voting.is_security_block_text(block) and voting.artifact_marked_fileable(block)
+        ]
         if main_agent is not None and main_agent.is_file()
         else []
     )
@@ -516,6 +522,7 @@ def _promote_aggregate_oos_pool(*, sink: Path, pool: Path, main_agent: Path | No
             for block in _aggregate_oos_blocks(_read(pool))
             if not voting.is_security_block_text(block)
             and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
+            and voting.artifact_marked_fileable(block)
         ]
         if pool.is_file()
         else []
@@ -632,12 +639,11 @@ def _ledger_reason(block_text: str) -> str:
 
 
 def _ledger_entry(*, item_id: str, block_text: str, outcome: str, vote_tally: str) -> dict[str, object]:
-    latent_rerouted = bool(re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", block_text))
     return {
         "finding_id": item_id,
         "title": _ledger_title(block_text=block_text, item_id=item_id),
         "file_line": _ledger_file_line(block_text),
-        "outcome": "oos" if latent_rerouted and outcome != "accepted" else outcome,
+        "outcome": outcome,
         "vote_tally": vote_tally,
         "reason": _ledger_reason(block_text),
     }
@@ -653,8 +659,7 @@ def _record_public_oos_artifact(*, oos_file: Path, pool_file: Path, security_sid
 
 
 def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
-    if re.search(r"(?mi)^-\s*\*\*Severity\*\*:\s*latent\s*$", block_text):
-        return "latent-rerouted"
+    _ = block_text
     if neutral_rescued:
         return "neutral-rescued"
     return ""
@@ -918,6 +923,11 @@ def tally_code_votes(argv: list[str]) -> int:
             three_slot=three_slot,
         )
         vote_values = [vote for _label, vote in voter_votes]
+        fileable_oos = voting.oos_fileable_from_votes(
+            result,
+            yes_votes=vote_values,
+            severities=voter_severities,
+        )
         neutral_rescued = voting.neutral_high_severity_rescue_to_oos(
             result,
             yes_votes=vote_values,
@@ -960,10 +970,11 @@ def tally_code_votes(argv: list[str]) -> int:
             )
         )
         kind = "oos" if is_oos else "finding"
+        score_result = "neutral" if kind == "oos" and result == "accepted" and not fileable_oos else result
         sole_finder_reward_count += _record_code_review_score_rows(
             score_state=(score_rows, bonus_by_reviewer, active_bonus),
             reviewer=reviewer,
-            classification=(kind, result, neutral_rescued),
+            classification=(kind, score_result, neutral_rescued),
             cells=cells,
         )
         try:
@@ -995,15 +1006,16 @@ def tally_code_votes(argv: list[str]) -> int:
                 _append(path=rejected_file, text=f"### [rejected] {item_id}\n\n**Rejected subtype:** {subtype}\n\n{artifact_text}\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error}\n\n")
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome=result)
         else:
+            oos_fileable_marker = "true" if fileable_oos else "false"
             _record_public_oos_artifact(
                 oos_file=oos_file,
                 pool_file=oos_accepted_out.parent / _OOS_AGGREGATE_POOL,
                 security_sidecar=security_oos_file,
-                artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n",
+                artifact=artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} Fileable={oos_fileable_marker}\n\n",
                 security=security,
-                accepted=result == "accepted",
+                accepted=fileable_oos,
             )
-            if result == "accepted":
+            if fileable_oos:
                 if not security:
                     oos_seq += 1
                     normalized = _normalize_oos_header_text(text=artifact_text, seq=oos_seq)
@@ -1013,8 +1025,9 @@ def tally_code_votes(argv: list[str]) -> int:
                     oos_accepted += 1
                 _record_tally(tally_file=tally_env, item_id=item_id, accepted=True, outcome="accepted")
             else:
-                oos_rejected += 1
-                _record_tally(tally_file=tally_env, item_id=item_id, accepted=False, outcome=result)
+                if result != "accepted":
+                    oos_rejected += 1
+                _record_tally(tally_file=tally_env, item_id=item_id, accepted=result == "accepted", outcome=result)
     if under_quorum_items:
         tally_lines.insert(
             1,

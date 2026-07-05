@@ -5349,7 +5349,7 @@
     "file": "larch/review/plan_review_round.py",
     "code": "PLR0915",
     "qualified_symbol": "execute_round",
-    "metric": 128
+    "metric": 136
   },
   {
     "file": "larch/review/plan_review_tally.py",
@@ -5396,6 +5396,12 @@
   {
     "file": "larch/review/plan_review_tally.py",
     "code": "PLR0915",
+    "qualified_symbol": "_Tally._render",
+    "metric": 51
+  },
+  {
+    "file": "larch/review/plan_review_tally.py",
+    "code": "PLR0915",
     "qualified_symbol": "_Tally.run",
     "metric": 59
   },
@@ -5434,12 +5440,6 @@
     "code": "C901",
     "qualified_symbol": "aggregate_findings",
     "metric": 32
-  },
-  {
-    "file": "larch/review/review_aggregate.py",
-    "code": "C901",
-    "qualified_symbol": "prune_nit_findings",
-    "metric": 11
   },
   {
     "file": "larch/review/review_aggregate.py",
@@ -5595,7 +5595,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "C901",
     "qualified_symbol": "_review_core_body",
-    "metric": 52
+    "metric": 54
   },
   {
     "file": "larch/review/review_core_body.py",
@@ -5607,13 +5607,13 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0911",
     "qualified_symbol": "_review_core_body",
-    "metric": 13
+    "metric": 15
   },
   {
     "file": "larch/review/review_core_body.py",
     "code": "PLR0912",
     "qualified_symbol": "_review_core_body",
-    "metric": 52
+    "metric": 54
   },
   {
     "file": "larch/review/review_core_body.py",
@@ -5637,7 +5637,7 @@
     "file": "larch/review/review_core_body.py",
     "code": "PLR0915",
     "qualified_symbol": "_review_core_body",
-    "metric": 224
+    "metric": 229
   },
   {
     "file": "larch/review/review_dispatch_panel.py",
@@ -5739,7 +5739,7 @@
     "file": "larch/review/review_tally.py",
     "code": "C901",
     "qualified_symbol": "tally_code_votes",
-    "metric": 66
+    "metric": 67
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5775,7 +5775,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0912",
     "qualified_symbol": "tally_code_votes",
-    "metric": 76
+    "metric": 77
   },
   {
     "file": "larch/review/review_tally.py",
@@ -5799,7 +5799,7 @@
     "file": "larch/review/review_tally.py",
     "code": "PLR0915",
     "qualified_symbol": "tally_code_votes",
-    "metric": 226
+    "metric": 230
   },
   {
     "file": "larch/review/review_threshold.py",

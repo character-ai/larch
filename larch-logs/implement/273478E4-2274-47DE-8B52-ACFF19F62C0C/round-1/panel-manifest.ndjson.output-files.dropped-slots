@@ -1,0 +1,3 @@
+correctness	cursor	collector-failure	STATUS=FAILED ⏳ cursor agent: still running (1m elapsed) ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 
+edge-cases	cursor	collector-failure	STATUS=FAILED ⏳ cursor agent: still running (1m elapsed) ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 
+dyn-dyn-oos-gate	cursor	collector-failure	STATUS=FAILED ⏳ cursor agent: still running (1m elapsed) ❌ cursor agent: FAILED (exit code 1, output 0 bytes) 

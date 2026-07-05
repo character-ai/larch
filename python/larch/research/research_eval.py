@@ -24,7 +24,7 @@ DEFAULT_ROOT = Path(__file__).resolve().parents[3]
 EVAL_SET_REL = Path("skills/research/references/eval-set.md")
 EVAL_BASELINE_REL = Path("skills/research/references/eval-baseline.json")
 
-_ALLOWED_SEVERITIES = {"blocking", "important", "nit", "latent"}
+_ALLOWED_SEVERITIES = {"major", "minor", "nit"}
 _ALLOWED_FOCUS = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _STRUCTURED_HEADER = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix"
 

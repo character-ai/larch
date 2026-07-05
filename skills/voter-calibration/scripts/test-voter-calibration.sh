@@ -115,22 +115,22 @@ awk '
   in_global && found && /^## Chronic Outliers / {exit}
   END {exit !found}
 ' "$run_out"
-grep -Fq 'Uncertain' "$run_out"
+grep -Fq '| Panel | Voter | YES Votes | Major | Minor | Nit | Missing Severity | High Rate | Calibration Score | Uncalibrated |' "$run_out"
 grep -Fq 'Calibration Score' "$run_out"
 grep -Fq '## Per-voter False-negative YES Rate' "$run_out"
 grep -Fq '| design | Claude | 3 | 2 | 0 | 2 | 0.667 |' "$run_out"
 grep -Fq '| design | Codex | 2 | 0 | 1 | 1 | 0.500 |' "$run_out"
 grep -Fq '| design | Cursor | 1 | 1 | 0 | 1 | 1.000 |' "$run_out"
 if grep -Fq '| design | Codex | 3 |' "$run_out"; then exit 1; fi
-grep -Fq '| code-review | v2 | 4 | 0 | 4 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |' "$run_out"
-grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 1.000 | false |' "$run_out"
+grep -Fq '| code-review | v2 | 4 | 4 | 0 | 0 | 0 | 1.000 | 0.000 | true |' "$run_out"
+grep -Fq '| code-review | v3 | 4 | 3 | 1 | 0 | 0 | 0.750 | 1.000 | false |' "$run_out"
 if grep -Fq 'pre-era-voter' "$run_out"; then exit 1; fi
 if grep -Fq 'post-era-voter' "$run_out"; then exit 1; fi
 if grep -Fq 'missing-era-voter' "$run_out"; then exit 1; fi
 
 threshold_out="$FIX/report-threshold.md"
 env -u CLAUDE_PLUGIN_ROOT python3 "$ANALYZER" --log-root "$FIX/larch-logs" --min-votes 3 --outlier-threshold 0.50 --high-severity-threshold 0.50 > "$threshold_out"
-grep -Fq '| code-review | v3 | 4 | 0 | 3 | 1 | 0 | 0 | 0 | 0.750 | 0.500 | true |' "$threshold_out"
+grep -Fq '| code-review | v3 | 4 | 3 | 1 | 0 | 0 | 0.750 | 0.500 | true |' "$threshold_out"
 
 run_b_only="$FIX/run-b-only"
 mkdir -p "$run_b_only/design/run-b/plan-review/round-1"
