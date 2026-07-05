@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of a prior OOS finding; prompt-surface wording drift is real but not necessary for the feature
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false -- duplicate of a prior OOS finding; the URL-annotation edge is real but not necessary for the feature
+FINDING_4: YES CORRECTNESS=true SEVERITY=blocker QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of a prior OOS finding; this secondary prompt surface is a future cleanup, not a required fix
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of a prior OOS finding; TSV-backed auditing is optional cleanup, not a necessary feature fix

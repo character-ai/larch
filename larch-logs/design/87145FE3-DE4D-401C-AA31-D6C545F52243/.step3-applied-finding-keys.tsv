@@ -1,0 +1,13 @@
+1	the mandatory `/implement` step 5 main-agent-vote path still instructs backlog-relative materiality, so degraded mav paths can reject legitimate oos even after the rubric rewrite.
+1	ledger-injected judge guidance for later rounds still tells voters to say no on oos that fail the materiality gate, so the loosened legitimacy standard will be applied inconsistently.
+1	the rejected-oos audit parser only matches one heading shape, so legacy `### finding_n: [out_of_scope]` blocks in `round-*/oos.md` will be omitted from the final audit.
+1	the plan documents relaxed oos acceptance thresholds for 2-judge panels, but the shared classifier still treats split 2-judge oos ballots as neutral.
+1	edge-case `/implement` branches still route to tally paths without dispatching real voter files, so oos ballots can miss the panel entirely.
+1	removing the pre-vote gate leaves security-tagged oos on the public artifact path unless tally keeps them on a private sidecar or filters them before append.
+1	the repointed rejected-oos audit reads `round-*/oos.md`, but that file is still deny-listed from round log projection, so committed run logs will not contain the source the new audit needs.
+1	the code-review aggregate pool still promotes rejected oos into the accepted-review artifact, which can cause step 9a.1 to file an item that did not meet the panel threshold.
+1	the one-unifying-issue rule can still be broken by github body-size splitting, which turns one accepted oos rollup into multiple public issues.
+1	python/larch/review/review_tally.py:497-518,526-558,668-671,1012-1029,1258-1282; python/larch/review/plan_review_tally.py:882-888; python/larch/design/design_oos.py:176-208 [scope-reduction] the retained aggregate oos promotion pool can file rejected oos. scenario: the plan keeps the aggregate pool as-is, but both review and design paths add non-security oos artifacts to the pool before checking accepted status; later promotion appends pool blocks into oos-accepted-review.md or oos-accepted-design.md when severity triggers fire, so a voted-rejected oos can become public-filed instead of audit-only
+2	the shared oos filer still splits oversized accepted rollups into multiple public github issues, so a single capped batch can produce `(part n/m)` bodies and more than one `[oos]` issue instead of exactly one unifying issue.
+2	security-tagged oos that are rejected or neutral can still be appended to public oos.md / oos_chunks, so security prose can leak into committed or projected public artifacts instead of staying in a private sidecar path.
+2	when a security sidecar is present, oos_filer returns early before reading accepted files, so a separate accepted non-security oos never gets filed into the unifying public issue.

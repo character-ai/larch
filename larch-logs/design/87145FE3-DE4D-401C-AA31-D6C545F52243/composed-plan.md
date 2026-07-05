@@ -1,0 +1,224 @@
+## Plan
+
+## Context
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so this plan comes from direct repo inspection, not planning-panel agreement.
+
+Round 1 + Gate B scope constraints:
+- Keep nit pruning. Only remove the OOS drop gate.
+- Vote on OOS under the loosened legitimacy standard, then file vote-accepted survivors.
+- Constrain BOTH aggregate OOS pools (the `/implement` review pool in `review_tally.py` and the #6291 `/design` pool in `design_oos.py`) to promote only vote-accepted OOS into the filed sinks (Gate B FINDING_10 + FINDING_12, operator-confirmed). Keep the pool code and tests; do not delete #6291.
+- Keep semantic dedup, no empty OOS issue, and one unifying `[OOS]` issue via `OOS_ISSUES_PER_RUN_CAP=1`, even for oversized bodies.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/review_core_body.py
+
+Remove the pre-vote OOS drop path while preserving prune-nit, and make all three branches dispatch real voters on an all-OOS ballot.
+
+- Replace `_prune_nit_then_pre_vote_gate` with a prune-only helper, e.g. `_prune_nits_for_ballot`. Keep the `commands.prune_nits --input-mode code` call. Do not call `_apply_pre_vote_oos_gate`; do not rewrite `findings.md` to strip `[OUT_OF_SCOPE]`/`[OOS]` blocks.
+- Remove gate-only helpers/error paths: `_apply_pre_vote_oos_gate`, `_pre_vote_gate_env_text`, `_pre_vote_gate_rows`, `_copy_gate_audit_to_parent`, `_promote_gated_ballot_to_findings`, `_post_gate_panel_failed_with_audit`, `_log_pre_vote_gate_issue` (keep pre-aggregate snapshot logging under a neutral name only if still needed). Remove `PRE_VOTE_*` rows from `ReviewCoreResult` output.
+- **FINDING_6**: in the normal, validation-exhausted, and empty-merge branches, replace every `gate.remaining_count == 0` early return with a post-prune ballot-empty check on parsed `findings.md` blocks; call `_zero_findings_branch` only when zero blocks remain. Refactor the validation-exhausted branch to use the same voter dispatch + tally setup (voter files/tools, proposer map) as the normal branch so an all-OOS ballot reaches the panel.
+- In empty-merge, copy the post-prune `findings-pre-aggregate.md` back to `findings.md` without gate-specific errors.
+
+### UPDATED: python/larch/review/review_pipeline_shared.py
+
+Remove `PreVoteOosGateResult` and `PreVoteGateError`. Keep other shared review dataclasses unchanged.
+
+### UPDATED: python/larch/review/review_pipeline.py
+
+Remove imports/re-exports for the deleted pre-vote gate helpers and dataclasses. Re-export the new prune-only helper only if tests or compatibility callers need private access.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Route security OOS off the public path, constrain aggregate promotion, and apply OOS acceptance thresholds.
+
+- **FINDING_7 (security)**: when a block is security-tagged (`security=True`), skip the public `oos.md` append and route it to the existing session-local security sidecar (`security-oos-observations.md`); keep accepted-sink holdback as today. Public `oos.md` must never contain security OOS.
+- **FINDING_10 + FINDING_12**: constrain the code-review aggregate promotion pool so it promotes only vote-accepted (or main-agent-accepted) OOS blocks into `oos-accepted-review.md`; a voted-rejected/neutral OOS never reaches the accepted/filed sink. Rejected/neutral OOS stays only in `oos.md` and the rejected-OOS audit.
+- **FINDING_5**: classify OOS acceptance with the OOS-specific thresholds from `voting.py` (1/1, 1+/2, 2+/3), leaving in-scope finding thresholds unchanged.
+
+### UPDATED: python/larch/review/voting.py
+
+**FINDING_5**: add an OOS-only acceptance classifier (e.g. `accept_oos`) implementing thresholds 1/1, 1+/2, 2+/3, used by both `review_tally.py` and `plan_review_tally.py` for OOS items only. Do not change the in-scope `accept_finding` thresholds.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+**FINDING_5**: use the OOS-only acceptance classifier for `OOS_N` items so a single YES in a 2-judge design panel writes `oos-accepted-design.md`; in-scope thresholds unchanged.
+- **Design security routing (round 2)**: route every security-tagged OOS outcome (accepted, rejected, or neutral) to the private sidecar and exclude it from `oos_chunks`/`oos.md`, `oos_accepted_chunks`/`oos-accepted-design.md`, and `oos_pool_chunks` (the aggregate pool). Security prose must never reach a public or projected design artifact.
+
+### UPDATED: python/larch/review/findings_ledger.py
+
+**FINDING_3**: replace judge-role ledger guidance that says NO on OOS failing the materiality gate with the legitimacy standard (accept genuine/concrete/non-duplicate OOS; NO for style/noise/speculation). Keep parity with `oos-acceptance-rubric.md`.
+
+### UPDATED: skills/shared/oos-acceptance-rubric.md
+
+Rewrite from the backlog-relative materiality gate to the legitimacy standard.
+- YES for a genuine, concrete, non-duplicate OOS observation.
+- NO for pure style/polish/noise, duplicates, false positives, and speculative/hypothetical items with no concrete trigger.
+- Suggested fixes stay informational; acceptance uses standard panel thresholds (2+/3, 1+/2, unilateral/1).
+
+Update the "Update triggers" list to current paths: `python/larch/rendering/rendering.py`, `python/larch/review/findings_ledger.py`, `skills/implement/SKILL.md`, `skills/implement/references/step5-review-branches.md`, `skills/design/SKILL.md`, `skills/shared/review-acceptance-rubric.md`, `skills/shared/voting-protocol.md`.
+
+### UPDATED: python/larch/rendering/rendering.py
+
+Propagate legitimacy to runtime prompts:
+- `oos_proposal_instruction()`: keep the cap of 3, but select highest-legitimacy concrete items, not highest-materiality backlog items.
+- Voter OOS paragraph near `oos_rule`: state the legitimacy rule and auto-reject cases.
+- Keep non-OOS review acceptance text strict.
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+Update the OOS note so accepted OOS no longer must clear a materiality gate. Keep the in-scope necessity gate unchanged.
+
+### UPDATED: skills/shared/voting-protocol.md
+
+- YES = legitimate, concrete, non-duplicate, worth tracking; NO = false/duplicate/style/noise/speculative.
+- Document standard thresholds and the OOS-specific acceptance (1+/2 accepts for OOS; in-scope stays strict — FINDING_5).
+- Clarify accepted OOS rolls into one `[OOS]` issue for `/implement`; `/design` files during Step 5b.
+
+### UPDATED: skills/implement/SKILL.md
+
+Update OOS prose for Step 9a.1 and main-agent OOS voting: vote-accepted non-security OOS files in one unifying `[OOS]` issue per run; replace materiality wording with legitimacy; keep fork-mode carve-out and sentinel idempotency.
+
+### UPDATED: skills/implement/references/step5-review-branches.md
+
+**FINDING_2**: replace the Step 5 main-agent-vote OOS paragraph's impact-floor/concrete-trigger/issue-overhead/default-deny wording with the same legitimacy rule as `oos-acceptance-rubric.md`, so degraded MAV paths accept legitimate OOS.
+
+### UPDATED: skills/design/SKILL.md
+
+Replace the Step 3 main-agent OOS vote instructions ("impact-floor, concrete-trigger, issue-overhead, default-deny") with the legitimacy rule. Keep Step 5b ordering and `/larch:issue` filing unchanged.
+
+### UPDATED: python/larch/report/review_phase_detail.py
+
+Repurpose the dropped-OOS renderer into a rejected-OOS audit renderer.
+- Rename `render_dropped_oos_candidate_section` to a rejected-OOS name; heading `## Dropped OOS candidates` -> `## Rejected OOS audit`.
+- Read `round-*/oos.md`, not `round-*/oos-dropped-before-vote.md`.
+- **FINDING_4**: parse both `### OOS_N:` and legacy `### FINDING_N:` titles carrying `[OUT_OF_SCOPE]`/`[OOS]`; read `Result=` from the Vote tally footer; include only non-security blocks whose result is not `accepted` (rejected + neutral). Label each bullet's result.
+- Keep the cap + redaction behavior; update `render_implement_review_detail` to append the new audit section.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+**FINDING_9**: move `oos.md` from `_ROUND_ARTIFACT_DENY_GLOBS` into `_ROUND_ARTIFACT_ALLOW`; remove `oos-dropped-before-vote.md` and `pre-vote-oos-gate.env` from the projection. Ensure `oos.md`, `oos-accepted-review.md`, `rejected-findings.md`, `review-tally.env`, and classification artifacts remain projected so the rejected-OOS audit renders from committed logs. Depends on FINDING_7 (public `oos.md` is security-clean before projection).
+
+### UPDATED: python/larch/issue/file_oos.py
+
+- Keep `OOS_ISSUES_PER_RUN_CAP=1`, `issue_cap()` rollup, and empty-input no-op. One accepted OOS passes through; a multi-item batch becomes one issue payload.
+- **FINDING_11**: preserve the exactly-one-public-issue invariant; the oversized-body summarization itself lands in `oos_filer.py` (below), so route `issue_cap()` output through that single-issue path rather than any multi-part split.
+
+### UPDATED: python/larch/issue/oos_filer.py
+
+Combine accepted non-security review/design/main-agent OOS into one issue; no post-vote materiality/count gate; keep sentinel idempotency + semantic dedup.
+- **One-issue body-size invariant (round 2, FINDING_11)**: when a capped (`OOS_ISSUES_PER_RUN_CAP=1`) rollup body exceeds the GitHub body-size limit, file exactly one summarized `[OOS]` issue (full detail retained in run logs) via a single create-one call; retire/gate multi-part `(part N/M)` splitting for capped OOS batches.
+- **Sidecar must not block non-security filing (round 2)**: when a security sidecar is present, still read the accepted files and file accepted non-security blocks into the unifying public issue; keep security blocks private. Do not early-return before non-security OOS is filed.
+
+### UPDATED: python/larch/design/design_oos.py
+
+**FINDING_12 (operator-confirmed)**: constrain `_promote_aggregate_oos_pool` so it promotes only vote-accepted OOS into `oos-accepted-design.md`; a voted-rejected/neutral pool block is never appended to the accepted sink. Keep the aggregate pool + `_aggregate_trigger_fires` code and tests (do not delete #6291); rejected/neutral OOS stays only in `oos.md` and the audit. No design gate removal.
+
+### UPDATED: SECURITY.md
+
+**FINDING_7**: describe post-vote security-OOS holdback (tally routes security OOS to the session-local sidecar and off public `oos.md`) instead of the retired pre-vote `oos-dropped*` security path.
+
+### UPDATED: docs/run-logs.md
+
+Replace "Dropped OOS candidates" / "manual filing queue" wording with the rejected-OOS audit behavior; note `/implement` no longer writes `oos-dropped-before-vote.md` and now projects `oos.md`.
+
+### UPDATED: docs/voting-process.md
+
+OOS rides the ballot; legitimacy standard; OOS-specific 2-judge acceptance; accepted OOS files as one unifying `[OOS]` issue per run for `/implement` and `/design`; empty accepted set files nothing.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+Retire pre-vote gate tests; add restored-ballot coverage: prune-nit still runs; `[OUT_OF_SCOPE]` blocks remain in `findings.md`; **FINDING_6** an all-OOS ballot dispatches voters and produces non-empty `review-tally.env` / `oos-accepted-review.md` when thresholds pass across normal, validation-exhausted, and empty-merge; no `oos-dropped-before-vote.md` / `pre-vote-oos-gate.env`.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+- Accepted legacy `### FINDING_N: [OUT_OF_SCOPE]` and direct `### OOS_N:` land in `oos-accepted-review.md`; rejected/neutral stays in `oos.md`.
+- **FINDING_5**: one YES in a 2-judge OOS panel accepts; an in-scope split-2 stays neutral.
+- **FINDING_7**: security OOS text is absent from public `oos.md` (sidecar only).
+- **FINDING_10/FINDING_12**: the aggregate pool never promotes a vote-rejected OOS into `oos-accepted-review.md`.
+
+### UPDATED: python/tests/review/test_findings_ledger.py
+
+**FINDING_3**: ledger judge text uses legitimacy wording, not materiality-gate NO guidance.
+
+### UPDATED: python/tests/report/test_review_phase_detail.py
+
+Replace dropped-candidate tests with rejected-OOS audit tests: reads `round-*/oos.md`; shows rejected + neutral non-security OOS; **FINDING_4** includes legacy `### FINDING_N: [OUT_OF_SCOPE]` rows; omits accepted + security OOS; keeps cap + final-summary integration.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+**FINDING_9**: round flush projects `oos.md` and omits `oos-dropped-before-vote.md` / `pre-vote-oos-gate.env`.
+
+### UPDATED: python/tests/issue/test_file_oos.py
+
+With default cap 1, one accepted OOS stays one issue block; multiple accepted OOS roll into one issue and preserve source bodies; **FINDING_11** an oversized accepted OOS rollup yields exactly one public payload.
+
+### UPDATED: python/tests/issue/test_oos_filer.py
+
+`/implement` vote-accepted OOS -> exactly one batch issue payload; empty accepted -> files nothing; sentinel rerun does not double-file. An oversized post-cap combined payload yields exactly one `create-one` call / one sentinel URL (no `(part N/M)` split). A mixed security + non-security accepted set files the non-security blocks into one public issue while keeping security blocks private (no early-return that skips non-security filing).
+
+### UPDATED: python/tests/design/test_design_oos.py
+
+Single accepted design OOS -> `FILE_DESIGN_OOS_STATUS=ready`; multiple accepted -> one capped issue payload; empty/all-security -> skip; **FINDING_12** the aggregate pool promotes only vote-accepted OOS (a rejected pool block is never appended to `oos-accepted-design.md`).
+
+### UPDATED: python/tests/review/test_plan_review.py
+
+Accepted `OOS_N` writes `oos-accepted-design.md`; rejected OOS does not; **FINDING_5** one YES in a 2-judge design OOS panel accepts; the #6291 pool stays additive, deduped, and accepted-only. A rejected/neutral security-tagged design OOS is absent from `oos.md`, `oos-accepted-design.md`, and the pool (private sidecar only).
+
+### UPDATED: python/test_rendering.py
+
+OOS proposal text says legitimacy not materiality; OOS voter text says genuine/concrete/non-duplicate; in-scope voter text stays strict.
+
+## Approach
+
+1. Remove the `/implement` pre-vote OOS drop; keep prune-nit in all three branches; let nit-demoted `[OUT_OF_SCOPE]` findings ride the ballot; replace `remaining_count==0` early returns with post-prune ballot-empty checks and give the validation-exhausted branch real voter dispatch (FINDING_6).
+2. Loosen only the OOS standard to legitimacy across the shared rubric, runtime renderer, findings ledger (FINDING_3), MAV surfaces (FINDING_2, design SKILL), voter/proposal prompts, and docs; add OOS-specific acceptance thresholds in `voting.py` used by both tallies (FINDING_5). Do not change in-scope acceptance.
+3. Keep the vote -> file pipeline, but ensure only vote-accepted OOS reaches the filed sinks: route security OOS to a private sidecar (FINDING_7), constrain both aggregate pools to accepted-only (FINDING_10, FINDING_12), and preserve exactly one public issue even for oversized bodies (FINDING_11).
+4. Repurpose the final-summary "dropped OOS" section into a rejected-OOS audit sourced from voted artifacts, parsing both heading shapes (FINDING_4); project `oos.md` in run logs so the audit renders from committed logs (FINDING_9).
+
+## Edge cases
+
+- All-OOS ballot must still dispatch voters and be tallied (not short-circuited to zero-findings) in every branch.
+- A nit-demoted style item rides the ballot as OOS, then is rejected under legitimacy and appears only in the audit.
+- Security OOS never appears in public `oos.md`, the audit, or a filed public issue (both review and design paths, and for accepted/rejected/neutral outcomes).
+- A security sidecar present must NOT block filing of a separate accepted non-security OOS into the unifying issue.
+- Legacy `### FINDING_N: [OUT_OF_SCOPE]` and direct `### OOS_N:` forms both parse in ballot, tally, and audit.
+- One accepted OOS files one issue; many accepted OOS roll into one; an oversized rollup still files exactly one public issue.
+- Empty accepted OOS files nothing; re-runs dedup instead of duplicating.
+- A vote-rejected but aggregate-severe OOS is NOT promoted into the accepted/filed sink (both pools).
+- 2-judge OOS panel: one YES accepts (OOS); a 2-judge in-scope split stays neutral.
+
+## Failure modes
+
+- Removing the gate can expose latent "zero remaining findings == zero ballot" assumptions; cover all three branches with voter-dispatch tests.
+- The rejected-OOS audit can wrongly include accepted OOS if it ignores `Result=`; parse the tally footer and skip accepted + security.
+- Prompt/rubric updates can drift across the shared rubric, renderer, findings ledger, MAV references, and skills; add rendered-prompt assertions.
+- Run-log projection can drop `oos.md` (audit source) or, if FINDING_7 is missed, leak security OOS into committed logs; gate projection on the security routing fix.
+- Constraining the pools incorrectly could either resurrect rejected-OOS filing or accidentally drop genuinely accepted OOS; test both promote-accepted and never-promote-rejected paths.
+- Security-sidecar routing can regress the one-issue guarantee two ways: leaking security prose into public artifacts (assert absence), or early-returning so accepted non-security OOS is never filed (assert mixed batches still file the public issue).
+
+## Testing strategy
+
+Focused tests for changed files:
+- `python -m pytest python/tests/review/test_review_pipeline.py python/tests/review/test_review_tally.py python/tests/review/test_findings_ledger.py`
+- `python -m pytest python/tests/review/test_plan_review.py python/tests/report/test_review_phase_detail.py python/tests/report/test_run_logs.py`
+- `python -m pytest python/tests/issue/test_file_oos.py python/tests/issue/test_oos_filer.py python/tests/design/test_design_oos.py`
+- `python -m pytest python/test_rendering.py`
+
+Then targeted static checks for edited Python files: `make py-lint`; run `make py-test` only if focused coverage suggests broad shared-review behavior changed.
+
+## Acceptance
+
+- A `/implement` run where reviewers surface OOS files exactly one `[OOS]` issue containing all vote-accepted OOS; none are silently dropped pre-vote.
+- A `/design` run with vote-accepted OOS files one unifying `[OOS]` issue.
+- Under the loosened rubric, a genuine, concrete OOS observation (non-style) is accepted at or above the panel threshold and lands in the unifying issue.
+- Pure style/noise OOS is still rejected and appears only in the rejected-OOS audit list.
+- No empty `[OOS]` issue is filed when nothing is accepted; re-runs dedup instead of creating duplicates.
+- Security-tagged OOS never appears in public `oos.md`, the audit, or a filed public issue (review and design paths).
+- An oversized accepted OOS rollup still files exactly one public issue; a present security sidecar does not block filing a separate accepted non-security OOS.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+diff_lines: 1450

@@ -1,0 +1,1 @@
+Plan: remove only the `/implement` pre-vote OOS drop, keep nit pruning, loosen the shared OOS voting rubric to legitimacy, repurpose the final-summary OOS section to rejected voted OOS, and verify single-issue filing paths for `/implement` and `/design`.
