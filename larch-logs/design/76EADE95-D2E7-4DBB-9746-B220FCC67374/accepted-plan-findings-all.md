@@ -1,0 +1,36 @@
+### FINDING_3: Dedup must follow the flush hash contract
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The helper's duplicate detection must use the same normalization as the execution-issues flush hash and only inspect the `### Warnings` body; raw substring or newline-only checks can miss or misclassify duplicates.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Dedup only inside the `### Warnings` body using the full normalized note block; reuse the same normalization rules as `execution_issues.normalize_body_for_hash` (or copy that helper locally) so append-time dedup matches flush `source_sha256` behavior.
+  - From Cursor-Innovation: Copy `execution_issues.normalize_body_for_hash` locally (layering-safe) and treat the note as duplicate when that hash already exists under `### Warnings` before appending.
+  - From Cursor-Pragmatic: Implement dedup and duplicate detection with the same normalize_body_for_hash helper used by python/larch/issue/execution_issues.py flush/record writers
+
+
+### FINDING_9:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: skills/implement/references/architectural-guidelines-present.md:22-22
+- **Concern**: [SCOPE-REDUCTION] Plan dedupes only against execution-issues.md text, but issue acceptance #2 targets identical source_sha256 already present in the run ndjson batch. Scenario: Issue text asks append-path dedup when an identical source_sha256 guideline entry already exists for the run; committed logs such as larch-logs/implement/9694D21F-505C-4782-80D5-33126E3533DE/execution-issues.ndjson show pre-push and post-transcript refreshes re-emitting the same source_sha256 while md stays populated. Md-only substring dedup does not cover post-flush step-8 relaunch or flush-layer re-emission
+- **Proposed resolution**: In append_deviation_note, reuse execution_issues.normalize_body_for_hash (or the run_log_batch equivalent), read implement/$RUN_ID/execution-issues.ndjson when RUN_ID is available, and return ARCHITECTURAL_GUIDELINES_APPEND_STATUS=duplicate when the hash already exists; keep md dedup as a secondary guard
+
+
+### FINDING_1: Duplicate-detection contract does not match flushed Warnings rows
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Pragmatic, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The helper's duplicate detection is using the wrong normalization and too-implicit markdown shape. It must write the exact Warnings entry, split it with the same chunking rules as the flush path, redact before hashing, and compare against the same dedupe keys/committed ndjson rows; otherwise already-committed guideline notes can be missed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: "Define the md entry text first (bullet lines as flushed). For ndjson, redact with the same `redact` helper, normalize with `run_log_batch._normalize_body_for_hash`, sha256 per `_execution_issue_chunk`, and treat a hit in `$IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID/execution-issues.ndjson` as `duplicate`. Reuse `structured_body_dedupe_keys` / `_existing_execution_issue_keys` if simpler. Do not compare raw draft-file sha to section-level rows."
+  - From Cursor-Arch: "Specify that the helper splits the Warnings body with the same chunk rules as `_execution_issue_chunks`, hashes each candidate chunk with the pre-push contract above, and skips append when any chunk hash or dedupe key already exists in md or ndjson."
+  - From Codex-Arch: "Make append_deviation_note compute and check the same hash unit the committed renderer writes: split the Warnings note into the same bullet chunks, normalize without adding a trailing newline, and compare those source_sha256 values against the run batch. Update the ndjson duplicate test to seed that committed hash shape."
+  - From Cursor-Innovation: "Copy run_log_batch._normalize_body_for_hash byte-for-byte; apply _redact_batch_payload to the formatted Warnings entry before hashing; add test that seeds ndjson via _render_execution_issues_batch and proves append-deviation-note returns duplicate"
+  - From Cursor-Innovation: "Specify the exact markdown entry written under ### Warnings; before insert, walk existing Warnings chunks, redact+normalize each, and compare to the candidate chunk hash(es) using the same chunking rules as run_log_flush"
+  - From Codex-Pragmatic: "Compute the helper's ndjson dedup hash with the exact normalizer used by the committed execution-issues refresh path, or centralize one shared lower-layer normalizer used by both paths; seed the ndjson duplicate test with that refresh-path hash."
+  - From Cursor-Pragmatic: "Build the exact warning entry the helper will write, redact it like run_log_flush, and treat duplicate when its structured_body_dedupe_keys overlap _existing_execution_issue_keys(batch) or existing Warnings bullets; do not compare raw note-file source_sha256 alone."
+  - From Cursor-Requirements: "Before writing, redact the formatted Warnings entry, derive structured_body_dedupe_keys for category Warnings, and treat duplicate when keys are a subset of _existing_execution_issue_keys parsed from $IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID/execution-issues.ndjson (same contract as run_log_flush.py)."
+  - From Cursor-Requirements: "Split the formatted Warnings entry with the same chunk rules as run_log_flush._execution_issue_chunks, compute structured_body_dedupe_keys per chunk, and skip append when any chunk key already exists in the Warnings section text or ndjson batch."
+  - From Cursor-Requirements: "Document one entry shape in present.md (e.g. prepend each draft line under ### Warnings as - lines, or wrap once as - **Architectural guidelines**: …) and have append-deviation-note emit that exact text before dedup."
+
+

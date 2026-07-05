@@ -1,0 +1,16 @@
+# architectural-guidelines-III Implement guideline notes: fix Tool Failures miscategorization and duplicate execution-issues writes
+
+**Summary.** Two minor hygiene defects in how the `/implement` guideline note is written to `execution-issues`. Low severity; grouped for one small cleanup.
+
+#### Miscategorization under Tool Failures
+
+The write-staged contract (`skills/implement/references/architectural-guidelines-present.md`) says a deviation note is appended under `Warnings`. In the last 100 runs, 2 runs instead filed the guideline deviation under `Tool Failures` (for example run 1FA74504 filed a G-Py-4 deviation, and run E7515A3C filed a G-Cfg-1 deviation, both under `Tool Failures`). A guideline deviation is not a tool failure; this pollutes the Tool Failures category used for real tooling incidents. Tighten the prompt-side contract or move the append into a helper that pins the category.
+
+#### Duplicate writes per refresh
+
+Each guideline note is written to `execution-issues.ndjson` twice, once at the `pre-push` refresh and again at the `post-transcript` refresh, with identical `source_sha256`. This is cosmetic but inflates any naive per-note count and doubles the guideline lines in the committed log. De-duplicate on the append path (skip when an identical `source_sha256` guideline entry already exists for the run).
+
+**Acceptance criteria.**
+
+- Guideline deviation notes are always categorized `Warnings`, never `Tool Failures`.
+- A guideline note appears at most once per run in committed `execution-issues.ndjson`.
