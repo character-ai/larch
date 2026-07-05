@@ -1007,7 +1007,7 @@ def collect_failed_logs(
 ) -> LogCollectResult:
     """Port of gh run-logs."""
     pointer = (
-        f"--- CI log (run {run_id}, repo {repo}) — last "
+        f"--- CI log (run {run_id}, repo {repo}): last "
         f"{config.CI_MONITOR_LOG_TAIL_LINES} lines shown. "
         f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
     )

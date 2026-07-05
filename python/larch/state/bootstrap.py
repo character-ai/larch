@@ -727,7 +727,7 @@ def _append_failure_with_entry_fallback(
             body = output_file.read_text(encoding="utf-8", errors="replace").rstrip() or body
     body = _redact_text(body, implement_tmpdir=st.implement_tmpdir)
     entry = (
-        f"- **Step {site} — {tool} {status_label} (exit {exit_code}; append-failure fallback)**:\n"
+        f"- **Step {site}: {tool} {status_label} (exit {exit_code}; append-failure fallback)**:\n"
         "  ```\n"
         f"{body}\n"
         "  ```\n"

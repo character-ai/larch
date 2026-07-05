@@ -44,6 +44,7 @@ finish(){ [ "$FAIL" -eq 0 ] || exit 1; printf 'PASS=%s\n' "$PASS"; }
 
 plugin="$TMP_ROOT/plugin"; mkdir -p "$plugin/scripts" "$plugin/python"
 cp "$REPO_ROOT/python/"*.py "$plugin/python/"
+cp -R "$REPO_ROOT/python/larch" "$plugin/python/larch"
 mv "$plugin/python/cli.py" "$plugin/python/real-cli.py"
 cat > "$plugin/python/cli.py" <<'DISPATCHER'
 #!/usr/bin/env python3
@@ -74,12 +75,17 @@ def main() -> None:
             with open(log, "a", encoding="utf-8") as handle:
                 handle.write(" ".join(sys.argv[3:]) + "\n")
         raise SystemExit(0)
+    if len(sys.argv) >= 3 and sys.argv[1:3] == ["agent", "launch-claude-subprocess"]:
+        args = sys.argv[3:]
+        if "--output-file" in args:
+            Path(args[args.index("--output-file") + 1]).write_text('{"assessments":[]}\n', encoding="utf-8")
+        raise SystemExit(0)
     os.execv(sys.executable, [sys.executable, str(root / "real-cli.py"), *sys.argv[1:]])
 
 if __name__ == "__main__":
     main()
 DISPATCHER
-chmod +x "$plugin/python/cli.py" "$plugin/python/report_tokens_cost.py"
+chmod +x "$plugin/python/cli.py"
 mkdir -p "$TMP_ROOT/bin"
 GH_SHIM_LOG="$TMP_ROOT/gh-shim.log"
 : >"$GH_SHIM_LOG"
@@ -137,11 +143,11 @@ assert_contains 'STATUS=ok' "$out" 'happy path status ok'
 assert_contains 'COMMENT_URL=https://example.test/comment/final' "$out" 'comment URL emitted'
 assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'summary includes PR URL'
 assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
-assert_contains '## /implement run run-5 — merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
+assert_contains '## /implement run run-5: merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
 assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content.md")" 'happy path includes bucketed line counts'
 assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Outcome bullet'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
-assert_contains '## /implement run run-5 — merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
+assert_contains '## /implement run run-5: merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
 assert_not_contains '**Outcome**:' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary omits Outcome bullet on success'
 
 # Comment-only path leaves the tracked run-log file untouched while still
@@ -171,7 +177,7 @@ set -e
 if [ "$rc" -ne 0 ]; then pass 'missing arg exits non-zero'; else fail 'missing arg exits non-zero'; fi
 assert_contains 'STATUS=failed' "$bad" 'missing arg emits envelope'
 
-# Stalled outcome (STALL_TRACKING=true)
+# Stalled outcome (terminal STALL_TRACKING=true)
 impl_st="$TMP_ROOT/impl-stall"; mkdir -p "$impl_st"
 printf 'ISSUE_NUMBER=2\nRUN_ID=run-st\nADOPTED=true\n' > "$impl_st/parent-issue.md"
 printf 'REPO=owner/repo\n' > "$impl_st/session-env.sh"
@@ -179,12 +185,13 @@ printf 'REPO=owner/repo\n' > "$impl_st/session-env.sh"
     printf 'PR_URL=https://example.test/pr/2\n'
     printf 'PR_NUMBER=2\n'
     printf 'STALL_TRACKING=true\n'
+    printf 'PHASE=stalled\n'
     printf 'MERGE_RESULT=\n'
     printf 'MERGE=false\n'
     printf 'DRAFT=false\n'
     printf 'FORKED_TARGET=false\n'
 } > "$impl_st/ship-pr-state.sh"
-printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_st/finalize-state.sh"
+printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=true\n' > "$impl_st/finalize-state.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-stall.md" \
       "$HELPER" --implement-tmpdir "$impl_st")
 assert_contains 'STATUS=ok' "$out" 'stalled path status ok'
@@ -207,7 +214,7 @@ printf 'DESIGN_ONLY_DONE=true\nBAIL_NEEDS_USER_INPUT=false\n' > "$impl_do/finali
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md" \
       "$HELPER" --implement-tmpdir "$impl_do")
 assert_contains 'STATUS=ok' "$out" 'design-only status ok'
-assert_contains '## /implement run run-do — design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only title'
+assert_contains '## /implement run run-do: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only title'
 assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success omits Outcome bullet'
 
 # BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
@@ -218,6 +225,7 @@ printf 'REPO=owner/repo\n' > "$impl_bu/session-env.sh"
     printf 'PR_URL=N/A\n'
     printf 'PR_NUMBER=\n'
     printf 'STALL_TRACKING=false\n'
+    printf 'BAIL_REASON=early-failure\n'
     printf 'MERGE_RESULT=\n'
     printf 'MERGE=false\n'
     printf 'DRAFT=false\n'
@@ -237,6 +245,7 @@ printf 'REPO=owner/repo\n' > "$impl_bl/session-env.sh"
     printf 'PR_URL=N/A\n'
     printf 'PR_NUMBER=\n'
     printf 'STALL_TRACKING=false\n'
+    printf 'BAIL_REASON=early-failure\n'
     printf 'MERGE_RESULT=\n'
     printf 'MERGE=false\n'
     printf 'DRAFT=false\n'
@@ -377,8 +386,8 @@ cat > "$impl_exec/larch-logs/implement/run-exec/execution-issues.ndjson" <<'JSON
 JSON
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec.md" \
       "$HELPER" --implement-tmpdir "$impl_exec")
-assert_contains '- **Exec issues**: 1' "$(cat "$TMP_ROOT/content-exec.md")" 'aggregator-only execution issue counts as exec issue'
-assert_contains '- **Warnings**: 0' "$(cat "$TMP_ROOT/content-exec.md")" 'md execution-issues path remains authoritative over ndjson fallback'
+assert_contains '- **Exec issues**: 0' "$(cat "$TMP_ROOT/content-exec.md")" 'run-dir execution issues path keeps exec issue count at zero'
+assert_contains '- **Warnings**: 1' "$(cat "$TMP_ROOT/content-exec.md")" 'run-dir execution issues path counts warning bodies'
 
 rm -f "$impl_exec/execution-issues.md"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-exec-ndjson.md" \
@@ -777,12 +786,12 @@ EOF
     matrix_summary="$(stdout_summary_block "$matrix_stdout")"
     cost_line=$(printf '%s\n' "$matrix_summary" | grep -F -- '- **Cost**:' || true)
     assert_contains "## /implement run " "$matrix_summary" "matrix $expected prints summary title"
-    assert_contains "— $expected" "$matrix_summary" "matrix $expected title outcome"
+    assert_contains ": $expected" "$matrix_summary" "matrix $expected title outcome"
     assert_contains '- **Cost**:' "$matrix_summary" "matrix $expected prints cost line"
     assert_contains '<!-- larch:run-summary v=1 -->' "$matrix_summary" "matrix $expected keeps sentinel"
     cmp -s <(printf '%s\n' "$matrix_summary") "$fixture/summary-final.md" || fail "matrix $expected stdout summary/file mismatch"
     assert_contains "## /implement run " "$(cat "$fixture/summary-final.md")" "matrix $expected file prints summary title"
-    assert_contains "— $expected" "$(cat "$fixture/summary-final.md")" "matrix $expected file title outcome"
+    assert_contains ": $expected" "$(cat "$fixture/summary-final.md")" "matrix $expected file title outcome"
     assert_contains '- **Cost**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file prints cost line"
     assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$fixture/summary-final.md")" "matrix $expected file keeps sentinel"
     if [ "$expected" = "merged" ] || [ "$expected" = "forked-dry-run" ] || [ "$expected" = "pr-created" ] || [ "$expected" = "pr-created-draft" ] || [ "$expected" = "force-merged-externally" ]; then
@@ -846,7 +855,7 @@ CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd.md" \
 rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
 assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
 assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
-assert_contains 'cursor/correctness — 2' "$rpd_body" 'review phase detail top reviewer'
+assert_contains 'cursor/correctness: 2' "$rpd_body" 'review phase detail top reviewer'
 # Completed-review output can include reviewer timing ASCII Gantt charts.
 assert_contains '### Round 1 reviewer timing' "$rpd_body" 'review phase detail includes reviewer timing heading'
 assert_contains '```' "$rpd_body" 'review phase detail includes plain ASCII fence'

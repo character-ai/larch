@@ -1548,7 +1548,7 @@ def test_collect_failed_logs_redacts_tail() -> None:
     assert result.state == "ready"
     assert secret not in result.text
     assert config.REDACTED_TOKEN in result.text
-    assert "last 100 lines" in result.text
+    assert "--- CI log (run 42, repo o/r): last 100 lines shown." in result.text
 
 
 def test_collect_failed_logs_in_progress() -> None:

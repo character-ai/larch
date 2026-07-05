@@ -1369,6 +1369,44 @@ def test_committed_summary_gate_reads_repo_not_corrected_tmpdir(
     assert ship_pr._committed_summary_heading_is_stalled(runner=ProcRunner(), ctx=ctx, cwd=str(repo))
 
 
+def test_committed_summary_heading_scans_prelude() -> None:
+    summary = "Prelude line\n\n## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"),
+                0,
+                summary,
+                "",
+                0.0,
+            ),
+        ],
+        strict=True,
+    )
+    ctx = make_run_context(run_id="run-abc", branch="")
+
+    assert ship_pr._committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd="/tmp/repo")
+
+
+def test_committed_summary_heading_outcome_bullet_without_heading_is_not_stalled() -> None:
+    summary = "Prelude line\n\n- **Outcome**: stalled\n"
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("git", "show", "HEAD:larch-logs/implement/run-abc/final-summary.md"),
+                0,
+                summary,
+                "",
+                0.0,
+            ),
+        ],
+        strict=True,
+    )
+    ctx = make_run_context(run_id="run-abc", branch="")
+
+    assert not ship_pr._committed_summary_heading_is_stalled(runner=runner, ctx=ctx, cwd="/tmp/repo")
+
+
 def test_recovered_stalled_summary_push_failure_blocks_merge(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

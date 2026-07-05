@@ -81,7 +81,7 @@ def test_unterminated_pem_fail_closed() -> None:
     out = redact.redact(body)
     assert "opening text" in out
     assert "<REDACTED-PRIVATE-KEY>" in out
-    assert "content truncated" in out
+    assert "content truncated: unterminated PEM block" in out
     assert "tail-that-should-not-silently-survive" not in out
 
 

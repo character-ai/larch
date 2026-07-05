@@ -605,23 +605,21 @@ def _outcome_with_manifest_only_backstop(
 
 
 def _summary_heading_line_is_stalled(line: str) -> bool:
-    stripped = line.rstrip("\n").rstrip()
-    return stripped.endswith((": stalled", "— stalled"))
+    stripped = line.strip()
+    return stripped.startswith("## /") and stripped.endswith((": stalled", "— stalled"))
 
 
 def summary_heading_is_stalled(text: str) -> bool:
     for line in text.splitlines():
-        if not line.strip():
-            continue
-        return _summary_heading_line_is_stalled(line)
+        if _summary_heading_line_is_stalled(line):
+            return True
     return False
 
 
 def _summary_stalled_heading_index(lines: list[str]) -> int | None:
     for idx, line in enumerate(lines):
-        if not line.strip():
-            continue
-        return idx if _summary_heading_line_is_stalled(line) else None
+        if _summary_heading_line_is_stalled(line):
+            return idx
     return None
 
 
