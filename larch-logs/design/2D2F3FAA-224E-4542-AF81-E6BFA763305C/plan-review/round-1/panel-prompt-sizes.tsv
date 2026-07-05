@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	26814	6704	13407	3352	13407	3352		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	26790	6698	13383	3346	13407	3352		0	0
+design Step 3	phase1	1	dyn-codex-plan-ci-fix-contract	plan-review	codex	dyn-codex-plan-ci-fix-contract.txt	22765	5692	12970	3243	9795	2449		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	22437	5610	13104	3276	9333	2334		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	26799	6700	13392	3348	13407	3352		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	22428	5607	13095	3274	9333	2334		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ci-fix-contract	plan-review	cursor	dyn-cursor-plan-ci-fix-contract.txt	27127	6782	13258	3315	13869	3468		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	26812	6703	13405	3352	13407	3352		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	22450	5613	13117	3280	9333	2334		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	22452	5613	13119	3280	9333	2334		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	34225	8557	4537	1135	29688	7422	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	19856	4964	8976	2244	10880	2720		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	19856	4964	8976	2244	10880	2720		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	19856	4964	8976	2244	10880	2720		0	0

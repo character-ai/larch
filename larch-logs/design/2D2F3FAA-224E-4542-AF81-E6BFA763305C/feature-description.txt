@@ -1,0 +1,82 @@
+# [BUG] ci-fix: gh run-logs truncates to 100 lines, hiding most failing CI checks
+
+## Summary
+
+The `/implement` autonomous CI-fix path (ship-pr `NEXT_ACTION=ci-fix` → `skills/implement/references/ship-pr-ci-fix.md`) can only see a subset of a failed run's checks per round, so a CI run with multiple independent failures is repaired over several fix → push → re-run cycles (each costing a full CI run) instead of one.
+
+Root cause is a truncation in the sanctioned log-capture verb: `python/cli.py gh run-logs` fetches every failing job via `gh run view --log-failed`, then returns only the **last 100 lines** of the concatenated output. With more than one failing job, earlier jobs are silently dropped, so a diligent agent following the procedure literally cannot even see the other failures. There is no CLI flag to disable the truncation. A secondary, procedural cause reinforces the same outcome: step 6 says "make **the minimal repo edit**" (singular) and step 3 grants up to 30 attempts, so the encoded model tolerates iterative single-fix rounds.
+
+Desired behavior: within one ci-fix round, reveal and fix **all** failing checks before pushing once.
+
+## Original report
+
+> the above change, i.e., that all revealed errors in each round have to be fixed together, before pushing. Include as much context, root cause analysis, and suggested fix info as you have
+
+Context: this surfaced during a `/implement --merge 6421` run (PR #6430). CI failed with **three independent checks** at once, and the operator required fixing all three in a single pass before pushing (rather than fix-one-push-repeat). Investigation of the ci-fix path showed the procedure does not enable that: its log capture only reveals a subset of the failures.
+
+## Reproduction scenario
+
+1. Run `/implement --merge <issue>` on a change that fails **multiple** CI shards at once. A reliable trigger is any change that drifts several committed baselines/fixtures together, e.g. a review-severity refactor that touches `python/complexity-baseline.json`, `python/skill-closure-baseline.json`, and `skills/voter-calibration/scripts/test-voter-calibration.sh`.
+2. Ship reaches `NEXT_ACTION=ci-fix` with `NEEDS_USER_REASON=first-fixer-non-health`.
+3. Follow `ship-pr-ci-fix.md` step 5 literally: `python3 python/cli.py gh run-logs --run-id <id> --repo <repo>`.
+4. Observe the capture is truncated to the last 100 lines: it shows only the **last** failing job's tail plus the aggregator gate summaries. The earlier failing shards' actionable errors are absent.
+
+Concrete instance (run `28752175848`, PR #6430), three failing jobs:
+- `python-lint (shard 1 of 3)` → `lint complexity-baseline` regressions
+- `python-tests (3.11, shard 4 of 20)` → `skill-closure-baseline` drift
+- `test-harnesses (shard 3 of 5)` → `test-voter-calibration.sh`
+
+`gh run-logs` returned **101 lines** and surfaced only the python-tests shard 4 detail plus three gate lines. The untruncated `gh run view 28752175848 --repo <repo> --log-failed` returned **902 lines** and surfaced all three. Following the procedure literally would have fixed one shard, pushed, and required ~2 more CI rounds (~10 min each) to discover and fix the rest.
+
+## Expected behavior
+
+The ci-fix log capture surfaces every failing check's actionable detail in one round, so the agent can fix all failures before pushing once. Multi-failure CI runs converge in a single fix round rather than N rounds.
+
+## Observed behavior
+
+`gh run-logs` truncates the concatenated `--log-failed` output to its last 100 lines. When more than one job failed, only the final job(s) in the concatenation survive; earlier failing jobs are dropped with no indication beyond a generic "Full log: <url>" pointer. An agent following step 5 → step 6 ("minimal repo edit") sees a partial failure set, fixes it, pushes, and only learns of the remaining failures on the next CI run. There is no way to request the untruncated or per-job logs from the CLI.
+
+## Root cause analysis
+
+Two contributing causes; the first is primary and mechanical.
+
+1. **Truncation in `run_logs_failed` (`python/larch/git/gh.py`).** The function fetches all failing step logs with `gh run view <id> --repo <repo> --log-failed`, then returns `"\n".join(combined.splitlines()[-tail_lines:])` with `tail_lines` hardcoded to `100`. Truncating the last 100 lines of a **multi-job** concatenation keeps only the tail of whichever job sorts last, discarding every earlier failing job. The verb's sole caller writes the output to a file (`> "$IMPLEMENT_TMPDIR/main-agent-ci-fix-<id>.gh-run-logs.redacted.txt"`), so bounding to 100 lines does not protect a chat budget; it only drops failures. `run_logs_main` exposes only `--run-id`/`--repo`, so there is no override.
+
+2. **Procedure wording reinforces single-fix rounds.** `ship-pr-ci-fix.md` step 6 says "Make the minimal repo edit from the redacted CI log" (singular), and step 3 allows "Attempts 1-30", so the encoded model treats iterative single-fix rounds as normal rather than requiring all revealed failures to be fixed together before push. Even with a fixed capture, the prose does not instruct the agent to enumerate and fix every failing job first.
+
+## Evidence
+
+- `python/larch/git/gh.py:1777` — `tail_lines: int = 100` (default; not overridable from the CLI).
+- `python/larch/git/gh.py:1784` — `runner.run(["gh", "run", "view", run_id, "--repo", repo, "--log-failed"], ...)` (fetches all failing jobs).
+- `python/larch/git/gh.py:1786` — `tail = "\n".join(combined.splitlines()[-tail_lines:])` (drops all but the last 100 lines of the concatenation).
+- `python/larch/git/gh.py:1840-1850` — `run_logs_main` argparse accepts only `--run-id` and `--repo`; no `--tail-lines`/`--all` flag.
+- `skills/implement/references/ship-pr-ci-fix.md:16` — step 5 uses `gh run-logs` (piped to a `.redacted.txt` file).
+- `skills/implement/references/ship-pr-ci-fix.md:17` — step 6 "Make the minimal repo edit from the redacted CI log".
+- `skills/implement/references/ship-pr-ci-fix.md:14` — step 3 "Attempts 1-30 may run".
+- Sole functional caller is the implement ci-fix path (`scripts/test-implement-structure.sh` asserts the procedure references `gh run-logs`); `gc-run-logs` matches are an unrelated garbage-collection skill.
+- Observed run `28752175848` (PR #6430): truncated capture = 101 lines (1 of 3 failing shards visible); `gh run view --log-failed` = 902 lines (all 3 visible). Capture pointer line: `--- CI log (run <id>, repo <repo>): last 100 lines shown. Full log: <url> ---`.
+- Failed-job enumeration machinery already exists nearby: `failed_jobs_read` (parses `gh run view --json jobs`) in the same module, usable to tail per failing job.
+
+## Affected files
+
+- `python/larch/git/gh.py` — `run_logs_failed` / `run_logs_main`: the truncation and the absence of an override (primary fix site).
+- `skills/implement/references/ship-pr-ci-fix.md` — steps 5 and 6: capture invocation and the "minimal repo edit" repair wording (procedural fix site).
+- `python/tests/git/test_gh.py` (or the module's existing gh tests) — needs regression coverage for multi-job non-truncation.
+- `scripts/test-implement-structure.sh` — structure assertions about the ci-fix procedure may need updating if step wording changes.
+
+## Suggested fix(es)
+
+Address both the mechanical and procedural causes; the mechanical one is required for the behavior to be achievable at all.
+
+1. Stop dropping failing jobs in `run_logs_failed`. Pick one in `/design`:
+   - (a) **Do not truncate.** The sole caller writes to a file after redaction, so return the full `--log-failed` output (keep the pointer line). Simplest; sufficient for the file-destined use.
+   - (b) **Tail per failing job.** Reuse `failed_jobs_read` to enumerate failing jobs and emit the last N lines of **each** failing job (with a per-job header), so no job is dropped and size stays bounded. Best signal-to-size if any caller is ever chat-facing.
+   - (c) **Raise the bound + add a flag.** Increase the default `tail_lines` substantially and add `--tail-lines`/`--all`; have `ship-pr-ci-fix.md` step 5 pass the untruncated/large form.
+2. Reword `ship-pr-ci-fix.md` step 6 to require enumerating **every** failing job/check from the (now complete) capture and fixing **all** of them before the step-7 relevant-checks, step-8 stage, and step-9 commit — one push per round covering all revealed failures. Note that the step-3 attempt counter remains a safety net for genuinely re-surfacing/flaky failures, not the primary model.
+3. Add a regression test: a fake `gh run view --log-failed` payload with multiple failing jobs whose combined length exceeds the old 100-line bound; assert a distinctive marker from **each** failing job survives the capture.
+
+## Open questions
+
+- Preferred capture fix among (a)/(b)/(c). If any current or planned caller is chat-facing (rather than file-destined), prefer per-job tail (b) over full (a); today the only caller is file-destined, which makes (a) safe.
+- Should "fix all revealed failures before push" be a hard rule or a strong default? Some failures are genuinely environmental/flaky and re-surface across runs; the 30-attempt counter should still absorb those.
+- Should the same treatment apply to any future non-implement caller of `gh run-logs`, or should the fix stay scoped to the ci-fix path?

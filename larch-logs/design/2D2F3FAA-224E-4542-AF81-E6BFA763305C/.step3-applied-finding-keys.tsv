@@ -1,0 +1,2 @@
+1	the plan rewrites step 6 but leaves out the dedicated `scripts/test-implement-step8-exit3-first-fixer.sh` harness that still asserts the old `make the minimal repo edit` phrase, so ci will fail after the doc change unless that harness is updated and added to testing.
+1	the plan treats `scripts/test-implement-structure.sh` as a discretionary `may_update`, but the same stale step 6 phrase is pinned there too, so any rewrite breaks the harness and it needs a required update.
