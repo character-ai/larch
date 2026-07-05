@@ -17,8 +17,7 @@ from larch.core import config
 from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 
 def test_title_contiguous(capsys):
