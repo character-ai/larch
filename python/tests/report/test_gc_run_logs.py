@@ -236,6 +236,40 @@ def test_gc_run_logs_slim_preserves_design_guideline_assessment(tmp_path: Path) 
     assert (run / "gc-slimmed").is_file()
 
 
+def test_gc_run_logs_slim_preserves_implement_guideline_outcome(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    logs_root = repo / "larch-logs"
+    run = logs_root / "implement" / "with-outcome"
+    run.mkdir(parents=True)
+    outcome = json.dumps(
+        {
+            "schema_version": "1",
+            "phase": "implement",
+            "step": "8",
+            "outcome": "pinned",
+            "reason": "note-pinned",
+            "detail": "",
+            "guidelines_status": "present",
+            "head_sha": "abc123",
+            "base_ref": "origin/main",
+            "assessment_kind": "deviation",
+        }
+    )
+    _ = (run / "manifest.json").write_text('{"started_at":"2020-01-01T00:00:00Z"}\n', encoding="utf-8")
+    _ = (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _ = (run / "architectural-guideline-outcome.json").write_text(outcome, encoding="utf-8")
+    _ = (run / "forensic.txt").write_text("x" * 10, encoding="utf-8")
+    (run / "round-1").mkdir()
+    _ = (run / "round-1" / "detail.txt").write_text("detail\n", encoding="utf-8")
+
+    item = gc_run_logs.PlannedDir("implement", run, "2020-01-01T00:00:00Z")
+    _ = gc_run_logs._slim_dir(logs_root=logs_root, item=item)  # pyright: ignore[reportPrivateUsage]
+
+    assert (run / "architectural-guideline-outcome.json").read_text(encoding="utf-8") == outcome
+    assert not (run / "forensic.txt").exists()
+    assert (run / "gc-slimmed").is_file()
+
+
 def test_gc_run_logs_slim_preserves_session_id_for_multi_ledger_recovery(tmp_path: Path) -> None:
     repo = tmp_path / "repo"
     logs_root = repo / "larch-logs"

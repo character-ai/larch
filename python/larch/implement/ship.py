@@ -696,7 +696,7 @@ def run_ship(
             repo_root=repo_root,
             base_ref=base_ref,
             resume=resume,
-            flush_outcome=resume.start in {"fresh", "pre-pr-compose"},
+            flush_outcome=True,
         )
         if guidelines_gate.needs_assessment:
             return ShipResult(

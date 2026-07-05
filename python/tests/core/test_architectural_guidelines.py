@@ -1579,4 +1579,50 @@ def test_append_deviation_note_main_missing_tmpdir_exits_two(
 
     assert rc == 2
     assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
+
+
+def test_log_only_head_advance_keeps_durable_note_consumable_without_repin(
+    tmp_path: Path,
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / "impl.py").write_text("x = 1\n", encoding="utf-8")
+    _git(repo, "add", "impl.py")
+    _git(repo, "commit", "-m", "impl")
+    assessed_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    diff_text = ag.materialize_implementation_diff(repo, base_remote="origin", base_ref="main")
+    tmpdir = tmp_path / "implement"
+    body = "Deviation warning body\n"
+    ag.write_staged_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text=body,
+        assessed_head_sha=assessed_head,
+        diff_fingerprint_value=ag.diff_fingerprint(diff_text),
+        base_ref="origin/main",
+        diff_text=diff_text,
+    )
+    assert ag.pin_note_from_staged(tmpdir, head_sha=assessed_head, base_ref="origin/main", repo_root=repo)
+
+    log_dir = repo / "larch-logs" / "implement" / "run1"
+    log_dir.mkdir(parents=True)
+    (log_dir / "log.txt").write_text("log\n", encoding="utf-8")
+    _git(repo, "add", "larch-logs")
+    _git(repo, "commit", "-m", "logs only")
+    new_head = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+
+    assert ag.note_consumable(
+        implement_tmpdir=tmpdir,
+        head_sha=new_head,
+        base_ref="origin/main",
+        repo_root=repo,
+    )
 # pyright: reportPrivateUsage=false

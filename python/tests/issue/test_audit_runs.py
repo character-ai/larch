@@ -10,6 +10,8 @@ import re
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from larch.core import architectural_guidelines as ag
 from larch.core import config
 from larch.issue import audit_runs
@@ -283,6 +285,30 @@ def test_guideline_ship_outcome_scan_missing_cutover_and_valid(tmp_path: Path, c
     assert row["reason"] == "note-redaction-failed"
 
 
+@pytest.mark.parametrize(
+    ("manifest", "expected_result"),
+    [
+        ({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}, "pass"),
+        ({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": False}}, "informational"),
+    ],
+)
+def test_guideline_ship_outcome_scan_step8_parity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    manifest: dict[str, object],
+    expected_result: str,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _write_guideline_outcome(run, outcome="clean", reason="clean-note")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == expected_result
+
+
 def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     run = tmp_path / "run"
     run.mkdir()
@@ -295,7 +321,10 @@ def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys
         json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
         encoding="utf-8",
     )
-    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text('{"schema_version":"1","outcome":"unknown"}\n', encoding="utf-8")
+    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text(
+        '{"schema_version":"1","phase":"implement","step":"8","outcome":"pinned","reason":"bogus","detail":"","guidelines_status":"present","base_ref":"origin/main","assessment_kind":"deviation"}\n',
+        encoding="utf-8",
+    )
     row = _scan_guideline_outcome(tmp_path, run, capsys)
     assert row["result"] == "fail"
 

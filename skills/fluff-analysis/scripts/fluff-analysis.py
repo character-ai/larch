@@ -38,6 +38,7 @@ from larch.issue.rejected_analysis import (  # noqa: E402
     _lookup_jsonl_record,
     _records_by_round_and_token,
 )
+from larch.implement.ship_guidelines import GUIDELINE_SHIP_REASON_TOKENS  # noqa: E402
 from larch.review.self_review_tally import self_review_tally_items  # noqa: E402
 
 # --------------------------------------------------------------------------
@@ -755,10 +756,16 @@ def _enumerate_implement_run_dirs(implement_root, cutoff, since_version):
 def _valid_guideline_outcome(data):
     if not isinstance(data, dict):
         return False
+    required = {"schema_version", "phase", "step", "outcome", "reason", "detail", "guidelines_status", "head_sha", "base_ref"}
+    if not required.issubset(data):
+        return False
     return (
         str(data.get("schema_version") or "") == "1"
         and str(data.get("outcome") or "") in {"pinned", "clean", "dropped"}
         and str(data.get("guidelines_status") or "") in {"present", "absent", "invalid"}
+        and str(data.get("reason") or "") in GUIDELINE_SHIP_REASON_TOKENS
+        and bool(str(data.get("head_sha") or "").strip())
+        and bool(str(data.get("base_ref") or "").strip())
     )
 
 

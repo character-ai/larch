@@ -6015,6 +6015,80 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     assert order.index("gate") < order.index("flush", order.index("gate")) < order.index("compose")
 
 
+def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    order: list[str] = []
+    compose_calls: list[dict[str, object]] = []
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: True)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert order == ["flush", "gate", "flush", "compose"]
+    assert compose_calls[0].get("architectural_guidelines_note") == "Guidelines warning"
+
+
+def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    order: list[str] = []
+    compose_calls: list[dict[str, object]] = []
+    ensure_calls = 0
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    def fake_ensure_pr(*_args: object, **_kwargs: object) -> object:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: False)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
+
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert ensure_calls == 0
+    assert order == ["flush", "gate", "flush"]
+    assert compose_calls == []
+
+
 def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -6066,7 +6140,6 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
     )
     monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: run_logs.RefreshSkip(skipped=False, reason=""))
     monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
     order: list[str] = []
     compose_calls: list[dict[str, object]] = []
@@ -6075,12 +6148,17 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         order.append("gate")
         return ship.GuidelinesGateResult(note="Resume note")
 
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
         compose_calls.append(dict(kwargs))
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     result = ship.run_ship(
         _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
@@ -6088,7 +6166,7 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         cwd=str(tmp_path),
     )
     assert result.outcome is Outcome.OK
-    assert order.index("gate") < order.index("compose")
+    assert order == ["gate", "flush", "compose"]
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
 
 
