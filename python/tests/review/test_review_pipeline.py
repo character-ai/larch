@@ -224,7 +224,7 @@ def test_prepare_pruned_ballot_missing_file_fails_closed(
     )
     monkeypatch.setattr(review_core_body, "_prune_nits_for_ballot", lambda **_kwargs: object())
 
-    result = review_core_body._prepare_pruned_ballot(ctx, findings_file=tmp_path / "missing.md")
+    result = review_core_body._prepare_pruned_ballot(ctx, findings_file=tmp_path / "missing.md")  # type: ignore[reportPrivateUsage]
 
     assert result is not None
     assert result.rc == 2
