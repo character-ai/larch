@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:19:43
-- **Cost**: 💰 TOTAL ~$6.23: Claude $0.43, Codex-5.5 $1.64, Codex-mini $1.12, Cursor $2.83, Claude (subprocess) $0.21  |  Tokens: 11327k
+- **Cost**: 💰 TOTAL ~$6.52: Claude $0.72, Codex-5.5 $1.64, Codex-mini $1.12, Cursor $2.83, Claude (subprocess) $0.21  |  Tokens: 12073k
 - **Issue**: #6309: https://github.com/character-ai/larch/issues/6309
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (important): Fingerprint matching contract is ambiguous. Concern: The rule says “byte-identical” repeats but also fingerprints only the first 200 chars, so prefix-only matches can be misclassified as either new notifications or repeats.
 - **Round 1 OOS_3** (important): Contract tests do not pin repeat-fingerprint literals. Concern: The acceptance harnesses only pin the empty-output and Step 3 terminal literals, so later prose edits could remove the repeat-fingerprint carve-out without failing CI.
 - **Round 1 OOS_4** (nit): Anti-pattern #5 title still implies empty-output only. Concern: The title still reads like an empty-output-only rule even though the body now covers repeat notifications, so a reader scanning the heading could miss the byte-identical repeat case.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
