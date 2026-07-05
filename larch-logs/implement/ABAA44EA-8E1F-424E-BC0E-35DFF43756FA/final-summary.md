@@ -3,14 +3,14 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:15:04
-- **Cost**: 💰 TOTAL ~$30.67: Claude $4.31, Codex-5.5 $16.58, Codex-mini $3.67, Cursor $5.24, Claude (subprocess) $0.87  |  Tokens: 63033k
+- **Cost**: 💰 TOTAL ~$30.94: Claude $4.58, Codex-5.5 $16.58, Codex-mini $3.67, Cursor $5.24, Claude (subprocess) $0.87  |  Tokens: 63868k
 - **Issue**: #6335: https://github.com/character-ai/larch/issues/6335
 - **PR**: #6368: https://github.com/character-ai/larch/pull/6368
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD structural-loc
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/3 accepted
-- **Lines (PR diff)**: code +730/-15, larch-logs +1303/-0
+- **Lines (PR diff)**: code +740/-24, larch-logs +1370/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6367
 - **Exec issues**: 0
 - **Warnings**: 0
