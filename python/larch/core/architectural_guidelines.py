@@ -24,11 +24,6 @@ from larch.core import config
 from larch.errors import ShipError
 from larch.issue import issue_wire
 from larch.report import exec_issue_detail  # lint-layering: ok append helper must match run-log flush warning dedupe.
-from larch.report.run_log_batch import (  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
-    _normalize_body_for_hash,
-    _redact_batch_payload,
-    append_execution_issue,
-)
 from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
@@ -1076,6 +1071,7 @@ def _warning_chunk_keys(body: str) -> set[str]:
 
 
 def _warning_chunk_source_shas(body: str) -> set[str]:
+    from larch.report.run_log_batch import _normalize_body_for_hash  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     shas: set[str] = set()
     for chunk in execution_issue_chunks(body.splitlines()):
@@ -1101,6 +1097,7 @@ def _section_body_lines(markdown: str, category: str) -> list[str]:
 
 
 def _existing_warning_keys_from_markdown(path: Path) -> set[str]:
+    from larch.report.run_log_batch import _redact_batch_payload  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     if not path.is_file() or path.is_symlink():
         return set()
     try:
@@ -1172,6 +1169,7 @@ def _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir: Path) -> tuple
 
 def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
     """Append a guideline deviation warning unless the run already has the same warning."""
+    from larch.report.run_log_batch import _redact_batch_payload, append_execution_issue  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     entry = _format_deviation_warning_entry(note)
     redacted_entry = _redact_batch_payload(entry)
     issue_log = implement_tmpdir / "execution-issues.md"

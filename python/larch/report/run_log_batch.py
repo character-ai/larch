@@ -231,7 +231,7 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
         if not isinstance(data, dict):
             raise ValueError(f"batch {batch} requires a JSON object")
         if batch == config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME:
-            reason = validate_guideline_ship_outcome_record(data)
+            reason = validate_guideline_ship_outcome_record(data)  # type: ignore[reportUnknownArgumentType]
             if reason is not None:
                 raise ValueError(f"batch {batch} requires a valid guideline outcome artifact: {reason}")
     elif sanitizer == "json-lines":
