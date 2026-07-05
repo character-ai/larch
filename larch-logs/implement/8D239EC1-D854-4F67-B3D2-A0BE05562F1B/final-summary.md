@@ -2,8 +2,8 @@
 
 - **Outcome**: stalled
 - **Mode**: N/A
-- **Duration**: 01:04:46
-- **Cost**: 💰 TOTAL ~$18.79: Claude $9.73, Codex-5.5 $2.56, Codex-mini $2.84, Cursor $3.20, Claude (subprocess) $0.46  |  Tokens: 48012k
+- **Duration**: 01:30:33
+- **Cost**: 💰 TOTAL ~$28.22: Claude $19.15, Codex-5.5 $2.56, Codex-mini $2.84, Cursor $3.20, Claude (subprocess) $0.47  |  Tokens: 75025k
 - **Issue**: #6426: https://github.com/character-ai/larch/issues/6426
 - **PR**: #6440: https://github.com/character-ai/larch/pull/6440
 - **Plan review**: N/A
@@ -84,7 +84,3 @@ These OOS observations reached the vote but were not accepted for filing.
 - **Round 1 FINDING_2** (rejected, important): fluff-analysis omits PR evidence when checking Step-8 reachability. Concern: `fluff-analysis` still calls `implement_step8_reachable` without PR context, so post-PR bail runs can be counted as Step-8-unreachable and their guideline-outcome coverage underreported.
 - **Round 1 FINDING_3** (rejected, nit): missing regression coverage for gc-slimmed truly absent sidecar. Concern: There is no test for the `gc-slimmed` informational path when the sidecar is truly absent and not a symlink, so a future symlink-guard change could remove the exemption without CI signal.
 - **Round 1 FINDING_4** (rejected, nit): missing regression test for invalid `guidelines_status` normalization. Concern: Unsupported `guidelines_status` values are not pinned by regression coverage, so invalid-to-clean normalization could drift silently.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.

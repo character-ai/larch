@@ -5,7 +5,11 @@
 === larch-quiet-cli.py-65345.log ===
 === larch-quiet-cli.py-65580.log ===
 === larch-quiet-cli.py-7407.log ===
+=== larch-quiet-cli.py-97327.log ===
+=== larch-quiet-cli.py-97623.log ===
 === larch-quiet-cli.py-97684.log ===
+=== larch-quiet-cli.py-98068.log ===
+design-log-sweep: PR #6443 skipped-not-green - required checks status pending
 === larch-quiet-read-session-env-key.sh-24014.log ===
 === larch-quiet-read-session-env-key.sh-24016.log ===
 === larch-quiet-read-session-env-key.sh-24019.log ===
@@ -22,3 +26,4 @@ design-log-sweep: PR #6441 skipped-not-green - required checks status pending
 === larch-quiet-ship.py-66542.log ===
 === larch-quiet-tracking-issue-upsert-summary-58754.log ===
 === larch-quiet-tracking-issue-upsert-summary-65565.log ===
+=== larch-quiet-tracking-issue-upsert-summary-98045.log ===
