@@ -1,14 +1,15 @@
-## /implement run ABAA44EA-8E1F-424E-BC0E-35DFF43756FA: shipping
+## /implement run ABAA44EA-8E1F-424E-BC0E-35DFF43756FA: pr-created
 
 - **Mode**: N/A
 - **Duration**: 01:15:04
 - **Cost**: 💰 TOTAL ~$28.80: Claude $2.44, Codex-5.5 $16.58, Codex-mini $3.67, Cursor $5.24, Claude (subprocess) $0.87  |  Tokens: 57990k
 - **Issue**: #6335: https://github.com/character-ai/larch/issues/6335
+- **PR**: #6368: https://github.com/character-ai/larch/pull/6368
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD structural-loc
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/3 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +730/-15, larch-logs +1288/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6367
 - **Exec issues**: 0
 - **Warnings**: 0
