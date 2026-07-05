@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- The plan already covers the canonical template, generated agents, and hand-maintained variants; the manifest-order detail is not required for the feature to ship correctly.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- TSV schema gating and footer fallback are compatibility refinements; the rejected-audit TSV join can still land without this extra policy.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate-URL priority merging is a separate label-rebuild concern, not required for the filed-URL rollup fix in scope.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Neutral-row coverage is useful test hardening, but it is not necessary for the TSV-first audit feature to be complete.

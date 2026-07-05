@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	24087	6022	13365	3342	10722	2681		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15928	3982	13077	3270	2851	713		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	24078	6020	13356	3339	10722	2681		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15943	3986	13092	3273	2851	713		0	0
+design Step 3	phase1	1	dyn-codex-plan-oos-workflow-auditor	plan-review	codex	dyn-codex-plan-oos-workflow-auditor.txt	16208	4052	12943	3236	3265	817		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	24102	6026	13380	3345	10722	2681		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	24100	6025	13378	3345	10722	2681		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15919	3980	13068	3267	2851	713		0	0
+design Step 3	phase1	1	dyn-cursor-plan-oos-workflow-auditor	plan-review	cursor	dyn-cursor-plan-oos-workflow-auditor.txt	24367	6092	13231	3308	11136	2784		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15941	3986	13090	3273	2851	713		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	14751	3688	4493	1124	10258	2565	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	12143	3036	9079	2270	3064	766		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	12143	3036	9079	2270	3064	766		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	12143	3036	9079	2270	3064	766		0	0

@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan already lists hand-maintained agents, pre-rendered regeneration, and generate check; explicit order and .manifest are workflow polish.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Plan already defines cap-1 detection, all-original stamping, OOS_FILE_MAP rows, and a regression test.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Plan already mandates TSV-first lookup with unusable-TSV and parse-failure fallback to footer parsing.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Under cap-1 (one combined block, one stdout URL), priority mapping is identical per slot so URL overwrite does not drop labels.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Plan already requires neutral outcomes as audit candidates; a neutral-only test is optional coverage not mandated by the plan.
