@@ -1,0 +1,117 @@
+## Approach
+
+Add a narrow Python helper for architectural-guidelines deviation logging.
+
+- Keep the fix on the append path, not the flush path.
+- Put the helper in `python/larch/core/architectural_guidelines.py`.
+- Register `architectural-guidelines append-deviation-note` in `python/larch/cli.py`.
+- Update the Step 8 prompt reference to call the new helper instead of leaving category choice to the model.
+- Keep non-guideline execution-issue behavior unchanged.
+
+Implementation details:
+
+- Add `append_deviation_note(implement_tmpdir: Path, note: str) -> str`.
+- Normalize the note using `normalize_body_for_hash` (copy or import the helper from `execution_issues.py`) to compute a dedup hash.
+- Pin writes to `$IMPLEMENT_TMPDIR/execution-issues.md` under `### Warnings` only.
+- Dedup by normalized hash: scan only the `### Warnings` section of execution-issues.md; treat as duplicate if the same normalized hash is already present.
+- When `RUN_ID` is available via env or arg, also check `larch-logs/implement/$RUN_ID/execution-issues.ndjson` for an existing row with the same `source_sha256`; return `duplicate` immediately without writing when found (secondary guard against post-flush re-emission).
+- Reject empty or whitespace-only notes before any file I/O.
+- Add `append_deviation_note_main(argv)` with:
+  - `--implement-tmpdir`, defaulting to `IMPLEMENT_TMPDIR`
+  - `--note-file` for the deviation note text (no `--note-text`; file-only input)
+  - machine stdout `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=ok|duplicate|failed`
+  - exit `2` for missing tmpdir; exit `1` for invalid or empty note or write failure; `duplicate` exits `0`
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+Add the helper and CLI main.
+
+Helper shape:
+
+- Resolve `implement_tmpdir` from the CLI argument or `config.ENV_IMPLEMENT_TMPDIR`.
+- Read the note from `--note-file` via `_read_regular_text_no_follow`; reject symlinks.
+- Normalize via a local copy of `normalize_body_for_hash` (from `execution_issues.py`); do not import from `larch.issue` to avoid layering issues.
+- Compute `norm_sha = sha256(normalized_note)`.
+- Check the `### Warnings` section of `execution-issues.md`: if the same hash appears (i.e., a prior entry normalizes to the same sha), return `duplicate`.
+- If `RUN_ID` is available, also read `larch-logs/implement/$RUN_ID/execution-issues.ndjson`; if any row has `"source_sha256": norm_sha`, return `duplicate`.
+- Insert into an existing `### Warnings` section when present; append `### Warnings` section when absent.
+- Do not emit or write `Tool Failures`.
+- Return status string `ok`, `duplicate`, or `failed`.
+
+### UPDATED: python/larch/cli.py
+
+Register the new verb:
+
+- Add `("architectural-guidelines", "append-deviation-note")` to `_REGISTRY` with target `("larch.core.architectural_guidelines", "append_deviation_note_main")`.
+- Add the same tuple to `_MACHINE_STDOUT_KEYS` near the other architectural-guidelines verbs.
+
+### UPDATED: skills/implement/references/architectural-guidelines-present.md
+
+Replace the vague append instruction with an explicit helper call.
+
+Contract:
+
+- In the deviation path, after writing `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`, call:
+  ```bash
+  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" architectural-guidelines append-deviation-note \
+    --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+    --note-file "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"
+  ```
+- This helper always uses `category=Warnings` and deduplicates via normalized hash against both the md file and the ndjson batch.
+- Treat `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=ok` or `duplicate` as success; continue to the durable compose wrapper.
+- On non-zero exit or `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed`, do not continue to PR compose; relaunch Step 8.
+- Explicitly prohibit using `execution-issues append` for guideline deviations.
+- Keep the existing "if deviations are genuine" guard; do not append on the clean path.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+Add focused tests covering:
+
+- A deviation note appends under `### Warnings`, not `Tool Failures`.
+- The same note appended twice appears once (hash-level dedup in the md).
+- A note already in the ndjson batch returns `duplicate` without modifying the md.
+- Empty or whitespace-only note input fails with exit 1.
+- Symlink `--note-file` is rejected.
+- The CLI returns exit 2 for missing `--implement-tmpdir` with unset `IMPLEMENT_TMPDIR`.
+
+### UPDATED: python/tests/design/test_design_cli_ports.py
+
+Add the new verb to the registry coverage:
+
+- Add `("architectural-guidelines", "append-deviation-note"): ("larch.core.architectural_guidelines", "append_deviation_note_main")` to `ARCHITECTURAL_GUIDELINES_EXPECTED` so CLI registration and machine-stdout assertions cover the new entry.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+Extend the harness to pin the new contract:
+
+- Add a `contains` check for `architectural-guidelines append-deviation-note` in the deviation path of `architectural-guidelines-present.md`.
+- Add a `not_contains` check for bare `execution-issues append` on the deviation path.
+
+## Edge cases
+
+- Existing `execution-issues.md` has `### Tool Failures` before `### Warnings`: insert into `Warnings` without moving other sections.
+- Existing `execution-issues.md` has no `Warnings`: append a new `Warnings` section.
+- Normalized hash dedup is byte-stable: repeated calls with the same note body are idempotent even when the md or ndjson grows between calls.
+- Empty or whitespace-only notes fail closed before any file I/O.
+- Symlink note files are rejected.
+- When `RUN_ID` is absent or the ndjson does not exist, skip the secondary ndjson check silently and rely on md dedup only.
+
+## Failure modes
+
+- If the prompt still leaves category selection open, the model may use `execution-issues append` without `--category Warnings`, which defaults to `Tool Failures`. The explicit prohibition in `architectural-guidelines-present.md` and the dedicated helper eliminate this path for guideline deviations.
+- If normalized hash dedup drifts from `normalize_body_for_hash` in the flush code, identical notes could still appear as separate rows. Using the same normalization function prevents this.
+- If the helper imports `larch.issue.execution_issues`, layering lint may report a new unbaselined upward import; use a local copy of `normalize_body_for_hash` instead.
+
+## Testing strategy
+
+Run changed-surface checks:
+
+- `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+- `python3 -m pytest python/tests/design/test_design_cli_ports.py`
+- `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+- `python3 python/cli.py checks run-relevant`
+
+difficulty: MODERATE
+diff_lines: 230

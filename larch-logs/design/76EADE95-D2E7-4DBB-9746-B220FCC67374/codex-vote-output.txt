@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- text-level Warnings dedup already covers the scoped cleanup; flush-contract pinning is extra scope.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- RUN_ID recovery is not required for the stated helper contract if the note is deduped by its existing Warnings text.
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the current flush path already dedups execution-issues rows, so a flush-side duplicate-row defect is not established.
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- speculative drift from a hypothetical third normalize copy; no concrete trigger in the plan.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- launcher parity is a real consistency concern, but it is not necessary for the scoped note-write fix.
+OOS_3: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- speculative lock concern; the plan does not establish a second write path here.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- direct-python routing is a real consistency concern, but not required for the scoped cleanup.
+OOS_5: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- duplicate of the earlier launcher-routing OOS concern.

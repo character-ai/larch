@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- RUN_ID resolution is an implementation detail; the plan says "dedup on the append path" and established codebase patterns (parent-issue.md, session-env.sh) give the implementer sufficient context; default-deny applies
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- `_render_execution_issues_batch` already reads existing ndjson and builds `seen_keys` via `_existing_execution_issue_keys` before any write; the flush already prevents duplicate rows when the same key is present, so fixing the helper's dedup is sufficient and the flush-side fix proposed is already implemented
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of rejected FINDING_1 from round 1 (launcher routing); no materially new evidence
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- single-runner invariant makes concurrent writes to md implausible; this is a consistency/style concern
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of rejected round-1 launcher-routing concern; description itself acknowledges "no demonstrated failure" and "no stated requirement"
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- same launcher-routing concern the prior round explicitly rejected; description acknowledges "prior round rejected this" with no new evidence
