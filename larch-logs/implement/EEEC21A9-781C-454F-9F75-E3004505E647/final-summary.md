@@ -1,14 +1,16 @@
-## /implement run EEEC21A9-781C-454F-9F75-E3004505E647: shipping
+## /implement run EEEC21A9-781C-454F-9F75-E3004505E647: stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:43:10
-- **Cost**: 💰 TOTAL ~$23.13: Claude $1.34, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.42  |  Tokens: 35948k
+- **Cost**: 💰 TOTAL ~$23.16: Claude $1.34, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.45  |  Tokens: 36045k
 - **Issue**: #6370: https://github.com/character-ai/larch/issues/6370
+- **PR**: #6391: https://github.com/character-ai/larch/pull/6391
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +446/-60, larch-logs +765/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6390
 - **Exec issues**: 0
 - **Warnings**: 1
