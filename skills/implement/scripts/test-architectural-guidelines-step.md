@@ -4,7 +4,7 @@ Thin `/implement` architectural-guidelines regression harness.
 
 ## Contract
 
-Verifies the Step 7a staging retirement, Step 8 `guidelines-assessment` routing, compose-time assessment reference, conflict/CI-fix no-Phase-A rerun prose, and direct durable-note write behavior.
+Verifies the Step 7a staging retirement, Step 8 `guidelines-assessment` routing, compose-time assessment reference, pinned warning append helper contract, conflict/CI-fix no-Phase-A rerun prose, and direct durable-note write behavior.
 
 ## Tests
 

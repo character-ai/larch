@@ -19,7 +19,17 @@ Write exactly one assessment body to `$IMPLEMENT_TMPDIR/architectural-guideline-
 - Clean path: `Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.`
 - Deviation path: a short bullet list naming each deviation and rationale.
 
-If deviations are genuine, also append the deviation notes under `Warnings` in `$IMPLEMENT_TMPDIR/execution-issues.md` so the run log records them.
+If deviations are genuine, also append the deviation notes under `Warnings` with the pinned helper:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" architectural-guidelines append-deviation-note \
+  --implement-tmpdir "$IMPLEMENT_TMPDIR" \
+  --note-file "$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md"
+```
+
+This helper always uses `category=Warnings` and deduplicates via the flush-path chunk+hash contract against both `$IMPLEMENT_TMPDIR/execution-issues.md` and `$IMPLEMENT_TMPDIR/larch-logs/implement/$RUN_ID/execution-issues.ndjson`. Treat `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=ok` or `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=duplicate` as success and continue to the durable compose wrapper. On non-zero exit or `ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed`, do not continue to PR compose; relaunch Step 8.
+
+Do not call the generic execution-issues append command for guideline deviations.
 
 Persist the durable note with this wrapper:
 

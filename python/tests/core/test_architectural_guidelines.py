@@ -1,8 +1,9 @@
 """Tests for ARCHITECTURAL_GUIDELINES.md helper surfaces."""
-# pyright: reportUnusedCallResult=false
+# pyright: reportUnusedCallResult=false, reportPrivateUsage=false
 
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 from unittest.mock import Mock
@@ -10,6 +11,8 @@ from unittest.mock import Mock
 import pytest
 
 from larch.core import architectural_guidelines as ag
+from larch.report import run_log_flush
+from test_support import make_run_context
 
 
 def _git(cwd: Path, *args: str) -> None:
@@ -1451,4 +1454,109 @@ def test_log_only_head_bump_pin_succeeds_with_repo_root(tmp_path: Path) -> None:
     ).stdout.strip()
     assert ag.pin_note_from_staged(tmpdir, head_sha=new_head, base_ref="origin/main", repo_root=repo)
     assert ag.note_consumable(implement_tmpdir=tmpdir, head_sha=new_head)
+
+
+def test_append_deviation_note_writes_warnings_not_tool_failures(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir()
+    (tmpdir / "execution-issues.md").write_text("### Tool Failures\n- existing tool failure\n", encoding="utf-8")
+
+    status = ag.append_deviation_note(tmpdir, "G-Py-4 deviation: Bash wrapper kept for hook compatibility.\n")
+
+    assert status == "ok"
+    text = (tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert "### Tool Failures\n- existing tool failure\n" in text
+    assert "### Warnings\n" in text
+    assert "- G-Py-4 deviation: Bash wrapper kept for hook compatibility." in text
+    assert text.index("- G-Py-4 deviation") > text.index("### Warnings")
+
+
+def test_append_deviation_note_is_idempotent_against_markdown_keys(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    note = "- G-Cfg-1 deviation: configuration stayed in prose for compatibility.\n"
+
+    assert ag.append_deviation_note(tmpdir, note) == "ok"
+    assert ag.append_deviation_note(tmpdir, note) == "duplicate"
+
+    text = (tmpdir / "execution-issues.md").read_text(encoding="utf-8")
+    assert text.count("G-Cfg-1 deviation") == 1
+
+
+def test_append_deviation_note_dedupes_against_ndjson_batch(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    run_id = "run-abc"
+    (tmpdir / "parent-issue.md").parent.mkdir(parents=True)
+    (tmpdir / "parent-issue.md").write_text(f"RUN_ID={run_id}\n", encoding="utf-8")
+    note = "- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n"
+    issue_log = tmpdir / "execution-issues.md"
+    issue_log.write_text(f"### Warnings\n{note}", encoding="utf-8")
+    (tmpdir / ".execution-issues-step7a-reached").write_text("", encoding="utf-8")
+    batch_dir = tmpdir / "larch-logs" / "implement" / run_id
+    batch_dir.mkdir(parents=True)
+    ctx = make_run_context(run_id=run_id, tmpdir=str(tmpdir), manifest_path=str(tmpdir / "manifest.json"))
+
+    run_log_flush._render_execution_issues_batch(
+        ctx=ctx,
+        batch_dir=batch_dir,
+        step_label="pre-push",
+        source_label="test",
+    )
+    batch_rows = [
+        json.loads(line)
+        for line in (batch_dir / "execution-issues.ndjson").read_text(encoding="utf-8").splitlines()
+    ]
+    assert batch_rows[0]["category"] == "Warnings"
+    issue_log.write_text("", encoding="utf-8")
+
+    assert ag.append_deviation_note(tmpdir, note) == "duplicate"
+    assert issue_log.read_text(encoding="utf-8") == ""
+
+
+def test_append_deviation_note_main_rejects_empty_note(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir()
+    note = tmp_path / "note.md"
+    note.write_text("  \n\t\n", encoding="utf-8")
+
+    rc = ag.append_deviation_note_main(["--implement-tmpdir", str(tmpdir), "--note-file", str(note)])
+
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
+    assert not (tmpdir / "execution-issues.md").exists()
+
+
+def test_append_deviation_note_main_rejects_symlink_note_file(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir()
+    target = tmp_path / "target.md"
+    target.write_text("- deviation\n", encoding="utf-8")
+    note = tmp_path / "note.md"
+    note.symlink_to(target)
+
+    rc = ag.append_deviation_note_main(["--implement-tmpdir", str(tmpdir), "--note-file", str(note)])
+
+    assert rc == 1
+    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
+    assert not (tmpdir / "execution-issues.md").exists()
+
+
+def test_append_deviation_note_main_missing_tmpdir_exits_two(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    monkeypatch.delenv("IMPLEMENT_TMPDIR", raising=False)
+    note = tmp_path / "note.md"
+    note.write_text("- deviation\n", encoding="utf-8")
+
+    rc = ag.append_deviation_note_main(["--note-file", str(note)])
+
+    assert rc == 2
+    assert "ARCHITECTURAL_GUIDELINES_APPEND_STATUS=failed" in capsys.readouterr().out
 # pyright: reportPrivateUsage=false
