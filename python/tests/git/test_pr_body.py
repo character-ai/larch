@@ -1595,3 +1595,26 @@ def test_render_run_summary_identity_lines_explicit_override(tmp_path: Path) -> 
     assert "- **Main agent model**: claude-haiku-4-5" in body
     assert "- **Effort**: high" in body
     assert "- **Larch version**: 50.0.0" in body
+
+
+def test_render_run_summary_identity_lines_manifest_version_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    fake_source = tmp_path / "plugin" / "python" / "larch" / "git" / "pr_body.py"
+    fake_source.parent.mkdir(parents=True)
+    plugin_json = tmp_path / "plugin" / ".claude-plugin" / "plugin.json"
+    plugin_json.parent.mkdir()
+    _ = plugin_json.write_text(json.dumps({"version": "52.7.3"}), encoding="utf-8")
+    monkeypatch.setattr(pr_body, "__file__", str(fake_source), raising=False)
+
+    body = pr_body.render_run_summary(
+        skill="design",
+        outcome="planned",
+        run_id="R",
+        main_model="claude-haiku-4-5",
+        effort="high",
+        cost_unavailable=True,
+    )
+
+    assert "- **Larch version**: 52.7.3" in body

@@ -528,12 +528,32 @@ def _validate_path_arg_value(*, value: str, flag: str) -> None:
         raise ValueError(f"Invalid {flag}: must match ^[A-Za-z0-9_./~+-]{{1,512}}$")
 
 
+def _validate_repo_root_value(*, value: str, flag: str) -> None:
+    if not value:
+        return
+    if len(value) > MAX_PATH_VALUE_LEN or "\n" in value or "\r" in value or "\x00" in value:
+        raise ValueError(f"Invalid {flag}: must be an absolute single-line path")
+    if not value.startswith("/"):
+        raise ValueError(f"Invalid {flag}: must be an absolute path")
+
+
 def _add_optional_design_source_file(*, values: dict[str, str], claude_source_file: str) -> None:
     if claude_source_file:
         values["LARCH_CLAUDE_SOURCE_FILE"] = claude_source_file
 
 
-def _base_design_writer_values(args: argparse.Namespace) -> dict[str, str]:
+def _recover_prior_design_value(*, key: str, prior_file: Path) -> str:
+    if not prior_file.is_file():
+        return ""
+    found = ""
+    for line in _read_kv_file_text(prior_file).splitlines():
+        parsed = parse_allowlisted_env_line(raw=line, allowlist=WRITE_DESIGN_ENV_KEYS, name_validator=lambda name: bool(_KEY_RE.match(name)), reject_newline_rhs=True)
+        if parsed is not None and parsed[0] == key:
+            found = parsed[1]
+    return found
+
+
+def _base_design_writer_values(args: argparse.Namespace, *, prior_file: Path | None = None) -> dict[str, str]:
     values: dict[str, str] = {
         "DESIGN_TMPDIR": args.design_tmpdir,
         "SESSION_TMPDIR": args.design_tmpdir,
@@ -541,8 +561,11 @@ def _base_design_writer_values(args: argparse.Namespace) -> dict[str, str]:
     }
     if args.repo:
         values["REPO"] = args.repo
-    repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    repo_root = args.repo_root.strip() or os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    if not repo_root and prior_file is not None:
+        repo_root = _recover_prior_design_value(key="REPO_ROOT", prior_file=prior_file)
     if repo_root:
+        _validate_repo_root_value(value=repo_root, flag="--repo-root")
         values["REPO_ROOT"] = repo_root
     if args.issue_number:
         values["ISSUE_NUMBER"] = args.issue_number
@@ -960,7 +983,7 @@ def resolve_trusted_design_session_env_source(*, path: Path, claude_pid: str) ->
 
 def write_design_env_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="session write-design-env", add_help=False)
-    for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "issue-number", "claude-pid", "claude-source-file"):
+    for flag in ("output", "design-tmpdir", "session-id", "codex-present", "cursor-present", "codex-available", "cursor-available", "codex-binary-found", "cursor-binary-found", "repo", "repo-root", "issue-number", "claude-pid", "claude-source-file"):
         parser.add_argument(f"--{flag}", default="")
     try:
         args = parser.parse_args(argv)
@@ -998,7 +1021,7 @@ def write_design_env_main(argv: list[str]) -> int:
             raise ValueError("Invalid CLAUDE_PLUGIN_ROOT: must be an absolute path matching ^[A-Za-z0-9_./~+-]{1,512}$")
         if args.claude_pid and not plugin_root:
             raise ValueError("Missing CLAUDE_PLUGIN_ROOT: required when --claude-pid is set")
-        values = _base_design_writer_values(args)
+        values = _base_design_writer_values(args, prior_file=out_path)
         code_bin_set = "--codex-binary-found" in argv
         cur_bin_set = "--cursor-binary-found" in argv
         recovered: dict[str, str] = {

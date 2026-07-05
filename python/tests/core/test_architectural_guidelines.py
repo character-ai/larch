@@ -103,6 +103,43 @@ def test_persist_design_assessment_clean_writes_clean_note(tmp_path: Path, monke
     assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == ag.CLEAN_PRESENTATION_NOTE + "\n"
 
 
+def test_skip_approve_sequence_uses_explicit_repo_root_from_wrong_cwd(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    _write_guidelines(repo)
+    design_tmpdir = _design_tmpdir(tmp_path, monkeypatch)
+    cache_cwd = tmp_path / "plugin-cache"
+    cache_cwd.mkdir()
+    monkeypatch.chdir(cache_cwd)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+
+    assert ag.read_guidelines().status == "absent"
+    assert ag.present_note_main(["--repo-root", str(repo)]) == 0
+    presented = capsys.readouterr().out
+    assert ag.GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED in presented
+    assert ag.present_note_main(["--repo-root", str(repo), "--assessment", "clean"]) == 0
+    assert ag.persist_design_assessment_main(["--repo-root", str(repo), "--design-tmpdir", str(design_tmpdir), "--assessment", "clean"]) == 0
+    assert (design_tmpdir / ag.DESIGN_ASSESSMENT).read_text(encoding="utf-8") == ag.CLEAN_PRESENTATION_NOTE + "\n"
+
+
+def test_skip_approve_guideline_prompt_contracts_bind_repo_root() -> None:
+    root = Path(__file__).resolve().parents[3]
+    approval = (root / "skills" / "design" / "references" / "approval-gates.md").read_text(encoding="utf-8")
+    outline = (root / "skills" / "design" / "references" / "design-outline.md").read_text(encoding="utf-8")
+
+    assert '. "$DESIGN_TMPDIR/source-env.sh"' in approval
+    assert 'present-note --repo-root "$REPO_ROOT"' in approval
+    assert 'persist-design-assessment --repo-root "$REPO_ROOT"' in approval
+    assert "reason=persist-design-assessment-failed" in approval
+    assert approval.index("reason=persist-design-assessment-failed") < approval.index("Do not fire `AskUserQuestion`, approve, auto-approve, or transition to Step 5.")
+    assert '. "$DESIGN_TMPDIR/source-env.sh"' in outline
+    assert 'present-note --repo-root "$REPO_ROOT"' in outline
+    assert "auto-approved (--skip-approve)" in outline
+
+
 def test_persist_design_assessment_file_normalizes_final_newline(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     repo = _repo(tmp_path)
     _write_guidelines(repo)

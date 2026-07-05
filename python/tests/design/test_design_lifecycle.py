@@ -423,6 +423,125 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     assert parse_idx < session_idx
 
 
+def test_step0_session_threads_repo_root_to_design_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    subdir = repo / "nested"
+    subdir.mkdir()
+    monkeypatch.setenv("HOME", str(home))
+    monkeypatch.chdir(subdir)
+    captured: list[list[str]] = []
+
+    def fake_setup(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "SESSION_TMPDIR=" + str(design) + "\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
+
+    def fake_gate(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(cmd, 0, "DEGRADED=false\nBOTH_DOWN=false\n", "")
+
+    def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if cmd[:4] == ["git", "-C", str(subdir), "rev-parse"]:
+            return subprocess.CompletedProcess(cmd, 0, str(repo) + "\n", "")
+        joined = " ".join(cmd)
+        if "session" in joined and "setup" in joined:
+            return fake_setup(cmd, **kwargs)
+        if "degraded-tools-gate" in joined:
+            return fake_gate(cmd, **kwargs)
+        if "write-design-env" in joined:
+            captured.append(cmd)
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+    monkeypatch.setattr(design_step0_env, "_run_parse_argv", _fake_parse_none)
+
+    assert design_lifecycle.step0_session_main(["--claude-pid", "123", "--plugin-root", str(CLI.parent.parent), "--"]) == 0
+    assert captured
+    write_cmd = captured[0]
+    assert "--repo-root" in write_cmd
+    assert write_cmd[write_cmd.index("--repo-root") + 1] == str(repo.resolve())
+
+
+def test_init_runparams_refresh_preserves_step0_repo_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    home = tmp_path / "home"
+    home.mkdir()
+    design = tmp_path / "design"
+    design.mkdir()
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    env = {"HOME": str(home), "XDG_CACHE_HOME": str(tmp_path / "xdg"), "CLAUDE_PLUGIN_ROOT": str(CLI.parent.parent)}
+    for key, value in env.items():
+        monkeypatch.setenv(key, value)
+    monkeypatch.delenv("CLAUDE_PROJECT_DIR", raising=False)
+    monkeypatch.delenv("REPO_ROOT", raising=False)
+    initial = session_env.write_design_env_main(
+        [
+            "--output",
+            str(design / "source-env.sh"),
+            "--design-tmpdir",
+            str(design),
+            "--session-id",
+            "sid-1",
+            "--repo-root",
+            str(repo),
+            "--claude-pid",
+            "12345",
+        ]
+    )
+    assert initial == 0
+
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        joined = " ".join(cmd)
+        if "session" in joined and "write-design-env" in joined:
+            start = cmd.index("write-design-env") + 1
+            rc = session_env.write_design_env_main(cmd[start:])
+            return subprocess.CompletedProcess(cmd, rc, "", "")
+        if "tracking-issue" in joined and "rename" in joined:
+            return subprocess.CompletedProcess(cmd, 0, "RENAMED=false\n", "")
+        if "session" in joined and "write-run-params" in joined:
+            start = cmd.index("write-run-params") + 1
+            rc = session_env.write_run_params_main(cmd[start:])
+            return subprocess.CompletedProcess(cmd, rc, "", "")
+        return subprocess.CompletedProcess(cmd, 0, "", "")
+
+    monkeypatch.setattr(subprocess, "run", fake_run)
+
+    rc = design_lifecycle.init_runparams_main(
+        [
+            "--design-tmpdir",
+            str(design),
+            "--issue",
+            "42",
+            "--session-id",
+            "sid-2",
+            "--claude-pid",
+            "12345",
+            "--partition-requested",
+            "false",
+            "--brainstorm-requested",
+            "false",
+            "--approve-requested",
+            "false",
+            "--skip-approve-requested",
+            "false",
+        ]
+    )
+    assert rc == 0
+    source = real_run(
+        ["bash", "-c", f"source {design / 'source-env.sh'}; printf '%s' \"$REPO_ROOT\""],
+        text=True,
+        capture_output=True,
+        env={**os.environ, **env},
+        check=False,
+    )
+    assert source.stdout == str(repo)
+
+
 def _write_session_env(tmp_path: Path, design: Path, monkeypatch: pytest.MonkeyPatch | None = None, **extra: str) -> Path:
     resolved = design.resolve()
     if monkeypatch is not None:

@@ -40,6 +40,7 @@ from larch.design.design_step0_env import (
     CONFIGURATION_ERROR_RC,
 )
 from larch.design.design_terminal import _replay_warn_error, phase_driver_read_result_env, stage_terminal_state_core
+from larch.git.repo_roots import consumer_repo_root
 
 def _derive_binary_found(env: dict[str, str]) -> None:
     if not env.get("CODEX_BINARY_FOUND"):
@@ -184,7 +185,8 @@ def step0_session_main(argv: Sequence[str]) -> int:
     _run_best_effort(command=_cli_cmd(plugin_root, "token", "mark", "design Step 0: session setup"), env=env)
     codex_binary = kv.get("CODEX_BINARY_FOUND", [""])[-1]
     cursor_binary = kv.get("CURSOR_BINARY_FOUND", [""])[-1]
-    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid)
+    repo_root = consumer_repo_root(Path.cwd()) or Path.cwd().resolve()
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid, "--repo-root", str(repo_root))
     if codex_binary:
         wdce.extend(["--codex-binary-found", codex_binary])
     if cursor_binary:

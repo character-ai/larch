@@ -16,6 +16,7 @@ import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
+from larch.core import config
 from larch.state._tokens import (
     _DEFAULT_CLASSIFICATION_FILE,
     _DEFAULT_ATTEMPTS_FILE,
@@ -152,7 +153,7 @@ def _read_run_id(*, tmpdir: Path, session_env_file: Path | None = None) -> str:
 
 
 def _read_larch_version() -> str:
-    for path in (_REPO_ROOT / "VERSION", _REPO_ROOT / "package.json"):
+    for path in (_REPO_ROOT / "VERSION", _REPO_ROOT / "package.json", _REPO_ROOT / config.PLUGIN_JSON_PATH):
         if not path.is_file():
             continue
         text = path.read_text(encoding="utf-8", errors="replace")
