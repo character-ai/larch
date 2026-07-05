@@ -1,0 +1,64 @@
+### FINDING_1: Missing-outcome scans need a shared feature-era floor
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The audit and fluff paths need one explicit release/version cutover to distinguish legacy Step 8 runs from current-era runs with missing `architectural-guideline-outcome.json`; otherwise historical runs can false-fail and current misses can be misbucketed.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add a single config Final (for example GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION) set to the shipping release, reuse it in _guideline_ship_outcome_scan_obj and fluff-analysis implement coverage, and document the rule in docs/run-log-batches.md: compare manifest larch_version before failing on absence.
+  - From Cursor-Innovation: Add a `GUIDELINE_SHIP_OUTCOME_INTRODUCED_VERSION` Final (ship version) and use it in the audit handler and fluff legacy classification; cover the boundary in `test_audit_runs.py` and `test-fluff-analysis.sh`.
+  - From Cursor-Pragmatic: Add a `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION` Final (or equivalent) and compare `manifest.json::larch_version` in `_guideline_ship_outcome_scan_obj` and fluff-analysis. Below cutover: informational on absence. At/above cutover plus step8 reachability: fail on missing, empty, symlinked, or malformed outcome JSON.
+  - From Cursor-Requirements: Add a single shared cutover constant (for example GUIDELINE_SHIP_OUTCOME_MIN_VERSION in config.py) and use it in _guideline_ship_outcome_scan_obj and fluff-analysis; fail only when step8-eligible, manifest version >= cutover, and artifact absent.
+
+### FINDING_2: Step 8 reachability needs one shared helper
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Audit, required-files, and fluff-analysis all need the same Step 8 reachability predicate; duplicating or inlining it risks drift on bail-only, empty-manifest, and pre-Step-8 stall cases.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extract a module-level step8_reachable(run_dir, manifest) helper from _scan_required cond logic and call it from both _scan_required and _guideline_ship_outcome_scan_obj; add audit tests that the helper matches required-file step8 gating on representative manifests.
+  - From Cursor-Innovation: Extract one shared `implement_step8_reached(run_dir, manifest)` helper (prefer the existing `run_logs` predicate) and call it from the new audit handler and fluff collector.
+  - From Cursor-Pragmatic: Avoid a hand-copied `cond("step8")` in the new handler and in fluff-analysis. Factor or import the existing `run_logs` step8 reachability helper so audit, fluff-analysis, and required-files stay aligned on bail-signal and empty-manifest edge cases.
+  - From Cursor-Requirements: Extract implement_step8_reachable(run_dir, manifest) from _scan_required cond(step8) and call it from _guideline_ship_outcome_scan_obj and the new fluff-analysis collector before classifying missing-current.
+  - From Cursor-Requirements: Mirror _collect_guideline_assessment_coverage wiring: enumerate implement runs with manifest, apply shared implement_step8_reachable, then classify missing-current only when reachable and era-eligible; keep other absent runs in missing-legacy.
+
+### FINDING_3: Outcome flush must happen on the guidelines pass
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The pre-PR postbump refresh is not enough; the outcome flush has to run unconditionally on the guidelines compose attempt, after `load_or_prepare_guidelines_note` resolves, and volatile-only can only pass if a matching committed artifact already exists.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Clarify in ship.py that postbump refresh and guidelines outcome refresh are sequential compose attempts, volatile-only on the outcome pass must accept an already-committed matching artifact, and HEAD repin/fingerprint-stable note handling applies after the outcome commit even when postbump already advanced HEAD.
+  - From Cursor-Innovation: Always invoke the shared outcome flush helper for every resolved gate (`pinned`/`clean`/`dropped`), not only when `warning_logged=True`; keep `needs_assessment=True` as the sole skip.
+  - From Cursor-Pragmatic: Always invoke the new outcome write+flush helper from `_guidelines_gate_before_pr` after `load_or_prepare_guidelines_note` resolves, for every terminal gate result except `needs_assessment=True` sidecar skip. Remove the `warning_logged` guard; keep warning append as a separate best-effort step.
+  - From Cursor-Requirements: After volatile-only, stall before PR creation unless run_dir/architectural-guideline-outcome.json exists and matches the tmpdir sidecar; treat missing or mismatched artifact as REFRESH_SKIP_COMMIT_FAILED in non-no-logs-commit mode.
+
+### FINDING_4: Outcome sidecar writes must fail closed
+- **Reviewer(s)**: Codex-Arch, Cursor-Innovation, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements
+- **Severity**: blocking
+- **Concern**: Best-effort outcome sidecar writes and staging allow Step 8 runs to ship without a durable committed outcome when write, flush, or verification fails; normal log-commit mode should stall before PR creation instead of proceeding with only a warning.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: For non-`--no-logs-commit` runs, treat a terminal outcome sidecar write or verification failure as the same pre-PR stall class as flush failure. Only allow best-effort continuation in `--no-logs-commit` mode.
+  - From Cursor-Innovation: Treat unresolved outcome persistence as fail-closed in normal log-commit mode: stall before PR when sidecar write or pre-PR flush cannot produce the committed batch (retain the `--no-logs-commit` non-stall carve-out).
+  - From Codex-Innovation: Make current outcome JSON write and stage verification a required pre-PR gate except for no-logs-commit and unresolved needs_assessment. Return the write failure through GuidelinesGateResult or the flush hook and stall before PR creation.
+  - From Codex-Pragmatic: Treat outcome sidecar write failure as a pre-PR stall except --no-logs-commit. Add a focused test that sidecar write failure blocks PR creation in normal mode.
+  - From Cursor-Requirements: Treat sidecar write failure like flush failure in normal mode: log warning, classify outcome=dropped with reason sidecar-write-failed when classifiable, and stall before PR creation unless --no-logs-commit. Keep best-effort only for no-logs-commit.
+  - From Codex-Requirements: Make the sidecar write return success or failure. In non-`--no-logs-commit` mode, stall before PR creation when the outcome sidecar cannot be written or staged. Keep best-effort only for the human-readable warning append.
+
+### FINDING_5: Clear stale outcome sidecars on skip paths
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Concern**: A prior `architectural-guideline-outcome.json` can survive in the tmpdir and later be staged on a skip path, producing a false current outcome from an ambient stale artifact.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Clear GUIDELINE_SHIP_OUTCOME_SIDECAR at the start of each compose outcome attempt and include it in stale artifact cleanup/invalidation, or make flushing consume only the current GuidelinesGateResult outcome rather than any ambient sidecar.
+
+### FINDING_6: guidelines_status must come from materialization, not note emptiness
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Outcome classification must use materialized `guidelines_status` and related compose metadata, not infer from note emptiness; otherwise absent/invalid cases can be mislabeled and present-guideline drops can be counted as clean.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Thread `guidelines_status` (and `assessment_kind` when known) from `prepare_compose_assessment` / `read_guidelines` into `GuidelinesShipOutcome` construction. Classify `outcome=clean` for absent/invalid before evaluating present-guideline drop reasons.
+  - From Cursor-Requirements: When classifying, read MATERIALIZE_ENV GUIDELINES_STATUS if present, else architectural_guidelines.read(repo_root); map absent/invalid to clean and present materialization/read/redaction failures to dropped only when guidelines_status=present.
+
+### FINDING_7: Pick one HEAD-repair path for log-only flushes
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: latent
+- **Concern**: The plan describes two competing strategies for log-only flush HEAD repair, which risks inconsistent PR-body versus outcome metadata if both are implemented.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Pick one minimum-change strategy in the plan (prefer fingerprint-stable `note_consumable` when diff fingerprint matches) and test only that path for the log-only flush case.

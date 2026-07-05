@@ -1,0 +1,15 @@
+1	the ship-time outcome sidecar/flush path can run too early, depend on warning logging, duplicate a pre-pr commit on fresh runs, or treat an already-committed volatile-only retry as a new failure.
+1	the new guideline-ship-outcome scan needs to share the same step 8 reachability and handler-registration semantics as required-files, or it will drift on pre-step-8 and legacy runs.
+1	fluff-analysis should include step8-eligible runs that are missing the new artifact as missing coverage, not silently exclude them, and compute drop_rate only over valid outcomes.
+1	a logs-only pre-pr commit advances head and can make a fingerprint-valid note look stale to consumability checks.
+1	adding the outcome json to generic step8 required-files will false-fail older runs unless the row is version-aware or omitted in favor of the dedicated scan.
+1	the ship-time classifier shouldn't turn missing or invalid guidelines into dropped outcomes, or the drop rate will be inflated.
+1	retention pruning must not delete the durable outcome json from aged implement logs, or later audits will lose the only committed source of truth.
+1	the rebase refresh path and its tests need the same outcome flush/commit contract as initial pr creation, or rebases can ship without committed outcomes.
+1	python/larch/report/gc_run_logs.py:20-25 [scope-reduction] plan omits gc-run-logs keep-set updates for the new batch. scenario: /design already keeps `architectural-guideline-assessment.md` in `skill_keep`, but implement `skill_keep` and `docs/run-logs.md` retention lists do not mention `architectural-guideline-outcome.json`. `/gc-run-logs` will delete the new artifact from slimmed implement dirs, so audit and fluff-analysis lose the durable drop signal on aged runs.
+2	the audit and fluff paths need one explicit release/version cutover to distinguish legacy step 8 runs from current-era runs with missing `architectural-guideline-outcome.json`; otherwise historical runs can false-fail and current misses can be misbucketed.
+2	audit, required-files, and fluff-analysis all need the same step 8 reachability predicate; duplicating or inlining it risks drift on bail-only, empty-manifest, and pre-step-8 stall cases.
+2	the pre-pr postbump refresh is not enough; the outcome flush has to run unconditionally on the guidelines compose attempt, after `load_or_prepare_guidelines_note` resolves, and volatile-only can only pass if a matching committed artifact already exists.
+2	best-effort outcome sidecar writes and staging allow step 8 runs to ship without a durable committed outcome when write, flush, or verification fails; normal log-commit mode should stall before pr creation instead of proceeding with only a warning.
+2	a prior `architectural-guideline-outcome.json` can survive in the tmpdir and later be staged on a skip path, producing a false current outcome from an ambient stale artifact.
+2	outcome classification must use materialized `guidelines_status` and related compose metadata, not infer from note emptiness; otherwise absent/invalid cases can be mislabeled and present-guideline drops can be counted as clean.
