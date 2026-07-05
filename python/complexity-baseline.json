@@ -2738,6 +2738,12 @@
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0913",
+    "qualified_symbol": "_guidelines_gate_before_pr",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
     "qualified_symbol": "_ship_postmerge_phase",
     "metric": 7
   },
@@ -3147,13 +3153,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "_scan_required",
-    "metric": 33
-  },
-  {
-    "file": "larch/issue/audit_runs.py",
-    "code": "C901",
-    "qualified_symbol": "_scan_required.cond",
-    "metric": 16
+    "metric": 22
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3165,7 +3165,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "compute_counters_main",
-    "metric": 16
+    "metric": 20
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3194,8 +3194,14 @@
   {
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
+    "qualified_symbol": "_guideline_ship_outcome_scan_obj",
+    "metric": 9
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "code": "PLR0911",
     "qualified_symbol": "_scan_required.cond",
-    "metric": 16
+    "metric": 10
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3224,12 +3230,6 @@
   {
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
-    "qualified_symbol": "_scan_required.cond",
-    "metric": 15
-  },
-  {
-    "file": "larch/issue/audit_runs.py",
-    "code": "PLR0912",
     "qualified_symbol": "close_priors_main",
     "metric": 13
   },
@@ -3237,7 +3237,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "compute_counters_main",
-    "metric": 13
+    "metric": 17
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3256,6 +3256,12 @@
     "code": "PLR0912",
     "qualified_symbol": "scan_run_main",
     "metric": 80
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "code": "PLR0915",
+    "qualified_symbol": "compute_counters_main",
+    "metric": 53
   },
   {
     "file": "larch/issue/audit_runs.py",

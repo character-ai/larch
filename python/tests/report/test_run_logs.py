@@ -12,11 +12,12 @@ from typing import TYPE_CHECKING, Any, cast
 
 import pytest
 
+from larch.core import architectural_guidelines
 from larch.core import config
 from larch.report import final_report
 from larch.report import run_logs
 from larch.report import run_log_commit, run_log_flush
-from larch.report.run_log_batch import _rebase_under_tmpdir  # pyright: ignore[reportPrivateUsage]
+from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import timing
 from larch.report import tokens
 from larch.errors import ShipError
@@ -76,6 +77,106 @@ def test_validate_run_id_slug() -> None:
 def test_run_dir_rejects_invalid_run_id(tmp_path: Path) -> None:
     with pytest.raises(ValueError, match="invalid run-id"):
         run_logs._run_dir(log_root=tmp_path / "larch-logs", skill="implement", run_id="../evil")  # pyright: ignore[reportPrivateUsage, reportUnusedCallResult]
+
+
+def _guideline_outcome_payload(
+    *,
+    outcome: str = "pinned",
+    reason: str = "note-pinned",
+    assessment_kind: str | None = None,
+) -> dict[str, str]:
+    if assessment_kind is None:
+        if outcome == "clean":
+            assessment_kind = "clean" if reason == "clean-note" else ""
+        elif outcome == "pinned":
+            assessment_kind = "deviation"
+        else:
+            assessment_kind = ""
+    return {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": outcome,
+        "reason": reason,
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": assessment_kind,
+    }
+
+
+def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
+    payload = tmp_path / "architectural-guideline-outcome.json"
+    _ = payload.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
+
+    path, written, unchanged = _write_batch(
+        log_root=tmp_path / "larch-logs",
+        skill="implement",
+        run_id="run-abc",
+        batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+        input_file=str(payload),
+    )
+
+    assert written is True
+    assert unchanged is False
+    assert path.name == "architectural-guideline-outcome.json"
+    assert json.loads(path.read_text(encoding="utf-8"))["outcome"] == "pinned"
+
+    bad = tmp_path / "bad.json"
+    _ = bad.write_text("[]\n", encoding="utf-8")
+    with pytest.raises(ValueError, match="requires a JSON object"):
+        _ = _write_batch(
+            log_root=tmp_path / "larch-logs",
+            skill="implement",
+            run_id="run-abc",
+            batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+            input_file=str(bad),
+        )
+
+
+@pytest.mark.parametrize(
+    ("payload", "message"),
+    [
+        ({**_guideline_outcome_payload(), "phase": "design"}, "phase must be implement"),
+        ({**_guideline_outcome_payload(), "step": "7"}, "step must be 8"),
+        ({**_guideline_outcome_payload(), "base_ref": ""}, "base_ref is empty"),
+        (
+            {**_guideline_outcome_payload(), "outcome": "dropped", "reason": "note-pinned"},
+            "fields are inconsistent for dropped guidelines",
+        ),
+    ],
+)
+def test_guideline_outcome_batch_rejects_schema_mismatches(
+    tmp_path: Path,
+    payload: dict[str, str],
+    message: str,
+) -> None:
+    path = tmp_path / "architectural-guideline-outcome.json"
+    _ = path.write_text(json.dumps(payload), encoding="utf-8")
+
+    with pytest.raises(ValueError, match=message):
+        _ = _write_batch(
+            log_root=tmp_path / "larch-logs",
+            skill="implement",
+            run_id="run-abc",
+            batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+            input_file=str(path),
+        )
+
+
+def test_guideline_outcome_sidecar_stages_pre_commit(tmp_path: Path) -> None:
+    ctx = _ctx(tmp_path)
+    sidecar = architectural_guidelines.guideline_ship_outcome_path(tmp_path)
+    _ = sidecar.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
+
+    run_log_flush._stage_guideline_ship_outcome(  # pyright: ignore[reportPrivateUsage]
+        ctx=ctx,
+        log_root=tmp_path / "larch-logs",
+    )
+
+    staged = tmp_path / "larch-logs" / "implement" / "run-abc" / "architectural-guideline-outcome.json"
+    assert json.loads(staged.read_text(encoding="utf-8"))["reason"] == "note-pinned"
 
 
 @pytest.mark.parametrize(
@@ -3025,3 +3126,4 @@ def test_synthesize_v2_main_model_unknown_fallback(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(run_logs.tokens, "read_main_model", lambda: "")
     data = run_logs.Manifest.synthesize_v2(skill="implement", run_id="r").to_json(existing=None)
     assert data["model_roster"]["main"] == "unknown"
+# pyright: reportUnusedCallResult=false

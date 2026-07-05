@@ -24,11 +24,6 @@ from larch.core import config
 from larch.errors import ShipError
 from larch.issue import issue_wire
 from larch.report import exec_issue_detail  # lint-layering: ok append helper must match run-log flush warning dedupe.
-from larch.report.run_log_batch import (  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
-    _normalize_body_for_hash,
-    _redact_batch_payload,
-    append_execution_issue,
-)
 from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
@@ -41,6 +36,7 @@ MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
 DURABLE_NOTE = "architectural-guideline-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
 DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"
+GUIDELINE_SHIP_OUTCOME_SIDECAR = "architectural-guideline-outcome.json"
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
@@ -83,7 +79,81 @@ class ComposeMaterializationResult:
     diff_path: Path | None = None
     guidelines_status: str = ""
     guidelines_path: str = ""
+    assessment_kind: str = ""
     warning: str = ""
+
+
+def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa: C901, PLR0911, PLR0912
+    from larch.implement.ship_guidelines import (  # noqa: PLC0415  # lint-layering: ok validator needs ship_guidelines constants; function-level import avoids circular import (ship_guidelines imports from this module)
+        GUIDELINE_SHIP_OUTCOMES,
+        GUIDELINE_SHIP_REASON_TOKENS,
+        OUTCOME_CLEAN,
+        OUTCOME_DROPPED,
+        OUTCOME_PINNED,
+        REASON_CLEAN_NOTE,
+        REASON_COMPOSE_MATERIALIZATION_FAILED,
+        REASON_GUIDELINES_ABSENT,
+        REASON_GUIDELINES_INVALID,
+        REASON_NOTE_PINNED,
+        REASON_NOTE_READ_FAILED,
+        REASON_NOTE_REDACTION_FAILED,
+        REASON_UNKNOWN,
+    )
+
+    if not isinstance(data, dict):
+        return "guideline outcome artifact must be a JSON object"
+    d: dict[str, object] = data  # type: ignore[assignment]
+    if str(d.get("schema_version") or "") != "1":
+        return "guideline outcome schema_version must be 1"
+    phase = str(d.get("phase") or "")
+    step = str(d.get("step") or "")
+    base_ref = str(d.get("base_ref") or "")
+    outcome = str(d.get("outcome") or "")
+    reason = str(d.get("reason") or "")
+    guidelines_status = str(d.get("guidelines_status") or "")
+    assessment_kind = str(d.get("assessment_kind") or "")
+    if phase != "implement":
+        return "guideline outcome phase must be implement"
+    if step != "8":
+        return "guideline outcome step must be 8"
+    if not base_ref:
+        return "guideline outcome base_ref is empty"
+    if outcome not in GUIDELINE_SHIP_OUTCOMES:
+        return "guideline outcome token is unknown"
+    if guidelines_status not in {"present", "absent", "invalid"}:
+        return "guideline outcome guidelines_status is unknown"
+    if reason not in GUIDELINE_SHIP_REASON_TOKENS:
+        return "guideline outcome reason token is unknown"
+    if assessment_kind not in {"", "clean", "deviation"}:
+        return "guideline outcome assessment_kind is unknown"
+    if guidelines_status == "absent":
+        if outcome != OUTCOME_CLEAN or reason != REASON_GUIDELINES_ABSENT or assessment_kind:
+            return "guideline outcome fields are inconsistent for absent guidelines"
+        return None
+    if guidelines_status == "invalid":
+        if outcome != OUTCOME_CLEAN or reason != REASON_GUIDELINES_INVALID or assessment_kind:
+            return "guideline outcome fields are inconsistent for invalid guidelines"
+        return None
+    if outcome == OUTCOME_CLEAN:
+        if reason != REASON_CLEAN_NOTE or assessment_kind != "clean":
+            return "guideline outcome fields are inconsistent for clean guidelines"
+        return None
+    if outcome == OUTCOME_PINNED:
+        if reason != REASON_NOTE_PINNED or assessment_kind != "deviation":
+            return "guideline outcome fields are inconsistent for pinned guidelines"
+        return None
+    if outcome == OUTCOME_DROPPED:
+        if assessment_kind:
+            return "guideline outcome fields are inconsistent for dropped guidelines"
+        if guidelines_status != "present" or reason not in {
+            REASON_NOTE_READ_FAILED,
+            REASON_NOTE_REDACTION_FAILED,
+            REASON_COMPOSE_MATERIALIZATION_FAILED,
+            REASON_UNKNOWN,
+        }:
+            return "guideline outcome fields are inconsistent for dropped guidelines"
+        return None
+    return "guideline outcome fields are inconsistent"
 
 
 def _run_git_toplevel(candidate: Path) -> Path | None:
@@ -244,6 +314,10 @@ def design_assessment_path(design_tmpdir: Path) -> Path:
 
 def dropped_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DROPPED_NOTE_ARTIFACT
+
+
+def guideline_ship_outcome_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / GUIDELINE_SHIP_OUTCOME_SIDECAR
 
 
 def _validate_design_tmpdir_arg(candidate: str) -> Path:
@@ -419,6 +493,7 @@ def clear_staged_and_dropped_artifacts(implement_tmpdir: Path) -> None:
         STAGED_ASSESSMENT,
         STAGED_ASSESSMENT_ENV,
         DROPPED_NOTE_ARTIFACT,
+        GUIDELINE_SHIP_OUTCOME_SIDECAR,
     ):
         path = implement_tmpdir / name
         try:
@@ -469,6 +544,8 @@ def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: st
             f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
             f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
             f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
+            f"GUIDELINES_STATUS={_env_escape(metadata.get('GUIDELINES_STATUS', 'present'))}",
+            f"ASSESSMENT_KIND={_env_escape(metadata.get('ASSESSMENT_KIND', ''))}",
             f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
             "",
         ]
@@ -690,6 +767,7 @@ _INVALIDATE_ARTIFACTS = (
     DURABLE_NOTE,
     DURABLE_NOTE_ENV,
     DROPPED_NOTE_ARTIFACT,
+    GUIDELINE_SHIP_OUTCOME_SIDECAR,
 )
 
 
@@ -722,14 +800,63 @@ def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
     return _read_env(_durable_meta_path(implement_tmpdir))
 
 
-def note_consumable(*, implement_tmpdir: Path, head_sha: str) -> bool:
+def note_consumable(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
     """Return true when the durable note is safe to surface for head_sha."""
     note = durable_note_path(implement_tmpdir)
     meta = _durable_meta_path(implement_tmpdir)
     if not note.is_file() or note.is_symlink() or not meta.is_file() or meta.is_symlink():
         return False
     metadata = _read_env(meta)
-    return metadata.get("STATUS") == "present" and metadata.get("HEAD_SHA") == head_sha
+    if metadata.get("STATUS") != "present":
+        return False
+    if metadata.get("HEAD_SHA") == head_sha:
+        return True
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if not resolved_base or repo_root is None:
+        return False
+    stored_head = metadata.get("HEAD_SHA", "")
+    if not _head_change_larch_logs_only(
+        repo_root=repo_root,
+        old_head=stored_head,
+        new_head=head_sha,
+    ):
+        return False
+    return not note_fingerprint_stale(
+        implement_tmpdir,
+        base_ref=resolved_base,
+        repo_root=repo_root,
+    )
+
+
+def _head_change_larch_logs_only(
+    *,
+    repo_root: str | Path,
+    old_head: str,
+    new_head: str,
+) -> bool:
+    if not old_head or not new_head:
+        return False
+    try:
+        root = Path(repo_root).resolve()
+    except OSError:
+        return False
+    completed = subprocess.run(  # lint-subprocess-via-runner: ok read-only git diff --name-only mirrors sibling grandfathered git helpers in this module
+        ["git", "diff", "--name-only", f"{old_head}..{new_head}", "--"],  # noqa: S607
+        cwd=root,
+        text=True,
+        capture_output=True,
+        check=False,
+    )
+    if completed.returncode != 0:
+        return False
+    paths = [line.strip() for line in completed.stdout.splitlines() if line.strip()]
+    return bool(paths) and all(path == "larch-logs" or path.startswith("larch-logs/") for path in paths)
 
 
 def note_fingerprint_stale(
@@ -752,6 +879,17 @@ def note_fingerprint_stale(
     return live_fp != stored_fp
 
 
+def clear_guideline_ship_outcome(implement_tmpdir: Path) -> None:
+    path = guideline_ship_outcome_path(implement_tmpdir)
+    try:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif _artifact_still_present(path):
+            path.unlink()
+    except OSError:
+        pass
+
+
 def _write_compose_materialization_metadata(
     *,
     implement_tmpdir: Path,
@@ -771,6 +909,7 @@ def _write_compose_materialization_metadata(
                 f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
                 f"GUIDELINES_STATUS={_env_escape(materialized.guidelines_status)}",
                 f"GUIDELINES_PATH={_env_escape(materialized.guidelines_path)}",
+                f"ASSESSMENT_KIND={_env_escape(materialized.assessment_kind)}",
                 f"WRITTEN_AT={written_at}",
                 "",
             ]
@@ -932,6 +1071,7 @@ def _warning_chunk_keys(body: str) -> set[str]:
 
 
 def _warning_chunk_source_shas(body: str) -> set[str]:
+    from larch.report.run_log_batch import _normalize_body_for_hash  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     shas: set[str] = set()
     for chunk in execution_issue_chunks(body.splitlines()):
@@ -957,6 +1097,7 @@ def _section_body_lines(markdown: str, category: str) -> list[str]:
 
 
 def _existing_warning_keys_from_markdown(path: Path) -> set[str]:
+    from larch.report.run_log_batch import _redact_batch_payload  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     if not path.is_file() or path.is_symlink():
         return set()
     try:
@@ -1028,6 +1169,7 @@ def _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir: Path) -> tuple
 
 def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
     """Append a guideline deviation warning unless the run already has the same warning."""
+    from larch.report.run_log_batch import _redact_batch_payload, append_execution_issue  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush redaction and append behavior.
     entry = _format_deviation_warning_entry(note)
     redacted_entry = _redact_batch_payload(entry)
     issue_log = implement_tmpdir / "execution-issues.md"
@@ -1469,3 +1611,4 @@ def invalidate_main(argv: list[str]) -> int:
     return 0
 # pyright: reportArgumentType=false
 # lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.
+# larch-lint: allow-subprocess-run

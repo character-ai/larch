@@ -8,14 +8,14 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.core import architectural_guidelines as ag
+from larch.core import config
 from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 
-if TYPE_CHECKING:
-    import pytest
 
 
 def test_title_contiguous(capsys):
@@ -235,6 +235,134 @@ def _scan_codex_round_adherence(tmp_path: Path, run: Path, capsys: pytest.Captur
     return json.loads(capsys.readouterr().out.splitlines()[0])
 
 
+def _scan_guideline_outcome(tmp_path: Path, run: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\nguideline-ship-outcome\tnamed-handler\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill", "implement", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    return json.loads(capsys.readouterr().out.splitlines()[0])
+
+
+def _write_guideline_outcome(
+    run: Path,
+    *,
+    outcome: str = "pinned",
+    reason: str = "note-pinned",
+    **overrides: object,
+) -> None:
+    assessment_kind = "deviation"
+    if outcome == "clean":
+        assessment_kind = "clean" if reason == "clean-note" else ""
+    elif outcome == "dropped":
+        assessment_kind = ""
+    payload = {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": outcome,
+        "reason": reason,
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": assessment_kind,
+    } | overrides
+    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text(json.dumps(payload), encoding="utf-8")
+
+
+def test_guideline_ship_outcome_scan_missing_cutover_and_valid(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+    assert row["result"] == "fail"
+    assert "missing" in str(row["detail"])
+
+    _write_guideline_outcome(run, outcome="dropped", reason="note-redaction-failed")
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+    assert row["result"] == "pass"
+    assert row["outcome"] == "dropped"
+    assert row["reason"] == "note-redaction-failed"
+
+
+@pytest.mark.parametrize(
+    ("manifest", "expected_result"),
+    [
+        ({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}, "pass"),
+        ({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": False}}, "informational"),
+    ],
+)
+def test_guideline_ship_outcome_scan_step8_parity(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    manifest: dict[str, object],
+    expected_result: str,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(json.dumps(manifest) + "\n", encoding="utf-8")
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _write_guideline_outcome(run, outcome="clean", reason="clean-note")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == expected_result
+
+
+def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text('{"larch_version":"0.1.0","steps_ran":{"step8":true}}\n', encoding="utf-8")
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+    assert row["result"] == "informational"
+
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).write_text(
+        '{"schema_version":"1","phase":"implement","step":"8","outcome":"pinned","reason":"bogus","detail":"","guidelines_status":"present","base_ref":"origin/main","assessment_kind":"deviation"}\n',
+        encoding="utf-8",
+    )
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+    assert row["result"] == "fail"
+
+
+@pytest.mark.parametrize(
+    ("overrides", "message"),
+    [
+        ({"phase": "design"}, "phase must be implement"),
+        ({"step": "7"}, "step must be 8"),
+        ({"base_ref": ""}, "base_ref is empty"),
+        ({"outcome": "dropped", "reason": "note-pinned"}, "fields are inconsistent for dropped guidelines"),
+    ],
+)
+def test_guideline_ship_outcome_scan_rejects_schema_mismatches(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    overrides: dict[str, object],
+    message: str,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _write_guideline_outcome(run, **overrides)
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert message in str(row["detail"])
+
+
 def test_scan_codex_round1_adherence_allows_round_two_generic_and_specialist(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
     run = tmp_path / "run"
     round2 = run / "round-2"
@@ -395,6 +523,23 @@ def test_compute_counters_treats_malformed_numbers_as_zero(tmp_path: Path, capsy
     assert out["OOS_CLEAN_DELTA"] == "0"
     assert out["NS_RETRIES_DELTA"] == "0"
     assert out["CHANGELOG_DELTA"] == "0"
+
+
+def test_compute_counters_reports_guideline_outcome_counts(tmp_path: Path, capsys):
+    d = tmp_path / "scans"; d.mkdir()
+    (d / "scan-results-1.ndjson").write_text(
+        '{"scan":"guideline-ship-outcome","result":"pass","outcome":"pinned"}\n'
+        '{"scan":"guideline-ship-outcome","result":"pass","outcome":"clean"}\n'
+        '{"scan":"guideline-ship-outcome","result":"pass","outcome":"dropped"}\n',
+        encoding="utf-8",
+    )
+    assert audit_runs.compute_counters_main(["--scan-results-dir", str(d)]) == 0
+    out = dict(line.split("=",1) for line in capsys.readouterr().out.splitlines())
+    assert out["GUIDELINE_OUTCOME_RUNS"] == "3"
+    assert out["GUIDELINE_OUTCOME_PINNED"] == "1"
+    assert out["GUIDELINE_OUTCOME_CLEAN"] == "1"
+    assert out["GUIDELINE_OUTCOME_DROPPED"] == "1"
+    assert out["GUIDELINE_DROP_RATE_BPS"] == "3333"
 
 
 class AuditRunner:
@@ -1088,3 +1233,4 @@ def test_scan_cross_cutting_emits_self_deploying_gap_alias(tmp_path: Path, capsy
     row = next(r for r in rows if r["scan"] == "cross-cutting")
     assert row["manifest_pr_number_mismatch_with_audited_pr"] is True
     assert row["self_deploying_gap"] is True
+# pyright: reportOperatorIssue=false

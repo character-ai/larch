@@ -247,11 +247,56 @@ cat > "$EMPTY_FIX/larch-logs/design/RUN-DSGN-ASSESS/manifest.json" <<'JSON'
 {"started_at":"2026-05-23T10:00:00Z","larch_version":"49.0.0"}
 JSON
 cp "$DASSESS/architectural-guideline-assessment.md" "$EMPTY_FIX/larch-logs/design/RUN-DSGN-ASSESS/architectural-guideline-assessment.md"
+for name in PINNED CLEAN DROPPED MISSING_CURRENT MISSING_LEGACY; do
+    mkdir -p "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-$name"
+    printf 'summary\n' > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-$name/final-summary.md"
+done
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-PINNED/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T10:00:00Z","larch_version":"52.4.16","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-CLEAN/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T11:00:00Z","larch_version":"52.4.16","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-DROPPED/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T12:00:00Z","larch_version":"52.4.16","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MISSING_CURRENT/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T13:00:00Z","larch_version":"52.4.16","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MISSING_LEGACY/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T14:00:00Z","larch_version":"52.4.15","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-PINNED/architectural-guideline-outcome.json" <<'JSON'
+{"schema_version":"1","phase":"implement","step":"8","outcome":"pinned","reason":"note-pinned","detail":"","guidelines_status":"present","head_sha":"abc123","base_ref":"origin/main","assessment_kind":"deviation"}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-CLEAN/architectural-guideline-outcome.json" <<'JSON'
+{"schema_version":"1","phase":"implement","step":"8","outcome":"clean","reason":"guidelines-absent","detail":"","guidelines_status":"absent","head_sha":"abc123","base_ref":"origin/main","assessment_kind":""}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-DROPPED/architectural-guideline-outcome.json" <<'JSON'
+{"schema_version":"1","phase":"implement","step":"8","outcome":"dropped","reason":"note-redaction-failed","detail":"","guidelines_status":"present","head_sha":"abc123","base_ref":"origin/main","assessment_kind":""}
+JSON
+mkdir -p "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_CURRENT"
+mkdir -p "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_LEGACY"
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_CURRENT/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T15:00:00Z","larch_version":"52.4.16","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_LEGACY/manifest.json" <<'JSON'
+{"started_at":"2026-05-24T16:00:00Z","larch_version":"52.4.15","steps_ran":{"step8":true}}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_CURRENT/architectural-guideline-outcome.json" <<'JSON'
+{"schema_version":"1","phase":"implement","step":"8","outcome":"pinned","reason":"bogus","detail":"","guidelines_status":"present","base_ref":"origin/main","assessment_kind":"deviation"}
+JSON
+cat > "$EMPTY_FIX/larch-logs/implement/RUN-OUTCOME-MALFORMED_LEGACY/architectural-guideline-outcome.json" <<'JSON'
+{"schema_version":"1","phase":"implement","step":"8","outcome":"clean","reason":"bogus","detail":"","guidelines_status":"present","head_sha":"abc123","assessment_kind":"deviation"}
+JSON
+
 REPORT_EMPTY=$(python3 "$ANALYZER" --log-root "$EMPTY_FIX/larch-logs" --min-group 1)
 rm -rf "$EMPTY_FIX"
 assert_contains "$REPORT_EMPTY" "## Guideline assessment coverage" "coverage section appears for zero-finding corpus"
+assert_contains "$REPORT_EMPTY" "## Implement guideline outcome coverage" "implement outcome section appears for zero-finding corpus"
 assert_contains "$REPORT_EMPTY" "## False-negative / under-acceptance metrics" "false-negative section appears for zero-finding corpus"
-assert_contains "$REPORT_EMPTY" "| 1 | 1 | 1 | 0 |" "zero-finding coverage counts"
+assert_contains "$REPORT_EMPTY" "| 7 | 3 | 1 | 3 | 1 | 1 | 1 | 33.3% |" "malformed implement guideline outcomes stay out of the valid denominator"
+assert_contains "$REPORT_EMPTY" "| note-redaction-failed | 1 |" "zero-finding implement outcome reason histogram"
 assert_contains "$REPORT_EMPTY" "> No review findings found under the log root. Nothing to analyze." "zero-finding footer retained"
 
 echo "== direct run from script directory can import shared helper =="

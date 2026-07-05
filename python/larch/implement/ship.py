@@ -94,8 +94,11 @@ from larch.implement.ship_result import (
 )
 from larch.implement.ship_guidelines import (
     GuidelinesGateResult,
+    GuidelinesShipOutcome,
     _pin_and_load_guidelines_note,
+    clear_guideline_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
+    write_guideline_ship_outcome,
 )
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
@@ -202,14 +205,26 @@ def _write_phase14_flag(tmpdir: str, *, reason: str) -> None:
         )
 
 
-def _flush_guidelines_warning_before_pr(
+def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
+    run_id = run_logs.effective_run_id(ctx)
+    if not run_id:
+        return False
+    sidecar = architectural_guidelines.guideline_ship_outcome_path(Path(ctx.tmpdir))
+    committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    try:
+        return sidecar.is_file() and committed.is_file() and sidecar.read_bytes() == committed.read_bytes()
+    except OSError:
+        return False
+
+
+def _flush_guideline_outcome_before_pr(
     *,
     runner: Runner,
     ctx: RunContext,
     cwd: str,
     resume: ResumePlan,
 ) -> None:
-    step = "pr-create-guidelines-warning-refresh"
+    step = "pr-create-guideline-outcome-refresh"
     try:
         refresh = run_logs.flush_logs_pre(
             runner=runner,
@@ -231,10 +246,13 @@ def _flush_guidelines_warning_before_pr(
     if refresh.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
         _breadcrumb(
             step="warning",
-            detail=f"guidelines warning refresh skipped: {reason} (warning cannot be committed)",
+            detail=f"guideline outcome refresh skipped: {reason} (outcome cannot be committed)",
         )
         return
-    _breadcrumb(step="warning", detail=f"guidelines warning refresh skipped: {reason}")
+    if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_guideline_outcome_matches(ctx=ctx, cwd=cwd):
+        _breadcrumb(step="warning", detail="guideline outcome refresh skipped: volatile-only with matching committed artifact")
+        return
+    _breadcrumb(step="warning", detail=f"guideline outcome refresh skipped: {reason}")
     _write_terminal_state(
         ctx=ctx.with_(stall_tracking=True, stall_step=step),
         result=Outcome.STALLED,
@@ -244,7 +262,7 @@ def _flush_guidelines_warning_before_pr(
         fix_attempts=resume.fix_attempts,
         transient_retries=resume.transient_retries,
     )
-    raise Stalled(f"architectural-guidelines warning run-log refresh skipped: {reason}")
+    raise Stalled(f"architectural-guidelines outcome run-log refresh skipped: {reason}")
 
 
 def _compose_pr_body_for_pr_create(
@@ -270,9 +288,11 @@ def _guidelines_gate_before_pr(
     repo_root: str,
     base_ref: str,
     resume: ResumePlan,
+    flush_outcome: bool = True,
 ) -> GuidelinesGateResult:
     compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
     compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    clear_guideline_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
     result = load_or_prepare_guidelines_note(
         implement_tmpdir=pr_context.tmpdir,
         head_sha=compose_head_sha,
@@ -280,13 +300,51 @@ def _guidelines_gate_before_pr(
         repo_root=repo_root,
         forked_target=pr_context.forked or pr_context.forked_target,
     )
-    if result.warning_logged:
-        _flush_guidelines_warning_before_pr(
-            runner=runner,
-            ctx=pr_context,
-            cwd=repo_root,
-            resume=resume,
+    if result.needs_assessment:
+        return result
+    if not flush_outcome:
+        return result
+    outcome: GuidelinesShipOutcome | None = None
+    try:
+        outcome = write_guideline_ship_outcome(
+            implement_tmpdir=pr_context.tmpdir,
+            result=result,
+            head_sha=compose_head_sha,
+            base_ref=compose_base_ref,
         )
+    except OSError as exc:
+        if pr_context.no_logs_commit:
+            _breadcrumb(step="warning", detail=f"guideline outcome sidecar write skipped: {logging_util.sanitize_diagnostic_line(str(exc))}")
+            return result
+        _write_terminal_state(
+            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-guideline-outcome-write"),
+            result=Outcome.STALLED,
+            step="pr-create-guideline-outcome-write",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        raise Stalled(f"architectural-guidelines outcome sidecar write failed: {logging_util.sanitize_diagnostic_line(str(exc))}") from exc
+    if pr_context.no_logs_commit:
+        return result
+    _flush_guideline_outcome_before_pr(
+        runner=runner,
+        ctx=pr_context,
+        cwd=repo_root,
+        resume=resume,
+    )
+    if outcome is not None and outcome.outcome == "dropped":
+        _write_terminal_state(
+            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-guideline-outcome-dropped"),
+            result=Outcome.STALLED,
+            step="pr-create-guideline-outcome-dropped",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        raise Stalled(f"architectural-guidelines outcome dropped: {outcome.reason}")
     return result
 
 
@@ -306,6 +364,7 @@ def _refresh_guidelines_gate_after_rebase(
         repo_root=repo_root,
         base_ref=base_ref,
         resume=resume,
+        flush_outcome=True,
     )
     if guidelines_gate.needs_assessment:
         return ShipResult(
@@ -637,6 +696,7 @@ def run_ship(
             repo_root=repo_root,
             base_ref=base_ref,
             resume=resume,
+            flush_outcome=True,
         )
         if guidelines_gate.needs_assessment:
             return ShipResult(

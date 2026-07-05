@@ -726,6 +726,8 @@ MERMAID_REASON_UNCLOSED_FRONTMATTER: Final = "unclosed-frontmatter"
 RUN_LOG_BATCH_TOKEN_REPORT: Final = "token-report"
 RUN_LOG_BATCH_TIMING_REPORT: Final = "timing-report"
 RUN_LOG_BATCH_SESSION_TRANSCRIPT: Final = "session-transcript"
+RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: Final = "architectural-guideline-outcome"
+GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION: Final = "52.4.16"
 
 TOKEN_SIDECAR_KEYS: Final[frozenset[str]] = frozenset({
     "input_tokens",

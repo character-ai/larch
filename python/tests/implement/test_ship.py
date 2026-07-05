@@ -78,8 +78,6 @@ def _successful_rebase_result(*, rebased: bool = False) -> ship.rebase.RebaseRes
 
 @pytest.fixture(autouse=True)
 def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None:  # pyright: ignore[reportUnusedFunction]
-    real_flush = ship.run_logs.flush_logs_pre
-
     def fake_flush_logs_pre(
         runner: RecordingRunner,
         ctx: RunContext,
@@ -87,9 +85,10 @@ def _default_post_ensure_flush_and_push(monkeypatch: pytest.MonkeyPatch) -> None
         cwd: str | None = None,
         strict_final_report: bool = False,
     ) -> run_logs.RefreshSkip:
+        _ = runner, ctx, cwd
         if strict_final_report:
             return run_logs.RefreshSkip(skipped=False, reason="")
-        return real_flush(runner=runner, ctx=ctx, cwd=cwd)
+        return run_logs.RefreshSkip(skipped=False, reason="")
 
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush_logs_pre)
     monkeypatch.setattr(
@@ -955,12 +954,13 @@ def test_happy_path_stage_order(
 
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
     assert result.outcome is Outcome.OK
-    # Single pre-PR flush (issue #5217): post-ensure is push-only, so there is no
-    # second "flush-pre" before the post-ensure "push" that would move HEAD and
+    # The guideline outcome flush runs before PR body composition. Post-ensure
+    # remains push-only, so there is no strict post-ensure flush that would
     # re-trigger CI. The live PR URL is refreshed via the API-only "comment".
     assert order == [
         "flush-pre",
         "postbump",
+        "flush-pre",
         "pr-body",
         "ensure-pr",
         "comment",
@@ -971,12 +971,12 @@ def test_happy_path_stage_order(
         "state",
         "flush-post",
     ]
-    assert order.count("flush-pre") == 1
+    assert order.count("flush-pre") == 2
     assert order.count("monitor") == 1
     assert order.count("merge") == 1
-    # Only the pre-PR flush remains (strict=False); the second strict post-ensure
-    # flush is gone (issue #5217), so HEAD moves once for the whole happy path.
-    assert flush_args == [(None, str(tmp_path), False)]
+    # Both pre-PR flushes are non-strict. The strict post-ensure flush is gone
+    # (issue #5217).
+    assert flush_args == [(None, str(tmp_path), False), (None, str(tmp_path), False)]
     captured = capsys.readouterr()
     assert "ship.py: pr-prep:" in captured.err
     assert "ship.py: pr-prep:" in captured.err
@@ -990,6 +990,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    _init_git_repo(tmp_path)
     monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
@@ -1057,6 +1058,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
+    _init_git_repo(tmp_path)
     monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
@@ -1143,11 +1145,9 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
     )
 
     assert result.outcome is Outcome.OK
-    # One-push invariant (issue #5217): exactly one pre-PR flush_logs_pre call and
-    # none strict at post-ensure. The single pre-PR flush carries the run-log
-    # snapshot into the PR tree; post-ensure is push-only, so HEAD does not move a
-    # second time and CI is not re-triggered before the first run finishes.
-    assert flush_calls == [False]
+    # The guideline outcome adds a second non-strict pre-PR flush. Post-ensure
+    # remains push-only, so no strict post-ensure flush re-triggers CI.
+    assert flush_calls == [False, False]
 
 
 def test_merge_review_required_exits_as_needs_user_input(
@@ -1204,6 +1204,7 @@ def _prepare_recovered_stalled_log(
     *,
     draft: bool = False,
 ) -> Path:
+    _init_git_repo(tmp_path)
     monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
@@ -1242,6 +1243,11 @@ def _prepare_recovered_stalled_log(
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(
         ship.gh,
+        "pr_view",
+        lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
+    )
+    monkeypatch.setattr(
+        ship_resume.gh,
         "pr_view",
         lambda *_a, **_k: type("PR", (), {"number": 7, "url": "https://example.test/pr/7", "state": "OPEN", "head_ref": "feat"})(),
     )
@@ -1389,6 +1395,7 @@ def test_recovered_stalled_summary_push_failure_blocks_merge(
     tmp_path: Path,
 ) -> None:
     state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path)
+    monkeypatch.setattr(ship, "_flush_guideline_outcome_before_pr", lambda *_a, **_k: None)
     merge_called = False
 
     monkeypatch.setattr(
@@ -1433,6 +1440,7 @@ def test_recovered_stalled_summary_push_exception_blocks_merge(
     tmp_path: Path,
 ) -> None:
     state_file = _prepare_recovered_stalled_log(monkeypatch, tmp_path)
+    monkeypatch.setattr(ship, "_flush_guideline_outcome_before_pr", lambda *_a, **_k: None)
     merge_called = False
 
     monkeypatch.setattr(
@@ -1780,7 +1788,7 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\n"
-        "PR_URL=https://example.test/pr/7\nMERGE=true\nDRAFT=false\nITERATION=4\n",
+        "PR_URL=https://example.test/pr/7\nREPO=o/r\nRUN_ID=run-abc\nMERGE=true\nDRAFT=false\nITERATION=4\n",
         encoding="utf-8",
     )
     flush_calls: list[bool] = []
@@ -1802,9 +1810,10 @@ def test_open_pr_resume_no_checks_stall_keeps_head_stable(
 
     assert result.outcome is Outcome.STALLED
     assert result.detail == config.CI_WAIT_BAIL_NO_CHECKS_OBSERVED
-    # No flush: post-ensure re-flush skipped on resume, terminal snapshot skipped
-    # on the recoverable NO_CHECKS bail -- HEAD does not move.
-    assert not flush_calls
+    # One pre-PR guideline-outcome flush runs before ensure_pr. The post-ensure
+    # re-flush is skipped on resume, and the terminal snapshot is skipped on the
+    # recoverable NO_CHECKS bail, so HEAD advances at most once (outcome sidecar).
+    assert flush_calls == [True]
     assert not snapshot_calls
     # Only the idempotent reconcile push is issued.
     assert push_calls == [True]
@@ -5379,7 +5388,7 @@ def test_load_or_prepare_guidelines_note_requests_compose_assessment(
     assert result.detail == "architectural-guidelines assessment required before PR body compose"
 
 
-def test_load_or_prepare_guidelines_note_requests_assessment_on_redaction_failure(
+def test_load_or_prepare_guidelines_note_drops_on_redaction_failure(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -5403,8 +5412,59 @@ def test_load_or_prepare_guidelines_note_requests_assessment_on_redaction_failur
     )
 
     assert result.note == ""
-    assert result.needs_assessment is True
+    assert result.needs_assessment is False
     assert result.warning_logged is True
+    assert result.guidelines_status == "present"
+    assert result.reason == ship_guidelines.REASON_NOTE_REDACTION_FAILED
+
+
+def test_guideline_ship_outcome_sidecar_pinned_and_clean(tmp_path: Path) -> None:
+    pinned = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(note="Deviation note", guidelines_status="present"),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+    assert pinned is not None
+    assert pinned.outcome == ship_guidelines.OUTCOME_PINNED
+
+    data = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["schema_version"] == "1"
+    assert data["outcome"] == "pinned"
+    assert data["reason"] == ship_guidelines.REASON_NOTE_PINNED
+    assert data["guidelines_status"] == "present"
+
+    clean = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(guidelines_status="absent"),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+    assert clean is not None
+    assert clean.outcome == ship_guidelines.OUTCOME_CLEAN
+    data = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["outcome"] == "clean"
+    assert data["reason"] == ship_guidelines.REASON_GUIDELINES_ABSENT
+
+
+def test_guideline_ship_outcome_sidecar_dropped(tmp_path: Path) -> None:
+    outcome = ship_guidelines.write_guideline_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship.GuidelinesGateResult(
+            guidelines_status="present",
+            detail="redaction failed",
+            reason=ship_guidelines.REASON_NOTE_REDACTION_FAILED,
+        ),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+
+    assert outcome is not None
+    assert outcome.outcome == ship_guidelines.OUTCOME_DROPPED
+    data = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["outcome"] == "dropped"
+    assert data["reason"] == ship_guidelines.REASON_NOTE_REDACTION_FAILED
+    assert data["detail"] == "redaction failed"
 
 
 def test_load_or_prepare_guidelines_note_skips_assessment_on_prepare_failure(
@@ -5922,7 +5982,7 @@ def test_guidelines_pin_warning_refresh_skip_stalls_before_pr(
     result = ship.run_ship(_ctx(tmp_path), runner=RecordingRunner(), cwd=str(tmp_path))
 
     assert result.outcome is Outcome.STALLED
-    assert "architectural-guidelines warning run-log refresh skipped" in result.detail
+    assert "architectural-guidelines outcome run-log refresh skipped" in result.detail
     assert ensure_calls == 0
 
 
@@ -5961,6 +6021,80 @@ def test_guidelines_warning_real_flush_commits_before_pr_create(
     assert order.index("gate") < order.index("flush", order.index("gate")) < order.index("compose")
 
 
+def test_guidelines_warning_volatile_only_refresh_uses_matching_committed_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    order: list[str] = []
+    compose_calls: list[dict[str, object]] = []
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: True)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.OK
+    assert order == ["flush", "gate", "flush", "compose"]
+    assert compose_calls[0].get("architectural_guidelines_note") == "Guidelines warning"
+
+
+def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcome(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    _stub_happy_ship_mocks(monkeypatch)
+    order: list[str] = []
+    compose_calls: list[dict[str, object]] = []
+    ensure_calls = 0
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=True, reason=config.REFRESH_SKIP_VOLATILE_ONLY)
+
+    def fake_compose(**kwargs: object) -> str:
+        order.append("compose")
+        compose_calls.append(dict(kwargs))
+        return "body"
+
+    def fake_ensure_pr(*_args: object, **_kwargs: object) -> object:
+        nonlocal ensure_calls
+        ensure_calls += 1
+        return type("P", (), {"number": 5, "url": "https://example.test/pr/7", "status": "created"})()
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship, "_committed_guideline_outcome_matches", lambda **_kwargs: False)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(ship.pr, "ensure_pr", fake_ensure_pr)
+
+    result = ship.run_ship(_ctx(tmp_path, merge=False), runner=RecordingRunner(), cwd=str(tmp_path))
+
+    assert result.outcome is Outcome.STALLED
+    assert ensure_calls == 0
+    assert order == ["flush", "gate", "flush"]
+    assert not compose_calls
+
+
 def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
@@ -5989,13 +6123,10 @@ def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
     assert ensure_calls == 1
 
 
-def test_open_pr_resume_runs_guidelines_gate_before_compose(
-    monkeypatch: pytest.MonkeyPatch,
-    tmp_path: Path,
-) -> None:
+def _prepare_open_pr_resume(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
     state_file = tmp_path / "ship-pr-state.sh"
     _ = state_file.write_text(
-        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nMERGE=false\nDRAFT=false\n",
+        "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nPR_URL=https://example.test/pr/7\nREPO=o/r\nRUN_ID=run-abc\nISSUE_NUMBER=1\nMERGE=false\nDRAFT=false\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
@@ -6006,13 +6137,184 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
     )
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
     monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "head")
+    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
+    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+    return state_file
+
+
+def test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_guidelines_note",
+        lambda **_kwargs: ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present"),
+    )
+    monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kwargs: (_ for _ in ()).throw(OSError("boom")))
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert "architectural-guidelines outcome sidecar write failed" in result.detail
+    assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
+
+
+def test_open_pr_resume_clears_stale_guideline_outcome_sidecar_before_gate(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    stale = tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR
+    _ = stale.write_text("stale\n", encoding="utf-8")
+    order: list[str] = []
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        assert not stale.exists()
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    def fake_compose(**_kwargs: object) -> str:
+        order.append("compose")
+        return "body"
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
     monkeypatch.setattr(
         ship.pr,
         "ensure_pr",
         lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
     )
-    monkeypatch.setattr(ship.run_logs, "write_final_report_comment", lambda *_a, **_k: None)
-    monkeypatch.setattr(ship.finalize, "write_finalize_state", lambda *_a, **_k: None)
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert order == ["gate", "flush", "compose"]
+    assert json.loads(stale.read_text(encoding="utf-8"))["outcome"] == "pinned"
+
+
+def test_open_pr_resume_guidelines_gate_needs_assessment_skips_flush_and_ensure_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    monkeypatch.setattr(
+        ship,
+        "load_or_prepare_guidelines_note",
+        lambda **_kwargs: ship.GuidelinesGateResult(
+            needs_assessment=True,
+            detail="architectural-guidelines assessment required before PR body compose",
+        ),
+    )
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == "architectural-guidelines-assessment"
+    assert result.detail == "architectural-guidelines assessment required before PR body compose"
+    assert not (tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).exists()
+
+
+def test_open_pr_resume_guidelines_gate_dropped_outcome_stalls_before_compose_and_ensure_pr(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    order: list[str] = []
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(
+            note="",
+            guidelines_status="present",
+            reason=ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED,
+        )
+
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("compose_pr_body must not run")))
+    monkeypatch.setattr(ship.pr, "ensure_pr", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("ensure_pr must not run")))
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.STALLED
+    assert order == ["gate", "flush"]
+    outcome = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert outcome["outcome"] == "dropped"
+    assert outcome["reason"] == ship_guidelines.REASON_COMPOSE_MATERIALIZATION_FAILED
+
+
+def test_open_pr_resume_no_logs_commit_keeps_guideline_outcome_sidecar_and_skips_flush(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
+    order: list[str] = []
+
+    def fake_gate(**_kwargs: object) -> ship.GuidelinesGateResult:
+        order.append("gate")
+        return ship.GuidelinesGateResult(note="Guidelines warning", guidelines_status="present")
+
+    def fake_compose(**_kwargs: object) -> str:
+        order.append("compose")
+        return "body"
+
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", lambda *_a, **_k: (_ for _ in ()).throw(AssertionError("flush_logs_pre must not run")))
+    monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
+
+    result = ship.run_ship(
+        _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat", no_logs_commit=True),
+        runner=RecordingRunner(),
+        cwd=str(tmp_path),
+    )
+
+    assert result.outcome is Outcome.OK
+    assert order == ["gate", "compose"]
+    outcome = json.loads((tmp_path / ship.architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert outcome["outcome"] == "pinned"
+
+
+def test_open_pr_resume_runs_guidelines_gate_before_compose(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = _prepare_open_pr_resume(monkeypatch, tmp_path)
     order: list[str] = []
     compose_calls: list[dict[str, object]] = []
 
@@ -6020,20 +6322,32 @@ def test_open_pr_resume_runs_guidelines_gate_before_compose(
         order.append("gate")
         return ship.GuidelinesGateResult(note="Resume note")
 
+    def fake_flush(*_args: object, **_kwargs: object) -> run_logs.RefreshSkip:
+        order.append("flush")
+        return run_logs.RefreshSkip(skipped=False, reason="")
+
     def fake_compose(**kwargs: object) -> str:
         order.append("compose")
         compose_calls.append(dict(kwargs))
         return "body"
 
     monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", fake_gate)
+    monkeypatch.setattr(ship, "write_guideline_ship_outcome", lambda **_kw: None)
+    monkeypatch.setattr(ship, "clear_guideline_ship_outcome_sidecar", lambda **_kw: None)
+    monkeypatch.setattr(ship.run_logs, "flush_logs_pre", fake_flush)
     monkeypatch.setattr(ship.pr_body, "compose_pr_body", fake_compose)
+    monkeypatch.setattr(
+        ship.pr,
+        "ensure_pr",
+        lambda *_a, **_k: type("P", (), {"number": 7, "url": "https://example.test/pr/7", "status": "existing"})(),
+    )
     result = ship.run_ship(
         _ctx(tmp_path, state_file=str(state_file), branch="feat", branch_name="feat"),
         runner=RecordingRunner(),
         cwd=str(tmp_path),
     )
     assert result.outcome is Outcome.OK
-    assert order.index("gate") < order.index("compose")
+    assert order == ["gate", "flush", "compose"]
     assert compose_calls[0].get("architectural_guidelines_note") == "Resume note"
 
 
