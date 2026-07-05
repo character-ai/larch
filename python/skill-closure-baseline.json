@@ -40,8 +40,8 @@
     "closure_content_estimated_tokens": 39296,
     "closure_estimated_tokens": 39409,
     "closure_lines": 1226,
-    "conditional_content_estimated_tokens": 25702,
-    "conditional_estimated_tokens": 25761,
+    "conditional_content_estimated_tokens": 25768,
+    "conditional_estimated_tokens": 25827,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
