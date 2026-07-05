@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- reusing consumer_repo_root is cleaner but not required for the assessment-persistence fix
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- scope anchor user-confirmed the final-summary version fix as in-scope
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of FINDING_5; version fallback remains an explicit plan goal
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate consumer_repo_root concern is optional scope reduction, not a necessity gate
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- same as FINDING_5/6; removing version work contradicts approved scope
+FINDING_9: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate of FINDING_4/7; parallel resolver is not required for correctness
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- version modules are in-scope per anchor despite separate root cause
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate scope-reduction nit on consumer_repo_root reuse
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate latent rehydration gap; prompt-side REPO_ROOT binding covers the Gate C bug path
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- documentation-only; no behavioral trigger on the acceptance-criteria path
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of OOS_1/OOS_6 with no new concrete trigger
+OOS_4: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Step 2b drafting mis-resolution is outside this issue's Gate C persistence acceptance criteria
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- writer-side REPO_ROOT recovery already addresses the clobber risk without an explicit Step 5c pass
+OOS_6: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate allowlist gap already covered by OOS_1/OOS_3
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- version fallback is user-confirmed in-scope, not out-of-scope backlog material
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- stall-report version work is bundled in the same in-scope version-fix goal

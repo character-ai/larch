@@ -1,0 +1,1 @@
+Fix `/design --skip-approve` guideline persistence by capturing a deterministic repo root at Step 0, exporting it in the design session env, and passing it to Gate C guideline helpers. Also fix the related Larch version fallback and add regressions for wrong-cwd persistence.

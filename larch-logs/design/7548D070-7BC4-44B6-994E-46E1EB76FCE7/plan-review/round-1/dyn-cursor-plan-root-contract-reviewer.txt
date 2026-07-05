@@ -1,0 +1,95 @@
+Reviewing the plan against the codebase: tracing Step 0 root capture, Gate C / Step 1d.7 usage, and version-fallback paths.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	blocking	correctness	python/larch/design/design_router.py:203-222	Step 0b init-runparams rewrites source-env without --repo-root and drops REPO_ROOT written at Step 0a	On ROUTE=proceed, step0_session_main writes REPO_ROOT then _finish_step0_route calls init_runparams_main, which calls write-design-env without --repo-root; _base_design_writer_values only adds REPO_ROOT from ambient env (session_env.py:544-546) and does not recover prior exports (session_env.py:1008-1011). source-env loses REPO_ROOT before Gate C; --repo-root "$REPO_ROOT" at guideline helpers is empty and present-note/persist fall back to cwd/CLAUDE_PROJECT_DIR	In the same file the plan already touches, recover prior REPO_ROOT from the existing source-env when --repo-root is omitted (mirror CODEX_BINARY_FOUND recovery), or pass --repo-root into the init write-design-env call (parse from source-env or add --repo-root to init-runparams argv from design_step0.py)
+1	in_scope	important	correctness	python/tests/design/test_design_lifecycle.py:386-423	Step 0 tests only assert step0_session passes --repo-root, not that init-runparams preserves it	The planned Gate C regression in test_architectural_guidelines.py drives helpers with explicit --repo-root and bypasses init refresh; the Step 0a→0b wipe gap would not be caught	Add a lifecycle test: after step0_session_main plus init_runparams_main on a proceed path, assert source-env.sh still exports the git toplevel REPO_ROOT
+1	out_of_scope	latent	correctness	skills/design/SKILL.md:313	Step 2b architectural-guidelines read is not threaded with --repo-root	Plan updates Gate C and Step 1d.7 only; Step 2b read without explicit root can still resolve guidelines absent from plugin-cache cwd during drafting	Out of scope for assessment-artifact acceptance; file a follow-up if outline/draft guideline surfacing must match Gate C root semantics
+
+## Findings
+
+### 1. [correctness] `init-runparams` overwrites `REPO_ROOT` after Step 0a (blocking)
+
+The plan captures one authoritative root in `design_step0.py` and threads it at Gate C / Step 1d.7, but the normal `ROUTE=proceed` path immediately runs init, which rewrites `source-env.sh` without `--repo-root`.
+
+Step 0a currently calls `write-design-env` without `--repo-root`:
+
+```187:187:python/larch/design/design_step0.py
+    wdce = _cli_cmd(plugin_root, "session", "write-design-env", "--output", str(design_path / "source-env.sh"), "--design-tmpdir", design_tmpdir, "--session-id", session_id, "--claude-pid", ns.claude_pid)
+```
+
+On `ROUTE=proceed`, Step 0b always runs init after session setup:
+
+```394:407:python/larch/design/design_step0.py
+    if ctx.route == "proceed":
+        check_pause_and_exit(env=ctx.env, design_tmpdir=ctx.design_tmpdir)
+        _materialize_step0_feature_description(design_tmpdir=ctx.design_tmpdir, env=ctx.env, init_route="proceed")
+        init_rc, init_result = _run_step0_init_driver(
+            plugin_root=ctx.plugin_root,
+            design_tmpdir=ctx.design_tmpdir,
+            env=ctx.env,
+            claude_pid=ctx.claude_pid,
+            emit_stdout=False,
+        )
+```
+
+`init_runparams_main` re-invokes `write-design-env` with no `--repo-root`:
+
+```203:222:python/larch/design/design_router.py
+    write_design = subprocess.run(
+        [
+            sys.executable,
+            str(root / "python" / "cli.py"),
+            "session",
+            "write-design-env",
+            "--output",
+            str(design_tmpdir / "source-env.sh"),
+            ...
+            *(["--repo", parsed["--repo"]] if parsed.get("--repo") else []),
+        ],
+        check=False,
+    )
+```
+
+The writer only populates `REPO_ROOT` from ambient env when the flag is omitted, and does not recover a prior export:
+
+```544:546:python/larch/state/session_env.py
+    repo_root = os.environ.get("CLAUDE_PROJECT_DIR", "").strip() or os.environ.get("REPO_ROOT", "").strip()
+    if repo_root:
+        values["REPO_ROOT"] = repo_root
+```
+
+```1008:1011:python/larch/state/session_env.py
+        if not recovered["CODEX_BINARY_FOUND"] and not code_bin_set:
+            recovered["CODEX_BINARY_FOUND"] = _recover_prior_bool(key="CODEX_BINARY_FOUND", prior_file=out_path)
+        if not recovered["CURSOR_BINARY_FOUND"] and not cur_bin_set:
+            recovered["CURSOR_BINARY_FOUND"] = _recover_prior_bool(key="CURSOR_BINARY_FOUND", prior_file=out_path)
+```
+
+`read_guidelines()` does not read `REPO_ROOT` from `source-env`; it only uses an explicit CLI `--repo-root`, then `CLAUDE_PROJECT_DIR`, then `Path.cwd()`:
+
+```81:92:python/larch/core/architectural_guidelines.py
+def _resolve_repo_root(explicit_repo_root: str | Path | None = None) -> Path | None:
+    if explicit_repo_root is not None:
+        ...
+    project_dir = os.environ.get("CLAUDE_PROJECT_DIR", "").strip()
+    ...
+    return _run_git_toplevel(Path.cwd())
+```
+
+So the plan’s Gate C / Step 1d.7 `--repo-root "$REPO_ROOT"` wiring still fails on the standard proceed path unless init preserves the Step 0a value. Minimum fix: extend the planned `session_env.py` change to recover prior `REPO_ROOT` when `--repo-root` is omitted, or thread `--repo-root` through `init_runparams_main` / `_step0_init_driver_cmd`.
+
+### 2. [correctness] Missing lifecycle test for init refresh (important)
+
+Planned Step 0 coverage only asserts `step0_session_main` passes `--repo-root` to `write-design-env` (`test_design_lifecycle.py:386-423`). It does not exercise the Step 0a→0b sequence where init rewrites `source-env.sh`. Add a regression that runs session setup plus `init_runparams_main` and asserts `export REPO_ROOT=...` survives.
+
+### 3. [OUT_OF_SCOPE] Step 2b `read` not threaded
+
+`skills/design/SKILL.md` Step 2b still calls `architectural-guidelines read` without `--repo-root`. That is outside the assessment-persistence acceptance criteria but is the same cwd-resolution class of bug during drafting.
+
+---
+
+**What the plan gets right**
+
+- Gate C fail-closed persist contract is already normative in `approval-gates.md:175-179`; the plan correctly adds `--repo-root "$REPO_ROOT"` to `present-note` / `persist-design-assessment` and an empty-`REPO_ROOT` repair stop without weakening absent/invalid behavior.
+- `present-note` / `persist-design-assessment` already accept `--repo-root` (`architectural_guidelines.py:761-772`, `829-834`).
+- Version fallback: `_plugin_version_local()` reads the wrong path today (`pr_body.py:457-459`, `parents[1]` → `python/larch/.claude-plugin/...`); fixing via `config.PLUGIN_JSON_PATH` from plugin root matches `_read_plugin_version_best_effort()` in `agents/_auth.py:729-732`. Priority in `_resolve_run_identity` already favors kwargs/manifest over fallback (`pr_body.py:482`).
+- Absent-guidelines behavior stays unchanged when the correct root is passed: `present` with no assessment flags removes stale artifacts and returns 0 (`architectural_guidelines.py:772-803`, existing tests in `test_architectural_guidelines.py:137-151`).
