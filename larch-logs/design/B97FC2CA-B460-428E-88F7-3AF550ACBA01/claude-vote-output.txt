@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- rendering.py is not in the plan's listed surfaces; the referenced test file test-write-final-report.sh does not exist in the codebase making the test portion of the fix unverifiable; the em-dash at rendering.py:1531 is real but outside the plan scope

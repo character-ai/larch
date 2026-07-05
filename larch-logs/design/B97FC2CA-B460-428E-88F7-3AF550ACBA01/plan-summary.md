@@ -1,0 +1,1 @@
+Plan: make scoped em-dash follow-up fixes across CI log banners, redaction markers, bootstrap fallback prose, final-summary fixtures/docs, and stalled-heading parsing. Skip timing-ledger wire labels and irrelevant mock fixtures per round 1 scope.

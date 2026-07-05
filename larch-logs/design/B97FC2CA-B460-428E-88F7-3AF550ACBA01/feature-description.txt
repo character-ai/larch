@@ -1,0 +1,81 @@
+# [OOS] Em-dash scrub follow-up: 7 remaining surfaces from PR #6312 / issue #6293
+
+## Summary
+
+Seven out-of-scope observations surfaced during PR #6312 (issue #6293, em-dash scrub of the Python run-summary and reporting layer) were dropped before the vote and not filed. This issue collects them for follow-up triage.
+
+**Origin**: implement run `A6561A54-76D9-4119-A0DE-981CB892FEC2`, round 1, all 7 pre-vote OOS candidates.
+
+---
+
+## OOS_1 — ci_monitor pointer still emits em dash (important)
+
+**Surfaced by**: cursor-specialist-edge-cases, codex-specialist-edge-cases, cursor-specialist-testing, codex-specialist-testing, dyn-dyn-report-format
+
+`collect_failed_logs()` in `python/larch/implement/ci_monitor.py` still uses the old `— last {tail_lines} lines shown` form. PR #6312 updated `gh.py` but left `ci_monitor.py` untouched. Operators see two different pointer formats for the same diagnostic; the live CI path still violates the readability rule.
+
+**Suggested fix**: change the banner separator in `ci_monitor.py` to match the colon wording in `gh.py`, or route `collect_failed_logs()` through the shared helper so the string has a single source of truth.
+
+---
+
+## OOS_2 — live progress passthrough still uses em dashes (nit)
+
+**Surfaced by**: cursor-specialist-edge-cases
+
+The live progress passthrough still emits timing-ledger em-dashes. User-visible run output can violate the readability rule during active runs.
+
+**Suggested fix**: accept as wire-label passthrough per plan, or extend the scrub to timing mark emission in a follow-up.
+
+---
+
+## OOS_3 — PR-body redaction truncation markers still use em dashes (nit)
+
+**Surfaced by**: cursor-specialist-testing
+
+The PR-body redaction truncation markers in `pr_body.py` still contain em dashes. Rare redaction paths can show non-compliant punctuation.
+
+**Suggested fix**: fix in a separate readability sweep of `pr_body` redaction helpers.
+
+---
+
+## OOS_4 — bootstrap append-failure fallback still uses em dash (latent)
+
+**Surfaced by**: codex-specialist-testing
+
+The append-failure fallback bullet in `python/larch/state/bootstrap.py` still emits an em dash. Bootstrap-generated execution-issues entries remain non-compliant.
+
+**Suggested fix**: change the fallback bullet separator to a colon.
+
+---
+
+## OOS_5 — write-final-report harness is out of sync with the new heading contract (important)
+
+**Surfaced by**: dyn-dyn-report-format (codex), dyn-dyn-report-format (cursor)
+
+The offline `write-final-report` bash harness still asserts em-dash run-summary headings, matrix outcomes, and top-reviewer lines even though the renderer now emits colon separators. Direct bash-harness runs can false-fail against the new contract.
+
+**Suggested fix**: update the harness fixture strings to match the new `: ` separator format.
+
+---
+
+## OOS_6 — run-summary heading docs still show the old em dash (latent)
+
+**Surfaced by**: dyn-dyn-report-format
+
+The documented run-summary heading contract (in skill prose or docs) still shows `## /<skill> run <run-id> — <outcome>`, which no longer matches the colon format emitted by the renderers. This can mislead implement tooling and reviewers.
+
+**Suggested fix**: update the documented heading format to `## /<skill> run <run-id>: <outcome>`.
+
+---
+
+## OOS_7 — final_report stalled-heading parser is fragile (latent)
+
+**Surfaced by**: codex-specialist-correctness
+
+`_summary_stalled_heading_index()` and `summary_heading_is_stalled()` only inspect the first non-empty line of `final-summary.md`. If any writer ever prepends content above the H2, the parser will miss the stalled heading silently.
+
+**Suggested fix**: scan all lines for the stalled-heading pattern rather than only the first non-empty line, or add a guard that the first non-empty line must be the expected H2.
+
+---
+
+*This issue was automatically created by the larch `/implement` workflow from out-of-scope observations surfaced during run A6561A54 (PR #6312, issue #6293).*

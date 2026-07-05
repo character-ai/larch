@@ -1,0 +1,5 @@
+warning: fix text for slot 'Codex-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: '`Require an H2 anchor before matching, for example \\`line.lstrip().startswith("#')
+warning: fix text for slot 'Cursor-Innovation' in FINDING_1 not traceable to scoped input (first 80 chars: '`Keep the all-lines scan, but tighten the predicate to run-summary H2 headings o')
+warning: fix text for slot 'Cursor-Pragmatic' in FINDING_1 not traceable to scoped input (first 80 chars: '`When implementing the all-lines scan, require an H2 run-summary heading in \\`_s')
+warning: fix text for slot 'Codex-Pragmatic' in FINDING_1 not traceable to scoped input (first 80 chars: '`Require a heading prefix before accepting the stalled suffix, so only the \\`## ')
+warning: fix text for slot 'Codex-Arch' in FINDING_2 not traceable to scoped input (first 80 chars: '`Change the warning text to colon wording and update \\`skills/implement/scripts/')
