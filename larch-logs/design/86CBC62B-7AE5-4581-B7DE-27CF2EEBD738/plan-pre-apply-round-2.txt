@@ -1,0 +1,142 @@
+## Approach
+
+Implement the 10 OOS fixes as small, targeted changes.
+
+1. Move OOS result reclassification before voter agreement row creation.
+   - In `tally_code_votes`, detect `is_oos` and scope drift, then call `classify_oos_result` before calling `voter_agreement_row_from_panel`.
+   - The agreement row must use the post-reclassification result so accepted OOS items show `accepted` in the Voter Agreement Scoreboard, not `neutral`.
+
+2. Remove stale pre-vote gate prose.
+   - Grep `review_core_body.py`, `review_pipeline.py`, and `test_review_aggregate.py` for any remaining pre-vote gate references.
+   - Update or remove only those comments that exist; skip as a no-op if none remain in the source files.
+   - `test_review_aggregate.py` has two stale comments at test function docstrings; update those to describe the current post-aggregate voting flow.
+
+3. Tighten OOS serialization eligibility.
+   - Change `_is_vote_tally_eligible` so a block with no `Vote tally:` line is not accepted-sink eligible.
+   - Current: `return not found_result or found_accepted`. Fix: `return found_result and found_accepted`.
+   - Keep accepted `Result=accepted` lines eligible. Keep rejected and neutral results ineligible.
+
+4. Fail closed on ballot read or parse errors.
+   - Change `_ballot_block_count` to a tri-state contract: return a sentinel value (or raise) on read/parse error to distinguish an error from a legitimately empty ballot.
+   - In `_prepare_pruned_ballot`: route read/parse errors to `_post_gate_panel_failed_exit_from_context(ctx, threshold_reason="ballot-read-failed")`. Only a successfully read zero-block ballot keeps `_zero_findings_from_context`.
+   - Add tests for unreadable or invalid ballot count handling.
+
+5. Protect security sidecar from design-log publish.
+   - Add `"security-oos-observations.md"` to `_PUBLISH_EXCLUDE_NAMES` in `design_log_publish_flow.py`. This set is matched at every tree depth (not top-level-only), so nested copies under any design-log subdirectory are also excluded.
+   - Add a publish predicate test asserting exclusion at both root and nested paths. Add a copy-flow integration test proving the file is not written to the publish destination.
+
+6. Split non-security disposition from security sidecar disposition.
+   - In `disposition_checkpoint_main`, run the non-security OOS disposition gate first.
+   - If that gate passes but `security-oos-observations.md` remains non-empty, return rc=3 (new: "security sidecar present, non-security cleared"). Write a distinct stderr/checkpoint log entry.
+   - Preserve hard failure rc=2 for missing non-security filing evidence, malformed checkpoint state, or ambiguous `oos-issues.ndjson`.
+   - Forked and repo-unavailable carve-outs keep current behavior.
+
+7. Map the sidecar status through filing and ship routing.
+   - In `oos_filer._after_checkpoint`: when `checkpoint.returncode == 3`, return `(3, {"status": "security_sidecar_present", "step9a1_stamped": False, ...})` and still write run statistics when filed URLs exist.
+   - `dispatch_ship.py` already routes `security_sidecar_present` on non-zero rc to `oos-pipeline`; update only if tests reveal the existing mapper is insufficient.
+
+8. Improve security sidecar durability tests.
+   - In `test_review_tally.py`: assert that security OOS items write to `security-oos-observations.md` and that the Voter Agreement Scoreboard shows the correct outcome, not only that public `oos.md` is absent.
+   - Cover design and implement tally paths.
+
+9. Add mixed-case end-to-end coverage.
+   - In `test_oos_filer.py` mixed-case test: drive the real `disposition-checkpoint` path (or stub `checkpoint_rc=3`) instead of stubbing to success.
+   - Assert public `issue create-one` filing happens, `oos-issues.ndjson` covers the public block, `cmd_file` returns rc=3 with `status="security_sidecar_present"`, `step9a1_stamped=False`, and filed URLs are present in the JSON payload.
+   - In `test_implement_dispatch.py`: assert `NEXT_ACTION=oos-pipeline` (not `halt-oos`) for the rc=3 payload.
+
+10. Clean shard assignment drift.
+    - Remove the stale `tests/review/test_review_pipeline.py::test_review_core_body_pre_vote_gate_all_oos_skips_voters` node-id from `python/shard-assignments.json`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/review_tally.py
+Move OOS reclassification (`classify_oos_result`) before `voter_agreement_row_from_panel`. Add tests asserting accepted OOS items appear with `accepted` in the Voter Agreement Scoreboard.
+
+### UPDATED: python/larch/review/review_core_body.py
+Change `_ballot_block_count` to a tri-state/raise contract: read/parse errors route to `_post_gate_panel_failed_exit_from_context(threshold_reason="ballot-read-failed")`; zero-block readable ballots keep `_zero_findings_from_context`. Remove stale pre-vote gate comments if any exist.
+
+### UPDATED: python/larch/issue/oos.py
+Require an explicit `Vote tally:` line with `Result=accepted` for accepted-sink serialization eligibility. Fix: `return found_result and found_accepted`.
+
+### UPDATED: python/larch/design/design_log_publish_flow.py
+Add `"security-oos-observations.md"` to `_PUBLISH_EXCLUDE_NAMES` so the sidecar is excluded at every tree depth.
+
+### UPDATED: python/larch/issue/file_oos.py
+Split checkpoint handling: run non-security disposition gate independently; return rc=3 when only the security sidecar remains after non-security gates pass.
+
+### UPDATED: python/larch/issue/oos_filer.py
+Map checkpoint rc=3 to `status="security_sidecar_present"` with `step9a1_stamped=False`; still write run statistics when filed URLs exist. Return rc=3 to `cmd_file`.
+
+### MAY_UPDATE: python/larch/implement/dispatch_ship.py
+Update only if tests show the existing `security_sidecar_present` mapping on non-zero rc does not route to `oos-pipeline` for rc=3.
+
+### UPDATED: python/tests/review/test_review_tally.py
+Extend `test_tally_security_oos_holdback` and siblings to assert (a) `security-oos-observations.md` contains the security OOS block, and (b) the Voter Agreement Scoreboard shows the accepted result for OOS items, not the pre-reclassification neutral result.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+Add fail-closed coverage: unreadable ballot path must route to `_post_gate_panel_failed_exit_from_context` (not zero findings). Remove any assumptions tied to the retired pre-vote gate.
+
+### UPDATED: python/tests/issue/test_oos.py
+Update serialization tests for the new no-tally ineligible rule. Add a direct regression: block with no `Vote tally:` line must not appear in accepted sink.
+
+### UPDATED: python/tests/design/test_design_log_publish_flow.py
+Assert `security-oos-observations.md` is excluded from design-log publish at both root and nested-copy paths.
+
+### UPDATED: python/tests/issue/test_file_oos.py
+Update the security-sidecar checkpoint test for the rc=3/status split. Add mixed public plus security sidecar checkpoint coverage asserting rc=2 remains for unresolved non-security OOS.
+
+### UPDATED: python/tests/issue/test_oos_filer.py
+Update the existing mixed-case test to drive real `disposition-checkpoint` (or stub `checkpoint_rc=3`). Assert public filing succeeds, `cmd_file` returns rc=3 with `status="security_sidecar_present"`, `step9a1_stamped=False`, and filed URLs present.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+Assert that the rc=3 `security_sidecar_present` filer payload causes `NEXT_ACTION=oos-pipeline`, not `halt-oos`.
+
+### UPDATED: python/tests/review/test_plan_review.py
+Add or extend a plan-review tally test asserting accepted OOS security items route to `security-oos-observations.md` and not to `oos.md` or `oos-accepted-design.md`.
+
+Update the oversized-filing cap test: retarget to prove the `cap=1` rollup/summarization invariant rather than exercising unrelated multi-part split behavior. Rename and tighten the test scope.
+
+### UPDATED: python/shard-assignments.json
+Remove the retired pre-vote-gate node-id entry.
+
+### MAY_UPDATE: SECURITY.md
+Update only if the existing policy does not already document that security OOS sidecars stay private and out of committed design logs.
+
+## Edge cases
+
+- OOS blocks with prose `Result=accepted` outside a `Vote tally:` line must not become serialization eligible.
+- Accepted security OOS must not appear in public `oos.md`, `oos-accepted-*.md`, or committed design logs at any subtree depth.
+- Mixed security and non-security runs must not block public filing for non-security items.
+- Security-only runs should still route to the private disposition path.
+- Ambiguous or missing `oos-issues.ndjson` must remain a hard checkpoint failure (rc=2) for non-security accepted OOS.
+- Forked and repo-unavailable carve-outs keep current behavior.
+- rc=3 from `cmd_file` must propagate correctly through `dispatch_ship.py` to `NEXT_ACTION=oos-pipeline`.
+
+## Failure modes
+
+- rc=3 can be mishandled by callers and regress to `halt-oos`. The `test_implement_dispatch.py` coverage guards this.
+- Step 9a.1 stamping semantics for rc=3: `step9a1_stamped=False` signals the security sidecar still requires private disposition.
+- Tightening no-tally eligibility requires updating any fixtures that intentionally omitted tally lines.
+- Design-log exclusion at `_PUBLISH_EXCLUDE_NAMES` (depth-invariant) must cover nested subtrees.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `cd python && python -m pytest tests/review/test_review_tally.py tests/review/test_review_pipeline.py tests/review/test_plan_review.py`
+- `cd python && python -m pytest tests/issue/test_oos.py tests/issue/test_file_oos.py tests/issue/test_oos_filer.py`
+- `cd python && python -m pytest tests/design/test_design_log_publish_flow.py`
+- `cd python && python -m pytest tests/implement/test_implement_dispatch.py`
+
+Then run changed-file lint/type checks:
+
+- `make py-lint`
+- `make py-test` if focused tests or lint expose shared fixture risk.
+
+## Difficulty
+
+This is HARD. It touches security sidecar handling, ship routing, checkpoint semantics, run-log publishing, and vote diagnostics. Confidence is high because the relevant code paths and tests are directly identifiable, but the blast radius is high.
+
+difficulty: HARD
+mechanical_churn: false
+diff_lines: 300

@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan item 7 already specifies rc=3 mapping in _after_checkpoint
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- plan already requires updating test_oos.py serialization tests for the no-tally rule
+OOS_1: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of ledger OOS_1 already accepted out of scope
+OOS_2: NO CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- duplicate of prior materialize_manifest_oos sidecar-recreate finding
