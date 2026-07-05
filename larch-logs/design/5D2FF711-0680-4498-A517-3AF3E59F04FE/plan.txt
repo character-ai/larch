@@ -1,0 +1,139 @@
+## Approach
+
+Implement the approved narrow fix set.
+
+1. Restore main-agent OOS promotion.
+   - In `_promote_aggregate_oos_pool`, remove `voting.artifact_marked_fileable(block)` from the `main_agent` branch only.
+   - Keep the security filter.
+   - Keep the voted `pool` branch gate unchanged: accepted result plus `Fileable=true`.
+
+2. Split OOS proposed versus fileable counts in progress reports.
+   - Treat vote-accepted OOS as proposed; treat strict-majority-`major` OOS as fileable.
+   - Preserve `OOS_ACCEPTED_COUNT` as fileable-only where the tally env already defines it.
+   - Add a distinct `OOS_PROPOSED_COUNT` for vote-accepted OOS in recomputed views and in persisted round metadata.
+   - Prefer `round_dir/review-tally.env` for the fileable count when present; fall back to classification TSV vote and severity columns via `voting.oos_fileable_from_votes(...)`.
+   - Keep security-tagged OOS out of both operator-facing columns, mirroring `_adjust_design_security_oos`.
+   - Keep backward compatibility for old `round-meta.json` files that lack the new field.
+
+3. Remove dead prune args and every stale caller flag.
+   - Drop `--oos-file` and the `prune_nit_findings` copy of `--input-mode` from `_parse_prune_args`.
+   - Remove `--input-mode` from both prune callers: `plan_review_round._drop_nits_before_plan_vote` (`--input-mode plan`) and `review_core_body._prune_nits_for_ballot` (`--input-mode code`).
+   - Do not touch `aggregate_findings --input-mode`.
+
+4. Update stale docs.
+   - State that accepted non-security OOS files only when fileable: accepted plus a strict majority of YES voters rating `major`.
+   - Replace the retired `blocker` scoring text with `major` only.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/review_tally.py
+- Change only the `main_blocks` filter in `_promote_aggregate_oos_pool`.
+- Main-agent blocks should promote when:
+  - the file exists,
+  - the block parses as an OOS block,
+  - the block is not security-tagged.
+- Do not require `Vote tally: ... Fileable=true` for main-agent blocks.
+- Leave voted pool promotion as-is.
+
+### UPDATED: python/tests/review/test_review_tally.py
+- Change `test_emit_tally_promotes_fileable_main_agent_oos` so the main-agent fixture has no `Vote tally` / `Fileable=true` lines.
+- Assert both marker-less main-agent OOS blocks promote into `oos-accepted-review.md`.
+- Keep or add coverage that voted pool items without `Fileable=true` do not promote.
+- Keep security OOS exclusion coverage unchanged.
+
+### UPDATED: python/larch/report/progress_report.py
+- Refactor OOS count parsing so vote-accepted OOS (proposed) and fileable OOS are distinct.
+- Add helper logic that computes fileable OOS from one of:
+  - `round_dir/review-tally.env` `OOS_ACCEPTED_COUNT`, preferred when present,
+  - classification TSV `voting_result`, `vN_vote`, and `vN_severity` columns via `voting.oos_fileable_from_votes(...)`,
+  - legacy fallback when only old `round-meta.json` exists.
+- Keep security-tagged OOS out of both proposed and fileable render columns: skip or decrement security-tagged rows via `voting.is_security_block`, matching `_adjust_design_security_oos`.
+- In `_phase_round_from_meta`, bind proposed from `OOS_PROPOSED_COUNT` (fallback: classification/markdown vote-accepted count) and fileable from `OOS_ACCEPTED_COUNT` (prefer `round_dir/review-tally.env`). When meta lacks `OOS_PROPOSED_COUNT` (legacy), treat `OOS_ACCEPTED_COUNT` as proposed only and derive fileable separately; never reinterpret legacy `OOS_ACCEPTED_COUNT` as fileable without that guard.
+- Compute `oos_total` from proposed plus rejected (`OOS_PROPOSED_COUNT + OOS_REJECTED_COUNT`, else legacy vote-accepted `OOS_ACCEPTED_COUNT + OOS_REJECTED_COUNT`), not from a fileable-only count. Prefer `tally_canonical` buckets when present; use raw `tally` only when canonical is absent.
+- Rename the rendered OOS header from `OOS accepted` to `OOS fileable`, and render `OOS proposed` for the vote-accepted count.
+- Persist counts in `_round_meta_object`, `write_implement_round_meta`, and `write_design_round_meta`:
+  - store fileable-only `OOS_ACCEPTED_COUNT` (prefer `round_dir/review-tally.env` when present, else `oos_fileable_from_votes` on classification rows),
+  - store vote-accepted OOS as a distinct `OOS_PROPOSED_COUNT`,
+  - never copy raw classification accepted counts into `OOS_ACCEPTED_COUNT`.
+- Apply the same split to the canonical path so `tally` and `tally_canonical` do not drift: make `_canonical_decomposition` (or a post-process of its output) set `tally_canonical` `OOS_ACCEPTED_COUNT` fileable-only via `voting.oos_fileable_from_votes(...)` and add `tally_canonical` `OOS_PROPOSED_COUNT`, applying the same security exclusion. Never store fileable-only counts into `tally_canonical` `OOS_ACCEPTED_COUNT` without also writing `OOS_PROPOSED_COUNT`.
+- Keep legacy readers working by defaulting missing proposed/fileable fields.
+- Do not let recomputed classification counts overwrite fileable-only `OOS_ACCEPTED_COUNT`.
+
+### UPDATED: python/larch/report/_progress_report_live.py
+- Extend `_PhaseRound` only if needed by the render changes.
+- Keep old metadata readable by using defaults for missing proposed or fileable fields.
+
+### UPDATED: python/tests/report/test_progress_report.py
+- Add a regression where classification TSV has an accepted OOS with only `minor` YES severity; assert the report shows it as proposed but not fileable.
+- Add a case where `round_dir/review-tally.env` supplies fileable-only `OOS_ACCEPTED_COUNT` and metadata/report rendering uses that as fileable.
+- Cover `write_design_round_meta` and `write_implement_round_meta` persisting `OOS_PROPOSED_COUNT` (vote-accepted) plus fileable-only `OOS_ACCEPTED_COUNT` for the accepted-minor vs fileable split.
+- Update expected table headers and totals for the new `OOS proposed` / `OOS fileable` labels.
+- Extend `test_write_implement_round_meta_records_canonical_decomposition` with an accepted-`minor` OOS row asserting `tally_canonical` `OOS_PROPOSED_COUNT=1` and `OOS_ACCEPTED_COUNT=0`.
+- Extend `test_render_phase_detail_shows_canonical_decomposition_footnote` so the footnote reflects proposed versus fileable after the split.
+- Keep design security OOS adjustment coverage intact.
+
+### UPDATED: python/larch/review/review_aggregate.py
+- Remove `--oos-file` and `--input-mode` from `_parse_prune_args`.
+- Leave `aggregate_findings` argument parsing untouched.
+
+### UPDATED: python/larch/review/plan_review_round.py
+- Remove the stale `--input-mode plan` argument from `_drop_nits_before_plan_vote`.
+- Do not remove `--input-mode plan` from the aggregate-findings call.
+
+### UPDATED: python/larch/review/review_core_body.py
+- Remove `--input-mode` from the `prune-nit-findings` argv in `_prune_nits_for_ballot` (the code-review ballot prune path, currently `--input-mode code`).
+- Keep the audit-file and security-audit-file arguments on that call.
+- This must land with the `_parse_prune_args` removal so the code-review prune caller does not hit an argparse error.
+
+### UPDATED: python/tests/review/test_review_aggregate.py
+- Update prune-nit tests and argv fixtures to stop passing `--oos-file` or `--input-mode`.
+- Add or adjust a negative parse test only if existing coverage expects the removed flags to work.
+
+### UPDATED: python/tests/review/test_plan_review_round.py
+- Update fake prune CLI assertions and expected argv lists to remove `--input-mode plan`.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+- Update prune-nit fake scripts or argv assertions that still consume `--oos-file` or `--input-mode`.
+- Cover the code-review core prune invocation (`_prune_nits_for_ballot`) so a stray `--input-mode` on the prune CLI is caught.
+- Keep aggregate and tally call paths that legitimately use `--oos-file`.
+
+### UPDATED: docs/voting-process.md
+- Update OOS filing prose to say only fileable accepted non-security OOS gets filed.
+- Define fileable as accepted plus a strict majority of YES voters assigning panel severity `major`.
+- Replace `blocker or major` with `major`.
+
+## Edge cases
+
+- Main-agent OOS blocks have no vote tally. They must still promote when non-security.
+- Security-tagged main-agent OOS must not promote into the public accepted review sink.
+- Voted pool OOS without `Fileable=true` must stay out of `oos-accepted-review.md`.
+- Security-tagged OOS must stay out of both `OOS proposed` and `OOS fileable` render columns.
+- Old round metadata may lack proposed/fileable split fields. Rendering should degrade without crashing.
+- Classification TSV rows may have fewer voter columns than expected. Missing votes or severities should not count as fileable.
+- Markdown-only old tallies may not contain severity data. Prefer safe fallback labels instead of inventing fileability.
+- Removing prune args must not break `aggregate_findings --input-mode`.
+- Both prune callers (`plan_review_round` and `review_core_body`) must drop `--input-mode` before or with the parser change.
+
+## Failure modes
+
+- If `OOS_ACCEPTED_COUNT` is redefined back to vote-accepted, #6430 regresses.
+- If either prune caller keeps `--input-mode` after the parser cleanup, argparse rejects the command; plan-review nit pruning or `/review` code-review nit pruning fails before voting.
+- If both main-agent and aggregate-pool promotion read the same block, duplicate OOS entries can appear. Keep identity-based dedup unchanged.
+- If report labels stay ambiguous, operators may still mistake proposed OOS for filed OOS.
+
+## Testing strategy
+
+Run only changed-file tests and focused OOS harnesses:
+
+```bash
+cd python
+pytest tests/review/test_review_tally.py tests/report/test_progress_report.py tests/review/test_review_aggregate.py tests/review/test_plan_review_round.py tests/review/test_review_pipeline.py
+cd ..
+bash skills/implement/scripts/test-oos-disposition-gate.sh
+make py-lint
+```
+
+If Markdown lint is scoped locally, run the relevant pre-commit hook on `docs/voting-process.md`.
+
+difficulty: MODERATE
+diff_lines: 360

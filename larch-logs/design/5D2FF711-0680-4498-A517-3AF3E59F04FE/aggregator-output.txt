@@ -1,0 +1,24 @@
+### FINDING_1: Unify OOS proposed/fileable semantics across writer, reader, and legacy meta
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: major
+- **Concern**: The new OOS proposed/fileable split is not applied through one consistent contract: current canonical writes can still keep vote-accepted OOS in `tally_canonical.OOS_ACCEPTED_COUNT`, `_phase_round_from_meta` can still compute `oos_total` from the wrong bucket, and legacy round-meta without `OOS_PROPOSED_COUNT` can be misread as fileable, so accepted-minor OOS can overstate fileable counts or drift between `tally` and `tally_canonical`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add an explicit legacy branch: when OOS_PROPOSED_COUNT is missing, treat tally.OOS_ACCEPTED_COUNT as proposed only and derive fileable from review-tally.env when present else per-row oos_fileable_from_votes on classification (or markdown-safe fallback); never reinterpret legacy OOS_ACCEPTED_COUNT as fileable without that guard.
+  - From Cursor-Innovation: In the `write_implement_round_meta` / `_canonical_decomposition` path, persist vote-accepted OOS as `OOS_PROPOSED_COUNT` and fileable-only OOS as `OOS_ACCEPTED_COUNT` inside `tally_canonical` too (via `oos_fileable_from_votes` / `review-tally.env`, with the same security exclusion). Extend `test_write_implement_round_meta_records_canonical_decomposition` with an accepted-`minor` OOS row asserting `tally_canonical.OOS_PROPOSED_COUNT=1` and `tally_canonical.OOS_ACCEPTED_COUNT=0`.
+  - From Cursor-Pragmatic: Explicitly update `_canonical_decomposition` (or post-process its output) so canonical OOS accepted is fileable-only via `voting.oos_fileable_from_votes(...)`, add `OOS_PROPOSED_COUNT` to `tally_canonical`, and wire `_phase_round_from_meta` `oos_total` to `OOS_PROPOSED_COUNT + OOS_REJECTED_COUNT` from the same source. Extend `test_write_implement_round_meta_records_canonical_decomposition` with an accepted-minor OOS row.
+  - From Cursor-Requirements: When `tally_canonical` exists, compute `oos_total` from canonical OOS buckets using proposed semantics (`OOS_PROPOSED_COUNT`, else legacy vote-accepted `OOS_ACCEPTED_COUNT`) plus `OOS_REJECTED_COUNT`; use raw `tally` only when canonical is absent. Do not store fileable-only counts into `tally_canonical.OOS_ACCEPTED_COUNT` without a proposed field. Extend the plan testing strategy with an explicit regression for `test_render_phase_detail_shows_canonical_decomposition_footnote`.
+
+### FINDING_2: Security OOS lookup misses production design artifacts
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: minor
+- **Concern**: Progress-report security filtering still appears to search only round-local files, so accepted security OOS can be counted when the production design source lives outside `round_dir`; that risks letting security-tagged OOS into proposed/fileable counts unless the lookup spans the design and ballot artifacts used in production.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Extend the progress-report OOS security lookup used for classification and markdown rows to search production design sources, including round_dir.parent.parent/security-oos-observations.md and root findings-oos.md or ballot sources, before counting proposed/fileable; add a production-shaped design round test.
+
+### FINDING_3: Security exclusion must decrement proposed counts
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: major
+- **Concern**: The security OOS exclusion is still wired around the old accepted/fileable slot, so accepted security rows can leak into `OOS_PROPOSED_COUNT` or operator-facing proposed counts after the split, and `write_implement_round_meta` still lacks the design-side decrement applied elsewhere.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Apply the same security skip/decrement in `write_implement_round_meta` (shared helper used by both writers, or call `_adjust_design_security_oos` on the proposed bucket before persisting). Add an implement-side regression mirroring `test_write_design_round_meta_security_oos_and_panel`.
+  - From Cursor-Requirements: Vote-accepted security OOS leaks into operator-facing `OOS proposed` despite the edge-case requirement to exclude security-tagged OOS from both columns. Extend `_adjust_design_security_oos` (or the new proposed/fileable derivation) so accepted security rows decrement `OOS_PROPOSED_COUNT` / proposed render counts as well as fileable counts; add a design meta test with accepted security OOS asserting both proposed and fileable stay zero.
