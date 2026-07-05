@@ -1,0 +1,31 @@
+Reviewing the plan against the current `/combine-issues` skill and docs; reading the relevant files.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	.claude/skills/combine-issues/SKILL.md:224-231	Planned multi-key rescue bullet says leave ambiguous matches pending or kept	Ambiguous multi-key rescue can move staged merit items into the kept flat list before the operator confirms exact keys, bypassing the merit batch and risking wrong rejections on unrescued siblings	Require merit-pending only for multi-key ambiguity: matched items stay on the Rejected items (merit) list, are not rescued, and are not confirmed rejected until exact keys are confirmed; reserve default keep for zero-key rescue only
+1	out_of_scope	latent	risk-integration	README.md:220	README --oos blurb still actuality-only	Operators using the feature matrix miss the merit gate until they open docs/skills.md or the dev skill	Update README.md:220 in a follow-up or widen plan scope if README parity is required
+
+## Findings
+
+### 1. Multi-key rescue: "pending or kept" (in-scope)
+
+The plan’s oos-4 replacement bullets fix zero-key default-keep and multi-key confirmation before the merit batch. One proposed bullet still says ambiguous matches may be left **“pending or kept.”** For items on the `Rejected items (merit)` list, **“kept”** can be read as moving them into the kept flat list before key confirmation.
+
+That conflicts with:
+
+- Staged low-merit items staying on the rejection list until oos-4 batch approval (`.claude/skills/combine-issues/SKILL.md:168-169`)
+- Sources with pending merit staying close-blocking (`.claude/skills/combine-issues/SKILL.md:220`, `229`, `456`)
+- The harmful behavior at `.claude/skills/combine-issues/SKILL.md:227` that the plan replaces
+
+**Suggested revision:** For multi-key ambiguity, use **merit-pending only** (stay on the rejection list; not rescued; not confirmed rejected). Use **default keep** only for zero-key rescue (no keys matched).
+
+### 2. README drift ([OUT_OF_SCOPE])
+
+`README.md:220` still describes `--oos` as actuality-only. The plan correctly limits edits to `.claude/skills/combine-issues/SKILL.md` and `docs/skills.md:318`, which already mention merit in the body (`SKILL.md:17`) and will be synced per the plan. README parity is a reasonable follow-up, not required for this plan’s stated scope.
+
+## What the plan gets right
+
+- Frontmatter update with `Use when` preserved and a 200-character cap called out (`lint_skill_description_length.py:11`)
+- `docs/skills.md` catalog sync aligned with the `--oos` flag text at `SKILL.md:17`
+- Zero-key default-keep and multi-key confirmation before merit batch
+- Close-blocking for unresolved merit via existing oos-4/oos-5 rules and plan edge cases
+- Prompt-only change; no Python parsing unless an existing helper owns the decision
+- Focused lint test strategy without scope creep
