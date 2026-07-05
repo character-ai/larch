@@ -380,13 +380,16 @@ def test_write_final_report_ndjson_fallbacks_render_detail(
     assert "plain two" in body
 
 
-def test_write_final_report_counts_committed_ndjson_over_live_log(
+def test_write_final_report_counts_committed_ndjson_and_live_log(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write_minimal_state(tmp_path)
     _stub_cost_and_assessment(monkeypatch)
-    (tmp_path / "execution-issues.md").write_text("### Warnings\n- stale live warning\n", encoding="utf-8")
+    (tmp_path / "execution-issues.md").write_text(
+        "### Tool Failures\n- committed failure\n- post-flush failure\n### Warnings\n- live warning\n",
+        encoding="utf-8",
+    )
     run_dir = tmp_path / "larch-logs" / "implement" / "run1"
     run_dir.mkdir(parents=True)
     (run_dir / "execution-issues.ndjson").write_text(
@@ -398,10 +401,11 @@ def test_write_final_report_counts_committed_ndjson_over_live_log(
 
     assert (rc, err) == (0, "")
     body = (tmp_path / "summary-final.md").read_text(encoding="utf-8")
-    assert "**Exec issues**: 1" in body
-    assert "**Warnings**: 0" in body
+    assert "**Exec issues**: 2" in body
+    assert "**Warnings**: 1" in body
     assert "committed failure" in body
-    assert "stale live warning" not in body
+    assert "post-flush failure" in body
+    assert "live warning" in body
 
 
 def test_write_final_report_legacy_string_count_header_only(

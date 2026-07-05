@@ -52,12 +52,15 @@ rehydrate_larch_triplet() {
 
 rehydrate_plugin_root
 rehydrate_larch_triplet
+export PYTHONPATH="$CLAUDE_PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}"
 
 # Write bg-wait marker for Step 3 (the site invoked with run_in_background: true) so
 # hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress probes during the wait.
 # Other sites (step5-review-fixes, step6, etc.) are composites; they manage their own
 # marker lifecycle independently. Fail-open: a write failure must not abort the checks.
 if [ "$SITE" = "step3" ]; then
+  _step3_timeout_s=$(python3 -c "import sys; sys.path.insert(0, '$CLAUDE_PLUGIN_ROOT/python'); from larch.implement.dispatch_leg import CHECKS_STEP3_BG_WAIT_TIMEOUT_S; print(CHECKS_STEP3_BG_WAIT_TIMEOUT_S)" 2>/dev/null || printf '%s\n' '10800')
+  case "$_step3_timeout_s" in ''|*[!0-9]*) _step3_timeout_s=10800 ;; esac
   rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
   rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
   _step3_cleanup() {
@@ -73,8 +76,8 @@ if [ "$SITE" = "step3" ]; then
   if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
     _step3_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
   fi
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=10800\nCLONE_PATH=%s\n' \
-    "$$" "$_step3_claude_pid" "$_step3_start" "$_step3_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=%s\nCLONE_PATH=%s\n' \
+    "$$" "$_step3_claude_pid" "$_step3_start" "$_step3_timeout_s" "$_step3_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
 fi
 
 python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"

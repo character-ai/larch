@@ -67,6 +67,8 @@ _SHIP_ROUTE_EXIT_LEDGER_KEYS = (
     "ledger_exit_code",
     "ledger_failure_detail_log",
 )
+_PRE_FIX_REBASE_OK_SENTINEL = ".ship-pre-fix-rebase-ok"
+_PRE_FIX_PHASE14_ALLOWED_REASONS = frozenset({"mergeStateStatus=DIRTY", "mergeStateStatus=BEHIND"})
 
 
 @dataclass(frozen=True)
@@ -320,6 +322,8 @@ def _write_ship_route_handoff(
             if _ship_route_safe_line(value)
         )
     if action in {"ci-fix", "reship"}:
+        with contextlib.suppress(OSError):
+            (implement_tmpdir / _PRE_FIX_REBASE_OK_SENTINEL).unlink()
         lines.append("PRE_FIX_REBASE_REQUIRED=true")
     lines.append(f"NEXT_ACTION={action}")
     if delay_seconds:
@@ -426,6 +430,39 @@ def _ship_pre_fix_read_state(implement_tmpdir: Path) -> tuple[dict[str, str], st
     return values, ""
 
 
+def _ship_pre_fix_clear_ok_sentinel(implement_tmpdir: Path) -> None:
+    with contextlib.suppress(OSError):
+        (implement_tmpdir / _PRE_FIX_REBASE_OK_SENTINEL).unlink()
+
+
+def _ship_pre_fix_write_ok_sentinel(implement_tmpdir: Path) -> None:
+    _write_text_atomic(path=implement_tmpdir / _PRE_FIX_REBASE_OK_SENTINEL, text="PRE_FIX_REBASE_OK=true\n")
+
+
+def _ship_pre_fix_flag_fields(implement_tmpdir: Path) -> dict[str, str]:
+    flag = implement_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
+    if not flag.is_file() or flag.is_symlink():
+        return {}
+    fields: dict[str, str] = {}
+    try:
+        text = flag.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return {}
+    for line in text.splitlines():
+        key, sep, value = line.partition("=")
+        if sep and key and key not in fields:
+            fields[key] = value.strip()
+    return fields
+
+
+def _ship_pre_fix_phase14_skip_allowed(implement_tmpdir: Path) -> bool:
+    fields = _ship_pre_fix_flag_fields(implement_tmpdir)
+    return (
+        fields.get("RESUME_PHASE") == config.SHIP_PR_RRR_RESUME_PHASE
+        and fields.get("REASON") in _PRE_FIX_PHASE14_ALLOWED_REASONS
+    )
+
+
 def _ship_pre_fix_int(value: str) -> int:
     with contextlib.suppress(ValueError):
         return int(value.strip() or "0")
@@ -528,13 +565,16 @@ def _ship_pre_fix_rebase_step(
     error = _ship_pre_fix_validate_checkout(state=state, cwd=cwd)
     if error:
         return error, "", ""
+    route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
     if git.rebase_in_progress(proc, cwd=cwd):
-        route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
         if not route_fields:
             return None, "stall", "stall"
-        ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-            state_file=implement_tmpdir / "ship-pr-state.sh",
-            patch=route_fields,
+        _ship_pre_fix_write_conflict_state(
+            implement_tmpdir=implement_tmpdir,
+            state=state,
+            resume_phase=route_fields["RESUME_PHASE"],
+            caller_kind=route_fields["CALLER_KIND"],
+            conflict_files=route_fields["CONFLICT_FILES"],
         )
         _ship_pre_fix_patch_handoff(
             implement_tmpdir=implement_tmpdir,
@@ -545,8 +585,27 @@ def _ship_pre_fix_rebase_step(
             },
         )
         return None, "conflict", "conflict-fix"
+    if route_fields:
+        _ship_pre_fix_write_conflict_state(
+            implement_tmpdir=implement_tmpdir,
+            state=state,
+            resume_phase=route_fields["RESUME_PHASE"],
+            caller_kind=route_fields["CALLER_KIND"],
+            conflict_files=route_fields["CONFLICT_FILES"],
+        )
+        _ship_pre_fix_patch_handoff(
+            implement_tmpdir=implement_tmpdir,
+            patch={
+                **route_fields,
+                "PRE_FIX_REBASE_STATUS": "conflict",
+                "NEXT_ACTION": "conflict-fix",
+            },
+        )
+        return None, "conflict", "conflict-fix"
+    if _ship_pre_fix_phase14_skip_allowed(implement_tmpdir):
+        return None, "skip", "continue"
     base_remote = "upstream" if _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")) else "origin"
-    rebase.rebase_and_push(
+    rebase_result = rebase.rebase_and_push(
         runner=proc,
         repo=state["REPO"],
         run_id=state["RUN_ID"],
@@ -558,6 +617,11 @@ def _ship_pre_fix_rebase_step(
         allow_conflict_fix=True,
         enable_pre_push_handoff=True,
     )
+    if getattr(rebase_result, "rebased", False):
+        ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            state_file=implement_tmpdir / "ship-pr-state.sh",
+            patch={"REBASE_COUNT": str(_ship_pre_fix_int(state.get("REBASE_COUNT", "")) + 1)},
+        )
     return None, "ok", "continue"
 
 
@@ -596,6 +660,7 @@ def _ship_pre_fix_rebase_request(argv: list[str] | None) -> tuple[ShipPreFixReba
     implement_tmpdir = _ship_pre_fix_resolve_tmpdir(raw_tmpdir)
     if implement_tmpdir is None:
         return None, "--implement-tmpdir is required and must be an existing directory"
+    _ship_pre_fix_clear_ok_sentinel(implement_tmpdir)
     state, error = _ship_pre_fix_read_state(implement_tmpdir)
     if error:
         return None, error
@@ -607,14 +672,11 @@ def _ship_pre_fix_rebase_run(request: ShipPreFixRebaseRequest) -> tuple[ShipPreF
     result: ShipPreFixRebaseResult | None = None
     error: str | None = None
     try:
-        if (request.implement_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file():
-            result = ShipPreFixRebaseResult(status="skip", action="continue")
-        else:
-            error, status, action = _ship_pre_fix_rebase_step(
-                implement_tmpdir=request.implement_tmpdir, state=request.state, cwd=request.cwd
-            )
-            if not error:
-                result = ShipPreFixRebaseResult(status=status, action=action)
+        error, status, action = _ship_pre_fix_rebase_step(
+            implement_tmpdir=request.implement_tmpdir, state=request.state, cwd=request.cwd
+        )
+        if not error:
+            result = ShipPreFixRebaseResult(status=status, action=action)
     except PrePushConflictHandoff as exc:
         error = _ship_pre_fix_handle_conflict(
             implement_tmpdir=request.implement_tmpdir,
@@ -637,6 +699,11 @@ def ship_pre_fix_rebase_main(argv: list[str] | None = None) -> int:
     result, error = _ship_pre_fix_rebase_run(request)
     if error or result is None:
         return _ship_pre_fix_fail(error or "pre-fix rebase did not produce a result")
+    if result.action in {"continue", "conflict-fix"}:
+        try:
+            _ship_pre_fix_write_ok_sentinel(request.implement_tmpdir)
+        except OSError as exc:
+            return _ship_pre_fix_fail(f"cannot write pre-fix rebase sentinel: {exc}")
     return _ship_pre_fix_emit(status=result.status, action=result.action, detail=result.detail)
 
 

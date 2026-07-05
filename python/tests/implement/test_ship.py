@@ -439,7 +439,10 @@ def test_ship_rebase_phase_preserves_guidelines_note_after_unchanged_diff_rebase
 def test_ship_phase14_rebase_success_writes_ci_initial_state(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     state = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
-    _ = flag.write_text("", encoding="utf-8")
+    _ = flag.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
     _ = state.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
         "RESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n"
@@ -522,7 +525,10 @@ def test_ship_phase14_rebase_rebased_retains_guidelines_note(
 ) -> None:
     state = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
-    _ = flag.write_text("", encoding="utf-8")
+    _ = flag.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
     _ = state.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\n"
         "RESUME_PHASE=ship-pr-rrr-phase14\nCALLER_KIND=ship_pr_pre_push\n"
@@ -1874,7 +1880,9 @@ def test_no_checks_dirty_pr_writes_phase14_reship_flag(
     assert result.outcome is Outcome.STALLED
     phase14 = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
     assert phase14.is_file()
-    assert "REASON=mergeStateStatus=DIRTY\n" in phase14.read_text(encoding="utf-8")
+    flag_text = phase14.read_text(encoding="utf-8")
+    assert f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n" in flag_text
+    assert "REASON=mergeStateStatus=DIRTY\n" in flag_text
 
 
 def test_non_no_checks_bail_still_publishes_terminal_snapshot(
@@ -2553,7 +2561,10 @@ def test_phase14_flag_rebase_success_clears_handoff_and_conflict_files(
 ) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
-    _ = flag.write_text("", encoding="utf-8")
+    _ = flag.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
     _ = state_file.write_text(
         f"PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n"
         f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\n"
@@ -2607,7 +2618,10 @@ def test_phase14_flag_removed_on_non_handoff_rebase_failure(
 ) -> None:
     state_file = tmp_path / "ship-pr-state.sh"
     flag = tmp_path / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME
-    _ = flag.write_text("", encoding="utf-8")
+    _ = flag.write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
     _ = state_file.write_text(
         "PHASE=ci-initial\nBRANCH_NAME=feat\nPR_NUMBER=7\nREPO=o/r\nMERGE=true\nDRAFT=false\n",
         encoding="utf-8",

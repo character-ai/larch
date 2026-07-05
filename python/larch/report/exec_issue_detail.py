@@ -287,17 +287,65 @@ def _parse_ndjson_legacy(path: Path) -> LoadResult:
     return LoadResult(EMPTY_GROUPS, listing_degraded=True, degraded_totals=legacy_category_string_totals(body_text))
 
 
-def load_issue_detail_groups(tmpdir: Path, *, run_dir: Path | None, prefer_run_dir: bool = False) -> LoadResult:
-    if prefer_run_dir and run_dir is not None:
-        ndjson = run_dir / "execution-issues.ndjson"
-        if ndjson.is_file():
-            return _parse_ndjson_legacy(ndjson)
-    issue_log = tmpdir / "execution-issues.md"
-    if issue_log.is_file() and issue_log.stat().st_size > 0:
+def _merge_details(
+    first: tuple[IssueDetail, ...],
+    second: tuple[IssueDetail, ...],
+) -> tuple[IssueDetail, ...]:
+    order: list[str] = []
+    values: dict[str, IssueDetail] = {}
+    for detail in (*first, *second):
+        key = detail.display_text
+        existing = values.get(key)
+        if existing is None:
+            order.append(key)
+            values[key] = detail
+            continue
+        values[key] = IssueDetail(
+            existing.label or detail.label,
+            existing.description or detail.description,
+            existing.display_text,
+            max(existing.count, detail.count),
+        )
+    return tuple(values[key] for key in order)
+
+
+def _merge_load_results(first: LoadResult, second: LoadResult) -> LoadResult:
+    if first.listing_degraded and second.listing_degraded:
+        first_exec, first_warn = first.degraded_totals or (0, 0)
+        second_exec, second_warn = second.degraded_totals or (0, 0)
         return LoadResult(
+            EMPTY_GROUPS,
+            listing_degraded=True,
+            degraded_totals=(first_exec + second_exec, first_warn + second_warn),
+        )
+    if first.listing_degraded:
+        return second
+    if second.listing_degraded:
+        return first
+    return LoadResult(
+        IssueDetailGroups(
+            _merge_details(first.groups.exec_issues, second.groups.exec_issues),
+            _merge_details(first.groups.warnings, second.groups.warnings),
+        ),
+        listing_degraded=False,
+    )
+
+
+def load_issue_detail_groups(tmpdir: Path, *, run_dir: Path | None, prefer_run_dir: bool = False) -> LoadResult:
+    issue_log = tmpdir / "execution-issues.md"
+    live_result: LoadResult | None = None
+    if issue_log.is_file() and issue_log.stat().st_size > 0:
+        live_result = LoadResult(
             parse_markdown_execution_issues(issue_log.read_text(encoding="utf-8", errors="replace")),
             listing_degraded=False,
         )
+    if prefer_run_dir and run_dir is not None:
+        ndjson = run_dir / "execution-issues.ndjson"
+        if ndjson.is_file():
+            run_result = _parse_ndjson_legacy(ndjson)
+            return _merge_load_results(run_result, live_result) if live_result is not None else run_result
+    if live_result is not None:
+        return live_result
     if run_dir is not None:
         ndjson = run_dir / "execution-issues.ndjson"
         if ndjson.is_file():
