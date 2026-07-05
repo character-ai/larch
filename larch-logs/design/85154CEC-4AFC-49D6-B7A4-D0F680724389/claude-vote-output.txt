@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan mandates the test; how to implement it (mock git vs mock write_guideline_ship_outcome) is implementer-level detail, not a plan gap
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already says "add focused tests for both call paths or update one existing test per path" (failure modes section); finding adds specificity the plan doesn't owe
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- OOS duplicate of round-1 FINDING_4 (same scope-reduction request, YES=1/3, OOS); no materially new evidence
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- OOS duplicate of round-1 FINDING_5; regression risk is real but this concern was already routed OOS
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- OOS duplicate of round-1 FINDING_5; no new evidence beyond restating the same scope-reduction concern
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- OOS duplicate of round-1 FINDING_4; same scope-reduction request raised and denied a third time
+OOS_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- implement_step8_reachable does not exist anywhere in the codebase; fluff-analysis.py does not import from audit_runs; line 779 is an unrelated aggregation helper, making the location claim and the "both consumers" premise factually wrong
