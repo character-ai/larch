@@ -1,0 +1,61 @@
+Reviewing the plan against the current implementation: I'll read the lint-fix module, repair-loop routing, and existing tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	risk-integration	python/larch/implement/checks_lint_fix.py:1145-1169	Plan replaces only the complexity-baseline predicate, not the full pre-dispatch OR branch	Refactor that folds everything into `_lint_fix_fast_fail_reason` can drop the separate no-tools path (`failure_reason=None`, `ledger_exit_code=0`) or mis-set `ledger_exit_code=1` for generic lint failures with no external tools	In approach step 2, state explicitly: keep `if fast_fail_reason or (not claude_present and not codex_present and not cursor_present)`; set `failure_reason=fast_fail_reason` only when non-None; set `ledger_exit_code=1` only when `fast_fail_reason` is set
+1	in_scope	important	correctness	python/larch/implement/checks_lint_fix.py:404-408	PLR0911 complexity-baseline carve-out removal is implied but not named	The `any(code != "PLR0911")` guard at line 408 is why `test_run_lint_fix_complexity_baseline_plr0911_new_uses_normal_fixer` still dispatches today; renaming the test without deleting this guard leaves the stall path unfixed	In the plan, add an explicit step: remove the PLR0911-only exclusion from complexity-baseline `(new)` detection so baseline `PLR0911 (new)` rows fast-fail
+1	in_scope	important	correctness	plan testing section (PLR0911 baseline test)	Updated PLR0911 baseline test omits `failure_reason` and `ledger_failure_detail_log` assertions	Implementer can fast-fail with `structural-ruff-failure` (or another token) while baseline-formatted rows should stay `complexity-baseline-regression`; repair-loop still needs `ledger_failure_detail_log` for operator context	For the renamed PLR0911 baseline test, assert `failure_reason == "complexity-baseline-regression"`, `ledger_exit_code == 1`, and `ledger_failure_detail_log == str(log.resolve())`; mirror `_assert_complexity_fast_fail` at python/tests/implement/test_checks.py:1471-1477
+1	in_scope	latent	correctness	plan approach items 1-2	Helper evaluation order for overlapping row shapes is unspecified	A log with both `python/cli.py lint complexity-baseline` and a plain `path:line:col: PLR0912` row could return `structural-ruff-failure` instead of `complexity-baseline-regression`, breaking existing failure-reason contracts	In `_lint_fix_fast_fail_reason`, evaluate complexity-baseline regression (keeping `_COMPLEXITY_BASELINE_COMMAND_RE` at python/larch/implement/checks_lint_fix.py:400-401) before plain Ruff structural rows; document that ordering in the plan
+
+### 1. risk-integration — `python/larch/implement/checks_lint_fix.py:1145-1169`
+
+The pre-dispatch block is not only complexity-baseline detection. It is an OR with the no-tools branch:
+
+```1145:1169:python/larch/implement/checks_lint_fix.py
+    if complexity_baseline_regression or (
+        not claude_present and not codex_present and not cursor_present
+    ):
+        failure_reason = (
+            "complexity-baseline-regression"
+            if complexity_baseline_regression
+            else None
+        )
+        ledger_exit_code = 1 if complexity_baseline_regression else 0
+        return FixOutcome(
+            status="main-agent-required",
+            ...
+```
+
+The plan says to replace the "narrow `complexity_baseline_regression` decision" but does not restate this second branch. A single merged fast-fail return risks regressing no-tools semantics (`failure_reason=None`, `ledger_exit_code=0`), which `test_run_lint_fix_no_tools` still depends on indirectly via timing (`python/tests/implement/test_checks.py:1400-1401`).
+
+**Suggested revision:** Keep two predicates: `fast_fail_reason = _lint_fix_fast_fail_reason(log_path)` and the existing no-tools OR, with the current `failure_reason` / `ledger_exit_code` split.
+
+### 2. correctness — `python/larch/implement/checks_lint_fix.py:404-408`
+
+PLR0911 baseline `(new)` rows still reach external dispatch because of the explicit carve-out:
+
+```404:408:python/larch/implement/checks_lint_fix.py
+    new_codes = tuple(
+        match.group("code")
+        for match in _COMPLEXITY_BASELINE_NEW_REGRESSION_RE.finditer(text)
+    )
+    return bool(new_codes) and any(code != "PLR0911" for code in new_codes)
+```
+
+The plan names the behavior change and test rename but not this line. That is the mechanical root cause of the #6425 stall for PLR0911 baseline regressions.
+
+**Suggested revision:** Add an explicit plan bullet to remove the `any(code != "PLR0911")` filter when folding baseline detection into the new helper.
+
+### 3. correctness — plan testing section / `python/tests/implement/test_checks.py:1576-1620`
+
+The plan updates `test_run_lint_fix_complexity_baseline_plr0911_new_uses_normal_fixer` to expect fast-fail but does not pin the reason token. Baseline-shaped rows should keep `complexity-baseline-regression` per plan approach step 2 ("where possible"). Existing fast-fail tests already use `_assert_complexity_fast_fail`, which also checks `ledger_failure_detail_log` (`python/tests/implement/test_checks.py:1477`). New structural tests list `ledger_ready` and `ledger_exit_code` only.
+
+**Suggested revision:** Extend the renamed PLR0911 test and new structural tests to assert `ledger_failure_detail_log` and the correct `failure_reason` per row shape.
+
+### 4. correctness — plan approach items 1-2
+
+When both baseline and plain Ruff rows appear, reason selection needs a fixed order. The current complexity path requires the command guard at `python/larch/implement/checks_lint_fix.py:400-401`; plain structural matching must not bypass it.
+
+**Suggested revision:** Document "baseline regression first, then plain Ruff structural" in the helper design.
+
+### [OUT_OF_SCOPE] code-quality — `python/larch/implement/checks_lint_fix.py:477-481`
+
+After PLR0911 always fast-fails pre-dispatch, the `_compose_prompt` PLR0911 consolidation block becomes unreachable for that failure class. Removing it is cleanup only; not required for the short-circuit feature.
