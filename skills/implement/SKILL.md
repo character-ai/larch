@@ -701,7 +701,7 @@ When `NEXT_ACTION=continue`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLU
 - **`stall`** (post-driver only): continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
 - **`tool-failure`**: append Tool Failures and stop hard. Do not run Step 18 stall rename.
 
-**OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
+**OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely before invoking the fence. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
 
 ```bash
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
