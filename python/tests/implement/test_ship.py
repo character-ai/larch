@@ -1241,6 +1241,7 @@ def _prepare_recovered_stalled_log(
     monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit)  # type: ignore[arg-type]
     monkeypatch.setattr(run_log_flush, "_reconcile_terminal_manifest_from_ctx", lambda *_a, **_k: None)  # type: ignore[arg-type]
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     monkeypatch.setattr(
         ship.gh,
         "pr_view",
@@ -1658,6 +1659,7 @@ DRAFT=false
     monkeypatch.setattr(ship.run_logs, "write_final_report_comment", forbidden)
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
     monkeypatch.setattr(ship.git, "log_subject", lambda *_a, **_k: "Implement driver")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     monkeypatch.setattr(
         ship.gh,
         "pr_view",
