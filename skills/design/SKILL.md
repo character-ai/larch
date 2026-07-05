@@ -559,7 +559,7 @@ Print: `> **🔶 /design 5: finalize**`
 
 ### 5b: File accepted OOS issues
 
-Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT_ACTION` skeleton here for action adjacency.
+Follow `finalize-step5.md`; keep prepare/`NEXT_ACTION`.
 
 1. Run prepare and capture stdout to `$DESIGN_TMPDIR/oos-filing-prepare.env` (KV lines only on stdout; deps-grace warnings may appear on stderr):
 ```bash
@@ -571,7 +571,7 @@ Follow `finalize-step5.md` for Step 5b details. Keep the prepare fence and `NEXT
      2. When `NEXT_ACTION` is missing, unknown, or `unknown-oos-status`, stop for repair. The prepare wrapper already checks `FILE_DESIGN_OOS_STATUS=` agreement.
 2. Branch on `NEXT_ACTION`:
    - **`skip-pipeline`**: do not call `/larch:issue`; follow `finalize-step5.md` for breadcrumbs, WARN replay, and conditional annotate.
-   - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`.
+   - **`file-issues`**: invoke `/larch:issue` and annotate per `finalize-step5.md`; no confirmation.
    - **`label-only`**: do not call `/larch:issue`; run `design-step5b-annotate.sh` in label-only mode per `finalize-step5.md`. Empty `oos-issue.stdout.txt` and missing `oos-accepted-design.md` are valid on this branch.
    - **`unknown-oos-status`**: stop for repair.
 

@@ -2,27 +2,27 @@
 
 **Consumer**: `/design` Step 5.
 
-**Contract**: Normative Step 5 body prose for OOS filing, post-approval diagram composition, plan composition and publish decisions, warning replay, and footer selection. `SKILL.md` keeps the routing skeleton, Bash fences, immediate-background parameters, and final-summary marker bindings.
+**Contract**: Normative Step 5 prose for OOS filing, post-approval diagrams, plan compose/publish decisions, warning replay, and footer. `SKILL.md` keeps routing skeleton, Bash fences, background params, and final-summary marker bindings.
 
 **When to load**: **MANDATORY READ ENTIRE FILE** at Step 5 entry, after the Step 5 banner/invariant and before the Step 5b skeleton.
 
 ## Ordering contract
 
-Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches on it; Step 5b.5 writes a skip marker or candidate; Step 5c completes diagram sanitize before publish.
+Step 5 order: prepare emits `NEXT_ACTION`; `SKILL.md` branches; Step 5b.5 writes skip marker or candidate; Step 5c sanitizes diagrams before publish.
 
 **MANDATORY: READ ENTIRE FILE before Step 5 diagram, final plan, summary, or Gate C prose composition: `${CLAUDE_PLUGIN_ROOT}/skills/shared/readability-style.md`.**
 
 ## Step 5b OOS filing body
 
-**Privacy guardrail.** OOS Descriptions become **public** GitHub issues through `/larch:issue`. Reviewer `path:line` hints in those Descriptions also become public. Reviewers must follow `SECURITY.md` and avoid high-risk paths or secret-adjacent material. `python/larch/core/redact.py` inside `issue create-one` is only the mechanical backstop.
+**Privacy guardrail.** OOS Descriptions and reviewer `path:line` hints become **public** GitHub issues through `/larch:issue`. Reviewers must follow `SECURITY.md` and avoid high-risk paths or secret-adjacent material. `python/larch/core/redact.py` inside `issue create-one` is only a mechanical backstop.
 
-Bash owns staging, cap, and file-conflict pre-pass. The `/larch:issue` call is prompt-side. Helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-python/cli.py design file-oos-prepare|file-oos-annotate` (`test-file-design-oos.md`; Makefile `test-file-design-oos`).
+Bash stages, caps, and pre-checks file conflicts; prompt calls `/larch:issue`. Helpers: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design file-oos-prepare|file-oos-annotate` (sibling `file-design-oos.md`). Harness: `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/test-python/cli.py design file-oos-prepare|file-oos-annotate` (`test-file-design-oos.md`; Makefile `test-file-design-oos`).
 
-Cross-session idempotency: after successful `annotate` with `ISSUES_FAILED=0`, the helper best-effort copies `$DESIGN_TMPDIR/oos-issues-created.md` to `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md` using atomic `mktemp` plus `mv`. A later `/design` restores those URLs only when the in-session sentinel is missing or empty and the cache file exists and is non-empty; a non-empty in-session sentinel wins. `--clear-cross-session-cache` deletes the issue cache and priority-label sidecars. `ISSUE_NUMBER` comes from the environment, or `--issue-number` for tests.
+Cross-session idempotency: after successful `annotate` with `ISSUES_FAILED=0`, the helper best-effort atomically caches `$DESIGN_TMPDIR/oos-issues-created.md` at `~/.cache/larch/design-oos-filed/<ISSUE_NUMBER>.md`. Later `/design` restores those URLs only when the in-session sentinel is missing or empty and the cache is non-empty; a non-empty in-session sentinel wins. `--clear-cross-session-cache` deletes the issue cache and priority-label sidecars. `ISSUE_NUMBER` comes from the environment, or `--issue-number` for tests.
 
-Priority labels: after `/larch:issue` succeeds, `python/cli.py design file-oos-annotate` writes `oos-issues-created.md`, provisions `oos-correctness`, and applies it only to filed design OOS blocks with `focus-area: correctness` or `focus-area: regression`. Design label `gh` calls use `--repo <REPO>` from prepare or session state and fail closed when `REPO` is missing.
+Priority labels: after `/larch:issue` succeeds, `python/cli.py design file-oos-annotate` writes `oos-issues-created.md`, ensures `oos-correctness`, and applies it only to filed OOS with `focus-area: correctness` or `focus-area: regression`. Label `gh` calls use `--repo <REPO>` from prepare or session state and fail closed when `REPO` is missing.
 
-When any priority label is outstanding, annotate writes `.oos-priority-label-pending` and durable cache sidecars before the first `gh label create` or `gh issue edit`. The sidecars hold sentinel URLs, post-cap combined text, and filing order. A later `NEXT_ACTION=label-only` run labels from those files without calling `/larch:issue`; `oos-accepted-design.md` and `oos-issue.stdout.txt` are not required.
+When a priority label is outstanding, annotate writes `.oos-priority-label-pending` and durable cache sidecars before the first `gh label create` or `gh issue edit`. Sidecars hold sentinel URLs, post-cap combined text, and filing order. Later `NEXT_ACTION=label-only` labels from them without calling `/larch:issue`; `oos-accepted-design.md` and `oos-issue.stdout.txt` are not required.
 
 If the prepare wrapper exits non-zero, parse only `NEXT_ACTION=` and `STEP5B_STATUS=` from `$DESIGN_TMPDIR/oos-filing-prepare.env`. For `NEXT_ACTION=unknown-oos-status` or `STEP5B_STATUS=unknown-oos-status`, preserve the warning and stop for repair. Otherwise append captured stderr with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log append-failure` to `$DESIGN_TMPDIR/execution-issues.md` under `Tool Failures` with site `design Step 5b`, warn that OOS filing was skipped due to helper failure, and continue to Step 5b.5 without invoking `/larch:issue`.
 
@@ -40,7 +40,7 @@ Do not call `/larch:issue`.
 
 ### `NEXT_ACTION=file-issues`
 
-Parse `FILE_DESIGN_OOS_COMBINED=`, `FILE_DESIGN_OOS_DEPS_TSV=`, and `FILE_DESIGN_OOS_DEPS_AVAILABLE=` from `oos-filing-prepare.env`.
+Parse `FILE_DESIGN_OOS_COMBINED=`, `FILE_DESIGN_OOS_DEPS_TSV=`, and `FILE_DESIGN_OOS_DEPS_AVAILABLE=` from `oos-filing-prepare.env`. Accepted non-security OOS plus Gate C approval authorizes `/larch:issue`; no confirmation or `AskUserQuestion`, including retry.
 
 If `FILE_DESIGN_OOS_DEPS_AVAILABLE=true` **and** `FILE_DESIGN_OOS_DEPS_TSV` points at a non-empty readable file, invoke **`/larch:issue`** in batch mode with `--input-file` set to `FILE_DESIGN_OOS_COMBINED`, `--title-prefix "[OOS]"`, `--blocked-by-issue "$ISSUE_NUMBER"`, `--sentinel-file "$DESIGN_TMPDIR/oos-issue-sentinel"`, **`--intra-batch-deps-file`** set to `FILE_DESIGN_OOS_DEPS_TSV`, and **`--no-dep-llm`** because caller-supplied serialization edges are authoritative. Otherwise invoke the same Skill call **without** `--intra-batch-deps-file` / `--no-dep-llm`, log a `Warnings` entry for the degraded path, and mirror the `/implement` Step 9a.1 warning.
 
@@ -56,7 +56,7 @@ On non-zero `_oos_ann_rc` when `ISSUES_FAILED>0` in `$DESIGN_TMPDIR/oos-issue.st
 
 On non-zero `_oos_ann_rc` without the retry, label, or partial-failure contract, treat it as annotate or parse failure: append `Tool Failures` and continue to Step 5b.5.
 
-**Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5:
+**Manual OOS recovery when annotate ran before `/larch:issue`** (`STEP5B_STATUS=annotate-failed`, rc=1, `oos-issue.stdout.txt` empty or missing): the Step 5b sentinel was not written; re-run the `/larch:issue` + annotate sequence manually before continuing to Step 5b.5. Manual recovery files accepted non-security OOS; no confirmation/`AskUserQuestion`. Never file security-routed OOS here:
 
 1. `/larch:issue --no-dedup --input-file <oos-combined.md> --title-prefix "[OOS]" --label "enhancement"`; do **not** use `--blocked-by-issue` (mutually exclusive with `--no-dedup`).
 2. Capture stdout to `$DESIGN_TMPDIR/oos-issue.stdout.txt`.

@@ -49,6 +49,7 @@ Priority label failure fails only the affected high-risk item. Successful non-pr
    - Exit 0 plus empty TSV: omit `--intra-batch-deps-file`; Phase-2 LLM dependency analysis remains the sole dependency path.
    - Non-zero exit: degraded-continue with a warning and a `Tool Failures` entry, then omit `--intra-batch-deps-file`. Do not treat an empty TSV as failure.
 4. **Run the `/issue` batch**.
+   - Do not ask the operator for confirmation before the batch call, and do not use `AskUserQuestion` here. Accepted non-security OOS disposition is automatic for this checkpoint. Preserve the carve-outs below for security-routed OOS, `forked_target=true`, `repo_unavailable=true`, failed cap/pre-pass behavior, and failed `/issue` handling.
    - Forward `--input-file "$IMPLEMENT_TMPDIR/oos-combined.md"`, `--title-prefix "[OOS]"`, and, when `$ISSUE_NUMBER` is set, not deferred, and not repo-unavailable, `--blocked-by-issue "$ISSUE_NUMBER"`.
    - Forward `--intra-batch-deps-file "$IMPLEMENT_TMPDIR/oos-intra-batch-deps.tsv"` only when step 3.5 produced an exit-0 non-empty TSV.
    - Never pass `--no-dep-llm`.
