@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 00:56:54
-- **Cost**: 💰 TOTAL ~$32.84: Claude $1.18, Codex-5.5 $22.78, Codex-mini $1.26, Cursor $7.46, Claude (subprocess) $0.16  |  Tokens: 52564k
+- **Cost**: 💰 TOTAL ~$33.24: Claude $1.58, Codex-5.5 $22.78, Codex-mini $1.26, Cursor $7.46, Claude (subprocess) $0.16  |  Tokens: 53693k
 - **Issue**: #6296: https://github.com/character-ai/larch/issues/6296
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/7 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6351
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/63DD0CF3-3DE9-4480-82BA-F029A5394F4D/`
@@ -103,3 +103,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_6** (nit): risk-integration: shell breadcrumb templates stay outside lint scope. Concern: Shell `printf` breadcrumb templates can still emit U+2014 while the Python and markdown lint passes, so that surface remains uncovered.
 - **Round 2 OOS_7** (latent): correctness: rendering prompt assembly bypasses sink-literal scanning. Concern: Review/voter prompt text in `python/larch/rendering/rendering.py` is assembled outside the sink model and only printed later, so its U+2014 literals remain invisible to the lint.
 - **Round 2 OOS_8** (latent): correctness: review dispatch f-strings bypass sink-literal scanning. Concern: Dynamic reviewer bodies in `python/larch/review/review_dispatch_panel.py` are built in returned f-strings rather than direct sink calls, so their U+2014 literals remain outside the lint.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
