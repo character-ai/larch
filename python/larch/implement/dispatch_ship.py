@@ -20,6 +20,10 @@ from larch.issue import execution_issues
 from larch.issue import file_oos
 from larch.issue import oos_filer
 from larch.core import config
+from larch.core import proc
+from larch.core.run_context import RunContext
+from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
+from larch.git import git, gh, rebase
 from larch.implement import ship
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
@@ -33,6 +37,7 @@ from larch.implement.dispatch_helpers import (
     _read_kv_file,
     _read_session_key_default,
     _rehydrate_plugin_root,
+    _resolve_repo_root,
     _run_cli_forward,
     _tmpdir_from_env,
     _tracking_sentinel_values,
@@ -69,6 +74,20 @@ class ShipRouteResult:
     exit_code: int
     payload: dict[str, object]
     action: str
+
+
+@dataclass(frozen=True)
+class ShipPreFixRebaseRequest:
+    implement_tmpdir: Path
+    state: Mapping[str, str]
+    cwd: str
+
+
+@dataclass(frozen=True)
+class ShipPreFixRebaseResult:
+    status: str
+    action: str
+    detail: str = ""
 
 
 def _ship_state_has_shell_kv_entries(state_file: Path) -> bool:
@@ -300,6 +319,8 @@ def _write_ship_route_handoff(
             for key, value in route_fields.items()
             if _ship_route_safe_line(value)
         )
+    if action in {"ci-fix", "reship"}:
+        lines.append("PRE_FIX_REBASE_REQUIRED=true")
     lines.append(f"NEXT_ACTION={action}")
     if delay_seconds:
         lines.append(f"RESHIP_DELAY_SECONDS={delay_seconds}")
@@ -335,6 +356,288 @@ def _ship_route_seed_transient_stall(implement_tmpdir: Path) -> None:
             file=sys.stderr,
         )
         _forward_child_output_to_stderr(result)
+
+
+def _ship_pre_fix_fail(message: str) -> int:
+    print(f"ship pre-fix-rebase: {message}", file=sys.stderr)
+    return 2
+
+
+def _ship_pre_fix_resolve_tmpdir(raw_tmpdir: str) -> Path | None:
+    if not raw_tmpdir:
+        return None
+    path = Path(raw_tmpdir)
+    if not path.is_dir():
+        return None
+    return path
+
+
+def _ship_pre_fix_cwd(raw_cwd: str) -> str:
+    if raw_cwd:
+        return str(Path(raw_cwd))
+    repo_root = _resolve_repo_root()
+    return str(repo_root) if repo_root is not None else str(Path.cwd())
+
+
+def _ship_pre_fix_truthy(value: str) -> bool:
+    return value.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def _ship_pre_fix_read_state(implement_tmpdir: Path) -> tuple[dict[str, str], str]:
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    if not state_file.is_file():
+        return {}, "ship-pr-state.sh is missing"
+    keys = (
+        "BRANCH_NAME",
+        "ISSUE_NUMBER",
+        "RUN_ID",
+        "REPO",
+        "REPO_UNAVAILABLE",
+        "FORKED_TARGET",
+        "MERGE",
+        "DRAFT",
+        "MANIFEST_PATH",
+        "TOOL_LABEL",
+        "NO_ADMIN_FALLBACK",
+        "NO_LOGS_COMMIT",
+        "PR_NUMBER",
+        "PR_URL",
+        "PR_TITLE",
+        "MERGE_RESULT",
+        "PR_CLOSED",
+        "DESIGN_ONLY_DONE",
+        "DEFERRED",
+        "DONE_RENAME_APPLIED",
+        "STALL_TRACKING",
+        "STALL_STEP",
+        "EXPECTED_SESSION_ID",
+        "EXPECTED_TMPDIR_BASENAME_PREFIX",
+        "REBASE_COUNT",
+        "FIX_ATTEMPTS",
+        "ITERATION",
+        "TRANSIENT_RETRIES",
+        "OOS_PENDING",
+    )
+    values = {key: _read_kv_file(path=state_file, key=key, default="") for key in keys}
+    if not values["REPO"]:
+        return values, "REPO is missing from ship-pr-state.sh"
+    if not values["RUN_ID"]:
+        return values, "RUN_ID is missing from ship-pr-state.sh"
+    return values, ""
+
+
+def _ship_pre_fix_int(value: str) -> int:
+    with contextlib.suppress(ValueError):
+        return int(value.strip() or "0")
+    return 0
+
+
+def _ship_pre_fix_context(*, implement_tmpdir: Path, state: Mapping[str, str]) -> RunContext:
+    pr_number_raw = state.get("PR_NUMBER", "").strip()
+    return RunContext(
+        branch=state.get("BRANCH_NAME", ""),
+        issue=state.get("ISSUE_NUMBER", ""),
+        repo=state.get("REPO", ""),
+        run_id=state.get("RUN_ID", ""),
+        tmpdir=str(implement_tmpdir),
+        merge=_ship_pre_fix_truthy(state.get("MERGE", "")),
+        draft=_ship_pre_fix_truthy(state.get("DRAFT", "")),
+        forked=_ship_pre_fix_truthy(state.get("FORKED_TARGET", "")),
+        manifest_path=state.get("MANIFEST_PATH", ""),
+        tool_label=state.get("TOOL_LABEL", "") or "claude",
+        no_admin_fallback=_ship_pre_fix_truthy(state.get("NO_ADMIN_FALLBACK", "")),
+        repo_unavailable=_ship_pre_fix_truthy(state.get("REPO_UNAVAILABLE", "")),
+        pr_number=int(pr_number_raw) if pr_number_raw.isdigit() else None,
+        state_file=str(implement_tmpdir / "ship-pr-state.sh"),
+        no_logs_commit=_ship_pre_fix_truthy(state.get("NO_LOGS_COMMIT", "")),
+        merge_result=state.get("MERGE_RESULT", ""),
+        pr_closed=_ship_pre_fix_truthy(state.get("PR_CLOSED", "")),
+        design_only_done=_ship_pre_fix_truthy(state.get("DESIGN_ONLY_DONE", "")),
+        stall_tracking=_ship_pre_fix_truthy(state.get("STALL_TRACKING", "")),
+        stall_step=state.get("STALL_STEP", ""),
+        done_rename_applied=_ship_pre_fix_truthy(state.get("DONE_RENAME_APPLIED", "")),
+        issue_number=state.get("ISSUE_NUMBER", ""),
+        pr_title=state.get("PR_TITLE", ""),
+        pr_url=state.get("PR_URL", ""),
+        expected_session_id=state.get("EXPECTED_SESSION_ID", ""),
+        expected_tmpdir_basename_prefix=state.get("EXPECTED_TMPDIR_BASENAME_PREFIX", ""),
+        deferred=_ship_pre_fix_truthy(state.get("DEFERRED", "")),
+        oos_pending=_ship_pre_fix_truthy(state.get("OOS_PENDING", "true")),
+    )
+
+
+def _ship_pre_fix_patch_handoff(*, implement_tmpdir: Path, patch: Mapping[str, str]) -> None:
+    handoff = implement_tmpdir / ".ship-route-exit-handoff.env"
+    existing: dict[str, str] = {}
+    if handoff.is_file():
+        for line in handoff.read_text(encoding="utf-8", errors="replace").splitlines():
+            if "=" not in line:
+                continue
+            key, _, value = line.partition("=")
+            if key and key not in existing:
+                existing[key] = value
+    existing.update({key: _ship_route_safe_line(value) for key, value in patch.items() if _ship_route_safe_line(value)})
+    _write_text_atomic(path=handoff, text="\n".join(f"{key}={value}" for key, value in existing.items()) + "\n")
+
+
+def _ship_pre_fix_emit(*, status: str, action: str, detail: str = "") -> int:
+    _emit_kv(key="PRE_FIX_REBASE_STATUS", value=status)
+    _emit_kv(key="NEXT_ACTION", value=action)
+    if detail:
+        _emit_kv(key="DETAIL", value=_ship_route_safe_line(detail))
+    return 0
+
+
+def _ship_pre_fix_write_conflict_state(
+    *,
+    implement_tmpdir: Path,
+    state: Mapping[str, str],
+    resume_phase: str,
+    caller_kind: str,
+    conflict_files: str,
+) -> None:
+    ctx = _ship_pre_fix_context(implement_tmpdir=implement_tmpdir, state=state)
+    ship._write_ship_state(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+        ctx,
+        phase="rebase",
+        iteration=_ship_pre_fix_int(state.get("ITERATION", "")),
+        rebase_count=_ship_pre_fix_int(state.get("REBASE_COUNT", "")),
+        fix_attempts=_ship_pre_fix_int(state.get("FIX_ATTEMPTS", "")),
+        transient_retries=_ship_pre_fix_int(state.get("TRANSIENT_RETRIES", "")),
+        resume_phase=resume_phase,
+        caller_kind=caller_kind,
+        extra_fields={"CONFLICT_FILES": conflict_files},
+    )
+
+
+def _ship_pre_fix_validate_checkout(*, state: Mapping[str, str], cwd: str) -> str | None:
+    current_branch = git.try_current_branch(proc, cwd=cwd)
+    if current_branch != state["BRANCH_NAME"]:
+        return f"checked-out branch {current_branch!r} does not match ship-pr-state.sh BRANCH_NAME {state['BRANCH_NAME']!r}"
+    if current_branch in {"main", "master"} and not _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")):
+        return f"refusing pre-fix rebase on checked-out branch {current_branch!r} without a forked target"
+    current_repo = gh.resolve_repo(proc, cwd=cwd)
+    if current_repo != state["REPO"]:
+        return f"checked-out repo {current_repo!r} does not match ship-pr-state.sh REPO {state['REPO']!r}"
+    return None
+
+
+def _ship_pre_fix_rebase_step(
+    *, implement_tmpdir: Path, state: Mapping[str, str], cwd: str
+) -> tuple[str | None, str, str]:
+    error = _ship_pre_fix_validate_checkout(state=state, cwd=cwd)
+    if error:
+        return error, "", ""
+    if git.rebase_in_progress(proc, cwd=cwd):
+        route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
+        if not route_fields:
+            return None, "stall", "stall"
+        ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+            state_file=implement_tmpdir / "ship-pr-state.sh",
+            patch=route_fields,
+        )
+        _ship_pre_fix_patch_handoff(
+            implement_tmpdir=implement_tmpdir,
+            patch={
+                **route_fields,
+                "PRE_FIX_REBASE_STATUS": "conflict",
+                "NEXT_ACTION": "conflict-fix",
+            },
+        )
+        return None, "conflict", "conflict-fix"
+    base_remote = "upstream" if _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")) else "origin"
+    rebase.rebase_and_push(
+        runner=proc,
+        repo=state["REPO"],
+        run_id=state["RUN_ID"],
+        cwd=cwd,
+        tmpdir=str(implement_tmpdir),
+        base_remote=base_remote,
+        base_ref="main",
+        defer_push=False,
+        allow_conflict_fix=True,
+        enable_pre_push_handoff=True,
+    )
+    return None, "ok", "continue"
+
+
+def _ship_pre_fix_handle_conflict(
+    *, implement_tmpdir: Path, state: Mapping[str, str], exc: PrePushConflictHandoff
+) -> str | None:
+    try:
+        _ship_pre_fix_write_conflict_state(
+            implement_tmpdir=implement_tmpdir,
+            state=state,
+            resume_phase=exc.resume_phase,
+            caller_kind=exc.caller_kind,
+            conflict_files=exc.conflict_csv,
+        )
+        _ship_pre_fix_patch_handoff(
+            implement_tmpdir=implement_tmpdir,
+            patch={
+                "RESUME_PHASE": exc.resume_phase,
+                "CALLER_KIND": exc.caller_kind,
+                "CONFLICT_FILES": exc.conflict_csv,
+                "PRE_FIX_REBASE_STATUS": "conflict",
+                "NEXT_ACTION": "conflict-fix",
+            },
+        )
+    except (OSError, ShipError) as write_exc:
+        return f"cannot write conflict handoff: {write_exc}"
+    return None
+
+
+def _ship_pre_fix_rebase_request(argv: list[str] | None) -> tuple[ShipPreFixRebaseRequest | None, str | None]:
+    parser = argparse.ArgumentParser(prog="cli.py ship pre-fix-rebase")
+    parser.add_argument("--implement-tmpdir", default="")
+    parser.add_argument("--cwd", default="")
+    args = parser.parse_args(argv)
+    raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    implement_tmpdir = _ship_pre_fix_resolve_tmpdir(raw_tmpdir)
+    if implement_tmpdir is None:
+        return None, "--implement-tmpdir is required and must be an existing directory"
+    state, error = _ship_pre_fix_read_state(implement_tmpdir)
+    if error:
+        return None, error
+    cwd = _ship_pre_fix_cwd(args.cwd)
+    return ShipPreFixRebaseRequest(implement_tmpdir=implement_tmpdir, state=state, cwd=cwd), None
+
+
+def _ship_pre_fix_rebase_run(request: ShipPreFixRebaseRequest) -> tuple[ShipPreFixRebaseResult | None, str | None]:
+    result: ShipPreFixRebaseResult | None = None
+    error: str | None = None
+    try:
+        if (request.implement_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file():
+            result = ShipPreFixRebaseResult(status="skip", action="continue")
+        else:
+            error, status, action = _ship_pre_fix_rebase_step(
+                implement_tmpdir=request.implement_tmpdir, state=request.state, cwd=request.cwd
+            )
+            if not error:
+                result = ShipPreFixRebaseResult(status=status, action=action)
+    except PrePushConflictHandoff as exc:
+        error = _ship_pre_fix_handle_conflict(
+            implement_tmpdir=request.implement_tmpdir,
+            state=request.state,
+            exc=exc,
+        )
+        if not error:
+            result = ShipPreFixRebaseResult(status="conflict", action="conflict-fix")
+    except (Stalled, TransientNetworkError) as exc:
+        result = ShipPreFixRebaseResult(status="stall", action="stall", detail=str(exc))
+    except (OSError, ShipError) as exc:
+        error = f"handoff setup failed: {exc}"
+    return result, error
+
+
+def ship_pre_fix_rebase_main(argv: list[str] | None = None) -> int:
+    request, error = _ship_pre_fix_rebase_request(argv)
+    if error or request is None:
+        return _ship_pre_fix_fail(error or "--implement-tmpdir is required and must be an existing directory")
+    result, error = _ship_pre_fix_rebase_run(request)
+    if error or result is None:
+        return _ship_pre_fix_fail(error or "pre-fix rebase did not produce a result")
+    return _ship_pre_fix_emit(status=result.status, action=result.action, detail=result.detail)
 
 
 def ship_route_exit_main(argv: list[str] | None = None) -> int:

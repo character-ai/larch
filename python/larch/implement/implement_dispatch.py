@@ -198,6 +198,7 @@ from larch.implement.dispatch_ship import (
     _step8_oos_checkpoint_log_failure,
     _write_ship_route_handoff,
     ship_pre_driver_main,
+    ship_pre_fix_rebase_main,
     ship_route_exit_main,
     step8_oos_checkpoint_main,
     step8_seed_initial_main,

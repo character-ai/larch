@@ -1,0 +1,6 @@
+warning: fix text for slot 'dyn-dyn-ship-rebase' in FINDING_8 not traceable to scoped input (first 80 chars: 'On rebase_in_progress with empty state metadata, probe unmerged paths; if any ex')
+warning: fix text for slot 'dyn-dyn-ship-rebase' in FINDING_9 not traceable to scoped input (first 80 chars: 'After a successful rebase_and_push with result.rebased true, increment and persi')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_10 not traceable to scoped input (first 80 chars: 'Add monkeypatch test forcing _ship_pre_fix_write_conflict_state or _ship_pre_fix')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_11 not traceable to scoped input (first 80 chars: 'Write tmpdir sentinel from ship_pre_fix_rebase_main and fail closed in ci-fix wh')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_12 not traceable to scoped input (first 80 chars: 'Extend test_ship_route_exit_classifies_driver_sidecars to assert PRE_FIX_REBASE_')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_13 not traceable to scoped input (first 80 chars: 'Add parametrized tests expecting non-zero exit and no NEXT_ACTION for those setu')

@@ -37,11 +37,11 @@
     "skill_md_lines": 698
   },
   {
-    "closure_content_estimated_tokens": 38747,
-    "closure_estimated_tokens": 38862,
-    "closure_lines": 1226,
-    "conditional_content_estimated_tokens": 26114,
-    "conditional_estimated_tokens": 26173,
+    "closure_content_estimated_tokens": 39893,
+    "closure_estimated_tokens": 40011,
+    "closure_lines": 1260,
+    "conditional_content_estimated_tokens": 25504,
+    "conditional_estimated_tokens": 25561,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -53,12 +53,11 @@
       "skills/implement/references/phantom-probe.md",
       "skills/implement/references/execution-issues-tracking.md",
       "skills/implement/references/architectural-guidelines-present.md",
-      "skills/implement/references/ship-pr-oos-checkpoint-router.md",
       "skills/implement/references/ship-pr-ci-fix.md",
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 730,
+    "conditional_lines": 709,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -67,12 +66,13 @@
       "skills/implement/references/preflight-plan-audit.md",
       "skills/implement/references/self-review.md",
       "skills/implement/references/ship-pr-exit-matrix.md",
+      "skills/implement/references/ship-pr-oos-checkpoint-router.md",
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 29874,
-    "skill_md_estimated_tokens": 29953,
-    "skill_md_lines": 803
+    "skill_md_content_estimated_tokens": 30171,
+    "skill_md_estimated_tokens": 30251,
+    "skill_md_lines": 816
   },
   {
     "closure_content_estimated_tokens": 44400,

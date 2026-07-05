@@ -680,15 +680,28 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 **Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
 
 - **`complete`**: continue to Step 16.
-- **`reship`**: run the foreground stale-handoff clear, then re-invoke `step-8-ship.sh` with the same `RESUME_PHASE` carve-out. Do not sleep.
+- **`reship`**: If `.ship-route-exit-handoff.env` has `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, skip the pre-fix rebase. This is an existing conflict-resolution continuation. Proceed to the foreground stale-handoff clear, preserving those keys until conflict-resolution Phase 4 completes. For every other `reship`, run the foreground pre-fix rebase before the stale-handoff clear. Do not sleep.
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+Branch on its stdout: `NEXT_ACTION=continue` proceeds to the stale-handoff clear and `step-8-ship.sh`; `NEXT_ACTION=conflict-fix` loads `conflict-resolution.md`; `NEXT_ACTION=stall` routes like post-driver stall.
+
 - **`oos-pipeline`**: security sidecar disposition only. Do not load `execution-issues-tracking.md`, do not load or run `oos-pipeline.md`, and do not call `/issue` on this branch. Read `$IMPLEMENT_TMPDIR/security-oos-observations.md`, follow `SECURITY.md` `## Security Findings in OOS Workflows` privately, and clear the sidecar only after private disposition completes. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely before the `step-8-oos-checkpoint.sh` fence. Expect the checkpoint to stall while `security-oos-observations.md` remains non-empty or private SECURITY.md disposition is pending.
-- **`ci-fix`**: If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to **operator-bail**. Otherwise, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely when not skipped to operator-bail and before autonomous repair / `step-8-ship.sh` re-entry.
+- **`ci-fix`**: If `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`, skip autonomous edits and route to **operator-bail**. Otherwise, run the foreground pre-fix rebase before loading `ship-pr-ci-fix.md`. Branch on its stdout: `NEXT_ACTION=continue` loads `ship-pr-ci-fix.md` and continues; `NEXT_ACTION=conflict-fix` loads `conflict-resolution.md`; `NEXT_ACTION=stall` routes like post-driver stall.
+
+```bash
+"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"
+```
+
+When `NEXT_ACTION=continue`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-ci-fix.md` completely before autonomous repair / `step-8-ship.sh` re-entry.
 - **`conflict-fix`** (post-driver only): Read `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES` from `.ship-route-exit-handoff.env`. When `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/conflict-resolution.md` completely, then run conflict-resolution first. Otherwise treat it as a malformed handoff and continue to Step 16 with `STALL_TRACKING`, then Step 18.
 - **`operator-bail`**: use `AskUserQuestion` and the existing Step 12d path after ledger recording required by `ship-pr-exit-matrix.md`.
 - **`stall`** (post-driver only): continue to Step 16 with `STALL_TRACKING`, then Step 18. Do not reuse pre-driver stall bullets.
 - **`tool-failure`**: append Tool Failures and stop hard. Do not run Step 18 stall rename.
 
-**OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
+**OOS checkpoint fence.** After `NEXT_ACTION=oos-pipeline`, complete security-sidecar private disposition when applicable, then invoke the checkpoint wrapper. **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/ship-pr-oos-checkpoint-router.md` completely before invoking the fence. Parse stdout for `NEXT_ACTION=`. Halt with Tool Failures only when `NEXT_ACTION` is missing after invoke. Do not halt merely because rc is non-zero when stdout contains `NEXT_ACTION=`.
 
 ```bash
 "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" skills/implement/scripts/step-8-oos-checkpoint.sh
