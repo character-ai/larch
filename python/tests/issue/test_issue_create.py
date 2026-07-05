@@ -336,6 +336,50 @@ def test_create_one_dry_run_redacts(monkeypatch: Any, tmp_path: Path, capsys: An
     assert "crsr_0123456789" not in out
 
 
+def test_create_one_dry_run_auto_prefixes_oos_template_body(tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text(
+        "## Out-of-Scope Observation\n\n"
+        "**Surfaced by**: reviewer\n"
+        "**Phase**: implement\n"
+        "**Vote tally**: YES=1, NO=0\n\n"
+        "## Description\n\n"
+        "Body.\n",
+        encoding="utf-8",
+    )
+
+    rc = issue_create.create_one_main(
+        ["--title", "Follow up", "--body-file", str(body), "--repo", "owner/repo", "--dry-run"],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert _kv_value(out, "ISSUE_TITLE") == "[OOS] Follow up"
+
+
+def test_create_one_dry_run_oos_template_does_not_double_prefix(tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("## Out-of-Scope Observation\n\n## Description\n\nBody.\n", encoding="utf-8")
+
+    rc = issue_create.create_one_main(
+        ["--title", "[OOS] Follow up", "--body-file", str(body), "--repo", "owner/repo", "--dry-run"],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert _kv_value(out, "ISSUE_TITLE") == "[OOS] Follow up"
+
+
+def test_create_one_dry_run_no_auto_prefix_for_non_oos_body(tmp_path: Path, capsys: Any) -> None:
+    body = tmp_path / "body.md"
+    body.write_text("Regular body.\n\n## Out-of-Scope Observation\n", encoding="utf-8")
+
+    rc = issue_create.create_one_main(
+        ["--title", "Follow up", "--body-file", str(body), "--repo", "owner/repo", "--dry-run"],
+    )
+    out = capsys.readouterr().out
+    assert rc == 0
+    assert _kv_value(out, "ISSUE_TITLE") == "Follow up"
+
+
 def test_create_one_success_json(monkeypatch: Any, tmp_path: Path, capsys: Any) -> None:
     body = tmp_path / "body.md"
     body.write_text("body", encoding="utf-8")

@@ -382,7 +382,7 @@ Iterate over `order[0..ITEMS_TOTAL-1]` (each iteration's value is one original i
     - `ISSUE_<i>_NUMBER=<N>`
     - `ISSUE_<i>_URL=<url>`
     - `ISSUE_<i>_ID=<id>` — issue #546: internal numeric id captured from the create response. Used as the cached `--blocker-id` for subsequent `issue add-blocked-by` invocations targeting this batch sibling, eliminating an extra `gh api` round-trip per intra-batch edge.
-    - `ISSUE_<i>_TITLE=<final-title>` — taken directly from `ISSUE_TITLE=…` in `issue create-one` output, which applies the `--title-prefix` with `[OOS]` double-prefix normalization. Do not reimplement title-prefix logic in prompt text.
+    - `ISSUE_<i>_TITLE=<final-title>` — taken directly from `ISSUE_TITLE=…` in `issue create-one` output. The helper applies `--title-prefix`, enforces `[OOS]` when the body starts with the OOS template heading and the caller omitted `--title-prefix`, and uses one title-prefix normalization path for case-insensitive deduplication. Do not reimplement title-prefix logic in prompt text.
     - Increment `ISSUES_CREATED`. Append the created issue to an in-memory snapshot so later intra-run dedup iterations can also reference it if the LLM Phase 2 missed an equivalence.
 
     **Apply blocker dependencies (issue #546)** — runs immediately after a successful create. For each entry in `ITEM_<i>_BLOCKED_BY=` (post-validation list from Step 5, or Step-5-skip-path augmentation when applicable), invoke `issue add-blocked-by`:

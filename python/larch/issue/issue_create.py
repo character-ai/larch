@@ -357,10 +357,31 @@ def _normalize_title_prefix(*, title: str, title_prefix: str) -> str:
     return f"{title_prefix} {stripped}"
 
 
+def _is_oos_issue_body(body_content: str) -> bool:
+    heading = "## Out-of-Scope Observation"
+    return body_content == heading or body_content.startswith(f"{heading}\n")
+
+
 def _emit_issue_failed(message: str, *, code: int = 2) -> int:
     emit_kv(key="ISSUE_FAILED", value="true")
     emit_kv(key="ISSUE_ERROR", value=message)
     return code
+
+
+def _create_one_body_content(parsed: dict[str, object]) -> tuple[str, int]:
+    body_file = str(parsed.get("body_file") or "")
+    if not body_file:
+        return "", 0
+    path = Path(body_file)
+    if not path.is_file():
+        return "", _emit_issue_failed(f"body file not found: {body_file}", code=1)
+    body_content = path.read_text(encoding="utf-8")
+    if not body_content:
+        return "", 0
+    redacted_body, redaction_rc = _redact_checked(body_content)
+    if redaction_rc:
+        return "", redaction_rc
+    return redacted_body or "", 0
 
 
 def _parse_issue_json(output: str) -> tuple[str, str, str] | None:
@@ -482,19 +503,13 @@ def create_one_main(argv: list[str]) -> int:
     labels_obj = parsed.get("labels")
     labels = labels_obj if isinstance(labels_obj, list) else []
     valid_labels = _valid_labels(repo, [str(label) for label in labels], dry_run=dry_run)
-    final_title = _normalize_title_prefix(title=title, title_prefix=str(parsed.get("title_prefix") or ""))
-    body_content = ""
-    body_file = str(parsed.get("body_file") or "")
-    if body_file:
-        path = Path(body_file)
-        if not path.is_file():
-            return _emit_issue_failed(f"body file not found: {body_file}", code=1)
-        body_content = path.read_text(encoding="utf-8")
-    if body_content:
-        redacted_body, redaction_rc = _redact_checked(body_content)
-        if redaction_rc:
-            return redaction_rc
-        body_content = redacted_body or ""
+    body_content, body_rc = _create_one_body_content(parsed)
+    if body_rc:
+        return body_rc
+    title_prefix = str(parsed.get("title_prefix") or "")
+    if not title_prefix and _is_oos_issue_body(body_content):
+        title_prefix = "[OOS]"
+    final_title = _normalize_title_prefix(title=title, title_prefix=title_prefix)
     if dry_run:
         emit_kv(key="DRY_RUN", value="true")
         emit_kv(key="DRY_RUN_TITLE", value=final_title)
