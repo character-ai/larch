@@ -12,7 +12,7 @@ import shutil
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-from larch.core import config, logging_util
+from larch.core import config, logging_util, proc
 from larch.calibration import difficulty
 from larch.review.review_pipeline_shared import (
     ReviewCommands,
@@ -623,7 +623,7 @@ def _dispatch_voters_for_ballot(ctx: ReviewCoreBranchContext) -> tuple[list[str]
     return voter_files, voter_tools, voters
 
 
-def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, voter_files: list[str], voter_tools: list[str], out_name: str) -> tuple[object, dict[str, str]]:
+def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, voter_files: list[str], voter_tools: list[str], out_name: str) -> tuple[proc.CommandResult, dict[str, str]]:
     tally_args = [
         "--ballot-file",
         str(ctx.review_tmpdir / "findings.md"),
@@ -1161,3 +1161,4 @@ def review_core(argv: list[str], *, runner: object = None) -> int:
 
 def review_core_main(argv: list[str]) -> int:
     return review_core(argv)
+# pyright: reportAttributeAccessIssue=false

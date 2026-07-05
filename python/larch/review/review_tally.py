@@ -33,8 +33,6 @@ _CLASSIFICATION_HEADER = (
 _OOS_AGGREGATE_POOL = "oos-aggregate-pool.md"
 _OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):", re.MULTILINE)
 _OOS_POOL_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_\d+:", re.MULTILINE)
-_AGGREGATE_HIGH_SEVERITIES = {"blocking", "important"}
-_AGGREGATE_LATENT_THRESHOLD = 3
 
 
 def _error(message: str) -> int:
@@ -457,14 +455,6 @@ def _normalize_oos_header_text(*, text: str, seq: int) -> str:
     return re.sub(r"^### (?:FINDING|OOS)_[0-9]+:", f"### OOS_{seq}:", text, count=1, flags=re.MULTILINE)
 
 
-def _body_severity_from_text(text: str) -> str:
-    for line in text.splitlines():
-        match = re.match(r"^[\s-]*\*\*Severity\*\*:\s*(.*?)\s*$", line)
-        if match:
-            return match.group(1).strip().lower()
-    return ""
-
-
 def _aggregate_parent(*, review_tmpdir: Path, session_env_path: str = "", implement_tmpdir: str = "") -> Path:
     if session_env_path:
         return Path(session_env_path).parent
@@ -505,17 +495,6 @@ def _append_oos_pool_candidate(*, pool_file: Path, text: str) -> None:
     separator = "" if not existing or existing.endswith("\n") else "\n"
     with pool_file.open("a", encoding="utf-8") as handle:
         _ = handle.write(separator + text.rstrip("\n") + "\n")
-
-
-def _aggregate_trigger_fires(blocks: list[str]) -> bool:
-    latent = 0
-    for block in blocks:
-        severity = _body_severity_from_text(block)
-        if severity in _AGGREGATE_HIGH_SEVERITIES:
-            return True
-        if severity == "latent":
-            latent += 1
-    return latent >= _AGGREGATE_LATENT_THRESHOLD
 
 
 def _next_oos_number(text: str) -> int:
@@ -1464,3 +1443,4 @@ def log_phase(argv: list[str]) -> int:
 
 def log_phase_main(argv: list[str]) -> int:
     return log_phase(argv)
+# pyright: reportUnusedFunction=false
