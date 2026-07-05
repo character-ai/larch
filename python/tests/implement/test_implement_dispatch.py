@@ -930,6 +930,51 @@ def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
     assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
 
 
+def test_ship_pre_fix_rebase_phase14_skip_does_not_override_conflict_handoff(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    with (tmp / "ship-pr-state.sh").open("a", encoding="utf-8") as handle:
+        handle.write(
+            "RESUME_PHASE=ship-pr-rrr-phase14\n"
+            "CALLER_KIND=ship_pr_pre_push\n"
+            "CONFLICT_FILES=python/a.py,docs/b.md\n"
+        )
+    (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
+    (tmp / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).write_text(
+        f"RESUME_PHASE={config.SHIP_PR_RRR_RESUME_PHASE}\nREASON=mergeStateStatus=DIRTY\n",
+        encoding="utf-8",
+    )
+    rebase_calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: rebase_calls.append("rebase"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc == 0
+    assert capsys.readouterr().out == "PRE_FIX_REBASE_STATUS=conflict\nNEXT_ACTION=conflict-fix\n"
+    assert not rebase_calls
+    state = (tmp / "ship-pr-state.sh").read_text(encoding="utf-8")
+    assert "PHASE=rebase\n" in state
+    assert "RESUME_PHASE=ship-pr-rrr-phase14\n" in state
+    assert "CALLER_KIND=ship_pr_pre_push\n" in state
+    assert "CONFLICT_FILES=python/a.py,docs/b.md\n" in state
+    env = (tmp / ".ship-route-exit-handoff.env").read_text(encoding="utf-8")
+    assert "FAILED_RUN_ID=99\n" in env
+    assert "NEXT_ACTION=conflict-fix\n" in env
+    assert (tmp / ".ship-pre-fix-rebase-ok").is_file()
+
+
 @pytest.mark.parametrize(
     "flag_text",
     [

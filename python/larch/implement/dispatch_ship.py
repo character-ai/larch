@@ -565,10 +565,27 @@ def _ship_pre_fix_rebase_step(
     error = _ship_pre_fix_validate_checkout(state=state, cwd=cwd)
     if error:
         return error, "", ""
+    route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
     if git.rebase_in_progress(proc, cwd=cwd):
-        route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
         if not route_fields:
             return None, "stall", "stall"
+        _ship_pre_fix_write_conflict_state(
+            implement_tmpdir=implement_tmpdir,
+            state=state,
+            resume_phase=route_fields["RESUME_PHASE"],
+            caller_kind=route_fields["CALLER_KIND"],
+            conflict_files=route_fields["CONFLICT_FILES"],
+        )
+        _ship_pre_fix_patch_handoff(
+            implement_tmpdir=implement_tmpdir,
+            patch={
+                **route_fields,
+                "PRE_FIX_REBASE_STATUS": "conflict",
+                "NEXT_ACTION": "conflict-fix",
+            },
+        )
+        return None, "conflict", "conflict-fix"
+    if route_fields:
         _ship_pre_fix_write_conflict_state(
             implement_tmpdir=implement_tmpdir,
             state=state,
