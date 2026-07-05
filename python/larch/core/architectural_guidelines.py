@@ -84,7 +84,7 @@ class ComposeMaterializationResult:
 
 
 def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa: C901, PLR0911, PLR0912
-    from larch.implement.ship_guidelines import (  # noqa: PLC0415
+    from larch.implement.ship_guidelines import (  # noqa: PLC0415  # lint-layering: ok validator needs ship_guidelines constants; function-level import avoids circular import (ship_guidelines imports from this module)
         GUIDELINE_SHIP_OUTCOMES,
         GUIDELINE_SHIP_REASON_TOKENS,
         OUTCOME_CLEAN,
