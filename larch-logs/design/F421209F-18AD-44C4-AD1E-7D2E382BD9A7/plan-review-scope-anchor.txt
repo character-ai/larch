@@ -1,0 +1,95 @@
+Combined `/implement` follow-ups surfaced across OOS runs. Sources: #6367, #6339, #6353, #6344. Stale and low-merit items from those rollups were discarded during combination; the actionable items are preserved verbatim below.
+
+### Item 1 — Ship pre-fix-rebase / phase14 guard hardening (from #6367)
+
+- **Location**: `python/larch/implement/ship.py` (`ship pre-fix-rebase` / phase14 paths; `_ship_route_phase14_reship_pending`, `rebase_and_push`, `_ship_pre_fix_write_conflict_state`, `_write_ship_state`, `_ship_pre_fix_patch_handoff`).
+- **Severity**: important.
+- **Concern**: The `ship pre-fix-rebase` / phase14 paths can return `NEXT_ACTION=continue` before checking for an in-progress rebase, conflict metadata, branch/repo/protected-branch guards, or an explicit freshness sentinel. A stale handoff flag can green-light `ci-fix` or `reship` on the wrong checkout, skip conflict routing for a paused rebase, or let generated-file `ci-fix` repairs run without a mechanical successor to the removed step-6 merge-ref rebase guard. Successful pre-fix rebases also do not update `REBASE_COUNT`, so the CI monitor can allow more physical rebases than the configured cap. The in-progress conflict path may omit a `PHASE=rebase` state write, and the pre-push conflict handoff write-failure path lacks regression coverage.
+- **Suggested revisions**:
+  - Run in-progress-rebase, conflict-metadata, branch/repo, and protected-branch checks before any phase14 skip or `NEXT_ACTION=continue`.
+  - Do not key the skip solely on flag presence; limit it to the no-checks-observed phase14 case, distinguish flag content/reason, and unlink or use a separate marker for conflict handoffs from `_write_handoff_flag`.
+  - Mirror `_ship_route_phase14_reship_pending` where appropriate.
+  - After a successful `rebase_and_push` with `result.rebased` true, increment and persist `REBASE_COUNT`, or centralize counter updates inside `rebase_and_push` for all callers.
+  - Reuse `_ship_pre_fix_write_conflict_state` or `_write_ship_state(phase=rebase)` on the in-progress conflict path.
+  - Write a tmpdir sentinel from `ship_pre_fix_rebase_main` and fail closed in `ci-fix` when `PRE_FIX_REBASE_REQUIRED=true` but the sentinel is absent.
+  - Add a monkeypatch regression test forcing `_ship_pre_fix_write_conflict_state` or `_ship_pre_fix_patch_handoff` to raise; assert `rc != 0` and no `NEXT_ACTION=`.
+
+### Item 2 — Derive the step3 bg-wait 15600s marker timeout from the shared constant (from #6339)
+
+- **Location**: `python/larch/implement/dispatch_commit_route.py:88`.
+- **Severity**: latent.
+- **Concern**: The marker returns a hardcoded `15600` that duplicates `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000` (defined in `dispatch_leg.py`). A future leg-budget edit could desync the marker `TIMEOUT_S` from the 15600000 ms SKILL fence with no compile-time link.
+- **Suggested**: Derive the marker value from `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS` instead of the literal.
+
+### Item 3 — Deduplicate the 10800s step3 checks timeout (from #6339)
+
+- **Location**: `python/larch/implement/dispatch_commit_route.py:1100`; `skills/implement/scripts/run-step-checks.sh:76`.
+- **Severity**: latent.
+- **Concern**: `10800` is a duplicated magic number across the Python marker and the shell launcher; a partial edit can reintroduce timeout skew.
+- **Suggested**: Name the value once and reference it from both call sites.
+
+### Item 4 — Assert TIMEOUT_S=10800 in the checks-only step3 marker test (from #6353)
+
+- **Location**: `python/tests/implement/test_implement_dispatch.py` (`test_run_step_checks_main_arms_step3_bg_wait_marker`).
+- **Severity**: latent.
+- **Concern**: The test does not assert `TIMEOUT_S=10800`, so the checks-only step timeout could regress silently.
+- **Suggested**: Add `assert "TIMEOUT_S=10800\n" in marker_text`.
+
+### Item 5 — Execution-issue artifact precedence drops tmpdir entries (from #6344)
+
+- **Location**: `python/larch/report/final_report.py` / `python/larch/issue/execution_issues.py` (execution-issues artifact resolution).
+- **Severity**: latent (verify at design time).
+- **Concern**: When both execution-issues artifacts exist (run-dir NDJSON and tmpdir markdown), the run-dir NDJSON can override the tmpdir markdown path and drop newer or richer tmpdir entries from the final summary counts.
+- **Suggested**: Confirm the precedence, then prefer the richer or newer source (or merge) so entries are not dropped.
+
+### Item 6 — Wire test-write-final-report.sh into a CI shard (from #6344)
+
+- **Location**: `Makefile` (`test-write-final-report` target near line 845); `skills/implement/scripts/test-write-final-report.sh`.
+- **Severity**: latent.
+- **Concern**: The bash write-final-report harness has a standalone Makefile target but is not a prerequisite of any `test-harnesses-N` shard, so CI does not exercise it.
+- **Suggested**: Add it to a `test-harnesses-N` shard and confirm `test-harness-shards-coverage` accepts it.
+
+### Item 7 — SECURITY.md truncation-marker example mismatch (from #6344)
+
+- **Location**: `SECURITY.md:304`.
+- **Severity**: nit.
+- **Concern**: SECURITY.md documents the em-dash PEM truncation marker while `python/larch/core/redact.py:30` emits the colon form (`[content truncated: unterminated PEM block; tail of body dropped for safety]`).
+- **Suggested**: Update the SECURITY.md example to the emitted colon form.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Harden the ship pre-fix-rebase / phase14 paths: add missing guards, fix REBASE_COUNT tracking, add regression test.
+- Deduplicate the step3 checks timeout (10800s) and commit-route marker timeout (15600s) to a single source of truth.
+- Fix execution-issue artifact precedence so tmpdir markdown entries are not silently dropped when run-dir NDJSON also exists.
+- Wire `test-write-final-report` into a CI shard and fix the SECURITY.md truncation-marker mismatch.
+
+### Non-goals
+- No restructuring of the ship.py state machine beyond the targeted guard additions.
+- No changes to the CI runner, check engine, or final-report rendering beyond the artifact-precedence fix.
+- No new public API surface beyond the one constant rename in `dispatch_leg.py`.
+
+### Approach sketch
+- In `dispatch_ship.py`: run branch/repo/in-progress-rebase checks before the phase14 flag skip; increment REBASE_COUNT after a successful rebase; write `.phase=rebase` state on the in-progress conflict path; write a pre-fix-rebase sentinel; add a monkeypatch test.
+- In `dispatch_leg.py`: expose `_CHECKS_DEADLINE_MS` as a public constant.
+- In `dispatch_commit_route.py`: derive both hardcoded timeouts (10800, 15600) from the named constants; update the existing test assertion for TIMEOUT_S.
+- In `run-step-checks.sh`: derive TIMEOUT_S from a Python constant at startup to eliminate duplication.
+- In `exec_issue_detail.py`: change `prefer_run_dir` semantics so tmpdir markdown takes precedence when non-empty, even if NDJSON exists; update the affected test.
+- In `Makefile`: append `test-write-final-report` to one `test-harnesses-N` shard.
+- In `SECURITY.md`: update the truncation-marker example text from the em-dash form to the colon form.
+
+### Surfaces in scope
+- `python/larch/implement/dispatch_ship.py`
+- `python/larch/implement/dispatch_commit_route.py`
+- `python/larch/implement/dispatch_leg.py`
+- `skills/implement/scripts/run-step-checks.sh`
+- `python/tests/implement/test_implement_dispatch.py`
+- `python/larch/report/exec_issue_detail.py`
+- `python/tests/report/test_exec_issue_detail.py`
+- `Makefile`
+- `SECURITY.md`
+
+### Open questions
+- None.

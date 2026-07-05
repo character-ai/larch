@@ -1,0 +1,1 @@
+G-Cfg-1 deviation: CHECKS_STEP3_BG_WAIT_TIMEOUT_S is added to dispatch_leg.py, not config.py. Rationale: dispatch_leg.py already houses CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS and all deadline arithmetic; moving to config.py would require circular imports. This follows the established precedent for deadline constants.

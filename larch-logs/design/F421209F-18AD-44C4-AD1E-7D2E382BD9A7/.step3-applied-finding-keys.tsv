@@ -1,0 +1,11 @@
+1	the new `.ship-pre-fix-rebase-ok` marker is only written, not consumed, so a stale or skipped pre-fix pass can still let `pre_fix_rebase_required=true` handoffs reach autonomous repair.
+1	the phase14 skip path can still be satisfied by a bare or conflict-shaped flag; it needs handoff metadata plus an explicit no-checks allowlist so conflict, empty, or handoff-only flags cannot bypass rebase routing.
+1	once a pre-fix run succeeds, the old `.ship-pre-fix-rebase-ok` can linger into a later handoff or retry unless the marker is explicitly cleared at handoff creation or entry.
+1	the final execution-issues summary can drop entries if it blindly prefers one artifact source over the other; when both run-dir ndjson and tmpdir markdown exist, the richer set of entries needs to survive.
+1	the standalone final-report harness still isn't exercised by ci, so adding the makefile prerequisite alone does not prove the script runs under shard coverage.
+1	successful rebases can still leave the cap counter stale if the `rebaseresult.rebased` signal is not used to persist the updated count.
+2	the step 8 routing reference still lets `next_action=continue` reach ci-fix/reship without a `.ship-pre-fix-rebase-ok` freshness check, and the missing-sentinel path can end up in operator-bail instead of the intended post-driver stall handling.
+2	the execution-issues resolver still treats non-empty tmpdir markdown as a replacement for run-dir ndjson, but flushes can clear `execution-issues.md` after writing ndjson, so later tmpdir-only failures can cause the final report to drop previously committed rows.
+2	the allowlisted phase14 skip can still trust stale or incomplete handoff metadata, so a later `ci-fix` handoff can bypass the guarded rebase or a legitimate no-checks reship can stall because the freshness sentinel was not written on the valid skip path.
+2	the python precedence tests use disjoint tmpdir and ndjson fixtures, so they do not model a flushed-superset case and can encode dropping committed ndjson rows instead of preserving post-flush appends.
+2	the bash write-final-report harness still asserts a single-source dual-artifact precedence, so once the loader prefers non-empty tmpdir markdown the ci-facing summary check will fail or codify the wrong counts.

@@ -1,0 +1,2 @@
+file-design-oos: python/cli.py oos issue-cap failed
+oos-issue-cap: ITEMS_TOTAL (6) != raw '### OOS_<N>:' heading count (7)

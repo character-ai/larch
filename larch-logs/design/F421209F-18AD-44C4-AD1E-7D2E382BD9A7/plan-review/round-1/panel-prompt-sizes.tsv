@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	26725	6682	13357	3340	13368	3342		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	18586	4647	13069	3268	5517	1380		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	18577	4645	13060	3265	5517	1380		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	18599	4650	13082	3271	5517	1380		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	26740	6685	13372	3343	13368	3342		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	26738	6685	13370	3343	13368	3342		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	18601	4651	13084	3271	5517	1380		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ship-guard-auditor	plan-review	cursor	dyn-cursor-plan-ship-guard-auditor.txt	27032	6758	13223	3306	13809	3453		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	26716	6679	13348	3337	13368	3342		0	0
+design Step 3	phase1	1	dyn-codex-plan-ship-guard-auditor	plan-review	codex	dyn-codex-plan-ship-guard-auditor.txt	18893	4724	12935	3234	5958	1490		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	44775	11194	4635	1159	40140	10035	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	16634	4159	9049	2263	7585	1897		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	16634	4159	9049	2263	7585	1897		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	16634	4159	9049	2263	7585	1897		0	0
