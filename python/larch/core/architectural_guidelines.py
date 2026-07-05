@@ -88,8 +88,8 @@ class ComposeMaterializationResult:
     warning: str = ""
 
 
-def validate_guideline_ship_outcome_record(data: object) -> str | None:
-    from larch.implement.ship_guidelines import (
+def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa: C901, PLR0911, PLR0912
+    from larch.implement.ship_guidelines import (  # noqa: PLC0415
         GUIDELINE_SHIP_OUTCOMES,
         GUIDELINE_SHIP_REASON_TOKENS,
         OUTCOME_CLEAN,
@@ -107,15 +107,16 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:
 
     if not isinstance(data, dict):
         return "guideline outcome artifact must be a JSON object"
-    if str(data.get("schema_version") or "") != "1":
+    d: dict[str, object] = data  # type: ignore[assignment]
+    if str(d.get("schema_version") or "") != "1":
         return "guideline outcome schema_version must be 1"
-    phase = str(data.get("phase") or "")
-    step = str(data.get("step") or "")
-    base_ref = str(data.get("base_ref") or "")
-    outcome = str(data.get("outcome") or "")
-    reason = str(data.get("reason") or "")
-    guidelines_status = str(data.get("guidelines_status") or "")
-    assessment_kind = str(data.get("assessment_kind") or "")
+    phase = str(d.get("phase") or "")
+    step = str(d.get("step") or "")
+    base_ref = str(d.get("base_ref") or "")
+    outcome = str(d.get("outcome") or "")
+    reason = str(d.get("reason") or "")
+    guidelines_status = str(d.get("guidelines_status") or "")
+    assessment_kind = str(d.get("assessment_kind") or "")
     if phase != "implement":
         return "guideline outcome phase must be implement"
     if step != "8":
