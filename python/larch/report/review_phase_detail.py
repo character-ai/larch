@@ -122,7 +122,7 @@ def _classification_vote_results(path: Path) -> dict[str, str]:
                 if finding_id and result:
                     results[finding_id] = result
             return results
-    except (OSError, csv.Error):
+    except (OSError, csv.Error, UnicodeDecodeError):
         return {}
 
 

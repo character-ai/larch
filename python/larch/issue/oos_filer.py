@@ -1186,6 +1186,19 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     )
     if batch.failures:
         _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="issue create-one", rc=1, output=f"ISSUES_FAILED={batch.failures}")
+        if batch.failure_mode == "hard_create" and len(batch.filed) == 1 and len(batch.filed[0].source_stable_ids) > 1:
+            filed = _dedupe_filed([*persisted, *already, *batch.filed])
+            _write_sentinel(tmpdir=tmpdir, filed=filed)
+            _write_oos_ndjson(tmpdir, run_id, filed, status="Hard-create partial failure")
+            return 1, {
+                "status": "hard_create_partial_failure",
+                "accepted_count": accepted_count,
+                "filed_count": len(filed),
+                "deduplicated_count": len([issue for issue in filed if issue.duplicate]),
+                "urls": [issue.url for issue in filed],
+                "run_statistics_written": False,
+                "step9a1_stamped": False,
+            }
         if batch.failure_mode in {"priority_label", "priority_provision"} and batch.filed:
             filed = _dedupe_filed([*persisted, *already, *batch.filed])
             _write_sentinel(tmpdir=tmpdir, filed=filed)

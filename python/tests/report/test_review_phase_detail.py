@@ -214,6 +214,24 @@ def test_render_rejected_oos_audit_section_tsv_accepted_beats_footer(tmp_path: P
     assert section == ""
 
 
+def test_render_rejected_oos_audit_section_falls_back_on_malformed_tsv(tmp_path: Path) -> None:
+    round_dir = tmp_path / "round-1"
+    round_dir.mkdir()
+    _ = (round_dir / "oos.md").write_text(
+        "### OOS_1: [OUT_OF_SCOPE] fallback candidate\n"
+        "- **Reviewer(s)**: codex-specialist-correctness\n"
+        "- **Severity**: important\n"
+        "- **Concern**: footer fallback remains available.\n"
+        "Vote tally: YES=0 NO=2 JUDGE_ERROR=0 Result=rejected\n",
+        encoding="utf-8",
+    )
+    _ = (round_dir / "findings-classification.tsv").write_bytes(b"\xff\xfe\x80")
+
+    section = review_phase_detail.render_rejected_oos_audit_section(tmp_path)
+
+    assert "- **Round 1 OOS_1** (rejected, important): fallback candidate." in section
+
+
 def test_render_rejected_oos_audit_section_skips_security_candidates(tmp_path: Path) -> None:
     round_dir = tmp_path / "round-1"
     round_dir.mkdir()

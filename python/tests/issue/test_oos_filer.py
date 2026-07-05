@@ -329,6 +329,44 @@ def test_two_item_partial_failure_cleans_up_first_issue(tmp_path: Path, monkeypa
     assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 2
 
 
+def test_hard_create_partial_failure_with_rollup_stamps_single_success(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _setup(tmp_path)
+    _write_oos(
+        tmp_path,
+        "### OOS_1: First\n- **Description**: A.\n\n### OOS_2: Second\n- **Description**: B.\n",
+    )
+    fake = FakeCli(tmp_path)
+    batch = oos_filer.BatchResult(
+        filed=[
+            oos_filer.FiledIssue(
+                "Combined",
+                "https://github.com/owner/repo/issues/101",
+                False,
+                "oos-accepted-main-agent:OOS_1",
+                ("oos-accepted-main-agent:OOS_1", "oos-accepted-main-agent:OOS_2"),
+            ),
+        ],
+        failures=1,
+        failure_mode="hard_create",
+    )
+    monkeypatch.setattr(oos_filer, "_run_issue_batch", lambda *_args, **_kwargs: batch)
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 1
+    sentinel = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    assert "oos-accepted-main-agent:OOS_1" in sentinel
+    assert "oos-accepted-main-agent:OOS_2" in sentinel
+
+    retry = FakeCli(tmp_path)
+    rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
+    assert rc_retry == 0
+    assert not any(call[:2] == ["issue", "create-one"] for call in retry.calls)
+
+
 def test_file_conflict_deps_orders_blocker_before_blocked(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "99")
     _setup(tmp_path)
