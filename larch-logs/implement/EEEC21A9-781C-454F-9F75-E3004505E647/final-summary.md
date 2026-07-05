@@ -1,16 +1,15 @@
-## /implement run EEEC21A9-781C-454F-9F75-E3004505E647: stalled
+## /implement run EEEC21A9-781C-454F-9F75-E3004505E647: pr-created
 
-- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:43:10
-- **Cost**: 💰 TOTAL ~$25.35: Claude $3.45, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.53  |  Tokens: 41791k
+- **Cost**: 💰 TOTAL ~$25.66: Claude $3.74, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.55  |  Tokens: 42738k
 - **Issue**: #6370: https://github.com/character-ai/larch/issues/6370
 - **PR**: #6391: https://github.com/character-ai/larch/pull/6391
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: code +446/-60, larch-logs +807/-0
+- **Lines (PR diff)**: code +446/-60, larch-logs +820/-0
 - **OOS filed**: 1: https://github.com/character-ai/larch/issues/6390
 - **Exec issues**: 0
 - **Warnings**: 1
