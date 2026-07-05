@@ -3495,7 +3495,7 @@
     "file": "larch/issue/file_oos.py",
     "code": "C901",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/issue/file_oos.py",
@@ -3507,13 +3507,13 @@
     "file": "larch/issue/file_oos.py",
     "code": "PLR0911",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 7
+    "metric": 8
   },
   {
     "file": "larch/issue/file_oos.py",
     "code": "PLR0912",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 18
+    "metric": 19
   },
   {
     "file": "larch/issue/file_oos.py",
@@ -3525,7 +3525,7 @@
     "file": "larch/issue/file_oos.py",
     "code": "PLR0915",
     "qualified_symbol": "disposition_checkpoint_main",
-    "metric": 64
+    "metric": 77
   },
   {
     "file": "larch/issue/file_oos.py",
@@ -3765,7 +3765,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "C901",
     "qualified_symbol": "_file",
-    "metric": 16
+    "metric": 15
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3777,7 +3777,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0911",
     "qualified_symbol": "_file",
-    "metric": 9
+    "metric": 8
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3789,7 +3789,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0912",
     "qualified_symbol": "_file",
-    "metric": 16
+    "metric": 15
   },
   {
     "file": "larch/issue/oos_filer.py",
@@ -3819,7 +3819,7 @@
     "file": "larch/issue/oos_filer.py",
     "code": "PLR0915",
     "qualified_symbol": "_file",
-    "metric": 72
+    "metric": 68
   },
   {
     "file": "larch/issue/oos_filer.py",
