@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	30801	7701	13357	3340	17444	4361		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17092	4273	13069	3268	4023	1006		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17083	4271	13060	3265	4023	1006		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ship-state-integrator	plan-review	cursor	dyn-cursor-plan-ship-state-integrator.txt	31141	7786	13223	3306	17918	4480		0	0
+design Step 3	phase1	1	dyn-codex-plan-ship-state-integrator	plan-review	codex	dyn-codex-plan-ship-state-integrator.txt	17432	4358	12935	3234	4497	1125		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	30816	7704	13372	3343	17444	4361		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	30792	7698	13348	3337	17444	4361		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	30814	7704	13370	3343	17444	4361		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17107	4277	13084	3271	4023	1006		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17105	4277	13082	3271	4023	1006		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	43402	10851	4635	1159	38767	9692	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	14788	3697	9049	2263	5739	1435		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	14788	3697	9049	2263	5739	1435		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	14788	3697	9049	2263	5739	1435		0	0

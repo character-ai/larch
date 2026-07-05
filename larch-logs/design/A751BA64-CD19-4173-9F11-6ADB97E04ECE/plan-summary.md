@@ -1,0 +1,1 @@
+Move `/implement` architectural-guideline assessment from fragile Step 7a staging to a Step 8 compose-time handoff. The ship driver will materialize the final diff after rebase, ask the prompt-side orchestrator for the assessment, then embed and persist that same note without any HEAD-drift drop notice path.
