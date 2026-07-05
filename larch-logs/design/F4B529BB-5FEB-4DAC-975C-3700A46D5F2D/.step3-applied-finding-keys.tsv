@@ -1,0 +1,6 @@
+1	`oos-5` still needs explicit source-close rules for confirmed merit rejections, or deferred-close / `--source-issues` handling can treat rejected items as still uncombined and keep sources open incorrectly.
+1	the “never discard actionable content” anti-pattern is too broad for confirmed merit rejections; without a carve-out, the new gate can look forbidden even when the operator explicitly approved the discard.
+2	oos-2 can still collect or stop on the wrong item set when merit rejections are pending, letting items reach combination or closure without the required consolidated oos-4 confirmation.
+2	the oos-4 batch gate does not pin down what happens when an operator approves only some groups or stale closures, so merit rejections can be implicitly confirmed, left ambiguous, or applied without an explicit batch decision.
+2	after a rescue changes kept-item membership or grouping, the revised combination scheme can be applied without the operator ever approving the new grouping.
+2	the oos-5 closure path can treat blocked-on-source or still-pending items as consumed, and the blocked-sources bookkeeping can miss sources that should remain open.

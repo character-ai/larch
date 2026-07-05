@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false -- plan approach steps 3, 9, and FILES bullets 40–42 already pin kept-only flow and block oos-2 close/stop when merit is pending.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already requires stable display keys and default-keep; explicit matching-order prose is optional hardening.
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs catalog update is outside the approved oos-2/oos-4 SKILL.md scope and fails the OOS materiality gate.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- frontmatter/flags help is out of issue scope and duplicates round-1 doc-surface items already routed OOS.
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- OOS Mode intro refresh is not a plan acceptance deliverable and does not clear the OOS filing materiality gate.
