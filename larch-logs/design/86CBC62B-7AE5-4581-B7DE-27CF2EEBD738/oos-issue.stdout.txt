@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6414
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6414
+ISSUE_1_ID=4812335543
+ISSUE_1_TITLE=[OOS] [OUT_OF_SCOPE] materialize_manifest_oos can recreate security-oos-observations.md after oos-pipeline clears it
+ISSUE_1_BLOCKER_LINKS_APPLIED=1

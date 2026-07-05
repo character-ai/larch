@@ -1,0 +1,68 @@
+# [OOS] OOS pipeline: voting, classification & security sidecar — 10 items
+
+Combined OOS follow-ups for the OOS pipeline: voting, classification diagnostics, and security-sidecar routing. Merged from #6401 (9 items) and #6395 (security sidecar). Items 8 to 10 all concern the security sidecar and should be implemented together.
+
+### Item 1 — Agreement scoreboard rows use the pre-reclassification result
+
+Scoreboard rows are computed before the OOS-specific classification branch, so accepted OOS items show as neutral in diagnostics even though the tally accepts them. No filing impact today, but the mismatch will mislead future diagnostic reads.
+
+**Source**: #6401 (Round 1 OOS_1).
+
+### Item 2 — Stale comments still describe the removed pre-vote gate
+
+Comments in the review core body still reference the removed pre-vote gate, which can mislead maintainers about the expected post-validation flow. (File moved to `python/larch/review/review_core_body.py`.)
+
+**Source**: #6401 (Round 1 OOS_3).
+
+### Item 3 — Oversized filing tests describe unrelated multi-part split behavior
+
+The oversized-filing test still exercises multi-part split behavior unrelated to the `cap=1` rollup invariant, which can confuse readers about the scope.
+
+**Source**: #6401 (Round 1 OOS_4).
+
+### Item 4 — OOS blocks without a Vote tally line are treated as serialization-eligible
+
+`_is_vote_tally_eligible` treats OOS blocks with no Vote tally line as eligible for serialization into the accepted sink. This matters more now that `oos.md` is projected in run logs and `emit` can rebuild the accepted sink from it.
+
+**Source**: #6401 (Round 1 OOS_5).
+
+### Item 5 — Ballot parse errors fail open
+
+`_ballot_block_count` swallows read/parse errors as zero blocks, so corrupt or unreadable ballots are treated as empty and skip voting instead of failing closed.
+
+**Source**: #6401 (Round 2 OOS_2).
+
+### Item 6 — Design OOS one-YES acceptance lacks an assertion
+
+Two-judge OOS acceptance at one YES is not asserted on `oos-accepted-design.md`, so `accept_oos` regressions could ship with only implement-side coverage.
+
+**Source**: #6401 (Round 2 OOS_3).
+
+### Item 7 — Retired shard assignment still references a removed test
+
+The retired pre-vote-gate test node-id remains in shard assignments after test removal, so shard coverage drifts until rebalance.
+
+**Source**: #6401 (Round 2 OOS_4).
+
+### Item 8 — Security OOS sidecar can leak private findings and block mixed public filing
+
+Security OOS sidecar handling is inconsistent across design logs, public OOS filing, checkpoints, and ship routing. Design security OOS can be written to a top-level file that design-log publish may commit despite the private-only contract. In mixed security + non-security accepted runs, non-security OOS can file publicly while the remaining security sidecar hard-fails `disposition-checkpoint`, leaves Step 9a.1 unstamped, and causes `dispatch_ship` to route Step 8 to `halt-oos` instead of `oos-pipeline`.
+
+- Exclude `security-oos-observations.md` from design-log publish, or store it in a non-published private location.
+- Split security and non-security disposition gates: clear non-security disposition when `oos-issues.ndjson` and filed URLs cover accepted non-security blocks; gate only the security sidecar on private `SECURITY.md` disposition.
+- Route mixed runs to `oos-pipeline` when the security sidecar remains after successful non-security filing, or return a `security_sidecar_present` status from filing/checkpoint and map it correctly in `dispatch_ship.py`.
+- Add an end-to-end mixed-case integration test: sidecar present, non-security OOS filed publicly, checkpoint behavior asserted, ship routing verified.
+
+**Source**: #6395.
+
+### Item 9 — Security tally tests only verify public-artifact absence
+
+Security OOS tally coverage only checks that the public artifact (`oos.md`) is absent. Sidecar routing failures could leave security OOS nowhere durable without the test catching it. Add coverage for the durable sidecar sink.
+
+**Source**: #6401 (Round 1 OOS_2).
+
+### Item 10 — Mixed-case checkpoint test gap
+
+The mixed security-sidecar test stubs `disposition-checkpoint` to success, so it cannot detect the production `halt-oos` regression or assert `NEXT_ACTION=oos-pipeline` for the mixed case. Drive the real checkpoint in the mixed-case test.
+
+**Source**: #6401 (Round 2 OOS_1).

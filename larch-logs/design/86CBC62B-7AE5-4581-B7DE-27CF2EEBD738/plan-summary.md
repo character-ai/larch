@@ -1,0 +1,1 @@
+Plan fixes OOS vote diagnostics, fail-closed ballot handling, accepted-sink eligibility, security sidecar isolation, mixed-case ship routing, and the listed test gaps. Scope is security-sensitive and ship-routing-adjacent, so difficulty is HARD.
