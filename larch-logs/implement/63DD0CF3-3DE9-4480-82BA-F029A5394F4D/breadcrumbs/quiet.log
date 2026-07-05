@@ -81,6 +81,7 @@ ci_monitor: CI status query #22 in progress after 302s
 ci_monitor: CI NO_CHECKS after 307s -> bail (no-ci-checks-observed)
 ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=no-ci-checks-observed
 === larch-quiet-ship.py-40295.log ===
+=== larch-quiet-ship.py-49515.log ===
 === larch-quiet-ship.py-57535.log ===
 === larch-quiet-ship.py-88649.log ===
 === larch-quiet-tracking-issue-upsert-summary-31940.log ===
