@@ -11,7 +11,20 @@ from larch.lint import lint_common
 
 EM_DASH = "\u2014"
 SUPPRESSION = "lint-em-dash-output: ok"
-NAME_SINKS = frozenset({"print", "_emit", "_diag", "_err", "_core_diagnostic"})
+NAME_SINKS = frozenset(
+    {
+        "print",
+        "_emit",
+        "_diag",
+        "_err",
+        "_core_diagnostic",
+        "emit",
+        "emit_kv",
+        "diagnostic",
+        "_plain_diagnostic",
+        "_emit_kv",
+    }
+)
 LOGGING_UTIL_SINKS = frozenset({"emit", "emit_kv", "diagnostic"})
 PRINT_TEMPLATE_RE = re.compile(r"\b(?:P|p)rint:?\s+`([^`\n]*)`")
 FENCE_RE = re.compile(r"^\s*(```|~~~)")
@@ -64,9 +77,103 @@ def _line_suppresses(lines: list[str], lineno: int) -> bool:
     return reason is not None and reason != ""
 
 
-def _callee_is_sink(node: ast.AST) -> bool:
+def _assignment_targets(node: ast.AST) -> list[ast.Name]:
+    if isinstance(node, ast.Assign):
+        candidates = node.targets
+    elif isinstance(node, ast.AnnAssign):
+        candidates = [node.target]
+    else:
+        return []
+    return [target for target in candidates if isinstance(target, ast.Name)]
+
+
+def _is_logging_util_sink_reference(node: ast.AST, logging_util_names: set[str]) -> bool:
+    return (
+        isinstance(node, ast.Attribute)
+        and isinstance(node.value, ast.Name)
+        and node.value.id in logging_util_names
+        and node.attr in LOGGING_UTIL_SINKS
+    )
+
+
+def _is_breadcrumb_writer_constructor(
+    node: ast.AST,
+    logging_util_names: set[str],
+    constructor_names: set[str],
+) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if isinstance(func, ast.Attribute):
+        return func.attr == "BreadcrumbWriter" and isinstance(func.value, ast.Name) and func.value.id in logging_util_names
+    if isinstance(func, ast.Name):
+        return func.id in constructor_names
+    return False
+
+
+def _collect_sink_metadata(tree: ast.AST) -> tuple[set[str], set[str], set[str]]:
+    logging_util_names = {"logging_util"}
+    sink_names = set(NAME_SINKS)
+    breadcrumb_writer_names = {"BreadcrumbWriter", "breadcrumb_writer", "writer"}
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Import):
+            for alias in node.names:
+                if alias.name == "larch.core.logging_util":
+                    logging_util_names.add(alias.asname or alias.name.rsplit(".", maxsplit=1)[-1])
+        elif isinstance(node, ast.ImportFrom):
+            if node.module == "larch.core":
+                for alias in node.names:
+                    if alias.name == "logging_util":
+                        logging_util_names.add(alias.asname or alias.name)
+            elif node.module == "larch.core.logging_util":
+                for alias in node.names:
+                    target = alias.asname or alias.name
+                    if alias.name in LOGGING_UTIL_SINKS:
+                        sink_names.add(target)
+                    elif alias.name == "BreadcrumbWriter":
+                        breadcrumb_writer_names.add(target)
+    assignments = [node for node in ast.walk(tree) if isinstance(node, (ast.Assign, ast.AnnAssign))]
+    changed = True
+    while changed:
+        changed = False
+        for node in assignments:
+            value = node.value
+            if value is None:
+                continue
+            targets = _assignment_targets(node)
+            if not targets:
+                continue
+            if isinstance(value, ast.Name) and value.id in breadcrumb_writer_names:
+                for target in targets:
+                    if target.id not in breadcrumb_writer_names:
+                        breadcrumb_writer_names.add(target.id)
+                        changed = True
+                continue
+            if _is_breadcrumb_writer_constructor(value, logging_util_names, breadcrumb_writer_names):
+                for target in targets:
+                    if target.id not in breadcrumb_writer_names:
+                        breadcrumb_writer_names.add(target.id)
+                        changed = True
+                continue
+            if _is_logging_util_sink_reference(value, logging_util_names) or (
+                isinstance(value, ast.Name) and value.id in sink_names
+            ):
+                for target in targets:
+                    if target.id not in sink_names:
+                        sink_names.add(target.id)
+                        changed = True
+    return sink_names, breadcrumb_writer_names, logging_util_names
+
+
+def _callee_is_sink(
+    node: ast.AST,
+    *,
+    sink_names: set[str],
+    breadcrumb_writer_names: set[str],
+    logging_util_names: set[str],
+) -> bool:
     if isinstance(node, ast.Name):
-        return node.id in NAME_SINKS
+        return node.id in sink_names
     if not isinstance(node, ast.Attribute):
         return False
     if node.attr == "write" and isinstance(node.value, ast.Attribute):
@@ -75,20 +182,30 @@ def _callee_is_sink(node: ast.AST) -> bool:
             and isinstance(node.value.value, ast.Name)
             and node.value.value.id == "sys"
         )
+    if node.attr == "emit" and _is_breadcrumb_writer_receiver(
+        node.value,
+        breadcrumb_writer_names,
+        logging_util_names,
+    ):
+        return True
     if node.attr in LOGGING_UTIL_SINKS and isinstance(node.value, ast.Name):
-        return node.value.id == "logging_util"
-    return node.attr == "emit" and _is_breadcrumb_writer_receiver(node.value)
+        return node.value.id in logging_util_names
+    return False
 
 
-def _is_breadcrumb_writer_receiver(node: ast.AST) -> bool:
+def _is_breadcrumb_writer_receiver(
+    node: ast.AST,
+    breadcrumb_writer_names: set[str],
+    logging_util_names: set[str],
+) -> bool:
     if isinstance(node, ast.Call):
         func = node.func
         if isinstance(func, ast.Attribute):
-            return func.attr == "BreadcrumbWriter" and isinstance(func.value, ast.Name) and func.value.id == "logging_util"
+            return func.attr == "BreadcrumbWriter" and isinstance(func.value, ast.Name) and func.value.id in logging_util_names
         if isinstance(func, ast.Name):
-            return func.id == "BreadcrumbWriter"
+            return func.id in breadcrumb_writer_names
     if isinstance(node, ast.Name):
-        return node.id in {"breadcrumb_writer", "writer"}
+        return node.id in breadcrumb_writer_names
     return False
 
 
@@ -120,8 +237,14 @@ def _lint_python(path: Path, root: Path, text: str, lines: list[str]) -> list[st
     except SyntaxError as exc:
         raise lint_common.LintError(f"{rel}: unable to parse Python: {exc}") from exc
     violations = _suppression_violations(lines, rel)
+    sink_names, breadcrumb_writer_names, logging_util_names = _collect_sink_metadata(tree)
     for node in ast.walk(tree):
-        if not isinstance(node, ast.Call) or not _callee_is_sink(node.func):
+        if not isinstance(node, ast.Call) or not _callee_is_sink(
+            node.func,
+            sink_names=sink_names,
+            breadcrumb_writer_names=breadcrumb_writer_names,
+            logging_util_names=logging_util_names,
+        ):
             continue
         for lineno, value in _call_literal_parts(node):
             if EM_DASH in value and not _line_suppresses(lines, lineno):
@@ -142,6 +265,8 @@ def _lint_markdown(path: Path, root: Path, lines: list[str]) -> list[str]:
             in_fence = not in_fence
             continue
         if in_fence:
+            continue
+        if line.lstrip().startswith(">"):
             continue
         suppressed = _line_suppresses(lines, lineno)
         for match in PRINT_TEMPLATE_RE.finditer(line):
