@@ -1204,16 +1204,22 @@ def test_run_logs_main_failure_exit_one(monkeypatch: pytest.MonkeyPatch, capsys:
     assert "boom" in capsys.readouterr().out
 
 
-def test_run_logs_main_tails_raw_log(monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
-    raw = "\n".join(f"line-{idx}" for idx in range(105))
+def test_run_logs_main_keeps_full_failed_log(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    raw_lines = ["job-early-marker"] + [f"line-{idx}" for idx in range(60)]
+    raw_lines += ["job-middle-marker"] + [f"line-{idx}" for idx in range(60, 120)]
+    raw_lines += ["job-end-marker"]
+    raw = "\n".join(raw_lines)
     runner = RecordingRunner(responses=[CommandResult(("gh", "run", "view", "7"), 0, raw, "", 0.01)])
     monkeypatch.setattr(gh, "proc", runner)
     assert gh.run_logs_main(["--run-id", "7", "--repo", "o/r"]) == 0
     out = capsys.readouterr().out
     lines = out.splitlines()
-    assert "line-4" not in lines
-    assert "line-5" in lines
-    assert "line-104" in lines
+    assert "job-early-marker" in lines
+    assert "job-middle-marker" in lines
+    assert "job-end-marker" in lines
+    assert "last 100 lines shown" not in out
 
 
 _JOBS_DURATIONS_PAYLOAD = (

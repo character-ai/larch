@@ -1774,17 +1774,19 @@ def run_logs_failed(
     run_id: str,
     *,
     repo: str,
-    tail_lines: int = 100,
     cwd: str | None = None,
 ) -> tuple[str, int]:
     pointer = (
-        f"--- CI log (run {run_id}, repo {repo}): last {tail_lines} lines shown. "
+        f"--- CI log (run {run_id}, repo {repo}): failed-job log shown. "
         f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
     )
     result = runner.run(["gh", "run", "view", run_id, "--repo", repo, "--log-failed"], cwd=cwd)
     combined = result.stdout + result.stderr
-    tail = "\n".join(combined.splitlines()[-tail_lines:])
-    text = f"{pointer}\n{tail}\n" if tail else f"{pointer}\n"
+    text = f"{pointer}\n"
+    if combined:
+        text += combined
+        if not combined.endswith("\n"):
+            text += "\n"
     if result.returncode != 0 and "is still in progress; logs will be available" in combined:
         return text, 3
     if result.returncode != 0:
