@@ -1,0 +1,1 @@
+Plan fixes the named design/review OOS and validation defects with bounded Python changes plus targeted regression tests. It keeps `/implement` Step 5 behavior unchanged and scopes the structured-validation fix to `/design` plan review.

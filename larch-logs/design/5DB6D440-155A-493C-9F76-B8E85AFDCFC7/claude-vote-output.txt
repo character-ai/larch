@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the if/elif structure guarantees Branch B (preserve-instead-of-abort) short-circuits before Branch C (rebuild) for any post-promotion state where sink_count>0; no reachable scenario allows the rebuild to fire after the preserve
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- Item 8 gates the demotion step in plan_review_round.py, not sidecar generation; sidecar staleness on re-entry is a pre-existing issue not introduced by this gating change, and the multi-suggestion remedies target infrastructure outside Item 8's stated scope
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- OOS-tagged duplicate of round-1 OOS_3/OOS_4/OOS_5 (all oos); rule prohibits re-raising oos duplicates
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan explicitly scopes Item 8 to "prose no-findings"; a malformed structured TSV from a structured-output reviewer falls outside that scope and would still traverse the structured validation path
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same scope boundary as FINDING_6; "prose no-findings" excludes reviewers emitting actual prose findings or malformed structured rows
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- direct duplicate of round-1 OOS_3/OOS_4/OOS_5 (all oos); oos duplicates are not re-raised

@@ -1,0 +1,52 @@
+### FINDING_1: emit_tally preserve branch must run before oos.md rebuild
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The new preserve path needs to short-circuit before any `oos.md` serialize/rebuild branch. Otherwise, a re-entry after aggregate promotion can still rebuild from a lingering round `oos.md` and overwrite the authoritative promoted sink.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: State the preserve branch explicitly runs before any oos.md rebuild path, and add a regression where oos.md is present while sink_count exceeds OOS_ACCEPTED_COUNT.
+
+### FINDING_2: fail-closed security regression is aimed at the wrong seam
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The planned security regression still assumes `Path.read_text` failure inside the old classifier surface, but the implementation now routes through `voting.is_security_block_text(artifact_text)`. The test needs to fail at the current block-read or classifier-call seam so the fail-closed behavior is actually exercised.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Retarget the test to raise from block read in _artifact_text_for_item or from voting.is_security_block_text, and assert plan-review tally aborts non-zero without routing the item to public pools.
+
+### FINDING_3: stale structured sidecars can be reused after validation removal and re-entry
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: Removing collector-side structured validation is not enough by itself. The compose path can still read a stale tool-specific sidecar from a prior round or re-entry unless the helper regenerates or invalidates it using the same tool-aware path contract as the collector.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In `plan_review_round.py`, derive the sidecar path from `TOOL` with the same rule as `collect_results._structured_sidecar_path`, generate only when neither that path nor `STRUCTURED_SIDECAR` exists, and add a regression that a non-cursor/codex OK record materializes `{reviewer_file}.jsonl`.
+  - From Cursor-Innovation: Extend the existing `--reentry` cleanup in `design-step3-entry.sh` (and the planned harness case) to remove stale structured sidecars for launched reviewer outputs, or regenerate when reviewer output is newer than the sidecar; do not rely on absence-only lazy generation alone.
+  - From Cursor-Pragmatic: Regenerate (or delete-then-regenerate) the tool-aware sidecar for each `OK` record when it is missing or older than the reviewer file, then add a test with a pre-seeded stale `.tsv` plus fresh prose-only reviewer output.
+  - From Codex-Requirements: When the collector did not provide a current `STRUCTURED_SIDECAR`, regenerate a deterministic helper-owned sidecar for each OK reviewer before parsing, overwriting or bypassing fallback files. Add the prose no-findings regression with a stale fallback sidecar present.
+
+### FINDING_4: strict decode handling is needed before security classification
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: `block.read_text(..., errors="replace")` can hide decode corruption, so an unreadable or malformed block may still get classified as non-security and leak into public OOS pools. The read/assembly step needs fail-closed semantics before calling the text classifier.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Before `voting.is_security_block_text(artifact_text)`, read the block with strict decode semantics and raise on `OSError`/decode failure; update the planned regression to force failure at that read/assembly site, not inside `is_security_block_text`.
+
+### FINDING_5: [OUT_OF_SCOPE] duplicate security classifier in design_oos.py
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: latent
+- **Concern**: `python/larch/design/design_oos.py` still carries a third local `_is_security_block_text` duplicate outside Item 3 scope. It is a follow-up issue, not part of this minimum-change batch.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_6:
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/larch/review/plan_review_round.py:425-435,858-872
+- **Concern**: [SCOPE-REDUCTION] Structured sidecar failure handling is broader than the no-findings rescue the feature needs. Scenario: The plan removes collector structured validation, then keeps any OK reviewer as zero parsed rows when lazy structured generation returns non-zero. A malformed structured TSV that still passes substantive validation by length and provenance would stop being NOT_SUBSTANTIVE and could make real findings disappear as a clean zero-findings round.
+- **Proposed resolution**: Limit the zero-row fallback to recognized no-findings prose or sentinel outputs. For structured-looking output or other sidecar generation failures, keep a degraded or failed record equivalent to the current structured-validation failure path.
+
+### FINDING_7:
+- **Reviewer(s)**: Codex-Innovation
+- **Severity**: important
+- **Focus area**: correctness
+- **Location**: python/larch/review/plan_review_round.py:859-868
+- **Concern**: [SCOPE-REDUCTION] Structured sidecar failures are fail-open for every OK reviewer, not just prose no-findings. Scenario: A reviewer emits a prose finding or malformed structured row that passes substantive validation but cannot materialize a structured sidecar; the plan records OK with zero parsed rows, so the round can finish as zero-findings and drop a real review failure
+- **Proposed resolution**: Narrow the fail-open branch to outputs that match the no-findings prose or sentinel case; keep existing NOT_SUBSTANTIVE or failed handling for structured-looking outputs or finding prose when sidecar generation fails

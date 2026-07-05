@@ -1,0 +1,58 @@
+Reviewing security routing in the plan against the codebase: OOS paths, classifiers, and filing sinks.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	security	python/larch/review/plan_review_tally.py:277-282	Item 3 says not to silently downgrade classifier errors, but the UPDATED section does not require removing the fail-open `except SystemExit: return False` wrapper around `voting.is_security_block`	If the helper survives or still calls the path-based classifier on read failure, `security=False` and `_public_oos_pool_chunks` can append security-tagged OOS into `oos-aggregate-pool.md` (lines 886, 894) and accepted sinks when votes accept them	Delete `_is_security` entirely; classify with `voting.is_security_block_text` on the same text used for routing; do not catch `SystemExit` and return False; add a plan-review tally regression mirroring `test_tally_security_classifier_failure_fails_closed` / pool-skip coverage
+1	in_scope	important	security	python/larch/review/plan_review_tally.py:790-796	Edge case requires classifying the artifact text that is routed, but the UPDATED bullets only say to classify raw `block_text` from `Path.read_text` while `_record_plan_review_artifact_chunks` routes `artifact_text` from `_artifact_text_for_item`	Security markers present only in attribution-restored artifact text (or stripped in raw block reads) can be missed, routing security OOS into public pools and `oos-accepted-design.md`	Reorder: compute `artifact_text` first, then `security = voting.is_security_block_text(artifact_text)`; add a regression with neutralized attribution where security tags live only in restored reviewer context
+1	in_scope	important	correctness	python/tests/review/test_plan_review.py:1646-1688	Planned testing covers `test_plan_review_round.py` and `test_review_tally.py` but omits existing plan-review security routing coverage for Item 3	`test_tally_plan_review_mixed_votes_and_artifacts` already asserts security `OOS_2` is excluded from `oos.md`; not running it after classifier consolidation could miss a design-path public-pool regression	Add `python3 -m pytest python/tests/review/test_plan_review.py -k mixed_votes_and_artifacts` (or a focused security pool test in a touched file) to the testing strategy and Item 3 deliverables
+1	out_of_scope	latent	security	python/larch/design/design_oos.py:120-128	Step 5b aggregate promotion still uses a third local `_is_security_block_text` instead of `voting.is_security_block_text` used after Item 3 in plan/review tally paths	Classifier drift between design pool promotion and plan-review tally can promote or file blocks differently across design vs review surfaces	Defer to a follow-up issue: delegate design OOS promotion to `voting.is_security_block_text` or shared helper
+1	out_of_scope	latent	risk-integration	python/larch/review/review_tally.py:1381-1404	Item 1 preserve path copies the accepted sink to parent via `_finalize_emit_oos_filing` without re-filtering security blocks	Prior-round misclassification preserved across same-run `emit_tally` re-entry could copy security-tagged blocks into parent `oos-accepted-review.md` until Step 5b/`oos` filing filters them	Defense-in-depth follow-up: strip or fail on security blocks when preserving/copying sinks, or re-run `voting.is_security_block_text` before `_copy_emit_artifacts`
+1	out_of_scope	latent	correctness	python/tests/review/test_plan_review.py:1688	Security pool exclusion is only covered in `test_plan_review.py`, not in any newly added test file named in the plan	New regressions in `test_plan_review_round.py` alone would not catch plan-review tally security routing regressions	When touching tests, either migrate the `OOS_2` security assertion into a file in the planned test matrix or keep `test_plan_review.py` in CI for this PR
+
+## Findings
+
+### 1. security — `plan_review_tally.py:277-282` fail-open classifier wrapper
+
+Item 3 tells implementers not to silently downgrade classifier errors to non-security. The current `_is_security` helper does the opposite:
+
+```277:282:python/larch/review/plan_review_tally.py
+    @staticmethod
+    def _is_security(block: str | Path) -> bool:
+        try:
+            return voting.is_security_block(block)
+        except SystemExit:
+            return False
+```
+
+The UPDATED section says to pass `block_text` to `voting.is_security_block_text` but does not explicitly require removing this catch. If any path-based call remains, read failures become `security=False`, and accepted OOS can flow into public pools via `_public_oos_pool_chunks` (lines 886, 894). The review path fails closed instead (`review_tally.py:590-594`, `986-988`).
+
+**Suggested revision:** Delete the wrapper; classify with `voting.is_security_block_text` on routed text; add a plan-review tally test analogous to `test_tally_security_classifier_failure_fails_closed` and `test_tally_public_oos_pool_skips_security_items`.
+
+### 2. security — `plan_review_tally.py:790-796` classify routed artifact text, not raw block
+
+The plan’s failure-modes section says to use the same artifact text that will be routed. The UPDATED bullets only mention classifying `block_text` from `Path.read_text`, while routing uses `artifact_text` from `_artifact_text_for_item` (attribution restoration at lines 731-734). Today security is decided before `artifact_text` is built (line 790 before 792).
+
+**Suggested revision:** Compute `artifact_text` first, then `security = voting.is_security_block_text(artifact_text)`.
+
+### 3. correctness — planned tests omit existing plan-review security coverage
+
+`test_tally_plan_review_mixed_votes_and_artifacts` already guards that security `OOS_2` never lands in public `oos.md`:
+
+```1687:1688:python/tests/review/test_plan_review.py
+    assert "OOS_1" in (design / "oos.md").read_text(encoding="utf-8")
+    assert "OOS_2" not in (design / "oos.md").read_text(encoding="utf-8")
+```
+
+The testing strategy lists `test_plan_review_round.py` and `test_review_tally.py` but not `test_plan_review.py`. Item 3’s classifier consolidation is not covered in any newly listed test file.
+
+**Suggested revision:** Add this test (or an equivalent pool-exclusion case) to the planned test matrix for Item 3.
+
+### [OUT_OF_SCOPE] design OOS classifier drift — `design_oos.py:120-128`
+
+Step 5b pool promotion still uses a local `_is_security_block_text`, while Item 3 consolidates plan-review tally onto `voting.is_security_block_text`. That third copy can drift from the shared classifier and change which blocks get promoted or filed at Step 5b.
+
+### [OUT_OF_SCOPE] preserved sink copy without security re-filter — `review_tally.py:1401-1404`
+
+The planned `emit_tally` preserve path still copies the full sink through `_finalize_emit_oos_filing` without re-scanning for security. Misclassification from an earlier pass could propagate until downstream filing filters. Worth a follow-up if defense-in-depth is desired.
+
+### [OUT_OF_SCOPE] security regression only in unlisted test file
+
+Security pool exclusion for plan-review tally lives only in `test_plan_review.py`, which the plan’s test run list does not include. Consider keeping it in the PR verification set when touching `plan_review_tally.py`.

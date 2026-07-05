@@ -1,0 +1,127 @@
+## Summary
+
+Combined design/review plan-review-validation and OOS-filing follow-ups. Merges the batch from #6323 (8 observations from the review of #6291, aggregate-severity OOS filing) with #6316 (a single design-path observation about `--structured-reviewer-validation`). Within #6323, the two dead-`annotate-skipped-empty-stdout`-branch observations (original items 2 and 7, self-described as mirrors) are collapsed into one item here.
+
+Verified live 2026-07-04: the dead `annotate-skipped-empty-stdout` branch still exists in `python/larch/design/design_step5b.py` (lines ~269, ~295) while `design_oos.py` only emits `annotate-failed-empty-stdout` (line ~217); the `emit_tally` destructive-rebuild guard is present in `python/larch/review/review_tally.py` (~line 1385); `--structured-reviewer-validation` is still wired through `python/larch/review/plan_review_round.py`.
+
+---
+
+### Item 1 — emit_tally guard rejects post-promotion state (important)
+
+**File**: `python/larch/review/review_tally.py`
+
+`emit_tally` has a pre-promotion sink guard that aborts when the accepted sink is non-empty. After aggregate-trigger promotion appends items to `oos-accepted-review.md`, a same-run re-entry of `emit_tally` sees a non-empty sink and aborts before the serialize step, blocking the intended promotion retry path.
+
+---
+
+### Item 2 — Dead annotate-skipped-empty-stdout branch after status grammar change (nit) — CONFIRMED LIVE
+
+**Files**: `python/larch/design/design_step5b.py`, `python/larch/design/design_oos.py`
+
+The old empty-stdout warning branch (handling `annotate-skipped-empty-stdout` on exit 0) in `step5b_annotate_main` / `design_oos.py` appears unreachable after the status grammar changed to `annotate-failed-empty-stdout`. `design_oos.py` emits only `annotate-failed-empty-stdout` (line ~217), yet `design_step5b.py` still branches on `annotate-skipped-empty-stdout` (line ~295). The branch is dead code unless the status vocabulary is re-aligned.
+
+**Fix**: remove the `annotate-skipped-empty-stdout` branch, or re-wire it if the status is still meant to be emitted on the exit-0 path.
+
+*(Merges original #6323 observations 2 and 7, which were mirror reports of the same dead branch.)*
+
+---
+
+### Item 3 — Duplicate security classifier can drift between design and review paths (latent)
+
+**Files**: `python/larch/review/plan_review_tally.py`, `python/larch/review/review_tally.py`
+
+`/design` and the `/implement` review path route security classification through separate entry points (`plan_review_tally._is_security` → `voting.is_security_block`; `review_tally` uses both `voting.is_security_block` and `voting.is_security_block_text`). If the path/text classifiers drift, security-classed items can leak into the public filing pool on one path but not the other.
+
+**Fix**: consolidate onto a single shared classifier so the path- and text-based checks cannot diverge.
+
+---
+
+### Item 4 — Redundant weak empty-stdout annotate test remains (nit)
+
+**File**: `python/tests/design/test_design_oos.py`
+
+The older empty-stdout annotate test is redundant because the newer `NEXT_ACTION` coverage exercises the same behavior. The weak test adds noise without coverage value.
+
+**Fix**: remove the redundant test.
+
+---
+
+### Item 5 — Missing review_core_body session-env integration test (nit)
+
+**Files**: `python/larch/review/review_core_body.py`, `python/tests/review/test_review_tally.py`
+
+Direct `emit_tally` unit tests do not cover the `review_core_body.py` session-env path that threads `--session-env-path` through to `emit_tally`. The integration path is untested.
+
+**Fix**: add an integration test that drives `review_core_body` with a `--session-env-path` and asserts the tally/sink copy-to-parent behavior.
+
+---
+
+### Item 6 — Gate C reentry pool reset lacks regression test (latent)
+
+**File**: `skills/design/scripts/design-step3-entry.sh`
+
+The `design-step3-entry.sh` `--reentry` path resets `oos-aggregate-pool.md` alongside stale review artifacts. There is no automated regression test, so stale pool state could re-trigger promotion after review re-entry without detection.
+
+**Fix**: add a regression test that asserts `oos-aggregate-pool.md` is reset on the `--reentry` path.
+
+---
+
+### Item 7 — Once-only retry sentinel lacks end-to-end harness (latent)
+
+**Files**: `skills/design/references/finalize-step5.md`, `python/larch/design/design_oos.py`
+
+The `.oos-issue-retry-used` sentinel governing the Bug A annotate retry is prompt-orchestrator-owned with no end-to-end harness. A double-retry or silent Step 5b advance past the sentinel would only surface in a live `/design` run.
+
+**Fix**: add an end-to-end harness that exercises the once-only retry sentinel path.
+
+---
+
+### Item 8 — /design still runs --structured-reviewer-validation after substantive validation (from #6316) — CONFIRMED LIVE
+
+**Files**: `python/larch/review/plan_review_round.py` (structured-reviewer-validation wiring)
+
+**Surfaced by**: Cursor-Arch (design phase).
+
+`/design` still runs `--structured-reviewer-validation` after substantive validation. Scenario: `/implement` Step 5 uses validation-mode only, but `/design` plan review also passes `--structured-reviewer-validation`. A prose no-findings result without JSON or `NO_ISSUES_FOUND` can still be demoted `NOT_SUBSTANTIVE` on the structured path even after the prior fix.
+
+**Fix**: on the `/design` plan-review path, do not apply structured-reviewer-validation demotion to prose no-findings once substantive validation has passed.
+
+---
+
+## Sources
+
+- #6323 — OOS followups from #6291 (aggregate-severity filing): emit_tally guard, dead branches, security classifier drift, missing regression tests (8 items; observations 2 and 7 merged).
+- #6316 — /design still runs --structured-reviewer-validation after substantive validation (single item → Item 8).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix 4 code defects: `emit_tally` re-entry guard blocked by non-empty sink (Item 1), dead `annotate-skipped-empty-stdout` branch (Item 2), duplicate security classifier that can drift between design and review paths (Item 3), and `--structured-reviewer-validation` demotion applied after substantive validation passes (Item 8).
+- Close 4 test gaps: remove redundant weak annotate test (Item 4), add `review_core_body` session-env integration test (Item 5), add Gate C reentry pool-reset regression test (Item 6), add once-only retry sentinel harness (Item 7).
+
+### Non-goals
+- No new features or behavioral changes beyond the named defect fixes.
+- No changes to the `/implement` Step 5 validation path; Item 8 is scoped to the `/design` plan-review path only.
+- No refactoring of unaffected tally or OOS-filing logic beyond the minimum required by each item.
+
+### Approach sketch
+- Item 1: Change the `emit_tally` non-empty sink guard so it skips re-clearing instead of aborting, allowing same-run re-entry after aggregate promotion.
+- Item 2: Confirm `design_oos.py` emits only `annotate-failed-empty-stdout`; remove the dead `annotate-skipped-empty-stdout` branch from `design_step5b.py`.
+- Item 3: Replace the standalone `_is_security` chain in `plan_review_tally.py` with the shared `voting.is_security_block_text` used by `review_tally.py`.
+- Item 8: Gate `--structured-reviewer-validation` demotion in `plan_review_round.py` so it does not fire once substantive validation has passed.
+- Items 4-7: Add targeted tests (Python unit/integration for Items 4, 5, 7; shell harness or Python for Item 6 based on `design-step3-entry.sh` test conventions).
+
+### Surfaces in scope
+- `python/larch/review/review_tally.py`
+- `python/larch/review/plan_review_tally.py`
+- `python/larch/review/plan_review_round.py`
+- `python/larch/design/design_step5b.py`
+- `python/larch/design/design_oos.py`
+- `python/tests/design/test_design_oos.py`
+- `python/tests/review/test_review_tally.py`
+- Shell harness (if Items 6/7 require it) in `skills/design/scripts/`
+
+### Open questions
+- None.
