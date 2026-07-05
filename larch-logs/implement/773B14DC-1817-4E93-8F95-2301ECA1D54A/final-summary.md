@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:22:10
-- **Cost**: 💰 TOTAL ~$5.11: Claude $0.44, Codex-5.5 $1.88, Codex-mini $1.14, Cursor $1.49, Claude (subprocess) $0.16  |  Tokens: 9110k
+- **Cost**: 💰 TOTAL ~$5.48: Claude $0.81, Codex-5.5 $1.88, Codex-mini $1.14, Cursor $1.49, Claude (subprocess) $0.16  |  Tokens: 10035k
 - **Issue**: #6333: https://github.com/character-ai/larch/issues/6333
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -70,3 +70,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_5** (latent): Named parity harness for explicit-path vs parent-ascent is an alternative design. Concern: The plan asked for dedicated explicit-path vs parent-ascent parity tests, but the implementation folded both checks into one `argv_walk()`. The reviewer treats that as acceptable design drift rather than a regression.
 - **Round 1 OOS_6** (nit): Missing `|&` parent-ascent failure test leaves the new stderr-pipe path unverified. Concern: The harness allows `|&` but does not assert the parent-ascent failure for that path, so CI still lacks a regression test for the stderr-pipe branch.
 - **Round 1 OOS_7** (latent): Normal argument-order assumptions still allow obfuscated path-first probes. Concern: Parent-ascent detection still assumes the usual `pattern`-before-`path` layout, so a path-first probe such as `rg ../root PATTERN` can be misclassified and slip past the pipe-fed no-path gate. The reviewer marks this as pre-existing obfuscation risk rather th…
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
