@@ -80,7 +80,7 @@ def test_validation_mode_sentinels_and_thresholds(tmp_path: Path) -> None:
     tsv = write(
         tmp_path / "inline.tsv",
         "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
-        "1\tin_scope\timportant\tcorrectness\tpython/research_eval.py:1\twhat\tbreaks\tfix\n",
+        "1\tin_scope\tmajor\tcorrectness\tpython/research_eval.py:1\twhat\tbreaks\tfix\n",
     )
     assert research_eval.validate_research_output(tsv, validation_mode=True) == 0
 
@@ -97,23 +97,23 @@ def test_structured_jsonl_tsv_and_sentinel(tmp_path: Path) -> None:
     record = {
         "schema_version": 1,
         "scope": "in_scope",
-        "severity": "Important",
+        "severity": "major",
         "focus_area": "correctness",
         "location": "python/research_eval.py:1",
         "what": "what",
         "scenario_or_breakage": "breaks",
         "suggested_fix": "fix",
     }
-    blocking_record = {**record, "severity": "Blocking", "focus_area": "architecture"}
+    blocking_record = {**record, "severity": "minor", "focus_area": "architecture"}
     path = write(tmp_path / "jsonl.txt", json.dumps(record) + "\n" + json.dumps(blocking_record) + "\n")
     assert research_eval.validate_research_output(path, structured_reviewer_mode=True, write_structured=out) == 0
     normalized_jsonl = out.read_text(encoding="utf-8")
-    assert '"severity":"important"' in normalized_jsonl
-    assert '"severity":"blocking"' in normalized_jsonl
-    tsv = write(tmp_path / "records.tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tout_of_scope\tBlocking\tsecurity\tpython/research_eval.py:1\twhat\tscenario\tfix extra\n")
+    assert '"severity":"major"' in normalized_jsonl
+    assert '"severity":"minor"' in normalized_jsonl
+    tsv = write(tmp_path / "records.tsv", "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n1\tout_of_scope\tnit\tsecurity\tpython/research_eval.py:1\twhat\tscenario\tfix extra\n")
     assert research_eval.validate_research_output(tsv, structured_reviewer_mode=True, write_structured=out) == 0
     normalized_tsv = out.read_text(encoding="utf-8")
-    assert "\tblocking\tsecurity\t" in normalized_tsv
+    assert "\tnit\tsecurity\t" in normalized_tsv
     assert "fix extra" in normalized_tsv
     no = write(tmp_path / "no.txt", '{"no_issues_found": true}\n')
     assert research_eval.validate_research_output(no, structured_reviewer_mode=True, write_structured=out) == 0
@@ -122,6 +122,36 @@ def test_structured_jsonl_tsv_and_sentinel(tmp_path: Path) -> None:
     cp = run_cli("eval", "validate-research-output", "--structured-reviewer-mode", "--write-structured", str(out), str(bad))
     assert cp.returncode == 5
     assert "structured records not found after repair" in cp.stdout
+
+
+def test_structured_reviewer_rejects_retired_severities(tmp_path: Path) -> None:
+    out = tmp_path / "records.jsonl"
+    retired_jsonl = write(
+        tmp_path / "retired-jsonl.txt",
+        json.dumps(
+            {
+                "schema_version": 1,
+                "scope": "in_scope",
+                "severity": "Important",
+                "focus_area": "correctness",
+                "location": "python/research_eval.py:1",
+                "what": "what",
+                "scenario_or_breakage": "breaks",
+                "suggested_fix": "fix",
+            }
+        )
+        + "\n",
+    )
+    assert research_eval.validate_research_output(retired_jsonl, structured_reviewer_mode=True, write_structured=out) == 5
+    assert out.read_text(encoding="utf-8") == ""
+
+    retired_tsv = write(
+        tmp_path / "retired.tsv",
+        "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
+        "1\tout_of_scope\tBlocking\tsecurity\tpython/research_eval.py:1\twhat\tscenario\tfix\n",
+    )
+    assert research_eval.validate_research_output(retired_tsv, structured_reviewer_mode=True, write_structured=out) == 5
+    assert out.read_text(encoding="utf-8") == ""
 
 
 def test_structured_reviewer_no_issues_salvage_paths(tmp_path: Path) -> None:
@@ -163,7 +193,7 @@ def test_structured_reviewer_valid_record_plus_sentinel_keeps_record(tmp_path: P
     record = {
         "schema_version": 1,
         "scope": "in_scope",
-        "severity": "important",
+        "severity": "major",
         "focus_area": "correctness",
         "location": "python/research_eval.py:1",
         "what": "what",
@@ -203,9 +233,9 @@ def test_structured_tsv_cursor_format_tolerance(tmp_path: Path) -> None:
     # literal schema_version constant. Every row is kept and normalized to "1".
     row_index = normalize(
         header
-        + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat\tscenario\tfix\n"
-        + "2\tin_scope\timportant\tcorrectness\tpython/bar.py:2\twhat\tscenario\tfix\n"
-        + "3\tin_scope\timportant\tcorrectness\tpython/baz.py:3\twhat\tscenario\tfix\n"
+        + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\twhat\tscenario\tfix\n"
+        + "2\tin_scope\tmajor\tcorrectness\tpython/bar.py:2\twhat\tscenario\tfix\n"
+        + "3\tin_scope\tmajor\tcorrectness\tpython/baz.py:3\twhat\tscenario\tfix\n"
     )
     kept = [ln for ln in row_index.splitlines() if ln and not ln.startswith("schema_version")]
     assert len(kept) == 3
@@ -213,7 +243,7 @@ def test_structured_tsv_cursor_format_tolerance(tmp_path: Path) -> None:
 
     # Cursor focus_area defect: completeness maps to code-quality (the single-row
     # C94E1D97 signature) without touching the _ALLOWED_FOCUS enum.
-    mapped = normalize(header + "1\tin_scope\timportant\tcompleteness\tpython/foo.py:1\twhat\tscenario\tfix\n")
+    mapped = normalize(header + "1\tin_scope\tmajor\tcompleteness\tpython/foo.py:1\twhat\tscenario\tfix\n")
     kept_mapped = [ln for ln in mapped.splitlines() if ln and not ln.startswith("schema_version")]
     assert len(kept_mapped) == 1
     assert "\tcode-quality\t" in kept_mapped[0]
@@ -223,8 +253,8 @@ def test_structured_tsv_cursor_format_tolerance(tmp_path: Path) -> None:
     # now validate instead of dropping the whole slot.
     normalized = normalize(
         header
-        + "1\tin_scope\timportant\tcompleteness\tpython/foo.py:1\twhat\tscenario\tfix\n"
-        + "2\tin_scope\timportant\tcorrectness\tpython/bar.py:2\twhat\tscenario\tfix\n"
+        + "1\tin_scope\tmajor\tcompleteness\tpython/foo.py:1\twhat\tscenario\tfix\n"
+        + "2\tin_scope\tmajor\tcorrectness\tpython/bar.py:2\twhat\tscenario\tfix\n"
     )
     assert "\tcode-quality\t" in normalized
     assert normalized.count("\n1\t") == 2
@@ -233,13 +263,13 @@ def test_structured_tsv_cursor_format_tolerance(tmp_path: Path) -> None:
     # (exit 5), and a non-integer column 1 (prose from a split row) too.
     assert (
         research_eval.validate_structured_reviewer_output(
-            header + "1\tin_scope\timportant\tbogus\tpython/foo.py:1\twhat\tscenario\tfix\n", write_structured=out
+            header + "1\tin_scope\tmajor\tbogus\tpython/foo.py:1\twhat\tscenario\tfix\n", write_structured=out
         )
         == 5
     )
     assert (
         research_eval.validate_structured_reviewer_output(
-            header + "prose\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat\tscenario\tfix\n", write_structured=out
+            header + "prose\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\twhat\tscenario\tfix\n", write_structured=out
         )
         == 5
     )
@@ -250,7 +280,7 @@ def test_structured_tsv_multiline_row_joining(tmp_path: Path) -> None:
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
     text = (
         header
-        + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\tline one\n"
+        + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\tline one\n"
         + "line two\tbreaks on newline\tfix it\n"
     )
     assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
@@ -263,7 +293,7 @@ def test_structured_tsv_multiline_row_joining(tmp_path: Path) -> None:
 def test_structured_tsv_folds_overflow_tabs_into_suggested_fix(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
-    text = header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat\twith\ttab\tfix\n"
+    text = header + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\twhat\twith\ttab\tfix\n"
     assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
     normalized = out.read_text(encoding="utf-8")
     assert "tab fix" in normalized
@@ -276,25 +306,25 @@ def test_structured_tsv_salvages_seven_column_rows(tmp_path: Path) -> None:
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
 
     # Trailing delimiter omitted: seven fields, suggested_fix missing -> padded empty.
-    seven_col = header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat text\tscenario text\n"
+    seven_col = header + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\twhat text\tscenario text\n"
     assert research_eval.validate_structured_reviewer_output(seven_col, write_structured=out) == 0
     kept = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("schema_version")]
     assert len(kept) == 1
-    assert kept[0].split("\t")[:7] == ["1", "in_scope", "important", "correctness", "python/foo.py:1", "what text", "scenario text"]
+    assert kept[0].split("\t")[:7] == ["1", "in_scope", "major", "correctness", "python/foo.py:1", "what text", "scenario text"]
 
     # A tab collapsed into a run of spaces in the typed region is re-split into eight columns.
-    spaced = header + "1\tin_scope\timportant\tcorrectness  python/bar.py:2\twhat\tscenario\tfix\n"
+    spaced = header + "1\tin_scope\tmajor\tcorrectness  python/bar.py:2\twhat\tscenario\tfix\n"
     assert research_eval.validate_structured_reviewer_output(spaced, write_structured=out) == 0
     salvaged = out.read_text(encoding="utf-8")
     assert "\tcorrectness\tpython/bar.py:2\t" in salvaged
 
     # A seven-column row whose leading typed fields do NOT validate is still rejected.
-    bogus = header + "1\tin_scope\timportant\tbogus_focus\tpython/baz.py:3\twhat\tscenario\n"
+    bogus = header + "1\tin_scope\tmajor\tbogus_focus\tpython/baz.py:3\twhat\tscenario\n"
     assert research_eval.validate_structured_reviewer_output(bogus, write_structured=out) == 5
 
     # Free-text double-space gap between what and scenario_or_breakage (not trailing pad).
     free_text_gap = (
-        header + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\twhat text  scenario text\tfix text\n"
+        header + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\twhat text  scenario text\tfix text\n"
     )
     assert research_eval.validate_structured_reviewer_output(free_text_gap, write_structured=out) == 0
     gap_kept = [ln for ln in out.read_text(encoding="utf-8").splitlines() if ln and not ln.startswith("schema_version")]
@@ -307,7 +337,7 @@ def test_structured_tsv_salvages_seven_column_rows(tmp_path: Path) -> None:
     # Multi-space prose inside a single free-text field on an under-delimited row is rejected.
     prose_fabrication = (
         header
-        + "1\tin_scope\timportant\tcorrectness\tpython/foo.py:1\tconcern A  concern B  concern C  concern D\n"
+        + "1\tin_scope\tmajor\tcorrectness\tpython/foo.py:1\tconcern A  concern B  concern C  concern D\n"
     )
     assert research_eval.validate_structured_reviewer_output(prose_fabrication, write_structured=out) == 5
 
@@ -316,7 +346,7 @@ def test_structured_tsv_accepts_non_file_location(tmp_path: Path) -> None:
     out = tmp_path / "records.tsv"
     header = "schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix\n"
     for location in ("Testing strategy", "plan.txt"):
-        text = header + f"1\tin_scope\timportant\tcorrectness\t{location}\twhat\tscenario\tfix\n"
+        text = header + f"1\tin_scope\tmajor\tcorrectness\t{location}\twhat\tscenario\tfix\n"
         assert research_eval.validate_structured_reviewer_output(text, write_structured=out) == 0
         normalized = out.read_text(encoding="utf-8")
         assert f"\t{location}\t" in normalized
@@ -327,7 +357,7 @@ def test_structured_jsonl_completeness_synonym(tmp_path: Path) -> None:
     record = {
         "schema_version": 1,
         "scope": "in_scope",
-        "severity": "important",
+        "severity": "major",
         "focus_area": "completeness",
         "location": "python/research_eval.py:1",
         "what": "what",

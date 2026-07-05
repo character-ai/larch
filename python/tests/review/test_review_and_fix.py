@@ -2499,6 +2499,41 @@ def test_important_present_matches_concern_only_marker(tmp_path):
 
 
 @MARK_CONVERGENCE
+def test_step5_high_severity_major_acceptance_triggers_escalation(tmp_path):
+    impl = _tmp_impl(tmp_path)
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    accepted = round_dir / "accepted-findings.md"
+    accepted.write_text(
+        "### FINDING_1: first\n- **Severity**: major\n\n### FINDING_2: second\n- **Severity**: major\n",
+        encoding="utf-8",
+    )
+    result = review_and_fix.RoundResult(
+        0,
+        "fix-applied",
+        "fix-required",
+        1,
+        2,
+        0,
+        0,
+        0,
+        2,
+        0,
+        0,
+        0,
+        accepted,
+        round_dir / "rejected-findings.md",
+        round_dir,
+        impl / "review-and-fix-summary.json",
+        impl / "accumulated-oos.jsonl",
+        review_and_fix.CoderResult(0, status="applied", input_count=2),
+    )
+
+    assert round_runner._high_severity_count(accepted) == 2
+    assert review_and_fix._escalation_trigger_for_result(result) == "high-severity"
+
+
+@MARK_CONVERGENCE
 def test_run_round_missing_findings_sets_classifier_failed(tmp_path, monkeypatch):
     impl = _tmp_impl(tmp_path)
     round_dir = impl / "round-1"

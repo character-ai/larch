@@ -1033,16 +1033,13 @@ def execute_round(
             _emit(key=k, value=v)
         return 2, values
 
-    # Issue #5032: when reviewers collected OK (ok_count > 0) but every one reported no
-    # findings, the composed ballot has no FINDING_/OOS_ rows and there is nothing to vote
-    # on. Short-circuit to the same benign zero-findings-degraded-panel outcome as the
-    # PANEL_PRUNED_EMPTY branch instead of dispatching voters against an empty ballot:
-    # empty-ballot voting inevitably degrades, and the voter-dispatch failure gate below
-    # would otherwise map the converged round to panel-failed before the benign
-    # _classify_round_loop_status could run. The ok_count == 0 empty-collection case is left
-    # to the existing voter-dispatch / classifier path so its loud degraded-empty-collector
-    # outcome (issue #4790) is preserved.
-    if ok_count > 0 and fail_count == 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
+    # Issue #5032: when reviewers collected OK (ok_count > 0) but every surviving review
+    # pruned down to an empty ballot, there is nothing left to vote on. Short-circuit to the
+    # same benign zero-findings-degraded-panel outcome as the PANEL_PRUNED_EMPTY branch
+    # instead of dispatching voters against an empty ballot. The ok_count == 0 empty-
+    # collection case is left to the existing voter-dispatch / classifier path so its loud
+    # degraded-empty-collector outcome (issue #4790) is preserved.
+    if ok_count > 0 and not re.search(r"(?m)^### (?:FINDING|OOS)_[0-9]+", ballot_text):
         values.update(
             {
                 "LOOP_STATUS": "zero-findings-degraded-panel",

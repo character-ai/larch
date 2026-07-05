@@ -212,6 +212,28 @@ Vote tally: YES=3 NO=0 Result=accepted Fileable=true
     assert "### OOS_1: [OUT_OF_SCOPE] Accepted" in output
 
 
+def test_oos_serialize_canonical_oos_block_written(tmp_path: Path) -> None:
+    counts, output = _serialize_text(
+        tmp_path,
+        """### OOS_1: Canonical accepted
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true
+""",
+    )
+    assert counts == (1, 0)
+    assert "### OOS_1: Canonical accepted" in output
+
+
+def test_oos_serialize_canonical_oos_block_requires_fileable_vote(tmp_path: Path) -> None:
+    counts, output = _serialize_text(
+        tmp_path,
+        """### OOS_1: Canonical rejected
+Vote tally: YES=3 NO=0 Result=accepted Fileable=false
+""",
+    )
+    assert counts == (0, 0)
+    assert output == ""
+
+
 def test_oos_serialize_result_token_boundaries(tmp_path: Path) -> None:
     counts, output = _serialize_text(
         tmp_path,

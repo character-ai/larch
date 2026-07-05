@@ -2119,6 +2119,44 @@ def test_tally_plan_review_two_judge_oos_one_major_yes_is_fileable(tmp_path: Pat
     assert row["voting_result"] == "accepted"
 
 
+def test_tally_plan_review_two_judge_oos_major_minor_split_is_not_fileable(tmp_path: Path) -> None:
+    ballot = tmp_path / "ballot.md"
+    _ = ballot.write_text(
+        """### OOS_1: Follow-up cleanup
+- **Reviewer**: Codex-Pragmatic
+- **Concern**: File this follow-up.
+""",
+        encoding="utf-8",
+    )
+    yes_major = tmp_path / "yes-major.txt"
+    yes_minor = tmp_path / "yes-minor.txt"
+    _ = yes_major.write_text("OOS_1: YES SEVERITY=major\n", encoding="utf-8")
+    _ = yes_minor.write_text("OOS_1: YES SEVERITY=minor\n", encoding="utf-8")
+    design = tmp_path / "design-oos-major-minor"
+    design.mkdir()
+
+    proc = run_cli(
+        "plan-review",
+        "tally",
+        "--ballot-file",
+        str(ballot),
+        "--voter-files",
+        str(yes_major),
+        str(yes_minor),
+        "--design-tmpdir",
+        str(design),
+        env={"LARCH_QUIET_DISABLE": "1"},
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    accepted_path = design / "oos-accepted-design.md"
+    accepted = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
+    assert accepted.strip() == ""
+    class_tsv = design / "plan-review" / "round-1" / "findings-classification.tsv"
+    row = voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows[0]
+    assert row["voting_result"] == "accepted"
+
+
 def test_tally_plan_review_security_oos_routes_to_private_sidecar(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(

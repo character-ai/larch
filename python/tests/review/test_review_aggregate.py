@@ -1662,6 +1662,40 @@ def test_prune_nit_plan_audit_failure_restores_findings(
     assert oos.read_text(encoding="utf-8") == original_oos
 
 
+def test_prune_nit_security_rows_stay_out_of_public_audit(tmp_path: Path) -> None:
+    findings = tmp_path / "findings.md"
+    _ = findings.write_text(
+        """### FINDING_1: Public nit
+- **Severity**: nit
+- **Concern**: public cleanup
+
+### FINDING_2: [OUT_OF_SCOPE] Security nit
+- **Severity**: nit
+- **Concern**: focus-area=security keep private
+""",
+        encoding="utf-8",
+    )
+    public_audit = tmp_path / "oos-dropped-before-vote.md"
+    security_audit = tmp_path / "security-oos-observations.md"
+
+    result = run_review(
+        "prune-nit-findings",
+        "--findings-file",
+        str(findings),
+        "--input-mode",
+        "code",
+        "--audit-file",
+        str(public_audit),
+        "--security-audit-file",
+        str(security_audit),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "Public nit" in public_audit.read_text(encoding="utf-8")
+    assert "Security nit" in security_audit.read_text(encoding="utf-8")
+    assert "Security nit" not in public_audit.read_text(encoding="utf-8")
+
+
 def test_aggregate_default_dispatch_argv_uses_python_cli(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     findings = tmp_path / "findings.md"
     _ = findings.write_text(

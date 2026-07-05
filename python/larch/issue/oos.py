@@ -82,7 +82,8 @@ def _iter_finding_blocks(text: str) -> list[str]:
 
 
 def _is_oos_block(block: str) -> bool:
-    return "[OUT_OF_SCOPE]" in block or "[OOS]" in block
+    first_line = block.splitlines()[0] if block else ""
+    return bool(re.match(r"^###\s+OOS_[0-9]+:", first_line)) or "[OUT_OF_SCOPE]" in block or "[OOS]" in block
 
 
 def _is_vote_tally_eligible(block: str) -> bool:
