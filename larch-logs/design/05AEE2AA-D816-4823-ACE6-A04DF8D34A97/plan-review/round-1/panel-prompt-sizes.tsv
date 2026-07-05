@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	29872	7468	13371	3343	16501	4126		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17737	4435	13083	3271	4654	1164		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17728	4432	13074	3269	4654	1164		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	29887	7472	13386	3347	16501	4126		0	0
+design Step 3	phase1	1	dyn-codex-plan-review-pipeline-gate	plan-review	codex	dyn-codex-plan-review-pipeline-gate.txt	18106	4527	12949	3238	5157	1290		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17752	4438	13098	3275	4654	1164		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	29863	7466	13362	3341	16501	4126		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17750	4438	13096	3274	4654	1164		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	29885	7472	13384	3346	16501	4126		0	0
+design Step 3	phase1	1	dyn-cursor-plan-review-pipeline-gate	plan-review	cursor	dyn-cursor-plan-review-pipeline-gate.txt	30241	7561	13237	3310	17004	4251		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	43031	10758	4505	1127	38526	9632	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	16319	4080	9091	2273	7228	1807		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	16319	4080	9091	2273	7228	1807		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	16319	4080	9091	2273	7228	1807		0	0

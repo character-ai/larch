@@ -1,0 +1,48 @@
+Reviewing the plan against current vote thresholds and OOS filing paths in plan-review and code-review.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/issue/oos.py:86-140	emit-tally rebuild uses oos serialize which gates only on Result=accepted not strict-majority major	When review-tally leaves oos-accepted-review.md empty but OOS_ACCEPTED_COUNT>0 emit-tally calls cli.py oos serialize on round oos.md and rebuilds the accepted sink from every threshold-accepted OOS block including accepted-but-minor items that the new file gate must exclude	Add ### UPDATED: python/larch/issue/oos.py applying the shared strict-majority-major fileable predicate before writing serialize output and align emit-tally rebuild checks in review_tally.py with fileable counts only
+1	in_scope	important	correctness	python/larch/review/review_tally.py:505-536	promote_aggregate_oos_pool at emit-tally bypasses the major file gate	_finalize_emit_oos_filing appends every pool block and oos-accepted-main-agent block whose footer has Result=accepted into oos-accepted-review.md without reading judge severities so accepted-but-minor OOS in the aggregate pool can still reach GitHub filing even after tally gates sink writes	Extend the review_tally.py plan step to gate _promote_aggregate_oos_pool and _append_oos_pool_candidate with the same shared fileable helper or skip promotion entirely once sinks are fileable-only
+1	in_scope	important	correctness	python/larch/design/design_oos.py:41-214	plan omits design_oos.py while Step 5b still promotes aggregate pool into oos-accepted-design.md	design step5b prepare calls _promote_aggregate_oos_pool using reviewer body severities blocking/important/latent and Result=accepted only so design filing can bypass plan_review_tally file-gate semantics and breaks after the unified major/minor vocabulary lands	Add ### UPDATED: python/larch/design/design_oos.py to repoint aggregate triggers to major/minor apply the shared fileable predicate before promotion and file only from gated oos-accepted-design.md
+1	in_scope	important	correctness	python/larch/review/plan_review_round.py:937-964	design plan-review path has no nit drop before aggregation	plan only wires the mechanical nit filter through review_core_body.py for code review but plan_review_round.py goes collector to aggregate-findings to ballot with no prune-nit-findings call so slipped nit severities still consume judge tokens on the design path	Add a firm plan step on plan_review_round.py or shared helper to run the new drop-to-oos-dropped-before-vote.md filter before aggregate-findings mirroring review_core_body.py
+1	in_scope	important	risk-integration	python/larch/review/review_tally.py:1006-1082	OOS_ACCEPTED_COUNT and competition scoreboard still equate threshold-accepted with filed	Current tally increments oos_accepted and OOS_ACCEPTED_COUNT whenever classify_oos_result returns accepted while scoreboard rows use oos_accepted from that result so accepted-but-minor items remain counted and scored as filed unless every consumer is retargeted to a fileable predicate	In the review_tally.py and plan_review_tally.py steps explicitly redefine OOS_ACCEPTED_COUNT and OOS-Accepted scoreboard columns as fileable-only while keeping voting_result=accepted in classification TSV for threshold-pass evidence
+1	out_of_scope	latent	architecture	python/larch/report/run_log_batch.py:450-453	run-log projection not updated for revived oos-dropped-before-vote.md	round artifact allowlist currently excludes oos-dropped-before-vote.md so dropped-nit audit lineage stays session-local and /fluff-analysis cannot see it from committed logs	Add ### UPDATED: python/larch/report/run_log_batch.py only if committed audit lineage is required in the same PR
+
+## Findings
+
+### 1. [correctness] `oos serialize` bypasses the major file gate (`python/larch/issue/oos.py:86-140`)
+
+Plan Approach §4 and §3 gate filing at tally sinks, but `emit_tally` still rebuilds an empty `oos-accepted-review.md` from `oos.md` via `python/cli.py oos serialize` when `OOS_ACCEPTED_COUNT > 0` (`python/larch/review/review_tally.py:1376-1385`). `oos_serialize` only checks `Result=accepted` in the vote footer (`python/larch/issue/oos.py:86-96`), not judge `major` severities. Accepted-but-minor OOS can be re-serialized into the filing sink after tally intentionally omitted it.
+
+**Suggested revision:** Add `python/larch/issue/oos.py` to firm UPDATED files and apply the shared strict-majority-`major` helper there; align emit-tally rebuild validation with fileable counts.
+
+### 2. [correctness] Code-review aggregate promotion bypasses the file gate (`python/larch/review/review_tally.py:505-536`, `646-652`)
+
+Even if tally writes only fileable blocks to `oos-accepted-review.md` and the pool, `_finalize_emit_oos_filing` calls `_promote_aggregate_oos_pool`, which appends pool and `oos-accepted-main-agent.md` blocks with `Result=accepted` and no severity check (`python/larch/review/review_tally.py:505-536`). `_record_public_oos_artifact` still adds every threshold-accepted OOS to the pool today (`646-652`). The plan’s `review_tally.py` bullet does not mention emit-time promotion.
+
+**Suggested revision:** Gate `_promote_aggregate_oos_pool` / pool append with the shared fileable helper, or drop promotion once sinks are fileable-only.
+
+### 3. [correctness] Design Step 5b filing path missing from plan (`python/larch/design/design_oos.py:41-214`)
+
+`/design` Step 5b prepare calls `_promote_aggregate_oos_pool` before reading `oos-accepted-design.md` (`design_oos.py:597`). Promotion uses reviewer body severities `blocking|important|latent` (`41-42`) and `Result=accepted` only (`184-185`), not judge strict-majority `major`. `design_oos.py` is absent from the plan’s UPDATED list while `plan_review_tally.py` is listed. Design filing can bypass the new gate and breaks when reviewer severities become `major|minor`.
+
+**Suggested revision:** Add firm `### UPDATED: python/larch/design/design_oos.py` with shared fileable predicate and updated aggregate triggers.
+
+### 4. [correctness] Design plan-review lacks the nit mechanical filter (`python/larch/review/plan_review_round.py:937-964`)
+
+Issue scope requires reviewer emit-cut on all paths. The plan updates `review_core_body.py` and `review_aggregate.py` for code review, but design goes collector → `aggregate-findings` → ballot with no `prune-nit-findings` call (`plan_review_round.py:940-964`). Slipped `nit` blocks still reach judges on the design path, undermining the token-saving goal.
+
+**Suggested revision:** Add a firm plan step on `plan_review_round.py` (or a shared helper) to drop nits before aggregation, matching code review.
+
+### 5. [risk-integration] Count and scoreboard semantics need an explicit fileable contract (`python/larch/review/review_tally.py:1006-1082`, `plan_review_tally.py:896-898`)
+
+Plan Approach §4 keeps threshold acceptance in `oos.md` / classification TSV but restricts filing sinks. Today `OOS_ACCEPTED_COUNT`, `oos_accepted`, and pool writes all key off `result == "accepted"` (`review_tally.py:1006-1013`; `plan_review_tally.py:896-898`). Without retargeting every counter to a fileable predicate, accepted-but-minor OOS is still scored and counted as filed while `emit-tally` refuses or rebuilds inconsistently.
+
+**Suggested revision:** In both tally modules, define `OOS_ACCEPTED_COUNT` and competition `OOS-Accepted` as fileable-only; keep `voting_result=accepted` in TSV for threshold evidence.
+
+## Vote-threshold preservation (plan bullets checked)
+
+Plan Approach §4 explicitly keeps OOS vote thresholds at 1/1, 1+/2, 2+/3; current `accept_oos` in `python/larch/review/voting.py:850-858` matches that contract and the plan does not propose changing it. In-scope finding thresholds in `accept_finding` (`838-847`) are likewise untouched. The new strict-majority-`major` gate is additive on filing sinks, not a replacement for `accept_oos`.
+
+## [OUT_OF_SCOPE] Run-log projection for dropped-nit audit
+
+Plan Approach §3 introduces `oos-dropped-before-vote.md`, but `run_log_batch.py` currently excludes it from round artifacts (`python/tests/report/test_run_logs.py:1822`). Committed-run analysis tools will not see dropped-nit lineage unless projection is updated; defer unless same-PR committed audit is required.

@@ -1,0 +1,14 @@
+1	design plan-review still lets nit or missing-severity rows reach aggregation and ballot dispatch instead of the planned oos-dropped-before-vote.md backstop, so the emit-cut does not apply on the design path.
+1	emit-tally's oos serialize/rebuild path still keys on result=accepted instead of the strict-majority-yes fileable predicate, so accepted-but-minor oos can re-enter the accepted sink and be filed.
+1	design_oos step 5b still promotes aggregate-pool rows using retired body severities and does not consistently apply the shared fileable predicate, so accepted major items can stall and accepted-minor items can still be promoted/filed.
+1	structured continuation logic in plan_review_loop still keys high/high_new off blocking/important, so accepted major findings may fail to extend or escalate correctly.
+1	oos-dropped-before-vote.md is not being committed into the round-log surface, so the dropped-nit audit trail disappears after temp cleanup and the docs remain inconsistent about what should be rendered.
+1	agents/orchestrator-aggregator.md still tells the aggregator to merge the old blocking/important/latent/nit vocabulary and order, so prompt validation or output generation can conflict with the new severity schema.
+1	round_runner's convergence helper still looks for important/blocking markers, so code-review rounds with accepted major findings can be marked converged too early.
+2	the dropped-nit audit is written at the design/plan-review root instead of the per-round committed subtree, so later rounds can overwrite earlier forensic copies and the round artifact set may miss the audit file.
+2	filtering only the in-scope side leaves nit-tagged rows in the oos sidecar path, so the composed ballot can still carry nits and waste judge tokens.
+2	if the snapshot is taken before the nit-drop mutation, the pre-aggregate restore path can resurrect nits that were supposed to be removed by the hard backstop.
+2	pool-to-sink promotion still keys only on accepted status, so accepted-but-minor oos can be re-promoted into the filing sink even when the gate is supposed to require the stricter fileable predicate.
+2	security-tagged oos drops can be written into the public dropped-audit file, bypassing the existing local-only security sidecar path.
+2	missing severity is still emitted as an explicit nit, which makes the new pre-ballot drop treat it as disposable instead of preserving it as a minor ballot row.
+2	the serializer only splits `finding_` headers, but the live oos file uses `oos_` headers, so rebuild/serialize can miss valid accepted rows.
