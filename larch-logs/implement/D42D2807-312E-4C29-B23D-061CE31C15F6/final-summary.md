@@ -1,14 +1,16 @@
-## /implement run D42D2807-312E-4C29-B23D-061CE31C15F6: shipping
+## /implement run D42D2807-312E-4C29-B23D-061CE31C15F6: stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:06:55
-- **Cost**: 💰 TOTAL ~$3.02: Claude $2.64, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.38  |  Tokens: 7260k
+- **Cost**: 💰 TOTAL ~$3.96: Claude $3.58, Codex-5.5 $0.00, Codex-mini $0.00, Cursor $0.00, Claude (subprocess) $0.38  |  Tokens: 10132k
 - **Issue**: #6375: https://github.com/character-ai/larch/issues/6375
+- **PR**: #6427: https://github.com/character-ai/larch/pull/6427
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: unknown
 - **Code review**: N/A
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +1522/-104, larch-logs +722/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -22,3 +24,7 @@
 ## Review Phase Detail
 
 No review rounds completed.
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
