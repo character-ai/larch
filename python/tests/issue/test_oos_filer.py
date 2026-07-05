@@ -344,15 +344,15 @@ def test_hard_create_partial_failure_with_rollup_stamps_single_success(
             oos_filer.FiledIssue(
                 "Combined",
                 "https://github.com/owner/repo/issues/101",
-                False,
-                "oos-accepted-main-agent:OOS_1",
-                ("oos-accepted-main-agent:OOS_1", "oos-accepted-main-agent:OOS_2"),
+                duplicate=False,
+                stable_id="oos-accepted-main-agent:OOS_1",
+                source_stable_ids=("oos-accepted-main-agent:OOS_1", "oos-accepted-main-agent:OOS_2"),
             ),
         ],
         failures=1,
         failure_mode="hard_create",
     )
-    monkeypatch.setattr(oos_filer, "_run_issue_batch", lambda *_args, **_kwargs: batch)
+    monkeypatch.setattr(oos_filer, "_run_issue_batch", lambda *_args, **_kwargs: batch)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     rc, _payload = _run(tmp_path, fake, monkeypatch)
 
