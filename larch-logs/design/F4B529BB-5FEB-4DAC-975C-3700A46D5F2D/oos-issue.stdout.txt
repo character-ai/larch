@@ -1,0 +1,7 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6358
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6358
+ISSUE_1_TITLE=[OOS] Aggregated rollup of 13 capped OOS items
+ISSUE_1_BLOCKER_LINKS_APPLIED=1

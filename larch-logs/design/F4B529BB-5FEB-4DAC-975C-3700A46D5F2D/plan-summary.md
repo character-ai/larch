@@ -1,0 +1,1 @@
+Edit only `.claude/skills/combine-issues/SKILL.md`. Add a prompt-side merit gate after actuality in `oos-2`, stage low-merit rejections until `oos-4`, and treat stale plus confirmed low-merit items as fully discarded for `not planned` closure.

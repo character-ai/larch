@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- post-rescue combination scheme re-approval is not required by the originating issue, which specifies only merit batch confirmation and free-prose rescue; this adds a constraint beyond the stated acceptance criteria
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- substantially duplicates round-1 OOS FINDING_9; the issue's own examples ("keep A and C", "keep the caching one") already imply labeled items and description-based matching, making explicit matching-priority rules a robustness detail rather than a plan correctness defect
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=true -- likely duplicates round-1 OOS_1/OOS_6 (catalog blurb actuality-only concern); latent severity fails the materiality floor under default-deny
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicates round-1 OOS_5 (frontmatter, line 3) and OOS_2/OOS_3 (flag table, lines 15-17); same file, same concern, same line range
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicates round-1 OOS_2 which explicitly covered "OOS intro" in the same SKILL.md; different line number but same stale-description concern

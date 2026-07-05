@@ -1,0 +1,78 @@
+## Context
+
+- `approach-synthesis.txt` is `NO_SKETCHES`; draft from direct repo inspection.
+- Round 1 and the approved outline bind scope to `.claude/skills/combine-issues/SKILL.md`, steps `oos-2` and `oos-4`.
+- Current `oos-2` checks actuality only, builds stale-only closures, and emits `Actuality check: <K> items kept, <M> discarded across <N> OOS issues.`
+- No current test pins the `oos-2` summary text.
+
+## Approach
+
+1. In `oos-2`, keep the existing actuality flow unchanged through file existence, blocked-item handling, and concern-still-present checks.
+2. After an item passes actuality and is not blocked, add a merit gate:
+   - Reject only with a concrete reason tied to code read or documented repo principles.
+   - Use `KARPATHY_CLAUDE.md` §2 and §3 as named rubric anchors.
+   - Include the issue body rubric: speculative feature, single-use abstraction, unrequested flexibility, defensive impossible-state handling, refactor of unbroken code, pure nit, lopsided cost-benefit, or contradiction of a documented decision.
+   - Default to keep when evidence is weak.
+3. Stage low-merit items in a proposed rejection list with source issue, item title, stable display key, and a 1-3 sentence cause. Do not combine, deduplicate, or close them until operator confirmation.
+4. Update the `oos-2` summary to count kept, stale, and pending low-merit items separately. Keep the blocked-item suffix.
+5. In `oos-4`, show all proposed merit rejections as one consolidated list before the combination scheme.
+6. Make the `oos-4` approval semantics explicit:
+   - Approval confirms all listed merit rejections.
+   - Free-prose rescue keeps named items and returns them to the actual-item set.
+   - Cancel stops without rejecting merit items.
+   - Do not prompt per item.
+7. If the operator rescues any item, rerun deduplication and grouping with those items included before applying any groups. Do not apply a stale grouping that omitted rescued items.
+8. Generalize stale-only closure prose to fully discarded closure prose after confirmation:
+   - A source is fully discarded only when every item is stale or confirmed low-merit, and no item is blocked, rescued, still actionable, or consumed by a combined host.
+   - Use `combine-issues close-stale` with reason `not planned`.
+   - Write an honest close comment that says items were discarded as stale or out of line with repo principles.
+   - Do not use `close-sources` or the `larch:combined-away` marker for these closures.
+9. Handle the no-kept-items path:
+   - If stale and pending low-merit items remain, go through the same consolidated merit confirmation before closing fully discarded sources.
+   - If all pending merit rejections are rescued, continue to deduplication and grouping.
+10. Update `oos-5` deferred-close logic to treat confirmed merit-rejected items like stale discards. A source may use `--defer-close` or qualify for `close-sources` only when every item is stale auto-discarded, confirmed merit-rejected, consumed into an approved group, or blocked on-source. Pending (unconfirmed) merit items are not consumed and block deferred close. This prevents `--source-issues` handling from treating rejected items as still uncombined and keeping sources open incorrectly.
+
+## Files to modify/create
+
+### UPDATED: .claude/skills/combine-issues/SKILL.md
+
+- Update the `oos-2` heading or first prose sentence to mention actuality plus merit.
+- Insert the merit rubric after the existing concern-still-present check and before collecting actual items into the `oos-3/oos-4` flat list.
+- Replace fully stale source tracking with pending fully discarded tracking, while preserving the stale-only behavior until merit rejections are confirmed.
+- Update the no-actual-items branch so pending merit rejections still require confirmation.
+- Change the summary grammar to separate kept, stale, and low-merit pending counts.
+- Update `oos-4` to show `Rejected items (merit):` with one line per item and a 1-3 sentence cause.
+- Update the `oos-4` approval prompt to cover groups, stale closures, and merit rejections in one batch.
+- Update close-comment prose for confirmed fully discarded sources.
+- Update `oos-5` prose to state that confirmed merit-rejected items count as discarded/consumed (same as stale) when evaluating deferred-close eligibility; pending merit rejections are not consumed.
+- Update the dependency summary labels from stale-only to stale or fully discarded where needed.
+- Update the `Anti-patterns` section: scope "NEVER discard actionable content" to combined-body merges (confirmed merit rejections after oos-4 batch approval are permitted discards); add "NEVER auto-apply merit rejections before oos-4 confirmation" as an explicit rule.
+
+## Edge cases
+
+- **Ambiguous merit evidence**: keep the item.
+- **Contradicting documented decisions**: reject only when the contradiction is concrete and cited in the cause.
+- **Operator rescues a subset**: reinsert rescued items before grouping; reject only the unrescued items.
+- **All items proposed low-merit**: do not close sources until the operator confirms rejection.
+- **Blocked items plus low-merit items**: keep the source open because blocked items remain actionable later.
+- **Stale plus confirmed low-merit only**: source qualifies for `not planned` closure with the honest discarded-source comment.
+- **Partial `close-stale` failure**: keep current warning and left-open reporting behavior.
+- **Pending merit items in oos-5**: source cannot be listed in `--source-issues` or deferred-close until confirmation; treat as still unclosed.
+
+## Failure modes
+
+- The prompt could close sources before merit confirmation. Prevent this by stating that proposed merit rejections are not discarded until `oos-4` approval.
+- The prompt could apply a combination scheme that omitted rescued items. Prevent this by requiring regrouping after any rescue.
+- The prompt could over-reject subjective items. Prevent this with default-keep bias and the concrete-reason requirement.
+- The close comment could claim stale-only when merit contributed. Prevent this by adding distinct fully discarded comment text.
+- The `oos-5` deferred-close path could treat pending merit items as consumed. Prevent this with the explicit oos-5 prose update that only confirmed rejections count as discarded.
+
+## Testing strategy
+
+- Run `pre-commit run --files .claude/skills/combine-issues/SKILL.md`.
+- If the edit changes no Bash fences, no implement fence-shape test is needed.
+- No Python tests are expected because the change is prompt-side only and adds no CLI verb.
+- If implementation discovers an existing test or lint that pins the `oos-2` summary literal, update only that assertion and run the narrow test.
+
+difficulty: MODERATE
+diff_lines: 85
