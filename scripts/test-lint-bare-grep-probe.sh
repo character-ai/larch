@@ -219,6 +219,10 @@ assert_fence_line_violation "no-path if rg" 'if rg -q PATTERN --type py; then ec
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path if ripgrep" 'if ripgrep -q PATTERN; then echo found; fi' \
     "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "standalone ! rg no-path" '! rg -q PATTERN' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "standalone ! rg parent ascent" '! rg PATTERN ../root' \
+    "parent-directory ascent in grep-family path operand"
 assert_fence_line_violation "no-path if ! rg" 'if ! rg -q PATTERN --type py; then echo missing; fi' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path if ! ripgrep" 'if ! ripgrep -q PATTERN; then echo missing; fi' \
@@ -269,6 +273,8 @@ assert_fence_line_violation "quoted stdin marker is not stdin-safe" "rg -n PATTE
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "quoted redirect tokens are not stdin-safe" 'rg -n PATTERN "<" /dev/null' \
     "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "quoted pipe-stderr token is not a path" "rg PATTERN '|&'" \
+    "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "commented stdin marker is not stdin-safe" 'rg -n PATTERN # < /dev/null' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "rg -e without path rejected" 'rg -e PATTERN' \
@@ -313,6 +319,8 @@ assert_fence_line_allowed "path command rg" 'command rg -n PATTERN python/'
 assert_fence_line_allowed "path command ripgrep" 'command ripgrep -n PATTERN skills/'
 assert_fence_line_allowed "path if rg" 'if rg -q PATTERN python/; then echo found; fi'
 assert_fence_line_allowed "path if ! ripgrep" 'if ! ripgrep -q PATTERN skills/; then echo missing; fi'
+assert_fence_line_violation "then-headed no-path rg" 'if true; then rg -q PATTERN; fi' \
+    "no-path rg/grep probe may block on stdin"
 assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi'
 assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi'
 assert_fence_line_allowed "path subshell grep" '( grep -n PATTERN file.txt ) || true'

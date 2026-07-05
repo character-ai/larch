@@ -203,6 +203,14 @@ scan_file() {
             while (i <= nt && is_assignment(tok[i])) i++
             return i
         }
+        function skip_command_prefixes(i) {
+            while (tok[i] == "!" || tok[i] == "then" || tok[i] == "else" ||
+                tok[i] == "elif" || tok[i] == "do") {
+                i++
+                i = skip_assignments(i)
+            }
+            return i
+        }
         function is_grep_family(value) {
             return value == "grep" || value == "rg" || value == "ripgrep"
         }
@@ -213,13 +221,16 @@ scan_file() {
                 if (tok[i] == "!") i++
                 i = skip_assignments(i)
             }
+            i = skip_command_prefixes(i)
             while (tok[i] == "(" || tok[i] == "{") {
                 i++
                 i = skip_assignments(i)
+                i = skip_command_prefixes(i)
             }
             if (tok[i] == "command") {
                 i++
                 i = skip_assignments(i)
+                i = skip_command_prefixes(i)
             }
             return i
         }
@@ -228,6 +239,11 @@ scan_file() {
             if (idx > seg_start && tok[idx - 1] == "command") return 0
 
             i = skip_assignments(seg_start)
+            if (tok[i] == "!") {
+                i++
+                i = skip_assignments(i)
+            }
+            i = skip_command_prefixes(i)
             if (i == idx) return 1
             if (tok[i] == "(") return 0
             if (tok[i] == "if") {
@@ -240,6 +256,7 @@ scan_file() {
             if (tok[i] == "{") {
                 i++
                 i = skip_assignments(i)
+                i = skip_command_prefixes(i)
                 if (i == idx) return 1
             }
             return 0
@@ -249,7 +266,8 @@ scan_file() {
         }
         function is_quoted_operator_operand(idx) {
             return tok_quoted[idx] && (tok[idx] == ";" || tok[idx] == "<" ||
-                tok[idx] == ">" || tok[idx] == "|" || tok[idx] == "&")
+                tok[idx] == ">" || tok[idx] == "|" || tok[idx] == "&" ||
+                tok[idx] == "|&")
         }
         function is_command_boundary(value) {
             return value == "|" || value == "||" || value == "&&" ||
