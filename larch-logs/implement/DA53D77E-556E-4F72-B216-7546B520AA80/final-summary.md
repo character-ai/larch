@@ -1,14 +1,16 @@
-## /implement run DA53D77E-556E-4F72-B216-7546B520AA80: shipping
+## /implement run DA53D77E-556E-4F72-B216-7546B520AA80: stalled
 
+- **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 00:26:10
 - **Cost**: 💰 TOTAL ~$13.51: Claude $1.09, Codex-5.5 $6.87, Codex-mini $1.13, Cursor $3.04, Claude (subprocess) $1.38  |  Tokens: 27411k
 - **Issue**: #6322: https://github.com/character-ai/larch/issues/6322
+- **PR**: #6338: https://github.com/character-ai/larch/pull/6338
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +137/-31, larch-logs +627/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
