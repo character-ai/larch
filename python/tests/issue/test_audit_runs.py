@@ -8,7 +8,6 @@ from __future__ import annotations
 import json
 import re
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 import pytest
 
@@ -17,7 +16,6 @@ from larch.core import config
 from larch.issue import audit_runs
 from larch.core.proc import CommandResult
 
-import pytest
 
 
 def test_title_contiguous(capsys):
