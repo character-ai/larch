@@ -1512,6 +1512,26 @@ def test_append_deviation_note_dedupes_against_ndjson_batch(tmp_path: Path) -> N
     assert issue_log.read_text(encoding="utf-8") == ""
 
 
+def test_append_deviation_note_preserves_new_chunks_when_one_chunk_matches(tmp_path: Path) -> None:
+    tmpdir = tmp_path / "implement"
+    tmpdir.mkdir()
+    issue_log = tmpdir / "execution-issues.md"
+    issue_log.write_text(
+        "### Warnings\n- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n",
+        encoding="utf-8",
+    )
+    note = (
+        "- G-Py-4 deviation: helper stays prompt-authored for final diff evidence.\n"
+        "- G-Cfg-1 deviation: configuration stayed in prose for compatibility.\n"
+    )
+
+    assert ag.append_deviation_note(tmpdir, note) == "ok"
+    text = issue_log.read_text(encoding="utf-8")
+    assert text.count("G-Py-4 deviation") == 1
+    assert text.count("G-Cfg-1 deviation") == 1
+    assert "- G-Cfg-1 deviation: configuration stayed in prose for compatibility." in text
+
+
 def test_append_deviation_note_main_rejects_empty_note(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],

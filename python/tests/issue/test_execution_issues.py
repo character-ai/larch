@@ -41,6 +41,16 @@ def test_append_execution_issue_inserts_inside_existing_section(tmp_path: Path) 
     assert text.count("- new") == 1
 
 
+def test_append_execution_issue_rejects_symlink_log(tmp_path: Path) -> None:
+    log = tmp_path / "execution-issues.md"
+    target = tmp_path / "target.md"
+    _ = target.write_text("", encoding="utf-8")
+    log.symlink_to(target)
+
+    with pytest.raises(OSError, match="non-regular log file"):
+        execution_issues.append_execution_issue(log, category="Warnings", entry="- warning")
+
+
 def test_flush_execution_issues_writes_sentinel_and_clears_log(tmp_path: Path) -> None:
     issue_log = tmp_path / "execution-issues.md"
     _ = issue_log.write_text("### Warnings\n- one\n", encoding="utf-8")

@@ -243,6 +243,8 @@ def flush_execution_issues_main(argv: list[str] | None = None) -> int:
 
 
 def append_execution_issue(log: Path, *, category: str, entry: str) -> None:
+    if log.is_symlink() or (log.exists() and not log.is_file()):
+        raise OSError(f"refusing to append through non-regular log file: {log}")
     text = log.read_text(encoding="utf-8") if log.exists() else ""
     if entry in text:
         return

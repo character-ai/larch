@@ -1031,15 +1031,24 @@ def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
     """Append a guideline deviation warning unless the run already has the same warning."""
     entry = _format_deviation_warning_entry(note)
     redacted_entry = _redact_batch_payload(entry)
-    candidate_keys = _warning_chunk_keys(redacted_entry)
-    candidate_shas = _warning_chunk_source_shas(redacted_entry)
     issue_log = implement_tmpdir / "execution-issues.md"
     existing_keys = _existing_warning_keys_from_markdown(issue_log)
     ndjson_keys, ndjson_shas = _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir)
-    if candidate_keys & (existing_keys | ndjson_keys) or candidate_shas & ndjson_shas:
+    known_keys = existing_keys | ndjson_keys
+    kept_chunks: list[str] = []
+    for chunk in execution_issue_chunks(redacted_entry.splitlines()):
+        chunk_body = "\n".join(chunk)
+        chunk_keys = _warning_chunk_keys(chunk_body)
+        chunk_shas = _warning_chunk_source_shas(chunk_body)
+        if chunk_keys <= known_keys or (chunk_shas and chunk_shas <= ndjson_shas):
+            continue
+        kept_chunks.append(chunk_body)
+        known_keys.update(chunk_keys)
+        ndjson_shas.update(chunk_shas)
+    if not kept_chunks:
         return _APPEND_DEVIATION_DUPLICATE
     try:
-        append_execution_issue(log_file=issue_log, category=_EXECUTION_WARNINGS_CATEGORY, entry=entry)
+        append_execution_issue(log_file=issue_log, category=_EXECUTION_WARNINGS_CATEGORY, entry="\n".join(kept_chunks))
     except OSError:
         return _APPEND_DEVIATION_FAILED
     return _APPEND_DEVIATION_OK
