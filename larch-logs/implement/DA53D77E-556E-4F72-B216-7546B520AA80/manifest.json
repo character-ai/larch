@@ -1,0 +1,22 @@
+{
+  "attempt": 1,
+  "effort": "max",
+  "flags": {},
+  "issue_number": 6322,
+  "larch_version": "52.4.11",
+  "model_roster": {
+    "main": "claude-sonnet-4-6"
+  },
+  "operator_cwd": "<OPERATOR_CWD>",
+  "operator_repo_root": "<REPO_ROOT>",
+  "parent_skill": null,
+  "run_id": "DA53D77E-556E-4F72-B216-7546B520AA80",
+  "schema_version": 2,
+  "skill": "implement",
+  "stalled_at_step": null,
+  "started_at": "2026-07-05T00:21:50Z",
+  "status": "partial",
+  "steps_ran": {},
+  "superseded_by": null,
+  "updated_at": "2026-07-05T00:32:11Z"
+}
