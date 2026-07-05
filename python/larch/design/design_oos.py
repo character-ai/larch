@@ -34,7 +34,7 @@ _SECURITY_HEADER_RE = re.compile(
     r"`?(?:\[security\]|<security>)`?(?:\s|$|[:-])",
     re.IGNORECASE,
 )
-_ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(\d+)_(URL|DUPLICATE_OF_URL)=(.*)$")
+_ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(?:(\d+)_)?(URL|DUPLICATE_OF_URL)=(.*)$")
 _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
 _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
@@ -678,7 +678,7 @@ def _parse_issue_stdout(stdout_text: str) -> tuple[dict[str, str], dict[str, str
     for line in stdout_text.splitlines():
         kv = _ISSUE_URL_KV_RE.match(line)
         if kv:
-            idx, kind, value = kv.group(1), kv.group(2), kv.group(3).strip()
+            idx, kind, value = kv.group(1) or "1", kv.group(2), kv.group(3).strip()
             if not value:
                 continue
             if kind == "URL":
@@ -702,9 +702,8 @@ def _cap1_rollup_url(
     order: list[str],
     combined_path: Path,
     successful_slots: list[tuple[str, str]],
-    has_failures: bool,
 ) -> str:
-    if len(order) <= 1 or has_failures:
+    if len(order) <= 1:
         return ""
     if len(_parse_post_cap_combined_blocks(combined_path)) != 1:
         return ""
@@ -1037,7 +1036,6 @@ def file_oos_annotate_main(argv: Sequence[str]) -> int:
         order=order,
         combined_path=combined_path,
         successful_slots=successful_slots,
-        has_failures=bool(failed_indices) or issues_failed_count > 0,
     )
     slot_urls = {**dup_by_idx, **url_by_idx}
     accepted_text, map_lines = _annotate_accepted_urls(

@@ -227,7 +227,16 @@ def test_annotate_updates_accepted_and_returns_nonzero_on_reported_failures(
     assert kv_prepare["FILE_DESIGN_OOS_STATUS"] != "skip-sentinel"
 
 
-def test_annotate_cap1_rollup_maps_single_url_to_every_original(
+@pytest.mark.parametrize("key", ["ISSUE_URL", "ISSUE_DUPLICATE_OF_URL"])
+def test_parse_issue_stdout_slots_accepts_bare_slot_one_keys(key: str) -> None:
+    slots = design_oos._parse_issue_stdout_slots(  # pyright: ignore[reportPrivateUsage]
+        f"{key}=https://github.com/acme/repo/issues/101\nISSUES_FAILED=0\n",
+    )
+
+    assert slots == {1: "https://github.com/acme/repo/issues/101"}
+
+
+def test_annotate_cap1_rollup_maps_single_url_to_every_original_even_with_failures(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -247,8 +256,8 @@ def test_annotate_cap1_rollup_maps_single_url_to_every_original(
     )
     stdout_file = tmp_path / "oos-issue.stdout.txt"
     _ = stdout_file.write_text(
-        "ISSUE_1_URL=https://github.com/acme/repo/issues/101\n"
-        "ISSUES_FAILED=0\n",
+        "ISSUE_DUPLICATE_OF_URL=https://github.com/acme/repo/issues/101\n"
+        "ISSUES_FAILED=1\n",
         encoding="utf-8",
     )
     cache = tmp_path / "cache.md"
@@ -259,12 +268,12 @@ def test_annotate_cap1_rollup_maps_single_url_to_every_original(
     monkeypatch.setattr(design_oos, "_cross_session_cache_path", _stub_cache)
 
     rc = design_oos.file_oos_annotate_main(["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(stdout_file), "--issue-number", "44"])
-    assert rc == 0
+    assert rc == 1
     kv = _kv(capsys.readouterr().out)
-    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-complete"
+    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-partial-failed"
     accepted_text = accepted.read_text(encoding="utf-8")
     assert accepted_text.count("- **Filed URL**: https://github.com/acme/repo/issues/101") == 2
-    sentinel_text = (tmp_path / "oos-issues-created.md").read_text(encoding="utf-8")
+    sentinel_text = (tmp_path / "oos-issues-created.partial.md").read_text(encoding="utf-8")
     assert "OOS_FILE_MAP\t1\thttps://github.com/acme/repo/issues/101" in sentinel_text
     assert "OOS_FILE_MAP\t2\thttps://github.com/acme/repo/issues/101" in sentinel_text
 
@@ -275,7 +284,7 @@ def test_annotate_cap1_rollup_maps_single_url_to_every_original(
     rc_prepare = design_oos.file_oos_prepare_main(["--design-tmpdir", str(tmp_path), "--issue-number", "44"])
     assert rc_prepare == 0
     kv_prepare = _kv(capsys.readouterr().out)
-    assert kv_prepare["FILE_DESIGN_OOS_STATUS"] == "skip-sentinel"
+    assert kv_prepare["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
     assert accepted.read_text(encoding="utf-8").count("- **Filed URL**: https://github.com/acme/repo/issues/101") == 2
 
 
