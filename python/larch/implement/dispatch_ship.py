@@ -23,7 +23,7 @@ from larch.core import config
 from larch.core import proc
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError, Stalled, TransientNetworkError
-from larch.git import git, rebase
+from larch.git import git, gh, rebase
 from larch.implement import ship
 from larch.implement.dispatch_helpers import (
     _clone_expected_tmpdir_prefix,
@@ -516,42 +516,57 @@ def ship_pre_fix_rebase_main(argv: list[str] | None = None) -> int:
         if (implement_tmpdir / config.SHIP_PR_RRR_AFTER_PHASE14_FLAG_BASENAME).is_file():
             status = "skip"
             action = "continue"
-        elif git.rebase_in_progress(proc, cwd=cwd):
-            route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
-            if route_fields:
-                ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-                    state_file=implement_tmpdir / "ship-pr-state.sh",
-                    patch=route_fields,
-                )
-                _ship_pre_fix_patch_handoff(
-                    implement_tmpdir=implement_tmpdir,
-                    patch={
-                        **route_fields,
-                        "PRE_FIX_REBASE_STATUS": "conflict",
-                        "NEXT_ACTION": "conflict-fix",
-                    },
-                )
-                status = "conflict"
-                action = "conflict-fix"
-            else:
-                status = "stall"
-                action = "stall"
         else:
-            base_remote = "upstream" if _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")) else "origin"
-            rebase.rebase_and_push(
-                runner=proc,
-                repo=state["REPO"],
-                run_id=state["RUN_ID"],
-                cwd=cwd,
-                tmpdir=str(implement_tmpdir),
-                base_remote=base_remote,
-                base_ref="main",
-                defer_push=False,
-                allow_conflict_fix=True,
-                enable_pre_push_handoff=True,
-            )
-            status = "ok"
-            action = "continue"
+            current_branch = git.try_current_branch(proc, cwd=cwd)
+            if current_branch != state["BRANCH_NAME"]:
+                return _ship_pre_fix_fail(
+                    f"checked-out branch {current_branch!r} does not match ship-pr-state.sh BRANCH_NAME {state['BRANCH_NAME']!r}"
+                )
+            if current_branch in {"main", "master"} and not _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")):
+                return _ship_pre_fix_fail(
+                    f"refusing pre-fix rebase on checked-out branch {current_branch!r} without a forked target"
+                )
+            current_repo = gh.resolve_repo(proc, cwd=cwd)
+            if current_repo != state["REPO"]:
+                return _ship_pre_fix_fail(
+                    f"checked-out repo {current_repo!r} does not match ship-pr-state.sh REPO {state['REPO']!r}"
+                )
+            if git.rebase_in_progress(proc, cwd=cwd):
+                route_fields = _ship_route_conflict_handoff_fields(implement_tmpdir)
+                if route_fields:
+                    ship._patch_ship_state_keys(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
+                        state_file=implement_tmpdir / "ship-pr-state.sh",
+                        patch=route_fields,
+                    )
+                    _ship_pre_fix_patch_handoff(
+                        implement_tmpdir=implement_tmpdir,
+                        patch={
+                            **route_fields,
+                            "PRE_FIX_REBASE_STATUS": "conflict",
+                            "NEXT_ACTION": "conflict-fix",
+                        },
+                    )
+                    status = "conflict"
+                    action = "conflict-fix"
+                else:
+                    status = "stall"
+                    action = "stall"
+            else:
+                base_remote = "upstream" if _ship_pre_fix_truthy(state.get("FORKED_TARGET", "")) else "origin"
+                rebase.rebase_and_push(
+                    runner=proc,
+                    repo=state["REPO"],
+                    run_id=state["RUN_ID"],
+                    cwd=cwd,
+                    tmpdir=str(implement_tmpdir),
+                    base_remote=base_remote,
+                    base_ref="main",
+                    defer_push=False,
+                    allow_conflict_fix=True,
+                    enable_pre_push_handoff=True,
+                )
+                status = "ok"
+                action = "continue"
     except PrePushConflictHandoff as exc:
         try:
             _ship_pre_fix_write_conflict_state(

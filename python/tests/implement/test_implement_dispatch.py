@@ -741,6 +741,8 @@ def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
         calls.append(kwargs)
         return object()
 
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
 
@@ -764,6 +766,94 @@ def test_ship_pre_fix_rebase_ok_uses_fork_aware_remote_and_pushes(
     assert call["defer_push"] is False
     assert call["allow_conflict_fix"] is True
     assert call["enable_pre_push_handoff"] is True
+
+
+@pytest.mark.parametrize(
+    ("current_branch", "current_repo", "expected_message"),
+    [
+        ("feature/other", "owner/repo", "checked-out branch 'feature/other' does not match ship-pr-state.sh BRANCH_NAME 'feature/pre-fix'"),
+        ("feature/pre-fix", "other/repo", "checked-out repo 'other/repo' does not match ship-pr-state.sh REPO 'owner/repo'"),
+    ],
+)
+def test_ship_pre_fix_rebase_refuses_mismatched_branch_or_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    current_branch: str,
+    current_repo: str,
+    expected_message: str,
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp)
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: current_branch)
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: current_repo)
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: pytest.fail("rebase probe should not run"))
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: pytest.fail("rebase should not run"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc != 0
+    captured = capsys.readouterr()
+    assert expected_message in captured.err
+    assert "NEXT_ACTION=" not in captured.out
+
+
+def test_ship_pre_fix_rebase_refuses_main_branch_without_fork(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    _write_pre_fix_state(tmp, forked="false")
+    (tmp / "ship-pr-state.sh").write_text(
+        "PHASE=ci-initial\n"
+        "BRANCH_NAME=main\n"
+        "ISSUE_NUMBER=123\n"
+        "RUN_ID=run-1\n"
+        "REPO=owner/repo\n"
+        "REPO_UNAVAILABLE=false\n"
+        "FORKED_TARGET=false\n"
+        "MERGE=true\n"
+        "DRAFT=false\n"
+        "MANIFEST_PATH=\n"
+        "TOOL_LABEL=codex\n"
+        "NO_ADMIN_FALLBACK=false\n"
+        "NO_LOGS_COMMIT=false\n"
+        "PR_NUMBER=44\n"
+        "PR_URL=https://github.com/owner/repo/pull/44\n"
+        "PR_TITLE=Implement feature\n"
+        "PR_CLOSED=false\n"
+        "DESIGN_ONLY_DONE=false\n"
+        "DEFERRED=false\n"
+        "DONE_RENAME_APPLIED=false\n"
+        "REBASE_COUNT=2\n"
+        "FIX_ATTEMPTS=3\n"
+        "ITERATION=4\n"
+        "TRANSIENT_RETRIES=1\n"
+        "OOS_PENDING=false\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "main")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
+    monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: pytest.fail("rebase probe should not run"))
+    monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: pytest.fail("rebase should not run"))
+
+    rc = implement_dispatch.ship_pre_fix_rebase_main([
+        "--implement-tmpdir",
+        str(tmp),
+        "--cwd",
+        str(tmp_path),
+    ])
+
+    assert rc != 0
+    captured = capsys.readouterr()
+    assert "refusing pre-fix rebase on checked-out branch 'main' without a forked target" in captured.err
+    assert "NEXT_ACTION=" not in captured.out
 
 
 def test_ship_pre_fix_rebase_phase14_flag_skips_rebase(
@@ -802,9 +892,11 @@ def test_ship_pre_fix_rebase_routes_existing_conflict_handoff(
             "RESUME_PHASE=ship-pr-rrr-phase14\n"
             "CALLER_KIND=ship_pr_pre_push\n"
             "CONFLICT_FILES=python/a.py,docs/b.md\n"
-        )
+    )
     (tmp / ".ship-route-exit-handoff.env").write_text("FAILED_RUN_ID=99\n", encoding="utf-8")
     rebase_calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: rebase_calls.append("rebase"))
 
@@ -835,6 +927,8 @@ def test_ship_pre_fix_rebase_stalls_existing_rebase_without_metadata(
     tmp = _session(tmp_path)
     _write_pre_fix_state(tmp)
     rebase_calls: list[str] = []
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: True)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", lambda **_kwargs: rebase_calls.append("rebase"))
 
@@ -866,6 +960,8 @@ def test_ship_pre_fix_rebase_conflict_handoff_writes_state_and_preserves_handoff
             caller_kind=config.SHIP_PR_PRE_PUSH_CALLER_KIND,
         )
 
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
 
@@ -901,6 +997,8 @@ def test_ship_pre_fix_rebase_stall_exceptions_emit_stall(
     def fake_rebase_and_push(**_kwargs: object) -> object:
         raise exc
 
+    monkeypatch.setattr(dispatch_ship.git, "try_current_branch", lambda *_args, **_kwargs: "feature/pre-fix")
+    monkeypatch.setattr(dispatch_ship.gh, "resolve_repo", lambda *_args, **_kwargs: "owner/repo")
     monkeypatch.setattr(dispatch_ship.git, "rebase_in_progress", lambda *_args, **_kwargs: False)
     monkeypatch.setattr(dispatch_ship.rebase, "rebase_and_push", fake_rebase_and_push)
 
