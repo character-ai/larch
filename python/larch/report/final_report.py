@@ -11,7 +11,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
@@ -610,13 +610,10 @@ def _summary_heading_line_is_stalled(line: str) -> bool:
 
 
 def summary_heading_is_stalled(text: str) -> bool:
-    for line in text.splitlines():
-        if _summary_heading_line_is_stalled(line):
-            return True
-    return False
+    return any(_summary_heading_line_is_stalled(line) for line in text.splitlines())
 
 
-def _summary_stalled_heading_index(lines: list[str]) -> int | None:
+def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
     for idx, line in enumerate(lines):
         if _summary_heading_line_is_stalled(line):
             return idx
