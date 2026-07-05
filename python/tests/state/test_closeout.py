@@ -376,3 +376,4 @@ def test_step_16_forwards_run_id_from_state_files(
     monkeypatch.setattr(closeout.subprocess, "run", fake_run)
     assert closeout.step_16_main([]) == 0
     assert captured == [expected_run_id]
+# pyright: reportUnusedFunction=false

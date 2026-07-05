@@ -5783,3 +5783,4 @@ def test_guidelines_warning_append_failure_warns_stderr(
     assert note == ""
     assert warning_logged is False
     assert "architectural-guidelines warning append failed: append failed" in captured.err
+# pyright: reportUnusedFunction=false

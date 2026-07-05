@@ -1287,3 +1287,5 @@ def invalidate_main(argv: list[str]) -> int:
         return 2
     print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=ok")
     return 0
+# pyright: reportArgumentType=false
+# lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.
