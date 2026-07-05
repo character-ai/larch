@@ -46,8 +46,8 @@ if skill.count('skills/implement/scripts/step-6-entry.sh --forked-target "${fork
 if 'BASE_ARGS=()' in skill:
     errors.append('SKILL.md still contains inline BASE_ARGS blocks')
 for needle in [
-    '**Orchestrator contract — absorbed `1.r` (Step 0 envelope only)**',
-    '**Orchestrator contract — folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
+    '**Orchestrator contract: absorbed `1.r` (Step 0 envelope only)**',
+    '**Orchestrator contract: folded and direct probe relays (`4.r`, `7.r`, `7a.r`)**',
     'CHECKPOINT_NEXT=continue|load-routing',
     'CHECKPOINT_NEXT=load-routing',
     'REBASE_OUTCOME=conflict',
