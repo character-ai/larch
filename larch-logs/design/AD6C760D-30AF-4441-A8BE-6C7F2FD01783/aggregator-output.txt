@@ -1,0 +1,22 @@
+### FINDING_1: Manual OOS recovery still allows confirmation prompts
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The manual OOS recovery path in `finalize-step5.md` is not covered by the no-confirmation contract, so it can still prompt before filing accepted non-security OOS items via `/larch:issue` even after Gate C has already authorized filing.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Extend the same scoped directive to the Manual OOS recovery block (accepted non-security OOS only; no `AskUserQuestion`; no operator confirmation). Add a matching `contains` assertion in `scripts/test-design-structure.sh` for a stable literal in that subsection.
+  - From Cursor-Innovation: Extend the same no-confirmation / no-`AskUserQuestion` directive to the manual recovery numbered list (step 1) and pin it in `scripts/test-design-structure.sh` with a short literal
+  - From Cursor-Pragmatic: Extend the no-confirmation / no-AskUserQuestion rule to the **Manual OOS recovery** subsection (steps 1-4), scoped to accepted non-security OOS; pin a stable literal in `scripts/test-design-structure.sh`
+
+### FINDING_2: Implement OOS filing path may still be promptable
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The live `/implement` non-security OOS filing path can still be promptable because the plan only covers the Python path indirectly; the actual pre-driver `python/cli.py oos file` route is not governed by the proposed no-confirmation wording.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add one routing-only bullet at the pre-driver `oos file` call site: do not use `AskUserQuestion` before `python/cli.py oos file`; accepted non-security OOS disposition is automatic once review completes (no `skills/implement/SKILL.md` routing change beyond that line)
+
+### FINDING_3: Scope wording should say non-security OOS explicitly
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The contract wording says “accepted OOS set,” which can be read too broadly when the intended behavior is limited to accepted non-security OOS items; the harness literals should reflect that narrower scope.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Require the directive and `skills/design/SKILL.md` reinforcement to say **accepted non-security OOS** explicitly; include that phrase in harness literals

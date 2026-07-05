@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=weak UNCERTAIN=false -- the Python path is designated a non-goal in the scope anchor as already fully automatic; no-confirmation wording in markdown cannot govern Python binary behavior
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- security routing gates already exclude security OOS before any /larch:issue call so the feature works correctly without explicit non-security wording; clarity improvement only
+OOS_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=adequate UNCERTAIN=true

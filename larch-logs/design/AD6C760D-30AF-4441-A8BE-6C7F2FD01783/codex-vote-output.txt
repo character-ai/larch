@@ -1,0 +1,4 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the manual-recovery block already stays on the same automatic filing path; I found no prompt mechanism here.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=adequate UNCERTAIN=false -- pre-driver /implement already routes through automatic `python/cli.py oos file`; `oos-pipeline` is only the security-sidecar branch.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- the wording is a clarity tweak, but the plan already scopes public filing to non-security OOS and does not need this to work.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- true about the branch loading, but it is a routing note, not a necessary fix for the scoped no-confirmation behavior.

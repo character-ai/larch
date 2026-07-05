@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan non-goals keep Python pre-driver automatic; SKILL.md change is defensive beyond scoped bash-path fix
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- explicit non-security phrasing is clarity only; security carve-outs already bound filing behavior
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan already scopes implement fix to legacy bash path and treats Python filing as automatic non-goal

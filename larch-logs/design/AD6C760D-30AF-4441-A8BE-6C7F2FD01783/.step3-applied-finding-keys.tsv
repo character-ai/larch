@@ -1,0 +1,1 @@
+1	the manual oos recovery path in `finalize-step5.md` is not covered by the no-confirmation contract, so it can still prompt before filing accepted non-security oos items via `/larch:issue` even after gate c has already authorized filing.
