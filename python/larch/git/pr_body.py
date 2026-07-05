@@ -456,7 +456,7 @@ def _identity_from_manifest(manifest_path: str) -> dict[str, str]:
 
 def _plugin_version_local() -> str:
     try:
-        parsed: Any = json.loads((Path(__file__).resolve().parents[1] / ".claude-plugin" / "plugin.json").read_text(encoding="utf-8"))
+        parsed: Any = json.loads((Path(__file__).resolve().parents[3] / config.PLUGIN_JSON_PATH).read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError, TypeError, ValueError):
         return ""
     if not isinstance(parsed, dict):

@@ -146,7 +146,7 @@ Gate B's plan revision may branch the merged driver fence. `--partition` maps to
 
 ## Gate C: Final-Approval Loop (Step 4b)
 
-**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note` and `python/cli.py architectural-guidelines persist-design-assessment`. Then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
+**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"` and `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT"`. Then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
 
 **When** (`skip_approve_requested=false`): after Step 4 completes. Any Gate B settled path that continues the design reaches Step 3b finalize → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" reaches Gate C only after Gate A **Ready for review**, a new review, and that review's settled Gate B path. On default auto-apply, post-review discussion happens through Gate C **Discuss further** after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B but still continue through Step 3b → Step 4 → Step 4b with current artifacts. `panel-init-failed` never reaches Gate C.
 
@@ -158,19 +158,29 @@ On `resume@4b`, pause recovery, or Step 4b entry without fresh Step 4 tail stdou
 
 **Large-plan summary mode**: `python/cli.py plan-review preview` owns threshold parsing, outline caps, fallback preview, and note text for Step 3 and Gate C. Structured **See full plan** MUST `cat` the full `$DESIGN_TMPDIR/plan.txt` into chat and re-fire Gate C by running `python/cli.py design render-gate --gate C --design-tmpdir "$DESIGN_TMPDIR" --without-see-full-plan`, even if the preview already printed the full plan. If `Other` asks for the full plan, `cat` the full plan and re-fire Gate C with the same rendered option set unchanged.
 
-After the mandatory preview and before either Prompt or `--skip-approve` breadcrumb, run `python/cli.py architectural-guidelines present-note`.
+After the mandatory preview and before either Prompt or `--skip-approve` breadcrumb, bind `REPO_ROOT` from the Step 0 source env in the same Bash fence before any guideline helper call:
+
+```bash
+. "$DESIGN_TMPDIR/source-env.sh"
+if [ -z "${REPO_ROOT:-}" ]; then
+  printf '%s\n' '**⚠ 4b: REPO_ROOT unavailable; repair Step 0 source-env.sh before architectural guideline presentation.**'
+  exit 1
+fi
+```
+
+If `REPO_ROOT` is still empty or unavailable after binding, stop Gate C for repair before `present-note`, `persist-design-assessment`, `AskUserQuestion`, approval, auto-approval, or Step 5. Then run `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`.
 
 - If it emits no `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true` marker, print the helper output as emitted.
 - If it emits `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.
   - If deviations exist, print a short deviations list with rationale.
-  - If none exist, run `python/cli.py architectural-guidelines present-note --assessment clean` and print that helper output.
+  - If none exist, run `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT" --assessment clean` and print that helper output.
 - For invalid guidelines, the helper warning is complete output; skip deviation assessment and continue.
 
 Then persist the Gate C assessment before Prompt or `--skip-approve` breadcrumb:
 
-- **Clean**: after `present-note --assessment clean`, run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR" --assessment clean`.
-- **Deviation**: write the same short deviations list to `$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar`, then run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar"`.
-- **Absent or invalid**: after `present-note`, run `python/cli.py architectural-guidelines persist-design-assessment --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags; stale assessment removal is helper-owned.
+- **Clean**: after `present-note --assessment clean`, run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment clean`.
+- **Deviation**: write the same short deviations list to `$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar`, then run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar"`.
+- **Absent or invalid**: after `present-note`, run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags; stale assessment removal is helper-owned.
 
 **Fail-closed persistence contract**: every `persist-design-assessment` invocation must exit `0` before Gate C continues, including clean, deviation, absent, invalid, re-entry, and `--skip-approve` paths. On non-zero:
 
