@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan already mandates guidelines_status-based classification rules; threading detail is implementer guidance not a plan gap
+FINDING_7: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior-round audit-runs skill documentation gap already filed OOS
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior-round audit-runs frontmatter wiring gap already filed OOS

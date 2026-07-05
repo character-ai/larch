@@ -1,0 +1,1 @@
+Add a durable implement Step 8 guideline-outcome batch. Write it at the PR compose gate, flush it before PR creation, and teach audit and fluff analysis to report shipped versus dropped outcomes from committed logs.

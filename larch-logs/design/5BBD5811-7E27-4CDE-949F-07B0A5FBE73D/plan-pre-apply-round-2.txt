@@ -1,0 +1,216 @@
+## Approach
+
+Add a small durable run-log artifact for implement Step 8 guideline outcomes.
+
+Use one JSON replace-mode batch `architectural-guideline-outcome.json` with schema version 1:
+
+- `schema_version`: always `1`
+- `phase`: `implement`
+- `step`: `8`
+- `outcome`: `pinned`, `clean`, or `dropped`
+- `reason`: stable reason token
+- `detail`: redacted bounded diagnostic, when useful
+- `guidelines_status`: `present`, `absent`, or `invalid`
+- `head_sha`
+- `base_ref`
+- `assessment_kind`: `clean`, `deviation`, or empty
+
+**Classification rules:**
+- `outcome=pinned`: guidelines_status=present and a redacted note is returned and passed to PR body.
+- `outcome=clean`: guidelines_status=absent or invalid (missing/invalid guidelines), OR guidelines_status=present and the note is the CLEAN_PRESENTATION_NOTE.
+- `outcome=dropped`: guidelines_status=present and note cannot be shipped (materialization, read, redaction, fingerprint, or stale artifact failure).
+- `needs_assessment=True` with no prior outcome: skip sidecar write; no durable outcome until a terminal resolution.
+
+Reserve `dropped` exclusively for guidelines_status=present failures. Absent or invalid guidelines map to `outcome=clean`, not `dropped`, so the drop rate is not inflated.
+
+Write the outcome sidecar before the optional warning append. The sidecar write is best-effort; failure logs a warning but does not stall ship.
+
+Flush the outcome sidecar in the same pre-PR log commit as the first full refresh, after `_guidelines_gate_before_pr` resolves. Both initial PR-create and the rebase-refresh path (`_refresh_guidelines_gate_after_rebase`) share this same flush contract through a single helper. Only one pre-PR flush occurs per compose attempt. If `flush_logs_pre` returns volatile-only (nothing new committed), verify the committed `architectural-guideline-outcome.json` exists and matches the tmpdir sidecar; a matching committed artifact is acceptable.
+
+After a log-only flush advances HEAD (larch-logs changes only), the diff fingerprint is unchanged. Re-pin the durable note metadata (`HEAD_SHA`/`ASSESSED_HEAD_SHA`) to the post-flush HEAD when only larch-logs changed, or teach `note_consumable` to accept fingerprint-stable notes after larch-logs-only commits, so the outcome flush does not invalidate the just-composed note.
+
+Keep the existing warning-append path for human-readable diagnostics in `execution-issues.ndjson`. Do not rely on warnings as the only durable signal.
+
+Do not add `architectural-guideline-outcome.json` to the generic step8 condition in `docs/run-logs-required-files.tsv`. The version-aware dedicated scan handles pre-feature legacy runs gracefully; a generic step8 row would false-fail older runs.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+Add a frozen dataclass `GuidelinesShipOutcome` for the durable outcome record. Add the shared outcome-write helper that:
+1. Classifies the outcome (pinned, clean, dropped) per the rules above.
+2. Writes the outcome sidecar (`GUIDELINE_SHIP_OUTCOME_SIDECAR` filename constant) under `$IMPLEMENT_TMPDIR` using atomic JSON output.
+3. Sanitizes all diagnostic strings before writing.
+4. Skips write when `needs_assessment=True` and the gate is not yet resolved.
+
+Include the `GUIDELINE_SHIP_OUTCOME_SIDECAR` filename constant in `architectural_guidelines.py` alongside other artifact names, so writer, flush staging, and tests share the same constant (no path drift).
+
+Extend `GuidelinesGateResult` to carry the pre-computed outcome record so callers can pass it directly to the flush hook.
+
+Write the outcome sidecar before optional warning append. Keep warning append for drop diagnostics.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+Add `GUIDELINE_SHIP_OUTCOME_SIDECAR = "architectural-guideline-outcome.json"` alongside `DROPPED_NOTE_ARTIFACT`, `DURABLE_NOTE`, etc.
+
+### UPDATED: python/larch/implement/ship.py
+
+Replace `_flush_guidelines_warning_before_pr` with a guideline-outcome flush hook that:
+- Is called from inside `_guidelines_gate_before_pr` (or a single helper it always calls), not only from the initial PR-create path.
+- Both initial PR-create and `_refresh_guidelines_gate_after_rebase` call the same helper so both callers share one flush contract.
+- Writes the outcome sidecar (via the ship_guidelines helper), then calls `flush_logs_pre` once before `pr.ensure_pr`.
+- On `--no-logs-commit`: write the sidecar to tmpdir but skip the pre-PR flush; do not stall.
+- On other flush failures: stall before PR creation so committed logs cannot silently lose the Step 8 outcome.
+- If `flush_logs_pre` returns volatile-only, accept the result as a no-op when the committed artifact already exists for the run.
+- Update `_flush_guidelines_warning_before_pr` function name and stall diagnostics to reflect the all-outcome flush purpose so operators see accurate messaging when a commit fails.
+
+Ensure the log-only flush path repins or handles fingerprint-stable notes across the HEAD advance.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Register `architectural-guideline-outcome` as a replace-mode JSON batch with `json-object` sanitizer. Keep the slug stable and explicit. Do not overload `execution-issues.ndjson`.
+
+### UPDATED: python/larch/core/config.py
+
+Add `RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: Final = "architectural-guideline-outcome"` alongside `RUN_LOG_BATCH_TOKEN_REPORT` etc., per G-Cfg-1 (wire-literals defined once as Finals).
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Stage the guideline outcome sidecar during `_stage_pre_commit`.
+
+If the sidecar (read via `architectural_guidelines.GUIDELINE_SHIP_OUTCOME_SIDECAR`) is absent, do nothing. If present, write the new batch into `larch-logs/implement/<RUN_ID>/`. Let the existing redaction and log commit flow handle the committed artifact.
+
+### UPDATED: python/larch/report/gc_run_logs.py
+
+Add `architectural-guideline-outcome.json` to the implement `SKILL_KEEP` set so GC slimming does not delete the durable outcome from aged implement run dirs. Mirror the pattern used for `architectural-guideline-assessment.md` in the design keep set.
+
+### UPDATED: python/larch/issue/audit_runs.py
+
+Add `_guideline_ship_outcome_scan_obj` handler.
+
+The handler:
+- Determines Step 8 reachability by reusing the existing step8 predicate (derived from `_scan_required` or shared via `final-summary.md` / version-bump-reasoning.md presence, consistent with other step8-conditioned scans).
+- Returns `informational` with explanation for pre-Step-8 runs, runs below the feature-era version, or legacy runs where the artifact is absent.
+- For step8-eligible runs (current feature era): fails when the artifact is missing, is a symlink, is empty, or contains malformed JSON.
+- Validates `schema_version`, `outcome` (pinned/clean/dropped), `guidelines_status` (present/absent/invalid), and `head_sha`; fails on unknown values or empty required fields.
+- Emits `outcome`, `reason`, and `assessment_kind` in the result object.
+- When `gc-slimmed` marker is present and artifact is absent, returns `informational` (same GC posture as `required-file-presence`).
+
+Register in `_NAMED_RUN_SCAN_HANDLERS` beside `guideline-assessment`.
+
+Add counters in `compute-counters`:
+- `GUIDELINE_OUTCOME_RUNS`
+- `GUIDELINE_OUTCOME_PINNED`
+- `GUIDELINE_OUTCOME_CLEAN`
+- `GUIDELINE_OUTCOME_DROPPED`
+- `GUIDELINE_DROP_RATE_BPS` (integer, dropped / (pinned+clean+dropped) × 10000)
+
+### UPDATED: .claude/skills/audit-runs/scans-implement.tsv
+
+Add the `guideline-ship-outcome` scan entry. Use severity `high` because the bug masks a real ship-time failure rate. Type: named-handler (uses `_NAMED_RUN_SCAN_HANDLERS`).
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.py
+
+Add implement guideline outcome coverage from committed `larch-logs/implement/*/architectural-guideline-outcome.json`.
+
+Enumerate all implement run dirs and classify each as:
+- `valid`: present, non-symlink, parseable JSON with recognized outcome
+- `missing-current`: step8-eligible current-era run missing the artifact
+- `missing-legacy`: pre-feature-era or pre-Step-8 run
+
+Compute `drop_rate = dropped / (pinned + clean + dropped)` over `valid` runs only. Do not include `missing-*` in the denominator or numerator.
+
+Render a compact section with:
+- runs scanned (valid + missing-current + missing-legacy)
+- valid count, missing-current count, missing-legacy count
+- pinned count, clean count, dropped count
+- drop rate (from valid runs)
+- reason histogram for dropped outcomes
+
+Keep the existing design guideline assessment section unchanged.
+
+### UPDATED: docs/run-log-batches.md
+
+Document the `architectural-guideline-outcome` batch: slug, file name, schema intent, replace-mode behavior, and step8 condition for current-era runs.
+
+### UPDATED: docs/run-logs.md
+
+Add an implement Step 8 guideline outcome section. Explain the batch as the durable audit source for note shipped vs dropped. Include `architectural-guideline-outcome.json` in the implement consumer-core keep set (retention section). Note that `execution-issues.ndjson` is the warning detail carrier, not the coverage source.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Add unit coverage:
+- Pinned note: writes a `pinned` outcome sidecar and flushes before PR creation.
+- Clean (absent guidelines): writes a `clean` outcome sidecar and flushes before PR creation.
+- Absent/invalid guidelines: `outcome=clean` with matching `guidelines_status`; not `dropped`.
+- Materialization or redaction failure: writes a `dropped` outcome with reason.
+- Refresh failure stalls before PR creation (non-no-logs-commit mode).
+- `--no-logs-commit` does not stall when outcome cannot be committed.
+- Rebase-refresh (`_refresh_guidelines_gate_after_rebase`) also writes sidecar and flushes before `ensure_pr`.
+- Log-only flush advances HEAD: outcome flush verifies fingerprint-stable note remains consumable.
+- Volatile-only result: accepted when committed artifact already exists.
+
+Update existing warning-flush tests to expect the new all-outcome flush behavior and stall message text.
+
+### UPDATED: python/tests/report/test_gc_run_logs.py
+
+Add coverage: implement slimming preserves `architectural-guideline-outcome.json` (present in SKILL_KEEP).
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add batch registry and flush staging tests for the new JSON artifact.
+
+Verify sanitizer behavior rejects malformed JSON and accepts the expected schema shape.
+
+### UPDATED: python/tests/issue/test_audit_runs.py
+
+Add audit scan tests:
+- Missing outcome on current-era Step 8 run: fails.
+- Missing outcome on pre-feature-era or pre-Step-8 run: returns informational/skip.
+- Pinned, clean, and dropped artifacts with schema_version=1: classify correctly.
+- gc-slimmed run with missing artifact: returns informational.
+- Malformed, symlinked, empty, unknown outcome, and schema_version missing artifacts: fail.
+- `compute-counters` reports drop counts and rate from scan result files.
+
+### UPDATED: skills/fluff-analysis/scripts/test-fluff-analysis.sh
+
+Extend synthetic fixture with implement guideline outcome artifacts: pinned, clean, dropped, missing-current, missing-legacy (pre-Step-8 and pre-feature-era). Assert report includes the new coverage section, correct drop-rate, and missing bucket counts.
+
+## Edge cases
+
+- A log-only flush advances HEAD before PR creation. Re-pin note metadata to post-flush HEAD when only larch-logs changed, or teach note_consumable to trust fingerprint-stable notes across larch-logs-only commits.
+- `--no-logs-commit` cannot satisfy committed-log coverage. Write sidecar to tmpdir only; do not stall.
+- Existing historical runs lack the artifact. The scan treats them as informational; fluff-analysis tracks them as missing-legacy.
+- Redaction failures must not write raw note text or raw exception data into the JSON artifact.
+- A dropped outcome and a warning entry may both exist; they dedupe independently.
+- `needs_assessment=True` without a terminal resolution: skip sidecar write; do not emit an incomplete outcome.
+- Volatile-only refresh: accept if committed artifact already exists for the run.
+- Absent or invalid guidelines: `outcome=clean`, not `dropped`. Drop rate not inflated.
+
+## Failure modes
+
+- If the pre-PR flush fails, stall before PR creation (except no-logs-commit mode).
+- If the sidecar is malformed, the run-log flush should fail closed through the JSON sanitizer.
+- If audit cannot infer Step 8, report informational rather than fail for legacy runs.
+- If fluff-analysis sees malformed outcome JSON, count the run as missing or invalid; report in coverage section; do not crash.
+- If GC slimming runs before the keep-set update ships, affected runs lose the outcome. Audits treat gc-slimmed absent artifact as informational.
+
+## Testing strategy
+
+Run focused Python tests:
+
+- `python3 -m pytest python/tests/implement/test_ship.py`
+- `python3 -m pytest python/tests/report/test_run_logs.py`
+- `python3 -m pytest python/tests/report/test_gc_run_logs.py`
+- `python3 -m pytest python/tests/issue/test_audit_runs.py`
+
+Run the skill-local harness:
+
+- `bash skills/fluff-analysis/scripts/test-fluff-analysis.sh`
+
+Run relevant checks for touched files:
+
+- `python3 python/cli.py checks run-relevant`
+
+difficulty: HARD
+diff_lines: 750

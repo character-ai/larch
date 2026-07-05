@@ -1,0 +1,12 @@
+**Summary.** The ship-time drop of the implement guideline note does not reach the committed run log, so `audit-runs` and `/fluff-analysis` (which read only committed logs) cannot see it. The feature looks healthy in the audit surface while most PRs are actually dropping the note.
+
+**Evidence.** Across the last 100 implement runs, committed `execution-issues.ndjson` shows 0 guideline drop/pin-failure entries, yet the PR bodies for the same era show a 62% drop rate (see the companion re-author issue in this series). The drop fires at Step 8 compose / PR creation, after the last pre-ship `execution-issues` flush, so the warning that `ship_guidelines.py` appends lands in the session tmpdir and is discarded at cleanup rather than committed. Across all 1143 implement run dirs with a committed `execution-issues.ndjson`, only 4 ever captured a pin-fail signal, all from older versions.
+
+**Impact.** Any monitoring built on committed logs (`python/cli.py audit-runs scan-run --skill implement`, `/fluff-analysis` coverage) will under-report the failure and mask regressions. This is the concern behind the earlier [STALLED] #6061.
+
+**Proposed fix.** Commit the ship-time guideline outcome (pinned / clean / dropped, with reason) as a durable batch or a late `execution-issues` flush from the same stable-HEAD compose step. Add an implement-side guideline coverage scan analogous to the design-side `guideline-assessment` scanner so committed logs carry a truthful pinned-vs-dropped signal. If the companion re-author fix lands first, this becomes recording the compose-time outcome rather than a post-hoc drop.
+
+**Acceptance criteria.**
+
+- The committed implement run log distinguishes note-shipped from note-dropped, with the drop reason, on every run that reached Step 8.
+- An audit/coverage command can report the implement drop rate from committed logs alone and would have surfaced the 62% figure.

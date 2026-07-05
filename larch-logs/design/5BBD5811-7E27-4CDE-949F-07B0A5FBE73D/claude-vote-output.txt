@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true -- scenario requires stale sidecar surviving into a new compose attempt that then skips; normal operation either overwrites the sidecar on each terminal gate result or the needs_assessment path is the sole skip; speculative edge case
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- latent severity below acceptance floor; "or" in plan denotes a design choice not a defect; an implementer picking either strategy correctly produces a working feature; clarity nit not a correctness gate
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- substantively duplicates round-1 FINDING_4 (outcome OOS); per instructions oos duplicates that reach the ballot should be voted NO
+OOS_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- substantively duplicates round-1 FINDING_4 (outcome OOS); per instructions oos duplicates that reach the ballot should be voted NO

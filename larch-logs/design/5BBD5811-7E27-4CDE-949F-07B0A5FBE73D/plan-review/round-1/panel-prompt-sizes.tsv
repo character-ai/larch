@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	23174	5794	13365	3342	9809	2453		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15152	3788	13077	3270	2075	519		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	23187	5797	13378	3345	9809	2453		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	23189	5798	13380	3345	9809	2453		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15143	3786	13068	3267	2075	519		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15165	3792	13090	3273	2075	519		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15167	3792	13092	3273	2075	519		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	23165	5792	13356	3339	9809	2453		0	0
+design Step 3	phase1	1	dyn-codex-plan-run-log-integrity	plan-review	codex	dyn-codex-plan-run-log-integrity.txt	15523	3881	12943	3236	2580	645		0	0
+design Step 3	phase1	1	dyn-cursor-plan-run-log-integrity	plan-review	cursor	dyn-cursor-plan-run-log-integrity.txt	23545	5887	13231	3308	10314	2579		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	37505	9377	4635	1159	32870	8218	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	11250	2813	9079	2270	2171	543		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	11250	2813	9079	2270	2171	543		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	11250	2813	9079	2270	2171	543		0	0
