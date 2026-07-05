@@ -1,0 +1,8 @@
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0
+ISSUE_1_NUMBER=6433
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6433
+ISSUE_1_ID=4814212017
+ISSUE_1_TITLE=[OOS] [OUT_OF_SCOPE] Thread manifest `pr_number` into fluff-analysis `implement_step8_reachable` calls
+ISSUE_1_BLOCKER_LINKS_APPLIED=1

@@ -1,0 +1,2 @@
+1	empty or whitespace `head_sha` handling can bypass the existing stall seam and let `/implement` continue toward pr creation without a durable outcome artifact.
+1	`implement_step8_reachable` can still undercount pr evidence in both the direct bail-signal path and the chained `implement_step9a1_reachable(..., chain=true)` fallback, causing stale-bail or post-pr step 8 absences to remain informational instead of failing.

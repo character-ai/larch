@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- real mock-gap risk, but validator and direct write-path tests can verify the guard without changing the mandated integration pattern
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- plan failure modes already require both call-path coverage; this only restates _scan_required step8 explicitly
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate scope-reduction of FINDING_3 with no new evidence
+FINDING_5: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate scope-reduction of FINDING_3 with no new evidence
+FINDING_6: NO CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- duplicate scope-reduction of FINDING_3 with no new evidence
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scope-reduction; removing the optional PR-evidence bullet is not necessary for this feature to ship correctly
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scope-reduction; the extra CLI-only PR-evidence bullet is optional and not required for plan completeness
+FINDING_5: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior scope-reduction concern; the feature does not need the optional `_manifest_bail_signal` rewrite
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate scope-reduction; the plan can ship without removing the hedged `_manifest_bail_signal` bullet
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

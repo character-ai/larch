@@ -1,0 +1,88 @@
+## Approach
+
+Use the minimum code change across the named Python surfaces.
+
+Do not change run-log backfill, other scan handlers, or Step 8 ship orchestration beyond the targeted validation and reachability seams.
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+- In `_classify_ship_outcome`, remove note-emptiness inference for unknown `result.guidelines_status`.
+- Normalize unsupported or empty `guidelines_status` to `"absent"` without consulting `result.note`.
+- Keep present-guideline drop classification based on `guidelines_status == "present"` and empty `result.note`.
+- In `write_guideline_ship_outcome`, reject empty or whitespace-only `head_sha` before writing the sidecar.
+- Log the validation problem with `_log_guidelines_ship_warning`, then raise `OSError` so the existing `except OSError` stall path in `_guidelines_gate_before_pr` (ship.py line 315) triggers the same terminal stalled state as sidecar write failures.
+- A silent `None` return for empty `head_sha` is forbidden on the normal ship path; raise so the caller stalls.
+
+### UPDATED: python/larch/implement/ship.py
+
+- No new exception handling needed: the existing `except OSError` block at line 315 already writes `Outcome.STALLED` and raises `Stalled`, giving the correct fail-closed behavior for an empty-`head_sha` `OSError` from `write_guideline_ship_outcome`.
+- Preserve the `no_logs_commit` warn-and-proceed behavior as-is.
+
+### UPDATED: python/larch/issue/audit_runs.py
+
+- Change `implement_step8_reachable` to accept `pr: int = 0`.
+- Pass `pr` into every `_manifest_bail_signal` call inside that helper.
+- Also pass `pr` into the chained `implement_step9a1_reachable(run_dir, manifest, chain=True, pr=pr)` call for bail-evidence parity on the fallback path.
+- Pass `pr` from `_guideline_ship_outcome_scan_obj` into `implement_step8_reachable`.
+- Pass `pr` from `_scan_required` step8 condition handling into `implement_step8_reachable`.
+- If needed for the intended stale-bail case, make `_manifest_bail_signal` treat a positive CLI `pr` as PR evidence for stale bail headings within this module.
+- Tighten the gc-slimmed exemption in `_guideline_ship_outcome_scan_obj`: exempt only when the sidecar is truly absent, meaning `not path.exists() and not path.is_symlink()`.
+- Let broken symlinks and symlinks at the outcome path fall through to the existing regular-file failure.
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+- In `validate_guideline_ship_outcome_record`, read `head_sha`.
+- Reject empty or whitespace-only `head_sha` with a clear validation error.
+- Keep existing consistency checks unchanged.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+- Add a regression test where present guidelines with an empty note classify as `dropped`, not `clean` or `absent`.
+- Add a regression test for unsupported missing `guidelines_status` proving classification no longer infers status from note text.
+- Add a ship-level integration test where `compose_head_sha=""` stalls before `ensure_pr`, mirroring `test_open_pr_resume_guidelines_gate_write_failure_stalls_before_ensure_pr`.
+
+### UPDATED: python/tests/issue/test_audit_runs.py
+
+- Add a guideline outcome scan regression for blank `head_sha` returning `fail`.
+- Add a gc-slimmed broken-symlink regression that returns `fail`, not `informational`.
+- Add a Step 8 reachability regression where PR evidence prevents stale bail text from making Step 8 artifact absence informational.
+- Add a step9a1 chain-path regression for `implement_step8_reachable` with PR evidence exercising the `implement_step9a1_reachable` fallback.
+- Update existing direct calls or expected results if the new `pr` parameter changes helper call sites.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+- Add direct validator coverage for `head_sha == ""` or whitespace-only `head_sha`.
+- Assert the error text names empty `head_sha`.
+
+## Edge cases
+
+- Empty `head_sha` must not serialize as `""` in `architectural-guideline-outcome.json`; `write_guideline_ship_outcome` raises before `_write_json_atomic` when `head_sha` is blank.
+- Broken symlinks may return `exists() == False`; check `is_symlink()` before applying absence exemptions.
+- `guidelines_status="invalid"` and `"absent"` must still produce clean outcomes with their existing reasons.
+- `guidelines_status="present"` with an empty note and a drop reason must remain `dropped`.
+- Pre-cutover runs without outcome artifacts should stay informational when the artifact is truly absent.
+- `implement_step9a1_reachable` chain call must receive the same `pr` as the direct bail-signal call.
+
+## Failure modes
+
+- A too-broad symlink check could make old gc-slimmed runs fail. Limit failure to symlink or non-file artifacts.
+- A too-broad `head_sha` guard could block tests that intentionally omit tmpdir or skip sidecar writes. Guard only the sidecar write path.
+- Step 8 reachability changes can affect both audit scan and required-file checks. Add focused tests for both call paths or update one existing test per path.
+
+## Testing strategy
+
+Run only changed-file checks:
+
+- `python3 -m pytest python/tests/implement/test_ship.py -k "guideline"`
+- `python3 -m pytest python/tests/issue/test_audit_runs.py -k "guideline or step8 or bail"`
+- `python3 -m pytest python/tests/core/test_architectural_guidelines.py -k "guideline_ship_outcome or head_sha"`
+- `make py-lint` if lint time is acceptable after the focused tests pass.
+
+## Difficulty
+
+This is workflow and audit-integrity code. It touches ship gating, committed run-log validation, and audit scan behavior, but the edits are bounded and covered by local tests.
+
+difficulty: MODERATE
+diff_lines: 180
