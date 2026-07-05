@@ -1,0 +1,50 @@
+### FINDING_1: Preserve the separate no-tools early-return path
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Repair Loop Risk
+- **Severity**: important
+- **Concern**: The pre-dispatch refactor must keep the distinct no-tools branch separate from structural fast-fail. If the new helper collapses everything into one `main-agent-required` path, no-tools runs can start returning the wrong `failure_reason` or `ledger_exit_code`, breaking the existing no-tools contract.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Spell out control flow: (1) `fast_fail_reason = _lint_fix_fast_fail_reason(log_path)`; (2) only if `None`, optionally probe `claude_present`; (3) if `fast_fail_reason`, return `main-agent-required` with that reason and `ledger_exit_code=1`; (4) else if all tools absent, return `main-agent-required` with `failure_reason=None` and `ledger_exit_code=0`; (5) else continue dispatch. Keep fast-fail before binary probing and before `run_dir`/baseline capture.
+  - From Cursor-Innovation: Keep if fast_fail_reason or no_tools, then failure_reason = fast_fail_reason (may be None) and ledger_exit_code = 1 only when fast_fail_reason is set. Add a structural-ruff-failure + all-tools-false test mirroring test_run_lint_fix_complexity_baseline_no_tools_fast_fail.
+  - From Cursor-Pragmatic: Require `_lint_fix_fast_fail_reason` to return before the no-tools check (still before binary probing), keep `ledger_exit_code=1` for any fast-fail reason, and add a test mirroring `test_run_lint_fix_complexity_baseline_no_tools_fast_fail` using a plain structural ruff row with all tools false.
+  - From Cursor-dyn-Repair Loop Risk: In approach step 2, state explicitly: keep `if fast_fail_reason or (not claude_present and not codex_present and not cursor_present)`; set `failure_reason=fast_fail_reason` only when non-None; set `ledger_exit_code=1` only when `fast_fail_reason` is set
+
+### FINDING_2: Remove the PLR0911-only baseline carve-out and pin the test token
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Repair Loop Risk
+- **Severity**: important
+- **Concern**: The plan needs to explicitly remove the `any(code != "PLR0911")` exclusion from baseline-shaped `(new)` detection and pin the renamed PLR0911 test to `complexity-baseline-regression`; otherwise `PLR0911 (new)` symbol-shaped rows still follow the external lint-fix path and plain Ruff regexes will not catch them.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the baseline sub-helper, remove the `any(code != "PLR0911" for code in new_codes)` guard (keep metric regression matching first). Have baseline `(new)` rows, including PLR0911-only, return `complexity-baseline-regression`. Rename the test accordingly and assert `_assert_complexity_fast_fail` (or equivalent), not `structural-ruff-failure`.
+  - From Cursor-Innovation: In _lint_fix_fast_fail_reason, drop the `any(code != "PLR0911")` guard (or treat PLR0911 (new) as complexity-baseline-regression). State this explicitly in the plan and assert failure_reason == complexity-baseline-regression in the renamed PLR0911 (new) test.
+  - From Cursor-Pragmatic: State that fast-fail for that row comes from dropping the `any(code != "PLR0911")` guard (or an equivalent baseline `(new)` rule), and that the renamed PLR0911 test expects `failure_reason=="complexity-baseline-regression"` while parametrized plain-ruff cases expect `structural-ruff-failure`.
+  - From Cursor-dyn-Repair Loop Risk: In the plan, add an explicit step: remove the PLR0911-only exclusion from complexity-baseline `(new)` detection so baseline `PLR0911 (new)` rows fast-fail
+
+### FINDING_3: Specify baseline-before-plain-Ruff precedence for mixed logs
+- **Reviewer(s)**: Cursor-Innovation, Cursor-dyn-Repair Loop Risk
+- **Severity**: important
+- **Concern**: When a log contains both complexity-baseline rows and plain Ruff structural rows, the helper order must be fixed so baseline regressions keep `complexity-baseline-regression` instead of being overwritten by a structural Ruff reason.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Run baseline metric/(new) detection before the plain-Ruff regex and return complexity-baseline-regression when it matches.
+  - From Cursor-dyn-Repair Loop Risk: In `_lint_fix_fast_fail_reason`, evaluate complexity-baseline regression (keeping `_COMPLEXITY_BASELINE_COMMAND_RE` at python/larch/implement/checks_lint_fix.py:400-401) before plain Ruff structural rows; document that ordering in the plan
+
+### FINDING_4: Add test coverage for three-part Ruff rows without a column
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The plan still needs an explicit test for the common `path:line: CODE` Ruff shape. If tests only cover `path:line:col: CODE`, a regex that requires a column can pass review and still miss live pre-commit output.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add one parametrized or dedicated case per structural code using the three-part shape (e.g. python/app.py:12: C901 ...).
+  - From Cursor-Pragmatic: Extend the parametrized structural tests (or add a dedicated case) for both row shapes per code, or fold both fixtures into the parametrize matrix.
+  - From Cursor-Requirements: Add a parametrized lint-fix case for path:line: CODE (no column) for each structural code, asserting main-agent-required, structural-ruff-failure, ledger_exit_code == 1, and no _run_claude/_run_codex/_run_cursor calls.
+
+### FINDING_5: Cover Ruff full-format diagnostics, not just inline row syntax
+- **Reviewer(s)**: Codex-Pragmatic
+- **Severity**: important
+- **Concern**: The classifier plan misses Ruff’s full output shape, where the structural code appears on one line and the file location appears on the next. A regex that only matches inline `path:line:col: CODE` rows can still miss the current checks log format.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Pragmatic: Add classifier and tests for Ruff full output: anchored structural code line plus a nearby ` --> <python-path>.py:<line>:<col>` line. Keep the concise `path:line:col: CODE` support and false-positive guards.
+
+### FINDING_6: Strengthen the false-positive guard beyond E501
+- **Reviewer(s)**: Codex-dyn-Repair Loop Risk
+- **Severity**: important
+- **Concern**: The false-positive guard is currently too narrow to protect the structural-code boundary. If the classifier accidentally broadens to the complexity-baseline code set, plain Ruff `PLR0913` or `PLR0915` rows could fast-fail when they should still dispatch normally.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-dyn-Repair Loop Risk: Add a false-positive case for a plain Ruff `PLR0913` or `PLR0915` diagnostic and assert normal fixer dispatch, while preserving existing complexity-baseline regression fast-fail behavior.
