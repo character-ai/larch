@@ -1,0 +1,22 @@
+### FINDING_1: Step 3 composite test needs `--commit-site`
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Requirements
+- **Severity**: important
+- **Concern**: The planned Step 3 composite test is missing the required `--commit-site` argument, so `checks_commit_route_main` will fail argparse before the cleanup and marker-arming behavior under test can run.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Specify argv including --commit-site step4 (and _session/IMPLEMENT_TMPDIR setup like existing composite tests); keep monkeypatch on _checks_commit_route_main_impl
+  - From Cursor-Requirements: Specify the new test calls checks_commit_route_main with --checks-site step3 --commit-site step4 (matching skills/implement/SKILL.md Step 3), plus IMPLEMENT_TMPDIR/_session setup and monkeypatch of _checks_commit_route_main_impl. ### 1. correctness — `python/tests/implement/test_implement_dispatch.py` The planned Step 3 composite test only names `--checks-site step3`, but `checks_commit_route_main` requires `--commit-site` as well: parser.add_argument("--checks-site", required=True) commit_site_choices = sorted([*_COMMIT_ROUTE_SITES, "step4"]) parser.add_argument("--commit-site", choices=commit_site_choices, required=True) A test written to the plan as stated will fail at argument parsing before cleanup or marker arming run. Specify `--commit-site step4` in the test plan so it matches the live Step 3 fence in `skills/implement/SKILL.md`. --- **Coverage note (no finding):** Items 1, 2, 4, 5, 6, and 7 from the issue scope are addressed in the plan. Round 1 accepted items (isolated FAIL counters, temp-file brace fixture, 15600 timeout, deep monkeypatch) are incorporated. Item 3 is intentionally reduced to keepalive deduplication only, which fits the minimum-change constraint. Item 4 exclusion text is largely present already in `scripts/test-hook-clone-ownership-parity.md`.
+
+### FINDING_2: Step 3 composite test should assert cleanup before marker write
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The planned assertions only verify cleanup inside `_checks_commit_route_main_impl`, which runs after marker arming. That leaves a gap where stale sidecars could still exist when the bg-wait marker is written, allowing the regression to slip past the test.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Also spy/wrap _write_bg_wait_marker (or _bg_wait_marker) to assert both sidecars are absent at marker-write time; keep the post-exit terminal-sentinel assertion
+
+### FINDING_3:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/implement/dispatch_commit_route.py:65-72
+- **Concern**: [SCOPE-REDUCTION] Inline step3 cleanup in checks_commit_route_main duplicates run_step_checks_main. Scenario: Plan adds a third copy at composite entry while run_step_checks_main already unlinks the same two paths; two call sites can drift again (prior OOS_4/OOS_6)
+- **Proposed resolution**: Clear stale .completed/step-3-terminal and bg-poll-guard-probe-denials.step-3-terminal.count inside _bg_wait_marker when terminal_sentinel is .completed/step-3-terminal, then delete the duplicate block in run_step_checks_main; adjust the new test accordingly
