@@ -1,94 +1,54 @@
-# OOS Acceptance Rubric (Materiality Gate)
+# OOS Acceptance Rubric (Legitimacy Standard)
 
-An out-of-scope (OOS) observation clears the materiality gate — and should
-be voted YES for filing as a tracked GitHub issue — only when **all three
-criteria** below are satisfied. Default-deny: if you cannot clearly
-satisfy each criterion, vote NO.
+An out-of-scope (OOS) observation should be accepted when it is genuine,
+concrete, and non-duplicate. Accepted OOS is not implemented in the current
+change; it is tracked for follow-up in the OOS filing path.
 
-## Core question (backlog-relative)
+## YES
 
-Not *"would a maintainer schedule this?"* (easy to rationalize), but:
-*"Would this rank above the median item already sitting in a busy
-maintainer's backlog?"* This forces competition-for-attention framing.
-If you cannot clearly see a maintainer choosing this over their existing
-work, vote NO.
+Vote YES when all of these are true:
 
-Automatic NO under this backlog-relative test:
-- Style-only or polish-only items with no behavioral or maintenance impact.
-- Speculative portability for untargeted shells, platforms, or tool versions.
-- Cleanup or consistency work with no named future cost.
+- The observation describes a real problem or useful follow-up, not a vague
+  preference.
+- The trigger is concrete: a named path, behavior, workflow, or reviewed output
+  explains why the item exists.
+- The item is not a duplicate of an already filed, already accepted, or clearly
+  equivalent OOS item.
+- The item is worth tracking outside the current scope, even if it would not beat
+  an in-scope finding under the stricter necessity rubric.
 
-## Three objective criteria (all required for YES)
+## NO
 
-**1. Impact floor** — the problem must plausibly touch at least one of:
-correctness, security, data integrity, user-visible behavior, or
-maintainability **with a named future cost** (a concrete scenario where
-the omission will cause real harm or real maintenance burden). Automatic
-NO for:
-- Pure readability or style refactors with no behavioral change.
-- Speculative "defensive" robustness for inputs that cannot actually occur.
-- Micro-optimizations without a measured or described hotspot.
-- Cross-shell, cross-OS, or tool-version portability speculation for
-  platforms the project does not target.
+Vote NO for:
 
-**2. Concrete trigger required** — YES only if the item names a specific
-scenario, input, or state where the problem manifests. *"Could be
-cleaner/safer"* with no triggering scenario is a NO. The trigger must be
-observable (not hypothetical), and it must be plausible in the actual
-usage context of this codebase.
+- Pure style, polish, wording, or taste preferences.
+- Noise, cleanup with no named future cost, or consistency-only churn.
+- Duplicates of existing accepted/filed OOS items.
+- False positives.
+- Speculative or hypothetical issues with no concrete trigger.
+- Suggested fixes that are the only objection; remedies are informational and
+  the future implementer chooses the fix.
 
-**3. Issue-overhead test** — a tracked issue carries fixed overhead: triage,
-scheduling, PR, review cycle. Vote YES only when the value of addressing
-this problem plausibly exceeds that overhead. If scheduling it would cost
-more than simply leaving it unaddressed, vote NO.
+## Thresholds
 
-## Worked examples
+OOS uses the OOS-specific panel thresholds: one YES accepts in a one-judge panel,
+one or more YES votes accept in a two-judge panel, and two or more YES votes
+accept in a three-judge panel. In-scope findings keep their stricter acceptance
+thresholds.
 
-### YES — passes all three criteria
+## Suggested fixes
 
-- A function silently truncates UTF-8 multi-byte sequences at byte
-  boundaries when the input contains non-ASCII characters; affects any
-  run with internationalized branch names. *Impact*: data corruption.
-  *Trigger*: non-ASCII input (concrete, plausible). *Overhead test*: a
-  one-line fix is worth tracking; silent truncation would recur.
-- A helper ignores the exit code of a `git push` call; on network
-  failure the run reports success and leaves the branch unpushed.
-  *Impact*: user-visible incorrect behavior. *Trigger*: any network
-  hiccup or auth failure during push. *Overhead test*: clear value; easy
-  to reproduce and fix.
-
-### NO — fails one or more criteria
-
-- A variable name could be more descriptive. *Impact*: readability only,
-  no behavioral change. *Fails impact floor.*
-- The script might behave differently on zsh vs bash. The project only
-  targets bash. *Fails impact floor* (portability speculation for an
-  untargeted platform).
-- There is no error message when a config key is missing. The config key
-  in question has a hardcoded default and can never be missing in normal
-  operation. *Fails trigger* (no concrete, plausible scenario where the
-  problem manifests).
-- A loop could be rewritten as a pipeline for clarity. No behavioral
-  change; refactor would take ~1 hour of engineering and review time.
-  *Fails overhead test* (cost > value).
-
-## Remedy is informational only
-
-For any proposed OOS item, the suggested fix or remedy in the item body
-is **informational only**. Vote based on whether the **problem described**
-is real, concrete, and clears the three criteria above. Do NOT vote NO
-because you disagree with the proposed fix — the future implementer
-chooses the actual remedy.
-
----
+Suggested fixes are informational only. Do not vote NO because you prefer a
+different remedy when the underlying OOS observation is legitimate.
 
 ## Update triggers
 
-When this rubric changes, update all surfaces that reference it:
+Keep this rubric in sync with:
 
-- `python/cli.py render voter` — plan-review and code-review OOS voter instructions
-- `skills/implement/SKILL.md` — `main-agent-vote-required` OOS ballot instruction
-- `skills/design/SKILL.md` — main-agent OOS standard in design review
-- `skills/shared/review-acceptance-rubric.md` — "Out-of-Scope is the safe harbor" note
-- `python/rendering.py` — plan-review and specialist render OOS proposal instructions
-- `python/review_pipeline.py` — `_dynamic_agent_body` OOS proposal instructions
+- `python/larch/rendering/rendering.py`
+- `python/larch/review/findings_ledger.py`
+- `skills/implement/SKILL.md`
+- `skills/implement/references/step5-review-branches.md`
+- `skills/design/SKILL.md`
+- `skills/shared/review-acceptance-rubric.md`
+- `skills/shared/voting-protocol.md`

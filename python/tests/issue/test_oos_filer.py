@@ -280,13 +280,16 @@ def test_forked_or_repo_unavailable_skip_create_loop(tmp_path: Path, monkeypatch
     assert any("steps_ran.step9a1=true" in " ".join(call) for call in fake.calls)
 
 
-def test_security_sidecar_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_security_sidecar_does_not_block_non_security_oos(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     _setup(tmp_path)
     (tmp_path / "security-oos-observations.md").write_text("private\n", encoding="utf-8")
+    _write_oos(tmp_path, "### OOS_1: Public follow-up\n- **Description**: File this public item.\n")
     fake = FakeCli(tmp_path)
-    rc = oos_filer.cmd_file(["--implement-tmpdir", str(tmp_path)])
-    _ = fake, monkeypatch
-    assert rc != 0
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    assert len([call for call in fake.calls if call[:2] == ["issue", "create-one"]]) == 1
+    assert "File this public item" in fake.created_bodies[0]
 
 
 def test_already_filed_block_is_excluded_from_create_loop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -755,6 +758,32 @@ def test_capped_full_rollup_retains_all_source_stable_ids(tmp_path: Path, monkey
     rc_retry, _retry_payload = _run(tmp_path, retry, monkeypatch)
     assert rc_retry == 0
     assert not [call for call in retry.calls if call[:2] == ["issue", "create-one"]]
+
+
+def test_capped_oversized_rollup_files_one_summarized_issue(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("OOS_ISSUES_PER_RUN_CAP", "1")
+    monkeypatch.setattr(oos_filer, "_codex_available", lambda: False)
+    _setup(tmp_path)
+    large = "A" * (config.GITHUB_ISSUE_BODY_MAX_BYTES // 2)
+    _write_oos(
+        tmp_path,
+        (
+            f"### OOS_1: First large\n- **Description**: {large}\n- **Phase**: implement\n\n"
+            f"### OOS_2: Second large\n- **Description**: {large}\n- **Phase**: implement\n\n"
+            f"### OOS_3: Third large\n- **Description**: {large}\n- **Phase**: implement\n"
+        ),
+    )
+    fake = FakeCli(tmp_path)
+
+    rc, _payload = _run(tmp_path, fake, monkeypatch)
+
+    assert rc == 0
+    create_calls = [call for call in fake.calls if call[:2] == ["issue", "create-one"]]
+    assert len(create_calls) == 1
+    assert len(fake.created_bodies) == 1
+    assert oos_filer._body_bytes(fake.created_bodies[0]) <= config.GITHUB_ISSUE_BODY_MAX_BYTES
+    assert "full detail remains in the run logs" in fake.created_bodies[0]
+    assert "(part " not in create_calls[0]
 
 
 def test_capped_partial_rollup_retains_tail_stable_ids(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

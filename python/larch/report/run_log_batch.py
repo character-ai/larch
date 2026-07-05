@@ -448,13 +448,12 @@ _ROUND_SIDECAR_FILES = frozenset({
 _ROUND_ARTIFACT_ALLOW = (
     "prune-decision.env",
     "prune-nit.env",
-    "pre-vote-oos-gate.env",
     "collector-results.env",
     "review-core-threshold.env",
     "findings-classification.tsv",
     "scout-archetype-yield.tsv",
     "rejected-findings.md",
-    "oos-dropped-before-vote.md",
+    "oos.md",
     "oos-accepted-review.md",
     "review-round-summary.md",
     "voting-tally.md",
@@ -528,7 +527,6 @@ _ROUND_ARTIFACT_DENY_GLOBS = (
     "findings.md",
     "accepted-findings.md",
     "rejected-findings-full.md",
-    "oos.md",
     "reviewer-dyn-*.md",
 )
 

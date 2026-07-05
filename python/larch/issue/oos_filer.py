@@ -689,6 +689,19 @@ def _split_to_github_limit(body: str) -> list[str]:
     return chunks
 
 
+def _summarize_to_github_limit(body: str) -> str:
+    limit = config.GITHUB_ISSUE_BODY_MAX_BYTES
+    if _body_bytes(body) <= limit:
+        return body
+    notice = "\n\n*[OOS detail exceeded the GitHub issue body limit; full detail remains in the run logs.]*\n"
+    max_content = max(0, limit - _body_bytes(notice))
+    return _truncate_utf8(text=body, max_bytes=max_content).rstrip() + notice
+
+
+def _is_capped_rollup_body(body: str) -> bool:
+    return "OOS_ISSUES_PER_RUN_CAP" in body and "rolled up" in body
+
+
 def _body_files_for_item(*, tmpdir: Path, item_index: int, fields: dict[str, str]) -> list[Path]:
     raw_path = Path(fields.get(f"ITEM_{item_index}_BODY_FILE", ""))
     body = raw_path.read_text(encoding="utf-8", errors="replace") if raw_path.is_file() else ""
@@ -700,6 +713,10 @@ def _body_files_for_item(*, tmpdir: Path, item_index: int, fields: dict[str, str
         body = _wrap_oos_body(body, reviewer=reviewer, phase=phase, vote=vote)
     out_dir = tmpdir / "oos-issue-bodies"
     out_dir.mkdir(parents=True, exist_ok=True)
+    if _is_capped_rollup_body(body):
+        out = out_dir / f"oos-body-{item_index}-part1.txt"
+        out.write_text(_summarize_to_github_limit(body), encoding="utf-8")
+        return [out]
     paths: list[Path] = []
     for part_index, part_body in enumerate(_split_to_github_limit(body), start=1):
         out = out_dir / f"oos-body-{item_index}-part{part_index}.txt"
@@ -1070,12 +1087,6 @@ def _file(args: argparse.Namespace) -> tuple[int, dict[str, object]]:
     issue_number = str(args.issue_number or state.get("ISSUE_NUMBER", ""))
     forked = _bool(state.get("FORKED_TARGET", "false"))
     repo_unavailable = _bool(state.get("REPO_UNAVAILABLE", "false"))
-    security_sidecar = tmpdir / "security-oos-observations.md"
-    if security_sidecar.is_file() and security_sidecar.stat().st_size > 0:
-        msg = "security-routed OOS requires private SECURITY.md disposition before public OOS filing"
-        _append_tool_failure(tmpdir=tmpdir, site="step-9a1-oos-file", tool="oos file", rc=2, output=msg)
-        return 2, {"status": "security_sidecar_present", "accepted_count": 0, "filed_count": 0, "deduplicated_count": 0, "urls": [], "run_statistics_written": False, "step9a1_stamped": False}
-
     manifest_path = Path(state.get("MANIFEST_PATH", ""))
     if manifest_path.is_file():
         try:

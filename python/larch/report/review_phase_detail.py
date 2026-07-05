@@ -12,12 +12,12 @@ from larch.report import progress_report
 from larch.review import voting
 
 RENDER_PHASE_DETAIL_TIMEOUT_SECONDS = 15
-DROPPED_OOS_CANDIDATE_LIMIT = 10
-_DROPPED_OOS_REASON_LIMIT = 260
-_DROPPED_OOS_BLOCK_RE = re.compile(
-    r"(?ms)^###\s+(OOS_[0-9A-Za-z_]+):[ \t]*(.*?)\n(.*?)(?=^###\s+OOS_[0-9A-Za-z_]+:|\Z)"
+REJECTED_OOS_AUDIT_LIMIT = 10
+_REJECTED_OOS_REASON_LIMIT = 260
+_REJECTED_OOS_BLOCK_RE = re.compile(
+    r"(?ms)^###\s+((?:OOS|FINDING)_[0-9A-Za-z_]+):[ \t]*(.*?)\n(.*?)(?=^###\s+(?:OOS|FINDING)_[0-9A-Za-z_]+:|\Z)"
 )
-_DROPPED_OOS_FIELD_RE_TEMPLATE = (
+_REJECTED_OOS_FIELD_RE_TEMPLATE = (
     r"(?ms)^[ \t]*-[ \t]+\*\*{label}\*\*:[ \t]*(.*?)(?=\n[ \t]*-[ \t]+\*\*[^*]+\*\*:|\n###\s+|\Z)"
 )
 
@@ -77,7 +77,7 @@ def _join_markdown_sections(*sections: str) -> str:
 
 
 def _field_value(block: str, label: str) -> str:
-    pattern = re.compile(_DROPPED_OOS_FIELD_RE_TEMPLATE.format(label=re.escape(label)))
+    pattern = re.compile(_REJECTED_OOS_FIELD_RE_TEMPLATE.format(label=re.escape(label)))
     match = pattern.search(block)
     return _flatten_text(match.group(1)) if match else ""
 
@@ -103,51 +103,59 @@ def _round_label(path: Path) -> str:
     return match.group(1) if match else "?"
 
 
-def _dropped_oos_candidates_from_file(path: Path) -> list[str]:
+def _vote_result(block: str) -> str:
+    match = re.search(r"(?mi)^Vote tally:.*\bResult=([a-z-]+)", block)
+    return match.group(1).lower() if match else "unknown"
+
+
+def _rejected_oos_audit_from_file(path: Path) -> list[str]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
     candidates: list[str] = []
-    for match in _DROPPED_OOS_BLOCK_RE.finditer(text):
+    for match in _REJECTED_OOS_BLOCK_RE.finditer(text):
         oos_id = match.group(1)
         title = _clean_oos_title(match.group(2), oos_id)
         block = match.group(0)
-        if voting.is_security_block_text(block):
+        if oos_id.startswith("FINDING_") and not re.search(r"\[(OUT_OF_SCOPE|OOS)\]", match.group(2), re.IGNORECASE):
+            continue
+        result = _vote_result(block)
+        if result == "accepted" or voting.is_security_block_text(block):
             continue
         severity = _field_value(block, "Severity") or "unknown"
         concern = _field_value(block, "Concern")
         rationale = f"{title}."
         if concern:
-            rationale += f" Concern: {_truncate_text(concern, _DROPPED_OOS_REASON_LIMIT)}"
-        candidates.append(f"- **Round {_round_label(path)} {oos_id}** ({severity}): {rationale}")
+            rationale += f" Concern: {_truncate_text(concern, _REJECTED_OOS_REASON_LIMIT)}"
+        candidates.append(f"- **Round {_round_label(path)} {oos_id}** ({result}, {severity}): {rationale}")
     return candidates
 
 
-def render_dropped_oos_candidate_section(rounds_root: Path) -> str:
+def render_rejected_oos_audit_section(rounds_root: Path) -> str:
     try:
-        audit_files = sorted(rounds_root.glob("round-*/oos-dropped-before-vote.md"))
+        audit_files = sorted(rounds_root.glob("round-*/oos.md"))
     except OSError:
         return ""
     candidates: list[str] = []
     for audit_file in audit_files:
-        if len(candidates) >= DROPPED_OOS_CANDIDATE_LIMIT:
+        if len(candidates) >= REJECTED_OOS_AUDIT_LIMIT:
             break
-        remaining = DROPPED_OOS_CANDIDATE_LIMIT - len(candidates)
-        candidates.extend(_dropped_oos_candidates_from_file(audit_file)[:remaining])
+        remaining = REJECTED_OOS_AUDIT_LIMIT - len(candidates)
+        candidates.extend(_rejected_oos_audit_from_file(audit_file)[:remaining])
     if not candidates:
         return ""
-    total_candidates = sum(len(_dropped_oos_candidates_from_file(audit_file)) for audit_file in audit_files)
+    total_candidates = sum(len(_rejected_oos_audit_from_file(audit_file)) for audit_file in audit_files)
     lines = [
-        "## Dropped OOS candidates",
+        "## Rejected OOS audit",
         "",
-        "These pre-vote OOS candidates were not filed automatically. Review them before filing follow-up issues with `/issue`.",
+        "These OOS observations reached the vote but were not accepted for filing.",
         "",
         *candidates,
     ]
     omitted = total_candidates - len(candidates)
     if omitted > 0:
-        lines.append(f"- **Additional candidates**: {omitted} omitted by the final-summary cap.")
+        lines.append(f"- **Additional audit rows**: {omitted} omitted by the final-summary cap.")
     text = "\n".join(lines).rstrip() + "\n"
     redacted = redact.redact_outbound(text)
     return "" if "[content truncated" in redacted else redacted
@@ -180,8 +188,8 @@ def render_implement_review_detail(*, implement_tmpdir: Path, run_id: str) -> st
         token_ledger=token_ledger,
         findings_file=findings_file if findings_file.is_file() else None,
     )
-    dropped = render_dropped_oos_candidate_section(rounds_root)
-    return _join_markdown_sections(detail, dropped)
+    rejected_oos = render_rejected_oos_audit_section(rounds_root)
+    return _join_markdown_sections(detail, rejected_oos)
 
 
 def append_review_phase_detail(*, body: str, detail: str) -> str:

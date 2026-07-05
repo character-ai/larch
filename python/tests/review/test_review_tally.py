@@ -1210,7 +1210,7 @@ def test_findings_classification_nested_impl_path_and_write_round(tmp_path: Path
     assert finding["v1_vote"] == "YES"
     assert finding["v2_vote"] == "YES"
     assert finding["scope"] == "in_scope"
-    assert rows["OOS_1"]["voting_result"] == "neutral"
+    assert rows["OOS_1"]["voting_result"] == "accepted"
     assert rows["OOS_1"]["scope"] == "oos"
     ledger = impl_parent / "findings-ledger.tsv"
     ledger_rows = _tsv_rows(ledger)
@@ -2597,7 +2597,7 @@ def test_log_phase_accepts_panel_prompt_sizes_batch(tmp_path: Path) -> None:
 # pyright: reportUnusedCallResult=false
 
 
-def test_tally_code_votes_accumulates_public_oos_pool(tmp_path: Path) -> None:
+def test_tally_code_votes_keeps_rejected_oos_out_of_public_oos_pool(tmp_path: Path) -> None:
     parent = tmp_path / "impl-parent"
     case = parent / "round-1"
     case.mkdir(parents=True)
@@ -2629,9 +2629,8 @@ def test_tally_code_votes_accumulates_public_oos_pool(tmp_path: Path) -> None:
 
     assert result.returncode == 0, result.stderr
     assert rts.kv_get(stdout=result.stdout, key="OOS_ACCEPTED_COUNT") == "0"
-    pool = (parent / "oos-aggregate-pool.md").read_text(encoding="utf-8")
-    assert "important follow-up" in pool
-    assert "**Severity**: important" in pool
+    pool = parent / "oos-aggregate-pool.md"
+    assert not pool.exists() or "important follow-up" not in pool.read_text(encoding="utf-8")
     assert not (parent / "oos-accepted-review.md").read_text(encoding="utf-8").strip()
 
 
@@ -2681,12 +2680,9 @@ def test_emit_tally_promotes_three_latent_pool_items_after_vote_rebuild(tmp_path
     )
 
     assert result.returncode == 0, result.stderr
-    assert "OOS_FILING_COUNT=3" in result.stdout
-    local_sink = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
-    parent_sink = (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
-    assert local_sink.count("### OOS_") == 3
-    assert "### FINDING_" not in local_sink
-    assert parent_sink == local_sink
+    assert "OOS_FILING_COUNT=0" in result.stdout
+    assert not (case / "oos-accepted-review.md").exists()
+    assert not (parent / "oos-accepted-review.md").exists()
     assert "OOS_ACCEPTED_COUNT=0" in tally.read_text(encoding="utf-8")
 
 
@@ -2742,12 +2738,12 @@ Vote tally: YES=3 NO=0 Result=accepted
     )
 
     assert result.returncode == 0, result.stderr
-    assert "OOS_FILING_COUNT=4" in result.stdout
+    assert "OOS_FILING_COUNT=1" in result.stdout
     local_sink = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
     parent_sink = (parent / "oos-accepted-review.md").read_text(encoding="utf-8")
-    assert local_sink.count("### OOS_") == 4
+    assert local_sink.count("### OOS_") == 1
     assert "serialized follow-up" in local_sink
-    assert "latent three" in local_sink
+    assert "latent three" not in local_sink
     assert parent_sink == local_sink
 
 
@@ -2800,5 +2796,7 @@ def test_emit_tally_counts_main_agent_latents_toward_trigger(tmp_path: Path) -> 
     )
 
     assert result.returncode == 0, result.stderr
-    assert "OOS_FILING_COUNT=1" in result.stdout
-    assert "reviewer latent" in (case / "oos-accepted-review.md").read_text(encoding="utf-8")
+    assert "OOS_FILING_COUNT=2" in result.stdout
+    text = (case / "oos-accepted-review.md").read_text(encoding="utf-8")
+    assert "main latent" in text
+    assert "reviewer latent" not in text

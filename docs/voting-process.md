@@ -118,10 +118,10 @@ Live `voting-tally.md` scoreboards and `/voter-calibration` committed-log analys
 Reviewers may surface **out-of-scope (OOS) observations** — pre-existing issues or concerns beyond the PR's scope. These are handled alongside in-scope findings on the same ballot but with different vote semantics and outcomes:
 
 - OOS items are included on the ballot with the `[OUT_OF_SCOPE]` prefix
-- **YES** on an OOS item means "this deserves a GitHub issue for future attention"
+- **YES** on an OOS item means it is legitimate, concrete, non-duplicate, and worth tracking
 - **NO** means "not worth tracking"
-- If an OOS item receives 2+ YES votes, it is **accepted** and filed as a GitHub issue by `/implement`
-- Non-accepted OOS items are collected and reported in the PR body for future attention
+- OOS uses OOS-specific thresholds: 1/1, 1+/2, or 2+/3 YES votes accept; accepted non-security OOS is filed as one unifying `[OOS]` issue by `/implement` and by `/design` Step 5b
+- Non-accepted OOS items stay in the rejected-OOS audit; an empty accepted set files nothing
 - **OOS items are never implemented in the current PR** — accepted items result in issue creation only
 - OOS scoring stays flat at vote time: accepted OOS earns a provisional +1, neutral OOS (≥1 YES, not accepted) scores 0, and rejected OOS (0 YES) costs -1. `/analyze-issues` may retroactively dock filed OOS to 0 in its fate-adjusted diagnostic report without changing live vote tallies; `python/voting.py::classify_result` does not inspect GitHub issue fate. In-scope accepted findings earn +2 only when a strict majority of YES voters assign panel severity `blocker` or `major`; in-scope neutral costs -0.25. `body_severity` does not affect points.
 

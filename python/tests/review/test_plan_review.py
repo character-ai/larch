@@ -3815,7 +3815,7 @@ def test_write_atomic_does_not_create_missing_parent(tmp_path: Path) -> None:
     assert not missing_parent.exists()
 
 
-def test_tally_plan_review_nonaccepted_important_oos_enters_aggregate_pool(tmp_path: Path) -> None:
+def test_tally_plan_review_rejected_oos_stays_out_of_aggregate_pool(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(
         """### OOS_1: [OUT_OF_SCOPE] important follow-up
@@ -3844,9 +3844,8 @@ def test_tally_plan_review_nonaccepted_important_oos_enters_aggregate_pool(tmp_p
     )
 
     assert proc.returncode == 0, proc.stderr
-    pool = (design / "oos-aggregate-pool.md").read_text(encoding="utf-8")
+    pool_path = design / "oos-aggregate-pool.md"
     accepted_path = design / "oos-accepted-design.md"
     accepted = accepted_path.read_text(encoding="utf-8") if accepted_path.exists() else ""
-    assert "important follow-up" in pool
-    assert "**Severity**: important" in pool
+    assert not pool_path.exists() or "important follow-up" not in pool_path.read_text(encoding="utf-8")
     assert "important follow-up" not in accepted

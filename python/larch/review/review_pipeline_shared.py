@@ -69,20 +69,6 @@ class ReviewCommands:
 
 
 @dataclass(frozen=True)
-class PreVoteOosGateResult:
-    dropped_count: int
-    remaining_count: int
-    dropped_file: Path
-
-
-class PreVoteGateError(Exception):
-    def __init__(self, *, gate: PreVoteOosGateResult, threshold_reason: str) -> None:
-        super().__init__(threshold_reason)
-        self.gate = gate
-        self.threshold_reason = threshold_reason
-
-
-@dataclass(frozen=True)
 class ReviewCoreBranchContext:
     commands: ReviewCommands
     review_tmpdir: Path
@@ -101,8 +87,12 @@ class ReviewCoreBranchContext:
     static_slot_count: str
     run_id: str
     prune_ledger: str
-    runner: proc.Runner | None
-    rows: list[tuple[str, object]]
+    site: str = ""
+    diff_file: str = ""
+    scope_files: str = ""
+    plan_file: str = ""
+    runner: proc.Runner | None = None
+    rows: list[tuple[str, object]] | None = None
 
 
 def _runner(runner: proc.Runner | None = None) -> proc.Runner:
