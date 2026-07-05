@@ -1,0 +1,4 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- broader robustness fix, but it is outside the tracked split/count scope
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- real count refinement, but it is not part of the scoped set 1/2 plan work
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- cosmetic scoreboard wording; the feature still ships without it

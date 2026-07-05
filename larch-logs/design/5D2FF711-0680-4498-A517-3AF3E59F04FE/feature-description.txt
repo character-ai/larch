@@ -1,0 +1,57 @@
+# Follow-ups to #6421: main-agent OOS promotion bug + stale docs/count/prune args
+
+## Context
+
+#6421 (merged as #6430) collapsed live review and judge severities to `major|minor|nit`, dropped explicit `nit` rows before voting, and gated OOS filing on "accepted AND a strict majority of YES voters rate `major`". The gate is computed once in `voting.oos_fileable_from_votes(...)` and serialized into each OOS block as a `Vote tally: ... Fileable=true|false` line; downstream pool and sink hops re-read it via `voting.artifact_marked_fileable(block)`.
+
+Post-merge assessment: the core gate is correct and covered (398 focused tests pass; `test-oos-disposition-gate.sh` passes 58/58). This issue tracks the real remaining work: one regression found during assessment (Set 1) plus the genuinely-open subset of the auto-rollup #6423 (Set 2). #6423 was closed by mistake; items already fixed by #6430 are listed as out of scope so we do not redo them.
+
+## Set 1: found during post-merge assessment
+
+### 1. main-agent OOS is silently excluded from aggregate-pool promotion (regression)
+
+In `python/larch/review/review_tally.py` `_promote_aggregate_oos_pool` (main-agent branch, around line 514):
+
+```python
+main_blocks = (
+    [block for block in _aggregate_oos_blocks(_read(main_agent))
+     if not voting.is_security_block_text(block) and voting.artifact_marked_fileable(block)]
+    ...
+)
+```
+
+`main_agent` is `oos-accepted-main-agent.md`, produced by the main agent's vote-less dual-write path ("no vote required; main-agent classification is the policy gate", `skills/shared/voting-protocol.md:229`). It is written with the `### OOS_<N>:` schema and never carries a `Vote tally: ... Fileable=` line. A repo-wide grep for `Fileable` across `skills/`, `agents/`, and `docs/` returns nothing, confirming no prompt emits the marker.
+
+So `voting.artifact_marked_fileable(block)` is always False for main-agent blocks, and the added conjunct drops every main-agent OOS from promotion into `oos-accepted-review.md`. Before #6430 this branch promoted them unconditionally (non-security). Root cause: a vote-derived `Fileable=` gate was applied to a path that has no vote and never emits the marker.
+
+Impact: main-agent OOS still reaches GitHub filing (the disposition gate reads `oos-accepted-main-agent.md` directly, `python/larch/issue/file_oos.py:631`), so this is not a lost-filing correctness bug. But the promoted `oos-accepted-review.md` sink and its `_non_security_oos_count(...)` return now omit main-agent contributions (undercount and lost pre-file unification/dedup). The change was almost certainly unintended: the only covering test, `test_emit_tally_promotes_fileable_main_agent_oos`, passes solely because its fixture hand-adds `Vote tally: ... Fileable=true` to the main-agent block, a shape production never emits.
+
+Proposed fix: in the main-agent branch of `_promote_aggregate_oos_pool`, do not require `artifact_marked_fileable` (main-agent classification is the policy gate; those blocks are fileable by construction). Keep the marker gate only on the voted `pool` branch. Add a regression test with a marker-less main-agent fixture asserting it is promoted. If requiring the marker is instead the intended contract, update the main-agent dual-write prompt/schema to emit `Fileable=true` and keep the marker-less case as a negative test.
+
+## Set 2: confirmed-open subset of #6423
+
+### OOS_4: docs/voting-process.md still describes every accepted non-security OOS as filed
+
+Around line 124 it states "accepted non-security OOS is filed as one unifying `[OOS]` issue by `/implement` and by `/design` Step 5b", with no strict-majority-`major` requirement. `skills/shared/voting-protocol.md` was updated by #6430 but this operator doc was not. While here, the same file's scoring prose still names the retired label ("a strict majority of YES voters assign panel severity `blocker` or `major`" should be `major` only; found during this assessment, not in the original #6423 text).
+
+### OOS_6: progress/summary OOS-accepted count can overstate filing
+
+`python/larch/report/progress_report.py` recomputes OOS counts from classification artifacts (`_parse_classification_tsv` around line 1538, and the markdown-table parser around line 1507) by counting `result == "accepted"` (vote-accepted). After #6430 the tally emits `OOS_ACCEPTED_COUNT` as fileable-only. The two diverge whenever an accepted-`minor` OOS exists, so canonical or reconciled operator-facing counts can overstate how many OOS will file. Low severity (reporting only). Fix: count fileable OOS, or clearly separate "proposed" from "fileable", so recomputed counts match the emitted fileable-only `OOS_ACCEPTED_COUNT`.
+
+### OOS_3: dead args on prune-nit-findings after drop-not-move
+
+`python/larch/review/review_aggregate.py` `prune_nit_findings` still declares `--oos-file` and `--input-mode`, but after the rewrite the function reads only `--findings-file`, `--audit-file`, and `--security-audit-file`. The move-to-oos_file plan branch was removed, so both args are vestigial (`plan_review_round.py` still passes `--input-mode plan`). Minor cleanup: drop the unused args and the stale caller flag, or document why they are retained.
+
+## Out of scope: already resolved by #6430 (do not reimplement)
+
+- OOS_1 (disposition harness assumed vote-accepted == filed): the harness does not reference the gate and passes 58/58; no change needed.
+- OOS_2 (latent-reroute dead branches in review_tally.py): removed in #6430.
+- OOS_7 (#6028 dropped-OOS final-summary interaction): documented at docs/run-logs.md:469.
+- OOS_8 (run_log_batch.py allowlist for oos-dropped-before-vote.md): allowlist added in #6430.
+
+## Verification already performed
+
+- pytest on voting, review_tally, issue/oos, design/test_design_oos, plan_review: 398 passed.
+- `bash skills/implement/scripts/test-oos-disposition-gate.sh`: 58/58 passed.
+
+Supersedes reopening #6423.

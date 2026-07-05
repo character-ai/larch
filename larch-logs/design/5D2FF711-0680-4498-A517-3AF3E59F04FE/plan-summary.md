@@ -1,0 +1,1 @@
+Plan: fix main-agent OOS promotion, split OOS proposed versus fileable counts in progress metadata and reports, refresh stale voting docs, and remove dead prune args plus caller flags. Difficulty: MODERATE.
