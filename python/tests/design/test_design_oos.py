@@ -724,17 +724,17 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     assert "STEP5B_STATUS=annotate-complete" in third
 
 
-def test_prepare_promotes_important_pool_item(
+def test_prepare_promotes_fileable_major_pool_item(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: important one
-- **Severity**: important
+        """### FINDING_1: major one
+- **Severity**: major
 - **Concern**: one.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -746,8 +746,8 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
     accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
     combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
-    assert "### OOS_1: important one" in accepted
-    assert "### OOS_1: important one" in combined
+    assert "### OOS_1: major one" in accepted
+    assert "### OOS_1: major one" in combined
 
 
 def test_prepare_promotes_pool_before_skip_sentinel(
@@ -757,7 +757,7 @@ def test_prepare_promotes_pool_before_skip_sentinel(
 ) -> None:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-accepted-design.md").write_text(
-        "### OOS_1: already filed\n- **Severity**: latent\n- **Filed URL**: https://github.com/acme/repo/issues/11\n",
+        "### OOS_1: already filed\n- **Severity**: major\n- **Filed URL**: https://github.com/acme/repo/issues/11\n",
         encoding="utf-8",
     )
     _ = (tmp_path / "oos-issues-created.md").write_text(
@@ -766,9 +766,9 @@ def test_prepare_promotes_pool_before_skip_sentinel(
     )
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
         """### FINDING_1: pool item
-- **Severity**: important
+- **Severity**: major
 - **Concern**: promote before skip.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -785,28 +785,28 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     assert "### OOS_2: pool item" in combined
 
 
-def test_prepare_counts_accepted_and_pool_latent_items(
+def test_prepare_keeps_non_fileable_pool_out_of_existing_accepted_items(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-accepted-design.md").write_text(
-        """### OOS_1: latent one
-- **Severity**: latent
+        """### OOS_1: major one
+- **Severity**: major
 - **Concern**: one.
 
-### OOS_2: latent two
-- **Severity**: latent
+### OOS_2: major two
+- **Severity**: major
 - **Concern**: two.
 """,
         encoding="utf-8",
     )
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: latent three
-- **Severity**: latent
+        """### FINDING_1: minor three
+- **Severity**: minor
 - **Concern**: three.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 """,
         encoding="utf-8",
     )
@@ -818,12 +818,12 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     assert kv["FILE_DESIGN_OOS_STATUS"] == "ready"
     accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
     combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
-    assert accepted.count("### OOS_") == 3
-    assert combined.count("### OOS_") == 3
-    assert "latent three" in accepted
+    assert accepted.count("### OOS_") == 2
+    assert combined.count("### OOS_") == 2
+    assert "minor three" not in accepted
 
 
-def test_prepare_multi_round_pool_accumulates_latent_items(
+def test_prepare_multi_round_non_fileable_pool_does_not_accumulate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -831,15 +831,15 @@ def test_prepare_multi_round_pool_accumulates_latent_items(
     _stub_design_oos_prepare_commands(monkeypatch)
     pool = tmp_path / "oos-aggregate-pool.md"
     _ = pool.write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: major
 - **Concern**: one.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: major
 - **Concern**: two.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 """,
         encoding="utf-8",
     )
@@ -852,25 +852,25 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     assert not (tmp_path / "oos-accepted-design.md").exists()
 
     _ = pool.write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: major
 - **Concern**: one.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: major
 - **Concern**: two.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 
-### FINDING_3: latent three
-- **Severity**: latent
+### FINDING_3: minor three
+- **Severity**: minor
 - **Concern**: three.
 Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
 
-### FINDING_4: latent four
-- **Severity**: latent
+### FINDING_4: minor four
+- **Severity**: minor
 - **Concern**: four.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=false
 """,
         encoding="utf-8",
     )
@@ -879,10 +879,8 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     second = _kv(capsys.readouterr().out)
 
     assert rc_second == 0
-    assert second["FILE_DESIGN_OOS_STATUS"] == "ready"
-    accepted = (tmp_path / "oos-accepted-design.md").read_text(encoding="utf-8")
-    assert accepted.count("### OOS_") == 4
-    assert "latent four" in accepted
+    assert second["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
+    assert not (tmp_path / "oos-accepted-design.md").exists()
 
 
 def test_step5b_annotate_partial_failure_routes_to_step5b5_and_step5c(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1238,23 +1236,23 @@ def _stub_design_oos_prepare_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(design_oos, "_run_cli", fake_run_cli)
 
 
-def test_prepare_promotes_three_latent_pool_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_prepare_promotes_three_fileable_major_pool_items(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: major
 - **Concern**: one.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: major
 - **Concern**: two.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 
-### FINDING_3: latent three
-- **Severity**: latent
+### FINDING_3: minor three
+- **Severity**: major
 - **Concern**: three.
-Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 """,
         encoding="utf-8",
     )
@@ -1268,18 +1266,18 @@ Vote tally: YES=1 NO=0 JUDGE_ERROR=0 Result=accepted
     combined = (tmp_path / "oos-combined.md").read_text(encoding="utf-8")
     assert accepted.count("### OOS_") == 3
     assert "### FINDING_" not in combined
-    assert "latent three" in combined
+    assert "minor three" in combined
 
 
-def test_prepare_two_latent_pool_items_do_not_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
+def test_prepare_two_non_fileable_pool_items_do_not_trigger(tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]) -> None:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
-        """### FINDING_1: latent one
-- **Severity**: latent
+        """### FINDING_1: minor one
+- **Severity**: minor
 - **Concern**: one.
 
-### FINDING_2: latent two
-- **Severity**: latent
+### FINDING_2: minor two
+- **Severity**: minor
 - **Concern**: two.
 """,
         encoding="utf-8",
@@ -1296,17 +1294,17 @@ def test_prepare_rejected_pool_items_do_not_promote(tmp_path: Path, monkeypatch:
     _stub_design_oos_prepare_commands(monkeypatch)
     _ = (tmp_path / "oos-aggregate-pool.md").write_text(
         """### FINDING_1: rejected one
-- **Severity**: important
+- **Severity**: major
 - **Concern**: one.
 Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
 
 ### FINDING_2: rejected two
-- **Severity**: important
+- **Severity**: major
 - **Concern**: two.
 Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
 
 ### FINDING_3: rejected three
-- **Severity**: important
+- **Severity**: major
 - **Concern**: three.
 Vote tally: YES=0 NO=1 JUDGE_ERROR=0 Result=rejected
 """,

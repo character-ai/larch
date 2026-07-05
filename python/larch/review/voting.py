@@ -76,11 +76,10 @@ _ALLOWED_CODE_REVIEW_HEADERS = {
 }
 
 _CORRECTNESS_VALUES = {"true", "partially-true", "false-positive", "uncertain"}
-SEVERITY_BLOCKER = JudgeSeverity.blocker.value
 SEVERITY_MAJOR = JudgeSeverity.major.value
 
 _SEVERITY_VALUES = {severity.value for severity in JudgeSeverity}
-HIGH_SEVERITIES = frozenset({JudgeSeverity.blocker.value, JudgeSeverity.major.value})
+HIGH_SEVERITIES = frozenset({JudgeSeverity.major.value})
 NEUTRAL_FINDING_COST = 0.25
 UNIQUE_FINDER_BONUS_ENV = "LARCH_UNIQUE_FINDER_BONUS"
 _QUALITY_VALUES = {"excellent", "good", "adequate", "weak", "no-fix", "uncertain"}
@@ -277,31 +276,45 @@ def raw_sole_finder_attribution(
     return comma_parts
 
 
+def strict_majority_yes_major(
+    *,
+    yes_votes: Iterable[str],
+    severities: Iterable[str],
+) -> bool:
+    severity_values = list(severities)
+    total_yes = 0
+    major_yes = 0
+    for idx, vote in enumerate(yes_votes):
+        if vote.strip().upper() != ReviewVote.yes.value:
+            continue
+        total_yes += 1
+        severity = severity_values[idx].strip().lower() if idx < len(severity_values) else ""
+        if severity == JudgeSeverity.major.value:
+            major_yes += 1
+    return total_yes > 0 and major_yes > total_yes / 2
+
+
 def accepted_finding_points_from_severities(
     severities: Iterable[str],
     *,
     votes: Iterable[str] | None = None,
 ) -> int:
     severity_values = list(severities)
-    if votes is not None:
-        total_yes = 0
-        high_yes = 0
-        for idx, vote in enumerate(votes):
-            normalized_vote = vote.strip().upper()
-            if normalized_vote != "YES":
-                continue
-            total_yes += 1
-            severity = severity_values[idx] if idx < len(severity_values) else ""
-            if valid_panel_severity(severity) in HIGH_SEVERITIES:
-                high_yes += 1
-        if total_yes == 0:
-            return 1
-        return 2 if high_yes > total_yes / 2 else 1
-    total_yes = len(severity_values)
-    if total_yes == 0:
-        return 1
-    high_yes = sum(1 for severity in severity_values if valid_panel_severity(severity) in HIGH_SEVERITIES)
-    return 2 if high_yes > total_yes / 2 else 1
+    vote_values = list(votes) if votes is not None else [ReviewVote.yes.value] * len(severity_values)
+    return 2 if strict_majority_yes_major(yes_votes=vote_values, severities=severity_values) else 1
+
+
+def oos_fileable_from_votes(
+    result: str,
+    *,
+    yes_votes: Iterable[str],
+    severities: Iterable[str],
+) -> bool:
+    return result == "accepted" and strict_majority_yes_major(yes_votes=yes_votes, severities=severities)
+
+
+def artifact_marked_fileable(block_text: str) -> bool:
+    return bool(re.search(r"(?mi)^Vote tally:.*(?:^|[ \t])Fileable=true(?:[ \t]|$)", block_text))
 
 
 def neutral_high_severity_rescue_to_oos(
@@ -310,16 +323,7 @@ def neutral_high_severity_rescue_to_oos(
     yes_votes: Iterable[str],
     severities: Iterable[str],
 ) -> bool:
-    if result != "neutral":
-        return False
-    severity_values = list(severities)
-    for idx, vote in enumerate(yes_votes):
-        if vote != ReviewVote.yes.value:
-            continue
-        severity = severity_values[idx] if idx < len(severity_values) else ""
-        if valid_panel_severity(severity) in HIGH_SEVERITIES:
-            return True
-    return False
+    return result == "neutral" and strict_majority_yes_major(yes_votes=yes_votes, severities=severities)
 
 
 def unique_finder_bonus_from_env(env: Mapping[str, str] | None = None) -> float:

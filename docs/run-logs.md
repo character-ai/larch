@@ -236,7 +236,7 @@ Semantics:
   optional forensic rating axes parsed from the same voter line.
 - `vN_tool` is the runtime tool identity for that slot.
 - `body_severity` is the optional severity token parsed from the finding body
-  (`blocker`, `major`, `minor`, `nit`, or empty). It is forensic metadata only;
+  (`major`, `minor`, `nit`, or empty). It is forensic metadata only;
   reviewer scoreboards weight accepted in-scope findings from YES-voter panel
   severity, not from `body_severity`.
 - `scope` is `in_scope` or `oos`. Producers write `scope=oos` for direct
@@ -466,7 +466,7 @@ Markdown explanation of the version bump classification: which bump type was cho
 
 Committed **rich markdown** projection of the run: outcome, mode flags, token totals (Claude / Codex / Cursor / Claude (subprocess) — the spawned-process Claude reviewer/voter/CI/scout lane, machine name `claude_sub`, priced at Claude rates and summed into the total), optional per-lane USD estimates when [`python/larch/report/report_tokens_cost.py`](../python/larch/report/report_tokens_cost.py) rates are configured, duration, plan/code review tallies, OOS and execution-issue counts, log directory pointer, the difficulty bullet, the main-agent model, reasoning effort, and larch plugin version (the `- **Main agent model**:`, `- **Effort**:`, and `- **Larch version**:` bullets, read from the run manifest via `--manifest-path` with live fallbacks), and operator-facing notes (fork dry-run, draft, no-merge, upstream issue, fork OOS stubs). The body is produced by `python/cli.py render run-summary`: it begins with a `## /<skill> run <run-id>: <outcome>` heading and a normalized markdown bullet list (including `**PR**:` when a PR is known; `- **Outcome**:` for outcomes matching `bailed*`, `stalled`, `cancelled-*`, `failed-*`, or `publish-skipped`; the other fields follow the renderer contract). A versioned HTML sentinel (`<!-- larch:run-summary v=1 -->`) appears on its own line after that bullet block (and before any optional trailing note lines) so consumers can detect the standardized block while the opening line stays human-readable. The `- **PR**:` bullet is omitted when no PR number is known; otherwise `#<number> — <url>` or `#<number>` when the URL is unknown. When `RUN_LOGS_PATH=N/A`, the renderer must not synthesize a fallback log path for `RUN_ID=unknown`, `failed-publish`, or `publish-skipped` outcomes. The tracking-issue `larch:final-summary` comment is the canonical live projection once upserted.
 
-For `/implement`, non-accepted non-security OOS rows from `round-*/oos.md` surface in a bounded `## Rejected OOS audit` section. `/implement` no longer writes `oos-dropped-before-vote.md`; accepted non-security OOS files through the unified OOS issue path, and security-routed OOS stays out of public logs.
+For `/implement`, rejected and logged-only OOS rows stay in round artifacts and are not rendered in the final summary. OOS files only when the vote threshold accepts it and a strict majority of YES voters rate it `major`; accepted-but-`minor` OOS remains logged only. Explicit `nit` reviewer rows are dropped before voting and recorded per round in public `oos-dropped-before-vote.md`; security-tagged drops go to the local `security-oos-observations.md` sidecar and are not committed. #6028 dropped-OOS surfacing applies only to non-`nit` dropped OOS candidates.
 
 ### oos-issues.ndjson
 

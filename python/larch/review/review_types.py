@@ -54,11 +54,9 @@ class ReviewVote(StrEnum):
 
 
 class JudgeSeverity(StrEnum):
-    blocker = "blocker"
     major = "major"
     minor = "minor"
     nit = "nit"
-    uncertain = "uncertain"
 
     @classmethod
     def from_wire(cls, value: str) -> JudgeSeverity | str:

@@ -7,7 +7,6 @@ import argparse
 import json
 import os
 import re
-import shutil
 import subprocess
 import sys
 import tempfile
@@ -16,14 +15,17 @@ from pathlib import Path
 from larch import io as larch_io
 from larch.core import external_defaults
 from larch.core import logging_util
+from larch.issue.oos import is_security_tagged
 from larch.report.tokens import build_panel_dispatch_env, resolve_panel_artifact_dir
 from larch.review.review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
 _OOS_BLOCK_RE = re.compile(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)")
-_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(blocking|important|latent|nit)\s*$", re.IGNORECASE)
+_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(major|minor|nit)\s*$", re.IGNORECASE)
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
+_BLANK_SEVERITY_RE = re.compile(r"(?m)^(-\s*\*\*Severity\*\*:\s*)$")
+_ITEM_BLOCK_RE = re.compile(r"(?ms)^### (?:FINDING|OOS)_[0-9]+:.*?(?=^### |\Z)")
 _MIN_AGGREGATE_INPUTS = 2
 _MOVE_FAILED_RC = 3
 _VALIDATION_FAILED_RC = 4
@@ -84,6 +86,10 @@ def _finding_blocks(text: str) -> list[str]:
 
 def _oos_blocks(text: str) -> list[str]:
     return [match.group(0).strip() for match in _OOS_BLOCK_RE.finditer(text)]
+
+
+def _item_blocks(text: str) -> list[str]:
+    return [match.group(0).strip() for match in _ITEM_BLOCK_RE.finditer(text)]
 
 
 def _count_finding_blocks(path: Path) -> int:
@@ -647,7 +653,7 @@ def _validate_aggregate_output(*, input_path: Path, output_path: Path, input_mod
         if not slots:
             return _MISSING_ATTRIBUTION_RC, "block missing reviewer attribution line\n"
         if input_mode == "code" and not _SEVERITY_RE.search(block):
-            return 2, "output block missing - **Severity**: blocking|important|latent|nit line\n"
+            return 2, "output block missing - **Severity**: major|minor|nit line\n"
         for slot in slots:
             norm = _normalize_slot(slot)
             if norm not in input_slot_set:
@@ -995,6 +1001,8 @@ def _parse_prune_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(prog="prune-nit-findings", add_help=True)
     parser.add_argument("--findings-file", required=True)
     parser.add_argument("--oos-file", default="")
+    parser.add_argument("--audit-file", default="")
+    parser.add_argument("--security-audit-file", default="")
     parser.add_argument("--input-mode", choices=("code", "plan"), default="code")
     return parser.parse_args(argv)
 
@@ -1005,17 +1013,49 @@ def _emit_prune(*, pruned: int, remaining: int, status: str) -> None:
     logging_util.emit_kv(key="STATUS", value=status)
 
 
-def _prefix_oos_heading(block: str) -> str:
-    lines = block.split("\n")
-    if not lines:
-        return block
-    match = re.match(r"^(### FINDING_[0-9]+:)\s*(.*)$", lines[0])
-    if match:
-        title = match.group(2).strip()
-        if not title.startswith("[OUT_OF_SCOPE]"):
-            title = f"[OUT_OF_SCOPE] {title}" if title else "[OUT_OF_SCOPE]"
-        lines[0] = f"{match.group(1)} {title}"
-    return "\n".join(lines)
+def _normalize_blank_severity(block: str) -> str:
+    return _BLANK_SEVERITY_RE.sub(r"\1minor", block)
+
+
+def _renumber_item_blocks(blocks: list[str]) -> str:
+    counters = {"FINDING": 0, "OOS": 0}
+    rendered: list[str] = []
+    for block in blocks:
+        match = re.match(r"^### (FINDING|OOS)_[0-9]+:", block)
+        if not match:
+            rendered.append(block)
+            continue
+        kind = match.group(1)
+        counters[kind] += 1
+        rendered.append(
+            re.sub(
+                r"^### (?:FINDING|OOS)_[0-9]+:",
+                f"### {kind}_{counters[kind]}:",
+                block,
+                count=1,
+                flags=re.MULTILINE,
+            )
+        )
+    return "\n\n".join(rendered) + ("\n\n" if rendered else "")
+
+
+def _append_prune_audit(*, public_audit: Path, security_audit: Path, nit_blocks: list[str]) -> None:
+    public: list[str] = []
+    security: list[str] = []
+    for block in nit_blocks:
+        entry = block.rstrip("\n") + "\n\n"
+        if is_security_tagged(block):
+            security.append(entry)
+        else:
+            public.append(entry)
+    if public:
+        public_audit.parent.mkdir(parents=True, exist_ok=True)
+        with public_audit.open("a", encoding="utf-8") as handle:
+            _ = handle.write("".join(public))
+    if security:
+        security_audit.parent.mkdir(parents=True, exist_ok=True)
+        with security_audit.open("a", encoding="utf-8") as handle:
+            _ = handle.write("".join(security))
 
 
 def prune_nit_findings(argv: list[str]) -> int:
@@ -1025,8 +1065,6 @@ def prune_nit_findings(argv: list[str]) -> int:
     except SystemExit as exc:
         return int(exc.code) if isinstance(exc.code, int) else 2
     findings = Path(args.findings_file)
-    if args.input_mode == "plan" and not args.oos_file:
-        return _error("prune-nit-findings: --oos-file is required for --input-mode plan")
     if not findings.is_file():
         return _error(f"prune-nit-findings: --findings-file not found: {findings}")
     if os.environ.get("LARCH_PRUNE_NITS_DISABLED") == "1":
@@ -1034,42 +1072,36 @@ def prune_nit_findings(argv: list[str]) -> int:
         return 0
     try:
         original_findings = _read_text(findings)
-        blocks = _finding_blocks(original_findings)
+        normalized_findings = _normalize_blank_severity(original_findings)
+        blocks = _item_blocks(normalized_findings)
     except OSError:
         _emit_prune(pruned=0, remaining=0, status="skipped")
         return 0
     nit_blocks = [block for block in blocks if _NIT_SEVERITY_RE.search(block)]
     inscope_blocks = [block for block in blocks if not _NIT_SEVERITY_RE.search(block)]
+    if normalized_findings != original_findings:
+        try:
+            _atomic_write(path=findings, text=normalized_findings)
+        except Exception:
+            _emit_prune(pruned=0, remaining=0, status="skipped")
+            return 0
     if not nit_blocks:
         _emit_prune(pruned=0, remaining=len(inscope_blocks), status="ok")
         return 0
     try:
-        if args.input_mode == "code":
-            new_blocks = [_prefix_oos_heading(block) if _NIT_SEVERITY_RE.search(block) else block for block in blocks]
-            _atomic_write(path=findings, text="\n\n".join(new_blocks) + ("\n\n" if new_blocks else ""))
-        else:
-            oos = Path(args.oos_file)
-            original_oos = _read_text(oos) if oos.exists() else ""
-            new_inscope = [re.sub(r"^### FINDING_[0-9]+:", f"### FINDING_{idx}:", block, count=1, flags=re.MULTILINE) for idx, block in enumerate(inscope_blocks, 1)]
-            new_findings = "\n\n".join(new_inscope) + ("\n\n" if new_inscope else "")
-            next_oos = len(_oos_blocks(original_oos)) + 1
-            additions = [re.sub(r"^### FINDING_[0-9]+:", f"### OOS_{idx}:", block, count=1, flags=re.MULTILINE) for idx, block in enumerate(nit_blocks, next_oos)]
-            new_oos = original_oos + "\n\n" + "\n\n".join(additions) + "\n\n"
-            findings_tmp = findings.parent / f".{findings.name}.tmp-{os.getpid()}"
-            oos_tmp = oos.parent / f".{oos.name}.tmp-{os.getpid()}"
-            _write_text(path=findings_tmp, text=new_findings)
-            _write_text(path=oos_tmp, text=new_oos)
-            shutil.move(str(findings_tmp), str(findings))
-            try:
-                shutil.move(str(oos_tmp), str(oos))
-            except Exception:
-                _atomic_write(path=findings, text=original_findings)
-                raise
+        audit = Path(args.audit_file) if args.audit_file else findings.parent / "oos-dropped-before-vote.md"
+        security_audit = (
+            Path(args.security_audit_file)
+            if args.security_audit_file
+            else findings.parent / "security-oos-observations.md"
+        )
+        _append_prune_audit(public_audit=audit, security_audit=security_audit, nit_blocks=nit_blocks)
+        _atomic_write(path=findings, text=_renumber_item_blocks(inscope_blocks))
     except Exception:
         _emit_prune(pruned=0, remaining=0, status="skipped")
         return 0
     if nit_blocks:
-        logging_util.diagnostic(f"→ prune-nit-findings: marked {len(nit_blocks)} nit finding(s) as [OUT_OF_SCOPE] ({len(inscope_blocks)} in-scope remaining)")
+        logging_util.diagnostic(f"→ prune-nit-findings: dropped {len(nit_blocks)} nit finding(s) before vote ({len(inscope_blocks)} remaining)")
     _emit_prune(pruned=len(nit_blocks), remaining=len(inscope_blocks), status="ok")
     return 0
 

@@ -8,6 +8,8 @@ import sys
 from collections.abc import Callable
 from pathlib import Path
 
+from larch.review import voting
+
 
 _HEADER_TOKEN_RE = re.compile(r"^###[ \t]+[A-Za-z]+_[0-9]+:")
 _CANONICAL_SECURITY_TOKEN_RE = re.compile(r"focus-area\s*=\s*security", re.IGNORECASE)
@@ -20,7 +22,7 @@ _FOCUS_AREA_FIELD_RE = re.compile(
     r"^[ \t-]*focus[- ]area[ \t]*[:=][ \t]*security(?:[-a-z0-9 _]*)(?:[ \t]|$|\(|#|\.|,)",
     re.IGNORECASE,
 )
-_FINDING_HEADER_RE = re.compile(r"^###\s+FINDING_\d+:")
+_FINDING_HEADER_RE = re.compile(r"^###\s+(?:FINDING|OOS)_\d+:")
 _PRESENT_RESULT_RE = re.compile(r"(^|[ \t])Result=")
 _ACCEPTED_RESULT_RE = re.compile(r"(^|[ \t])Result=accepted([ \t]|$)")
 
@@ -93,7 +95,7 @@ def _is_vote_tally_eligible(block: str) -> bool:
             found_result = True
             if _ACCEPTED_RESULT_RE.search(line):
                 found_accepted = True
-    return found_result and found_accepted
+    return found_result and found_accepted and voting.artifact_marked_fileable(block)
 
 
 def _classify_security(block: str) -> bool:

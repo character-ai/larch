@@ -26,7 +26,7 @@ FIXTURE_FINDINGS = """### FINDING_1: [OUT_OF_SCOPE] Public cleanup
 Vote tally: YES=0 NO=3 EXON=0 JUDGE_ERROR=0 Result=rejected
 ### FINDING_4: [OUT_OF_SCOPE] Result accepted cleanup
 - **Concern**: File only accepted result.
-Vote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
+Vote tally: YES=3 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted Fileable=true
 ### FINDING_5: [OUT_OF_SCOPE] ordinary security cleanup
 - **Concern**: Public non-sensitive title.
 ### FINDING_6: [OUT_OF_SCOPE] `[security]` tagged title
@@ -205,7 +205,7 @@ def test_oos_serialize_result_accepted_written(tmp_path: Path) -> None:
     counts, output = _serialize_text(
         tmp_path,
         """### FINDING_1: [OUT_OF_SCOPE] Accepted
-Vote tally: YES=3 NO=0 Result=accepted
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true
 """,
     )
     assert counts == (1, 0)
@@ -220,11 +220,12 @@ Vote tally: YES=0 NO=3 NotResult=rejected
 ### FINDING_2: [OUT_OF_SCOPE] NoResult stays eligible
 Vote tally: YES=0 NO=3 NoResult=rejected
 ### FINDING_3: [OUT_OF_SCOPE] Accepted extra rejected
-Vote tally: YES=3 NO=0 Result=accepted-extra
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true-extra
 ### FINDING_4: [OUT_OF_SCOPE] Accepted trailing space
-Vote tally: YES=3 NO=0 Result=accepted 
-### FINDING_5: [OUT_OF_SCOPE] Accepted end
-Vote tally: YES=3 NO=0 Result=accepted
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true"""
+        " \n"
+        """### FINDING_5: [OUT_OF_SCOPE] Accepted end
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true
 """,
     )
     assert counts == (2, 0)
@@ -278,7 +279,7 @@ def test_oos_serialize_body_cited_security_heading_is_not_security(tmp_path: Pat
 """### FINDING_1: [OUT_OF_SCOPE] Body cited heading
 - **Concern**: Example follows.
 ### Example [security] policy
-Vote tally: YES=3 NO=0 Result=accepted
+Vote tally: YES=3 NO=0 Result=accepted Fileable=true
 """,
     )
     assert counts == (1, 0)
@@ -321,7 +322,7 @@ def test_oos_is_security_tagged_space_separated_focus_area() -> None:
 
 
 def test_oos_serialize_creates_output_parent_directory(tmp_path: Path) -> None:
-    findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\nVote tally: YES=1 NO=0 Result=accepted\n")
+    findings = _write_findings(tmp_path, "### FINDING_1: [OOS] Parent dir\nVote tally: YES=1 NO=0 Result=accepted Fileable=true\n")
     output = tmp_path / "missing" / "nested" / "oos.md"
     assert not output.parent.exists()
     assert oos.oos_serialize(findings_file=findings, output_file=output) == (1, 0)
@@ -356,7 +357,7 @@ def test_oos_serialize_classifier_failure_no_partial_sink(
 
 
 def test_oos_serialize_cli_via_subprocess(tmp_path: Path) -> None:
-    findings = _write_findings(tmp_path, "### FINDING_1: [OUT_OF_SCOPE] CLI accepted\nVote tally: YES=1 NO=0 Result=accepted\n")
+    findings = _write_findings(tmp_path, "### FINDING_1: [OUT_OF_SCOPE] CLI accepted\nVote tally: YES=1 NO=0 Result=accepted Fileable=true\n")
     output = tmp_path / "oos.md"
     result = _run_cli([
         "oos",

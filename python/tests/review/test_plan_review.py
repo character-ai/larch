@@ -869,7 +869,7 @@ def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(t
         tmp_path,
         (
             f"cat >\"{tmp_path}/accepted-plan-findings.md\" <<'FINDINGS'\n"
-            "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n"
+            "### FINDING_1: Important\n- **Severity**: major\n- **Concern**: issue\n"
             "FINDINGS\n"
             "printf 'LOOP_STATUS=complete\\nACCEPTED_COUNT=1\\nIMPORTANT_ACCEPTED_COUNT=1\\n"
             "DEGRADED_PANEL=0\\nROUNDS_COMPLETED=1\\nTALLY_PLAN_REVIEW_STATUS=ok\\n"
@@ -902,7 +902,7 @@ def test_loop_resume_awaiting_apply_rebails_to_inline_gate_b(tmp_path: Path, pha
     _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
     _ = (tmp_path / ".step3-round-1.phase").write_text(f"{phase}\n", encoding="utf-8")
     _ = (tmp_path / "accepted-plan-findings.md").write_text(
-        "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n",
+        "### FINDING_1: Important\n- **Severity**: major\n- **Concern**: issue\n",
         encoding="utf-8",
     )
     forbidden_round_stub = _write_loop_stub(tmp_path, "exit 99")
@@ -1660,8 +1660,8 @@ def test_tally_plan_review_mixed_votes_and_artifacts(tmp_path: Path) -> None:
     v2 = tmp_path / "v2.txt"
     v3 = tmp_path / "v3.txt"
     _ = v1.write_text("FINDING_1: YES SEVERITY=major\nFINDING_2: NO SEVERITY=major\nFINDING_3: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
-    _ = v2.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nFINDING_3: YES SEVERITY=blocker\nOOS_1: NO SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
-    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=blocker\nFINDING_3: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v2.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: YES SEVERITY=minor\nFINDING_3: YES SEVERITY=major\nOOS_1: NO SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
+    _ = v3.write_text("FINDING_1: YES SEVERITY=minor\nFINDING_2: NO SEVERITY=major\nFINDING_3: YES SEVERITY=major\nOOS_1: YES SEVERITY=major\nOOS_2: YES SEVERITY=major\n", encoding="utf-8")
     design = tmp_path / "design"
     design.mkdir()
     proc = run_cli(
@@ -1950,13 +1950,13 @@ def test_tally_plan_review_rescues_high_severity_neutral_findings_to_oos(tmp_pat
     assert ledger_rows["FINDING_1"]["outcome"] == "oos"
 
 
-def test_tally_plan_review_rejected_latent_ledger_outcome_is_oos(tmp_path: Path) -> None:
+def test_tally_plan_review_rejected_minor_ledger_outcome_is_rejected(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(
-        """### FINDING_1: Latent deferred item
+        """### FINDING_1: Minor deferred item
 - **Reviewer**: Cursor-Arch
-- **Severity**: latent
-- Concern: Real but latent concern.
+- **Severity**: minor
+- Concern: Real but minor concern.
 """,
         encoding="utf-8",
     )
@@ -1982,12 +1982,11 @@ def test_tally_plan_review_rejected_latent_ledger_outcome_is_oos(tmp_path: Path)
     )
     assert proc.returncode == 0, proc.stderr
     ledger_rows = _read_tsv(design / "findings-ledger.tsv")
-    assert ledger_rows["FINDING_1"]["outcome"] == "oos"
+    assert ledger_rows["FINDING_1"]["outcome"] == "rejected"
     oos = (design / "oos.md").read_text(encoding="utf-8")
     rejected = (design / "rejected-findings.md").read_text(encoding="utf-8")
-    assert "FINDING_1" in oos
-    assert "latent-rerouted" in oos
-    assert "FINDING_1" not in rejected
+    assert "FINDING_1" not in oos
+    assert "FINDING_1" in rejected
 
 
 def test_tally_plan_review_ledger_appends_and_replaces_round(tmp_path: Path) -> None:
@@ -2084,7 +2083,7 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
     assert voting.render_voter_severity_scoreboard(severity_records) in tally
 
 
-def test_tally_plan_review_two_judge_oos_one_yes_is_accepted(tmp_path: Path) -> None:
+def test_tally_plan_review_two_judge_oos_one_major_yes_is_fileable(tmp_path: Path) -> None:
     ballot = tmp_path / "ballot.md"
     _ = ballot.write_text(
         """### OOS_1: Follow-up cleanup
@@ -2095,7 +2094,7 @@ def test_tally_plan_review_two_judge_oos_one_yes_is_accepted(tmp_path: Path) -> 
     )
     yes = tmp_path / "yes.txt"
     no = tmp_path / "no.txt"
-    _ = yes.write_text("OOS_1: YES SEVERITY=minor\n", encoding="utf-8")
+    _ = yes.write_text("OOS_1: YES SEVERITY=major\n", encoding="utf-8")
     _ = no.write_text("OOS_1: NO SEVERITY=minor\n", encoding="utf-8")
     design = tmp_path / "design-oos-one-yes"
     design.mkdir()
@@ -2194,7 +2193,7 @@ def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path
         ("Cursor", "minor"),
     ]
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
-    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
+    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
 
 
 def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:
@@ -2243,7 +2242,7 @@ def test_loop_dedup_failure_restores_plan_snapshot(tmp_path: Path) -> None:
     snapshot = tmp_path / "plan-pre-apply-round-1.txt"
     _ = snapshot.write_text(original, encoding="utf-8")
     _ = (tmp_path / "accepted-plan-findings.md").write_text(
-        "### FINDING_1: Important\n- **Severity**: important\n- **Concern**: issue\n",
+        "### FINDING_1: Important\n- **Severity**: major\n- **Concern**: issue\n",
         encoding="utf-8",
     )
     _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-post-apply\n", encoding="utf-8")
@@ -2838,19 +2837,19 @@ def _write_gate_b_findings(tmp_path: Path, body: str) -> None:
 def test_gate_b_dedup_counts_structured_mode_and_document_order_ids(tmp_path: Path) -> None:
     _write_gate_b_findings(
         tmp_path,
-        """### FINDING_1: Blocking
+        """### FINDING_1: Major
 - **Reviewer(s)**: Cursor-Arch
-- **Severity**: blocking
+- **Severity**: major
 - **Concern**: primary concern
 
-### FINDING_3: Important
+### FINDING_3: Major
 - **Reviewer**: Codex-Correctness
-- **Severity**: important
+- **Severity**: major
 - **Concern**: second concern
 
-### FINDING_7: Latent
+### FINDING_7: Minor
 - **Reviewer**: Codex-Edge
-- **Severity**: latent
+- **Severity**: minor
 - **Concern**: third concern
 
 ### FINDING_9: Nit
@@ -2933,12 +2932,12 @@ def test_gate_b_dedup_non_contiguous_ids_and_one_by_one_ordinals(tmp_path: Path)
         tmp_path,
         """### FINDING_1: First
 - **Reviewer(s)**: Cursor-Arch
-- **Severity**: blocking
+- **Severity**: major
 - **Concern**: first concern
 
 ### FINDING_3: Third
 - **Reviewer(s)**: Codex-Arch
-- **Severity**: latent
+- **Severity**: minor
 - **Concern**: third concern
 """,
     )
@@ -2965,7 +2964,7 @@ def test_preview_gate_b_rows_context_truncation_and_no_plan_body(tmp_path: Path)
         tmp_path,
         f"""### FINDING_1: Long
 - **Reviewer(s)**: Cursor-Arch
-- **Severity**: important
+- **Severity**: major
 - **Concern**: {long_concern}
 
 ### FINDING_3: Non-contiguous
@@ -3011,13 +3010,13 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
     findings = (
         _high_finding_block(
             1,
-            severity="important",
+            severity="major",
             location="python/plan_review.py:1039",
             concern="continuation re-triggers on duplicate findings. Scenario: round 2 re-raises round 1.",
         )
         + _high_finding_block(
             2,
-            severity="blocking",
+            severity="major",
             location="python/plan_review_round.py:144",
             concern="collector re-emits identical findings. Scenario: stable reviewer output.",
         )
@@ -3063,13 +3062,13 @@ def test_continuation_converges_when_round_reraises_applied_findings(tmp_path: P
 def test_continuation_escalates_on_cumulative_highs_with_one_new_finding(tmp_path: Path) -> None:
     finding1 = _high_finding_block(
         1,
-        severity="important",
+        severity="major",
         location="a.py:1",
         concern="alpha. Scenario: x.",
     )
     finding2 = _high_finding_block(
         2,
-        severity="blocking",
+        severity="major",
         location="b.py:2",
         concern="beta. Scenario: y.",
     )
@@ -3128,7 +3127,7 @@ def test_continuation_escalates_on_cumulative_highs_with_one_new_finding(tmp_pat
 
 def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> None:
     round1 = _high_finding_block(
-        1, severity="important", location="a.py:1", concern="alpha. Scenario: x."
+        1, severity="major", location="a.py:1", concern="alpha. Scenario: x."
     )
     _ = (tmp_path / "accepted-plan-findings.md").write_text(round1, encoding="utf-8")
     _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
@@ -3141,7 +3140,7 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
     round1_escalation = tmp_path / "round1-escalation"
     round1_escalation.mkdir()
     _ = (round1_escalation / "accepted-plan-findings.md").write_text(
-        round1 + _high_finding_block(2, severity="blocking", location="b.py:2", concern="beta. Scenario: y."),
+        round1 + _high_finding_block(2, severity="major", location="b.py:2", concern="beta. Scenario: y."),
         encoding="utf-8",
     )
     _ = (round1_escalation / "review-round-count.txt").write_text("1\n", encoding="utf-8")
@@ -3155,7 +3154,7 @@ def test_continuation_continues_when_a_new_finding_appears(tmp_path: Path) -> No
 
     # Round 2: re-raises round-1 finding (duplicate) plus a brand-new high one.
     round2 = round1 + _high_finding_block(
-        2, severity="blocking", location="b.py:2", concern="beta. Scenario: y."
+        2, severity="major", location="b.py:2", concern="beta. Scenario: y."
     )
     _ = (tmp_path / "accepted-plan-findings.md").write_text(round2, encoding="utf-8")
     _ = (tmp_path / "review-round-count.txt").write_text("2\n", encoding="utf-8")
@@ -3254,7 +3253,7 @@ def test_continuation_degraded_panel_converges_on_duplicate_findings(tmp_path: P
     # Degraded-panel continuation must not bypass cross-round dedup (#4808).
     findings = _high_finding_block(
         1,
-        severity="important",
+        severity="major",
         location="python/plan_review.py:1163",
         concern="degraded panel re-triggers on duplicates. Scenario: round 2 re-raises round 1.",
     )
@@ -3501,7 +3500,7 @@ def _make_rejected_block(item_id: str, location: str, concern: str, title: str) 
         f"### {item_id}: {title}\n"
         f"- **Location**: {location}\n"
         f"- **Concern**: {concern}\n"
-        f"- **Severity**: important\n\n"
+        f"- **Severity**: major\n\n"
     )
 
 
@@ -3604,7 +3603,7 @@ def _make_finding_only_rejected_block(item_id: str, location: str, concern: str,
         f"### {item_id}: {title}\n"
         f"- **Location**: {location}\n"
         f"- **Concern**: {concern}\n"
-        f"- **Severity**: important\n\n"
+        f"- **Severity**: major\n\n"
     )
 
 
@@ -3898,7 +3897,7 @@ def test_tally_plan_review_rejected_oos_stays_out_of_aggregate_pool(tmp_path: Pa
     _ = ballot.write_text(
         """### OOS_1: [OUT_OF_SCOPE] important follow-up
 - **Reviewer**: Codex-Correctness
-- **Severity**: important
+- **Severity**: major
 - **Concern**: File this when the aggregate trigger is evaluated.
 """,
         encoding="utf-8",

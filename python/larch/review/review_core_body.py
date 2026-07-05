@@ -406,15 +406,32 @@ def _prune_nits_for_ballot(
     review_tmpdir: Path,
     runner: object = None,
     findings_file: Path | None = None,
+    session_env_path: str = "",
 ) -> object:
     _ = runner
     ballot_file = findings_file or review_tmpdir / "findings.md"
-    prune_result = _call_maybe_override(command=commands.prune_nits, review_name="prune-nit-findings", args=["--findings-file", str(ballot_file), "--input-mode", "code"])
+    prune_result = _call_maybe_override(
+        command=commands.prune_nits,
+        review_name="prune-nit-findings",
+        args=[
+            "--findings-file",
+            str(ballot_file),
+            "--input-mode",
+            "code",
+            "--audit-file",
+            str(review_tmpdir / "oos-dropped-before-vote.md"),
+            "--security-audit-file",
+            str(
+                (Path(session_env_path).parent if session_env_path else review_tmpdir)
+                / "security-oos-observations.md"
+            ),
+        ],
+    )
     _write_text(path=review_tmpdir / "review-core-prune-nit.env", text=prune_result.stdout)
     _write_text(path=review_tmpdir / "prune-nit.env", text=prune_result.stdout or "PRUNED_COUNT=0\nINSCOPE_REMAINING=0\nSTATUS=skipped\n")
     pruned_count = _kv_parse(prune_result.stdout).get("PRUNED_COUNT", "0")
     if pruned_count != "0":
-        logging_util.diagnostic(f"→ review: nit post-aggregate filter marked {pruned_count} finding(s) as [OUT_OF_SCOPE]")
+        logging_util.diagnostic(f"→ review: nit filter dropped {pruned_count} finding(s) before vote")
     return prune_result
 
 
@@ -658,7 +675,13 @@ def _tally_voted_ballot(ctx: ReviewCoreBranchContext, *, proposer_map: Path, vot
 
 
 def _prepare_pruned_ballot(ctx: ReviewCoreBranchContext, *, findings_file: Path | None = None) -> ReviewCoreResult | None:
-    _prune_nits_for_ballot(commands=ctx.commands, review_tmpdir=ctx.review_tmpdir, runner=ctx.runner, findings_file=findings_file)
+    _prune_nits_for_ballot(
+        commands=ctx.commands,
+        review_tmpdir=ctx.review_tmpdir,
+        runner=ctx.runner,
+        findings_file=findings_file,
+        session_env_path=ctx.session_env_path,
+    )
     ballot_file = findings_file or ctx.review_tmpdir / "findings.md"
     block_count = _ballot_block_count(ballot_file)
     if block_count is None:
@@ -933,6 +956,44 @@ def _review_core_body(
 
     pre_aggregate_snapshot = review_tmpdir / "findings-pre-aggregate.md"
     findings_file = review_tmpdir / "findings.md"
+    _prune_nits_for_ballot(
+        commands=commands,
+        review_tmpdir=review_tmpdir,
+        findings_file=findings_file,
+        session_env_path=session_env_path,
+    )
+    post_prune_count = _ballot_block_count(findings_file)
+    if post_prune_count is None:
+        return _post_gate_panel_failed_exit(
+            rows=rows,
+            review_tmpdir=review_tmpdir,
+            run_id=run_id,
+            round_num=round_num,
+            panel_mode=panel_mode,
+            panel_shape=panel_shape,
+            threshold_reason="ballot-read-failed",
+        )
+    if post_prune_count == 0:
+        zero = _zero_findings_branch(
+            commands=commands,
+            review_tmpdir=review_tmpdir,
+            round_num=round_num,
+            mode=mode,
+            cursor_available=cursor_available,
+            codex_available=codex_available,
+            session_env_path=session_env_path,
+            panel_manifest=panel_manifest,
+            collector_results=collector_results,
+            not_substantive=not_substantive,
+            panel_mode=panel_mode,
+            panel_shape=panel_shape,
+            scout_status=scout_status,
+            dynamic_slots=dynamic_slots,
+            static_slot_count=static_slot_count,
+            run_id=run_id,
+            prune_ledger=prune_ledger,
+        )
+        return ReviewCoreResult(0, zero.status, dispatch_scout_rows + zero.rows)
     try:
         if findings_file.is_file() and findings_file.stat().st_size > 0:
             shutil.copyfile(findings_file, pre_aggregate_snapshot)

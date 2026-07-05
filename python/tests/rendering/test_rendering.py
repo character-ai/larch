@@ -459,11 +459,9 @@ def test_render_voter_calibration_feedback_contributes_payload_bytes(
                 tool="codex",
                 yes_votes=3,
                 valid_yes_severity_count=2,
-                blocker=1,
-                major=0,
+                major=1,
                 minor=1,
                 nit=0,
-                uncertain=0,
                 missing_severity=0,
                 high_rate=0.5,
                 calibration_score=0.25,
@@ -1080,8 +1078,8 @@ def test_render_specialist_competition_notice_provisional_oos(tmp_path: Path, mo
     )
     assert "**Competition notice**" in text
     assert "Review Acceptance Rubric" in text
-    assert "provisional +1 at vote time" in text
-    assert "without changing vote tallies" in text
+    assert "OOS files only when accepted" in text
+    assert "non-fileable OOS is logged only" in text
 
 
 def test_render_specialist_uses_inprocess_docs_diff_classifier(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -1279,7 +1277,7 @@ def test_render_voter_no_archetype_matches_default_output(tmp_path: Path, capsys
 def test_render_voter_includes_panel_severity_rubric(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     assert "Panel severity rubric" in text
-    assert "blocker|major|minor|nit|uncertain" in text
+    assert "major|minor|nit" in text
 
 
 def test_oos_proposal_instruction_mentions_legitimacy_standard() -> None:
@@ -1316,7 +1314,7 @@ def test_render_voter_oos_rules_mention_genuine_concrete_non_duplicate(
 def test_render_voter_finding_oos_grammar_is_frozen(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     text = _render_voter_text(tmp_path, capsys)
     correctness = "true|partially-true|false-positive|uncertain"
-    severity = "blocker|major|minor|nit|uncertain"
+    severity = "major|minor|nit"
     quality = "excellent|good|adequate|weak|no-fix|uncertain"
     uncertain = "true|false"
     assert (
@@ -1416,11 +1414,9 @@ def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys:
                 tool="codex",
                 yes_votes=3,
                 valid_yes_severity_count=2,
-                blocker=1,
-                major=1,
+                major=2,
                 minor=0,
                 nit=0,
-                uncertain=0,
                 missing_severity=1,
                 high_rate=1.0,
                 calibration_score=0.0,
@@ -1430,11 +1426,9 @@ def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys:
                 tool="cursor",
                 yes_votes=1,
                 valid_yes_severity_count=1,
-                blocker=0,
                 major=0,
                 minor=1,
                 nit=0,
-                uncertain=0,
                 missing_severity=0,
                 high_rate=0.0,
                 calibration_score=1.0,
@@ -1444,8 +1438,8 @@ def test_render_voter_calibration_block_is_tool_specific(tmp_path: Path, capsys:
     )
     text = _render_voter_text(tmp_path, capsys, "--calibration-stats-file", str(stats), "--voter-tool", "codex")
     assert "**Your recent calibration:**" in text
-    assert "100.0% blocker/major across 2 valid YES severities" in text
-    assert "Reserve blocker and major for issues that match the severity rubric above" in text
+    assert "100.0% major across 2 valid YES severities" in text
+    assert "Reserve major for issues that match the severity rubric above" in text
     assert text.index("**Panel severity rubric:**") < text.index("**Your recent calibration:**")
     assert "body_severity" not in text
 
@@ -1459,11 +1453,9 @@ def test_render_voter_stats_without_tool_preserves_output(tmp_path: Path, capsys
                 tool="codex",
                 yes_votes=1,
                 valid_yes_severity_count=1,
-                blocker=1,
-                major=0,
+                major=1,
                 minor=0,
                 nit=0,
-                uncertain=0,
                 missing_severity=0,
                 high_rate=1.0,
                 calibration_score=0.0,
@@ -1496,11 +1488,9 @@ def test_render_voter_no_matching_tool_omits_calibration_block(tmp_path: Path, c
                 tool="codex",
                 yes_votes=1,
                 valid_yes_severity_count=1,
-                blocker=1,
-                major=0,
+                major=1,
                 minor=0,
                 nit=0,
-                uncertain=0,
                 missing_severity=0,
                 high_rate=1.0,
                 calibration_score=0.0,

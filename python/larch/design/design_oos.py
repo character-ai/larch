@@ -22,7 +22,6 @@ _GH_ISSUE_URL_RE = re.compile(r"https://github\.com/[^/\s]+/[^/\s]+/issues/\d+")
 _FILED_URL_LINE_RE = re.compile(r"(?m)^\s*-\s*\*\*Filed[ \t]*URL\*\*[ \t]*:")
 _OOS_HEADER_RE = re.compile(r"^###\s+OOS_(\d+):[^\n]*\n", re.MULTILINE)
 _POOL_BLOCK_HEADER_RE = re.compile(r"^###\s+(?:OOS|FINDING)_(\d+):[^\n]*\n", re.MULTILINE)
-_BODY_SEVERITY_LINE_RE = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*(.*?)[ \t]*$", re.IGNORECASE)
 _SECURITY_FOCUS_RE = re.compile(
     r"^[ \t-]*(?:[-*][ \t]*)?(?:\*\*)?focus[- \t]*area(?:\*\*)?[ \t]*[:=][ \t]*"
     r"security([-a-zA-Z0-9 _]*)(\s|$|\(|#|\.|,)",
@@ -38,8 +37,6 @@ _ISSUE_URL_KV_RE = re.compile(r"^ISSUE_(?:(\d+)_)?(URL|DUPLICATE_OF_URL)=(.*)$")
 _ISSUE_FAILED_KV_RE = re.compile(r"^ISSUE_(\d+)_FAILED=true$")
 _PRIORITY_PENDING = ".oos-priority-label-pending"
 _OOS_FILE_MAP_FIELD_COUNT = 3
-_AGGREGATE_HIGH_SEVERITIES = {"blocking", "important"}
-_AGGREGATE_LATENT_THRESHOLD = 3
 
 
 def _emit_kv(*, key: str, value: str) -> None:
@@ -109,14 +106,6 @@ def _count_non_security_blocks(text: str) -> int:
     return file_oos._count_non_security_markdown(text)  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
 
 
-def _body_severity_from_text(text: str) -> str:
-    for line in text.splitlines():
-        match = _BODY_SEVERITY_LINE_RE.match(line)
-        if match:
-            return match.group(1).strip().lower()
-    return ""
-
-
 def _is_security_block_text(text: str) -> bool:
     text_no_fence = re.sub(r"```.*?```", "", text, flags=re.DOTALL)
     text_no_backtick = re.sub(r"`[^`\n]*`", "", text_no_fence)
@@ -162,39 +151,19 @@ def _next_oos_number(text: str) -> int:
     return max(numbers, default=0) + 1
 
 
-def _aggregate_trigger_fires(blocks: list[str]) -> bool:
-    latent = 0
-    for block in blocks:
-        severity = _body_severity_from_text(block)
-        if severity in _AGGREGATE_HIGH_SEVERITIES:
-            return True
-        if severity == "latent":
-            latent += 1
-    return latent >= _AGGREGATE_LATENT_THRESHOLD
-
-
 def _promote_aggregate_oos_pool(*, accepted_path: Path, pool_path: Path) -> None:
     accepted_text = accepted_path.read_text(encoding="utf-8", errors="replace") if accepted_path.is_file() else ""
-    accepted_blocks = [block for block in _aggregate_oos_blocks(accepted_text) if not _is_security_block_text(block)]
     pool_blocks = (
         [
             block
             for block in _aggregate_oos_blocks(pool_path.read_text(encoding="utf-8", errors="replace"))
             if not _is_security_block_text(block)
             and re.search(r"(?mi)^Vote tally:.*\bResult=accepted\b", block)
+            and re.search(r"(?mi)^Vote tally:.*\bFileable=true\b", block)
         ]
         if pool_path.is_file()
         else []
     )
-    seen = {_aggregate_block_identity(block) for block in accepted_blocks}
-    trigger_blocks = list(accepted_blocks)
-    for block in pool_blocks:
-        identity = _aggregate_block_identity(block)
-        if identity and identity not in seen:
-            trigger_blocks.append(block)
-            seen.add(identity)
-    if not _aggregate_trigger_fires(trigger_blocks):
-        return
     next_num = _next_oos_number(accepted_text)
     promoted: list[str] = []
     accepted_seen = {_aggregate_block_identity(block) for block in _aggregate_oos_blocks(accepted_text)}

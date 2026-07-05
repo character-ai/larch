@@ -34,17 +34,13 @@ from larch.review import voting
 from larch.state.session_env import validate_design_tmpdir
 
 _VALID_SLOTS = {"1", "2", "3", "Claude", "Codex", "Cursor", "MainAgent"}
-_LATENT_BODY_SEVERITY = re.compile(
-    r"(?im)^-[ \t]*\*\*Severity\*\*:[ \t]*latent[ \t]*$"
-)
 _BODY_SEVERITY_PREFIX = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*")
 _FULL_PANEL = 3
 LABEL_MAP_MIN_COLS = 2
 
 
 def _finding_oos_reroute_marker(*, block_text: str, neutral_rescued: bool) -> str:
-    if _LATENT_BODY_SEVERITY.search(block_text):
-        return "latent-rerouted"
+    _ = block_text
     if neutral_rescued:
         return "neutral-rescued"
     return ""
@@ -466,8 +462,6 @@ class _Tally:
             outcome = "oos" if item_id.startswith("OOS_") else result
             if neutral_rescued:
                 outcome = "oos"
-            if _LATENT_BODY_SEVERITY.search(block_text) and outcome != "accepted":
-                outcome = "oos"
             entries.append(
                 {
                     "finding_id": item_id,
@@ -777,11 +771,17 @@ class _Tally:
                 severities=severities,
             )
             kind = "oos" if item_id.startswith("OOS_") else "finding"
+            fileable_oos = voting.oos_fileable_from_votes(
+                result,
+                yes_votes=votes,
+                severities=severities,
+            )
+            score_result = "neutral" if kind == "oos" and result == "accepted" and not fileable_oos else result
             sole_finder_reward_count += _record_plan_review_score_rows(
                 score_state=(score_rows, attribution_labels, active_bonus),
                 reviewer=reviewer,
                 kind=kind,
-                result=result,
+                result=score_result,
                 vote_inputs=(votes, severities),
             )
             artifact_text = self._artifact_text_for_item(item_id=item_id, block=block)
@@ -789,7 +789,7 @@ class _Tally:
             reroute_marker = _finding_oos_reroute_marker(block_text=artifact_text, neutral_rescued=neutral_rescued)
 
             _record_plan_review_artifact_chunks(
-                item=(kind, result, reroute_marker, item_id, artifact_text, security),
+                item=(kind, result, reroute_marker, item_id, artifact_text, security, fileable_oos),
                 vote_counts=(yes, no, judge_error),
                 chunks=(accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks, security_oos_chunks),
             )
@@ -863,11 +863,11 @@ class _Tally:
 
 def _record_plan_review_artifact_chunks(
     *,
-    item: tuple[str, str, str, str, str, bool],
+    item: tuple[str, str, str, str, str, bool, bool],
     vote_counts: tuple[int, int, int],
     chunks: tuple[list[str], list[str], list[str], list[str], list[str], list[str]],
 ) -> None:
-    kind, result, reroute_marker, item_id, artifact_text, security = item
+    kind, result, reroute_marker, item_id, artifact_text, security, fileable = item
     accepted_chunks, rejected_chunks, oos_chunks, oos_accepted_chunks, oos_pool_chunks, security_oos_chunks = chunks
     yes, no, judge_error = vote_counts
     if kind == "finding":
@@ -888,12 +888,13 @@ def _record_plan_review_artifact_chunks(
         else:
             rejected_chunks.append(f"### [Plan Review] {item_id}\n\n{artifact_text}\n")
         return
-    oos_artifact = artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result}\n\n"
+    fileable_marker = "true" if fileable else "false"
+    oos_artifact = artifact_text + f"\nVote tally: YES={yes} NO={no} JUDGE_ERROR={judge_error} Result={result} Fileable={fileable_marker}\n\n"
     if security:
         security_oos_chunks.append(oos_artifact)
         return
     oos_chunks.append(oos_artifact)
-    if result == "accepted":
+    if fileable:
         oos_pool_chunks.extend(_public_oos_pool_chunks(artifact=oos_artifact, security=security))
         oos_accepted_chunks.append(artifact_text + "\n")
 

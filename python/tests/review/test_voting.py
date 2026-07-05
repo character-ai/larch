@@ -504,12 +504,12 @@ def test_compute_voter_severity_distribution_yes_votes_only() -> None:
         voting.voter_agreement_row_from_panel(
             voting_result="accepted",
             voter_votes=[("v1", vote), ("v2", "NO"), ("v3", "YES")],
-            voter_severities=[severity, "blocker", "major"],
+            voter_severities=[severity, "major", "major"],
             panel="code-review",
         )
         for vote, severity in [
-            *[("YES", "blocker") for _ in range(9)],
-            ("YES", "uncertain"),
+            *[("YES", "major") for _ in range(9)],
+            ("YES", "minor"),
             ("YES", ""),
             ("YES", "bogus"),
             ("NO", "major"),
@@ -519,9 +519,8 @@ def test_compute_voter_severity_distribution_yes_votes_only() -> None:
     records = voting.compute_voter_severity_distribution(eligible_rows)
     v1 = next(record for record in records if record["voter"] == "v1")
     assert v1["yes_votes"] == 12
-    assert v1["blocker"] == 9
-    assert v1["major"] == 0
-    assert v1["uncertain"] == 1
+    assert v1["major"] == 9
+    assert v1["minor"] == 1
     assert v1["missing_severity"] == 2
     assert v1["valid_yes_severity_count"] == 10
     assert v1["high_rate"] == 0.9
@@ -559,7 +558,7 @@ def test_render_voter_severity_scoreboard_empty() -> None:
     rendered = voting.render_voter_severity_scoreboard([])
     assert "## Voter Severity Scoreboard" in rendered
     assert "Calibration Score" in rendered
-    assert "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in rendered
+    assert "| undefined | n/a | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in rendered
 
 
 def test_render_voter_severity_scoreboard_calibration_score() -> None:
@@ -568,11 +567,9 @@ def test_render_voter_severity_scoreboard_calibration_score() -> None:
             "panel": "code-review",
             "voter": "mixed",
             "yes_votes": 10,
-            "blocker": 0,
             "major": 9,
             "minor": 0,
             "nit": 0,
-            "uncertain": 1,
             "missing_severity": 0,
             "high_rate": 0.9,
             "calibration_score": 1.0,
@@ -582,19 +579,17 @@ def test_render_voter_severity_scoreboard_calibration_score() -> None:
             "panel": "code-review",
             "voter": "all-high",
             "yes_votes": 10,
-            "blocker": 0,
             "major": 10,
             "minor": 0,
             "nit": 0,
-            "uncertain": 0,
             "missing_severity": 0,
             "high_rate": 1.0,
             "calibration_score": 0.0,
             "uncalibrated": True,
         },
     ])
-    assert "| code-review | mixed | 10 | 0 | 9 | 0 | 0 | 1 | 0 | 0.900 | 1.000 | false |" in rendered
-    assert "| code-review | all-high | 10 | 0 | 10 | 0 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in rendered
+    assert "| code-review | mixed | 10 | 9 | 0 | 0 | 0 | 0.900 | 1.000 | false |" in rendered
+    assert "| code-review | all-high | 10 | 10 | 0 | 0 | 0 | 1.000 | 0.000 | true |" in rendered
 
 
 def test_compute_voter_agreement_outlier_threshold() -> None:
@@ -1315,14 +1310,14 @@ def test_code_review_classification_header_is_22_column_schema() -> None:
 
 def test_weighted_finding_points_and_attribution_helpers() -> None:
     assert voting.accepted_finding_points_from_severities(["major"]) == 2
-    assert voting.accepted_finding_points_from_severities(["major", "blocker"]) == 2
-    assert voting.accepted_finding_points_from_severities(["major", "blocker"], votes=["YES", "YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "blocker"]) == 1
+    assert voting.accepted_finding_points_from_severities(["major", "blocker"], votes=["YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["major", "minor"], votes=["YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["major", "minor", "minor"], votes=["YES", "YES", "YES"]) == 1
-    assert voting.accepted_finding_points_from_severities(["major", "blocker", "minor"], votes=["YES", "YES", "YES"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "minor"], votes=["YES", "YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["minor", "nit", "uncertain"]) == 1
     assert voting.accepted_finding_points_from_severities(["minor", "blocker"], votes=["YES", "NO"]) == 1
-    assert voting.accepted_finding_points_from_severities(["major", "blocker", "major"], votes=["YES", "YES", "NO"]) == 2
+    assert voting.accepted_finding_points_from_severities(["major", "blocker", "major"], votes=["YES", "YES", "NO"]) == 1
     assert voting.accepted_finding_points_from_severities(["major", "invalid"], votes=["YES", "YES"]) == 1
     assert voting.accepted_finding_points_from_severities(["major"], votes=["YES"]) == 2
     assert voting.accepted_finding_points_from_severities(
@@ -1354,7 +1349,7 @@ def test_weighted_finding_points_and_attribution_helpers() -> None:
     assert voting.split_classification_attribution("cursor-a|codex-b", column="reviewer_slots") == ["cursor-a", "codex-b"]
 
 
-@pytest.mark.parametrize("severity", ["major", "blocker"])
+@pytest.mark.parametrize("severity", ["major"])
 def test_neutral_high_severity_rescue_to_oos_accepts_high_yes(severity: str) -> None:
     assert voting.neutral_high_severity_rescue_to_oos(
         "neutral",
@@ -1363,13 +1358,42 @@ def test_neutral_high_severity_rescue_to_oos_accepts_high_yes(severity: str) -> 
     )
 
 
-@pytest.mark.parametrize("severity", ["minor", "nit", "uncertain", "", "critical"])
+@pytest.mark.parametrize("severity", ["minor", "nit", "blocker", "uncertain", "", "critical"])
 def test_neutral_high_severity_rescue_to_oos_rejects_low_or_invalid_yes(severity: str) -> None:
     assert not voting.neutral_high_severity_rescue_to_oos(
         "neutral",
         yes_votes=[ReviewVote.yes.value, ReviewVote.no.value, ReviewVote.no.value],
         severities=[severity, "major", "major"],
     )
+
+
+def test_oos_fileable_from_votes_requires_accepted_strict_yes_majority() -> None:
+    assert voting.oos_fileable_from_votes(
+        "accepted",
+        yes_votes=["YES", "YES", "NO"],
+        severities=["major", "major", "minor"],
+    )
+    assert not voting.oos_fileable_from_votes(
+        "accepted",
+        yes_votes=["YES", "YES", "NO"],
+        severities=["major", "minor", "major"],
+    )
+    assert not voting.oos_fileable_from_votes(
+        "neutral",
+        yes_votes=["YES"],
+        severities=["major"],
+    )
+    assert not voting.oos_fileable_from_votes(
+        "accepted",
+        yes_votes=["YES"],
+        severities=["blocker"],
+    )
+
+
+def test_artifact_marked_fileable_requires_exact_true_marker() -> None:
+    assert voting.artifact_marked_fileable("Vote tally: YES=1 Result=accepted Fileable=true\n")
+    assert not voting.artifact_marked_fileable("Vote tally: YES=1 Result=accepted Fileable=true-extra\n")
+    assert not voting.artifact_marked_fileable("Vote tally: YES=1 Result=accepted Fileable=false\n")
 
 
 @pytest.mark.parametrize("result", ["accepted", "rejected"])
@@ -1438,12 +1462,12 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     tsv = tmp_path / "classification.tsv"
     tsv.write_text(
         "\t".join(header) + "\n"
-        + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope", v2_vote="YES", v2_severity="blocker") + "\n"
-        + row("FINDING_2", "Testing", "accepted", "YES", "minor", "important", "in_scope") + "\n"
+        + row("FINDING_1", "Structure", "accepted", "YES", "major", "", "in_scope", v2_vote="YES", v2_severity="major") + "\n"
+        + row("FINDING_2", "Testing", "accepted", "YES", "minor", "minor", "in_scope") + "\n"
         + row("FINDING_3", "Testing", "rejected", "NO", "major", "", "in_scope") + "\n"
         + row("FINDING_4", "Neutralist", "neutral", "YES", "minor", "", "in_scope") + "\n"
-        + row("OOS_1", "Structure", "accepted", "YES", "blocker", "", "oos") + "\n"
-        + row("OOS_2", "OosNeutral", "neutral", "YES", "blocker", "", "oos") + "\n",
+        + row("OOS_1", "Structure", "accepted", "YES", "major", "", "oos") + "\n"
+        + row("OOS_2", "OosNeutral", "neutral", "YES", "major", "", "oos") + "\n",
         encoding="utf-8",
     )
     score_file = tmp_path / "score.md"
@@ -1491,7 +1515,7 @@ def test_scoreboard_main_weights_classification_tsv(tmp_path: Path) -> None:
     bonus_tsv.write_text(
         "\t".join(header) + "\n"
         + row("FINDING_SOLE", "Solo", "accepted", "YES", "minor", "", "in_scope") + "\n"
-        + row("OOS_1", "OosOnly", "accepted", "YES", "blocker", "", "oos") + "\n"
+        + row("OOS_1", "OosOnly", "accepted", "YES", "major", "", "oos") + "\n"
         + row("FINDING_REJECTED", "Rejected", "rejected", "NO", "major", "", "in_scope") + "\n"
         + row("FINDING_NEUTRAL", "Neutralist", "neutral", "YES", "minor", "", "in_scope") + "\n"
         + row("FINDING_COMMA", "Structure, Testing", "accepted", "YES", "minor", "", "in_scope") + "\n"
@@ -1726,22 +1750,22 @@ def test_voter_launcher_tool_normalizes_external_archetypes() -> None:
 
 def test_judge_severity_enum_is_shared_and_public_boundaries_return_strings() -> None:
     assert voting.JudgeSeverity is JudgeSeverity
-    assert voting.SEVERITY_BLOCKER == "blocker"
     assert voting.SEVERITY_MAJOR == "major"
     assert voting.valid_panel_severity("nit") == "nit"
-    assert voting.valid_panel_severity("uncertain") == "uncertain"
+    assert voting.valid_panel_severity("blocker") == "major"
+    assert voting.valid_panel_severity("uncertain") is None
     assert voting.valid_panel_severity("critical") is None
 
 
 def test_parse_judge_vote_keeps_string_return_types_for_enum_values(tmp_path: Path) -> None:
     voter = tmp_path / "voter.txt"
-    voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=uncertain QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
+    voter.write_text("FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false\n", encoding="utf-8")
 
     vote, _correctness, severity, _quality, _uncertain = voting.parse_judge_vote(voter_file=voter, ballot_id="FINDING_1")
 
     assert vote == "YES"
     assert not isinstance(vote, ReviewVote)
-    assert severity == "uncertain"
+    assert severity == "major"
     assert not isinstance(severity, JudgeSeverity)
 
 
@@ -1759,11 +1783,9 @@ def test_voter_calibration_base_tool_normalization_and_snapshot_round_trip(tmp_p
         tool="codex",
         yes_votes=3,
         valid_yes_severity_count=2,
-        blocker=1,
-        major=1,
+        major=2,
         minor=0,
         nit=0,
-        uncertain=0,
         missing_severity=1,
         high_rate=1.0,
         calibration_score=0.0,

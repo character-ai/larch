@@ -198,15 +198,13 @@ def render_implement_review_detail(*, implement_tmpdir: Path, run_id: str) -> st
     findings_file = run_dir / "review-findings-full.jsonl"
     if not findings_file.is_file():
         findings_file = implement_tmpdir / "review-findings-full.jsonl"
-    detail = _invoke_renderer(
+    return _invoke_renderer(
         rounds_root,
         skill="implement",
         timing_ledger=timing_ledger if timing_ledger.is_file() else None,
         token_ledger=token_ledger,
         findings_file=findings_file if findings_file.is_file() else None,
     )
-    rejected_oos = render_rejected_oos_audit_section(rounds_root)
-    return _join_markdown_sections(detail, rejected_oos)
 
 
 def append_review_phase_detail(*, body: str, detail: str) -> str:

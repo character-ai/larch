@@ -63,7 +63,7 @@ Single-pass `LOOP_STATUS` values remain `complete`, `zero-findings-degraded-pane
 - **Panel pruning**: round 1 uses the unpruned manifest; round 2 filters `plan-review-slots.ndjson` through `review reviewer-prune` using round-1 ledger data only, preserving `plan-review-slots.pre-prune.ndjson` when rows are removed. `PANEL_PRUNED_EMPTY=true` means no reviewers launched, the round is complete/non-degraded, and no ledger rows are recorded. Prune-to-empty is convergence (#5255): the loop completes immediately (reason `converged-pruned-empty`). Terminal `zero-findings-degraded-panel` still records round provenance so the reviewed plan publishes.
 - **Zero-findings evidence**: zero accepted findings with no successful collectors exits `LOOP_STATUS=degraded-empty-collector`; zero findings with a degraded non-empty panel exits `LOOP_STATUS=zero-findings-degraded-panel`; healthy zero-findings rounds exit `LOOP_STATUS=complete`.
 - **Tally failures**: `TALLY_PLAN_REVIEW_STATUS=tally-error` aborts before Gate B, preserves the current plan and existing cumulative accepted/OOS artifacts by leaving them untouched, and clears partial current-round accepted/rejected/OOS files.
-- **Severity default**: missing TSV `severity` renders as `nit` (not `important`) when building finding blocks.
+- **Severity default**: missing TSV `severity` renders as `minor` when building finding blocks.
 - **`accepted-plan-findings-all.md` cumulation**: `_accumulate_round_accepted_all` appends current-round accepted in-scope findings across automatic continuation rounds before Gate C. Gate B reads only `accepted-plan-findings.md` for the current apply set; final-summary prefers the cumulative file but excludes Gate B one-by-one skips. `main-agent-vote-required` appends no tentative findings until MainAgent re-tally succeeds.
 - **`oos-accepted-design.md` cumulation**: `_accumulate_round_oos` appends accepted OOS before successful terminal status mapping so cumulative OOS survives automatic single-pass reruns. Gate C(c) re-entry overwrites those artifacts. See `approval-gates.md` State Invariants (**No preserved findings across manual review runs**) for cross-Gate-C reruns.
 - **Severity precedence (Gate B)**: see `approval-gates.md` **Severity classification contract** for the Gate B presentation rule.
@@ -127,9 +127,9 @@ Voting dispatch, eligible-voter filtering, parse-rate classification, tallying, 
 **Voter line format**: Voters output one anchored line per ballot item. The vote token remains immediately after the ID, followed by lowercase forensic rating axes:
 
 ```text
-FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+FINDING_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<major|minor|nit> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
 FINDING_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
-OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<blocker|major|minor|nit|uncertain> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
+OOS_N: YES CORRECTNESS=<true|partially-true|false-positive|uncertain> SEVERITY=<major|minor|nit> QUALITY=<excellent|good|adequate|weak|no-fix|uncertain> UNCERTAIN=<true|false>
 OOS_N: NO CORRECTNESS=<...> SEVERITY=<...> QUALITY=<...> UNCERTAIN=<...> -- one-line reason
 ```
 
@@ -153,7 +153,7 @@ Finalize writes are loop-internal to `python/plan_review.py`. After the driver r
 ```markdown
 ### FINDING_N: <title>
 - **Reviewer(s)**: <attribution>
-- **Severity**: important|latent|nit
+- **Severity**: major|minor|nit
 - **Focus area**: <focus>
 - **Location**: <location>
 - **Concern**: <what was raised>
@@ -168,7 +168,7 @@ When TSV omits `severity`, `python/plan_review.py` renders `- **Severity**: nit`
 ### OOS_N: <short title>
 - **Description**: <full description of the observation; include affected repo-relative file paths and line ranges when applicable>
 - **Reviewer**: <attribution>
-- **Severity**: important|latent|nit
+- **Severity**: major|minor|nit
 - **Focus area**: <focus>
 - **Location**: <location>
 - **Phase**: design
@@ -180,14 +180,14 @@ The loop appends `. Scenario: <text>` to `- **Description**:` when TSV has a non
 
 ## Track Rejected Plan Review Findings
 
-For any **in-scope** finding **not accepted by vote** (fewer than 2 YES votes, neutral or rejected), append it to `$DESIGN_TMPDIR/rejected-findings.md` using the byte-preserved template below. **Do not include OOS items or neutral-rescued findings**. A single-YES neutral with `blocker` or `major` severity goes to `$DESIGN_TMPDIR/oos.md` with `Result=neutral (neutral-rescued)` and classification `scope=oos`; lower, missing, or invalid single-YES severities stay rejected. OOS pipeline: accepted OOS to GitHub issues via `/implement`; non-accepted OOS to PR observations.
+For any **in-scope** finding **not accepted by vote** (fewer than 2 YES votes, neutral or rejected), append it to `$DESIGN_TMPDIR/rejected-findings.md` using the byte-preserved template below. **Do not include OOS items or neutral-rescued findings**. A single-YES neutral with `major` severity goes to `$DESIGN_TMPDIR/oos.md` with `Result=neutral (neutral-rescued)` and classification `scope=oos`; lower, missing, or invalid single-YES severities stay rejected. OOS pipeline: accepted OOS to GitHub issues via `/implement`; non-accepted OOS to PR observations.
 
 If no findings were rejected, write an empty `$DESIGN_TMPDIR/rejected-findings.md` so Step 5's manifest export has a complete required-may-be-empty artifact set.
 
 ```markdown
 ### [Plan Review] <Reviewer Name>
 **Finding**: <actionable description of the finding — include what aspect of the plan the reviewer questioned, the specific concern raised, and what revision they suggested. Use short sentences and bullets when helpful. Detail means enough content for a reader who never saw the original review to understand and act on the concern, not extra length.>
-**Reason not implemented**: <complete justification for why this finding was not accepted — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current plan is acceptable despite the finding. Do NOT abbreviate — preserve all important details from the evaluation.>
+**Reason not implemented**: <complete justification for why this finding was not accepted — include the specific technical reasoning, any relevant context about project conventions or design decisions, and why the current plan is acceptable despite the finding. Do NOT abbreviate — preserve all key details from the evaluation.>
 ```
 
 ---

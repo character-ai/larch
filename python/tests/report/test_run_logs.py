@@ -1920,7 +1920,7 @@ def test_round_artifact_allowlist_includes_degraded_attempt_tallies() -> None:
     assert run_logs._round_artifact_included("panel-manifest.ndjson.output-files.dropped-slots")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("panel-prompt-sizes.tsv")  # pyright: ignore[reportPrivateUsage]
     assert run_logs._round_artifact_included("dropped-dyn-lint-cursor-straggler-dropped.txt")  # pyright: ignore[reportPrivateUsage]
-    assert not run_logs._round_artifact_included("oos-dropped-before-vote.md")  # pyright: ignore[reportPrivateUsage]
+    assert run_logs._round_artifact_included("oos-dropped-before-vote.md")  # pyright: ignore[reportPrivateUsage]
     assert not run_logs._round_artifact_included("dyn-lint-output.txt")  # pyright: ignore[reportPrivateUsage]
 
 
@@ -1951,12 +1951,12 @@ def test_write_round_commits_degraded_attempt_tallies(tmp_path: Path) -> None:
     assert (round_dir / "voting-tally-degraded-attempt-2.md").read_text(encoding="utf-8") == "degraded attempt two\n"
 
 
-def test_write_round_commits_oos_md_but_skips_retired_prevote_artifact(tmp_path: Path) -> None:
+def test_write_round_commits_oos_md_and_dropped_before_vote_artifact(tmp_path: Path) -> None:
     source = tmp_path / "source-round"
     source.mkdir()
     _ = (source / "collector-results.env").write_text("STATUS=OK\n", encoding="utf-8")
     _ = (source / "oos.md").write_text("### OOS_1: fresh\n", encoding="utf-8")
-    _ = (source / "oos-dropped-before-vote.md").write_text("retired\n", encoding="utf-8")
+    _ = (source / "oos-dropped-before-vote.md").write_text("dropped nit\n", encoding="utf-8")
 
     rc = run_logs.larch_log_write_round_main([
         "--log-root",
@@ -1974,7 +1974,7 @@ def test_write_round_commits_oos_md_but_skips_retired_prevote_artifact(tmp_path:
     assert rc == 0
     round_dir = tmp_path / "larch-logs" / "implement" / "run-abc" / "round-1"
     assert (round_dir / "oos.md").read_text(encoding="utf-8") == "### OOS_1: fresh\n"
-    assert not (round_dir / "oos-dropped-before-vote.md").exists()
+    assert (round_dir / "oos-dropped-before-vote.md").read_text(encoding="utf-8") == "dropped nit\n"
 
 
 def test_write_round_commits_dropped_slot_artifacts_and_redacts(tmp_path: Path) -> None:

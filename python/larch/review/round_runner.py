@@ -141,9 +141,12 @@ def _filter_in_scope(*, accepted_file: Path, output: Path) -> None:
 
 def _high_severity_count(path: Path) -> int:
     _HIGH_RE = re.compile(
-        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Major\*\*|\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+        r"|\*\*[Mm]ajor\*\*"
         r"|\*\*[Bb]locking\*\*"
         r"|\*\*[Ii]mportant\*\*"
+        r"|^- \*\*Severity\*\*:\s*major(?:[\s,:;.\)]|$)"
+        r"|^- \*\*Concern\*\*:\s*\[[Mm]ajor\](?:[\s,:;.\)]|$)"
         r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
         r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
     )
@@ -176,9 +179,12 @@ def _nit_count(path: Path) -> int:
 
 def _important_present(path: Path) -> bool:
     _HIGH_RE = re.compile(
-        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+        r"(^### FINDING_[0-9]+:[^\n]*(\*\*Major\*\*|\*\*Blocking\*\*|\*\*Important\*\*|\*\*Critical\*\*|\*\*High\*\*)"
+        r"|\*\*[Mm]ajor\*\*"
         r"|\*\*[Bb]locking\*\*"
         r"|\*\*[Ii]mportant\*\*"
+        r"|^- \*\*Severity\*\*:\s*major(?:[\s,:;.\)]|$)"
+        r"|^- \*\*Concern\*\*:\s*\[[Mm]ajor\](?:[\s,:;.\)]|$)"
         r"|^- \*\*Concern\*\*:\s*\[[Bb]locking\](?:[\s,:;.\)]|$)"
         r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
     )

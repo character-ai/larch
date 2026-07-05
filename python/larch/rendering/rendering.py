@@ -916,7 +916,7 @@ def _render_specialist_text(args: argparse.Namespace, *, architectural_guideline
     stable_chunks.append(_specialist_tagging(diff_mode=diff_mode, mode=args.mode) + "\n")
     if args.competition_notice:
         stable_chunks.append("""
-**Competition notice**: A 3-voter panel scores findings. Accepted in-scope blocker/major findings earn +2; other accepted in-scope findings earn +1. In-scope findings with at least 1 YES but below acceptance cost -0.25; 0 YES costs -1. Accepted OOS earns provisional +1 at vote time, neutral OOS 0, rejected OOS -1; later diagnostics may dock filed OOS without changing vote tallies. Pruning uses unweighted accepted-minus-rejected counts.
+**Competition notice**: A 3-voter panel scores findings. Accepted in-scope findings with a strict majority of YES voters rating `major` earn +2; other accepted in-scope findings earn +1. In-scope findings with at least 1 YES but below acceptance cost -0.25; 0 YES costs -1. OOS files only when accepted and a strict majority of YES voters rate it `major`; non-fileable OOS is logged only. Pruning uses unweighted accepted-minus-rejected counts.
 
 Panel voters apply the **Review Acceptance Rubric** (`skills/shared/review-acceptance-rubric.md`): YES only when the feature would be incomplete, broken, unverifiable, or regressed without it. "Legitimate but not necessary" is NO; place real-but-not-necessary issues in Out-of-Scope.
 """)
@@ -1179,13 +1179,13 @@ def _voter_calibration_feedback_block(*, stats_file: str, voter_tool: str) -> st
     stat = stats.get(voter_tool)
     if stat is None or stat.valid_yes_severity_count <= 0:
         return ""
-    high = stat.blocker + stat.major
+    high = stat.major
     high_pct = (100 * high / stat.valid_yes_severity_count) if stat.valid_yes_severity_count else 0.0
     score = "n/a" if stat.calibration_score is None else f"{stat.calibration_score:.3f}"
     return (
         "**Your recent calibration:** Your recent YES severity distribution is "
-        f"{high_pct:.1f}% blocker/major across {stat.valid_yes_severity_count} valid YES severities. "
-        f"Calibration Score: {score}. Reserve blocker and major for issues that match the severity rubric above. "
+        f"{high_pct:.1f}% major across {stat.valid_yes_severity_count} valid YES severities. "
+        f"Calibration Score: {score}. Reserve major for issues that match the severity rubric above. "
         "Use minor or nit when impact is limited."
     )
 
@@ -1199,7 +1199,7 @@ def render_voter_main(argv: list[str]) -> int:
             "Use the Review Acceptance Rubric: vote YES only when the fix is necessary because the feature would be incomplete, broken, unverifiable, or regressed. Otherwise vote NO.",
             'Default-deny: if unsure, vote NO. "Legitimate but not necessary" is NO and belongs Out-of-Scope.',
             "**Severity floor (mandatory):** Vote **NO** on in-scope nits. Latent findings are NO unless they are genuine Correctness defects on the feature path or Introduced-regressions (gates 2/3). Judge OOS rows only for filing-worthiness.",
-            "**Panel severity rubric:** `blocker` = data loss, security exposure, corruption, or must-stop destructive behavior. `major` = blocks merge, breaks a required workflow, or causes wrong feature-path behavior. `minor` = necessary but limited-impact. `nit` = style, wording, polish, or cleanup. `uncertain` = cannot judge severity after verification. Use `major`/`blocker` only for matching impact.",
+            "**Panel severity rubric:** `major` = data loss, security exposure, corruption, blocked merge, required-workflow breakage, or wrong feature-path behavior. `minor` = necessary but limited-impact. `nit` = style, wording, polish, or cleanup. Use `major` only for matching impact.",
         ]
         payload_bytes = 0
         calibration_block = _voter_calibration_feedback_block(
@@ -1256,7 +1256,7 @@ def render_voter_main(argv: list[str]) -> int:
         else:
             out.extend(["", "Use the ballot path and any provided diff/plan context files to verify claims before voting.", "**Verify silently** — no narrative, reasoning, or status updates before, between, or after vote lines. You may read the ballot and provided diff/plan context files, but do not invoke planning/status tools or tools beyond those file reads."])
         correctness = "true|partially-true|false-positive|uncertain"
-        severity = "blocker|major|minor|nit|uncertain"
+        severity = "major|minor|nit"
         quality = "excellent|good|adequate|weak|no-fix|uncertain"
         uncertain = "true|false"
         if args.id_grammar == "finding-oos":
@@ -1393,11 +1393,11 @@ When you have findings, include a TSV structured-record block with this exact he
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
 For each finding, add one record:
 1\t<scope>\t<severity>\t<focus_area>\t<location>\t<what>\t<scenario_or_breakage>\t<suggested_fix>
-The first column is the literal constant 1 (the schema_version) on EVERY row; it is NOT a per-row counter, so never increment it. Use scope in_scope or out_of_scope; severity blocking, important, nit, or latent; focus_area exactly one of code-quality, risk-integration, correctness, architecture, security (no other value such as completeness). Replace tabs or newlines inside field values with spaces. Emit exactly eight columns separated by one literal TAB each (seven tabs per row); never use spaces as column separators.
+The first column is the literal constant 1 (the schema_version) on EVERY row; it is NOT a per-row counter, so never increment it. Use scope in_scope or out_of_scope; severity major, minor, or nit; focus_area exactly one of code-quality, risk-integration, correctness, architecture, security (no other value such as completeness). Replace tabs or newlines inside field values with spaces. Emit exactly eight columns separated by one literal TAB each (seven tabs per row); never use spaces as column separators.
 Acceptable TSV block example (one finding):
 
 schema_version\tscope\tseverity\tfocus_area\tlocation\twhat\tscenario_or_breakage\tsuggested_fix
-1\tin_scope\timportant\tcorrectness\tscripts/foo.sh:42-45\tLock acquired before parameter validation\tRace between two concurrent runs\tMove lock acquisition after validation passes
+1\tin_scope\tmajor\tcorrectness\tscripts/foo.sh:42-45\tLock acquired before parameter validation\tRace between two concurrent runs\tMove lock acquisition after validation passes
 
 If no issues were identified, your entire response content MUST be exactly the single-line JSON literal {{"no_issues_found": true}}: no prose, TSV, out-of-scope items, or trailing whitespace beyond one newline. Do not put narration before the sentinel; any prefix before `{{` may cause salvage or drop. Cursor wraps this as .result = "{{\"no_issues_found\": true}}" in its JSON envelope; larch extracts .result and JSON-parses it. Codex stdout is captured verbatim. Do NOT modify files.
 {scope}{architectural_guidelines_prompt}{style}
