@@ -1,0 +1,30 @@
+# [BUG] Step 6 repair-loop returns stall instead of main-agent-edit on no-changes-stale lint…
+
+Step 6 checks repair-loop returns NEXT_ACTION=stall instead of main-agent-edit when LOOP_STATUS=no-changes-stale on unfixable lint errors (C901/PLR0911/PLR0912/PLC0415) in architectural_guidelines.py; implement run stalls terminally rather than escalating to main Claude for inline repair.
+
+## Root cause
+
+During an /implement run for issue #6375, Step 6 pre-commit checks failed with ruff rules C901 (cyclomatic complexity), PLR0911 (too many return statements), PLR0912 (too many branches), and PLC0415 (function-level import) in `python/larch/core/architectural_guidelines.py:76`.
+
+The checks repair-loop (`python/cli.py checks repair-loop --site step6`) dispatched the lint-fix tool, which ran for ~22 minutes and returned `LOOP_STATUS=no-changes-stale`: the tool attempted fixes but produced no changes because these ruff rules require structural code refactoring that automated tools cannot perform.
+
+The repair-loop returned `NEXT_ACTION=stall` instead of `NEXT_ACTION=main-agent-edit`. This caused the stall-recovery classifier to produce `FAILURE_CLASS=contract-failure` / `RESUME_HINT=none`, leading to a terminal stall, a filed stall report (#6422), and operator intervention.
+
+## Expected behavior
+
+When `LOOP_STATUS=no-changes-stale` (lint-fix tool ran but made zero changes) for lint errors that require structural refactoring (complexity, branch count, return count, function-level imports), the repair-loop should return `NEXT_ACTION=main-agent-edit` with appropriate `LINT_FIX_LEDGER_*` metadata so the main agent can apply targeted inline fixes.
+
+## Actual behavior
+
+`NEXT_ACTION=stall` returned, `RESUME_HINT=none` from stall-recovery classify, terminal stall with stall report filed.
+
+## Evidence
+
+- `relevant-checks/step6-1.redacted.log`: ruff errors C901/PLR0911/PLR0912/PLC0415 at `architectural_guidelines.py:76`
+- Repair-loop ran for ~22 min: `LOOP_STATUS=no-changes-stale`
+- Stall report #6422 filed
+- Fix: operator added `# noqa: C901, PLR0911, PLR0912` and `# noqa: PLC0415` inline and cast `dict[str, object]` for pyright — a 3-line change the main agent could have applied
+
+## Fix request
+
+In `python/cli.py checks repair-loop` (or its backing Python module): when the lint-fix tool returns `LOOP_STATUS=no-changes-stale` at a site that supports main-agent fallback (step6), emit `NEXT_ACTION=main-agent-edit` with populated `LINT_FIX_LEDGER_*` fields instead of `NEXT_ACTION=stall`. This matches the existing `main-agent-required` escalation contract used at Step 3 and Step 5.

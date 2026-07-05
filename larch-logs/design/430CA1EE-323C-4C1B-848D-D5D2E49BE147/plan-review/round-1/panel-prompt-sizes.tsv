@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20629	5158	13365	3342	7264	1816		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15685	3922	13077	3270	2608	652		0	0
+design Step 3	phase1	1	dyn-codex-plan-repair-loop-contract	plan-review	codex	dyn-codex-plan-repair-loop-contract.txt	15963	3991	12943	3236	3020	755		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15676	3919	13068	3267	2608	652		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15700	3925	13092	3273	2608	652		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15698	3925	13090	3273	2608	652		0	0
+design Step 3	phase1	1	dyn-cursor-plan-repair-loop-contract	plan-review	cursor	dyn-cursor-plan-repair-loop-contract.txt	20907	5227	13231	3308	7676	1919		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20642	5161	13378	3345	7264	1816		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20620	5155	13356	3339	7264	1816		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20644	5161	13380	3345	7264	1816		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	21072	5268	4635	1159	16437	4110	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	11854	2964	9079	2270	2775	694		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	11854	2964	9079	2270	2775	694		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	11854	2964	9079	2270	2775	694		0	0
