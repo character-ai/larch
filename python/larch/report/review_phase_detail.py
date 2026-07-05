@@ -70,13 +70,6 @@ def _invoke_renderer(
     return text
 
 
-def _join_markdown_sections(*sections: str) -> str:
-    parts = [section.strip("\n") for section in sections if section.strip()]
-    if not parts:
-        return ""
-    return "\n\n".join(parts) + "\n"
-
-
 def _field_value(block: str, label: str) -> str:
     pattern = re.compile(_REJECTED_OOS_FIELD_RE_TEMPLATE.format(label=re.escape(label)))
     match = pattern.search(block)

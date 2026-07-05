@@ -21,7 +21,6 @@ from larch.review.review_types import parse_findings_text, parse_findings
 
 _PLUGIN_ROOT = Path(__file__).resolve().parents[3]
 _EMPTY_MERGE_ATTESTATION = "LARCH_AGGREGATOR_EMPTY_MERGE_ATTESTED"
-_OOS_BLOCK_RE = re.compile(r"(?ms)^### OOS_[0-9]+:.*?(?=^### |\Z)")
 _SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*(major|minor|nit)\s*$", re.IGNORECASE)
 _NIT_SEVERITY_RE = re.compile(r"(?m)^-\s*\*\*Severity\*\*:\s*nit\s*$", re.IGNORECASE)
 _BLANK_SEVERITY_RE = re.compile(r"(?m)^(-\s*\*\*Severity\*\*:\s*)$")
@@ -82,10 +81,6 @@ def _atomic_write(*, path: Path, text: str) -> None:
 
 def _finding_blocks(text: str) -> list[str]:
     return [finding.block.strip() for finding in parse_findings_text(text, boundary="any_heading")]
-
-
-def _oos_blocks(text: str) -> list[str]:
-    return [match.group(0).strip() for match in _OOS_BLOCK_RE.finditer(text)]
 
 
 def _item_blocks(text: str) -> list[str]:
