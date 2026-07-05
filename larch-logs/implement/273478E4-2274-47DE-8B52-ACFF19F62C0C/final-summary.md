@@ -3,7 +3,7 @@
 - **Outcome**: stalled
 - **Mode**: N/A
 - **Duration**: 01:45:02
-- **Cost**: 💰 TOTAL ~$88.45: Claude $7.88, Codex-5.5 $63.09, Codex-mini $3.78, Cursor $11.73, Claude (subprocess) $1.97  |  Tokens: 151258k
+- **Cost**: 💰 TOTAL ~$98.35: Claude $17.76, Codex-5.5 $63.09, Codex-mini $3.78, Cursor $11.73, Claude (subprocess) $1.99  |  Tokens: 161335k
 - **Issue**: #6421: https://github.com/character-ai/larch/issues/6421
 - **PR**: #6430: https://github.com/character-ai/larch/pull/6430
 - **Plan review**: N/A
@@ -108,7 +108,3 @@ codex/apply              │                                        ████
 These OOS observations reached the vote but were not accepted for filing.
 
 - **Round 2 FINDING_6** (rejected, nit): weighted scoreboard test lacks OOS filing-sink assertions. Concern: The weighted scoreboard test does not assert the out-of-scope filing-sink contents, which makes filing-gate regressions harder to spot when only scoreboard assertions change.
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
