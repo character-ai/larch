@@ -2511,11 +2511,12 @@ def _write_design_vendor_timing(
     end_s: int,
     output: str = "reviewer.out",
     vendor: str = "codex",
+    skill: str = "design",
 ) -> None:
     duration = max(0, end_s - start_s)
     with ledger.open("a", encoding="utf-8") as handle:
         _ = handle.write(
-            f"v1\tvendor\t{end_s}\tdesign\t-\t{vendor}\t{kind}\t"
+            f"v1\tvendor\t{end_s}\t{skill}\t-\t{vendor}\t{kind}\t"
             f"{start_s}\t{end_s}\t{duration}\t{output}\t0\tcomplete\n"
         )
 
@@ -2654,18 +2655,34 @@ def test_write_design_round_meta_with_gate_b_apply_ready_marker_without_vendor_r
     assert window == (1000, 1200)
 
 
+@pytest.mark.parametrize("vendor_skill", ["design", "implement"])
 def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
+    vendor_skill: str,
 ) -> None:
     round_dir = tmp_path / "plan-review" / "round-1"
     round_dir.mkdir(parents=True)
     _ = (round_dir / "round-start-s").write_text("1000\n", encoding="utf-8")
     (tmp_path / ".gate-b-postapply-ready-1").touch()
-    _ = (tmp_path / "timing-ledger.tsv").write_text(
-        "v1\tvendor\t1050\tdesign\t-\tcodex\tcodex-plan-requirements\t1010\t1050\t40\tcodex.out\t0\tcomplete\n"
-        "v1\tvendor\t1125\tdesign\t-\tclaude\tclaude-plan-voter\t1060\t1125\t65\tclaude-vote.out\t0\tsignal\n",
-        encoding="utf-8",
+    ledger = tmp_path / "timing-ledger.tsv"
+    _write_design_vendor_timing(
+        ledger,
+        kind="codex-plan-requirements",
+        start_s=1010,
+        end_s=1050,
+        output="codex.out",
+        vendor="codex",
+        skill=vendor_skill,
+    )
+    _write_design_vendor_timing(
+        ledger,
+        kind="claude-plan-voter",
+        start_s=1060,
+        end_s=1125,
+        output="claude-vote.out",
+        vendor="claude",
+        skill=vendor_skill,
     )
 
     def fake_run_command(argv: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -2678,7 +2695,7 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
     plan_review._write_design_round_meta(tmpdir=tmp_path, round_num=1)  # pyright: ignore[reportPrivateUsage]
 
-    rows = [line.split("\t") for line in (tmp_path / "timing-ledger.tsv").read_text(encoding="utf-8").splitlines()]
+    rows = [line.split("\t") for line in ledger.read_text(encoding="utf-8").splitlines()]
     gate_b_rows = [row for row in rows if len(row) >= 13 and row[1] == "vendor" and row[6] == "gate-b-apply"]
     assert len(gate_b_rows) == 1
     assert gate_b_rows[0][3] == "design"
@@ -2688,7 +2705,7 @@ def test_write_design_round_meta_records_gate_b_apply_timing_idempotently(
     assert gate_b_rows[0][10] == "gate-b-apply-round-1.out"
 
     window = progress_report._timing_round_windows(  # pyright: ignore[reportPrivateUsage]
-        tmp_path / "timing-ledger.tsv", skill="design", round_num=1, skill_filtered=True
+        ledger, skill="design", round_num=1, skill_filtered=True
     )
     assert window == (1000, 1200)
 
