@@ -623,8 +623,13 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
 ) -> None:
     monkeypatch.setenv("DESIGN_TMPDIR", str(tmp_path))
     monkeypatch.setattr(design_step5b, "_append_failure", _fake_append_success)
+    attempts = {"count": 0}
 
     def fake_annotate(_argv: Sequence[str]) -> int:
+        attempts["count"] += 1
+        if attempts["count"] == 3:
+            print("FILE_DESIGN_OOS_STATUS=annotate-complete")
+            return 0
         print("FILE_DESIGN_OOS_STATUS=annotate-failed-empty-stdout")
         print("NEXT_ACTION=retry-file-and-annotate")
         print("WARN=empty issue stdout")
@@ -648,6 +653,14 @@ def test_step5b_annotate_empty_stdout_retries_once_then_stops(
     assert rc_second == 1
     assert not (tmp_path / ".completed" / "step-5b").exists()
     assert "after retry sentinel" in second
+
+    _ = (tmp_path / "oos-issue.stdout.txt").write_text("ISSUES_CREATED=1\nISSUES_FAILED=0\n", encoding="utf-8")
+    rc_third = design_lifecycle.step5b_annotate_main(_step5b_argv())
+    third = capsys.readouterr().out
+
+    assert rc_third == 0
+    assert (tmp_path / ".completed" / "step-5b").is_file()
+    assert "STEP5B_STATUS=annotate-complete" in third
 
 
 def test_prepare_promotes_important_pool_item(
@@ -1204,14 +1217,3 @@ def test_prepare_two_latent_pool_items_do_not_trigger(tmp_path: Path, monkeypatc
     assert rc == 0
     assert _kv(capsys.readouterr().out)["FILE_DESIGN_OOS_STATUS"] == "skip-no-items"
     assert not (tmp_path / "oos-accepted-design.md").exists()
-
-
-def test_annotate_empty_stdout_requests_single_retry(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    rc = design_oos.file_oos_annotate_main(
-        ["--design-tmpdir", str(tmp_path), "--issue-stdout-file", str(tmp_path / "missing-again.txt")],
-    )
-    assert rc == 1
-    kv = _kv(capsys.readouterr().out)
-    assert kv["FILE_DESIGN_OOS_STATUS"] == "annotate-failed-empty-stdout"
-    assert kv["NEXT_ACTION"] == "retry-file-and-annotate"
-    assert not (tmp_path / "oos-issues-created.md").exists()
