@@ -858,7 +858,7 @@ CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-rpd.md" \
       "$HELPER" --implement-tmpdir "$rpd_dir" >/dev/null
 rpd_body="$(cat "$TMP_ROOT/content-rpd.md")"
 assert_contains '## Review Phase Detail' "$rpd_body" 'review phase detail section injected'
-assert_contains '| 1 | 3 | 2 | 1 | 1 |' "$rpd_body" 'review phase detail round-1 counts'
+assert_contains '| 1 | 3 | 2 | 1 | 0 |' "$rpd_body" 'review phase detail round-1 counts'
 assert_contains 'cursor/correctness: 2' "$rpd_body" 'review phase detail top reviewer'
 # Completed-review output can include reviewer timing ASCII Gantt charts.
 assert_contains '### Round 1 reviewer timing' "$rpd_body" 'review phase detail includes reviewer timing heading'

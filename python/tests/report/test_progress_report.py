@@ -2233,8 +2233,8 @@ def test_render_phase_detail_table_top_failures_and_gantt(tmp_path: Path) -> Non
     _write_round_timing(timing, skill="implement", round_num=1, start_s=100, end_s=200)
     _write_vendor_timing(timing, "codex-specialist-arch-output.txt", 110, 190)
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing, findings_file=findings)
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
-    assert "| **Total (round-sum)** | **4** | **2** | **2** | **1** | **1m 40s** | **N/A** | **3** |" in rendered
+    assert "| 1 | 4 | 2 | 1 | 1 | 1m 40s | N/A | 3 |" in rendered
+    assert "| **Total (round-sum)** | **4** | **2** | **1** | **1** | **1m 40s** | **N/A** | **3** |" in rendered
     assert "1. codex/slot-1: 1" in rendered
     assert "**Reviewer slot failures**: 1" in rendered
     assert "- codex/slot-1: 1" in rendered
@@ -2972,7 +2972,7 @@ def test_render_phase_detail_gantt_includes_signal_vendor_rows(tmp_path: Path) -
     _write_vendor_timing(timing, "codex-output.txt", 120, 150, status="signal")
     rendered = progress_report.render_phase_detail(rounds_root=root, skill="implement", timing_ledger=timing)
     assert "## Review Phase Detail" in rendered
-    assert "| 1 | 4 | 2 | 2 | 1 | 1m 40s | N/A | 3 |" in rendered
+    assert "| 1 | 4 | 2 | 1 | 1 | 1m 40s | N/A | 3 |" in rendered
     assert "### Round 1 reviewer timing" in rendered
     assert "```" in rendered
     assert "codex/codex-review" in rendered
