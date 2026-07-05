@@ -1,0 +1,73 @@
+Approach
+
+`approach-synthesis.txt` is `NO_SKETCHES`, so draft from direct repo inspection.
+
+Make the smallest prompt and docs change:
+
+1. Keep `/combine-issues` as a dev-only skill.
+2. Preserve the required `Use when` trigger in frontmatter.
+3. Add merit-gate wording to the frontmatter and catalog blurb.
+4. Tighten oos-4 rescue handling so ambiguous rescue prose cannot reject the wrong item.
+
+Files to modify/create
+
+### UPDATED: .claude/skills/combine-issues/SKILL.md
+
+Update the frontmatter `description:` to mention OOS actuality and merit checks while staying under the 200-character description cap.
+
+In the oos-4 merit batch section, replace the current simple free-prose rescue rule with an explicit key-matching contract:
+
+- **Rescue matching uses stable display keys only** — match against the keys shown in the `Rejected items (merit)` list (e.g., `A`, `B`, `item-3`). Do not match item titles or description substrings. When bare keys collide across sources, require `#source/key` form (e.g., `#12/A`).
+- **Zero-match rescue**: keep all staged merit rejections pending; emit "Rescue matched no keys; all rejections remain pending." Return to the operator for explicit keys or cancel. Do not confirm any rejection from that rescue text.
+- **Multi-match rescue**: matched items stay on the staged rejection list; they are neither rescued nor confirmed rejected until the operator confirms the exact intended keys. Emit a re-confirmation prompt listing the matched items and their sources. Matched-but-unconfirmed items stay merit-pending and close-blocking.
+- **Unambiguous unique-key rescue**: the named item moves to the kept-item set; unrescued listed items remain for the merit batch confirmation step (no change from the prior single-key behavior).
+
+Merit batch approval timing:
+
+- Merit batch approval confirms rejection only for keys neither rescued nor left pending from unresolved rescue matching. Apply all does not confirm merit rejections while any rescue text is zero-match or multi-match ambiguous.
+- Merit batch cannot run while any multi-match rescue awaits key confirmation. All matched-but-unconfirmed items remain merit-pending and close-blocking until disambiguation completes.
+- Confirmed rescued keys move from the staged rejection list to the kept-item set. Cancel leaves all merit rejections pending.
+
+Deduplication timing:
+
+- Rerun deduplication and grouping only after all rescue disambiguation is complete (confirmed rescues only). Do not trigger dedup after a zero-match or multi-match rescue attempt before key confirmation.
+
+Keep all rescue and merit-batch logic as prompt prose. Do not add Python parsing unless implementation finds an existing helper that already owns this decision, because current rescue handling lives in the skill instructions.
+
+### UPDATED: docs/skills.md
+
+Update the `/combine-issues` catalog paragraph so `--oos` says it checks actuality and merit, stages low-merit rejections for approval, and proposes aggressive combinations.
+
+Do not broaden the docs change beyond this skill entry unless a local catalog-generation step proves another checked-in catalog is regenerated from the same source.
+
+Edge cases
+
+- Keep the frontmatter description below the lint cap.
+- Preserve `Use when` in the description so `agent-lint` accepts the trigger.
+- Do not imply merit rejections are automatic. They still require explicit batch approval.
+- Do not let ambiguous rescue text close a source issue. Zero-match and multi-match ambiguous items remain merit-pending and close-blocking.
+- Avoid changing dependency, closure, or GitHub CLI behavior.
+- Bare key collision across sources requires `#source/key` disambiguation; do not treat colliding bare keys as unambiguous rescues.
+
+Failure modes
+
+- A too-long frontmatter description fails `lint-skill-description-length`.
+- Vague rescue prose can still be ambiguous. The new prompt must choose the safe default and ask for confirmation.
+- Docs can drift from skill behavior if only one surface mentions merit. Update both firm files together.
+- A rescue that triggers dedup before key confirmation produces a stale rollup; guard dedup with the confirmed-rescues gate.
+
+Testing strategy
+
+Run focused checks after editing:
+
+- `python3 python/cli.py lint skill-description-length`
+- `pre-commit run agent-lint --files .claude/skills/combine-issues/SKILL.md`
+- `pre-commit run lint-skill-description-length --files .claude/skills/combine-issues/SKILL.md`
+- `pre-commit run lint-mermaid-fences --files .claude/skills/combine-issues/SKILL.md docs/skills.md`
+- `pre-commit run lint-literal-counts --files .claude/skills/combine-issues/SKILL.md docs/skills.md`
+
+difficulty: MODERATE
+diff_added: 32
+diff_deleted: 5
+mechanical_churn: false
+diff_lines: 37

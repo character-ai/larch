@@ -1,0 +1,5 @@
+1	the rescue prompt and matcher still let free-prose text drive rescue selection, so zero-match input can fall through without an explicit keep/pending default and multi-match input can stay ambiguous instead of forcing stable-key confirmation.
+1	the merit-batch outcome block still confirms or rejects items before rescue mapping is fully resolved, so rescued keys may never re-enter the kept set and unrescued items can still be treated as rejected too early.
+1	the follow-up dedup/grouping step still runs after any rescue attempt, so a zero-key or multi-key rescue can refresh the rollup before the operator has confirmed the intended stable keys.
+2	the oos-4 update in `.claude/skills/combine-issues/skill.md:222-231` still reads like an add-on, so the old free-prose rescue prompt, confirm-all merit language, and after-any-rescue dedup prose can survive beside the new contract and contradict it.
+2	mixed rescue/approval replies can still be parsed in the wrong order, so zero-match or multi-match rescue text needs a rescue-first path before any merit confirmation; otherwise apply all can reject keys the same message meant to rescue.

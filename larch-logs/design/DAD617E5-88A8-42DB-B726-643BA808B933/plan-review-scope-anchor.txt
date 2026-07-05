@@ -1,0 +1,16 @@
+Combined `/combine-issues` merit-gate follow-ups. Sources: #6358, #6364. Stale and low-merit items from those rollups were discarded during combination; the actionable items are preserved below.
+
+### Item 1 — Sync the frontmatter description and generated catalog blurb to name the merit gate (from #6358)
+
+- **Location**: `.claude/skills/combine-issues/SKILL.md:3` (frontmatter `description:`); `docs/skills.md:318` (generated catalog blurb).
+- **Severity**: latent.
+- **Concern**: The merit gate is implemented in the SKILL.md body, but the frontmatter `description:` and the generated `docs/skills.md` catalog blurb still say the skill "verifies actuality" only. Operators discovering the skill from the frontmatter or the docs catalog do not see the merit chokepoint.
+- **Note**: Reviewers rejected this during the merit-gate PR on scope grounds ("docs/skills.md will remain stale until separately updated"). This is that separate follow-up.
+- **Suggested**: Add the merit gate to the frontmatter `description:` (keeping the required `Use when` trigger phrasing that `agent-lint` enforces), then regenerate `docs/skills.md`.
+
+### Item 2 — Add rescue-ambiguity handling to oos-4 (from #6364)
+
+- **Location**: `.claude/skills/combine-issues/SKILL.md` (OOS Mode oos-4 rescue parsing).
+- **Severity**: latent.
+- **Concern**: A free-prose rescue instruction can map to zero or multiple merit keys, which makes it possible to keep or reject the wrong items. Stable display keys reduce but do not eliminate the ambiguity.
+- **Suggested**: Add default-keep-on-ambiguity behavior, and require re-confirmation when rescue text matches multiple keys.

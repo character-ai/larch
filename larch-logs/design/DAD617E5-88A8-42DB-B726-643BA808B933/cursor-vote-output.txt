@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate of prior OOS_4; docs/skills.md merit wording is already an in-scope plan deliverable
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- duplicate of prior OOS_1; display already includes (#source) and plan mandates #source/key rescue disambiguation
+FINDING_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- plan edge cases and lint checks already bound frontmatter length; no extra draft artifact required
