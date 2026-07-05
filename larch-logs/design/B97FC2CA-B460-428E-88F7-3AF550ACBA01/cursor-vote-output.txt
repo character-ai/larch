@@ -1,0 +1,2 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- rendering.py sanitizer warning is outside the plan's six scoped surfaces and the cited harness lines are unrelated.
