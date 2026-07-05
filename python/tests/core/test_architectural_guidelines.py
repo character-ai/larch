@@ -43,6 +43,21 @@ def _replace_staged_sidecar_value(tmpdir: Path, *, key: str, value: str) -> None
     sidecar.write_text("\n".join(lines) + "\n", encoding="utf-8")
 
 
+def _valid_guideline_ship_outcome_record(**overrides: object) -> dict[str, object]:
+    return {
+        "schema_version": "1",
+        "phase": "implement",
+        "step": "8",
+        "outcome": "clean",
+        "reason": "clean-note",
+        "detail": "",
+        "guidelines_status": "present",
+        "head_sha": "abc123",
+        "base_ref": "origin/main",
+        "assessment_kind": "clean",
+    } | overrides
+
+
 def test_absent_file_returns_absent(tmp_path: Path) -> None:
     repo = _repo(tmp_path)
     result = ag.read_guidelines(repo_root=repo)
@@ -76,6 +91,15 @@ def test_present_file_emits_only_normalized_entries(tmp_path: Path) -> None:
     assert "### Not emitted" not in result.content
     assert "### G-python-1: Prefer direct Python helpers" in result.content
     assert "- Why: They are easier to test & review." in result.content
+
+
+@pytest.mark.parametrize("head_sha", ["", " \t"])
+def test_validate_guideline_ship_outcome_record_rejects_empty_head_sha(head_sha: str) -> None:
+    reason = ag.validate_guideline_ship_outcome_record(
+        _valid_guideline_ship_outcome_record(head_sha=head_sha),
+    )
+
+    assert reason == "guideline outcome head_sha is empty"
 
 
 def _write_guidelines(repo: Path) -> None:

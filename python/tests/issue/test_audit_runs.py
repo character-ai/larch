@@ -289,6 +289,22 @@ def test_guideline_ship_outcome_scan_missing_cutover_and_valid(tmp_path: Path, c
     assert row["reason"] == "note-redaction-failed"
 
 
+def test_guideline_ship_outcome_scan_blank_head_sha_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    _write_guideline_outcome(run, head_sha=" ")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert "head_sha is empty" in str(row["detail"])
+
+
 @pytest.mark.parametrize(
     ("manifest", "expected_result"),
     [
@@ -333,12 +349,51 @@ def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys
     assert row["result"] == "fail"
 
 
+def test_guideline_ship_outcome_scan_gc_slimmed_broken_symlink_fails(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "gc-slimmed").write_text("1\n", encoding="utf-8")
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    (run / ag.GUIDELINE_SHIP_OUTCOME_SIDECAR).symlink_to(run / "missing-outcome.json")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert "regular non-symlink file" in str(row["detail"])
+
+
+def test_guideline_ship_outcome_scan_pr_evidence_makes_stale_bail_reachable(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {}}),
+        encoding="utf-8",
+    )
+    (run / "final-summary.md").write_text("Run bailed\n", encoding="utf-8")
+
+    row = _scan_guideline_outcome(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert "missing guideline outcome artifact" in str(row["detail"])
+
+
 @pytest.mark.parametrize(
     ("overrides", "message"),
     [
         ({"phase": "design"}, "phase must be implement"),
         ({"step": "7"}, "step must be 8"),
         ({"base_ref": ""}, "base_ref is empty"),
+        ({"head_sha": ""}, "head_sha is empty"),
         ({"outcome": "dropped", "reason": "note-pinned"}, "fields are inconsistent for dropped guidelines"),
     ],
 )
@@ -1113,14 +1168,31 @@ def test_scan_required_bail_and_step9a1_gating(tmp_path: Path, capsys):
     required.write_text("relative_path\tcondition\nrun-statistics.md\tstep9a1\n", encoding="utf-8")
     scans = tmp_path / "scans.tsv"
     scans.write_text("name\ttype\nrequired-file-presence\tfile\n", encoding="utf-8")
-    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","0","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
     row = json.loads(capsys.readouterr().out.splitlines()[0])
     assert row["result"] == "pass"
 
     (run / "manifest.json").write_text('{"steps_ran":{"step8":true}}\n', encoding="utf-8")
-    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","0","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
     row = json.loads(capsys.readouterr().out.splitlines()[0])
     assert row["result"] == "pass"
+
+
+def test_scan_required_step8_pr_evidence_reports_missing(tmp_path: Path, capsys):
+    run = tmp_path / "run"
+    run.mkdir()
+    (run / "manifest.json").write_text('{"steps_ran":{}}\n', encoding="utf-8")
+    (run / "final-summary.md").write_text("Run bailed\n", encoding="utf-8")
+    required = tmp_path / "required.tsv"
+    required.write_text(f"relative_path\tcondition\n{ag.GUIDELINE_SHIP_OUTCOME_SIDECAR}\tstep8\n", encoding="utf-8")
+    scans = tmp_path / "scans.tsv"
+    scans.write_text("name\ttype\nrequired-file-presence\tfile\n", encoding="utf-8")
+
+    assert audit_runs.scan_run_main(["--skill","implement","--run-dir",str(run),"--pr","7","--scans-tsv",str(scans),"--required-files-tsv",str(required)]) == 0
+    row = json.loads(capsys.readouterr().out.splitlines()[0])
+
+    assert row["result"] == "fail"
+    assert row["missing"] == [ag.GUIDELINE_SHIP_OUTCOME_SIDECAR]
 
 
 def test_scan_required_bailed_heading_with_pr_evidence_reports_missing(tmp_path: Path, capsys):
@@ -1137,6 +1209,31 @@ def test_scan_required_bailed_heading_with_pr_evidence_reports_missing(tmp_path:
     row = json.loads(capsys.readouterr().out.splitlines()[0])
     assert row["result"] == "fail"
     assert row["missing"] == ["run-statistics.md"]
+
+
+def test_implement_step8_reachable_threads_pr_to_step9a1_chain(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    calls: list[tuple[bool, int]] = []
+
+    def fake_step9a1(
+        run_dir: Path,
+        manifest: dict[str, object] | None,
+        *,
+        chain: bool = False,
+        pr: int = 0,
+    ) -> bool:
+        _ = (run_dir, manifest)
+        calls.append((chain, pr))
+        return True
+
+    monkeypatch.setattr(audit_runs, "implement_step9a1_reachable", fake_step9a1)
+
+    assert audit_runs.implement_step8_reachable(run, {"steps_ran": {}}, pr=42)
+    assert calls == [(True, 42)]
 
 
 def test_scan_required_corrupt_manifest_does_not_bail_skip(tmp_path: Path, capsys):

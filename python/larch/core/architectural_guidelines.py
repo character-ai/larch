@@ -1,5 +1,6 @@
 """ARCHITECTURAL_GUIDELINES.md reader and implement note helpers."""
 # pyright: reportUnusedCallResult=false, reportPrivateUsage=false
+# pylint: disable=cyclic-import  # accepted: function-level imports of ship_guidelines (validator needs outcome constants) and run_log_flush (chunker) create mutual deps with modules that import this module at top level; documented via lint-layering ok comments.
 
 from __future__ import annotations
 
@@ -22,9 +23,6 @@ from typing import cast
 from larch import io as larch_io
 from larch.core import config
 from larch.errors import ShipError
-from larch.issue import issue_wire
-from larch.report import exec_issue_detail  # lint-layering: ok append helper must match run-log flush warning dedupe.
-from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
 CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
@@ -108,6 +106,7 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
     phase = str(d.get("phase") or "")
     step = str(d.get("step") or "")
     base_ref = str(d.get("base_ref") or "")
+    head_sha = str(d.get("head_sha") or "")
     outcome = str(d.get("outcome") or "")
     reason = str(d.get("reason") or "")
     guidelines_status = str(d.get("guidelines_status") or "")
@@ -118,6 +117,8 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
         return "guideline outcome step must be 8"
     if not base_ref:
         return "guideline outcome base_ref is empty"
+    if not head_sha.strip():
+        return "guideline outcome head_sha is empty"
     if outcome not in GUIDELINE_SHIP_OUTCOMES:
         return "guideline outcome token is unknown"
     if guidelines_status not in {"present", "absent", "invalid"}:
@@ -321,6 +322,7 @@ def guideline_ship_outcome_path(implement_tmpdir: Path) -> Path:
 
 
 def _validate_design_tmpdir_arg(candidate: str) -> Path:
+    from larch.state import session_env  # noqa: PLC0415  # lint-layering: ok validate-design-tmpdir must stay co-located with arg-parsing logic.
     ok, message = session_env.validate_design_tmpdir(candidate)
     if not ok:
         raise ValueError(message)
@@ -1061,6 +1063,7 @@ def _format_deviation_warning_entry(note: str) -> str:
 
 
 def _warning_chunk_keys(body: str) -> set[str]:
+    from larch.report import exec_issue_detail  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush warning dedupe.
     from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     keys: set[str] = set()
     for chunk in execution_issue_chunks(body.splitlines()):
@@ -1307,6 +1310,7 @@ def persist_design_assessment_main(argv: list[str]) -> int:
 
 
 def read_main(argv: list[str]) -> int:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
     parser = argparse.ArgumentParser(prog="architectural-guidelines read")
     parser.add_argument("--repo-root")
     args = parser.parse_args(argv)
@@ -1323,6 +1327,7 @@ def read_main(argv: list[str]) -> int:
 
 
 def _emit_present_guidelines(result: ArchitecturalGuidelinesResult) -> None:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
     assert result.path is not None
     print(f"ARCHITECTURAL_GUIDELINES_PATH={result.path}")
     if result.content:
@@ -1355,6 +1360,7 @@ def _emit_materialized_diff(
     output: str = "",
     implement_tmpdir: str = "",
 ) -> int:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
     base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
     base_label = f"{base_remote}/{base_ref}"
     try:
@@ -1444,6 +1450,7 @@ def prepare_main(argv: list[str]) -> int:
 
 
 def _emit_compose_prepare_result(*, result: ComposeMaterializationResult, implement_tmpdir: Path, repo_root: str | Path | None) -> None:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
     print(f"ARCHITECTURAL_GUIDELINES_COMPOSE_STATUS={result.status}")
     for key, value in (
         ("ARCHITECTURAL_GUIDELINES_HEAD_SHA", result.head_sha),

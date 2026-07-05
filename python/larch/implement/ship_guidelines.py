@@ -108,7 +108,7 @@ def _classify_ship_outcome(
 ) -> GuidelinesShipOutcome:
     guidelines_status = result.guidelines_status
     if guidelines_status not in {"present", "absent", "invalid"}:
-        guidelines_status = "present" if result.note else "absent"
+        guidelines_status = "absent"
     assessment_kind = result.assessment_kind or _assessment_kind(result.note)
     reason = result.reason
     if guidelines_status == "absent":
@@ -160,6 +160,10 @@ def write_guideline_ship_outcome(
     """Write the durable Step 8 guideline outcome sidecar for terminal gate results."""
     if result.needs_assessment or not implement_tmpdir:
         return None
+    if not head_sha.strip():
+        message = "architectural-guidelines outcome head_sha is empty"
+        _log_guidelines_ship_warning(implement_tmpdir=Path(implement_tmpdir), message=message)
+        raise OSError(message)
     outcome = _classify_ship_outcome(result=result, head_sha=head_sha, base_ref=base_ref)
     _write_json_atomic(
         path=architectural_guidelines.guideline_ship_outcome_path(Path(implement_tmpdir)),
