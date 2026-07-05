@@ -240,6 +240,13 @@ Deduplication timing:
 
 - Rerun deduplication and grouping **only after confirmed rescues**. Do not trigger dedup after a zero-match or multi-match rescue attempt before key confirmation.
 
+Post-rescue regrouping:
+
+- After any confirmed rescue, rerun oos-3 deduplication and rebuild groups from the final kept-item set.
+- If rescue changed kept-item membership or grouping partitions, re-present the combination scheme (groups, bodies, and tied stale-only closures) and require explicit operator approval again. A prior Apply all or partial approval does not authorize oos-5 apply or stale-only closes tied to the pre-rescue scheme.
+- Do not enter oos-5 or close stale-only sources tied to a changed scheme until the operator approves the updated proposal with bodies matching the final kept set.
+- Ordering: confirmed rescue → regroup → re-present and re-approve when the scheme changed → merit-batch confirmation for keys still staged → oos-5 only after regroup re-approval (when needed) and merit-batch resolution.
+
 After approval and before dependency phases, close approved stale-only or fully discarded sources. Prefer per-issue `close-stale` calls when comments differ by issue:
 
 ```bash
