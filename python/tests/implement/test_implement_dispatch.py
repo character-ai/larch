@@ -1028,7 +1028,7 @@ def test_step18_gate_finalize_no_stall_runs_finalize_and_forwards_stdout(
     captured = capsys.readouterr()
     assert "STALL_TRACKING_MEMORY=false\n" in captured.out
     assert "STALL_RECOVERY_REQUIRED=false\n" in captured.out
-    assert "⏩ 18a: stall recovery — no stall detected\n" in captured.out
+    assert "⏩ 18a: stall recovery: no stall detected\n" in captured.out
     assert "IMPLEMENT_OUTCOME_SUCCEEDED=false\n" in captured.out
     assert "---LARCH-SUMMARY-FINAL-BEGIN---\nbody\n---LARCH-SUMMARY-FINAL-END---\n" in captured.out
     assert captured.out.rstrip().endswith("NEXT_ACTION=finalize-done")
