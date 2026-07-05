@@ -29,10 +29,6 @@ from larch.report.run_log_batch import (  # lint-layering: ok append helper must
     _redact_batch_payload,
     append_execution_issue,
 )
-from larch.report.run_log_flush import (  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
-    _existing_execution_issue_keys as existing_execution_issue_keys,
-    _execution_issue_chunks as execution_issue_chunks,
-)
 from larch.state import session_env
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
@@ -926,6 +922,7 @@ def _format_deviation_warning_entry(note: str) -> str:
 
 
 def _warning_chunk_keys(body: str) -> set[str]:
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     keys: set[str] = set()
     for chunk in execution_issue_chunks(body.splitlines()):
         chunk_body = "\n".join(chunk)
@@ -935,6 +932,7 @@ def _warning_chunk_keys(body: str) -> set[str]:
 
 
 def _warning_chunk_source_shas(body: str) -> set[str]:
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     shas: set[str] = set()
     for chunk in execution_issue_chunks(body.splitlines()):
         chunk_body = "\n".join(chunk)
@@ -1024,6 +1022,7 @@ def _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir: Path) -> tuple
         batch_text = batch_path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return set(), set()
+    from larch.report.run_log_flush import _existing_execution_issue_keys as existing_execution_issue_keys  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     return existing_execution_issue_keys(batch_text), _existing_warning_source_shas(batch_text)
 
 
@@ -1035,6 +1034,7 @@ def append_deviation_note(implement_tmpdir: Path, note: str) -> str:
     existing_keys = _existing_warning_keys_from_markdown(issue_log)
     ndjson_keys, ndjson_shas = _existing_warning_keys_and_shas_from_ndjson(implement_tmpdir)
     known_keys = existing_keys | ndjson_keys
+    from larch.report.run_log_flush import _execution_issue_chunks as execution_issue_chunks  # noqa: PLC0415  # lint-layering: ok append helper must match run-log flush chunking and dedupe.
     kept_chunks: list[str] = []
     for chunk in execution_issue_chunks(redacted_entry.splitlines()):
         chunk_body = "\n".join(chunk)
