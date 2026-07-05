@@ -6,9 +6,6 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-
-round_dir = Path(".")
-impl_parent = Path(".")
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
