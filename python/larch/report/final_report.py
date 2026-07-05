@@ -11,7 +11,7 @@ import os
 import re
 import subprocess
 import sys
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import cast
 
@@ -605,23 +605,18 @@ def _outcome_with_manifest_only_backstop(
 
 
 def _summary_heading_line_is_stalled(line: str) -> bool:
-    stripped = line.rstrip("\n").rstrip()
-    return stripped.endswith((": stalled", "— stalled"))
+    stripped = line.strip()
+    return stripped.startswith("## /") and stripped.endswith((": stalled", "— stalled"))
 
 
 def summary_heading_is_stalled(text: str) -> bool:
-    for line in text.splitlines():
-        if not line.strip():
-            continue
-        return _summary_heading_line_is_stalled(line)
-    return False
+    return any(_summary_heading_line_is_stalled(line) for line in text.splitlines())
 
 
-def _summary_stalled_heading_index(lines: list[str]) -> int | None:
+def _summary_stalled_heading_index(lines: Sequence[str]) -> int | None:
     for idx, line in enumerate(lines):
-        if not line.strip():
-            continue
-        return idx if _summary_heading_line_is_stalled(line) else None
+        if _summary_heading_line_is_stalled(line):
+            return idx
     return None
 
 

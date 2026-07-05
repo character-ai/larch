@@ -27,7 +27,7 @@ _PEM_END_RE = re.compile(
     rf"{_PEM_ANCHOR}-----END [A-Z ]*PRIVATE KEY-----",
 )
 _UNTERMINATED_MARKER = (
-    "[content truncated — unterminated PEM block; tail of body dropped for safety]"
+    "[content truncated: unterminated PEM block; tail of body dropped for safety]"
 )
 
 # --- Pre-flush log-gate secret families (parity with python3 python/cli.py redact scrub-log-secrets) ---

@@ -1,0 +1,44 @@
+=== larch-quiet-cli.py-22433.log ===
+=== larch-quiet-cli.py-22700.log ===
+=== larch-quiet-cli.py-54981.log ===
+=== larch-quiet-cli.py-69903.log ===
+=== larch-quiet-cli.py-75384.log ===
+=== larch-quiet-read-session-env-key.sh-78607.log ===
+=== larch-quiet-read-session-env-key.sh-97222.log ===
+=== larch-quiet-read-session-env-key.sh-97225.log ===
+=== larch-quiet-read-session-env-key.sh-97236.log ===
+=== larch-quiet-sessionstart-health.sh-55864.log ===
+=== larch-quiet-sessionstart-health.sh-99340.log ===
+=== larch-quiet-ship.py-28946.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 28s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 42s
+ci_monitor: poll 4/180 pending after 46s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 56s
+ci_monitor: poll 5/180 pending after 60s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 70s
+ci_monitor: poll 6/180 pending after 73s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 83s
+ci_monitor: CI pass after 87s -> merge
+ship.py: merge
+=== larch-quiet-ship.py-8866.log ===
+ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 7s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 17s
+ci_monitor: poll 2/180 pending after 22s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 32s
+ci_monitor: poll 3/180 pending after 36s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 46s
+ci_monitor: poll 4/180 pending after 50s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 60s
+ci_monitor: CI fail after 64s -> evaluate_failure
+=== larch-quiet-tracking-issue-upsert-summary-25801.log ===

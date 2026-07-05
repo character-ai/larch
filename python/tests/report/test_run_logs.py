@@ -955,6 +955,61 @@ def test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcom
     assert "- **Outcome**: stalled" not in text
 
 
+def test_manifest_only_stalled_summary_reconciliation_scans_prelude(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(
+        "Preface line\n\n## /implement run run-abc: stalled\n\n- **Outcome**: stalled\n- **PR**: #12\n",
+        encoding="utf-8",
+    )
+
+    assert final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
+    assert final_report.reconcile_stalled_summary_from_manifest(run_dir)
+
+    text = (run_dir / "final-summary.md").read_text(encoding="utf-8")
+    assert text.startswith("Preface line\n\n")
+    assert "## /implement run run-abc: merged" in text
+    assert "- **Outcome**: stalled" not in text
+
+
+def test_manifest_only_stalled_summary_outcome_bullet_without_heading_does_not_reconcile(
+    tmp_path: Path,
+) -> None:
+    run_dir = tmp_path / "larch-logs" / "implement" / "run-abc"
+    run_dir.mkdir(parents=True)
+    manifest: dict[str, object] = {
+        "schema_version": 2,
+        "skill": "implement",
+        "run_id": "run-abc",
+        "steps_ran": {},
+        "status": config.MANIFEST_STATUS_DONE,
+        "pr_number": 12,
+    }
+    body = "Prelude\n\n- **Outcome**: stalled\n- **PR**: #12\n"
+    _ = (run_dir / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+    _ = (run_dir / "final-summary.md").write_text(body, encoding="utf-8")
+
+    assert not final_report.summary_heading_is_stalled(body)
+    heading_index = final_report._summary_stalled_heading_index(  # pyright: ignore[reportPrivateUsage]
+        body.splitlines(keepends=True),
+    )
+    assert heading_index is None
+    assert not final_report.stalled_summary_manifest_reconciliation_needed(run_dir)
+    assert not final_report.reconcile_stalled_summary_from_manifest(run_dir)
+    assert (run_dir / "final-summary.md").read_text(encoding="utf-8") == body
+
+
 def test_manifest_only_pr_number_without_done_status_keeps_stalled_summary(
     tmp_path: Path,
 ) -> None:

@@ -1132,6 +1132,13 @@ def test_write_implement_env_failure_is_fatal(tmp_path, monkeypatch) -> None:
             )
         if args[:2] == ("session", "write-implement-env"):
             return subprocess.CompletedProcess(["cli", *args], 2, "", "pointer failed\n")
+        if args[:2] == ("run-log", "append-failure"):
+            return subprocess.CompletedProcess(["cli", *args], 1, "", "append failed\n")
+        if args[:2] == ("run-log", "append-entry"):
+            log = Path(args[args.index("--log") + 1])
+            entry = args[args.index("--entry") + 1]
+            _ = log.write_text(entry, encoding="utf-8")
+            return subprocess.CompletedProcess(["cli", *args], 0, "", "")
         return subprocess.CompletedProcess(["cli", *args], 0, "", "")
 
     monkeypatch.setattr(bootstrap, "_run", fake_run)
@@ -1143,6 +1150,8 @@ def test_write_implement_env_failure_is_fatal(tmp_path, monkeypatch) -> None:
     assert st.implement_tmpdir == str(tmp_path)
     assert "pointer failed" in (tmp_path / "write-implement-env-warning.log").read_text(encoding="utf-8")
     assert any(call[:2] == ("run-log", "append-failure") for call in calls)
+    fallback = (tmp_path / "execution-issues.md").read_text(encoding="utf-8")
+    assert "- **Step implement-bootstrap write-implement-env: session write-implement-env failed" in fallback
 
 
 def test_write_implement_env_missing_pid_is_fatal_without_write_attempt(tmp_path, monkeypatch) -> None:
