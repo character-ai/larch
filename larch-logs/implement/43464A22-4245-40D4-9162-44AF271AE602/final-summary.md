@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:10:44
-- **Cost**: 💰 TOTAL ~$5.80: Claude $0.45, Codex-5.5 $1.80, Codex-mini $0.44, Cursor $2.85, Claude (subprocess) $0.26  |  Tokens: 10795k
+- **Cost**: 💰 TOTAL ~$6.19: Claude $0.84, Codex-5.5 $1.80, Codex-mini $0.44, Cursor $2.85, Claude (subprocess) $0.26  |  Tokens: 11720k
 - **Issue**: #6350: https://github.com/character-ai/larch/issues/6350
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -57,3 +57,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (latent): OOS heading detection is brittle to leading BOM/whitespace. Concern: `_is_oos_issue_body` only matches `## Out-of-Scope Observation` at byte zero, so a leading UTF-8 BOM, blank line, or leading spaces in a hand-assembled `oos-body-*.txt` can skip auto-prefixing and leave the original bug reachable.
 - **Round 1 OOS_2** (latent): OOS heading literal is duplicated across writers and detectors. Concern: The OOS heading literal is duplicated across `issue_create`, `oos_filer`, and `SKILL.md`, so a template edit in one place can desync auto-prefix detection from bodies that still look like OOS issues.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
