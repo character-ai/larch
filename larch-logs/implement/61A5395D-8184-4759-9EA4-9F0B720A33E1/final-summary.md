@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:16:46
-- **Cost**: 💰 TOTAL ~$6.90: Claude $0.91, Codex-5.5 $1.61, Codex-mini $0.60, Cursor $3.38, Claude (subprocess) $0.40  |  Tokens: 13101k
+- **Cost**: 💰 TOTAL ~$7.29: Claude $1.30, Codex-5.5 $1.61, Codex-mini $0.60, Cursor $3.38, Claude (subprocess) $0.40  |  Tokens: 14102k
 - **Issue**: #6383: https://github.com/character-ai/larch/issues/6383
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -64,3 +64,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (important): Implement pre-driver still lacks a prompt-side no-confirmation contract. Concern: The active `/implement` pre-driver still routes through `python/cli.py oos file` without a prompt-side no-confirmation rule, so the normal implement path can still ask for confirmation even if the legacy `oos-pipeline.md` reference was updated.
 - **Round 1 OOS_3** (nit): finalize-step5 prose was over-condensed. Concern: The diff condenses unrelated `finalize-step5` prose beyond the contract literals, which increases review noise and removes text that no harness pins.
 - **Round 1 OOS_4** (important): Empty-stdout retry ownership is split. Concern: The empty-stdout retry prose and `design_step5b.py` disagree on when `.oos-issue-retry-used` is written, so an orchestrator can hit an existing sentinel and skip the documented retry.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
