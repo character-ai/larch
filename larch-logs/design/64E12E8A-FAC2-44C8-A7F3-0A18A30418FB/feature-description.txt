@@ -1,0 +1,86 @@
+# [OOS] bg-wait Step 3 marker hardening: 7 items (from #6324, #6305)
+
+## Summary
+
+Combined bg-wait / Step 3 dispatch follow-ups. Merges the 7-item batch from #6324 (OOS candidates from PR #6321 / issue #6286, review round 1) with #6305, which is a duplicate of Item 1 — the same `checks_commit_route_main` pre-arm cleanup gap, filed separately with an `oos-correctness` label and vote tally YES=2 NO=1.
+
+Verified live 2026-07-04 by reading `python/larch/implement/dispatch_commit_route.py`: the composite route arms via `_optional_bg_wait_marker` (lines ~76-82) with no pre-arm cleanup, while `run_step_checks_main` unlinks the stale sentinel + probe-denial counter (lines ~1085-1087) before arming; and the `15600` (line ~87) vs `10800` (line ~1091) timeout mismatch is still present.
+
+---
+
+### Item 1 — Step 3 composite path arms bg-wait before stale cleanup (latent) — CONFIRMED LIVE
+
+**File**: `python/larch/implement/dispatch_commit_route.py` (`checks_commit_route_main` → `_optional_bg_wait_marker`)
+
+The live Step 3 composite path arms the bg-wait marker through `checks_commit_route_main` / `_optional_bg_wait_marker` without first clearing the stale `.completed/step-3-terminal` sentinel or the `bg-poll-guard-probe-denials.step-3-terminal.count` probe-denial counter. `run_step_checks_main` (fixed in #6321) clears both before arming; the composite route should do the same so a resumed tmpdir does not release hook denial early. With a leftover sentinel, `marker_step_completed` treats the new wait as already finished and hook denial can stay off on resume.
+
+**Fix**: in `checks_commit_route_main` (or `_optional_bg_wait_marker`), clear `.completed/step-3-terminal` and `bg-poll-guard-probe-denials.step-3-terminal.count` before arming the step-3 marker, matching `run_step_checks_main` and `design_core._bg_wait_marker_context`.
+
+*(Duplicate source #6305 — "Live Step 3 composite still skips FINDING_5 pre-arm cleanup" — is fully covered by this item.)*
+
+---
+
+### Item 2 — Step 3 timeout semantics differ by entrypoint (latent) — CONFIRMED LIVE
+
+**Files**: `python/larch/implement/dispatch_commit_route.py` (`checks_commit_route_main` uses `TIMEOUT_S=15600`; `run_step_checks_main` uses `TIMEOUT_S=10800`), `skills/implement/scripts/run-step-checks.sh`
+
+`checks_commit_route_main` uses `TIMEOUT_S=15600`; `run_step_checks_main` and `run-step-checks.sh` use `TIMEOUT_S=10800`. The hook bg-wait timeout depends on which entrypoint arms the marker, making timeout behavior inconsistent.
+
+**Fix**: align `checks_commit_route_main`'s step-3 marker timeout with `run_step_checks_main` and `run-step-checks.sh` (`TIMEOUT_S=10800`), or document the intentional difference.
+
+---
+
+### Item 3 — Marker-writing logic still duplicated across design and implement writers (latent)
+
+**Files**: `python/larch/design/design_core.py` (and/or design-side marker writers), `python/larch/implement/bg_wait.py`
+
+Design-side marker writing and keepalive parsing still live outside the `bg_wait.py` extraction. The separate context-manager implementation can drift across Python writers despite the implement-side deduplication done in #6321.
+
+**Fix**: audit design-side bg-wait marker writers; migrate keepalive-path reading and marker field construction to `python/larch/implement/bg_wait.py` (or a shared location accessible to both design and implement), and update `WRITERS` in the parity lint accordingly.
+
+---
+
+### Item 4 — Parity harness exclusions can drift without signal (latent)
+
+**Files**: `scripts/test-hook-clone-ownership-parity.sh`, `scripts/test-hook-clone-ownership-parity.md`
+
+`marker_is_live` / `is_marker_live` are documented as an exclusion from byte-identical comparison, but the exclusion comment does not enumerate which fields legitimately differ, so future edits could add real divergence without any harness signal.
+
+**Fix**: extend the harness exclusion comment (and its `.md` sibling) to enumerate the specific fields that intentionally differ (`parent-guard return codes`, `reset_no_progress_state` call, `LIVE_MARKER_DIR` side-effect). Optionally add a structural assertion that confirms the two functions still share a minimal skeleton (same entry/exit shape).
+
+---
+
+### Item 5 — Harness lacks negative fixtures for brace-depth extraction and renamed-pair comparison (nit)
+
+**File**: `scripts/test-hook-clone-ownership-parity.sh`
+
+The brace-depth extractor and `compare_renamed_pair` are only covered by positive (passing) cases. A nested-body truncation or semantic-drift regression in the extracted functions would produce a false PASS rather than a loud failure.
+
+**Fix**: add negative fixture tests: (a) inject a nested `{ ...; }` block into a compared function body and assert the harness FAILs; (b) introduce deliberate logic drift in a `compare_renamed_pair` target and assert the harness FAILs.
+
+---
+
+### Item 6 — Legacy bg-wait test still couples to the re-export (nit)
+
+**File**: `python/tests/implement/test_implement_dispatch.py`
+
+`test_dispatch_bg_wait_marker_copies_keepalive_clone_path` still reaches `_write_bg_wait_marker` through the `dispatch_commit_route` re-export (or import alias). A change in the shared implementation in `bg_wait.py` could stay hidden behind the import path.
+
+**Fix**: update the test to import `_write_bg_wait_marker` from `larch.implement.bg_wait` directly, or enter the `dispatch_commit_route._bg_wait_marker` context manager and verify that the shared writer is invoked.
+
+---
+
+### Item 7 — Validation-only note: cursor-specialist-correctness (nit, no code change)
+
+**Origin**: review round 1, cursor/correctness slot
+
+The cursor correctness reviewer was confirmatory only and did not surface a separate actionable defect beyond what was already accepted in round 1. No code change is required, but the slot could be replaced with a more differentiated specialist in future runs on bg-wait style changes.
+
+**Fix**: low-priority; consider adjusting dynamic-archetype selection for bg-wait extraction tasks to prefer a specialist focused on field-order invariants or cross-module import hygiene rather than a generic correctness pass.
+
+---
+
+## Sources
+
+- #6324 — bg-wait hardening follow-ups from #6286 (7 items), OOS candidates from PR #6321.
+- #6305 — Live Step 3 composite still skips FINDING_5 pre-arm cleanup (duplicate of Item 1).

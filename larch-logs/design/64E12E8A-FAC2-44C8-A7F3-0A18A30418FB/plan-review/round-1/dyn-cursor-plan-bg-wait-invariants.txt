@@ -1,0 +1,47 @@
+Reviewing the plan against the codebase: checking bg-wait lifecycle, cleanup ordering, timeout parity, and test coverage.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	scripts/test-hook-clone-ownership-parity.sh:58-77	Renamed-pair negative fixture plan lacks FAIL-counter isolation compare_renamed_pair calls fail() on drift (lines 72-74) and the harness exits on global FAIL (lines 91-92); plan notes leakage risk but gives no pattern	Calling compare_renamed_pair on intentional-drift temp fixtures in the main flow increments FAIL and makes the script exit 1 even when production hooks are healthy	Add an expect-drift helper (inline diff without fail()) or a subshell wrapper that records pass when drift is detected without touching global FAIL; document that pattern in the .md sibling
+1	in_scope	important	correctness	scripts/test-hook-clone-ownership-parity.sh:14-56	Brace-depth negative fixture cannot ride compare_function compare_function always reads BG_HOOK/NO_PROGRESS_HOOK (lines 41-42); only compare_renamed_pair accepts arbitrary paths (lines 58-63)	A nested-block truncation regression that leaves post-brace drift in only one temp body would not be exercised if the implementer reuses compare_function on production hooks	Specify a temp-fixture block that calls extract_function "$tmp" "<fn>" and asserts the extracted body still contains the post-nested drift line; keep it outside the global FAIL path
+1	in_scope	latent	correctness	python/tests/implement/test_implement_dispatch.py:58-78	Composite Step 3 test should pin the same inner hook as run_step_checks_main run_step_checks_main coverage monkeypatches _run_cli_forward so assertions run while the marker is armed (lines 67-74); the plan only says monkeypatch the inner implementation	If checks_commit_route_main is patched too shallowly, assertions can run before cleanup/arming or after the context manager exits, missing stale-sidecar and TIMEOUT_S regressions	Name the target explicitly: monkeypatch _checks_commit_route_main_impl, seed .completed/step-3-terminal and the probe counter, and assert both sidecars are absent plus TIMEOUT_S=10800 before the impl body runs
+1	out_of_scope	latent	architecture	python/larch/implement/dispatch_commit_route.py:87-1091	10800 timeout is still a duplicated magic number	Post-change timeout lives in _checks_commit_route_marker, run_step_checks_main, and run-step-checks.sh; a partial edit can reintroduce Item 2 skew	Optional follow-up: add one shared config constant referenced by Python and shell writers
+1	out_of_scope	nit	code-quality	python/larch/implement/dispatch_commit_route.py:1084-1087	Pre-arm cleanup will be duplicated in two Python entrypoints	run_step_checks_main already unlinks the same two paths; a shared helper would DRY but is not required for correctness	Optional follow-up: extract a tiny _clear_implement_step3_bg_wait_stale_sidecars(tmpdir) used by both paths
+1	out_of_scope	latent	correctness	python/tests/implement/test_implement_dispatch.py:3748-3812	No negative test that non-step3 composite leaves stale step-3 sidecars untouched	Edge case is documented but only the step3 positive path is in the testing strategy; a missing checks_site guard could delete artifacts on step6/step5 paths without failing CI	Add only if you want belt-and-suspenders coverage; not required for the core Item 1 fix
+
+### 1. code-quality / correctness — `scripts/test-hook-clone-ownership-parity.sh:58-77`
+
+The plan adds a renamed-pair negative fixture but does not say how to keep it out of the global `FAIL` counter. Today `compare_renamed_pair` calls `fail()` when bodies differ (lines 72-74), and the script exits non-zero when `FAIL > 0` (lines 91-92). The plan’s failure-mode note flags this, yet the harness section has no prescribed pattern.
+
+**Suggested revision:** Add an expect-drift helper (or inline `diff` on temp extracts) that records `pass` when drift is detected and never calls `fail()` for intentional negatives.
+
+### 2. correctness — `scripts/test-hook-clone-ownership-parity.sh:14-56`
+
+The brace-depth negative case cannot use `compare_function`, which always extracts from `BG_HOOK` / `NO_PROGRESS_HOOK` (lines 41-42). Only `compare_renamed_pair` accepts arbitrary file paths (lines 58-63). A truncation bug that drops lines after a nested `{ ...; }` block needs a temp-file `extract_function` assertion, not another production-hook comparison.
+
+**Suggested revision:** Specify a self-contained temp-fixture test that calls `extract_function "$tmp" "<fn>"` and asserts the tail line after the nested block is still present.
+
+### 3. correctness — `python/tests/implement/test_implement_dispatch.py:58-78`
+
+The planned `checks_commit_route_main` Step 3 test should mirror the existing `run_step_checks_main` hook. That test patches `_run_cli_forward` so assertions run while `.bg-wait-active` is live and stale sidecars are already cleared (lines 67-74). The plan only says “monkeypatch the inner implementation” without naming `_checks_commit_route_main_impl`.
+
+**Suggested revision:** Pin the monkeypatch target, seed both `.completed/step-3-terminal` and `bg-poll-guard-probe-denials.step-3-terminal.count`, and assert both are gone plus `TIMEOUT_S=10800` before the impl body runs.
+
+### 4. [OUT_OF_SCOPE] architecture — `python/larch/implement/dispatch_commit_route.py:87-1091`
+
+After the timeout alignment, `10800` will still live in three places (`_checks_commit_route_marker`, `run_step_checks_main`, `run-step-checks.sh`). A shared constant would reduce future Item 2 drift but is not required for this batch.
+
+### 5. [OUT_OF_SCOPE] code-quality — `python/larch/implement/dispatch_commit_route.py:1084-1087`
+
+Pre-arm cleanup will duplicate the existing `run_step_checks_main` unlink block. A shared helper would be cleaner but is optional for minimum-change delivery.
+
+### 6. [OUT_OF_SCOPE] correctness — `python/tests/implement/test_implement_dispatch.py:3748-3812`
+
+The plan documents the non-step3 guard edge case but does not mandate a negative composite test. Worth a follow-up issue if you want guard regression coverage; not blocking Item 1.
+
+---
+
+**What looks sound**
+
+- Pre-arm cleanup before `_optional_bg_wait_marker` in `checks_commit_route_main` matches `run_step_checks_main` (lines 1084-1093) and `design_core._bg_wait_marker_context` (lines 178-179).
+- Timeout parity at `dispatch_commit_route.py:87` → `10800` aligns with `run_step_checks_main` and `run-step-checks.sh:76`.
+- Design-side reuse is appropriately narrow: import only `_read_keepalive_clone_path` from `bg_wait.py:17-26` into `design_core.py:160-169` without touching `_bg_wait_marker_context` writer semantics or the `WRITERS` list in `lint_bg_wait_writer_parity.py:22-31`.
+- The `marker_is_live` exclusion comment at `scripts/test-hook-clone-ownership-parity.sh:85-89` already lists the three allowed differences; the planned `.md` update for negative fixtures is the useful doc delta.

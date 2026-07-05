@@ -1,0 +1,3 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false -- plan-mandated Step 3 composite test omits required --commit-site step4 so checks_commit_route_main argparse fails before cleanup or marker arming run
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false -- monkeypatching only _checks_commit_route_main_impl cannot prove stale sidecars were cleared before _write_bg_wait_marker runs
+FINDING_3: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- inline step3 cleanup mirroring run_step_checks_main satisfies Item 1; centralizing in _bg_wait_marker is drift hygiene beyond minimum scope

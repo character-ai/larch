@@ -1,0 +1,81 @@
+## Approach
+
+Make the minimum approved changes. Keep runtime behavior unchanged outside Step 3 composite bg-wait pre-arm cleanup and the design keepalive helper import. The 15600-second timeout in `checks_commit_route_main` is intentional and must not change (see Item 2 resolution below).
+
+## Files to modify/create
+
+### UPDATED: python/larch/implement/dispatch_commit_route.py
+
+- Add pre-arm cleanup in `checks_commit_route_main` before `_optional_bg_wait_marker` when `checks_site == "step3"`:
+  - Unlink `.completed/step-3-terminal` with `contextlib.suppress(OSError)`.
+  - Unlink `bg-poll-guard-probe-denials.step-3-terminal.count` with `contextlib.suppress(OSError)`.
+  - Scope to `checks_site == "step3"` only; other sites are untouched.
+- Item 2 resolution: keep `_checks_commit_route_marker("step3")` at `TIMEOUT_S=15600`. The composite path (checks + step4 commit + folded 4.r) must run under one marker for the full `CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS = 15_600_000 ms`. The `10800` timeout in `run_step_checks_main` is checks-only. Add a comment adjacent to both usages to document the intentional split.
+
+### UPDATED: python/larch/design/design_core.py
+
+- Import `_read_keepalive_clone_path` from `larch.implement.bg_wait`.
+- Remove the duplicate local `_read_keepalive_clone_path`.
+- Leave `_bg_wait_marker_context` writer semantics unchanged.
+- Do not edit the bg-wait writer parity `WRITERS` list.
+
+### UPDATED: scripts/test-hook-clone-ownership-parity.sh
+
+- Expand the `marker_is_live` / `is_marker_live` exclusion comment to list the allowed differences:
+  - parent-guard return codes,
+  - `reset_no_progress_state` missing-marker behavior,
+  - `LIVE_MARKER_DIR` side effect.
+- Add negative fixture coverage; each fixture MUST use isolated counters (subshell or local PASS/FAIL) so expected failures do not increment the global `FAIL` counter:
+  - Brace-depth extraction fixture: write a temp hook file with a nested `{ ...; }` function body that has a post-nested drift line, call `extract_function "$tmp_hook" "<fn>"` directly on the temp file, and assert the body still contains the drift line; pass when the body is present (proving no premature truncation).
+  - Renamed-pair drift fixture: write two temp hook files with deliberate logic drift after comment stripping, call `compare_renamed_pair` on those temp files (not the live hooks), and assert the comparison reports drift (non-zero exit or FAIL increment in the subshell); pass when drift is detected.
+- All negative fixtures clean up temp files with `trap` or explicit `rm`.
+- Avoid shared Bash library extraction.
+
+### UPDATED: scripts/test-hook-clone-ownership-parity.md
+
+- Document the new negative fixture checks and the isolated-counter pattern.
+- Keep the edit-in-sync guidance intact.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+- Import `_write_bg_wait_marker` directly from `larch.implement.bg_wait`.
+- Update `test_dispatch_bg_wait_marker_copies_keepalive_clone_path` to call that direct import.
+- Add a focused test for `checks_commit_route_main` with `--checks-site step3 --commit-site step4` (both are required by argparse; `step4` matches the live Step 3 fence):
+  - Set up a valid session tmpdir with `IMPLEMENT_TMPDIR` env and `_session` key.
+  - Seed a stale `.completed/step-3-terminal` sentinel and a probe-denial counter file.
+  - Monkeypatch `_checks_commit_route_main_impl` to return 0 so the cleanup and arming logic runs undisturbed.
+  - Wrap `_write_bg_wait_marker` (or `_bg_wait_marker`) to assert both stale sidecar files are absent at the moment the marker is written (not just inside the impl body).
+  - Assert the `.bg-wait-active` marker text contains `TIMEOUT_S=15600`.
+  - Assert `.completed/step-3-terminal` exists after the context exits.
+  - Do not monkeypatch at a shallower layer that bypasses the pre-arm cleanup path.
+
+## Edge cases
+
+- Stale cleanup must not run for non-Step 3 composite sites.
+- Missing sidecar files must not fail the route.
+- A marker write failure should retain existing suppress-and-continue behavior.
+- The design import should not change marker field order or final newline shape.
+- Negative harness fixtures must not contaminate the global FAIL tally when deliberate drift is detected.
+
+## Failure modes
+
+- If cleanup happens after marker arming, a stale sentinel can still release hook denial early.
+- If the parity negative fixtures leak their intentional failures into the final `FAIL` count, the harness will fail even when live hooks are valid.
+- If the design helper import creates an unexpected lint layering violation, keep the approved scope but surface the failure.
+
+## Testing strategy
+
+Run focused checks:
+
+- `python3 -m pytest python/tests/implement/test_implement_dispatch.py -q -k 'bg_wait_marker or run_step_checks_main_arms_step3_bg_wait_marker or checks_commit_route'`
+- `python3 -m pytest python/tests/lint/test_lint_bg_wait_writer_parity.py -q`
+- `python3 python/cli.py lint bg-wait-writer-parity --root .`
+- `bash scripts/test-hook-clone-ownership-parity.sh`
+- `make test-hook-clone-ownership-parity`
+- `make py-lint-checks-fast`
+
+difficulty: MODERATE
+diff_added: 100
+diff_deleted: 18
+mechanical_churn: false
+diff_lines: 118
