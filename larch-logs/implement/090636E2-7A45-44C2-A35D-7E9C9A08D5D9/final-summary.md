@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 01:58:40
-- **Cost**: 💰 TOTAL ~$51.21: Claude $1.81, Codex-5.5 $35.89, Codex-mini $2.29, Cursor $10.83, Claude (subprocess) $0.39  |  Tokens: 90058k
+- **Cost**: 💰 TOTAL ~$51.78: Claude $2.38, Codex-5.5 $35.89, Codex-mini $2.29, Cursor $10.83, Claude (subprocess) $0.39  |  Tokens: 91646k
 - **Issue**: #6373: https://github.com/character-ai/larch/issues/6373
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 15/17 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6399
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/090636E2-7A45-44C2-A35D-7E9C9A08D5D9/`
@@ -103,3 +103,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 2 OOS_2** (latent): legacy prepare wrapper can wipe durable notes. Concern: The retired prepare wrapper still invalidates durable compose-time notes during an in-flight handoff.
 - **Round 2 OOS_3** (latent): empty BASE_REF short-circuit is missing. Concern: Compose precheck skips the current short-circuit when `BASE_REF` metadata is empty.
 - **Additional candidates**: 5 omitted by the final-summary cap.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
