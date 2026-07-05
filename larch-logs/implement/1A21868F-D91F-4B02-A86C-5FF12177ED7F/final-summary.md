@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:12:55
-- **Cost**: 💰 TOTAL ~$3.50: Claude $0.41, Codex-5.5 $1.19, Codex-mini $0.48, Cursor $1.26, Claude (subprocess) $0.16  |  Tokens: 5996k
+- **Cost**: 💰 TOTAL ~$3.82: Claude $0.73, Codex-5.5 $1.19, Codex-mini $0.48, Cursor $1.26, Claude (subprocess) $0.16  |  Tokens: 6811k
 - **Issue**: #6371: https://github.com/character-ai/larch/issues/6371
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -68,3 +68,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 
 - **Round 1 OOS_1** (nit): README feature matrix still describes --oos as actuality-only. Concern: The README feature matrix still describes `--oos` as actuality-only behavior and omits the merit-gate / approval-staging wording, so operators who stop there get stale guidance.
 - **Round 1 OOS_2** (nit): No automated harness for the rescue-matching prompt contract. Concern: Prompt regressions in oos-4 will not be caught by CI until a manual skill run unless a structural harness is added for the prompt contract.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
