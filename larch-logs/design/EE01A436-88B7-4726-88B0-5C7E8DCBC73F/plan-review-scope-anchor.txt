@@ -1,0 +1,30 @@
+Combined OOS follow-ups for reviewer OOS proposal tooling. Merged from #6384 (10 rolled-up items deduplicated to 3). Each item below folds several near-identical reviewer observations.
+
+### Item 1 — Reviewer OOS proposal prompts still gate by highest-materiality
+
+Reviewer-facing proposal prompts and generated reviewer bodies still prefer highest-materiality OOS items, so the loosened legitimacy standard will not reach proposal time. Confirmed still present: `skills/shared/reviewer-templates.md` (4 sections), `agents/reviewer-correctness.md`, and other hand-maintained `agents/reviewer-*.md` plus `agents/pre-rendered/*-body.txt`. No "highest-legitimacy" wording exists yet.
+
+- Replace highest-materiality / materiality-gate wording with highest-legitimacy / concrete-item wording in all four Out-of-Scope sections of `reviewer-templates.md`.
+- Regenerate auto-generated agents and pre-rendered reviewer prompts via `python3 python/cli.py generate` (and `generate check`).
+- Sync the hand-maintained specialist `agents/reviewer-*.md` variants and `agents/code-reviewer.md` that duplicate the cap lines.
+- Add `reviewer-templates.md` to the `oos-acceptance-rubric.md` Update triggers list.
+- Extend `python/tests/rendering/test_rendering.py` (or `generate check`) so proposal prompts cannot drift back to materiality.
+
+**Sources**: #6384 (OOS_1, OOS_4, OOS_5, OOS_7, OOS_9).
+
+### Item 2 — Design annotate loses the filed URL on capped rollups
+
+When the design cap collapses multiple accepted OOS originals into one rollup, only the first source block gets the filed URL, leaving later originals unfiled and prone to re-file on the next prepare pass.
+
+- After a cap-1 rollup, stamp every accepted source OOS block listed in the order file with the single filed URL, or write `OOS_FILE_MAP` rows for each original (port the implement-side stable-id mapping if useful).
+- Extend `python/tests/design/test_design_oos.py` with a multi-accepted cap-1 case asserting every original block carries a Filed URL and that a rerun skips re-file via sentinel.
+
+**Sources**: #6384 (OOS_2, OOS_8). Affects `python/larch/design/design_oos.py`.
+
+### Item 3 — Rejected-OOS audit parses oos.md footers instead of joining the classification TSV
+
+The rejected-OOS audit regex-parses `Result=` from free-form `oos.md` footers (confirmed at `review_phase_detail.py`, `_rejected_oos_audit_from_file` / `render_rejected_oos_audit_section`). This is brittle if footer formatting drifts, and `findings-classification.tsv` already records per-item OOS outcomes.
+
+- Join `findings-classification.tsv` for per-item OOS outcomes instead of parsing markdown footers, or make the footer parse robust to legacy heading shapes.
+
+**Sources**: #6384 (OOS_3, OOS_6, OOS_10). Affects `python/larch/report/review_phase_detail.py`.
