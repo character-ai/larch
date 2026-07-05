@@ -5777,7 +5777,7 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
 
     def fake_rebase_and_push(
         *,
-        runner: RecordingRunner,  # noqa: ARG001  # pylint: disable=unused-argument
+        runner: RecordingRunner,  # pylint: disable=unused-argument
         repo: str,
         run_id: str,
         cwd: str,
@@ -5788,7 +5788,7 @@ def test_run_ship_merge_loop_rebase_refreshes_guidelines_gate(
         enable_pre_push_handoff: bool,
     ) -> object:
         nonlocal head_after_merge_rebase
-        del runner, repo, run_id, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
+        del runner, repo, run_id, cwd, tmpdir, base_remote, base_ref, allow_conflict_fix, enable_pre_push_handoff
         git("rebase", "origin/main")
         head_after_merge_rebase = git("rev-parse", "HEAD")
         return ship.rebase.RebaseResult(

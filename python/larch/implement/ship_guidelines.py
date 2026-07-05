@@ -142,13 +142,13 @@ def load_or_prepare_guidelines_note(
             needs_assessment=True,
             detail="architectural-guidelines assessment required before PR body compose",
         )
+    warning_logged = False
     if prepared.warning:
         warning_logged = _log_guidelines_ship_warning(
             implement_tmpdir=tmpdir,
             message=f"architectural-guidelines compose materialization skipped: {prepared.warning}",
         )
-        return GuidelinesGateResult(warning_logged=warning_logged)
-    return GuidelinesGateResult()
+    return GuidelinesGateResult(warning_logged=warning_logged)
 
 
 # Backward-compatible alias for old unit tests. It no longer pins staged notes.

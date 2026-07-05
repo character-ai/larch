@@ -1,5 +1,7 @@
 ---
 # Referenced implement script files:
+# skills/implement/scripts/step-architectural-guidelines-prepare.sh
+# skills/implement/scripts/step-architectural-guidelines-prepare.md
 # skills/implement/scripts/step-architectural-guidelines-write-compose.md
 # skills/implement/scripts/test-architectural-guidelines-step.sh
 # skills/implement/scripts/test-architectural-guidelines-step.md
@@ -589,6 +591,8 @@ The helper upserts the stable issue-scoped `<!-- larch:diagrams v1 -->` comment 
 Treat `python/cli.py implement step-7a` relay stdout as one KV stream. Scan `REBASE_OUTCOME` only for stream ordering, then read `CHECKPOINT_NEXT=continue|load-routing` and final KV tail for diagram/log status. The `7a.r` macro skip is `CHECKPOINT_NEXT`-only. Route `load-routing` via the **Rebase Checkpoint Macro** using `<step-prefix>=7a.r` and `<short-name>=pre-ship`.
 
 > **Continue to Step 8 IMMEDIATELY.** Step 7a no longer authors or stages architectural-guidelines assessments. Step 8 compose-time gating owns guideline note materialization, authoring, durable writes, and refresh after any `HEAD` change. PR creation, CI monitoring, and merge still must run.
+
+Legacy compatibility surface: `skills/implement/scripts/step-architectural-guidelines-prepare.sh` and `skills/implement/scripts/step-architectural-guidelines-prepare.md` remain shipped for paused runs and old harnesses. New prompt paths use the Step 8 compose-time gate and `step-architectural-guidelines-write-compose.sh`.
 
 <!-- step:8+ — Ship PR State Machine -->
 ## Step 8+ — Ship PR State Machine

@@ -788,14 +788,12 @@ def _compose_precheck_result(
         ):
             return None, ComposeMaterializationResult(status="current", head_sha=current_head)
     result = read_guidelines(repo_root=root)
-    if result.status == "absent":
-        return None, ComposeMaterializationResult(status="absent", head_sha=current_head, guidelines_status="absent")
-    if result.status == "invalid":
+    if result.status in {"absent", "invalid"}:
         return None, ComposeMaterializationResult(
-            status="invalid",
+            status=result.status,
             head_sha=current_head,
-            guidelines_status="invalid",
-            warning=result.warning,
+            guidelines_status=result.status,
+            warning=result.warning if result.status == "invalid" else "",
         )
     if root is None:
         return None, ComposeMaterializationResult(
