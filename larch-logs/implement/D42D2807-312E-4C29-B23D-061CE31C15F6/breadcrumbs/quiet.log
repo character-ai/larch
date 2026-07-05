@@ -19,5 +19,11 @@ ci_monitor: CI fail after 32s -> evaluate_failure
 === larch-quiet-ship.py-56914.log ===
 ship.py: pr-create: PR
 ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED step=first-fixer-non-health
+=== larch-quiet-ship.py-57916.log ===
+=== larch-quiet-ship.py-58611.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: CI fail after 4s -> evaluate_failure
 === larch-quiet-tracking-issue-upsert-summary-54526.log ===
 === larch-quiet-tracking-issue-upsert-summary-57606.log ===
