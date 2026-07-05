@@ -1,0 +1,147 @@
+## Approach
+
+Draft from direct repository inspection. The approach synthesis is `NO_SKETCHES`.
+
+Implement the approved outline with minimum scope:
+
+1. Preserve same-run OOS re-entry state in `emit_tally`.
+   - Treat a non-empty `oos-accepted-review.md` sink as authoritative when it already has at least the tally-declared non-security OOS count.
+   - Still reject a sink with fewer non-security blocks than `OOS_ACCEPTED_COUNT`, because rebuilding would risk data loss or under-filing.
+   - Keep aggregate pool promotion and parent copy behavior in `_finalize_emit_oos_filing`.
+
+2. Remove the dead `annotate-skipped-empty-stdout` path.
+   - Keep only `annotate-failed-empty-stdout`.
+   - Leave the once-only retry sentinel behavior intact.
+
+3. Consolidate design OOS security classification.
+   - In plan-review tally, classify the already-read block text with `voting.is_security_block_text`.
+   - Avoid a separate path-based helper that can drift from the review path.
+   - Do not change the shared classifier semantics unless a failing regression test proves a gap.
+
+4. Fix `/design` structured-reviewer validation after substantive validation.
+   - Stop passing `--structured-reviewer-validation` from `plan_review_round.execute_round`.
+   - Keep substantive validation in validation mode.
+   - In the design plan-review compose path, lazily materialize structured sidecars for `OK` collector records when a sidecar is absent.
+   - If sidecar materialization fails after substantive validation passed, keep the reviewer `OK` and parse zero rows. This preserves prose no-findings.
+   - Do not change `/implement` Step 5 collector calls.
+
+5. Close test gaps.
+   - Update or add focused regressions for each item.
+   - Prefer existing Python test files and the existing Step 3 shell harness.
+
+## Files to modify/create
+
+### UPDATED: python/larch/review/review_tally.py
+
+- Adjust the `emit_tally` non-empty sink guard.
+- Preserve an existing non-empty `oos-accepted-review.md` when `sink_count >= OOS_ACCEPTED_COUNT`.
+- Keep the destructive rebuild refusal when `0 < sink_count < OOS_ACCEPTED_COUNT`.
+- Keep the absent `oos.md` error when the tally needs accepted OOS and no authoritative sink exists.
+- Do not clear or rewrite a promoted aggregate sink on re-entry.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+- Delete `_is_security(block: str | Path)` entirely.
+- Compute `artifact_text` via `_artifact_text_for_item` first, then call `voting.is_security_block_text(artifact_text)` for the security flag.
+- Classify security on the same restored attribution text routed to accepted/OOS artifacts, not on raw `block_text`.
+- Raise on any read, decode, or classifier failure; never return `False` from a failed read. Remove the `SystemExit` catch-and-return-False pattern.
+- Add a regression with neutralized attribution where security tags live only in restored reviewer context, confirming classification uses `artifact_text`.
+- Add a parallel fail-closed regression mirroring `test_tally_security_classifier_failure_fails_closed` / pool-skip coverage.
+
+### UPDATED: python/larch/review/plan_review_round.py
+
+- Remove `--structured-reviewer-validation` from the `/design` `agent collect-results` call.
+- Add a small helper that writes a structured sidecar for an `OK` record only when neither `STRUCTURED_SIDECAR` nor fallback sidecar files exist.
+- Use the existing `eval validate-research-output --structured-reviewer-mode --write-structured <sidecar> <reviewer_file>` command through `_run_cli`.
+- Treat non-zero structured sidecar generation as no structured rows, not as `NOT_SUBSTANTIVE`, because substantive validation already accepted the output.
+- Keep existing collector failure handling for non-OK records.
+
+### UPDATED: python/larch/design/design_step5b.py
+
+- Remove `annotate-skipped-empty-stdout` from the non-zero annotate status set.
+- Delete the zero-exit `annotate-skipped-empty-stdout` retry branch.
+- Keep `annotate-failed-empty-stdout` retry behavior and `.oos-issue-retry-used` handling unchanged.
+
+### MAY_UPDATE: python/larch/design/design_oos.py
+
+- Change only if inspection finds comments, constants, or tests still advertising `annotate-skipped-empty-stdout`.
+- Do not change the live emitted status unless required by a failing test.
+
+### UPDATED: python/tests/review/test_review_tally.py
+
+- Update the destructive rebuild mismatch test so it still rejects `sink_count < OOS_ACCEPTED_COUNT`.
+- Add a same-run re-entry regression:
+  - seed `oos-accepted-review.md` with aggregate-promoted entries,
+  - set `OOS_ACCEPTED_COUNT=0` or lower than the sink count,
+  - run `emit-tally`,
+  - assert return code `0`, sink preservation, and parent copy when `--session-env-path` is present.
+- Add the `review_core_body` session-env integration test:
+  - drive the review core path with `--session-env-path`,
+  - stub commands enough to reach emit,
+  - assert `emit_tally` receives `--session-env-path`,
+  - assert `oos-accepted-review.md` is copied to the parent session directory.
+
+### UPDATED: python/tests/review/test_plan_review_round.py
+
+- Add a regression that captures the `agent collect-results` argv and asserts `/design` does not pass `--structured-reviewer-validation`.
+- Add a prose no-findings case:
+  - reviewer output passes substantive validation,
+  - no JSON and no `NO_ISSUES_FOUND`,
+  - round stays zero-findings, not degraded by structured validation.
+- Add a structured findings case to prove lazy sidecar materialization still yields parsed findings for plan review.
+- Add a security classifier regression using `artifact_text` (post-`_artifact_text_for_item`): security tags present only in restored attribution context are classified correctly.
+- Add a fail-closed regression: force `Path.read_text` to fail inside the security classifier and assert the tally raises instead of treating the block as non-security.
+
+### UPDATED: python/tests/design/test_design_oos.py
+
+- Remove the redundant weak empty-stdout annotate test that duplicates newer `NEXT_ACTION` coverage.
+- Update tests that mention `annotate-skipped-empty-stdout`.
+- Strengthen the once-only retry sentinel coverage:
+  - first annotate emits `annotate-failed-empty-stdout` and creates `.oos-issue-retry-used`,
+  - second failed annotate stops without writing `.completed/step-5b`,
+  - successful retry path after issue stdout is restored can advance normally.
+
+### UPDATED: skills/design/scripts/test-design-step3-entry.sh
+
+- Add a `--reentry` case.
+- Seed `oos-aggregate-pool.md` with stale content.
+- Run `design-step3-entry.sh --reentry`.
+- Assert the stale pool file is absent or empty after entry.
+- Keep the existing scope-anchor tests unchanged.
+
+## Edge cases
+
+- A same-run OOS sink can contain aggregate-promoted items while the round tally still says `OOS_ACCEPTED_COUNT=0`.
+- A sink with fewer blocks than `OOS_ACCEPTED_COUNT` remains unsafe and must fail.
+- Security OOS blocks must not enter public filing pools on either design or review paths.
+- A reviewer can produce prose no-findings that passes substantive validation but cannot produce structured records.
+- A reviewer can produce valid structured TSV/JSONL that now needs lazy sidecar materialization in the design path.
+- Retry sentinel behavior must not loop when annotate keeps returning empty issue stdout.
+
+## Failure modes
+
+- Preserving every non-empty OOS sink could mask stale or partial sinks. Guard with `sink_count >= OOS_ACCEPTED_COUNT`, not only `sink_count > 0`.
+- Removing structured collector validation without lazy sidecar generation would drop real plan-review findings. Add the sidecar materialization test.
+- Changing `collect-results` globally could alter `/implement` Step 5. Keep the fix in `plan_review_round.py`.
+- Security classification must use `artifact_text` after `_artifact_text_for_item`, not raw `block_text`. Classification before attribution restoration misses security tags in restored reviewer context.
+- Any read or decode failure in the security classifier must raise, not return `False`. Silently returning non-security routes tagged OOS into public pools.
+- The shell harness must clean up temporary dirs on both pass and fail paths as much as current style allows.
+
+## Testing strategy
+
+Run changed-file tests only:
+
+- `python3 -m pytest python/tests/design/test_design_oos.py`
+- `python3 -m pytest python/tests/review/test_review_tally.py`
+- `python3 -m pytest python/tests/review/test_plan_review_round.py`
+- `make test-design-step3-entry`
+- `make py-lint`
+
+If lint points to touched files only, fix those. Do not run broad harnesses unless a targeted test exposes shared breakage.
+
+confidence: medium
+difficulty: MODERATE
+diff_added: 210
+diff_deleted: 35
+mechanical_churn: false
+diff_lines: 245
