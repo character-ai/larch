@@ -599,7 +599,7 @@ if exit_matrix.is_file():
         'Fix CI failure (main-agent)',
         'Make the minimal repo edit',
         'git add -- <paths>',
-        'architectural-guidelines Phase A',
+        'write-staged-assessment',
     ]:
         if needle in exit_text:
             checks.append(f'ship-pr-exit-matrix.md retains moved or stale prose {needle!r}')
@@ -709,7 +709,8 @@ if ci_fix_ref.is_file():
         'Make the minimal repo edit',
         'git add -- <paths>',
         'run-log refresh',
-        'architectural-guidelines Phase A',
+        'Do not rerun architectural-guidelines Phase A',
+        'NEXT_ACTION=guidelines-assessment',
         're-invoke `step-8-ship.sh`',
     ]:
         require_text(ci_fix_text, needle, 'ship-pr-ci-fix.md CI-fix body')

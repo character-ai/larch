@@ -15,7 +15,6 @@ from pathlib import Path
 from typing import cast
 
 from larch.agents import agents
-from larch.implement import ship_guidelines
 from larch.core import config
 from larch.core import external_defaults
 from larch.git import gh
@@ -1617,16 +1616,9 @@ def run_ci_fix(
     ctx: RunContext | None = None,
 ) -> FixResult:
     """Retry a pending CI-fix rebase push; normal fixing is delegated."""
-    def _pin_or_invalidate_guidelines_before_push() -> bool:
-        if ctx is None:
-            return False
-        head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
-        return ship_guidelines._pin_or_invalidate_guidelines_note(  # noqa: SLF001  # pyright: ignore[reportPrivateUsage]
-            implement_tmpdir=ctx.tmpdir,
-            head_sha=head_sha,
-            base_ref=f"{base_remote}/{base_ref}",
-            repo_root=cwd,
-        )
+    def _compose_gate_owns_guidelines_refresh() -> bool:
+        _ = ctx
+        return False
 
     if ci_fix_rebase_pending:
         pushed, _post_head, delta_paths, did_rebase, pending = stage_and_push(
@@ -1640,7 +1632,7 @@ def run_ci_fix(
             context=StagePushContext(
                 classified=classified,
                 run_context=ctx,
-                pre_push_log_refresh=_pin_or_invalidate_guidelines_before_push,
+                pre_push_log_refresh=_compose_gate_owns_guidelines_refresh,
             ),
         )
         if not pushed:

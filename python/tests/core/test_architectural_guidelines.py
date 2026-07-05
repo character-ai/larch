@@ -460,7 +460,7 @@ def test_note_readable_any_head_rejects_symlinked_durable_artifacts(tmp_path: Pa
     assert not ag.note_readable_any_head(meta_tmpdir)
 
 
-def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) -> None:
+def test_dropped_notice_round_trips_and_clears_on_invalidation(tmp_path: Path) -> None:
     tmpdir = tmp_path / "implement"
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
     assert ag.read_dropped_note_notice(tmpdir) == "dropped"
@@ -477,7 +477,7 @@ def test_dropped_notice_round_trips_and_survives_invalidation(tmp_path: Path) ->
     assert ag.durable_note_present(tmpdir)
     assert ag.persist_dropped_note_notice(tmpdir, notice_text="dropped\n")
     ag.invalidate_implement_note(tmpdir)
-    assert ag.read_dropped_note_notice(tmpdir) == "dropped"
+    assert ag.read_dropped_note_notice(tmpdir) == ""
     assert not (tmpdir / ag.STAGED_ASSESSMENT).exists()
     assert not (tmpdir / ag.DURABLE_NOTE).exists()
 
@@ -542,10 +542,10 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
         metadata={"ASSESSED_HEAD_SHA": "old", "DIFF_FINGERPRINT": ag.diff_fingerprint("diff")},
         base_ref="origin/main",
     )
-    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
-    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+    assert ag.read_dropped_note_notice(tmpdir) == ""
     assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda _text: "replacement")
-    assert ag.read_dropped_note_notice(tmpdir) == ag.dropped_note_message()
+    assert ag.read_dropped_note_notice(tmpdir) == ""
 
     ag.clear_dropped_note_notice(tmpdir)
     ag.invalidate_implement_note(tmpdir)
@@ -557,7 +557,7 @@ def test_maybe_persist_dropped_note_before_invalidate_paths(tmp_path: Path) -> N
         base_ref="origin/main",
         diff_text="diff",
     )
-    assert ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
+    assert not ag.maybe_persist_dropped_note_before_invalidate(tmpdir, redact_fn=lambda text: text)
 
 
 def test_maybe_persist_dropped_notice_returns_false_on_persist_failure(
@@ -704,9 +704,7 @@ def test_pin_note_from_staged_for_current_head_refreshes_from_live_diff(
 
     materialize_mock.assert_called_once_with(repo, base_remote="origin", base_ref="main")
     assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
     durable_metadata = ag.durable_note_metadata(tmpdir)
     assert durable_metadata["HEAD_SHA"] == "head-b"
     assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"
@@ -766,9 +764,7 @@ def test_pin_note_from_live_diff_refreshes_staged_and_durable_metadata(tmp_path:
     )
 
     assert (tmpdir / ag.MATERIALIZED_DIFF).read_text(encoding="utf-8") == live_diff
-    sidecar = (tmpdir / ag.STAGED_ASSESSMENT_ENV).read_text(encoding="utf-8")
-    assert f"DIFF_FINGERPRINT={live_fingerprint}" in sidecar
-    assert "ASSESSED_HEAD_SHA=head-b" in sidecar
+    assert not (tmpdir / ag.STAGED_ASSESSMENT_ENV).exists()
     durable_metadata = ag.durable_note_metadata(tmpdir)
     assert durable_metadata["HEAD_SHA"] == "head-b"
     assert durable_metadata["ASSESSED_HEAD_SHA"] == "head-b"

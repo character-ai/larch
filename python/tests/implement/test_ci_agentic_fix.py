@@ -711,7 +711,7 @@ def test_wait_for_ci_fails_closed_on_malformed_output(tmp_path: Path) -> None:
     assert err == "ci-wait-malformed-output"
 
 
-def test_run_cycle_invalidates_guidelines_via_stage_callback(
+def test_run_cycle_defers_guidelines_refresh_to_compose_gate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -721,7 +721,6 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         out_dir = tmp_path / f"out-{known_helper}"
         out_dir.mkdir()
         implement_dir = tmp_path / f"implement-{known_helper}"
-        invalidated: list[str] = []
         push_calls: list[str] = []
 
         args = Namespace(
@@ -776,10 +775,9 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
 
         def fake_wait_for_ci(*_args: object, **_kwargs: object) -> tuple[dict[str, str], str | None]:
             batch = implement_dir / "larch-logs" / "implement" / "42" / "execution-issues.ndjson"
-            assert batch.is_file()
-            issue_text = batch.read_text(encoding="utf-8")
-            assert "architectural-guidelines drop notice persist failed before invalidate" in issue_text
-            assert (implement_dir / ".execution-issues-flushed.sha").is_file()
+            if batch.is_file():
+                issue_text = batch.read_text(encoding="utf-8")
+                assert "architectural-guidelines drop notice persist failed before invalidate" not in issue_text
             return {"ACTION": "merge", "CI_STATUS": "pass"}, None
 
         def fake_prepare_python_toolchain(*_args: object, **_kwargs: object) -> bool:
@@ -809,15 +807,6 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         def fake_revert_forbidden_paths(*_args: object, **_kwargs: object) -> int:
             return 0
 
-        def fake_invalidate(implement_tmpdir: str) -> bool:
-            invalidated.append(implement_tmpdir)
-            run_logs.append_execution_issue(
-                log_file=Path(implement_tmpdir) / "execution-issues.md",
-                category="Warnings",
-                entry="- **architectural-guidelines drop notice persist failed before invalidate**",
-            )
-            return True
-
         def fake_commit_run(*_args: object, **_kwargs: object) -> proc.CommandResult:
             return proc.CommandResult(("git", "commit"), 0, "", "", 0.01)
 
@@ -843,7 +832,6 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         monkeypatch.setattr(coder_delta_guards, "head_changed_from_baseline", fake_head_changed)
         monkeypatch.setattr(coder_delta_guards, "coder_forbidden_paths", fake_forbidden_paths)
         monkeypatch.setattr(coder_delta_guards, "revert_forbidden_paths", fake_revert_forbidden_paths)
-        monkeypatch.setattr(ci_agentic_fix.ship_guidelines, "_invalidate_guidelines_note", fake_invalidate)
         monkeypatch.setattr(run_log_flush, "_commit_run", fake_commit_run)
         monkeypatch.setattr(run_log_flush, "_write_final_report", fake_run_log_flush_noop)
         monkeypatch.setattr(run_log_flush, "capture_session_transcript", fake_run_log_flush_noop)
@@ -868,7 +856,6 @@ def test_run_cycle_invalidates_guidelines_via_stage_callback(
         assert status == "passed"
         assert paths == ("file.py",)
         assert pending is False
-        assert invalidated == [str(implement_dir)]
         assert push_calls == ["feat"]
 
 

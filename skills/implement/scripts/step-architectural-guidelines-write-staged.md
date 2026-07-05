@@ -1,15 +1,9 @@
 # step-architectural-guidelines-write-staged
 
-Thin `/implement` architectural-guidelines helper.
+Thin `/implement` architectural-guidelines legacy helper.
 
-## Purpose
+## Contract
 
-Delegates to `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" architectural-guidelines ...` for the post-Step 7a guideline staging contract.
+The live `/implement` prompt no longer writes staged Step 7a assessments. Step 8 compose-time assessment writes the durable note directly through `step-architectural-guidelines-write-compose.sh`.
 
-## Callers
-
-`skills/implement/SKILL.md` owns the prompt-side sequencing. The Python CLI owns parsing, path checks, staged assessment writes, durable pinning, and invalidation.
-
-## Harness
-
-`skills/implement/scripts/test-architectural-guidelines-step.sh` pins the prompt-side staging prose and staged-to-durable copy behavior.
+This wrapper remains available for one release for compatibility with old harnesses or paused runs. New prompt paths should not use staged assessment artifacts.

@@ -368,6 +368,17 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
             repo=state_repo,
             detail="cannot verify gh-skipped resume PR identity anchor",
         )
+    if pr_number is None and state_phase == "guidelines-assessment":
+        return _resume_from_state(
+            start="pre-pr-compose",
+            counters=counters,
+            durable=durable,
+            pr_number=None,
+            pr_url="",
+            merge_result=merge_result,
+            branch_name=branch_name,
+            repo=state_repo,
+        )
     if pr_number is None and not durable.repo_unavailable:
         return _fresh_resume_plan(
             durable,

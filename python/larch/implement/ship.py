@@ -92,7 +92,11 @@ from larch.implement.ship_result import (
     _write_terminal_finalize_if_terminal,
     emit_result,
 )
-from larch.implement.ship_guidelines import _pin_and_load_guidelines_note
+from larch.implement.ship_guidelines import (
+    GuidelinesGateResult,
+    _pin_and_load_guidelines_note,
+    load_or_prepare_guidelines_note,
+)
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
     _pr_title,
@@ -245,27 +249,9 @@ def _flush_guidelines_warning_before_pr(
 
 def _compose_pr_body_for_pr_create(
     *,
-    runner: Runner,
     pr_context: RunContext,
-    repo_root: str,
-    base_ref: str,
-    resume: ResumePlan,
+    architectural_guidelines_note: str,
 ) -> str:
-    compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
-    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
-    architectural_guidelines_note, pin_warning_logged = _pin_and_load_guidelines_note(
-        implement_tmpdir=pr_context.tmpdir,
-        head_sha=compose_head_sha,
-        base_ref=compose_base_ref,
-        repo_root=repo_root,
-    )
-    if pin_warning_logged:
-        _flush_guidelines_warning_before_pr(
-            runner=runner,
-            ctx=pr_context,
-            cwd=repo_root,
-            resume=resume,
-        )
     return pr_body.compose_pr_body(
         summary=_summary_from_manifest(pr_context),
         mermaid=pr_context.mermaid,
@@ -275,6 +261,33 @@ def _compose_pr_body_for_pr_create(
         else None,
         architectural_guidelines_note=architectural_guidelines_note,
     )
+
+
+def _guidelines_gate_before_pr(
+    *,
+    runner: Runner,
+    pr_context: RunContext,
+    repo_root: str,
+    base_ref: str,
+    resume: ResumePlan,
+) -> GuidelinesGateResult:
+    compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    result = load_or_prepare_guidelines_note(
+        implement_tmpdir=pr_context.tmpdir,
+        head_sha=compose_head_sha,
+        base_ref=compose_base_ref,
+        repo_root=repo_root,
+        forked_target=pr_context.forked or pr_context.forked_target,
+    )
+    if result.warning_logged:
+        _flush_guidelines_warning_before_pr(
+            runner=runner,
+            ctx=pr_context,
+            cwd=repo_root,
+            resume=resume,
+        )
+    return result
 
 
 def _ship_postmerge_phase(
@@ -571,6 +584,29 @@ def run_ship(
 
         _write_ship_state(
             pr_context,
+            phase="guidelines-assessment",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        guidelines_gate = _guidelines_gate_before_pr(
+            runner=runner,
+            pr_context=pr_context,
+            repo_root=repo_root,
+            base_ref=base_ref,
+            resume=resume,
+        )
+        if guidelines_gate.needs_assessment:
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason="architectural-guidelines-assessment",
+                detail=guidelines_gate.detail,
+                pr_number=pr_context.pr_number,
+                pr_url=pr_context.pr_url,
+            )
+        _write_ship_state(
+            pr_context,
             phase="pr-create",
             iteration=resume.iteration,
             rebase_count=resume.rebase_count,
@@ -579,11 +615,8 @@ def run_ship(
         )
         _breadcrumb(step="pr-create", detail="PR")
         body = _compose_pr_body_for_pr_create(
-            runner=runner,
             pr_context=pr_context,
-            repo_root=repo_root,
-            base_ref=base_ref,
-            resume=resume,
+            architectural_guidelines_note=guidelines_gate.note,
         )
         title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
         ensured: pr.PrResult = pr.ensure_pr(runner=runner, ctx=pr_context, body=body, title=title, cwd=repo_root, base=base_ref)

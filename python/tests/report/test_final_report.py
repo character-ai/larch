@@ -488,7 +488,7 @@ def test_architectural_guidelines_section_consumable_redacted(
     assert "<REDACTED-TOKEN>" in section
 
 
-def test_architectural_guidelines_section_head_mismatch_renders_durable_note(
+def test_architectural_guidelines_section_head_mismatch_skips_durable_note(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -508,13 +508,11 @@ def test_architectural_guidelines_section_head_mismatch_renders_durable_note(
     )
     monkeypatch.setattr(final_report, "_current_head_sha", lambda: "head")
     section = final_report._architectural_guidelines_section(tmp_path)
-    assert "## Architectural guidelines" in section
-    assert "note" in section
-    assert final_report.architectural_guidelines.dropped_note_message() not in section
+    assert section == ""
     assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
 
 
-def test_architectural_guidelines_section_head_mismatch_clears_stale_drop_marker(
+def test_architectural_guidelines_section_head_mismatch_ignores_drop_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -540,9 +538,8 @@ def test_architectural_guidelines_section_head_mismatch_clears_stale_drop_marker
 
     section = final_report._architectural_guidelines_section(tmp_path)
 
-    assert "durable note" in section
-    assert "old marker" not in section
-    assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert section == ""
+    assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == "old marker"
 
 
 def test_architectural_guidelines_section_symlinked_durable_note_skipped(
@@ -560,7 +557,7 @@ def test_architectural_guidelines_section_symlinked_durable_note_skipped(
     assert final_report._architectural_guidelines_section(tmp_path) == ""
 
 
-def test_architectural_guidelines_section_reads_persisted_drop_marker(
+def test_architectural_guidelines_section_ignores_persisted_drop_marker(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -569,10 +566,10 @@ def test_architectural_guidelines_section_reads_persisted_drop_marker(
 
     section = final_report._architectural_guidelines_section(tmp_path)
 
-    assert section == "## Architectural guidelines\n\npersisted notice\n"
+    assert section == ""
 
 
-def test_architectural_guidelines_section_stale_note_persists_then_invalidates(
+def test_architectural_guidelines_section_ignores_fingerprint_staleness(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -595,12 +592,9 @@ def test_architectural_guidelines_section_stale_note_persists_then_invalidates(
 
     section = final_report._architectural_guidelines_section(tmp_path)
 
-    assert final_report.architectural_guidelines.dropped_note_message() in section
-    assert (
-        final_report.architectural_guidelines.read_dropped_note_notice(tmp_path)
-        == final_report.architectural_guidelines.dropped_note_message()
-    )
-    assert not (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
+    assert "note" in section
+    assert final_report.architectural_guidelines.read_dropped_note_notice(tmp_path) == ""
+    assert (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
 
 
 def test_architectural_guidelines_section_happy_path_wins_over_drop_marker(
@@ -630,7 +624,7 @@ def test_architectural_guidelines_section_happy_path_wins_over_drop_marker(
     assert "old marker" not in section
 
 
-def test_architectural_guidelines_section_persist_failure_on_stale_path_invalidates(
+def test_architectural_guidelines_section_current_note_ignores_stale_helpers(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -670,11 +664,11 @@ def test_architectural_guidelines_section_persist_failure_on_stale_path_invalida
         fail_maybe_persist,
     )
 
-    assert final_report._architectural_guidelines_section(tmp_path) == ""
-    assert not (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
+    assert "note" in final_report._architectural_guidelines_section(tmp_path)
+    assert (tmp_path / final_report.architectural_guidelines.DURABLE_NOTE).exists()
 
 
-def test_architectural_guidelines_section_invalidation_error_after_persist_still_renders(
+def test_architectural_guidelines_section_current_note_does_not_invalidate(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -709,13 +703,11 @@ def test_architectural_guidelines_section_invalidation_error_after_persist_still
     monkeypatch.setattr(final_report.architectural_guidelines, "invalidate_implement_note", fail_invalidate)
 
     section = final_report._architectural_guidelines_section(tmp_path)
-    assert final_report.architectural_guidelines.dropped_note_message() in section
+    assert "note" in section
 
     rc, _url, err = final_report.write_final_report(tmp_path, comment_only=True)
     assert (rc, err) == (0, "")
-    assert final_report.architectural_guidelines.dropped_note_message() in (
-        tmp_path / "summary-final.md"
-    ).read_text(encoding="utf-8")
+    assert "note" in (tmp_path / "summary-final.md").read_text(encoding="utf-8")
 
 
 def test_write_final_report_warn_count_dynamic_drop(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

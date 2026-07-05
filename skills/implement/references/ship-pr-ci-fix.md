@@ -1,7 +1,7 @@
 # Ship PR autonomous CI-fix
 
 **Consumer**: /implement Step 8+ on NEXT_ACTION=ci-fix.
-**Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, minimal repair, checks, commit, refresh, reassessment, push, and ship re-entry procedure.
+**Contract**: Owns the main-agent CI-fix attempt guard, CI log capture, minimal repair, checks, commit, refresh, push, and ship re-entry procedure.
 **When to load**: **MANDATORY: READ ENTIRE FILE** only on NEXT_ACTION=ci-fix after fork and repo-unavailable skips are ruled out, and after `ship pre-fix-rebase` has emitted `NEXT_ACTION=continue`. Load this before any autonomous repair step that may re-invoke `step-8-ship.sh`. Any autonomous repair path ending in ship re-invoke must run the foreground stale-handoff clear from SKILL.md Step 8+ immediately before the background launcher fence.
 
 This reference retains the Python driver non-zero routing contract for exit-3 CI handoffs. The `ci-fix` action covers `first-fixer-non-health`, `ship-pr-internal-lint-fix`, `ci-local-unfixable:*`, and exact `local-unfixable`. `ci-fix-exhausted` remains operator-bail.
@@ -19,5 +19,5 @@ Read `.ship-route-exit-handoff.env` with `larch_io.read_kvs` where applicable be
   8. Stage edited files explicitly with `git add -- <paths>`.
   9. Commit via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" git commit -m "Fix CI failure (main-agent)"`.
   10. Refresh run logs with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" run-log refresh --state-file "$IMPLEMENT_TMPDIR/ship-pr-state.sh" --implement-tmpdir "$IMPLEMENT_TMPDIR"`.
-  11. Rerun architectural-guidelines Phase A before the next ship re-invoke when staged or durable guideline artifacts exist.
+  11. Do not rerun architectural-guidelines Phase A and do not call guideline invalidate or pin helpers. After commit, log refresh, and push, the next `step-8-ship.sh` relaunch owns compose-time reassessment and will request `NEXT_ACTION=guidelines-assessment` when `HEAD` or the final diff changed.
   12. Push with `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" push branch`, then run the foreground stale-handoff clear from SKILL.md Step 8+ in the same turn, then re-invoke `step-8-ship.sh` with the single-line launcher fence and `run_in_background: true`.

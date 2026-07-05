@@ -13,7 +13,6 @@ from larch.core.proc import Runner
 from larch.core.run_context import RunContext
 from larch.errors import PrePushConflictHandoff, ShipError
 from larch.git import gh
-from larch.git import git
 from larch.git import push
 from larch.git import rebase
 from larch.outcomes import Outcome
@@ -21,7 +20,6 @@ from larch.report import run_logs
 from larch.implement.ship_state import _write_ship_state, _breadcrumb
 from larch.implement.ship_result import ShipResult
 from larch.implement.ship_pr import _write_terminal_state, _publish_post_pr_terminal_snapshot
-from larch.implement.ship_guidelines import _pin_or_invalidate_guidelines_note
 
 if TYPE_CHECKING:
     from larch.implement.ship_resume import ResumePlan
@@ -217,14 +215,7 @@ def _ship_rebase_phase(
         )
         raise
     rebase_count += 1
-    head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
     _ = result.rebased
-    _ = _pin_or_invalidate_guidelines_note(
-        implement_tmpdir=working.tmpdir,
-        head_sha=head_sha,
-        base_ref=f"{base_remote}/{base_ref}",
-        repo_root=cwd,
-    )
     return ShipRebasePhaseResult(rebase_count)
 
 
@@ -256,14 +247,7 @@ def _ship_phase14_rebase(
         )
         phase14_flag.unlink(missing_ok=True)
         rebase_count += 1
-        head_sha = git.try_rev_parse(runner, "HEAD", cwd=cwd) or ""
         _ = result.rebased
-        _ = _pin_or_invalidate_guidelines_note(
-            implement_tmpdir=working.tmpdir,
-            head_sha=head_sha,
-            base_ref=f"{base_remote}/{base_ref}",
-            repo_root=cwd,
-        )
         _write_ship_state(
             working,
             phase="ci-initial",

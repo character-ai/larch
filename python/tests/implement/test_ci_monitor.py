@@ -2168,23 +2168,12 @@ def test_evaluate_failure_pending_reload_failed_jobs_before_force_push(
 
 
 
-def test_run_ci_fix_pending_retry_pins_guidelines_before_push(
+def test_run_ci_fix_pending_retry_defers_guidelines_to_compose_gate(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
     ctx = make_run_context(tmpdir=str(tmp_path), run_id="run-abc")
     calls: list[object] = []
-
-    def fake_try_rev_parse(*_args: object, **_kwargs: object) -> str:
-        calls.append("resolve-head")
-        return "current-head"
-
-    def fake_pin_or_invalidate(**kwargs: object) -> bool:
-        calls.append(("pin", kwargs))
-        return False
-
-    def fail_raw_invalidate(*_args: object, **_kwargs: object) -> bool:
-        raise AssertionError("pending retry should use pin-before-invalidate helper")
 
     def fake_stage_and_push(
         *_args: object,
@@ -2207,9 +2196,6 @@ def test_run_ci_fix_pending_retry_pins_guidelines_before_push(
         calls.append(("callback-return", warning_logged))
         return True, "current-head", (), False, False
 
-    monkeypatch.setattr(ci_monitor.git, "try_rev_parse", fake_try_rev_parse)
-    monkeypatch.setattr(ci_monitor.ship_guidelines, "_pin_or_invalidate_guidelines_note", fake_pin_or_invalidate)
-    monkeypatch.setattr(ci_monitor.ship_guidelines, "_invalidate_guidelines_note", fail_raw_invalidate)
     monkeypatch.setattr(ci_monitor, "stage_and_push", fake_stage_and_push)
 
     fix = ci_monitor.run_ci_fix(
@@ -2229,16 +2215,6 @@ def test_run_ci_fix_pending_retry_pins_guidelines_before_push(
     assert fix.status == "pushed"
     assert calls == [
         "before-callback",
-        "resolve-head",
-        (
-            "pin",
-            {
-                "implement_tmpdir": str(tmp_path),
-                "head_sha": "current-head",
-                "base_ref": "upstream/trunk",
-                "repo_root": str(tmp_path),
-            },
-        ),
         ("callback-return", False),
     ]
 
