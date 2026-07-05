@@ -36,6 +36,7 @@ from larch.implement import (
 from larch.core import config
 from larch.core import process_identity
 from larch.core import logging_util
+from larch.implement.bg_wait import _write_bg_wait_marker
 from larch.report import run_logs
 
 if TYPE_CHECKING:
@@ -48,11 +49,54 @@ def _git(repo: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> None:
     (tmp_path / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
-    dispatch_commit_route._write_bg_wait_marker(tmpdir=tmp_path, step="implement-step3-checks", timeout_s=15600)
+    _write_bg_wait_marker(tmpdir=tmp_path, step="implement-step3-checks", timeout_s=15600)
 
     marker_text = (tmp_path / ".bg-wait-active").read_text(encoding="utf-8")
     assert "STEP=implement-step3-checks\n" in marker_text
     assert f"CLONE_PATH={tmp_path}\n" in marker_text
+
+
+
+def test_checks_commit_route_step3_clears_stale_sidecars_before_marker_write(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / ".completed").mkdir()
+    stale_sentinel = tmp / ".completed" / "step-3-terminal"
+    probe_denials = tmp / "bg-poll-guard-probe-denials.step-3-terminal.count"
+    stale_sentinel.write_text("stale", encoding="utf-8")
+    probe_denials.write_text("1", encoding="utf-8")
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
+    seen: dict[str, str] = {}
+    original_write = dispatch_commit_route._write_bg_wait_marker
+
+    def spy_write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
+        assert tmpdir == tmp
+        assert step == "implement-step3-checks"
+        assert timeout_s == 15600
+        assert not stale_sentinel.exists()
+        assert not probe_denials.exists()
+        original_write(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
+        seen["marker"] = (tmpdir / ".bg-wait-active").read_text(encoding="utf-8")
+
+    def fake_impl(args: Any, implement_tmpdir: Path) -> int:
+        assert args.checks_site == "step3"
+        assert args.commit_site == "step4"
+        assert implement_tmpdir == tmp
+        assert not probe_denials.exists()
+        return 0
+
+    monkeypatch.setattr(dispatch_commit_route, "_write_bg_wait_marker", spy_write_bg_wait_marker)
+    monkeypatch.setattr(dispatch_commit_route, "_checks_commit_route_main_impl", fake_impl)
+
+    rc = dispatch_commit_route.checks_commit_route_main(["--checks-site", "step3", "--commit-site", "step4"])
+
+    assert rc == 0
+    assert "TIMEOUT_S=15600\n" in seen["marker"]
+    assert stale_sentinel.is_file()
+    assert stale_sentinel.read_text(encoding="utf-8") == ""
+    assert not (tmp / ".bg-wait-active").exists()
 
 
 def test_run_step_checks_main_arms_step3_bg_wait_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
