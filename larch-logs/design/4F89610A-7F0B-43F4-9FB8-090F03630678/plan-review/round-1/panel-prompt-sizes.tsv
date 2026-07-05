@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	16597	4150	13357	3340	3240	810		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	13166	3292	13069	3268	97	25		0	0
+design Step 3	phase1	1	dyn-codex-plan-oos-prefix-correctness	plan-review	codex	dyn-codex-plan-oos-prefix-correctness.txt	13483	3371	12935	3234	548	137		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	16588	4147	13348	3337	3240	810		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	16612	4153	13372	3343	3240	810		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	13181	3296	13084	3271	97	25		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	13179	3295	13082	3271	97	25		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	16610	4153	13370	3343	3240	810		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	13157	3290	13060	3265	97	25		0	0
+design Step 3	phase1	1	dyn-cursor-plan-oos-prefix-correctness	plan-review	cursor	dyn-cursor-plan-oos-prefix-correctness.txt	16914	4229	13223	3306	3691	923		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	8407	2102	4493	1124	3914	979	agents/orchestrator-aggregator.md	4397	1100
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	10323	2581	9049	2263	1274	319		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	10323	2581	9049	2263	1274	319		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	10323	2581	9049	2263	1274	319		0	0
