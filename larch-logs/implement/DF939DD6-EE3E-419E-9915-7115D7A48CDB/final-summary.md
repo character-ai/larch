@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 00:17:54
-- **Cost**: 💰 TOTAL ~$4.99: Claude $0.55, Codex-5.5 $1.78, Codex-mini $1.11, Cursor $1.37, Claude (subprocess) $0.18  |  Tokens: 9475k
+- **Cost**: 💰 TOTAL ~$5.37: Claude $0.93, Codex-5.5 $1.78, Codex-mini $1.11, Cursor $1.37, Claude (subprocess) $0.18  |  Tokens: 10388k
 - **Issue**: #6346: https://github.com/character-ai/larch/issues/6346
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 0/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6364
 - **Exec issues**: 0
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/DF939DD6-EE3E-419E-9915-7115D7A48CDB/`
@@ -64,3 +64,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_2** (important): blocked_sources.json must be rebuilt after rescues. Concern: Post-rescue regrouping can leave the blocked-source set stale, so a source that still has unresolved merit can be treated as closable or eligible for `oos-5` on the old prompt-side state.
 - **Round 1 OOS_3** (nit): Stale Python path comment. Concern: A maintainer comment points to an outdated Python path, which can mislead future edits.
 - **Round 1 OOS_4** (latent): merit_pending close-eligible path lacks a pin test. Concern: The close-eligible path lacks a test that pins the new `merit_pending` blocking behavior, so a prompt-side omission could slip through CI.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
