@@ -1,0 +1,62 @@
+### FINDING_1: Inline status-print templates bypass the em-dash lint
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned markdown em-dash scan covers `Print:` backtick literals and line-leading `⏩`, but inline orchestrator status-print templates like ``print `⏩ ... — ...` `` still fall through. That leaves the highest-traffic design/research skill prose able to emit U+2014 while the lint passes, and the step-5 gate text does not force markdown scrub coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Extend the markdown scanner to also flag em-dash inside inline \`print \`…\`\` backtick literals (and matching reference prose), or add an explicit firm scrub step for those literals in every listed skill/reference file`
+  - From Cursor-Innovation: `Extend \`lint_em_dash_output.py\` to scan em-dash inside backtick status-print templates on lines matching \`print \`⏩\` (and equivalent \`Print:\` bodies), or add an explicit scrub requirement for those literals in the firm-listed skill/reference files before enabling CI.`
+  - From Cursor-Innovation: `Reword step 5 to require scrubbing every in-scope emitted surface (Python sinks plus markdown status-print literals) or document that inline \`\`print \`⏩\` \`\` templates must be included in the scanner scope and scrub checklist.`
+  - From Codex-Requirements: `Add scanner coverage for inline print or Print backticked status literals, at least for literals beginning with the existing status glyphs, and add a focused fixture`
+
+### FINDING_2: Runtime sink coverage misses several output wrappers
+- **Reviewer(s)**: Cursor-Arch, Codex-Arch, Cursor-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned AST sink list still misses multiple operator-visible emission paths, including module-level breadcrumb dict values joined into `print()`, `_err()` stderr warnings, `_core_diagnostic`, and `BreadcrumbWriter.emit` call shapes. That lets U+2014 survive in runtime output even if the `print()`-site scrub passes.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: `Scrub those dict literals in the prerequisite pass and either treat known breadcrumb dict constants as in-scope output strings for the lint, or add a targeted regression that plants U+2014 in a dict value that is joined into a \`print()\` call and expect failure`
+  - From Cursor-Arch: `Add \`_err(\` to the AST sink list (or treat it as an alias of \`print\` to stderr) alongside \`print\`, \`_diag\`, and \`logging_util.*\`; include a unit test for \`_err("… — …")\``
+  - From Codex-Arch: `Add BreadcrumbWriter.emit call shapes used in the tree to lint-em-dash-output and cover them in test_lint_em_dash_output.py.`
+  - From Cursor-Pragmatic: `Add \`_core_diagnostic\` (and any other thin stderr wrappers in \`python/larch/**\`) to the AST sink list, or require scrubbing every existing \`_core_diagnostic\` literal in the same prerequisite pass that clears \`print\`/\`logging_util.diagnostic\` sites.`
+  - From Codex-Requirements: `Resolve logging_util sinks through imports from larch.core.logging_util and include BreadcrumbWriter.emit, with one focused regression fixture`
+
+### FINDING_3: Closure scanner colon switch undercounts mandatory load directives
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Cursor-Requirements
+- **Severity**: important
+- **Concern**: Switching the closure scanner to colon-only matching without sweeping every loaded `MANDATORY READ ENTIRE FILE` trigger leaves the refreshed closure baseline undercounted. Existing SKILL.md files, nested references, and harness pins can still point at prompt sources that the scanner no longer sees.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: `Make the firm sweep cover every MANDATORY READ ENTIRE FILE marker in closure-scanned sources, especially skills/design/SKILL.md, skills/implement/SKILL.md, skills/review/SKILL.md, skills/research/SKILL.md, and generated reviewer agent/template sources.`
+  - From Codex-Innovation: `Make the firm sweep cover every scanner-relevant MANDATORY READ ENTIRE FILE load directive in the gated SKILL.md files and harness pins, then run lint skill-closure-growth before refreshing the baseline.`
+  - From Codex-Pragmatic: `Add every closure-scanned MANDATORY READ ENTIRE FILE trigger file to the firm colon sweep, or defer the closure scanner exact-colon change until those trigger lines are migrated`
+  - From Cursor-Requirements: `Add ### UPDATED rows for each reference above; replace MANDATORY — READ ENTIRE FILE with the colon form everywhere it appears, including nested load directives inside ship-pr-ci-exit-matrix.md and rebase-checkpoint-routing.md.`
+
+### FINDING_4: Dev skill directive sweep still sits in optional scope
+- **Reviewer(s)**: Codex-Arch, Codex-Innovation, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The readability-preamble lint dynamically scans `.claude/skills/*/SKILL.md`, but the plan leaves those files under `MAY_UPDATE`. If they are skipped, existing dev skills keep the old separator and the colon-only regex reports missing directives, so the required lint fails or the tree stays partially unsanitized.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: `Move the dev skill directive sweep from MAY_UPDATE to a firm UPDATED requirement or otherwise make the lint contract explicitly exclude those files.`
+  - From Codex-Innovation: `Promote .claude/skills/*/SKILL.md to firm UPDATED, or add a firm sweep of every dynamic dev skill directive, including analyze-bugs.`
+  - From Codex-Pragmatic: `Promote .claude/skills/*/SKILL.md to firm UPDATED scope or otherwise require every dynamic dev skill directive to use the colon form`
+  - From Codex-Requirements: `Move .claude/skills/*/SKILL.md to firm UPDATED scope or list the concrete dev skill files, including analyze-bugs`
+
+### FINDING_5: Python runtime scrub scope is too small for the em-dash output lock
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: The firm file list does not cover the `python/larch` runtime output sites that still contain U+2014, so enabling `lint em-dash-output` on merge can fail CI unless those prerequisite scrubs already landed. The current plan leaves too much runtime surface outside the explicit deliverable.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: `Add a firm deliverable: either ### UPDATED rows for every in-scope python/larch output site, or an explicit mechanical scrub step with a grep-driven file list and a hard gate that prerequisite scrub PRs are merged before CI wiring lands.`
+
+### FINDING_6: Markdown scope files are missing from the firm UPDATED list
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: Several `⏩`-prefixed markdown status-print literals still carry U+2014 but are not listed in the firm `### UPDATED` scope, so the markdown side of the em-dash lock can stay green while those emitted breadcrumbs remain unsanitized. The runtime mirror in `design_postplan.py` adds a second path that will also fail if the scrub is incomplete.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: `Add ### UPDATED rows for all six markdown files; colon-replace every ⏩ status-print literal; keep python/larch mirrors in the runtime scrub deliverable above.`
+
+### FINDING_7:
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Focus area**: risk-integration
+- **Location**: python/larch/**/*.py
+- **Concern**: [SCOPE-REDUCTION] The co-land scrub branch still has no firm file list for existing runtime U+2014 output.. Scenario: Approach step 5 allows enabling `lint em-dash-output` after prerequisite merges OR an in-PR scrub, but `### UPDATED`/`### NEW` only cover directive-separator edits plus the lint itself. Dozens of `python/larch/**` `print`/`_diag`/`logging_util.diagnostic` literals still contain U+2014 (e.g. design_step5b.py, preflight.py, bootstrap.py, design_postplan.py). If scrub PRs are not merged first, implementers can wire CI and hit immediate red with no enumerated repair surface.
+- **Proposed resolution**: Make prerequisite scrub a hard gate (drop the in-PR OR), or add an explicit `### UPDATED` batch for every in-scope runtime output file that still contains U+2014 before CI enablement, and keep acceptance on `python3 python/cli.py lint em-dash-output` passing on the merged tree.

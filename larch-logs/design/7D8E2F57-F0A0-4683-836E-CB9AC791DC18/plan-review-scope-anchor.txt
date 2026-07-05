@@ -1,0 +1,24 @@
+**Problem**
+
+Two gaps let em-dash regressions recur. First, the readability directive line itself uses an em-dash: `**MANDATORY — READ ENTIRE FILE ...**`. "Never use em dashes" is delivered with an em-dash, and the model that reads it then mirrors the separator. Second, nothing lints output for em-dashes. The readability-preamble lint only checks that the directive text is present, not that any prose obeys it. So every scrub will drift back.
+
+**Evidence**
+
+- `python/larch/core/alias_skill.py:12-13`: the directive constant contains an em-dash.
+- `python/larch/lint/lint_readability_preamble.py:19`: the regex `MANDATORY\s+[—-]\s+READ` explicitly permits the em-dash.
+- No lint anywhere scans emitted strings, templates, or generated run-log prose for em-dashes.
+
+**Fix**
+
+- Change the MANDATORY directive constant to drop the em-dash (use a colon). Update the preamble lint regex, the anchor matching, and the fixtures. Sweep every `SKILL.md` and reference file that embeds the directive line so the lint stays green.
+- Add a new lint that scans larch-authored emitted strings (Python f-strings and `print` under the runtime surface) and skill-markdown status-print literals for em-dashes. Wire it into the Makefile and CI.
+
+**Scope and risk**
+
+This is the lock. It must land after the two scrub issues, or CI goes red on the leftover em-dashes. Decide the new lint's scope carefully: cover larch-authored output, and do not false-positive on quoted code, file content, or the Precision-Contract byte-stable tokens. Update `test_lint_readability_preamble.py` and `test_alias_skill.py`.
+
+**Acceptance**
+
+- The directive line and its constant contain no em-dash; the preamble regex no longer accepts one.
+- The new lint fails on a planted em-dash in an emitted string and passes on the current tree.
+- Makefile target and CI wiring added.

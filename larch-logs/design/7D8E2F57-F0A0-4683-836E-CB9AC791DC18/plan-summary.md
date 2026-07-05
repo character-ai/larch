@@ -1,0 +1,1 @@
+Plan: change the readability directive separator to a colon, make the preamble lint reject U+2014, add a scoped output lint for emitted U+2014 text, wire it through Makefile, pre-commit, and CI, and update tests and docs.

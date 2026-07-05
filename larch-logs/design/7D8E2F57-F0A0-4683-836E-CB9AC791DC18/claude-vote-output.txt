@@ -1,0 +1,12 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- latent severity, shell printf is explicitly out-of-scope for the planned lint per the scope anchor; fails materiality gate
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplicate of round-1 OOS_1 (YES=0/3) at the same location; latent, shell scope not covered by plan
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- finding itself says current call sites appear clean; speculative future-coverage gap fails default-deny materiality gate
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- duplicate of OOS_2 above and round-1 OOS_1; same file/line
+OOS_5: NO CORRECTNESS=true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- nit severity and plan explicitly excludes docs/non-output prose from lint scope; fails materiality gate
