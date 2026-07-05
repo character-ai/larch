@@ -164,7 +164,7 @@ def _write_rejected_oos(path: Path, *, title: str, severity: str = "latent", con
 
 
 def _write_classification(path: Path, *, finding_id: str = "OOS_1", result: str = "rejected") -> None:
-    path.write_text(
+    _ = path.write_text(
         "finding_id\treviewer_slots\tvoting_result\tscope\n"
         f"{finding_id}\tcodex-specialist-correctness\t{result}\toos\n",
         encoding="utf-8",
