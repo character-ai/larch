@@ -4092,7 +4092,7 @@ def test_checks_repair_loop_main_wires_lint_and_capture_sites(
     }
 
 
-def test_checks_repair_loop_main_stall_exit_is_parseable(
+def test_checks_repair_loop_main_step6_no_changes_stale_falls_back_to_main_agent(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
     capsys: pytest.CaptureFixture[str],
@@ -4136,9 +4136,67 @@ def test_checks_repair_loop_main_stall_exit_is_parseable(
         str(tmp_path),
     ])
     out = capsys.readouterr().out
+    assert rc == 0
+    assert "NEXT_ACTION=main-agent-edit" in out
+    assert "LOOP_STATUS=no-changes-stale" in out
+    assert "LINT_FIX_LEDGER_READY=true" in out
+    assert "LINT_FIX_LEDGER_SITE=step6" in out
+    assert "LINT_FIX_LEDGER_TRIGGER=main-agent-required" in out
+    assert "LINT_FIX_LEDGER_STEP=6" in out
+    assert "LINT_FIX_LEDGER_PHASE=checks" in out
+    assert "LINT_FIX_LEDGER_DISPATCHER=lint-fix-loop" in out
+    assert "LINT_FIX_LEDGER_EXIT_CODE=1" in out
+    assert f"LINT_FIX_LEDGER_FAILURE_DETAIL_LOG={checks_log.resolve()}" in out
+
+
+def test_checks_repair_loop_main_ship_pr_no_changes_stale_stalls(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    session = _checks_session(tmp_path, monkeypatch)
+    checks_log = session / "initial.redacted.log"
+    checks_log.write_text("err\n", encoding="utf-8")
+    fail_log = session / "fail.redacted.log"
+    fail_log.write_text("still bad\n", encoding="utf-8")
+
+    def fake_run_lint_fix(_runner: object, **_kwargs: object) -> checks.FixOutcome:
+        return checks.FixOutcome(
+            status="no-changes",
+            delta_paths=(),
+            failure_reason=None,
+            commit_sha=None,
+            head_changed=False,
+            coder_tool="codex",
+        )
+
+    def fake_run_relevant_checks(
+        _runner: object,
+        *,
+        site: str,
+        tmpdir: str,
+        repo_root: str,
+    ) -> checks.ChecksResult:
+        _ = tmpdir, repo_root
+        return _repair_loop_failed_result(fail_log, site=site)
+
+    monkeypatch.setattr(_clf, "run_lint_fix", fake_run_lint_fix)
+    monkeypatch.setattr(_clf, "run_relevant_checks", fake_run_relevant_checks)
+    rc = checks.checks_repair_loop_main([
+        "--tmpdir",
+        str(session),
+        "--site",
+        "ship-pr-ci-initial",
+        "--checks-log",
+        str(checks_log),
+        "--repo-root",
+        str(tmp_path),
+    ])
+    out = capsys.readouterr().out
     assert rc == 1
     assert "NEXT_ACTION=stall" in out
     assert "LOOP_STATUS=no-changes-stale" in out
+    assert "LINT_FIX_LEDGER_READY" not in out
 
 
 def test_checks_repair_loop_main_validation_failure_emits_stall(
