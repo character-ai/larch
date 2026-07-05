@@ -1,0 +1,19 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- quoted-path parsing is a robustness edge, not required for this feature path
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- reusing consumer_repo_root is an implementation choice, not required to deliver the fix
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- version fallback is explicitly part of the approved direction
+FINDING_6: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- version fallback is explicitly part of the approved direction
+FINDING_7: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- duplicate-helper cleanup is optional, not a necessity gate issue
+FINDING_8: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- version-fallback work is in scope for the approved plan
+FINDING_9: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same duplicate-helper concern; not required for acceptance
+FINDING_10: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- version-fallback changes are explicitly scoped in the plan
+FINDING_11: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- helper duplication is not necessary to close the feature gap
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- wrapper allowlist loss is a separate latent path, not material to this issue
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- docs/key-list omission is bookkeeping, not a feature blocker
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same separate wrapper-path concern as OOS_1
+OOS_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- drafting-time guideline loading is outside the Gate C persistence defect
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- explicit Step 5c threading is optional once Step 0 persistence is fixed
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- same separate wrapper-path concern as OOS_1
+OOS_7: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- final-summary version text is part of the approved direction, but not a blocker here
+OOS_8: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stall-report version text is likewise not the core persistence defect

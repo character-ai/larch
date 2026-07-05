@@ -1,0 +1,24 @@
+### FINDING_1: Bind `REPO_ROOT` before guideline helpers
+- **Reviewer(s)**: Cursor-Arch, Cursor-Innovation, Cursor-Pragmatic, Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: Gate C and Step 1d.7 invoke guideline helpers from fresh Bash fences while relying on `$REPO_ROOT` that is not rebound in-fence, so `present-note` / `persist-design-assessment` can still resolve as if the repo were absent and silently skip the assessment.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In each Presentation/persist helper Bash fence, read REPO_ROOT from $DESIGN_TMPDIR/source-env.sh (or source current-design-env-$PPID.sh) before the first present-note/persist call; keep the planned empty-root repair stop
+  - From Cursor-Innovation: Before the first guideline helper in each gate, load the Step 0 capture: source `$DESIGN_TMPDIR/source-env.sh` in the same Bash fence, or emit `REPO_ROOT=` from `step0_session_main` stdout and require a repair stop when it is empty before any helper call. Do not rely on `session read-key` against `source-env.sh` as written today; lines use an `export` prefix.
+  - From Cursor-Pragmatic: Add a binding step before every guideline helper call: read REPO_ROOT from $DESIGN_TMPDIR/source-env.sh via session read-key (or source that file once), then apply the existing repair-stop when empty; mirror the same pattern in design-outline.md.
+  - From Cursor-Requirements: Require each guideline helper fence to source $DESIGN_TMPDIR/source-env.sh first (or inline-read REPO_ROOT from that file) before present-note / persist-design-assessment; keep the empty-REPO_ROOT repair stop after binding.
+
+### FINDING_2: Parse quoted `REPO_ROOT` exports correctly
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: REPO_ROOT recovery must parse shlex-quoted exports, not mirror the bool regex. Scenario: _export_line writes export REPO_ROOT via shlex.quote; a bool-style ^export REPO_ROOT=...$ regex will not recover quoted paths, so init_runparams refresh can still drop REPO_ROOT and re-open the clobber path
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Implement _recover_prior_path using parse_allowlisted_env_line (or equivalent shlex split) and wire it into write-design-env when --repo-root is absent
+
+### FINDING_3: Gate C regression must cover the persistence contract
+- **Reviewer(s)**: Codex-Arch, Codex-Requirements
+- **Severity**: important
+- **Concern**: The planned test only exercises helper return codes and can miss the skip-approve Gate C contract, so the flow could still omit the bounded warning or advance to auto-approval/Step 5 after a failed persist.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Revise the planned regression to pin the Gate C branch itself. Exercise an available Gate C harness, or add a narrow markdown contract test if no executable harness exists, that verifies the skip-approve branch runs `present-note --repo-root "$REPO_ROOT"` and `persist-design-assessment --repo-root "$REPO_ROOT"`, writes the assessment artifact, and stops with the bounded warning on forced persist failure.
+  - From Codex-Requirements: Add a focused regression or validation step that exercises the Gate C non-zero persistence branch and asserts the bounded warning is recorded and the flow does not prompt, auto-approve, or transition to Step 5
