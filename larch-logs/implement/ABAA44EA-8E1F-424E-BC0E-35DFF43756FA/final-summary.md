@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 01:15:04
-- **Cost**: 💰 TOTAL ~$28.28: Claude $1.92, Codex-5.5 $16.58, Codex-mini $3.67, Cursor $5.24, Claude (subprocess) $0.87  |  Tokens: 56485k
+- **Cost**: 💰 TOTAL ~$28.80: Claude $2.44, Codex-5.5 $16.58, Codex-mini $3.67, Cursor $5.24, Claude (subprocess) $0.87  |  Tokens: 57990k
 - **Issue**: #6335: https://github.com/character-ai/larch/issues/6335
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD structural-loc
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/3 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6367
 - **Exec issues**: 0
 - **Warnings**: 0
 - **Run logs**: `larch-logs/implement/ABAA44EA-8E1F-424E-BC0E-35DFF43756FA/`
@@ -100,3 +100,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_9** (nit): No git integration test for defer_push=False pre-fix push. Concern: There is still no git integration test for the `defer_push=False` pre-fix push path.
 - **Round 1 OOS_10** (nit): Phase14 handoff conflict regression case is untested. Concern: The interaction where `enable_pre_push_handoff` creates the flag and a later `ship_pre_fix_rebase_main` must not continue while conflicts remain is still uncovered.
 - **Additional candidates**: 5 omitted by the final-summary cap.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
