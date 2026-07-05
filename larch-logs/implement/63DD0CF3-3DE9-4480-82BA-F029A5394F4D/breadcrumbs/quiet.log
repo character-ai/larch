@@ -86,6 +86,7 @@ ship.py: finalize-state-written: path=<TMPDIR>/finalize-state.sh outcome=STALLED
 === larch-quiet-ship.py-40295.log ===
 === larch-quiet-ship.py-49515.log ===
 === larch-quiet-ship.py-57535.log ===
+=== larch-quiet-ship.py-59742.log ===
 === larch-quiet-ship.py-88649.log ===
 === larch-quiet-tracking-issue-upsert-summary-31940.log ===
 === larch-quiet-tracking-issue-upsert-summary-34595.log ===
