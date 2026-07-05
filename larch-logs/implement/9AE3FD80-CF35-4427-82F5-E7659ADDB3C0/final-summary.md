@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:41:34
-- **Cost**: 💰 TOTAL ~$16.50: Claude $1.12, Codex-5.5 $8.77, Codex-mini $0.40, Cursor $4.79, Claude (subprocess) $1.42  |  Tokens: 24876k
+- **Cost**: 💰 TOTAL ~$17.02: Claude $1.64, Codex-5.5 $8.77, Codex-mini $0.40, Cursor $4.79, Claude (subprocess) $1.42  |  Tokens: 26278k
 - **Issue**: #6330: https://github.com/character-ai/larch/issues/6330
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
@@ -69,3 +69,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_6** (nit): security pool routing traceability gap. Concern: Security pool routing still relies on `test_plan_review.py`, which is only a traceability gap.
 - **Round 1 OOS_7** (nit): Codex jsonl sidecar path untested. Concern: The lazy sidecar test covers Cursor `.tsv` only, so Codex `.jsonl` lazy materialization remains unverified.
 - **Round 1 OOS_8** (important): emit-tally subprocess return code is ignored. Concern: `_emit_tally` ignores the `emit-tally` subprocess return code, so caller code can continue and copy local artifacts to the parent session after a partial OOS sink is rejected.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
