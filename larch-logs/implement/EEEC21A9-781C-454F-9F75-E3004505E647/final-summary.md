@@ -2,14 +2,14 @@
 
 - **Mode**: N/A
 - **Duration**: 00:43:10
-- **Cost**: 💰 TOTAL ~$22.65: Claude $0.87, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.41  |  Tokens: 34761k
+- **Cost**: 💰 TOTAL ~$23.13: Claude $1.34, Codex-5.5 $16.95, Codex-mini $0.62, Cursor $2.80, Claude (subprocess) $1.42  |  Tokens: 35948k
 - **Issue**: #6370: https://github.com/character-ai/larch/issues/6370
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
 - **Lines (PR diff)**: N/A
-- **OOS filed**: 0
+- **OOS filed**: 1: https://github.com/character-ai/larch/issues/6390
 - **Exec issues**: 0
 - **Warnings**: 1
 - **Run logs**: `larch-logs/implement/EEEC21A9-781C-454F-9F75-E3004505E647/`
@@ -75,3 +75,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_4** (latent): Step-check timeout fallback is hardcoded. Concern: `run-step-checks.sh` can silently fall back to literal `10800` if the Python constant import or parse fails, letting the shell marker drift from the Python timeout.
 - **Round 1 OOS_5** (latent): Route-exit phase14 reship routing trusts bare flag presence. Concern: The route-exit helper still keys on phase14 flag presence alone, so a bare or partially rewritten flag can emit `NEXT_ACTION=reship` even when the allowlisted reason metadata is missing.
 - **Round 1 OOS_6** (important): Mixed degraded and structured issue sources drop totals. Concern: When the run-dir input is legacy degraded NDJSON and the tmpdir input is structured markdown rows, the final merge can lose the degraded totals and under-report execution issues.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
