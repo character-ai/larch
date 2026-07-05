@@ -1,0 +1,6 @@
+ISSUE_1_NUMBER=6347
+ISSUE_1_URL=https://github.com/character-ai/larch/issues/6347
+ISSUE_1_TITLE=Extend repeat-fingerprint silent-yield rule: generic Immediate-background wait template, Step 3 routing preamble, and anti-pattern #4 Tier-1 carve-out gaps
+ISSUES_CREATED=1
+ISSUES_FAILED=0
+ISSUES_DEDUPLICATED=0

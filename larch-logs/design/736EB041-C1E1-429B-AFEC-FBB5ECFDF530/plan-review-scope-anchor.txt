@@ -1,0 +1,45 @@
+Extend repeat-fingerprint silent-yield rule: Tier-1 probe prose, ambiguous contract, missing contract tests, and anti-pattern title
+
+OOS items from PR #6332 (issue #6309):
+
+1. Tier-1 probe rules still miss the repeat carve-out. The Tier-1 probe prose in AGENTS.md, orchestrator-never, and the Step 3 / Step 5c routing text still lacks a byte-identical repeat carve-out, so readers can keep following the old probe-on-non-empty rule instead of the silent-yield path.
+
+2. Fingerprint matching contract is ambiguous. The rule says "byte-identical" repeats but fingerprints only the first 200 chars, so prefix-only matches can be misclassified as either new notifications or repeats.
+
+3. Contract tests do not pin repeat-fingerprint literals. The acceptance harnesses only pin the empty-output and Step 3 terminal literals, so later prose edits could remove the repeat-fingerprint carve-out without failing CI.
+
+4. Anti-pattern #5 title still implies empty-output only. The title still reads like an empty-output-only rule even though the body now covers repeat notifications, so a reader scanning the heading could miss the byte-identical repeat case.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Extend the byte-identical repeat silent-yield rule to all Tier-1 probe prose (AGENTS.md, orchestrator-never.md, SKILL.md Step 5c inline text).
+- Clarify the fingerprint contract to remove ambiguity ("prefix-identical, first 200 chars").
+- Pin repeat-fingerprint contract literals in acceptance tests so CI catches regressions.
+- Fix the anti-pattern #5 title to reflect both the empty-output and repeat-notification cases.
+
+### Non-goals
+- No runtime/code behavior changes; prose and test-assertion updates only.
+- No changes to the fingerprint algorithm (first-200-chars prefix stays as-is).
+- No changes outside the four identified surfaces.
+
+### Approach sketch
+- Add a single sentence to the AGENTS.md probe-rule paragraph that carves out byte-identical repeats as a silent-yield case.
+- Add a matching carve-out clause to orchestrator-never.md NEVER #3 `/design` section.
+- Add an inline carve-out sentence to SKILL.md Step 5c routing text (line ~622).
+- Rename "byte-identical" to "prefix-identical (first 200 chars)" in design-background-wait.md Step 3 section.
+- Update anti-pattern #5 title in SKILL.md to name both empty-output and prefix-identical-repeat cases.
+- Add `contains "$SHARED_DESIGN_WAIT_MD"` and `contains "$ORCH_NEVER_MD"` assertions in test-design-structure.sh; introduce `AGENTS_MD` variable and pin the new AGENTS.md literal.
+
+### Surfaces in scope
+- `AGENTS.md`
+- `skills/shared/orchestrator-never.md`
+- `skills/shared/design-background-wait.md`
+- `skills/design/SKILL.md`
+- `scripts/test-design-structure.sh`
+- `scripts/test-design-structure.md` (update-triggers section)
+
+### Open questions
+- None.
