@@ -7,3 +7,19 @@
 === larch-quiet-sessionstart-health.sh-90558.log ===
 === larch-quiet-ship.py-4169.log ===
 ship.py: pr-prep: postbump/Flush+Push
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 28s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 43s
+ci_monitor: poll 4/180 pending after 46s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 56s
+ci_monitor: poll 5/180 pending after 60s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 70s
+ci_monitor: poll 6/180 pending after 74s; sleeping 10s
+ci_monitor: CI status query #7 in progress after 84s
+ci_monitor: CI fail after 88s -> evaluate_failure
