@@ -1,0 +1,11 @@
+1	step 8+ adds pre-fix-rebase prose, but it does not yet supply the required one-line launcher fences or the matching fence/structure harness updates, so orchestrators may improvise the argv shape and ci may fail when the fence count changes.
+1	the new pre-fix rebase must use the same fork-aware remote selection as the ship driver; hardcoding `origin/main` can leave forked reship paths rebased onto the wrong base.
+1	unconditionally pre-rebasing reship must not break the existing phase14 rebase-continuation path or drop the resumption keys that keep that handoff alive.
+1	before starting a pre-fix rebase, the helper must detect an existing rebase and either continue into conflict-fix when persisted conflict metadata or unmerged paths are present, or stall safely; it must never launch a second rebase.
+1	if the pre-fix rebase conflicts, the handoff must merge into the existing route-exit env rather than overwriting it, and it must preserve the driver-style rebase phase and counters so ci-fix can resume correctly.
+1	the new verb needs the same zero-exit contract as route-exit: when stdout emits a parseable next_action or pre_fix_rebase_status, the orchestrator should keep going instead of treating the command as a failure.
+1	the new pre-fix rebase exists only as a cli/doc pair, so the python handoff boundary still does not enforce it before ci-fix or reship work starts.
+2	the skip logic only keys off handoff-env metadata, so the flag-based phase14 no-checks reship path can still look like a normal reship and run a redundant pre-fix rebase before the driver's phase14 continuation.
+2	a deferred pre-fix rebase rewrites the branch, but the later ci-fix push path still looks like a plain `git push`, so it can fail non-fast-forward instead of reshipping the fixed branch.
+2	the new pre-fix launcher fences still have the wrong argv shape or an incomplete command, so the launcher and fence-shape harness can reject them before the python gate runs.
+2	the conflict handoff write does not persist the resume metadata into `ship-pr-state.sh`, so later recovery cannot reliably recognize the paused rebase as conflict-resolution state.

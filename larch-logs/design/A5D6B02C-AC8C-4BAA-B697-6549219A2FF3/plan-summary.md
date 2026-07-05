@@ -1,0 +1,1 @@
+Add a Python `ship pre-fix-rebase` handoff gate for autonomous `ci-fix` and `reship` paths. It rebases before any main-agent repair, routes conflicts into existing `conflict-fix`, updates docs, and adds focused dispatch tests.

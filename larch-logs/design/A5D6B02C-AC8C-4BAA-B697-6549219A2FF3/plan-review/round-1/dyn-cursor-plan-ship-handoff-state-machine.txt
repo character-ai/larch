@@ -1,0 +1,83 @@
+Reviewing the pre-fix rebase gate against existing Step 8+ ship routing, parsers, and conflict-handoff contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	important	correctness	python/larch/implement/dispatch_ship.py (planned ship_pre_fix_rebase_main)	Hardcoded base_remote=origin ignores fork CI base	ship.py selects upstream when FORKED_TARGET is true (python/larch/implement/ship.py:622); reship still runs pre-fix in fork mode while ci-fix skips only autonomous repair (skills/implement/SKILL.md:685). Rebasing onto origin/main desyncs the tree from upstream/main CI comparison.	Read FORKED_TARGET from ship-pr-state.sh and pass base_remote=upstream when true, matching ship_merge.py:201-202 / ship.py:622.
+1	in_scope	important	correctness	python/larch/implement/dispatch_ship.py (planned ship_pre_fix_rebase_main)	Rebase-in-progress guard only stalls	Plan edge cases allow conflict routing, but implementation shape emits PRE_FIX_REBASE_STATUS=stall only. Mid-rebase with RESUME_PHASE/CALLER_KIND/CONFLICT_FILES or unmerged paths should enter conflict-fix (python/larch/implement/dispatch_ship.py:183-198, skills/implement/references/conflict-resolution.md:7).	At entry, if git.rebase_in_progress or _ship_route_conflict_handoff_fields is non-empty, populate handoff/state and emit NEXT_ACTION=conflict-fix instead of clobbering with a new rebase.
+1	in_scope	important	correctness	python/larch/implement/dispatch_ship.py (planned ship_pre_fix_rebase_main)	Missing process exit-code contract	Step 8+ parsers assume routable verbs exit 0 whenever NEXT_ACTION is emitted (dispatch_ship.py:396-397; step8_oos_checkpoint_main:558-559). Unspecified non-zero on stall/conflict would abort the orchestrator before branching.	Return 0 whenever stdout emits NEXT_ACTION; reserve non-zero for missing tmpdir/argv failures with no NEXT_ACTION, mirroring ship route-exit.
+1	in_scope	important	risk-integration	python/larch/implement/dispatch_ship.py (planned conflict handler)	Conflict state patch omits PHASE=rebase	Driver conflict handoffs set phase=rebase plus RESUME_PHASE/CALLER_KIND/CONFLICT_FILES (python/larch/implement/ship_merge.py:279-290; python/tests/implement/test_ship.py:5005-5008). Plan patches only the three handoff keys.	Mirror ship_merge PrePushConflictHandoff handling: patch PHASE=rebase (via validated state writer) alongside resume metadata; rely on enable_pre_push_handoff for the phase14 flag (python/larch/git/rebase.py:254-260).
+1	in_scope	important	completeness	skills/implement/SKILL.md (planned Step 8+ fences)	New ship pre-fix-rebase fences need fence-shape harness bump	Adding foreground launcher fences changes skills/implement/SKILL.md bash fence count; scripts/test-implement-fence-shape.sh pins EXPECTED_NEW=20 (lines 36-37) and CI runs make test-implement-fence-shape.	List ### UPDATED: scripts/test-implement-fence-shape.sh and bump EXPECTED_NEW for each new one-line launcher fence.
+
+## Findings
+
+### 1. [correctness] Fork-aware `base_remote` missing for `reship` pre-fix
+The plan hardcodes `base_remote="origin"` and `base_ref="main"`. The active ship driver uses `upstream` when `FORKED_TARGET` is set:
+
+```622:622:python/larch/implement/ship.py
+        base_remote = "upstream" if working.forked or working.forked_target else "origin"
+```
+
+`ci-fix` skips autonomous repair when forked, but `reship` does not. A fork-mode `reship` that runs pre-fix against `origin/main` rebases onto the wrong base relative to fork CI.
+
+### 2. [correctness] Rebase-already-in-progress should route `conflict-fix`, not only `stall`
+The plan’s edge cases allow a conflict route, but the implementation shape always stalls. Existing route-exit logic already promotes persisted `RESUME_PHASE` / `CALLER_KIND` / `CONFLICT_FILES` to `conflict-fix`:
+
+```183:198:python/larch/implement/dispatch_ship.py
+def _ship_route_conflict_handoff_fields(implement_tmpdir: Path) -> dict[str, str]:
+    state_file = implement_tmpdir / "ship-pr-state.sh"
+    resume_phase = _read_kv_file(path=state_file, key="RESUME_PHASE", default="")
+    caller_kind = _read_kv_file(path=state_file, key="CALLER_KIND", default="")
+    conflict_files = _read_kv_file(path=state_file, key="CONFLICT_FILES", default="")
+    if (
+        resume_phase == config.SHIP_PR_RRR_RESUME_PHASE
+        and caller_kind == config.SHIP_PR_PRE_PUSH_CALLER_KIND
+        and conflict_files
+    ):
+        return {
+            "RESUME_PHASE": resume_phase,
+            "CALLER_KIND": caller_kind,
+            "CONFLICT_FILES": conflict_files,
+        }
+    return {}
+```
+
+Pre-fix should reuse this pattern (or `git.rebase_in_progress` plus unmerged paths) before refusing with `stall`, or `conflict-fix` handoffs mid-rebase will stall incorrectly.
+
+### 3. [correctness] Missing stdout exit-code contract for the new verb
+`ship route-exit` returns process rc `0` whenever it emits `NEXT_ACTION`:
+
+```396:397:python/larch/implement/dispatch_ship.py
+    _emit_kv(key="NEXT_ACTION", value=action)
+    return 0
+```
+
+The plan pins stdout KVs but not exit codes. A non-zero rc on `NEXT_ACTION=stall` or `conflict-fix` would break the Step 8+ foreground fence contract.
+
+### 4. [risk-integration] Conflict metadata should include `PHASE=rebase`
+Driver-side `PrePushConflictHandoff` handling always writes `phase="rebase"`:
+
+```279:290:python/larch/implement/ship_merge.py
+    except PrePushConflictHandoff as exc:
+        _write_ship_state(
+            working,
+            phase="rebase",
+            iteration=iteration,
+            rebase_count=rebase_count,
+            fix_attempts=fix_attempts,
+            transient_retries=transient_retries,
+            resume_phase=exc.resume_phase,
+            caller_kind=exc.caller_kind,
+            extra_fields={"CONFLICT_FILES": exc.conflict_csv},
+        )
+```
+
+The plan patches only `RESUME_PHASE`, `CALLER_KIND`, and `CONFLICT_FILES`. Tests expect `PHASE=rebase` on conflict handoff (`python/tests/implement/test_ship.py:5005-5008`). Pre-fix should match that contract; `enable_pre_push_handoff=True` already covers the phase14 flag via `python/larch/git/rebase.py:254-260`.
+
+### 5. [completeness] Fence-shape harness not listed despite new SKILL fences
+The plan updates `skills/implement/SKILL.md` with new foreground `python/cli.py ship pre-fix-rebase` fences but says the fence-shape harness is not required. `scripts/test-implement-fence-shape.sh` enforces `EXPECTED_NEW=20` (lines 36-37). New launcher fences without bumping that constant will fail CI.
+
+## What aligns with the spec
+
+- Scoping pre-fix to `ci-fix` and `reship` only, excluding `operator-bail`, `conflict-fix`, and driver-internal phase 14 rebase, matches `skills/implement/references/ship-pr-exit-matrix.md` and the binding issue.
+- `PRE_FIX_REBASE_REQUIRED=true` in `_write_ship_route_handoff` for `ci-fix`/`reship` matches the audit handoff pattern at `dispatch_ship.py:269-306`.
+- `defer_push=True`, `enable_pre_push_handoff=True`, and `allow_conflict_fix=True` mirror `ship_merge.py:195-205`.
+- `NEXT_ACTION` tokens (`continue`, `conflict-fix`, `stall`) match existing Step 8+ branch parsers in `skills/implement/SKILL.md:680-689` and conflict-resolution’s `ship_pr_pre_push` contract.
+- Removing the merge-ref-sensitive carve-out from `ship-pr-ci-fix.md` step 6 and adding a pre-fix precondition matches the issue acceptance criteria.

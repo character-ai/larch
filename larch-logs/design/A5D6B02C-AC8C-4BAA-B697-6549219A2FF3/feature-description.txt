@@ -1,0 +1,39 @@
+# Rebase on latest main before every ship-PR main-agent fix handoff, in Python
+
+## Summary
+
+When `/implement`'s ship-PR driver bails and hands control back to the main agent to fix a problem, the main agent should fetch latest `main` and rebase the feature branch on top of it **first**, before applying any fix. Apply this on every handoff event, not just today's narrow cases. Enforce it deterministically in Python, not through prose in `.md` references.
+
+## Current behavior
+
+`python/cli.py ship route-exit` emits one `NEXT_ACTION=` token per handoff (see `skills/implement/references/ship-pr-exit-matrix.md`). Rebase-on-`main` is not uniform across them:
+
+- **`ci-fix`** (`skills/implement/references/ship-pr-ci-fix.md`): the main agent makes a minimal repair, runs checks, commits, `push branch`, then re-invokes ship. It rebases onto current `main` **only** for merge-ref-sensitive generated artifacts such as `python/skill-closure-baseline.json` (step 6). A normal source fix never fetches or rebases; the driver rebases later on its own pass.
+- **`conflict-fix`** (`skills/implement/references/conflict-resolution.md`): the driver's rebase phase (`_ship_rebase_phase` / `_ship_phase14_rebase` in `python/larch/implement/ship_merge.py`) already ran a fetch+rebase and paused on conflicts. The main agent continues that paused rebase via `push rebase --continue --no-push`.
+- **`operator-bail`, `oos-pipeline`, `reship`, `stall`**: no fetch+rebase.
+
+The fetch+rebase logic itself lives in `python/larch/git/rebase.py` (`rebase_and_push` / `rebase_push`): fetch `base_remote/base_ref`, then rebase onto it.
+
+## Requested behavior
+
+On every handoff where ship-PR asks the main agent to get involved and fix anything, the first action is:
+
+1. Fetch latest `main`.
+2. Rebase the feature branch on top of it.
+
+Then the main agent applies its fix against the up-to-date tree.
+
+Drive this from Python (the ship driver, or a guarded helper that reuses `python/larch/git/rebase.py`), so the behavior is deterministic and does not depend on prose steps being followed in the `.md` references. Replace the conditional "rebase only for merge-ref-sensitive generated artifacts" carve-out in `ship-pr-ci-fix.md` step 6 with this unconditional, Python-enforced pre-fix rebase.
+
+## Design considerations
+
+- **`conflict-fix` already rebases.** A uniform "rebase first" must not clobber a rebase already in progress. This event may already satisfy the requirement; confirm and avoid a double-rebase.
+- **`ci-fix` ordering shift.** Rebasing before the fix can surface rebase conflicts unrelated to the CI failure. That is the intended tradeoff ("first thing"), but the conflict path must route into the existing conflict-resolution handling rather than failing.
+- **Scope of "bail".** `operator-bail` stops to ask the **user**, not the main agent, to fix autonomously. `/design` should decide whether the pre-fix rebase applies there, or only to autonomous fix paths (`ci-fix` and `reship` re-entries).
+- **Determinism.** Prefer one Python entrypoint at the handoff boundary over per-reference prose. Keep the `.md` files pointing at the Python step instead of restating the rebase procedure.
+
+## Acceptance
+
+- The pre-fix rebase is enforced by Python code and covered by a regression test.
+- Every autonomous main-agent fix handoff rebases on latest `main` before editing.
+- The merge-ref-sensitive-only carve-out in `ship-pr-ci-fix.md` is removed or subsumed by the new deterministic step.

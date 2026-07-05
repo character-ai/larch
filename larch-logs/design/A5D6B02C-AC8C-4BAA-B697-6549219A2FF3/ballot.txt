@@ -1,0 +1,79 @@
+### FINDING_1: Missing structure-harness pins for Step 8 ordering
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The plan updates the fence-shape checks but not the structure harness that enforces branch and registry ordering, so the new pre-fix step can still ship without CI coverage.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add ### UPDATED: scripts/test-implement-structure.sh with require_text / require_near pins that ship pre-fix-rebase appears in the ci-fix and reship SKILL slices before ship-pr-ci-fix.md and before the stale-handoff clear / step-8-ship.sh relaunch.
+  - From Cursor-Pragmatic: Add ### UPDATED: scripts/test-implement-structure.sh with pins for the new CLI registry, machine-stdout membership, and ci-fix/reship slices requiring python/cli.py ship pre-fix-rebase before stale-handoff clear and before loading ship-pr-ci-fix.md
+
+### FINDING_2: Phase14 reship carve-out is too narrow
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The skip logic only keys off handoff-env metadata, so the flag-based phase14 no-checks reship path can still look like a normal reship and run a redundant pre-fix rebase before the driver's phase14 continuation.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Also skip pre-fix when `ship-pr-rrr-after-phase14.flag` is present (mirror `_ship_route_phase14_reship_pending`) or when `ship-pr-state.sh` matches `_ship_route_conflict_handoff_fields`; document the same rule in `ship-pr-exit-matrix.md` and pin it in tests.
+  - From Cursor-Innovation: Also skip pre-fix when `$IMPLEMENT_TMPDIR/ship-pr-rrr-after-phase14.flag` exists (mirror `_ship_route_phase14_reship_pending`), or have `route-exit` copy flag metadata into the handoff before SKILL branches; add a reship regression test for the flag-only handoff.
+  - From Codex-Innovation: When `_ship_route_phase14_reship_pending` selects reship, propagate a phase14 skip signal into the handoff and do not write `PRE_FIX_REBASE_REQUIRED=true` for that carved-out reship; pin this with route-exit coverage
+  - From Cursor-Pragmatic: Skip pre-fix when `ship-pr-rrr-after-phase14.flag` exists (mirror `_ship_route_phase14_reship_pending`) or when scoped `ship-pr-state.sh` already has phase14 resume metadata; add a focused test for flag-pending reship
+  - From Codex-Pragmatic: Do not set `PRE_FIX_REBASE_REQUIRED=true` for phase14-continuation reships, or add an explicit phase14 marker and make the Step 8+ predicate skip the pre-fix gate when that marker or flag is present.
+  - From Cursor-Requirements: Encode the skip in `ship_pre_fix_rebase_main` (emit `PRE_FIX_REBASE_STATUS=skipped` + `NEXT_ACTION=continue` when phase14 flag exists or `ship-pr-state.sh` has active pre-push handoff, mirroring `_ship_route_phase14_reship_pending` / `_is_active_pre_push_handoff`); align SKILL/reship branch to the same signals, not handoff-only
+  - From Codex-Requirements: Add the phase14 flag to the skip condition, or have route-exit project an explicit phase14 continuation marker into the handoff for that reship. Pin the test with the existing no-checks phase14 flag scenario
+
+### FINDING_3: Route-exit still exposes ci-fix/reship before the Python gate
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The route-exit boundary can still emit autonomous ci-fix or reship actions before the new Python gate runs, so the required rebase ordering remains prose-dependent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Have ship_route_exit_main route ci-fix and non-phase14 reship through the pre-fix rebase helper before emitting the final autonomous action, or emit only a Python-owned intermediate action that cannot reach repair until PRE_FIX_REBASE_STATUS=ok
+
+### FINDING_4: Post-fix push still uses plain push after a rebase
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: A deferred pre-fix rebase rewrites the branch, but the later CI-fix push path still looks like a plain `git push`, so it can fail non-fast-forward instead of reshipping the fixed branch.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Either let the pre-fix rebase use the existing force-push path before the fix, or change the post-fix push to a force-with-lease flow with the expected remote OID captured before the rebase
+  - From Codex-Innovation: Do not pair a deferred rebase with the unchanged plain push. Either let the pre-fix rebase force-push with lease before editing, or change the post-fix push path to force-with-lease when the pre-fix rebase rebased
+  - From Codex-Pragmatic: Either let `rebase_and_push()` push the rebased branch before the fix, or change the post-fix push path to a force-with-lease push and add focused coverage for the rewritten-history case.
+
+### FINDING_5: Live rebase with missing metadata can still stall instead of conflict-fix
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The in-progress rebase guard falls back to stall when persisted metadata is missing, even if the checkout already has unmerged paths that should route to conflict-fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Check git unmerged paths when rebase_in_progress is true; if any exist, write phase=rebase conflict handoff fields with CONFLICT_FILES and NEXT_ACTION=conflict-fix, and stall only when neither metadata nor unmerged paths exist
+  - From Codex-Requirements: Check `git.unmerged_paths()` when `git.rebase_in_progress()` is true and `_ship_route_conflict_handoff_fields()` is empty. If paths exist, synthesize `RESUME_PHASE=ship-pr-rrr-phase14`, `CALLER_KIND=ship_pr_pre_push`, and `CONFLICT_FILES`, patch state and handoff, then emit `NEXT_ACTION=conflict-fix`
+
+### FINDING_6: Pre-fix launcher fences still use an unsupported target shape
+- **Reviewer(s)**: anonymous
+- **Severity**: blocking
+- **Concern**: The new pre-fix launcher fences still have the wrong argv shape or an incomplete command, so the launcher and fence-shape harness can reject them before the Python gate runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Use a closed one-line fence for each retained prompt-side call: "$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"; or remove those fences if route-exit owns the gate fully
+  - From Cursor-Innovation: Use `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` in both ci-fix and reship branches; pin that string in `scripts/test-implement-fence-shape.sh` ordering slices.
+  - From Codex-Innovation: Add two closed one-line bash fences with `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"`, one before reship stale-handoff clear and one before ci-fix loads `ship-pr-ci-fix.md`; keep the harness count and slices in sync
+  - From Cursor-Pragmatic: Use `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` in both ci-fix and reship fences; pin that exact string in the fence-shape harness
+  - From Codex-Pragmatic: Add two closed one-line Bash launcher fences in `skills/implement/SKILL.md`, both using `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"`, then update the harness slices against those exact fences.
+  - From Cursor-Requirements: Use `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"` in both ci-fix and reship fences, matching existing `ship route-exit` / `ship pre-driver` fences
+  - From Codex-Requirements: Use two closed one-line fences with `"$HOME/.cache/larch/sessions/implement-run-$PPID.sh" python/cli.py ship pre-fix-rebase --implement-tmpdir "$IMPLEMENT_TMPDIR"`, one in reship and one in ci-fix, and make the harness assert that exact shape
+
+### FINDING_7: Pre-fix helper can mutate the wrong checkout before the ship guard
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The new pre-fix helper can act on whatever checkout is currently active before the existing ship checkout guard aborts, so a branch mismatch can still edit the wrong tree.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add a non-mutating guard before `rebase_and_push()`: read `BRANCH_NAME` from `ship-pr-state.sh`, compare it to `git.try_current_branch()`, and route to a safe stall or documented operator-bail outcome without rebasing on mismatch
+
+### FINDING_8: Conflict handoff state write omits resume metadata
+- **Reviewer(s)**: anonymous
+- **Severity**: important
+- **Concern**: The conflict handoff write does not persist the resume metadata into `ship-pr-state.sh`, so later recovery cannot reliably recognize the paused rebase as conflict-resolution state.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Requirements: Pass `resume_phase=exc.resume_phase` and `caller_kind=exc.caller_kind` to `_write_ship_state` along with `phase="rebase"`, counters, and `CONFLICT_FILES`, and add this assertion to the conflict-path test
+
+### OOS_1: [SCOPE-REDUCTION] Unconditional pre-fix on every `reship` exceeds the autonomous fix-handoff contract
+- **Description**: [SCOPE-REDUCTION] Unconditional pre-fix on every `reship` exceeds the autonomous fix-handoff contract. Scenario: The binding scope requires fetch+rebase before the main agent applies a fix (`ci-fix`). Many `reship` paths are driver retries with no repo edits (`exit 0` non-OK, transient infra, phase14 no-checks retry). Forcing pre-fix on all reships adds fetch/rebase work and conflict surface without edit benefit.
+- **Reviewer**: anonymous
+- **Severity**: latent
+- **Focus area**: architecture
+- **Location**: skills/implement/SKILL.md
+- **Phase**: design
