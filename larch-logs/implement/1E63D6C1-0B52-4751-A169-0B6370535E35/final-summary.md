@@ -2,7 +2,7 @@
 
 - **Mode**: N/A
 - **Duration**: 00:16:21
-- **Cost**: 💰 TOTAL ~$6.28: Claude $0.48, Codex-5.5 $3.52, Codex-mini $0.90, Cursor $1.20, Claude (subprocess) $0.18  |  Tokens: 11001k
+- **Cost**: 💰 TOTAL ~$6.65: Claude $0.85, Codex-5.5 $3.52, Codex-mini $0.90, Cursor $1.20, Claude (subprocess) $0.18  |  Tokens: 12036k
 - **Issue**: #6337: https://github.com/character-ai/larch/issues/6337
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
@@ -65,3 +65,7 @@ These pre-vote OOS candidates were not filed automatically. Review them before f
 - **Round 1 OOS_3** (nit): Anti-pattern prose compression is harder to audit. Concern: The anti-pattern prose compression is outside plan scope and does not create a direct contract regression, but it makes the audit trail for unrelated rules a little harder to follow.
 - **Round 1 OOS_4** (latent): Final summary wait still delegates repeat handling to shared rule. Concern: The final-summary background wait delegates repeat handling to `design-background-wait.md:15` rather than inlining the ordered contract, so that path inherits whatever ordering the shared paragraph keeps.
 - **Round 1 OOS_5** (latent): Repeat carve-out text omits the fingerprint baseline. Concern: The repeat carve-out text omits the Step 3 fingerprint baseline, "prior non-empty one in the same wait", leaving ambiguous what the first non-empty notification compares against.
+
+## Architectural guidelines
+
+The architectural guideline note was dropped because HEAD drifted after staging.
