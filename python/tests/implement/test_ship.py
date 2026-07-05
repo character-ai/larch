@@ -32,6 +32,16 @@ if TYPE_CHECKING:
 _REAL_FLUSH_LOGS_PRE = run_logs.flush_logs_pre
 
 
+@pytest.fixture(autouse=True)
+def _default_try_rev_parse(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Provide a non-empty HEAD SHA so tests without a real git repo pass the guidelines gate.
+
+    Tests that explicitly test empty-SHA behavior override this via their own
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "").
+    """
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
+
+
 def _ctx(tmp_path: Path, **kwargs: object) -> RunContext:
     manifest = tmp_path / "manifest.json"
     _ = manifest.write_text(
@@ -992,6 +1002,7 @@ def test_straight_merge_post_ensure_committed_snapshot(
     tmp_path: Path,
 ) -> None:
     _init_git_repo(tmp_path)
+    monkeypatch.setattr(ship, "_guidelines_gate_before_pr", lambda **_k: ship_guidelines.GuidelinesGateResult())
     monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
@@ -1060,6 +1071,7 @@ def test_straight_merge_green_ci_single_pre_pr_flush(
     tmp_path: Path,
 ) -> None:
     _init_git_repo(tmp_path)
+    monkeypatch.setattr(ship, "load_or_prepare_guidelines_note", lambda **_k: ship_guidelines.GuidelinesGateResult(guidelines_status="absent"))
     monkeypatch.setattr(run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     monkeypatch.setattr(ship.run_logs, "flush_logs_pre", _REAL_FLUSH_LOGS_PRE)
     _ = (tmp_path / "parent-issue.md").write_text("ISSUE_NUMBER=0\nRUN_ID=run-abc\n", encoding="utf-8")
@@ -2525,6 +2537,7 @@ def test_pre_push_conflict_handoff_persists_resume_tokens(
 
 def _open_pr_merge_loop_stubs(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(ship.git, "current_branch", lambda *_a, **_k: "feat")
+    monkeypatch.setattr(ship.git, "try_rev_parse", lambda *_a, **_k: "abc123")
     monkeypatch.setattr(
         ship.gh,
         "pr_view",
