@@ -84,10 +84,19 @@ def _optional_bg_wait_marker(*, tmpdir: Path, marker: tuple[str, int, str] | Non
 
 def _checks_commit_route_marker(checks_site: str) -> tuple[str, int, str] | None:
     if checks_site == "step3":
+        # Step 3 composites cover checks, Step 4 commit, and folded 4.r under one marker.
         return config.CHECKS_COMMIT_ROUTE_MARKER_STEP3, 15600, ".completed/step-3-terminal"
     if checks_site == "step5-self-review":
         return config.CHECKS_COMMIT_ROUTE_MARKER_STEP5_SELF_REVIEW, 14700, ".completed/step-5-self-review-terminal"
     return None
+
+
+def _clear_step3_bg_wait_sidecars(implement_tmpdir: Path) -> None:
+    with contextlib.suppress(OSError):
+        (implement_tmpdir / ".completed" / "step-3-terminal").unlink()
+    with contextlib.suppress(OSError):
+        (implement_tmpdir / "bg-poll-guard-probe-denials.step-3-terminal.count").unlink()
+
 
 def step5_review_main(argv: list[str] | None = None) -> int:
     argparse.ArgumentParser(prog="cli.py implement step-5-review").parse_args(argv)
@@ -860,6 +869,8 @@ def checks_commit_route_main(argv: list[str] | None = None) -> int:  # noqa: C90
     _rehydrate_plugin_root(implement_tmpdir)
     _rehydrate_larch_triplet(implement_tmpdir)
     marker = _checks_commit_route_marker(args.checks_site)
+    if args.checks_site == "step3":
+        _clear_step3_bg_wait_sidecars(implement_tmpdir)
     with _optional_bg_wait_marker(tmpdir=implement_tmpdir, marker=marker):
         return _checks_commit_route_main_impl(args, implement_tmpdir)
 
@@ -1081,13 +1092,11 @@ def run_step_checks_main(argv: list[str] | None = None) -> int:
     command = ["checks", "run-relevant", "--site", args.site, "--tmpdir", str(implement_tmpdir)]
     if args.site != "step3":
         return _run_cli_forward(command)
-    with contextlib.suppress(OSError):
-        (implement_tmpdir / ".completed" / "step-3-terminal").unlink()
-    with contextlib.suppress(OSError):
-        (implement_tmpdir / "bg-poll-guard-probe-denials.step-3-terminal.count").unlink()
+    _clear_step3_bg_wait_sidecars(implement_tmpdir)
     with _bg_wait_marker(
         tmpdir=implement_tmpdir,
         step="implement-step3-checks",
+        # run-step-checks is checks-only; the Step 3 composite marker uses a longer full-route timeout.
         timeout_s=10800,
         terminal_sentinel=".completed/step-3-terminal",
     ):

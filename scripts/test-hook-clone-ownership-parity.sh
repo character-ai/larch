@@ -76,6 +76,69 @@ compare_renamed_pair() {
   rm -f "$tmp_left" "$tmp_right"
 }
 
+
+test_extract_function_nested_body_fixture() {
+  if (
+    PASS=0
+    FAIL=0
+    tmp_hook=$(mktemp "${TMPDIR:-/tmp}/hook-clone-nested.XXXXXX") || exit 1
+    tmp_body=$(mktemp "${TMPDIR:-/tmp}/hook-clone-body.XXXXXX") || { rm -f "$tmp_hook"; exit 1; }
+    trap 'rm -f "$tmp_hook" "$tmp_body"' EXIT
+    cat >"$tmp_hook" <<'EOF'
+nested_fn() {
+  if true; then
+    {
+      printf '%s\n' nested
+    }
+  fi
+  printf '%s\n' post-nested-drift-line
+}
+EOF
+    extract_function "$tmp_hook" nested_fn >"$tmp_body"
+    grep -Fq 'post-nested-drift-line' "$tmp_body"
+  ); then
+    pass "extract_function keeps body lines after nested brace groups"
+  else
+    fail "extract_function truncated a nested-brace fixture"
+  fi
+}
+
+test_compare_renamed_pair_drift_fixture() {
+  if (
+    PASS=0
+    FAIL=0
+    tmp_left=$(mktemp "${TMPDIR:-/tmp}/hook-clone-left-fixture.XXXXXX") || exit 1
+    tmp_right=$(mktemp "${TMPDIR:-/tmp}/hook-clone-right-fixture.XXXXXX") || { rm -f "$tmp_left"; exit 1; }
+    trap 'rm -f "$tmp_left" "$tmp_right"' EXIT
+    cat >"$tmp_left" <<'EOF'
+left_fn() {
+  printf '%s\n' shared
+  printf '%s\n' left-only
+}
+EOF
+    cat >"$tmp_right" <<'EOF'
+right_fn() {
+  printf '%s\n' shared
+  printf '%s\n' right-only
+}
+EOF
+    compare_rc=0
+    if compare_renamed_pair "$tmp_left" left_fn "$tmp_right" right_fn >/dev/null 2>&1; then
+      compare_rc=0
+    else
+      compare_rc=$?
+    fi
+    [ "$compare_rc" -ne 0 ] || [ "$FAIL" -gt 0 ]
+  ); then
+    pass "compare_renamed_pair reports deliberate fixture drift"
+  else
+    fail "compare_renamed_pair missed deliberate fixture drift"
+  fi
+}
+
+test_extract_function_nested_body_fixture
+test_compare_renamed_pair_drift_fixture
+
 compare_function canonical_dir
 compare_function marker_value
 compare_function marker_candidates
@@ -84,9 +147,10 @@ compare_function marker_foreign_clone
 compare_renamed_pair "$BG_HOOK" marker_step_completed "$NO_PROGRESS_HOOK" is_step_completed
 # marker_is_live (hook-bg-poll-guard.sh) and is_marker_live
 # (hook-no-progress-guard.sh) share a semantic role but intentionally differ in
-# parent-guard return codes, missing-marker reset behavior, and the
-# LIVE_MARKER_DIR side effect owned by no-progress-guard. Byte-identical
-# comparison is not applicable; each hook's own tests cover its liveness logic.
+# parent-guard return codes, reset_no_progress_state missing-marker behavior,
+# and the LIVE_MARKER_DIR side effect owned by no-progress-guard.
+# Byte-identical comparison is not applicable; each hook's own tests cover its
+# liveness logic.
 
 printf '\n%d passed, %d failed\n' "$PASS" "$FAIL"
 [ "$FAIL" -eq 0 ] || exit 1

@@ -16,6 +16,7 @@ from collections.abc import Callable, Iterable, Mapping
 from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import redact
+from larch.implement.bg_wait import _read_keepalive_clone_path
 from larch.state.session_env import validate_design_tmpdir
 
 _SUBPROCESS_RUN = subprocess.run
@@ -156,17 +157,6 @@ def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
 
-
-def _read_keepalive_clone_path(tmpdir: Path) -> str:
-    keepalive = tmpdir / ".larch-keepalive"
-    if not keepalive.is_file() or keepalive.is_symlink():
-        return ""
-    with contextlib.suppress(OSError):
-        for line in keepalive.read_text(encoding="utf-8", errors="replace").splitlines():
-            key, sep, value = line.partition("=")
-            if sep and key == "CLONE_PATH":
-                return value.strip()
-    return ""
 
 
 @contextlib.contextmanager
