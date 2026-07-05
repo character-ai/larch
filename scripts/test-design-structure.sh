@@ -4,6 +4,7 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
+AGENTS_MD="$ROOT/AGENTS.md"
 IMPL_MD="$ROOT/skills/implement/SKILL.md"
 SHARED_DESIGN_WAIT_MD="$ROOT/skills/shared/design-background-wait.md"
 ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
@@ -192,10 +193,13 @@ ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step
 retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.sh design-step0-clarify-hard-halt.sh design-step0-init.sh design-step0-abort-cleanup.sh design-step0-ap-continue.sh design-step0c.sh design-step1d5.sh design-step1d7.sh design-step1e-reentry.sh test-design-step0-init.sh test-design-step1d5.sh'
 
 contains "$SKILL_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session' 'Step 0 session fence must call direct Python verb'
+contains "$AGENTS_MD" 'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.' 'AGENTS.md must pin /design repeat silent-yield carve-out'
 contains "$SKILL_MD" 'NEVER use the `Monitor` tool anywhere within the `/design` orchestrator' 'Design anti-patterns must retain Monitor ban stub'
 contains "$SKILL_MD" 'the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn' 'Design anti-patterns must retain foreground-probe primary guidance'
 contains "$SKILL_MD" 'NEVER launch a background recovery waiter' 'Design anti-patterns must retain background recovery waiter ban'
 contains "$SKILL_MD" 'Do NOT fall back to Monitor' 'Design anti-patterns must retain Monitor fallback ban'
+contains "$SKILL_MD" 'NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits' 'Design anti-pattern #5 title must cover repeat notifications'
+contains "$SKILL_MD" '**Apply in order:** (1) empty output → silent yield; (2) prefix-identical repeat (first 200 chars)' 'Design anti-pattern #5 must pin ordered repeat handling'
 contains "$SKILL_MD" 'read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics' 'Design anti-patterns must point detailed recovery to design-background-wait'
 contains "$SKILL_MD" 'NEVER treat an AskUserQuestion no-response fallback as an operator answer' 'Design anti-patterns must not treat AskUserQuestion no-response as an answer'
 contains "$SHARED_DESIGN_WAIT_MD" 'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.' 'Shared design wait must own Step 3 completion-condition literal'
@@ -204,6 +208,9 @@ contains "$SHARED_DESIGN_WAIT_MD" 'Foreground probes are non-sleeping `[ -f … 
 contains "$SHARED_DESIGN_WAIT_MD" 'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own DESIGN_TMPDIR prefix literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own foreground DESIGN_TMPDIR prefix literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'the backgrounded `/design` task reliably re-fires a `<task-notification>` on completion' 'Shared design wait must document notification-refire platform assumption'
+contains "$SHARED_DESIGN_WAIT_MD" 'If a non-empty `<task-notification>` is prefix-identical to the prior non-empty one in the same wait over the first 200 chars' 'Shared design wait must pin prefix-identical Step 3 fingerprint scope'
+contains "$SHARED_DESIGN_WAIT_MD" 'The fingerprint is the first 200 chars.' 'Shared design wait must pin first-200-char fingerprint definition'
+not_contains "$SHARED_DESIGN_WAIT_MD" 'byte-identical' 'Shared design wait must not retain stale byte-identical wording'
 not_contains "$SKILL_MD" 'WRONG — background sleep-loop recovery waiter' 'Design anti-patterns must not retain wrong/correct probe fence'
 not_contains "$SKILL_MD" 'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Design anti-patterns must not retain DESIGN_TMPDIR prefix prose'
 not_contains "$SKILL_MD" 'the review task reliably re-fires a `<task-notification>` on completion' 'Design anti-patterns must not retain notification-refire assumption'
@@ -214,6 +221,7 @@ not_contains "$ORCH_NEVER_MD" 'only after an empty `<task-notification>`' 'Share
 not_contains "$ORCH_NEVER_MD" 'only after the empty `<task-notification>`' 'Shared orchestrator never must remove the-empty-notification-only qualifier'
 contains "$ORCH_NEVER_MD" 'For `/design`, when a premature `<task-notification>` fires with non-empty task output' 'Shared orchestrator never must document /design non-empty premature recovery'
 contains "$ORCH_NEVER_MD" 'when task output is empty, end the turn without probing (#5240)' 'Shared orchestrator never must document /design empty-output no-probe recovery'
+contains "$ORCH_NEVER_MD" 'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.' 'Shared orchestrator never must document /design repeat silent-yield carve-out'
 contains "$ORCH_NEVER_MD" 'For `/implement` Steps 3 and 5, premature notifications remain notification-only' 'Shared orchestrator never must document /implement Steps 3 and 5 notification-only recovery'
 contains "$ORCH_NEVER_MD" 'If a read of the just-completed Step 3 or Step 5 task output is denied immediately after that same step' 'Shared orchestrator never must document /implement Steps 3 and 5 post-denial recovery'
 contains "$ORCH_NEVER_MD" 'When the sentinel is present, retry the just-denied output read once.' 'Shared orchestrator never must document retry-on-present guidance'
@@ -266,6 +274,8 @@ check_context_before_step3_launch "$SKILL_MD" \
   '/design Step 3 launch loads the post-notification sequence' \
   "20" \
   "$LOAD_LITERAL Step 3 post-notification sequence"
+contains "$SKILL_MD" 'Before parsing the envelope after notification, use this ordered premature-notification contract: empty output → silent yield; prefix-identical repeat (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield' 'Design Step 3 post-loop routing must pin ordered repeat handling'
+contains "$SKILL_MD" 'A prefix-identical repeat (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.' 'Design Step 5c must pin repeat silent-yield routing'
 check_context_before "$SKILL_MD" \
   '/design Step 5c uses the immediate-background load contract' \
   "$STEP5C_ANCHOR" \

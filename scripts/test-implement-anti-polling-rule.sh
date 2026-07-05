@@ -46,7 +46,7 @@ CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
 RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
-DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on an empty-output'
+DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on empty-output or prefix-identical repeat'
 SHARED_IMMEDIATE_WAIT_ANCHOR='After the background launch ack'
 IMPL_NEVER8_ANCHOR='8. **NEVER call `ScheduleWakeup`'
 
@@ -182,6 +182,9 @@ check "$AGENTS_MD" \
     "AGENTS.md pins /design empty-output no-probe clause with issue reference" \
     'For `/design`, when task output is empty, end the turn without probing (spurious notification, #5240)'
 check "$AGENTS_MD" \
+    "AGENTS.md pins /design prefix-identical repeat silent-yield clause" \
+    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
+check "$AGENTS_MD" \
     "AGENTS.md pins /implement Steps 3 and 5 notification-only recovery" \
     'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
 check "$AGENTS_MD" \
@@ -193,15 +196,20 @@ check "$IMPL_MD" \
     'Step 5 invokes **one** `skills/implement/scripts/step-5-review.sh`'
 
 check_context "$DESIGN_MD" \
-    "/design Anti-pattern #5 pins empty-output notification scope" \
+    "/design Anti-pattern #5 pins empty-output and repeat notification scope" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
     "2" \
-    'on an empty-output notification'
+    'empty-output or prefix-identical repeat `<task-notification>`'
+check_context "$DESIGN_MD" \
+    "/design Anti-pattern #5 pins ordered repeat handling" \
+    "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
+    "2" \
+    '**Apply in order:** (1) empty output → silent yield; (2) prefix-identical repeat (first 200 chars)'
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins no-tool action" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
     "2" \
-    'Call no tool'
+    'no tool'
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins spurious notification issue" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
@@ -227,16 +235,25 @@ check "$SHARED_DESIGN_WAIT_MD" \
 check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor pins the compact-table missing warning" \
     '**⚠ Reviewer status table omitted: pre-rendered table not found.**'
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor pins prefix-identical repeat fingerprint" \
+    'If a non-empty `<task-notification>` is prefix-identical to the prior non-empty one in the same wait over the first 200 chars'
+check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor pins first-200-char fingerprint definition" \
+    'The fingerprint is the first 200 chars.'
+check_absent "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor removes byte-identical fingerprint wording" \
+    'byte-identical'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins empty-output condition" \
     "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
     "2" \
-    'When task output is empty'
+    'Empty output (just a newline or nothing) ends silently'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-tool action" \
     "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
     "2" \
-    'call no tool'
+    'no tool'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-probe turn end" \
     'Foreground terminal-sentinel probe' \
@@ -366,6 +383,9 @@ check_context_before "$DESIGN_MD" \
     "$STEP5C_ANCHOR" \
     "18" \
     "$CONFIRMATION_COMPLETION"
+check "$DESIGN_MD" \
+    "/design Step 5c pins prefix-identical repeat silent-yield routing" \
+    'A prefix-identical repeat (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.'
 
 check_count "$DESIGN_MD" \
     "/design no longer carries full immediate-background boilerplate paragraphs" \
@@ -395,6 +415,9 @@ check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER splits /design empty no-probe recovery" \
     'when task output is empty, end the turn without probing (#5240)'
 check "$ORCH_NEVER_MD" \
+    "shared orchestrator NEVER pins /design prefix-identical repeat silent-yield clause" \
+    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
+check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER keeps /implement Steps 3 and 5 notification-only recovery" \
     'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
 check "$ORCH_NEVER_MD" \
@@ -420,6 +443,9 @@ check "$AGENTS_MD" \
 check "$AGENTS_MD" \
     "AGENTS.md splits /design empty no-probe recovery" \
     'For `/design`, when task output is empty, end the turn without probing'
+check "$AGENTS_MD" \
+    "AGENTS.md splits /design repeat no-probe recovery" \
+    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
 
 check "$AGENTS_MD" \
     "AGENTS.md keeps /implement Steps 3 and 5 notification-only recovery" \
@@ -542,12 +568,15 @@ check_absent "$ORCH_NEVER_MD" \
     'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
-    "/design Step 3 requires terminal sentinel before envelope parse" \
-    'Before parsing the envelope after notification, require `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+    "/design Step 3 pins ordered premature-notification routing before envelope parse" \
+    'Before parsing the envelope after notification, use this ordered premature-notification contract: empty output → silent yield; prefix-identical repeat (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield'
+check "$DESIGN_MD" \
+    "/design Step 3 proceeds only after terminal sentinel before envelope parse" \
+    'Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
 
 check "$DESIGN_MD" \
     "/design Step 3 requires step-3 sentinel before Step 3b routing" \
-    'Before routing to Step 3b or later, additionally require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]`'
+    'Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns tells orchestrator not to fall back to Monitor" \

@@ -4,14 +4,14 @@ Regression harness pinning anti-polling-loop, Monitor-ban, and premature-notific
 
 ## Purpose
 
-Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job. Issue #4110 adds the result-file variant for `/design` Step 3. Issue #4268 adds explicit Monitor-ban and premature-notification recovery-contract surfaces. The shared `/design` background-wait anchor keeps the hot-path Step 3 anti-polling literal and post-notification sequence out of repeated `SKILL.md` call sites.
+Issue #1011 extended the original Monitor-only rule to forbid Bash `run_in_background` polling loops (`for`/`while`/`until` + `sleep`) used to wait on another `run_in_background` job. Issue #4110 adds the result-file variant for `/design` Step 3. Issue #4268 adds explicit Monitor-ban and premature-notification recovery-contract surfaces. The repeat-fingerprint pin retargets Anti-pattern #5 to the empty-output-or-prefix-identical-repeat heading and requires the first-200-chars wording. The shared `/design` background-wait anchor keeps the hot-path Step 3 anti-polling literal and post-notification sequence out of repeated `SKILL.md` call sites.
 
 The harness pins these surfaces:
 
 - `AGENTS.md`: the canonical bullet covering Monitor, Bash polling loops, the foreground-terminal-sentinel-probe primary recovery path, and the background-recovery-waiter ban (#4725).
 - `skills/implement/SKILL.md`: Step 5 delegates reviewer waiting to `skills/implement/scripts/step-5-review.sh` instead of ad-hoc polling loops, and the NEVER list bans Monitor fallback while documenting the narrow Step 3/5 post-denial same-step sentinel probe.
-- `skills/shared/design-background-wait.md`: the `/design` Step 3 result-file sleep-loop ban, background-recovery-waiter ban, exact compact-table missing warning, and post-notification sequence.
-- `skills/design/SKILL.md`: `/design` hot-path loci use the shared wait contract without carrying full duplicated boilerplate. First-time Step 3 launch keeps the full inline load and parameter contract. Step 3 resume uses a pinned back-reference to that first-time fence.
+- `skills/shared/design-background-wait.md`: the `/design` Step 3 result-file sleep-loop ban, background-recovery-waiter ban, exact compact-table missing warning, prefix-identical first-200-chars repeat fingerprint, and post-notification sequence.
+- `skills/design/SKILL.md`: `/design` hot-path loci use the shared wait contract without carrying full duplicated boilerplate. Anti-pattern #5 uses the empty-output-or-prefix-identical-repeat heading. First-time Step 3 launch keeps the full inline load and parameter contract. Step 3 resume uses a pinned back-reference to that first-time fence.
 - `skills/shared/orchestrator-never.md`: the shared NEVER list carries the `run_in_background` result-file sleep-loop ban, the `/design` foreground-terminal-sentinel-probe primary recovery wording, the `/implement` Step 3/5 post-denial retry contract, and the background-recovery-waiter ban (#4725).
 
 Family B background+monitor pairing assertions were removed in breadcrumbs Stage 3 (#3118); Stage 4 removes the remaining skill-fence prose.
