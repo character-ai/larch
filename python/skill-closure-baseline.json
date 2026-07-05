@@ -1,7 +1,7 @@
 [
   {
     "closure_content_estimated_tokens": 52995,
-    "closure_estimated_tokens": 53161,
+    "closure_estimated_tokens": 53159,
     "closure_lines": 1848,
     "conditional_content_estimated_tokens": 17939,
     "conditional_estimated_tokens": 18013,
@@ -32,16 +32,16 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25278,
-    "skill_md_estimated_tokens": 25333,
+    "skill_md_content_estimated_tokens": 25265,
+    "skill_md_estimated_tokens": 25319,
     "skill_md_lines": 698
   },
   {
     "closure_content_estimated_tokens": 38755,
     "closure_estimated_tokens": 38870,
     "closure_lines": 1226,
-    "conditional_content_estimated_tokens": 26083,
-    "conditional_estimated_tokens": 26142,
+    "conditional_content_estimated_tokens": 26121,
+    "conditional_estimated_tokens": 26181,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
