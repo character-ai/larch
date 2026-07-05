@@ -145,10 +145,12 @@ assert_contains 'https://example.test/pr/5' "$(cat "$TMP_ROOT/content.md")" 'sum
 assert_contains '<!-- larch:run-summary v=1 -->' "$(cat "$TMP_ROOT/content.md")" 'summary includes run-summary sentinel'
 assert_contains '## /implement run run-5: merged' "$(cat "$TMP_ROOT/content.md")" 'summary title shows merged outcome'
 assert_contains '- **Lines (PR diff)**: code +17/-3, larch-logs +5/-1' "$(cat "$TMP_ROOT/content.md")" 'happy path includes bucketed line counts'
-assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Outcome bullet'
+assert_contains '- **Outcome**: DONE' "$(cat "$TMP_ROOT/content.md")" 'success path renders DONE outcome'
+assert_not_contains '- **Mode**:' "$(cat "$TMP_ROOT/content.md")" 'success path omits Mode bullet'
 if [ -s "$impl_dir/larch-logs/implement/run-5/final-summary.md" ]; then pass 'final summary file written'; else fail 'final summary file written'; fi
 assert_contains '## /implement run run-5: merged' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary title merged'
-assert_not_contains '**Outcome**:' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary omits Outcome bullet on success'
+assert_contains '- **Outcome**: DONE' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary renders DONE outcome on success'
+assert_not_contains '- **Mode**:' "$(cat "$impl_dir/larch-logs/implement/run-5/final-summary.md")" 'final summary omits Mode bullet'
 
 # Comment-only path leaves the tracked run-log file untouched while still
 # emitting the live tracking-comment projection.
@@ -195,7 +197,7 @@ printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=false\nSTALL_TRACKING=true
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-stall.md" \
       "$HELPER" --implement-tmpdir "$impl_st")
 assert_contains 'STATUS=ok' "$out" 'stalled path status ok'
-assert_contains '**Outcome**: stalled' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
+assert_contains '- **Outcome**: STALLED' "$(cat "$TMP_ROOT/content-stall.md")" 'stalled outcome in summary'
 
 # Design-only outcome
 impl_do="$TMP_ROOT/impl-do"; mkdir -p "$impl_do"
@@ -215,7 +217,7 @@ out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-do.md
       "$HELPER" --implement-tmpdir "$impl_do")
 assert_contains 'STATUS=ok' "$out" 'design-only status ok'
 assert_contains '## /implement run run-do: design-only' "$(cat "$TMP_ROOT/content-do.md")" 'design-only title'
-assert_not_contains '**Outcome**:' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success omits Outcome bullet'
+assert_contains '- **Outcome**: DONE' "$(cat "$TMP_ROOT/content-do.md")" 'design-only success renders DONE outcome'
 
 # BAIL_NEEDS_USER_INPUT → distinct outcome when still bailed
 impl_bu="$TMP_ROOT/impl-bu"; mkdir -p "$impl_bu"
@@ -235,7 +237,7 @@ printf 'DESIGN_ONLY_DONE=false\nBAIL_NEEDS_USER_INPUT=true\n' > "$impl_bu/finali
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bu.md" \
       "$HELPER" --implement-tmpdir "$impl_bu")
 assert_contains 'STATUS=ok' "$out" 'bail-user path status ok'
-assert_contains '**Outcome**: bailed-needs-user-input' "$(cat "$TMP_ROOT/content-bu.md")" 'bail-user outcome'
+assert_contains '- **Outcome**: bailed-needs-user-input' "$(cat "$TMP_ROOT/content-bu.md")" 'bail-user outcome'
 
 # Plain bailed outcome (early exit without user-input flag)
 impl_bl="$TMP_ROOT/impl-bl"; mkdir -p "$impl_bl"
@@ -256,7 +258,7 @@ printf 'NO_ISSUES=false\n' > "$impl_bl/run-flags.sh"
 out=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/content-bl.md" \
       "$HELPER" --implement-tmpdir "$impl_bl")
 assert_contains 'STATUS=ok' "$out" 'bailed path status ok'
-assert_contains '**Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
+assert_contains '- **Outcome**: bailed' "$(cat "$TMP_ROOT/content-bl.md")" 'plain bailed outcome in summary'
 assert_contains '- **Cost**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'missing token data renders cost N/A'
 assert_contains '- **Lines (PR diff)**: N/A' "$(cat "$TMP_ROOT/content-bl.md")" 'no PR renders line counts N/A'
 assert_not_contains '- **PR**:' "$(cat "$TMP_ROOT/content-bl.md")" 'bailed path omits PR bullet when PR is N/A'
@@ -772,17 +774,17 @@ assert_eq "1" "$(grep -c '^LINES_STATUS=' "$impl_line_stale/ship-pr-state.sh")" 
 assert_eq "17" "$(awk -F= '$1=="CODE_ADDED"{print $2; exit}' "$impl_line_stale/ship-pr-state.sh")" 'line-count state merge stores latest CODE_ADDED'
 
 for outcome_case in \
-    "merged:$impl_dir:absent:present" \
-    "stalled:$impl_st:present:present" \
-    "design-only:$impl_do:absent:absent" \
-    "bailed-needs-user-input:$impl_bu:present:absent" \
-    "bailed:$impl_bl:present:absent" \
-    "forked-dry-run:$TMP_ROOT/impl-forked:absent:present" \
-    "pr-created:$TMP_ROOT/impl-pr-created:absent:present" \
-    "pr-created-draft:$TMP_ROOT/impl-pr-created-draft:absent:present" \
-    "force-merged-externally:$TMP_ROOT/impl-force-merged:absent:present"
+    "merged:$impl_dir:DONE:present" \
+    "stalled:$impl_st:STALLED:present" \
+    "design-only:$impl_do:DONE:absent" \
+    "bailed-needs-user-input:$impl_bu:bailed-needs-user-input:absent" \
+    "bailed:$impl_bl:bailed:absent" \
+    "forked-dry-run:$TMP_ROOT/impl-forked:DONE:present" \
+    "pr-created:$TMP_ROOT/impl-pr-created:DONE:present" \
+    "pr-created-draft:$TMP_ROOT/impl-pr-created-draft:DONE:present" \
+    "force-merged-externally:$TMP_ROOT/impl-force-merged:DONE:present"
 do
-    IFS=: read -r expected fixture expect_outcome expect_pr <<EOF
+    IFS=: read -r expected fixture expect_outcome_display expect_pr <<EOF
 $outcome_case
 EOF
     matrix_stdout=$(CLAUDE_PLUGIN_ROOT="$plugin" TRACKING_CONTENT_LOG="$TMP_ROOT/matrix-${expected}.md" \
@@ -806,13 +808,15 @@ EOF
         assert_contains 'Cursor $' "$cost_line" "matrix $expected cost line has Cursor"
         assert_contains 'Tokens: ' "$cost_line" "matrix $expected cost line has token count"
     fi
-    if [ "$expect_outcome" = present ]; then
-        assert_contains "- **Outcome**: $expected" "$matrix_summary" "matrix $expected emits Outcome bullet"
-        assert_contains "- **Outcome**: $expected" "$(cat "$fixture/summary-final.md")" "matrix $expected file emits Outcome bullet"
-    else
+    if [ "$expect_outcome_display" = absent ]; then
         assert_not_contains '- **Outcome**:' "$matrix_summary" "matrix $expected omits Outcome bullet"
         assert_not_contains '- **Outcome**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file omits Outcome bullet"
+    else
+        assert_contains "- **Outcome**: $expect_outcome_display" "$matrix_summary" "matrix $expected emits Outcome display"
+        assert_contains "- **Outcome**: $expect_outcome_display" "$(cat "$fixture/summary-final.md")" "matrix $expected file emits Outcome display"
     fi
+    assert_not_contains '- **Mode**:' "$matrix_summary" "matrix $expected omits Mode bullet"
+    assert_not_contains '- **Mode**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file omits Mode bullet"
     if [ "$expect_pr" = present ]; then
         assert_contains '- **PR**:' "$matrix_summary" "matrix $expected emits PR bullet"
         assert_contains '- **PR**:' "$(cat "$fixture/summary-final.md")" "matrix $expected file emits PR bullet"

@@ -631,6 +631,38 @@ def test_render_run_summary_splits_codex_by_model() -> None:
     assert "Codex $" not in body  # the old single-Codex slot is gone
 
 
+@pytest.mark.parametrize(
+    ("outcome", "expected"),
+    [
+        ("merged", "DONE"),
+        ("approved", "DONE"),
+        ("stalled", "STALLED"),
+        ("bailed-needs-user-input", "bailed-needs-user-input"),
+    ],
+)
+def test_map_outcome_display(outcome: str, expected: str) -> None:
+    assert pr_body._map_outcome_display(outcome) == expected
+
+
+def test_render_run_summary_emits_outcome_first_and_omits_mode() -> None:
+    body = pr_body.render_run_summary(
+        skill="implement",
+        outcome="merged",
+        run_id="run1",
+        workflow_path="post-plan",
+        mode="merge",
+        cost_unavailable=True,
+    )
+    lines = body.splitlines()
+
+    assert lines[0] == "## /implement run run1: merged"
+    assert lines[1] == ""
+    assert lines[2] == "- **Outcome**: DONE"
+    assert "- **Mode**:" not in body
+    assert lines.index("- **Outcome**: DONE") < lines.index("- **Path**: post-plan")
+    assert lines.index("- **Outcome**: DONE") < lines.index("- **Duration**: N/A")
+
+
 def test_render_run_summary_main_emits_codex_model_split(capsys: pytest.CaptureFixture[str]) -> None:
     rc = pr_body.render_run_summary_main([
         "--skill", "design", "--outcome", "approved", "--run-id", "r1",
