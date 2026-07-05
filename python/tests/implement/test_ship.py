@@ -6092,7 +6092,7 @@ def test_guidelines_warning_volatile_only_refresh_stalls_without_matching_outcom
     assert result.outcome is Outcome.STALLED
     assert ensure_calls == 0
     assert order == ["flush", "gate", "flush"]
-    assert compose_calls == []
+    assert not compose_calls
 
 
 def test_guidelines_warning_no_logs_commit_does_not_stall_before_pr(
