@@ -55,7 +55,7 @@ for needle in [
     'main-agent-ci-fix.count',
     'gh run-logs',
     'python/cli.py" push branch',
-    'Make the minimal repo edit',
+    'enumerate every failing job/check revealed',
     'git add --',
     'run-log refresh',
     're-invoke `step-8-ship.sh`',

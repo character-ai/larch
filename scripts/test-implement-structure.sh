@@ -597,7 +597,7 @@ if exit_matrix.is_file():
         'main-agent-ci-fix-$FAILED_RUN_ID.attempted',
         'gh run-logs',
         'Fix CI failure (main-agent)',
-        'Make the minimal repo edit',
+        'enumerate every failing job/check revealed',
         'git add -- <paths>',
         'write-staged-assessment',
     ]:
@@ -706,7 +706,7 @@ if ci_fix_ref.is_file():
         'python/cli.py" push branch',
         'python/cli.py checks run-relevant --site step8-main-agent-fix',
         'Fix CI failure (main-agent)',
-        'Make the minimal repo edit',
+        'enumerate every failing job/check revealed',
         'git add -- <paths>',
         'run-log refresh',
         'Do not rerun architectural-guidelines Phase A',
