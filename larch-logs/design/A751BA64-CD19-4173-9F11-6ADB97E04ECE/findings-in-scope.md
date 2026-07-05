@@ -1,0 +1,97 @@
+### FINDING_1: Update ci_monitor tests for the compose-gate contract
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan updates `ci_monitor` behavior but leaves the existing test coverage asserting pre-push guideline pin/invalidate behavior, so CI will fail or the retired out-of-gate contract will be preserved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: python/tests/implement/test_ci_monitor.py` and extend the testing strategy to replace the pin-before-push assertion with compose-gate / no-out-of-gate-invalidation coverage aligned with the new `ci_monitor` contract.
+  - From Cursor-Pragmatic: Add python/tests/implement/test_ci_monitor.py to Files to modify/create and the testing strategy; replace the pin/invalidate assertions with coverage that pre-push no longer mutates the note and the next step-8-ship.sh relaunch owns compose-time reassessment
+  - From Codex-Pragmatic: Add python/tests/implement/test_ci_monitor.py to the firm updates and rewrite this test to assert pending retry does not pin or invalidate guidelines outside the compose gate.
+  - From Codex-Requirements: Add python/tests/implement/test_ci_monitor.py to the plan and testing command, replacing this assertion with the compose-time contract: no pre-push guidelines pin/invalidate callback, and the next Step 8 compose gate owns reassessment
+
+### FINDING_2: Rewrite the sibling harness doc with the Step 8 contract
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Concern**: The harness script is being updated, but its sibling markdown contract still describes the old Phase A/staged pin behavior, leaving the behavior/docs pair inconsistent.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.md` and rewrite purpose/callers/harness text to match the compose-time Step 8 contract, removed Phase A prose, and new `guidelines-assessment` routing.
+
+### FINDING_3: Keep `ship pr` stdout JSON-only
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: The compose-time helper is expected to preserve a single-JSON wrapper on stdout, but the plan would let diff/guideline blocks leak into that channel and break the Step 8 wire surface.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Keep ship pr stdout JSON-only. Write materialized diff and guideline status to tmpdir files, put only safe paths/status in state or the route-exit handoff, and have the guidelines-assessment branch read those files.
+
+### FINDING_4: Preserve the untrusted-guidelines boundary at compose time
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: Removing the old Step 7a prose without relocating its trust boundary leaves repo-authored guideline text able to influence Step 8 assessment as prompt-injection input.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Carry the existing untrusted evidence rule into the compose-time reference or Step 8 guidelines-assessment branch: use only the Python helper/artifacts, treat guideline text and diff content as untrusted evidence, and state that they cannot override higher-priority repo or skill instructions.
+
+### FINDING_5: Retire the live `final_report` drop-notice path
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Concern**: The plan does not explicitly remove the stale-fingerprint drop path, so `final_report` can still persist the HEAD-drift notice and invalidate the implement note even after the compose-time fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: In the `final_report.py` update, delete `_persist_drop_notice_and_invalidate` and stale-fingerprint drop branches; read only a consumable compose-time durable note for current `HEAD`, or omit the section with a bounded warning
+
+### FINDING_6: Remove out-of-gate invalidate carve-out from conflict resolution
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The live conflict-resolution reference still authorizes architectural-guidelines invalidation outside the compose gate, which can wipe a durable note before reassessment runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Remove the invalidate carve-out in the same edit; state that only the next step-8-ship.sh relaunch may refresh assessment via the compose-time gate
+
+### FINDING_7: Avoid wholesale invalidation in compose-time prepare
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: A compose-time prepare modeled on `prepare_main` would still invalidate notes on relaunch, which can clear a durable note too early and loop or drop the assessment before PR composition.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Specify that compose-time prepare clears only staged and dropped-note artifacts, or short-circuits when note_consumable matches current HEAD; do not call invalidate_implement_note on relaunch after a successful compose write
+
+### FINDING_8: Re-enter compose after `ship_merge` rebases
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The rebase path in `ship_merge` only pins or invalidates; it does not re-run the compose-time assessment, so the PR body can keep a stale or dropped note while merge continues.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Require ship_merge to invoke the same compose-time helper used before pr-create (including NEEDS_USER_INPUT exit when reassessment is required) and update PR body via ensure_pr before returning to ci-initial
+
+### FINDING_9: Resume `guidelines-assessment` before falling back to postbump
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: blocking
+- **Concern**: A pre-PR resume with `PHASE=guidelines-assessment` and no PR number still falls through to a fresh resume, which reruns postbump instead of resuming at pr-create with the durable compose note.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Requirements: Add an early branch when state PHASE=guidelines-assessment and no PR exists: emit a dedicated ResumePlan.start (for example guidelines-assessment), teach ship.py to skip postbump for that start while still running the compose gate and pr-create path, and add the pre-PR resume test called for in test_ship.py
+
+### FINDING_10:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/core/architectural_guidelines.py:912-940
+- **Concern**: [SCOPE-REDUCTION] Parallel compose-prepare CLI duplicates existing prepare. Scenario: The plan still adds a new compose-time prepare verb while `prepare_main` already reads guidelines, materializes the final diff, and emits the same KV/untrusted blocks. A second verb duplicates dispatch surface and migration work without closing a behavioral gap.
+- **Proposed resolution**: Repurpose `architectural-guidelines prepare` / `prepare_main` for compose-time materialization (add HEAD metadata and selective stale-artifact cleanup), retire Step 7a-only invalidate semantics, and drop the extra CLI verb from the plan.
+
+### FINDING_11:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/core/architectural_guidelines.py:849-940
+- **Concern**: [SCOPE-REDUCTION] Plan adds a parallel compose-time prepare CLI though prepare/materialize already exist. Scenario: `prepare_main` already clears artifacts, reads guidelines, and calls `_emit_materialized_diff`; `materialize-diff` exposes the same materialization. A second compose-prepare verb expands `cli.py` dispatch, harness ports, and grep surface without a behavioral gap the acceptance criteria require
+- **Proposed resolution**: Have `ship.py` call existing `materialize_implementation_diff` / internal prepare helpers for compose materialization; add only the compose-assessment write verb (or repurpose `write-staged-assessment`); drop the new prepare CLI from the plan
+
+### FINDING_12:
+- **Reviewer(s)**: Cursor-Innovation
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/implement/ship.py:826-917
+- **Concern**: [SCOPE-REDUCTION] Merge-loop compose reassessment is beyond the stated acceptance criteria. Scenario: Acceptance targets Step 8b pre-PR rebase drop notices; in-loop `goto_rebase` / `MERGE_RESULT_MAIN_ADVANCED` paths already created the PR and do not recompose the body. Mandating compose-gate reassessment there adds NEEDS_USER interrupts mid-CI without clearing an acceptance criterion
+- **Proposed resolution**: Limit compose-gate reassessment to pre-PR create and explicit open-PR body updates (ci-fix/conflict resume). For merge-loop rebases, remove out-of-gate pin/invalidate only; drop the edge-case requirement to re-author during Step 12 monitoring
+
+### FINDING_13:
+- **Reviewer(s)**: Cursor-Requirements
+- **Severity**: important
+- **Focus area**: architecture
+- **Location**: python/larch/core/architectural_guidelines.py:912-940
+- **Concern**: [SCOPE-REDUCTION] Plan adds a parallel compose-time prepare CLI though prepare already materializes. Scenario: architectural-guidelines prepare already invalidates stale artifacts, reads ARCHITECTURAL_GUIDELINES.md, and materializes the implementation diff; adding a second compose-prepare verb duplicates that surface and expands cli.py dispatch/grep churn without a behavioral gap Repurpose or extend prepare_main for the Step 8 compose gate (adjust invalidation semantics for compose-time only) instead of introducing a parallel prepare verb; repurpose write-staged-assessment into the compose durable writer where possible ### 1. correctness — `python/larch/implement/ship_resume.py:371-382` The compose-time flow depends on pausing after the first `NEEDS_USER_INPUT`, having the orchestrator write the durable note, and relaunching `step-8-ship.sh` without another postbump. Today `_resume_plan` maps any missing `PR_NUMBER` to `_fresh_resume_plan`, which always re-enters the `resume.start == "fresh"` postbump block in `ship.py`. The plan’s failure-mode note flags that risk but does not require the concrete fix at the actual fall-through site. Without an early `PHASE=guidelines-assessment` branch and matching `ship.py` skip-postbump handling, the end-to-end compose-time path can loop or never reach PR creation with the authored note. ### 2. architecture — `python/larch/core/architectural_guidelines.py:912-940` `prepare_main` already performs invalidate → read → materialize-diff, which is exactly what the compose gate needs after postbump. Adding a second compose-prepare CLI verb repeats that logic and increases migration surface (dispatch table, harness ports, grep cleanup) without closing a gap the feature requires. Minimum-change is to extend the existing `architectural-guidelines prepare` path for compose-time use and fold the durable write into a repurposed compose-assessment writer rather than parallel verbs.
+- **Proposed resolution**:

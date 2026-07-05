@@ -1,0 +1,25 @@
+# architectural-guidelines-III [BUG] Implement architectural-guideline note still dropped on ~62% of shipped PRs; re-author the assessment at compose time
+
+**Summary.** The `/implement` architectural-guideline note is dropped from the PR body on the majority of shipped runs. The note is replaced by the literal fallback "The architectural guideline note was dropped because HEAD drifted after staging." This is a recurrence of a repeatedly-closed bug; it is still live on fully-patched versions.
+
+**Evidence (last 40 merged implement PRs, 2026-07-04 to 07-05).**
+
+- 15 clean (38%): "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
+- 25 dropped (62%): the HEAD-drift drop notice, not a real assessment.
+- 0 real deviations (0%) survived to any PR body.
+- All 25 dropped runs ran larch 52.4.3 through 52.4.12 (including the two newest releases at audit time, 52.4.11 and 52.4.12), every one of which post-dates the last fixes (see lineage below). So the fixes are deployed but ineffective. The rate improved from ~90% (documented in the closed issues) to ~62%, but the note is still lost on most runs.
+
+**The compute works; the delivery fails.** The assessment itself is being authored correctly. In the same last-100 implement window, 11 runs recorded real, specific deviations in committed `execution-issues.ndjson` (for example duplicate `_read_keepalive_clone_path` KEY=value parsers across three modules; `_TERMINAL_MERGE_RESULTS` re-declared instead of reusing `config.POST_MERGE_MERGE_RESULTS`). Those genuine findings are computed at Step 7a and then discarded before the PR body is composed, so no reviewer ever sees them.
+
+**Root cause.** The assessment is staged at Step 7a pinned to the then-current HEAD plus a diff fingerprint (`write_staged_assessment` in `python/larch/core/architectural_guidelines.py`). It is pinned/loaded at Step 8 compose time (`_pin_and_load_guidelines_note` in `python/larch/implement/ship_guidelines.py`). Between those two points, Step 8b rebases the feature branch onto `origin/main`. In this repo `main` advances every few minutes, so a rebase is the normal case; the rebase moves HEAD and changes the materialized diff text, invalidating the pin. SKILL.md Step 7a explicitly acknowledges this: "Reassessment on implementation HEAD drift ... Do not reuse stale staged assessments after HEAD changes." The staged-then-pinned-across-a-rebase design is structurally fragile here, and the retry/refresh patches shipped so far do not close the window.
+
+**Proposed fix: re-author the assessment at compose time.** Stop staging at Step 7a. Instead, materialize the final implementation diff once at Step 8 compose time, after the last Step 8b rebase, when HEAD and the shipped diff are stable. Have the orchestrator author the assessment against that final diff and embed it directly into the PR body. This removes the drift window entirely and retires the staged-assessment / fingerprint-pin / drop-notice machinery (or at minimum the cross-rebase pin). If a durable committed copy is still wanted, write it from the same stable-HEAD compose step (see the auditability issue in this series).
+
+**Acceptance criteria.**
+
+- On a normal `--merge` run whose Step 8b performs a routine rebase onto a moved `origin/main`, the shipped PR body contains a real assessment (clean note or deviation list), never the "dropped because HEAD drifted" notice.
+- A genuine deviation authored during the run reaches the PR body.
+- End-to-end regression: extend the #6114 rebase test so it asserts the note survives a rebase where the base moved (not only the unchanged-feature-diff case), exercising the real Step 7a-to-Step 8 path rather than helper units.
+- Re-measure the drop rate across a fresh sample of merged implement PRs and confirm it is ~0%.
+
+**Prior attempts (all CLOSED, this issue is the recurrence with fresh data).** #5337, #5675 (~87%), #5969 (~90% recurrence), #6059, #6106 (routine Step 8+ rebase), #6114 (regression test), and adjacent #6021 / #6034 / #6062 / #6063.

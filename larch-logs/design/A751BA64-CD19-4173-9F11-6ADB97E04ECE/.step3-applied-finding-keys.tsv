@@ -1,0 +1,11 @@
+1	the ci-fix flow and adjacent step 7a guidance still tell the orchestrator to rerun the retired phase a/staging path instead of deferring reassessment to the next step 8 compose-time gate, so a ci-fix or skill-only edit can leave contradictory instructions in place.
+1	step 16/17 closeout still reads from the staged pin path instead of the durable compose-time note, so final-report rendering can still surface the drop notice or miss the real assessment even after the compose-time migration.
+1	the mandatory exit matrix still has no architectural-guidelines-assessment / guidelines-assessment route or same-turn branch semantics, so route-exit can fall back to operator-bail or step 16 instead of compose-time assessment authoring.
+1	the new compose-assessment writer fence is not reflected in the fence-shape harness, so ci can reject the change even when the behavioral contract is correct.
+1	the structure harness still expects the old phase a routing prose in the exit-matrix / ci-fix area, so a correct skill and reference update can still fail make lint until the pinned needles move.
+1	the route-exit classifier tests still do not cover the new architectural-guidelines-assessment mapping, so a regression can silently route the compose-time assessment request to operator-bail.
+1	several live rebase and ci-fix code paths still pin or invalidate the guidelines note outside the compose gate, so head changes can wipe or regenerate the note after it has already been authored.
+2	the plan updates `ci_monitor` behavior but leaves the existing test coverage asserting pre-push guideline pin/invalidate behavior, so ci will fail or the retired out-of-gate contract will be preserved.
+2	removing the old step 7a prose without relocating its trust boundary leaves repo-authored guideline text able to influence step 8 assessment as prompt-injection input.
+2	the live conflict-resolution reference still authorizes architectural-guidelines invalidation outside the compose gate, which can wipe a durable note before reassessment runs.
+2	a compose-time prepare modeled on `prepare_main` would still invalidate notes on relaunch, which can clear a durable note too early and loop or drop the assessment before pr composition.

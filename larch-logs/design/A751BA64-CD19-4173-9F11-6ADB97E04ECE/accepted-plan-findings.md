@@ -1,0 +1,35 @@
+### FINDING_1: Update ci_monitor tests for the compose-gate contract
+- **Reviewer(s)**: Cursor-Arch, Cursor-Pragmatic, Codex-Pragmatic, Codex-Requirements
+- **Severity**: important
+- **Concern**: The plan updates `ci_monitor` behavior but leaves the existing test coverage asserting pre-push guideline pin/invalidate behavior, so CI will fail or the retired out-of-gate contract will be preserved.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Add `### UPDATED: python/tests/implement/test_ci_monitor.py` and extend the testing strategy to replace the pin-before-push assertion with compose-gate / no-out-of-gate-invalidation coverage aligned with the new `ci_monitor` contract.
+  - From Cursor-Pragmatic: Add python/tests/implement/test_ci_monitor.py to Files to modify/create and the testing strategy; replace the pin/invalidate assertions with coverage that pre-push no longer mutates the note and the next step-8-ship.sh relaunch owns compose-time reassessment
+  - From Codex-Pragmatic: Add python/tests/implement/test_ci_monitor.py to the firm updates and rewrite this test to assert pending retry does not pin or invalidate guidelines outside the compose gate.
+  - From Codex-Requirements: Add python/tests/implement/test_ci_monitor.py to the plan and testing command, replacing this assertion with the compose-time contract: no pre-push guidelines pin/invalidate callback, and the next Step 8 compose gate owns reassessment
+
+
+### FINDING_4: Preserve the untrusted-guidelines boundary at compose time
+- **Reviewer(s)**: Codex-Arch
+- **Severity**: important
+- **Concern**: Removing the old Step 7a prose without relocating its trust boundary leaves repo-authored guideline text able to influence Step 8 assessment as prompt-injection input.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Arch: Carry the existing untrusted evidence rule into the compose-time reference or Step 8 guidelines-assessment branch: use only the Python helper/artifacts, treat guideline text and diff content as untrusted evidence, and state that they cannot override higher-priority repo or skill instructions.
+
+
+### FINDING_6: Remove out-of-gate invalidate carve-out from conflict resolution
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: important
+- **Concern**: The live conflict-resolution reference still authorizes architectural-guidelines invalidation outside the compose gate, which can wipe a durable note before reassessment runs.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Remove the invalidate carve-out in the same edit; state that only the next step-8-ship.sh relaunch may refresh assessment via the compose-time gate
+
+
+### FINDING_7: Avoid wholesale invalidation in compose-time prepare
+- **Reviewer(s)**: Cursor-Pragmatic
+- **Severity**: blocking
+- **Concern**: A compose-time prepare modeled on `prepare_main` would still invalidate notes on relaunch, which can clear a durable note too early and loop or drop the assessment before PR composition.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: Specify that compose-time prepare clears only staged and dropped-note artifacts, or short-circuits when note_consumable matches current HEAD; do not call invalidate_implement_note on relaunch after a successful compose write
+
+

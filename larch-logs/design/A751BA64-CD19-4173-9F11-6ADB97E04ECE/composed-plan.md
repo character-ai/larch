@@ -1,0 +1,320 @@
+## Plan
+
+## Approach
+
+Implement a compose-time architectural-guidelines seam in Step 8.
+
+- Remove the live Step 7a staged-assessment flow.
+- After `ship.py` finishes the final pre-PR rebase/log prep and before PR body compose, materialize the final implementation diff at the current `HEAD`.
+- If guidelines are present and the diff materializes, have `ship.py` exit with a new route action for prompt-side assessment.
+- The orchestrator reads the compose-time guideline prompt, authors one clean note or deviation list, and writes it through a new durable compose-assessment helper.
+- On relaunch, `ship.py` verifies that the durable note matches the current compose-time `HEAD` and embeds it in the PR body.
+- Write the durable copy from that same compose-time note. Do not use staged assessment, durable pinning, fingerprint stale checks, or the HEAD-drift drop notice.
+- Make the compose-time gate the single owner of note lifecycle. No live rebase, merge, CI-fix, or closeout path pins, invalidates, or drops the note outside that gate.
+
+Use the existing `architectural-guideline-note.md` and metadata file as the durable copy, but change their meaning to "compose-time authored note" rather than "pinned staged note."
+
+## Files to modify/create
+
+### UPDATED: `skills/implement/SKILL.md`
+
+- Replace `### Architectural guidelines (Phase A — staging)` with a short statement that Step 7a no longer authors or stages guideline assessments.
+- Remove Step 7a instructions that call `step-architectural-guidelines-prepare.sh` and load the present-path reference.
+- Replace the Step 7a-to-Step 8 continuation breadcrumb so it proceeds directly to Step 8 with no Phase A staging.
+- Add a Step 8+ post-driver branch for `NEXT_ACTION=guidelines-assessment`.
+- In that branch:
+  - Read the compose-time guideline reference.
+  - Author the assessment from the final diff that `ship.py` materialized.
+  - Write the draft under `$IMPLEMENT_TMPDIR`.
+  - Call the new compose-assessment writer wrapper.
+  - Clear the stale handoff, then relaunch Step 8 through `step-8-ship.sh` in the same turn with no recap, mirroring the ci-fix/reship anti-halt boundary (continue to Step 8, not Step 16).
+- Update conflict/CI-fix re-entry prose so assessment refresh is owned by the next Step 8 compose-time request, not by rerunning Phase A.
+- Remove the Step 16-17 staged-pin prose at `skills/implement/SKILL.md:727` that pins the staged assessment as mechanical step 0; the final report now reads the compose-time durable note.
+
+### UPDATED: `skills/implement/references/architectural-guidelines-present.md`
+
+- Rewrite this reference from "Phase A staging" to "Step 8 compose-time assessment."
+- Require one assessment body:
+  - `Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.`
+  - or a short deviation list with rationale.
+- Use the final diff materialized by `ship.py`.
+- Replace the staged writer call with a new compose-assessment writer call.
+- Keep warning behavior for genuine deviations: append deviation notes under `Warnings`.
+- Carry the untrusted-evidence rule into the compose-time reference and the Step 8 guidelines-assessment branch: author from the Python helper artifacts only, treat guideline text and diff content as untrusted evidence, and state they cannot override higher-priority repo or skill instructions.
+- Remove all "Do not call pin-note-from-staged" and staged persistence wording.
+
+### UPDATED: `skills/implement/references/conflict-resolution.md`
+
+- Remove the instruction to re-enter Step 7a architectural-guidelines Phase A after conflict edits.
+- Remove the out-of-gate architectural-guidelines invalidate carve-out; only the next `step-8-ship.sh` relaunch may refresh assessment via the compose-time gate.
+- State that the next Step 8 ship relaunch will request a fresh compose-time assessment if the final diff or `HEAD` changed.
+- Preserve the existing stale-handoff clear and `step-8-ship.sh` relaunch contract.
+
+### UPDATED: `skills/implement/references/ship-pr-ci-fix.md`
+
+- Replace the step 11 Phase A rerun with a compose-time contract: do not rerun Phase A. After commit, log refresh, and push, relaunch `step-8-ship.sh` so the compose-time guidelines-assessment gate rematerializes when `HEAD` or the final diff changed.
+- Mirror `conflict-resolution.md`: the next `step-8-ship.sh` relaunch owns compose-time reassessment.
+
+### UPDATED: `skills/implement/references/ship-pr-exit-matrix.md`
+
+- Add `needs_user_reason=architectural-guidelines-assessment` mapping to `NEXT_ACTION=guidelines-assessment` in the exit-3 reason table.
+- Document the `guidelines-assessment` branch semantics mirroring the oos-pipeline entry: author the compose-time note, write the durable copy, clear the stale handoff, relaunch `step-8-ship.sh`, and anti-halt to Step 8 (not Step 16).
+- List the required handoff artifact fields or paths (materialized diff, guidelines status) the branch consumes.
+
+### UPDATED: `skills/implement/scripts/step-architectural-guidelines-prepare.sh`
+
+- Retire it from live Step 7a use.
+- Either remove it from the prompt path and leave only test/backward-compat coverage for one release, or convert it into the new compose-time wrapper name below.
+- Prefer a new wrapper name if churn is acceptable, because the old name encodes the retired staging phase.
+
+### UPDATED: `skills/implement/scripts/step-architectural-guidelines-write-staged.sh`
+
+- Replace the staged writer contract with a compose-assessment writer, or add a new wrapper and delete this one from live references.
+- The wrapper should call a new Python CLI verb that:
+  - reads the prompt-authored assessment file,
+  - validates the assessment is non-empty,
+  - validates the current `HEAD` still matches the materialized compose input,
+  - writes `architectural-guideline-note.md` and metadata,
+  - clears any old dropped-note artifact.
+
+### UPDATED: `skills/implement/scripts/step-architectural-guidelines-prepare.md`
+
+- Update or retire the helper doc so it no longer claims Python owns Phase A staged assessment writes and durable pinning.
+
+### UPDATED: `skills/implement/scripts/step-architectural-guidelines-write-staged.md`
+
+- Update or retire the helper doc so it describes compose-time durable note writes, not staged writes.
+
+### UPDATED: `skills/implement/scripts/test-architectural-guidelines-step.sh`
+
+- Update pinned prose expectations:
+  - no Step 7a staging,
+  - no staged writer reference,
+  - new `guidelines-assessment` Step 8 route,
+  - new compose-time writer reference,
+  - no drop notice.
+- Update helper checks to assert the new durable note is written directly and no staged artifact is required.
+
+### UPDATED: `scripts/test-implement-structure.sh`
+
+- Replace the pinned Phase A / staging needles in the exit-matrix and ci-fix area with the new compose-time contract pins (`guidelines-assessment` routing, no Phase A rerun).
+- Update any mirrored needles in the same block so a correct SKILL and reference update passes `make lint`.
+
+### UPDATED: `scripts/test-implement-fence-shape.sh`
+
+- Bump `EXPECTED_OLD` / `EXPECTED_NEW` and add the ordering slice for the new compose-assessment writer launcher fence, and for the removed Phase A prepare fence.
+
+### UPDATED: `python/larch/core/architectural_guidelines.py`
+
+- Add a frozen dataclass for compose-time materialization metadata, for example final `HEAD`, base ref, diff fingerprint, diff path, guidelines status, and warning.
+- Add a compose-time prepare function and CLI verb that:
+  - clears only staged and dropped-note artifacts, and short-circuits when the durable note is `note_consumable` for the current `HEAD`,
+  - reads `ARCHITECTURAL_GUIDELINES.md`,
+  - materializes the final diff against `origin/main` or `upstream/main`,
+  - writes the materialized diff and metadata under `$IMPLEMENT_TMPDIR`,
+  - emits machine KVs plus untrusted blocks for prompt-side authoring.
+- Do not call `invalidate_implement_note` on relaunch after a successful compose write; over-invalidation can clear a durable note too early and loop or drop the assessment before PR compose.
+- Add a compose-assessment write function and CLI verb that writes the durable note directly from the prompt-authored assessment.
+- Validate the compose write against the materialized `HEAD`; if `HEAD` changed between materialization and write, fail closed so Step 8 can rematerialize.
+- Remove or deprecate live-use helpers for:
+  - `write_staged_assessment`,
+  - `pin_note_from_staged`,
+  - `pin_note_from_staged_for_current_head`,
+  - `refresh_staged_assessment_for_current_head`,
+  - drop-notice persistence.
+- Remove `DROPPED_NOTE_MESSAGE` from live output paths.
+
+### UPDATED: `python/larch/implement/ship_guidelines.py`
+
+- Rewrite this module around compose-time helpers.
+- Replace `_pin_and_load_guidelines_note` with a function that either:
+  - returns a current durable note for the current compose `HEAD`, or
+  - prepares compose-time guideline inputs and signals that prompt-side assessment is required.
+- Remove handlers that return or persist the HEAD-drift drop notice.
+- Keep warning logging for real failures, such as unreadable durable note, redaction failure, invalid guidelines file, or materialization failure. Emit bounded warnings only; never a drop notice.
+
+### UPDATED: `python/larch/implement/ship.py`
+
+- Insert the compose-time guideline gate immediately before PR body composition.
+- For fresh runs, this happens after `finalize.postbump` and after final pre-PR log prep.
+- For open-PR resumes, CI-fix reships, and conflict-resolution relaunches, run the same gate before updating the PR body.
+- If assessment is required, write `PHASE=guidelines-assessment` and return `Outcome.NEEDS_USER_INPUT` with a new reason such as `architectural-guidelines-assessment`.
+- On relaunch, skip repeating postbump when resuming a pre-PR `guidelines-assessment` phase with no PR number.
+- Pass the durable compose-time note directly to `pr_body.compose_pr_body`.
+- Ensure no path can pass the old HEAD-drift drop notice into the PR body.
+
+### UPDATED: `python/larch/implement/ship_resume.py`
+
+- Teach resume planning about `PHASE=guidelines-assessment`.
+- If no PR exists yet, resume at the pre-PR compose point rather than restarting the full fresh postbump path.
+- If a PR already exists, keep the existing open-PR resume behavior and let the compose-time gate refresh the note before body update.
+
+### UPDATED: `python/larch/implement/ship_state.py`
+
+- Allow any new state fields needed for the compose-time handoff.
+- Keep values narrow and validated.
+- Prefer file paths under `$IMPLEMENT_TMPDIR` over embedding large diff text in state.
+
+### UPDATED: `python/larch/implement/dispatch_ship.py`
+
+- Map `needs_user_reason=architectural-guidelines-assessment` to `NEXT_ACTION=guidelines-assessment`.
+- Include handoff fields that point to the materialized guidelines/diff artifacts if needed.
+- Add route-exit tests for the new action.
+
+### UPDATED: `python/larch/implement/ship_merge.py`
+
+- Remove or no-op the pre-compose pin/invalidate of the guidelines note (including any folded rebase helper).
+- Route every successful in-driver Step 12 rebase that can change `HEAD` (for example `MERGE_RESULT_MAIN_ADVANCED`) back through the same PR-body compose/update gate before CI/merge continues, instead of pre-compose invalidation.
+
+### UPDATED: `python/larch/implement/ci_monitor.py`
+
+- Drop the pre-push pin/invalidate of the guidelines note, or replace it with compose-time invalidation only when `ship` will rematerialize.
+- Route `monitor.goto_rebase` HEAD changes back through the compose gate so the note is re-authored, not wiped.
+
+### UPDATED: `python/larch/implement/ci_agentic_fix.py`
+
+- Remove `_invalidate_guidelines_before_ci_push` (or defer invalidation to ship compose-time rematerialization) so no CI-fix path can wipe or regenerate the note outside the compose gate.
+
+### UPDATED: `python/larch/cli.py` and/or `python/larch/cli.py` dispatch table source
+
+- Register the new architectural-guidelines CLI verbs.
+- Remove old live-only verbs from the supported dispatch table if no remaining tests or compatibility needs require them.
+- If kept temporarily, mark them legacy and remove all live prompt references.
+
+### UPDATED: `python/larch/report/final_report.py`
+
+- Render the durable compose-time note without using stale-fingerprint invalidation or drop-notice fallback.
+- Keep redaction fail-closed behavior.
+- Remove expectations that final summary should preserve the old HEAD-drift drop message.
+
+### UPDATED: `python/larch/state/closeout.py`
+
+- Drop the staged pin step (mechanical step 0) and read the compose-time durable note only, or no-op when `note_consumable` is false for the current `HEAD`.
+- Never surface the drop notice from closeout; align with the `final_report.py` changes.
+
+### UPDATED: `python/larch/git/pr_body.py`
+
+- Remove or update tests that bless the drop notice as valid PR-body content.
+- Keep the architectural-guidelines section placement and redaction tests.
+
+### UPDATED: `python/tests/core/test_architectural_guidelines.py`
+
+- Replace staged/pin tests with compose-time prepare and write tests.
+- Cover:
+  - present guidelines plus materialized final diff,
+  - absent guidelines,
+  - invalid guidelines warning,
+  - materialization failure,
+  - direct durable write,
+  - fail-closed `HEAD` drift between materialization and compose write,
+  - stale drop marker cleared.
+
+### UPDATED: `python/tests/implement/test_ship.py`
+
+- Replace `_pin_and_load_guidelines_note` tests with compose-time gate tests.
+- Add an end-to-end moved-base regression that exercises the real Step 8 path:
+  - initial feature diff exists,
+  - `origin/main` moves,
+  - `ship.py` rebases/postbumps,
+  - compose-time diff is materialized after the rebase,
+  - prompt-side durable note is written,
+  - PR body contains the real note, not the old drop notice.
+- Add a genuine deviation test that reaches `pr_body.compose_pr_body`.
+- Add pre-PR resume coverage so `guidelines-assessment` does not rerun postbump.
+- Add open-PR resume coverage so a changed `HEAD` requests a new assessment before PR body update.
+- Assert no live path (rebase, merge, CI-fix) can emit the drop notice.
+
+### UPDATED: `python/tests/report/test_final_report.py`
+
+- Update final-report architectural-guidelines tests for compose-time durable notes.
+- Remove assertions that stale notes become the HEAD-drift drop message.
+- Keep redaction and symlink-skip coverage.
+
+### UPDATED: `python/tests/git/test_pr_body.py`
+
+- Delete the test that asserts the old drop notice is included.
+- Keep or add tests for real clean notes and deviation notes.
+
+### UPDATED: `python/tests/design/test_design_cli_ports.py`
+
+- Update the architectural-guidelines dispatch list for new, removed, or legacy CLI verbs.
+
+### UPDATED: `python/tests/state/test_closeout.py`
+
+- Remove the staged pin-step-0 assertions.
+- Assert closeout reads the compose-time durable note only (or no-ops when the note is not consumable for the current `HEAD`) and never surfaces the drop notice.
+
+### UPDATED: `python/tests/implement/test_implement_dispatch.py`
+
+- Add a parametrized exit-3 case asserting `needs_user_reason=architectural-guidelines-assessment` maps to `NEXT_ACTION=guidelines-assessment`, and extend the sidecar classification table.
+
+### UPDATED: `python/tests/implement/test_ci_monitor.py`
+
+- Replace the pre-push guideline pin/invalidate assertions with compose-gate coverage: pending retry and pre-push no longer mutate the note, and the next `step-8-ship.sh` relaunch owns compose-time reassessment.
+
+### UPDATED: `python/tests/implement/test_ci_agentic_fix.py`
+
+- Remove assertions that require drop-notice warning persistence after invalidation.
+- Assert the CI-fix path no longer invalidates the note, and that the next Step 8 relaunch requests or writes a fresh compose-time note.
+
+### MAY_UPDATE: `scripts/residual-bash-paths.txt`
+
+- Update only if helper wrapper names change or old wrappers are removed.
+
+### MAY_UPDATE: `docs/workflow-lifecycle.md`
+
+- Update only if the docs describe Step 7a architectural-guidelines staging or Phase B pinning.
+
+## Edge cases
+
+- `ARCHITECTURAL_GUIDELINES.md` absent: do not request assessment; PR body has no section.
+- Guidelines invalid: log a warning; do not request assessment.
+- Diff materialization fails: log a warning; do not emit the old drop notice.
+- `HEAD` changes after compose materialization but before the prompt writes the note: writer fails closed; Step 8 rematerializes on relaunch.
+- `HEAD` changes via an in-driver Step 12 rebase or main-advanced merge: re-enter the compose gate before body update so the note is re-authored, not wiped.
+- Existing stale staged or dropped-note artifacts: clear them before compose-time prepare and before durable write.
+- Existing open PR: update the PR body with a fresh note when `HEAD` changes after CI fixes or conflict resolution.
+- Redaction failure: fail closed or omit the note with a logged warning, but never substitute the HEAD-drift drop notice.
+- `--forked-target`: keep `upstream/main` base selection.
+- `--no-logs-commit`: durable tmpdir copy still exists; committed log copy may be absent by operator choice.
+
+## Failure modes
+
+- Resume state can loop if `guidelines-assessment` is treated as `fresh`. Add explicit resume-plan coverage and a pre-PR resume token.
+- The prompt branch can use stale materialized diff if the writer does not validate `HEAD`. Make `HEAD` validation mandatory.
+- PR body can miss the note if open-PR resume, an in-driver rebase, or a CI-fix push bypasses the compose-time gate. Run the gate for every compose/update path and remove all out-of-gate invalidation.
+- Removing old CLI verbs can break harnesses or prompt references. Grep for all live references and update tests and pinned needles in the same change.
+- Warning-log flushes can still stall before PR creation. Keep existing warning flush behavior for real warnings, but remove drop-notice warning paths.
+
+## Testing strategy
+
+- Run targeted Python tests:
+  - `cd python && pytest tests/core/test_architectural_guidelines.py tests/implement/test_ship.py tests/report/test_final_report.py tests/git/test_pr_body.py tests/design/test_design_cli_ports.py tests/state/test_closeout.py tests/implement/test_implement_dispatch.py tests/implement/test_ci_monitor.py tests/implement/test_ci_agentic_fix.py`
+- Run targeted harnesses:
+  - `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+  - `bash skills/implement/scripts/test-step-8-ship.sh`
+  - `bash scripts/test-implement-structure.sh`
+  - `bash scripts/test-implement-fence-shape.sh`
+- Run lint for changed files:
+  - `python3 python/cli.py checks run-relevant`
+- Manually inspect that no live prompt or Python path contains `The architectural guideline note was dropped because HEAD drifted after staging.`
+- Post-merge validation (operator, not a code deliverable): re-measure a fresh merged-PR sample with the repo's audit tooling and confirm the drop rate is near zero.
+
+## Acceptance
+
+- Run targeted Python tests:
+  - `cd python && pytest tests/core/test_architectural_guidelines.py tests/implement/test_ship.py tests/report/test_final_report.py tests/git/test_pr_body.py tests/design/test_design_cli_ports.py tests/state/test_closeout.py tests/implement/test_implement_dispatch.py tests/implement/test_ci_monitor.py tests/implement/test_ci_agentic_fix.py`
+- Run targeted harnesses:
+  - `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+  - `bash skills/implement/scripts/test-step-8-ship.sh`
+  - `bash scripts/test-implement-structure.sh`
+  - `bash scripts/test-implement-fence-shape.sh`
+- Run lint for changed files:
+  - `python3 python/cli.py checks run-relevant`
+- Manually inspect that no live prompt or Python path contains `The architectural guideline note was dropped because HEAD drifted after staging.`
+- Post-merge validation (operator, not a code deliverable): re-measure a fresh merged-PR sample with the repo's audit tooling and confirm the drop rate is near zero.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+diff_lines: 1080
