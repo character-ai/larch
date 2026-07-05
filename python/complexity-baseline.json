@@ -4395,7 +4395,7 @@
     "file": "larch/report/progress_report.py",
     "code": "C901",
     "qualified_symbol": "render_phase_detail",
-    "metric": 14
+    "metric": 15
   },
   {
     "file": "larch/report/progress_report.py",
@@ -4431,7 +4431,7 @@
     "file": "larch/report/progress_report.py",
     "code": "PLR0912",
     "qualified_symbol": "render_phase_detail",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/report/progress_report.py",
