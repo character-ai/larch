@@ -1,0 +1,4 @@
+# A few changes to final report in /design and /implement
+
+1. In /implement, "Mode:" first line of final report is invalid and should be dropped
+2. Add new first line which is "Outcome:" with values of DONE if all good, or STALLED if stalled.  I don't believe we have any other outcomes, but if we do, they go here.  The motivation is that currently it's hard to tell from the final report whether it succeeded or not.

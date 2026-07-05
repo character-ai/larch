@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- shared-helper visibility is an implementation choice, not a required part of the feature.
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate stale-docs note; real, but out of scope for this feature.
+OOS_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicate stale-docs note; real, but out of scope for this feature.

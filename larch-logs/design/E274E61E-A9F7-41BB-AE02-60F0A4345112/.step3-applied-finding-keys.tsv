@@ -1,0 +1,5 @@
+1	the stalled-summary reconciliation path rewrites the heading but deletes the `outcome` bullet, and its safety check only looks for lowercase `stalled`, so recovered summaries can still miss the mandatory `done` display or let `stalled` residue through.
+1	the degraded `/design` fallback still hand-writes the summary instead of using the shared outcome-display mapper, so a renderer failure can publish raw `approved`/`stalled` values and diverge from the normal `done`/`stalled` contract.
+1	the report tests still encode stale lowercase `stalled` expectations for both the live render and reconciliation paths, so they won't validate the new `stalled`/`done` display contract.
+2	the plan adds an unconditional outcome bullet but never removes the existing conditional outcome append, so several non-success paths can emit duplicate or conflicting outcome bullets.
+2	the flush pre-recovery test still asserts against lowercase stalled only, so it can miss cases where the rendered outcome bullet becomes stalled or fails to become done after recovery.

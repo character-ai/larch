@@ -1,0 +1,1 @@
+Plan updates the shared run-summary renderer so `/design` and `/implement` always start the bullet list with mapped `Outcome:`, removes `/implement` `Mode:`, keeps raw outcome in headings, and updates reconciliation/tests/docs.

@@ -1,0 +1,8 @@
+Reading the ballot and verifying claims against the plan and referenced code.
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false -- duplicates rejected round-1 FINDING_4; degraded mapper is plan-mandated but extra test is optional coverage
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- approved outline requires Outcome as first bullet, not first body line; degraded warning precedes bullets only
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 OOS_4; docs/run-logs.md outside plan surfaces
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1 and round-1 OOS_4/OOS_2

@@ -1,0 +1,35 @@
+Reviewing the plan against the codebase: locating final-summary rendering, stalled reconciliation, and related tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	python/larch/report/final_report.py:533-587	Manifest-only stalled reconciliation deletes the Outcome bullet instead of emitting DONE	After `_summary_stalled_outcome_index` matches `stalled` or `STALLED`, `reconcile_stalled_summary_from_manifest` rewrites the heading to `: merged` and `del lines[outcome_idx]` (584-584). Recovered summaries then lack the mandatory first `- **Outcome**:` bullet; tests such as `test_manifest_only_stalled_summary_reconciliation_updates_heading_and_outcome` only assert `- **Outcome**: stalled` is absent (python/tests/report/test_run_logs.py:1054-1056), not `- **Outcome**: DONE`	Replace the delete with a rewrite to `- **Outcome**: {_map_outcome_display(recovered_outcome)}` (DONE for `merged`); extend reconciliation tests to assert DONE on success recovery
+1	in_scope	minor	correctness	python/larch/design/design_summary.py:644-648	Design degraded fallback bypasses the shared outcome display mapper	When `invoke_render` fails, `render_final_summary_main` hand-writes `- **Outcome**: {outcome}` with the raw normalized value. Approved or stalled design runs would show `approved` or `stalled` instead of `DONE` or `STALLED`, diverging from `render_run_summary`	Add `### UPDATED: python/larch/design/design_summary.py` to reuse `_map_outcome_display` (or a thin shared helper) in the fallback writer
+1	in_scope	minor	risk-integration	python/larch/report/final_report.py:586-587	Reconciliation safety guard only rejects leftover lowercase stalled bullets	The post-rewrite guard is `if "- **Outcome**: stalled" in rewritten: return False`. After new summaries emit `- **Outcome**: STALLED`, a partial rewrite that leaves STALLED would pass the guard and commit a still-stalled display bullet	Extend the guard to reject any remaining stalled outcome bullet (match `stalled` and `STALLED`, or compare via the same regex as `_summary_stalled_outcome_index`)
+1	out_of_scope	minor	architecture	docs/run-logs.md:467	final-summary.md contract prose still describes mode flags and conditional Outcome emission	Line 467 documents "outcome, mode flags" and Outcome only for `bailed*` / `stalled` / `cancelled-*` / `failed-*` / `publish-skipped`; after Mode removal and always-on Outcome with DONE/STALLED mapping, committed-log docs drift	Track a doc-only follow-up to align `docs/run-logs.md` with the new renderer contract
+1	out_of_scope	nit	risk-integration	python/tests/implement/test_ship.py:1311-1327	Recovered-PR ship tests do not assert the new DONE Outcome bullet	`test_recovered_open_pr_preconciles_stalled_summary_before_merge` and the draft variant only assert `- **Outcome**: stalled` is absent after recovery; they would still pass if the Outcome bullet were missing entirely	Optional follow-up: assert `- **Outcome**: DONE` after full `write_final_report` re-render on the recovery path
+
+## Findings
+
+### 1. **correctness** — `python/larch/report/final_report.py:533-587`
+
+Manifest-only stalled reconciliation updates the heading but **deletes** the Outcome line (`del lines[outcome_idx]` at 584) instead of writing `- **Outcome**: DONE` for recovered success outcomes like `merged`. That conflicts with the issue requirement that success summaries always lead with Outcome `DONE`.
+
+The plan only broadens `_summary_stalled_outcome_index` matching; it does not change rewrite semantics. Existing tests (`python/tests/report/test_run_logs.py:1054-1056`, `1081-1084`) check that lowercase `stalled` is gone, not that `DONE` appears.
+
+**Suggested revision:** Replace the bullet with `_map_outcome_display(recovered_outcome)` rather than deleting it, and assert `- **Outcome**: DONE` in reconciliation success tests (including the new `STALLED` input case).
+
+### 2. **correctness** — `python/larch/design/design_summary.py:644-648`
+
+`/design` primary rendering goes through `invoke_render` → `render run-summary` → `pr_body.render_run_summary`, which the plan updates. The **degraded fallback** path still writes raw `- **Outcome**: {outcome}` when the main renderer fails. That path can emit `approved` or `stalled` instead of `DONE` or `STALLED`.
+
+The plan’s file list does not include `design_summary.py`.
+
+**Suggested revision:** Add `### UPDATED: python/larch/design/design_summary.py` and route the fallback Outcome line through the same display mapper.
+
+### 3. **risk-integration** — `python/larch/report/final_report.py:586-587`
+
+The reconciliation failure guard only checks for leftover `- **Outcome**: stalled`. Once new summaries emit `STALLED`, a partial rewrite that leaves the display bullet unchanged would not trip this guard.
+
+**Suggested revision:** Reject any remaining stalled outcome bullet using the same matcher used for detection (or an explicit `stalled|STALLED` alternation).
+
+---
+
+**Plan coverage that looks sound:** centralizing display mapping in `pr_body.render_run_summary`, removing `- **Mode**:`, preserving `Path`, skill-specific success unions mapping to `DONE`, stalled → `STALLED`, raw values elsewhere, and updating `test_pr_body.py`, `test_run_logs.py`, `test-write-final-report.sh`, and `write-final-report.md`. The matrix harness change from `expect_outcome=absent` on success rows to asserting `DONE` is necessary and already called out.
