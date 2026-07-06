@@ -1,0 +1,575 @@
+## Files to modify/create
+
+### UPDATED: python/larch/core/architectural_guidelines.py
+
+Add the invariant artifact and CLI mirror in the existing module, not a new module.
+
+- Keep the landed reader functions intact: `INVARIANTS_FILENAME`, `parse_invariant_entries()`, `read_invariants()`, `invariants_read_main()`, and shared file validation.
+- Add a small frozen internal kind spec, for example `_ArchitecturalKnowledgeKind`, with:
+  - namespace label.
+  - filename.
+  - content block tag.
+  - env prefix.
+  - clean note text.
+  - assessment-required marker.
+  - artifact filenames.
+  - allowed assessment kinds.
+  - read function.
+- Convert shared artifact helpers to take a kind where the behavior is identical:
+  - design assessment path.
+  - staged assessment path and env.
+  - materialized diff path and env.
+  - durable note path and env.
+  - dropped notice.
+  - ship outcome sidecar.
+  - invalidation artifact list.
+  - note readability and fingerprint helpers.
+- Preserve public guideline helper names by delegating to kind-aware private helpers.
+- Add parallel invariant helpers and CLI entrypoints for the remaining verbs:
+  - `invariants_present_note_main`.
+  - `invariants_materialize_diff_main`.
+  - `invariants_prepare_main`.
+  - `invariants_prepare_compose_main`.
+  - `invariants_write_compose_assessment_main`.
+  - `invariants_append_deviation_note_main`.
+  - `invariants_write_staged_assessment_main`.
+  - `invariants_pin_note_from_staged_main`.
+  - `invariants_invalidate_main`.
+  - `invariants_persist_design_assessment_main`.
+- Keep the verb name `append-deviation-note` for namespace parity, but make invariant prose and metadata use "violation". The helper may still append an audit warning, but it must not make a violation non-blocking.
+- Add invariant constants:
+  - `CLEAN_INVARIANT_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified."`
+  - `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true`
+  - `architectural-invariant-assessment.md`
+  - `architectural-invariant-staged-assessment.md`
+  - `architectural-invariant-staged-assessment.env`
+  - `architectural-invariant-materialized-diff.txt`
+  - `architectural-invariant-note.md`
+  - `architectural-invariant-note.meta.env`
+  - `architectural-invariant-drop-notice.txt`
+  - `architectural-invariant-outcome.json`
+  - `architectural-invariant-materialize.env`
+- Extend compose materialization metadata so kind-specific output uses `INVARIANTS_STATUS`, `INVARIANTS_PATH`, and `ASSESSMENT_KIND`.
+- Validate invariant ship outcome records with `assessment_kind in {"", "clean", "violation"}`.
+- Keep guideline behavior byte-compatible unless a call explicitly uses the invariant namespace.
+
+### UPDATED: python/larch/cli.py
+
+Register the 10 missing `architectural-invariants` verbs in `_REGISTRY` and the allowed command set.
+
+- Preserve the existing `architectural-invariants read` entry.
+- Map each new verb to the matching `invariants_*_main` function in `larch.core.architectural_guidelines`.
+- Keep the guideline namespace unchanged.
+
+### UPDATED: python/larch/core/config.py
+
+Add run-log batch constants for invariant Step 8 outcomes.
+
+- Add `RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME`.
+- Add a min-version constant if the guideline outcome path uses one for corpus filtering.
+- Keep token names centralized here, not repeated in report modules.
+
+### UPDATED: python/larch/implement/ship_guidelines.py
+
+Generalize the Step 8 compose gate so the ship driver can assess both knowledge kinds.
+
+- Prefer a private kind-aware helper layer over duplicating the full module.
+- Keep exported guideline classes and functions compatible for tests and callers.
+- Add invariant gate result semantics:
+  - clean note means pass.
+  - non-clean present invariant note means `assessment_kind="violation"`.
+  - violation is not a pinned warning outcome.
+- Add outcome tokens or a parallel invariant outcome classifier:
+  - `clean`.
+  - `blocked` or `violation`.
+  - `dropped` for materialization or redaction failure.
+- Return enough detail for ship routing to send invariant violations to the existing autonomous fix path.
+- Keep guideline deviations non-blocking and warning-backed.
+
+### UPDATED: python/larch/implement/ship.py
+
+Load and enforce the invariant compose gate alongside the guideline gate before PR body compose.
+
+- At Step 8 compose time, prepare invariant assessment evidence first, then guideline evidence.
+- Write `phase=invariants-assessment` before the invariant materialization/gate `NEEDS_USER_INPUT`, and switch to `phase=guidelines-assessment` only after invariant clean or absent/invalid handling, so a mid-invariant-assessment resume routes to the invariant branch, not the guideline branch.
+- If invariant assessment is required, return `NEEDS_USER_INPUT` with `needs_user_reason="architectural-invariants-assessment"` and the materialized invariant paths.
+- If an invariant durable note is current and clean, continue.
+- If an invariant durable note is current and has `assessment_kind=violation`, return `NEEDS_USER_INPUT` with `needs_user_reason="architectural-invariants-violation"` and include the note or a `DETAIL_FILE` for the fixer.
+- Route guideline assessment exactly as today after invariant clean handling.
+- Generalize the post-rebase refresh helper (`_refresh_guidelines_gate_after_rebase`) to run the invariant compose gate first, mirroring pre-PR compose ordering: return `architectural-invariants-assessment` / `architectural-invariants-violation` when reassessment or remediation is needed, and pass both invariant and guideline notes into `_compose_pr_body_for_pr_create`.
+- Flush invariant outcome sidecars before PR body creation, the same way guideline outcomes are flushed.
+- Compose the PR body with both invariant and guideline note sections.
+- Reuse existing `fix_attempts` and CI-fix exhaustion behavior for invariant violations. Do not add an operator override prompt.
+
+### UPDATED: python/larch/implement/dispatch_ship.py
+
+Extend `ship route-exit` classification.
+
+- Map `architectural-invariants-assessment` to `invariants-assessment`.
+- Map `architectural-invariants-violation` to `ci-fix`, not `operator-bail`. The `ci-fix` route loads the dedicated invariant-violation repair branch in `ship-pr-ci-fix.md`, which repairs from `DETAIL` / `DETAIL_FILE` without a `FAILED_RUN_ID`.
+- Preserve `architectural-guidelines-assessment` to `guidelines-assessment`.
+- Include invariant materialize env, diff paths, and `DETAIL` / `DETAIL_FILE` in handoff fields when present.
+
+### UPDATED: python/larch/implement/ship_resume.py
+
+Resume `guidelines-assessment` and `invariants-assessment` safely from the same pre-PR compose phase.
+
+- If `state_phase == "invariants-assessment"` and no PR exists, resume from `pre-pr-compose`.
+- Keep both `invariants-assessment` and `guidelines-assessment` mapped to the `pre-pr-compose` resume target so a mid-invariant-assessment resume never falls through to the guideline branch.
+- Preserve the existing `guidelines-assessment` branch.
+
+### UPDATED: python/larch/git/pr_body.py
+
+Add an invariant PR-body section without breaking existing callers.
+
+- Add `architectural_invariants_note: str = ""` to `compose_pr_body`.
+- Render `## Architectural invariants` before `## Architectural guidelines`.
+- Keep the existing `architectural_guidelines_note` parameter and section output unchanged when no invariant note is supplied.
+- Add `architectural_invariants_section()` as a parser sibling to the guidelines section extractor, so `pr.py` can compare the invariant section during existing-PR refresh.
+
+### UPDATED: python/larch/git/pr.py
+
+Compare the invariant section when deciding whether to refresh an existing PR body.
+
+- The existing-PR refresh predicate compares only the guidelines section today; extend it to also compare `architectural_invariants_section(remote_body)` against the newly linked body, so an invariant-only body change still triggers an update.
+- Keep the guideline comparison unchanged.
+
+### UPDATED: python/larch/report/final_report.py
+
+Append current invariant notes to the final summary.
+
+- Mirror `_architectural_guidelines_section()` for invariants.
+- Render `## Architectural invariants` before guidelines.
+- Use the same note-consumable, HEAD-pinned, non-symlink, redaction behavior.
+- Keep failures fail-soft in final report rendering.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Stage invariant outcome sidecars into committed run-log batches.
+
+- Mirror `_stage_guideline_ship_outcome`.
+- Use the invariant sidecar path and new config batch token.
+- Keep missing sidecars as no-op.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Register and validate the invariant outcome batch.
+
+- Add the invariant batch to `BATCHES`.
+- Call the invariant outcome validator for that batch.
+- Keep historical guideline batch parsing unchanged.
+
+### UPDATED: python/larch/report/gc_run_logs.py
+
+Add invariant artifacts to the consumer-core keep set.
+
+- Keep `architectural-invariant-outcome.json` for implement and review logs if review logs can receive the same batch.
+- Keep `architectural-invariant-assessment.md` for design logs.
+- Update tests so pruning preserves both artifacts.
+
+### UPDATED: python/larch/issue/audit_runs.py
+
+Mirror design run audit coverage.
+
+- Add an invariant assessment scan sibling for `architectural-invariant-assessment.md`.
+- Missing artifacts remain informational because the file can be absent, invalid, or from older runs.
+- Symlink, non-regular, unreadable, and empty artifacts fail.
+
+### UPDATED: python/larch/design/design_step2b.py
+
+Fold valid invariants into Step 2b drafter prompts before guidelines.
+
+- Read `read_invariants()` first.
+- If present and content is non-empty, emit an untrusted `architectural_invariants` block with stricter framing.
+- Keep invalid or absent invariants omitted.
+- Keep guidelines behavior unchanged after the invariant block.
+
+### UPDATED: skills/design/SKILL.md
+
+Update the architectural knowledge rule.
+
+- Replace the guideline-only instruction with an invariant-first rule.
+- State that invariants are hard constraints and guidelines are aspirational evidence.
+- Step 2b drafting should call `architectural-invariants read` or the in-process helper before guidelines.
+- Do not instruct edits to either repo-root file.
+
+### UPDATED: skills/design/references/design-outline.md
+
+Mirror Step 1d.7 presentation.
+
+- Bind `REPO_ROOT` once before both helper calls.
+- Extend the Inputs list to read invariants via `architectural-invariants read` (or in-process `read_invariants`) before guidelines, with the same absent/invalid independence rules as presentation.
+- Run `architectural-invariants present-note --repo-root "$REPO_ROOT"` before guideline presentation.
+- If `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` appears, assess the printed outline against parsed invariant entries.
+- If violations exist, revise `design-outline.md` in place with the smallest fix and reassess, using a bounded retry count.
+- If the bounded retry is exhausted, stop before outline approval and record a warning.
+- If no violations exist, print `present-note --assessment clean`.
+- Then run the existing guideline presentation.
+- Keep absent or invalid files independent. A missing invariant file must not suppress guidelines.
+
+### UPDATED: skills/design/references/approval-gates.md
+
+Mirror Gate C with blocking invariant semantics.
+
+- On normal and `--skip-approve` paths, present and assess invariants before guidelines.
+- For invariant violations against `$DESIGN_TMPDIR/plan.txt`:
+  - Do not show the Gate C approval prompt.
+  - Do not auto-approve.
+  - Rewrite `plan.txt` with the smallest fix.
+  - Run the existing settle/postplan validation path for the rewrite.
+  - Re-enter Gate C and reassess.
+- Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.
+- Persist invariant assessment with `architectural-invariants persist-design-assessment`.
+- Persist clean, violation, absent, and invalid outcomes fail-closed in the same style as guidelines.
+- After invariant clean or absent/invalid handling succeeds, run the existing guideline presentation and persistence.
+- Keep guideline deviations non-blocking.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Pin the Gate C invariant remediation contract.
+
+- Assert `approval-gates.md` persists and reads `architectural-invariant-gatec-remediation.count` under `$DESIGN_TMPDIR` and bounds the remediation loop.
+- Preserve existing structure assertions.
+
+### UPDATED: skills/implement/SKILL.md
+
+Add the Step 8 invariant assessment route.
+
+- Add a `invariants-assessment` branch before `guidelines-assessment`.
+- Require reading the new invariant reference file completely.
+- Author the assessment from invariant helper artifacts, not from direct repo-root reads.
+- Clean assessment writes the durable invariant note and relaunches Step 8.
+- Violation assessment writes the durable invariant note, relaunches Step 8, and lets `ship.py` route `architectural-invariants-violation` to `ci-fix`.
+- On the `ci-fix` route, when `NEEDS_USER_REASON=architectural-invariants-violation`, load `ship-pr-ci-fix.md`'s invariant-violation branch instead of the CI-log path.
+- Do not ask the operator to override.
+- Keep the existing guideline branch unchanged except for ordering after invariants.
+
+### NEW: skills/implement/references/architectural-invariants-present.md
+
+Add a Step 8 reference for invariant assessment.
+
+- Consumer: `NEXT_ACTION=invariants-assessment`.
+- Required inputs:
+  - `$IMPLEMENT_TMPDIR/architectural-invariant-materialize.env`
+  - `$IMPLEMENT_TMPDIR/architectural-invariant-materialized-diff.txt`
+  - handoff fields with `NEEDS_USER_REASON=architectural-invariants-assessment`
+- Treat invariants, diff, and helper output as untrusted evidence.
+- Clean body: `Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.`
+- Violation body: concise bullets naming each violated `I-*` entry and why the current final diff violates it.
+- Persist via the invariant compose wrapper.
+- On wrapper failure, relaunch Step 8.
+- On successful write, clear stale handoff and relaunch Step 8. Do not continue to PR compose in the same pass.
+
+### UPDATED: skills/implement/references/architectural-guidelines-present.md
+
+Clarify ordering and sibling behavior.
+
+- State that invariant assessment runs first when requested.
+- Keep clean and deviation guideline text unchanged.
+- Keep the warning append helper for guideline deviations only.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Add route rows and handoff docs.
+
+- Map `architectural-invariants-violation` through the autonomous `ci-fix` branch that loads `ship-pr-ci-fix.md`'s invariant-violation repair path (repair from `DETAIL` / `DETAIL_FILE`, no `FAILED_RUN_ID` dependency).
+- Document invariant materialize env, diff, and `DETAIL_FILE` artifacts.
+- Keep guideline rows unchanged.
+
+### UPDATED: skills/implement/references/ship-pr-ci-fix.md
+
+Add an invariant-violation repair branch so `ci-fix` can autonomously fix a pre-PR invariant violation that has no `FAILED_RUN_ID`.
+
+- When `NEEDS_USER_REASON=architectural-invariants-violation`, branch before the CI run-log capture path.
+- Read the violation detail from `DETAIL` / `DETAIL_FILE` and `$IMPLEMENT_TMPDIR/architectural-invariant-note.md`; do not require or fetch `gh run-logs`.
+- Repair the violating code against the listed `I-*` entries, run checks, commit, refresh logs, push, clear the stale handoff, then relaunch Step 8 for reassessment (invariants before guidelines).
+- Use a deterministic invariant repair attempt key or the existing `fix_attempts` counter so the loop stays bounded; on exhaustion fall through to the existing terminal fallback.
+- Keep the existing `FAILED_RUN_ID` CI-log path unchanged for real CI failures.
+
+### NEW: skills/implement/scripts/step-architectural-invariants-write-compose.sh
+
+Add a thin Bash wrapper for invariant durable note writes.
+
+- Mirror the guideline wrapper.
+- Resolve the assessment file under `$IMPLEMENT_TMPDIR`.
+- Delegate to `python3 "$PLUGIN_ROOT/python/cli.py" architectural-invariants write-compose-assessment`.
+- Keep Bash 3.2-compatible strict mode.
+
+### NEW: skills/implement/scripts/step-architectural-invariants-write-compose.md
+
+Document the new thin wrapper.
+
+- State that it delegates to the invariant namespace.
+- State that it writes `architectural-invariant-note.md` plus metadata.
+- Link it to the Step 8 invariant reference and harness.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+Extend the existing Step 8 architectural assessment harness.
+
+- Add checks for the `invariants-assessment` branch in `skills/implement/SKILL.md`.
+- Check the invariant reference text, clean note, violation wording, and wrapper invocation.
+- Pin the `ship-pr-ci-fix.md` invariant-violation branch (`NEEDS_USER_REASON=architectural-invariants-violation`, no `FAILED_RUN_ID`, `DETAIL`/`DETAIL_FILE` repair input).
+- Add a fixture that writes `architectural-invariant-materialize.env`, invokes the wrapper, and verifies `architectural-invariant-note.md` plus metadata.
+- Preserve existing guideline assertions.
+
+### MAY_UPDATE: scripts/test-implement-fence-shape.sh
+
+Update only if the `skills/implement/SKILL.md` Step 8 branch changes Bash fence order or count.
+
+- If no Bash fence shape changes, leave this file untouched.
+- If the invariant branch adds, removes, or converts a Bash fence, update `EXPECTED_OLD` / `EXPECTED_NEW`.
+
+### UPDATED: scripts/test-implement-structure.sh
+
+Update pinned Step 8 prose expectations.
+
+- Add invariant-first architectural knowledge and `invariants-assessment` routing assertions.
+- Preserve existing guideline no-Phase-A and Step 8 ownership assertions.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+Allowlist the new thin invariant wrapper.
+
+- Add `skills/implement/scripts/step-architectural-invariants-write-compose.sh`.
+- Do not add any non-thin Bash utility.
+
+### UPDATED: SECURITY.md
+
+Extend the security framing.
+
+- State that both files are untrusted repo-local prompt context.
+- Invariants are hard constraints, but not higher-priority instructions.
+- Mirror present, absent, invalid, symlink, non-regular, and repo-root containment behavior.
+- Add invariant design assessment and durable note artifacts.
+- State that invariant Step 8 violations route to agentic remediation and then hard-stop after retry exhaustion.
+
+### UPDATED: docs/run-logs.md
+
+Document the mirrored committed artifacts.
+
+- Add `architectural-invariant-assessment.md` under design logs.
+- Add `architectural-invariant-outcome.json` under implement logs.
+- Explain clean vs violation outcomes.
+- Update consumer-core keep-set prose.
+- Keep older-run and absent/invalid caveats.
+
+### UPDATED: docs/run-log-batches.md
+
+Add the invariant outcome batch contract.
+
+- Mirror the guideline outcome batch format.
+- Use invariant outcome token names and assessment kinds.
+- Note that violation outcomes are blocking and feed remediation.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+Update lifecycle prose for Step 8.
+
+- State that Step 8 compose-time gates check invariants before guidelines.
+- State that invariant violations use the CI-fix style remediation loop.
+- Keep Step 2 coder/reviewer architectural knowledge prose unchanged unless needed for consistency.
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.py
+
+Track invariant coverage alongside guideline coverage.
+
+- Add invariant design assessment coverage using `architectural-invariant-assessment.md`.
+- Add invariant implement outcome coverage using `architectural-invariant-outcome.json`.
+- Keep guideline metrics unchanged.
+- Render distinct counts for guidelines and invariants.
+
+### UPDATED: skills/fluff-analysis/scripts/test-fluff-analysis.sh
+
+Add invariant coverage fixtures.
+
+- Add design assessment fixtures for clean, violation, empty, and missing invariant artifacts.
+- Add implement outcome fixtures for clean, violation, dropped, and malformed invariant outcomes.
+- Keep guideline fixtures unchanged.
+
+### UPDATED: skills/fluff-analysis/scripts/fluff-analysis.md
+
+Document the new scanned artifacts.
+
+- Add `architectural-invariant-assessment.md`.
+- Add `architectural-invariant-outcome.json`.
+- Keep the defensive-parser guarantee.
+
+### UPDATED: python/tests/core/test_architectural_guidelines.py
+
+Mirror helper and CLI tests.
+
+- Add invariant tests for present, absent, invalid, symlink, non-regular, and repo-root escape.
+- Add parser tests proving `I-*` entries include `Why:` and omit `Deviate when:`.
+- Add tests for all new invariant verbs.
+- Add design persistence tests for clean, violation, absent, invalid, stale symlink, and bad sidecar source.
+- Add compose prepare/write/invalidate tests for invariant artifact names and metadata.
+- Add outcome validator tests for clean, violation, dropped, and malformed invariant records.
+- Preserve existing guideline expectations.
+
+### UPDATED: python/tests/design/test_design_cli_ports.py
+
+Add expected invariant CLI routes.
+
+- Include the 10 new `architectural-invariants` verbs.
+- Keep the existing `read` expectation.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+Add Step 2b prompt composition coverage.
+
+- Present invariants emit before guidelines.
+- Absent and invalid invariants are omitted.
+- Both present files produce two untrusted content blocks in invariant-first order.
+- Guidelines-only behavior remains unchanged.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Cover Step 8 invariant flow.
+
+- Invariant present and no current note returns assessment-needed.
+- Clean invariant note allows PR compose.
+- Violation note routes to `architectural-invariants-violation`.
+- `dispatch_ship` maps violation to `ci-fix`.
+- Existing `fix_attempts` exhaustion still reaches the terminal fallback.
+- Invariant materialization failure drops or stalls with safe detail.
+- Merge-loop rebase reruns the invariant gate before guidelines and passes both notes into the PR body (extend `test_run_ship_merge_loop_rebase_refreshes_guidelines_gate` or add a sibling).
+- A mid-invariant-assessment pause resumes to `pre-pr-compose` with `phase=invariants-assessment`.
+- Guideline behavior remains unchanged when invariants are absent.
+
+### UPDATED: python/tests/implement/test_implement_dispatch.py
+
+Add route-exit and handoff tests.
+
+- `architectural-invariants-assessment` maps to `invariants-assessment`.
+- `architectural-invariants-violation` maps to `ci-fix`.
+- Handoff env includes invariant materialize paths and, before the invariant gate, `phase=invariants-assessment` (then `guidelines-assessment` only after).
+- Existing guideline route test remains.
+
+### UPDATED: python/tests/git/test_pr_body.py
+
+Add PR body rendering tests.
+
+- No invariant note preserves existing output.
+- Invariant section renders before guidelines and diagrams.
+- Both sections can appear together.
+- Redaction still applies.
+
+### UPDATED: python/tests/git/test_pr.py
+
+Cover existing-PR refresh with invariant sections.
+
+- An invariant-only body change triggers a PR-body refresh.
+- Guideline-only changes still refresh as before.
+- No architectural change leaves the body untouched.
+
+### UPDATED: python/tests/report/test_final_report.py
+
+Add final summary invariant note tests.
+
+- Current invariant note renders redacted.
+- Stale, symlinked, unreadable, or HEAD-mismatched invariant notes are skipped.
+- Invariant section renders before guideline section when both exist.
+
+### UPDATED: python/tests/report/test_run_logs.py
+
+Add invariant outcome batch tests.
+
+- Valid invariant outcome stages and validates.
+- Malformed invariant outcome rejects.
+- Batch name and output filename match the new constants.
+
+### UPDATED: python/tests/report/test_gc_run_logs.py
+
+Add GC keep-set tests.
+
+- Preserve `architectural-invariant-assessment.md` in design logs.
+- Preserve `architectural-invariant-outcome.json` in implement logs.
+- Do not preserve those files in unrelated skill dirs.
+
+### UPDATED: python/tests/issue/test_audit_runs.py
+
+Add invariant assessment scan tests.
+
+- Missing artifact is informational.
+- Present non-empty artifact passes.
+- Empty, symlink, directory, and unreadable shapes fail.
+
+## Approach
+
+Implement the mirror in three layers.
+
+1. **Core kind abstraction**
+   - Keep `architectural_guidelines.py` as the architectural knowledge helper module.
+   - Add a narrow private kind spec so duplicated behavior is shared, while public functions stay named and stable.
+   - Keep the separate CLI namespace precedent from #6469. Do not add a shared `--kind` flag to public verbs.
+
+2. **Blocking semantics**
+   - Guidelines keep `clean` and `deviation`.
+   - Invariants use `clean` and `violation`.
+   - `/design` blocks before approval when a violation is found. It rewrites the outline or plan with the smallest fix, validates through the existing settle/postplan path, then reassesses. A counter persisted under `$DESIGN_TMPDIR` bounds it across pause/resume; it stops only after exhaustion.
+   - `/implement` blocks through Step 8, invariant-first. The main agent authors the invariant assessment. A clean note lets shipping continue. A violation note routes to a dedicated `ci-fix` invariant-violation branch that repairs from the violation detail (no `FAILED_RUN_ID`), then relaunches Step 8 to reassess. `phase=invariants-assessment` guards resume, and PR-create, existing-PR refresh, and post-rebase refresh all gate invariants before guidelines.
+
+3. **Consumer parity**
+   - Every place that reads, presents, persists, surfaces, audits, retains, or analyzes guideline artifacts gets an invariant sibling.
+   - Ordering is invariant first, then guideline.
+   - Absent and invalid files stay independent. One file never gates the other.
+
+Avoid broad renames. Keep guideline filenames, env keys, and prompt strings byte-compatible where callers parse them.
+
+## Edge cases
+
+- Blank `ARCHITECTURAL_INVARIANTS.md`: reader status is `present` but content can be empty. Prompt surfaces should say no parsed entries or omit the assessment marker, matching current reader behavior.
+- Invalid invariant file: warn and omit it fail-closed. Continue guideline handling.
+- Invariant present, guideline absent: run invariant assessment only.
+- Guideline present, invariant absent: current behavior remains.
+- Both present: invariant assessment runs first.
+- HEAD changes after invariant materialization: invariant write-compose fails and Step 8 rematerializes.
+- Violation fix changes the diff: the `ci-fix` invariant-violation branch relaunches Step 8, which rematerializes and reassesses before PR compose.
+- Open-PR rebase or existing-PR reuse with an invariant-only body change: the refresh predicate and post-rebase helper reassess invariants before guidelines so the remote invariant section never goes stale.
+- Redaction failure: do not publish the note. Stall or drop using the same fail-closed paths as guidelines.
+- Symlinked tmpdir artifacts: reject at read, write, invalidate, and final-summary consumption sites.
+- Historical logs: missing invariant artifacts are informational, not failures.
+
+## Failure modes
+
+1. **Kind abstraction corrupts guideline behavior**
+   - Warning signal: existing guideline tests fail or stdout env keys change.
+   - Mitigation: keep public guideline wrappers and add invariant tests without changing expected guideline strings.
+
+2. **Invariant violation loops forever**
+   - Warning signal: repeated Step 8 `ci-fix` or Gate C remediation with the same violation.
+   - Mitigation: reuse existing `fix_attempts` for implement and a bounded design remediation counter persisted under `$DESIGN_TMPDIR`. On exhaustion, hard-stop with the violation detail.
+
+3. **Autonomous violation repair never starts**
+   - Warning signal: `architectural-invariants-violation` handoff routed to `ci-fix` stalls because the CI-log path needs a `FAILED_RUN_ID` that a pre-PR handoff lacks.
+   - Mitigation: the dedicated `ship-pr-ci-fix.md` invariant-violation branch repairs from `DETAIL` / `DETAIL_FILE` and the durable note, skips run-log capture, and relaunches Step 8; harness-pin the branch.
+
+4. **Invariant PR section goes stale or run-log consumers drift**
+   - Warning signal: an open-PR body keeps an old or missing invariant section after an invariant-only change or a rebase; GC drops invariant artifacts, fluff-analysis misses them, or batch validation rejects current sidecars.
+   - Mitigation: gate invariants before guidelines in pre-PR compose, existing-PR refresh (`pr.py`), and post-rebase refresh (`ship.py`); add run-log batch, GC, audit-runs, final-report, and fluff-analysis tests in the same change.
+
+## Testing strategy
+
+Run only changed-file tests and harnesses.
+
+- `python3 -m pytest python/tests/core/test_architectural_guidelines.py`
+- `python3 -m pytest python/tests/design/test_design_cli_ports.py python/tests/design/test_design_lifecycle.py`
+- `python3 -m pytest python/tests/implement/test_ship.py python/tests/implement/test_implement_dispatch.py`
+- `python3 -m pytest python/tests/git/test_pr_body.py python/tests/git/test_pr.py`
+- `python3 -m pytest python/tests/report/test_run_logs.py python/tests/report/test_final_report.py python/tests/report/test_gc_run_logs.py`
+- `python3 -m pytest python/tests/issue/test_audit_runs.py`
+- `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+- `bash scripts/test-implement-structure.sh`
+- `bash scripts/test-design-structure.sh`
+- `bash skills/fluff-analysis/scripts/test-fluff-analysis.sh`
+- If `scripts/test-implement-fence-shape.sh` changes, run it too.
+- Run `make py-lint` if Python production files change across the helper and ship layers.
+- Run relevant markdown and Bash lint for changed skill/docs files.
+
+confidence: medium
+difficulty: HARD
+diff_added: 1700
+diff_deleted: 350
+mechanical_churn: false
+diff_lines: 2050

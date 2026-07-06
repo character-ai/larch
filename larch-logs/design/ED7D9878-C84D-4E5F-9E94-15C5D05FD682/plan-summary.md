@@ -1,0 +1,1 @@
+Plan wires the remaining invariant namespace, artifacts, design and implement gates, run-log consumers, docs, and tests. It treats invariant violations as blocking, routes /implement fixes through existing CI-fix retry logic, and keeps absent or invalid files independently optional.

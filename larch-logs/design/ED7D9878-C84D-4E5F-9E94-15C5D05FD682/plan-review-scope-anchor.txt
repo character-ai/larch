@@ -1,0 +1,88 @@
+## Problem
+
+`ARCHITECTURAL_INVARIANTS.md` landed as a blank seed on main (PR #6468). No code or skill reads it yet. `ARCHITECTURAL_GUIDELINES.md`, by contrast, is fully wired: a reader module, 11 `cli.py` verbs, `/design`, `/implement`, `SECURITY.md`, and the fluff-analysis coverage report all consume it.
+
+Goal: mirror that surface. Every place that reads, presents, persists, or assesses `ARCHITECTURAL_GUIDELINES.md` must do the same for `ARCHITECTURAL_INVARIANTS.md`. Anything using one uses the other too.
+
+This is the reader/plumbing mirror that #6469 explicitly defers: it lists "Reader/parser implementation details (`I-*` heading grammar) beyond mirroring the existing `G-*` reader" as out of scope.
+
+## Scope: mirror the existing GUIDELINES surface
+
+**Reader module** (`python/larch/core/architectural_guidelines.py`):
+
+- Mirror `read_guidelines()`, `parse_guideline_entries()`, the present/absent/invalid contract, symlink and non-regular-file rejection, and repo-root containment.
+- Heading grammar: parse `I-*` entries. Invariants carry no "Deviate when" bullet (per #6469), so keep `Why:` and drop the deviation field.
+- Design decision for `/design`: parameterize the existing module and verbs by kind (`guideline` vs `invariant`), or add a parallel `architectural-invariants` module. Prefer the DRY path unless the assessment semantics force a split.
+
+**`cli.py` verbs** — mirror all 11 (under an `architectural-invariants` namespace or a shared `--kind` flag): `read`, `present-note`, `materialize-diff`, `prepare`, `prepare-compose`, `write-compose-assessment`, `append-deviation-note`, `write-staged-assessment`, `pin-note-from-staged`, `invalidate`, `persist-design-assessment`.
+
+**Artifacts** — mirror the filenames:
+
+- `architectural-guideline-assessment.md` -> `architectural-invariant-assessment.md` (design).
+- `architectural-guideline-note.md` plus its meta env -> invariant durable note (implement).
+- The materialized-diff and materialize env.
+
+**`/design`**:
+
+- Step 1d drafting fold-in (`read`).
+- Step 1d.7 and Gate C presentation (`present-note`) plus the committed assessment (`persist-design-assessment`).
+- `skills/design/SKILL.md`, `skills/design/references/design-outline.md`, `skills/design/references/approval-gates.md`.
+
+**`/implement`**:
+
+- Step 8 compose-time gating: add an invariant branch to the `ship route-exit` `NEXT_ACTION` path alongside `guidelines-assessment`.
+- `skills/implement/references/architectural-guidelines-present.md`, `skills/implement/references/ship-pr-exit-matrix.md`, `skills/implement/scripts/step-architectural-guidelines-write-compose.sh`, `skills/implement/SKILL.md`.
+- Durable HEAD-pinned note; PR-body and final-summary consumption.
+
+**`SECURITY.md`**: extend the untrusted-content-block framing, symlink rejection, and present/absent/invalid contract to the invariants file.
+
+**fluff-analysis**: extend `_collect_guideline_assessment_coverage` (and the `DESIGN_ASSESSMENT` constant usage) in `skills/fluff-analysis/scripts/fluff-analysis.py` to track invariant-assessment coverage too.
+
+## Semantic difference to preserve
+
+GUIDELINES are aspirational: reviews surface deviations. INVARIANTS are absolute: a violation is always a defect (per #6469). Mirror the mechanism, but the invariant assessment framing is stricter than a deviation note. `/design` should settle how the invariant assessment reads (blocking finding vs. aspirational deviation) before implementation.
+
+## Robustness (reuse the existing contract)
+
+Each file stays independently optional: present -> include; absent -> omit silently; invalid, symlink, or non-regular -> omit and warn, fail closed. No inter-file dependency. Existence-gate every "read this path" include so a missing file never dangles an instruction.
+
+## Out of scope
+
+- Populating the invariants file with real `I-*` entries (its own effort).
+- Feeding both files to the Step 2 coder and reviewers (that is #6469).
+
+## Related
+
+- Blocked by #6469 (tiered-knowledge design; defines the model and defers this mirror).
+- Seed file: PR #6468; tracking #6467.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Finish wiring ARCHITECTURAL_INVARIANTS.md so every consumer that reads, presents, persists, or assesses GUIDELINES does the same for INVARIANTS. The reader half already landed via #6469.
+- Give the invariant assessment blocking teeth at both /design Gate C and /implement Step 8, with agentic auto-remediation (CI-fix / Gate-B style) and a hard-stop only after remediation is exhausted.
+- Keep each file independently optional and fail-closed: present includes, absent omits silently, invalid/symlink/non-regular omits and warns.
+
+### Non-goals
+- Populating ARCHITECTURAL_INVARIANTS.md with real I-* entries (its own effort). The blocking path stays dormant until entries exist.
+- Feeding both files to the Step 2 coder and reviewers (that is #6469).
+- Re-implementing the reader half (read_invariants, parse_invariant_entries, the `architectural-invariants read` verb) already on main.
+
+### Approach sketch
+- Mirror the remaining 10 cli verbs under the existing `architectural-invariants` namespace with parallel `*_main` entrypoints, per the #6469 precedent. Extract shared private helpers rather than add a `--kind` flag.
+- Mirror the artifact layer: invariant assessment, staged, durable-note, materialized-diff constants, paths, and meta env, parameterized by kind.
+- Add a blocking "violation" assessment kind (vs guidelines' aspirational "deviation") routed into agentic fix-and-retry, with a bounded fallback hard-stop.
+- Wire /design (Step 1d read fold-in, Step 1d.7 + Gate C present-note, persist-design-assessment) and /implement (Step 8 compose gating, ship route-exit, durable note, PR body + final summary).
+- Extend SECURITY.md framing and fluff-analysis coverage; mirror the tests.
+
+### Surfaces in scope
+- python/larch/core/architectural_guidelines.py; python/larch/cli.py dispatch table + allowlist.
+- python/larch/implement/: ship_guidelines.py, ship.py, dispatch_ship.py, ship_resume.py for blocking + remediation routing.
+- skills/design/: SKILL.md, references/design-outline.md, references/approval-gates.md.
+- skills/implement/: SKILL.md, references/architectural-guidelines-present.md, references/ship-pr-exit-matrix.md, scripts/step-architectural-guidelines-write-compose.sh.
+- SECURITY.md; skills/fluff-analysis/scripts/fluff-analysis.py; mirrored tests under python/tests/.
+
+### Open questions
+- Remediation retry bound, and whether the /design-side block reuses the Gate B apply loop or a small dedicated loop. Resolve during plan drafting / review.

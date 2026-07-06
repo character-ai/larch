@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	42069	10518	13335	3334	28734	7184		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17226	4307	13060	3265	4166	1042		0	0
+design Step 3	phase1	1	dyn-codex-plan-ship-gate-risk	plan-review	codex	dyn-codex-plan-ship-gate-risk.txt	17507	4377	12913	3229	4594	1149		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17213	4304	13047	3262	4166	1042		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17204	4301	13038	3260	4166	1042		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17228	4307	13062	3266	4166	1042		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	42082	10521	13348	3337	28734	7184		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	42060	10515	13326	3332	28734	7184		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	42084	10521	13350	3338	28734	7184		0	0
+design Step 3	phase1	1	dyn-cursor-plan-ship-gate-risk	plan-review	cursor	dyn-cursor-plan-ship-gate-risk.txt	42363	10591	13201	3301	29162	7291		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	42331	10583	4474	1119	37857	9465	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	15780	3945	8913	2229	6867	1717		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	15780	3945	8913	2229	6867	1717		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	15780	3945	8913	2229	6867	1717		0	0

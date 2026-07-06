@@ -1,0 +1,9 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan establishes violation semantics throughout; audit_runs.py implementation will follow; not a plan-level gap
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan edge-cases section explicitly states blank files omit the assessment marker, matching current reader behavior
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=true
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=major QUALITY=good UNCERTAIN=false -- plan ship-pr-ci-fix.md explicitly says "branch before the CI run-log capture path" and "do not require or fetch gh run-logs", covering the FAILED_RUN_ID concern
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=true
+FINDING_8: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Gate C section already says "on --skip-approve paths, present and assess invariants before guidelines" and "Do not auto-approve" on violations; design-outline.md says "stop before outline approval" on remediation exhaustion
