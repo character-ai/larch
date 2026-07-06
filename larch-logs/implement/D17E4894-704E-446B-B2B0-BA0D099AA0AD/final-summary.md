@@ -1,6 +1,6 @@
-## /implement run D17E4894-704E-446B-B2B0-BA0D099AA0AD: pr-created
+## /implement run D17E4894-704E-446B-B2B0-BA0D099AA0AD: stalled
 
-- **Outcome**: DONE
+- **Outcome**: STALLED
 - **Duration**: 01:10:29
 - **Cost**: 💰 TOTAL ~$30.62: Claude $5.35, Codex-5.5 $9.96, Codex-mini $3.86, Cursor $10.12, Claude (subprocess) $1.33  |  Tokens: 72793k
 - **Issue**: #6473: https://github.com/character-ai/larch/issues/6473
@@ -9,7 +9,7 @@
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/12 accepted
-- **Lines (PR diff)**: code +1167/-69, larch-logs +1454/-0
+- **Lines (PR diff)**: code +1167/-69, larch-logs +1458/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
