@@ -108,7 +108,7 @@
     "file": "larch/lint/lint_mermaid_fences.py",
     "qualified_symbol": "main",
     "callee": "TemporaryDirectory",
-    "occurrence": 2,
+    "occurrence": 1,
     "reason": "standalone linter workspace, auto-cleaned"
   },
   {

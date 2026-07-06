@@ -396,7 +396,10 @@ def compose_findings(argv: list[str]) -> int:
         for round_dir in round_dirs:
             round_num = round_dir.name.removeprefix("round-")
             _parse_artifact(path=round_dir / "accepted-findings.md", kind="code-review-accepted", round_num=round_num, ctx=ctx)
-            _parse_artifact(path=round_dir / "oos.md", kind="code-review-oos", round_num=round_num, ctx=ctx)
+            try:
+                _parse_artifact(path=round_dir / "oos.md", kind="code-review-oos", round_num=round_num, ctx=ctx)
+            except ScratchDirError as exc:
+                return _fail(str(exc))
             if (round_dir / "rejected-findings-full.md").is_file() and (round_dir / "rejected-findings-full.md").stat().st_size > 0:
                 rejected_found = True
                 _parse_artifact(path=round_dir / "rejected-findings-full.md", kind="code-review-rejected", round_num=round_num, ctx=ctx)

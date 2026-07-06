@@ -165,6 +165,26 @@ def test_capture_transcript_scratch_dir_uses_cache_when_log_root_is_under_repo(
     )
 
 
+def test_capture_transcript_scratch_dir_uses_active_checkout_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "consumer-repo"
+    repo.mkdir()
+    cache = tmp_path / "cache"
+
+    def fake_cache_scratch() -> Path:
+        cache.mkdir(parents=True, exist_ok=True)
+        return cache
+
+    def fake_git_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout=f"{repo}\n", stderr="")
+
+    monkeypatch.setattr(run_log_batch.subprocess, "run", fake_git_run)  # type: ignore[attr-defined]
+    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", tmp_path / "plugin-root")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(run_log_batch, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
+
+    assert run_log_batch._path_is_repo_related(repo / "nested")  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._scratch_dir_for_log_root(repo / "nested" / "larch-logs") == cache  # pyright: ignore[reportPrivateUsage]
+
+
 def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
     payload = tmp_path / "architectural-guideline-outcome.json"
     _ = payload.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
@@ -1951,6 +1971,23 @@ def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> No
     )
 
     assert rc == 1
+
+
+def test_larch_log_commit_accepts_tmpdir_flag(tmp_path: Path) -> None:
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--tmpdir",
+            str(tmp_path / "session"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+        ]
+    )
+
+    assert rc == 0
 
 
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:

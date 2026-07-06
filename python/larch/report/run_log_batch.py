@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import subprocess
 import sys
 import tempfile
 import time
@@ -300,8 +301,18 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
 
 def _path_is_repo_related(path: Path) -> bool:
     candidate = path.resolve(strict=False)
-    repo = _REPO_ROOT.resolve(strict=False)
-    return candidate == repo or candidate in repo.parents or repo in candidate.parents
+    roots = []
+    active = subprocess.run(
+        ["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"],
+        check=False,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        text=True,
+    )
+    if active.returncode == 0 and active.stdout.strip():
+        roots.append(Path(active.stdout.strip()).resolve(strict=False))
+    roots.append(_REPO_ROOT.resolve(strict=False))
+    return any(candidate == root or candidate in root.parents or root in candidate.parents for root in roots)
 
 
 def _larch_sessions_scratch_dir() -> Path:

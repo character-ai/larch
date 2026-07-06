@@ -5,6 +5,7 @@ import subprocess
 from pathlib import Path
 
 import review_test_support as rts
+from larch.review import compose_review
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -80,6 +81,44 @@ Vote tally: YES=2 NO=0 EXON=0 JUDGE_ERROR=0 Result=accepted
     assert "FINDINGS_TOTAL=1" in result.stdout
     assert _record_field_by_id(output, "OOS_CR1_1", "reviewer_slots") != ""
     assert _record_field_by_id(output, "OOS_CR1_2", "reviewer_slots") == ""
+
+
+def test_compose_findings_oos_missing_scratch_dir_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    impl = tmp_path / "m-impl"
+    round_dir = impl / "round-1"
+    round_dir.mkdir(parents=True)
+    _ = (round_dir / "oos.md").write_text(
+        """### OOS_1: Missing scratch dir
+- **Reviewer**: security-reviewer.txt
+- **Concern**: this path should fail closed.
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "m.jsonl"
+
+    monkeypatch.setattr(compose_review, "_compose_scratch_dir", lambda **_kwargs: None)
+
+    rc = compose_review.compose_findings(
+        [
+            "--implement-tmpdir",
+            str(impl),
+            "--issue",
+            "52",
+            "--output",
+            str(output),
+        ]
+    )
+
+    captured = capsys.readouterr()
+    text = captured.out + captured.err
+
+    assert rc == 2
+    assert "FAILED=true" in text
+    assert "review scratch directory is required before tempfile staging" in text
 
 
 def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_path: Path) -> None:
