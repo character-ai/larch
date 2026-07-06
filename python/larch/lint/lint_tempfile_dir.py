@@ -65,7 +65,7 @@ def _validate_normalized_file(value: object, *, source: Path, index: int) -> str
         raise BaselineError(f"{source}: record {index} has invalid file")
     normalized = normalize_file_path(value)
     parts = normalized.split("/")
-    if (
+    if (  # pylint: disable=too-many-boolean-expressions  # 7-condition path-component guard; splitting would obscure intent
         normalized != value
         or normalized.startswith("/")
         or not normalized.startswith("larch/")
