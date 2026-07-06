@@ -48,7 +48,6 @@ WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
 RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
 DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on empty-output or prefix-identical repeat'
 SHARED_IMMEDIATE_WAIT_ANCHOR='After the background launch ack'
-IMPL_NEVER8_ANCHOR='8. **NEVER call `ScheduleWakeup`'
 
 PASS=0
 fail() { echo "  FAIL: $1" >&2; echo "    missing literal: $2" >&2; exit 1; }
