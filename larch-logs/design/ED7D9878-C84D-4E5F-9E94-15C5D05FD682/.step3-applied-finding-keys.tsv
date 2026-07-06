@@ -1,0 +1,14 @@
+1	the `architectural-invariants-violation` handoff is routed through `ci-fix`, but the referenced procedure still depends on `failed_run_id` and bails on pre-pr invariant handoffs, so autonomous repair never starts and the step 8 relaunch path stalls.
+1	existing pr reuse still decides refreshes from the guidelines section alone, so invariant-only body changes can leave a stale or missing invariant section in the remote pr body.
+1	the post-rebase refresh helper rematerializes only guidelines before recomposing the pr body, so open-pr rebases can leave stale or missing invariant assessment even when the guidelines refresh succeeds.
+1	the shared pre-pr compose path still labels the pause as guidelines work before any invariant gate runs, so a mid-assessment resume can misroute through the guidelines branch and skip invariant handling.
+1	the gate c invariant rewrite counter is not persisted, so pause/resume or repeated entry can reset the attempt count and allow the remediation loop to run unbounded.
+2	the invariant audit surface is only half-wired: design dispatch still needs an `invariant-assessment` registry entry, and implement dispatch still needs an `invariant-ship-outcome` sibling with version/cutover gating, so `/audit-runs` can miss malformed invariant artifacts on either surface.
+2	a copied guideline classifier would mark non-clean invariant assessments as `deviation`, but the invariant path is supposed to surface blocking `violation` semantics.
+2	present-but-empty invariant files are still being routed to step 8 assessment, so the compose gate can block even when there is nothing to assess.
+2	the repair branch is reading repo-local invariant detail as if it were instructions, instead of explicitly treating it as untrusted evidence.
+2	the invariant-violation repair branch will still never run for pre-pr failures if the procedure bails at step 1b whenever `failed_run_id` is empty.
+2	the outline-side invariant remediation loop has no durable counter, so pause/resume can reset retries and repeat the same rewrite loop indefinitely.
+2	the new sibling doc under `skills/implement/scripts` may be orphaned from its parent skill surface, which can fail linting or hide it from agents.
+2	ratcheted skill prompts can exceed the closure baseline, which will trip lint-skill-closure-growth in ci even if the code changes are otherwise correct.
+2	under `--skip-approve`, the design outline can still write `.outline-approved` before invariant violations are remediated, allowing step 2b to proceed too early.
