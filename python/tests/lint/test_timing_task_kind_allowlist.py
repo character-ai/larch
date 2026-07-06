@@ -7,7 +7,7 @@ from larch.lint import timing_task_kind_allowlist as allowlist
 
 def write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
+    _ = path.write_text(text, encoding="utf-8")
 
 
 def test_scans_add_argument_defaults_and_or_fallbacks(tmp_path: Path) -> None:

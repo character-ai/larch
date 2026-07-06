@@ -733,7 +733,7 @@ def test_measure_md_cost_writes_schema(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(
         tokens.proc,
         "run",
-        lambda cmd, **_kw: SimpleNamespace(returncode=0, stdout="docs/sample.md\x00", stderr=""),  # type: ignore[arg-type]
+        lambda _cmd, **_kw: SimpleNamespace(returncode=0, stdout="docs/sample.md\x00", stderr=""),  # type: ignore[arg-type]
     )
     monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [len(t) for t in texts])  # type: ignore[arg-type]
     out = tokens.measure_md_cost()
