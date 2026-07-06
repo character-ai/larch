@@ -6761,6 +6761,7 @@ def test_step2_dispatch_needs_qa_missing_architectural_acknowledgment_bails(
 ) -> None:
     tmp = _session(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
@@ -6783,6 +6784,7 @@ def test_step2_dispatch_bailed_manifest_does_not_require_architectural_acknowled
 ) -> None:
     tmp = _session(tmp_path)
     (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
     monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
 
     def fake_launcher(st: implement_dispatch.DispatchState):
