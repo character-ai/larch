@@ -9,7 +9,7 @@
 - **Difficulty**: predicted MODERATE; applied HARD; escalated r2 MODERATE->HARD high-severity
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 8/12 accepted
-- **Lines (PR diff)**: code +1167/-69, larch-logs +1432/-0
+- **Lines (PR diff)**: code +1167/-69, larch-logs +1434/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
