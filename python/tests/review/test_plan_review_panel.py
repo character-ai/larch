@@ -7,6 +7,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING, cast
 
+import pytest
+
 from larch.core import config
 from larch.report import tokens
 from larch.review import plan_review_panel
@@ -498,6 +500,7 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
                         row = json.loads(line)
                         out = str(row["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append((out, str(row.get("tool", "cursor"))))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -520,7 +523,10 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
         def wait(self) -> int:
             return 0
 
-    def _stub_parse_rate(*_a: object, **_k: object) -> str:
+    parse_calls: list[dict[str, object]] = []
+
+    def _stub_parse_rate(**kwargs: object) -> str:
+        parse_calls.append(dict(kwargs))
         return "OK"
 
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
@@ -540,6 +546,144 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     voter_renders = [a for a in records if tuple(a[2:4]) == ("render", "voter")]
     assert voter_renders
     assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
+    assert [(str(call["slot"]), str(call["voter_tool"])) for call in parse_calls] == [
+        ("1", "codex-validity"),
+        ("2", "codex-plan-fidelity"),
+        ("3", "codex-pragmatism"),
+    ]
+
+
+def test_voter_dispatch_marks_failed_when_done_sidecar_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "done-sidecar-failure"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+    parse_calls: list[dict[str, object]] = []
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[tuple[str, str]] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        out = str(row["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        done_rc = "1\n" if row.get("slot") == "voter-2" else "0\n"
+                        _ = Path(out + ".done").write_text(done_rc, encoding="utf-8")
+                        outs.append((out, str(row.get("tool", "cursor"))))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="2\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    def _stub_parse_rate(**kwargs: object) -> str:
+        parse_calls.append(dict(kwargs))
+        return "OK"
+
+    def _fake_larch_proc_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[tuple[str, str]] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        out = str(row["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        done_rc = "1\n" if row.get("slot") == "voter-2" else "0\n"
+                        _ = Path(out + ".done").write_text(done_rc, encoding="utf-8")
+                        outs.append((out, str(row.get("tool", "cursor"))))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="2\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            pos = a[4:]
+            stdout = (
+                f"VOTER_1_PATH={pos[0]}\nVOTER_1_TOOL={pos[1]}\nVOTER_1_STATUS={pos[2]}\n"
+                f"VOTER_1_PARSE_RATE_STATUS={pos[3]}\n"
+                f"VOTER_2_PATH={pos[4]}\nVOTER_2_TOOL={pos[5]}\nVOTER_2_STATUS={pos[6]}\n"
+                f"VOTER_2_PARSE_RATE_STATUS={pos[7]}\n"
+                f"VOTER_3_PATH={pos[8]}\nVOTER_3_TOOL={pos[9]}\nVOTER_3_STATUS={pos[10]}\n"
+                f"VOTER_3_PARSE_RATE_STATUS={pos[11]}\n"
+                f"VOTER_PATHS_FILE={pos[12]}\n"
+            )
+            return cp(a, 0, stdout=stdout, stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.larch_proc, "run", _fake_larch_proc_run)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", _stub_parse_rate)
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--round-num", "1",
+    ])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "VOTER_2_STATUS=failed" in stdout
+    assert "VOTER_2_PARSE_RATE_STATUS=SKIPPED" in stdout
+    assert [str(call["slot"]) for call in parse_calls] == ["1", "3"]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [
+        (1, "OK\n"),
+        (0, "unexpected\n"),
+    ],
+)
+def test_parse_rate_retry_returns_not_substantive_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    stdout: str,
+) -> None:
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        return cp(a, returncode, stdout=stdout, stderr="bad parse\n")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    design = tmp_path / "design"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    voter_file = design / "vote.txt"
+    voter_file.write_text("vote\n", encoding="utf-8")
+    prompt_file = design / "prompt.txt"
+    prompt_file.write_text("prompt\n", encoding="utf-8")
+
+    assert (
+        plan_review_panel._parse_rate_retry(  # pyright: ignore[reportPrivateUsage]
+            design=design,
+            ballot=ballot,
+            slot="2",
+            voter_file=voter_file,
+            voter_tool="codex-plan-fidelity",
+            prompt_file=prompt_file,
+        )
+        == "NOT_SUBSTANTIVE"
+    )
 
 
 def test_fresh_calibration_stats_file_returns_none_when_feedback_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -580,6 +724,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
                         row = json.loads(line)
                         out = str(row["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append((out, str(row.get("tool", "cursor"))))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -685,6 +830,7 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
                             continue
                         out = str(json.loads(line)["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append(out)
             stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join("cursor" for _ in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -1347,6 +1493,7 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
                         row = json.loads(line)
                         output = str(row["output"])
                         _ = Path(output).write_text("vote\n", encoding="utf-8")
+                        _ = Path(output + ".done").write_text("0\n", encoding="utf-8")
                         outs.append(output)
                         tools.append(str(row.get("tool", "codex")))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(tools) + "\nDISPATCH_OK=true\n"
@@ -1437,6 +1584,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
                         row = json.loads(line)
                         output = str(row["output"])
                         _ = Path(output).write_text("vote\n", encoding="utf-8")
+                        _ = Path(output + ".done").write_text("0\n", encoding="utf-8")
                         outs.append(output)
                         tools.append(str(row.get("tool", "codex")))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(tools) + "\nDISPATCH_OK=true\n"

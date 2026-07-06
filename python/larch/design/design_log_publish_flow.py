@@ -168,6 +168,8 @@ def _publish_excluded(name: str, *, is_dir: bool, top_level: bool = False) -> bo
         return True
     if name.endswith(_PUBLISH_EXCLUDE_SUFFIXES):
         return True
+    if name.endswith("-vote-output.txt"):
+        return False
     return any(fnmatch.fnmatchcase(name, glob) for glob in _PUBLISH_EXCLUDE_GLOBS)
 
 

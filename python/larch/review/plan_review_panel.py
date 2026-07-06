@@ -778,7 +778,15 @@ def _parse_rate_retry(*, design: Path, ballot: Path, slot: str, voter_file: Path
         capture_output=True,
         check=False,
     )
-    return proc.stdout.strip() or "SKIPPED"
+    if proc.returncode != 0:
+        return "NOT_SUBSTANTIVE"
+    lines = [line.strip() for line in proc.stdout.splitlines() if line.strip()]
+    if not lines:
+        return "NOT_SUBSTANTIVE"
+    status = lines[-1]
+    if status not in {"OK", "NOT_SUBSTANTIVE"}:
+        return "NOT_SUBSTANTIVE"
+    return status
 
 
 def _launch_claude_voter(*, design: Path, prompt_file: Path, output: Path, env: dict[str, str] | None = None) -> int:
@@ -943,6 +951,15 @@ def _file_nonempty(path: Path) -> bool:
     return path.is_file() and path.stat().st_size > 0
 
 
+def _read_done_exit_code(path: Path) -> str:
+    if not path.is_file():
+        return ""
+    try:
+        return path.read_text(encoding="utf-8", errors="replace").splitlines()[0]
+    except (OSError, IndexError):
+        return ""
+
+
 def _emit_final_kvs(*, state: DispatchState, voter_paths_file: Path, dispatch_ok: str) -> None:
     status_proc = larch_proc.run(
         [
@@ -1035,7 +1052,8 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
                 output=voter_1_path,
                 env={**panel_env, "LARCH_PANEL_SLOT": "voter-1", "LARCH_PANEL_PRIMARY_TOOL": "claude", "LARCH_PANEL_PAYLOAD_BYTES": payload_bytes},
             )
-        voter_1_status = "launched" if rc in {0, 99} and _file_nonempty(voter_1_path) else "failed"
+        voter_1_done_rc = _read_done_exit_code(voter_1_path.with_name(voter_1_path.name + ".done"))
+        voter_1_status = "launched" if rc in {0, 99} and _file_nonempty(voter_1_path) and voter_1_done_rc == "0" else "failed"
         voter_1_parse = "SKIPPED" if voter_1_status == "failed" else _parse_rate_retry(
             design=design,
             ballot=ballot,
@@ -1125,11 +1143,20 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         bindings=bindings,
         launched_policies=launched_policies,
     )
+    voter_1_done_rc = _read_done_exit_code(state.voter_1_path.with_name(state.voter_1_path.name + ".done"))
+    voter_2_done_rc = _read_done_exit_code(state.voter_2_path.with_name(state.voter_2_path.name + ".done"))
+    voter_3_done_rc = _read_done_exit_code(state.voter_3_path.with_name(state.voter_3_path.name + ".done"))
     if state.voter_1_status != "skipped" and not _file_nonempty(state.voter_1_path):
         state.voter_1_status = "failed"
     if state.voter_2_status != "skipped" and not _file_nonempty(state.voter_2_path):
         state.voter_2_status = "failed"
     if state.voter_3_status != "skipped" and not _file_nonempty(state.voter_3_path):
+        state.voter_3_status = "failed"
+    if state.voter_1_status != "skipped" and not (_file_nonempty(state.voter_1_path) and voter_1_done_rc == "0"):
+        state.voter_1_status = "failed"
+    if state.voter_2_status != "skipped" and not (_file_nonempty(state.voter_2_path) and voter_2_done_rc == "0"):
+        state.voter_2_status = "failed"
+    if state.voter_3_status != "skipped" and not (_file_nonempty(state.voter_3_path) and voter_3_done_rc == "0"):
         state.voter_3_status = "failed"
 
     def _prompt_for(slot_name: str, voter_tool: str) -> Path:
