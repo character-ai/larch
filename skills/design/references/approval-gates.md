@@ -44,7 +44,7 @@ Re-entry is post-plan. Write new resolved decisions to `$DESIGN_TMPDIR/discussio
 
 ## Gate B: Post-Review Chooser (Step 3.5)
 
-**When**: after Step 3 review completes with accepted findings or the script-internal Step 3 loop needs prompt-side recovery. `python/plan_review.py` returns accepted findings to Gate B for inline application by the invoking `/design` agent. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
+**When**: after Step 3 review completes or the script-internal Step 3 loop bails out. On the happy path, `python/plan_review.py` applies accepted findings in-loop via `python/cli.py plan revise-waterfall --patch-format file-replacement`. Prompt-side Gate B handles `STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required` and `per-round-approval-required`. `NEXT_ACTION=step3b-bypass` bypasses Step 3.5 before Step 3b. `panel-init-failed` hard-stops before Step 3b.
 
 ### Severity classification contract
 
@@ -70,7 +70,7 @@ When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
-Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`); the script-internal controller never applies findings itself. `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
+Resolve mode only after the zero-findings short-circuit proves at least one accepted in-scope finding remains. The script-internal controller (`python/plan_review.py`) applies accepted findings on the happy path before returning `STEP3_REVIEW_LOOP_STATUS=complete`; Prompt-side Gate B apply runs only on loop bail-outs (`main-agent-apply-required`, `per-round-approval-required`, `postplan-operator-required`). `--manual` / persisted manual mode no longer exists. Select UX from `approve_requested` (bound by the Step 3.5 fence from `run-params.json`; default `false`):
 
 - **`approve_requested=false` (default): auto-apply.** Run `python/cli.py design render-gate --gate B --accepted-count "$N" --approve-requested false`, print `AUTO_APPLY_MESSAGE`, then Execute `### Apply-all body` verbatim. Skip the `AskUserQuestion` entirely. No operator prompt fires before the plan is revised.
 - **`approve_requested=true` (`--per-round-approval`): explicit.** Use the deferred explicit-mode reference load after Presentation below. Gate B prompts before any finding changes `plan.txt`, and `approval-gates-explicit.md` loads only after the zero-findings short-circuit and resume idempotency guard prove this entry will prompt.
@@ -90,7 +90,7 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.m
 
 **Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/.step3-review-result.env`; raw status fields are diagnostic):
 
-- `NEXT_ACTION=step3b`: the loop already settled zero-accepted or post-apply continuation; skip Gate B.
+- `NEXT_ACTION=step3b`: the loop already applied accepted findings, ran postplan, and ran continuation; skip Gate B.
 - `NEXT_ACTION=gate-b`: prompt-side Gate B owns apply/postplan recovery, then resumes the recorded phase.
 - `NEXT_ACTION=mav`: delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through `design-run-$PPID.sh`. Parse only trusted scalars from `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END`; do not bind prompt-side retally anchors or invoke tally, persist-retally, or timing helpers inline. After successful post, resume once: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
 - `NEXT_ACTION=step3b-bypass`: Gate B is **bypassed**. `NEXT_ACTION=final-summary:*`: Gate B is not reached.
@@ -229,10 +229,10 @@ When the user picks **Approve final design** or **Approve final design (acknowle
 
 3. **Discussion outputs accumulate**: Step 1d writes `discussion-round1.md`. Step 1d.7 writes `design-outline.md`. `discussion-round2.md` accumulates Gate A re-entries from Gate B(c) / Gate C(b). All three remain inputs to later plan revisions.
 
-4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes. Gate B never treats `discussion-round2.md` as patch instructions. All accepted-finding application happens in prompt-side Gate B. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
+4. **Gate B apply contract**: by default (`approve_requested=false`) Gate B **auto-applies** every accepted in-scope finding with no prompt. Under `--per-round-approval` (`approve_requested=true`) it prompts before revising `plan.txt`, and rewriting runs only after **Apply all** or applied individual findings in **Go through each**. It never asks again for already-approved apply actions. Gate A and Gate C never auto-revise `plan.txt`; Gate A may revise it only for user-resolved discussion outcomes. Gate B never treats `discussion-round2.md` as patch instructions. The script-internal Step 3 loop applies accepted findings on the happy path via `python/cli.py plan revise-waterfall`; prompt-side Gate B applies only on loop bail-outs. There is no persisted mode state; each Gate B entry recomputes UX from `approve_requested`.
 
 <!-- loop-mode review contract -->
-In loop mode, accepted findings return to Gate B as `main-agent-apply-required` or `per-round-approval-required`. Prompt-side Gate B applies them inline; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
+In loop mode, accepted findings are applied inside `python/plan_review.py` before `STEP3_REVIEW_LOOP_STATUS=complete`. Prompt-side Gate B applies only on loop bail-outs; under `--per-round-approval` it asks explicitly: Apply all / Go through each / Switch to discussion mode.
 
 Step 5c missing or empty `$DESIGN_TMPDIR/composed-plan.md` is a file-precondition defect. Recovery must compose Step 5c item 1 first, then re-run `design-step5c.sh`. Skip auto-repair and do not offer Override.
 

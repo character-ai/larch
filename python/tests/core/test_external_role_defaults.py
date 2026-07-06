@@ -16,6 +16,7 @@ def test_all_registry_roles_are_pinned_independently() -> None:
         "review.fix_coder": ("waterfall", ("codex", "cursor", "claude")),
         "review.dynamic_archetype_scout": ("waterfall", ("cursor", "claude")),
         "design.plan_archetype_scout": ("waterfall", ("cursor", "claude")),
+        "design.plan_revision": ("waterfall", ("cursor", "codex", "claude")),
         "design.brainstorm_framing": ("waterfall", ("cursor", "codex", "claude")),
         "design.brainstorm_scope": ("waterfall", ("codex", "cursor", "claude")),
     }

@@ -862,7 +862,47 @@ def _write_run_params(tmp_path: Path) -> None:
     _ = (tmp_path / "feature-description.txt").write_text("feature\n", encoding="utf-8")
 
 
-def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(tmp_path: Path) -> None:
+def _write_revise_ok_stub(tmp_path: Path) -> Path:
+    """A revise-waterfall stub that rewrites the plan and reports success."""
+    stub = tmp_path / "revise-stub.sh"
+    _ = stub.write_text(
+        """#!/usr/bin/env bash
+set -euo pipefail
+plan=""
+while [[ $# -gt 0 ]]; do
+  case "$1" in --plan-file) plan="${2:?}"; shift 2 ;; *) shift ;; esac
+done
+printf '\\n# revised\\n' >>"$plan"
+printf 'REVISE_STATUS=ok\\n'
+""",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def _write_exit0_stub(tmp_path: Path, name: str) -> Path:
+    stub = tmp_path / name
+    _ = stub.write_text("#!/usr/bin/env bash\nset -euo pipefail\nexit 0\n", encoding="utf-8")
+    stub.chmod(0o755)
+    return stub
+
+
+def _write_continuation_stop_stub(tmp_path: Path) -> Path:
+    stub = tmp_path / "continuation-stub.sh"
+    _ = stub.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\n"
+        "printf 'PLAN_REVIEW_CONTINUE=false\\nPLAN_REVIEW_CONTINUE_REASON=small-clean\\n'\n",
+        encoding="utf-8",
+    )
+    stub.chmod(0o755)
+    return stub
+
+
+def test_loop_accepted_findings_autonomously_revised_via_waterfall(tmp_path: Path) -> None:
+    # Default (approve_requested=false): accepted findings are applied autonomously by
+    # the revise-waterfall inside the background loop. The main agent is NOT pulled in
+    # for the routine apply; it only sees a terminal status.
     _write_run_params(tmp_path)
     original = (tmp_path / "plan.txt").read_text(encoding="utf-8")
     round_stub = _write_loop_stub(
@@ -876,6 +916,10 @@ def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(t
             "AGGREGATOR_STATUS=ok\\nVOTING_TALLY_FILE=\\n'"
         ),
     )
+    revise_stub = _write_revise_ok_stub(tmp_path)
+    dedup_stub = _write_exit0_stub(tmp_path, "dedup-stub.sh")
+    postplan_stub = _write_exit0_stub(tmp_path, "postplan-stub.sh")
+    continuation_stub = _write_continuation_stop_stub(tmp_path)
 
     proc = run_cli(
         "plan-review",
@@ -887,20 +931,27 @@ def test_loop_accepted_findings_return_to_inline_gate_b_without_rewriting_plan(t
         env={
             "LARCH_QUIET_DISABLE": "1",
             "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(round_stub),
+            "RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH": str(revise_stub),
+            "RUN_STEP3_DEDUP_PLAN_SH": str(dedup_stub),
+            "RUN_STEP3_POSTPLAN_EMIT_SH": str(postplan_stub),
+            "RUN_STEP3_CONTINUATION_SH": str(continuation_stub),
         },
     )
 
     assert proc.returncode == 0, proc.stderr
-    assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
-    assert (tmp_path / "plan.txt").read_text(encoding="utf-8") == original
-    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8").strip() == "awaiting-apply"
+    assert "STEP3_REVIEW_LOOP_STATUS=complete" in proc.stdout
+    assert "main-agent-apply-required" not in proc.stdout
+    revised = (tmp_path / "plan.txt").read_text(encoding="utf-8")
+    assert revised != original
+    assert "# revised" in revised
 
 
-@pytest.mark.parametrize("phase", ["awaiting-apply", "awaiting-revise"])
-def test_loop_resume_awaiting_apply_rebails_to_inline_gate_b(tmp_path: Path, phase: str) -> None:
+def test_loop_resume_awaiting_apply_rebails_to_inline_gate_b(tmp_path: Path) -> None:
+    # awaiting-apply is the main-agent Gate B resume point (per-round-approval, or a
+    # prior waterfall failure). With no post-apply marker it re-bails to the main agent.
     _write_run_params(tmp_path)
     _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
-    _ = (tmp_path / ".step3-round-1.phase").write_text(f"{phase}\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-apply\n", encoding="utf-8")
     _ = (tmp_path / "accepted-plan-findings.md").write_text(
         "### FINDING_1: Important\n- **Severity**: major\n- **Concern**: issue\n",
         encoding="utf-8",
@@ -925,7 +976,47 @@ def test_loop_resume_awaiting_apply_rebails_to_inline_gate_b(tmp_path: Path, pha
     assert proc.returncode == 0, proc.stderr
     assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
     assert "NEXT_ACTION=gate-b" in proc.stdout
-    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == f"{phase}\n"
+    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8") == "awaiting-apply\n"
+
+
+def test_loop_resume_awaiting_revise_reruns_waterfall_and_bails_only_on_failure(tmp_path: Path) -> None:
+    # awaiting-revise re-runs the autonomous waterfall on resume. Only an irreconcilable
+    # revision failure bails to the main-agent Gate B path, leaving phase at awaiting-apply.
+    _write_run_params(tmp_path)
+    _ = (tmp_path / "review-round-count.txt").write_text("1\n", encoding="utf-8")
+    _ = (tmp_path / ".step3-round-1.phase").write_text("awaiting-revise\n", encoding="utf-8")
+    _ = (tmp_path / "accepted-plan-findings.md").write_text(
+        "### FINDING_1: Important\n- **Severity**: major\n- **Concern**: issue\n",
+        encoding="utf-8",
+    )
+    forbidden_round_stub = _write_loop_stub(tmp_path, "exit 99")
+    revise_fail_stub = tmp_path / "revise-fail-stub.sh"
+    _ = revise_fail_stub.write_text(
+        "#!/usr/bin/env bash\nset -euo pipefail\nprintf 'REVISE_STATUS=failed-no-patch\\n'\n",
+        encoding="utf-8",
+    )
+    revise_fail_stub.chmod(0o755)
+
+    proc = run_cli(
+        "plan-review",
+        "run",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--mode",
+        "loop",
+        "--starting-round",
+        "1",
+        env={
+            "LARCH_QUIET_DISABLE": "1",
+            "RUN_STEP3_PLAN_REVIEW_LOOP_SH": str(forbidden_round_stub),
+            "RUN_STEP3_REVISE_PLAN_WITH_WATERFALL_SH": str(revise_fail_stub),
+        },
+    )
+
+    assert proc.returncode == 0, proc.stderr
+    assert "STEP3_REVIEW_LOOP_STATUS=main-agent-apply-required" in proc.stdout
+    assert "NEXT_ACTION=gate-b" in proc.stdout
+    assert (tmp_path / ".step3-round-1.phase").read_text(encoding="utf-8").strip() == "awaiting-apply"
 
 
 def test_run_round_body_subprocess_materializes_reviewer_status(

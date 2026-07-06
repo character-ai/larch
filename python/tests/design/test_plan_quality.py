@@ -26,6 +26,45 @@ def run_cli(*args: str, cwd: Path | None = None, env: dict[str, str] | None = No
     return subprocess.run([sys.executable, str(CLI), *args], cwd=cwd, text=True, capture_output=True, env=merged, check=False)
 
 
+def _write_executable(path: Path, text: str) -> Path:
+    path.write_text(text, encoding="utf-8")
+    path.chmod(0o755)
+    return path
+
+
+def _revise_base(tmp_path: Path, plan_text: str | None = None) -> tuple[Path, Path, Path]:
+    plan = tmp_path / "plan.txt"
+    plan.write_text(plan_text or "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("finding\n", encoding="utf-8")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    return plan, findings, feature
+
+
+def _run_revise(tmp_path: Path, plan: Path, findings: Path, feature: Path, env: dict[str, str], *extra: str) -> subprocess.CompletedProcess[str]:
+    return run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "false",
+        *extra,
+        env=env,
+    )
+
+
 def _validate_text(plan_text: str, tmp_path: Path, registry: Path | None = None, source_kind: str = "plan") -> plan_quality.ValidationSummary:
     plan = tmp_path / "case-plan.md"
     plan.write_text(plan_text, encoding="utf-8")
@@ -524,6 +563,432 @@ def test_validator_autofix_captures_emit_kv_with_quiet_active(tmp_path: Path, mo
     assert "FIXED_BY=codex" in out
 
 
+def test_revise_plan_with_waterfall_records_failed_no_patch(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("finding\n")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n")
+    fake = tmp_path / "fake-launch.sh"
+    fake.write_text('#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do case "$1" in --output) out=$2; shift 2;; *) shift;; esac; done\n: > "$out"\nexit 0\n')
+    fake.chmod(0o755)
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "false",
+        "--cursor-binary-found",
+        "false",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "failed-no-patch"
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
+    assert (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").is_file()
+
+
+def test_revise_waterfall_restores_when_emit_plan_gate_fails(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+changed
+diff_lines: 2
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=failed\\n'\nexit 0\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
+    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert plan.read_text(encoding="utf-8") == original
+
+
+def test_revise_waterfall_restores_after_unified_patch_apply_failure(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  : >"$out"
+else
+  cat >"$out" <<'PATCH'
+--- a/plan.txt
++++ b/plan.txt
+@@ -99,1 +99,1 @@
+-missing
++changed
+PATCH
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
+    assert out["REVISE_TIER_2_STATUS"] == "apply-failed"
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert plan.read_text(encoding="utf-8") == original
+
+
+def test_revise_waterfall_falls_back_to_file_replacement_in_tier_order(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    calls = tmp_path / "calls.txt"
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        f"""#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+printf '%s\\n' "$(basename "$out")" >>"{calls}"
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+fallback fixed
+diff_lines: 2
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    assert out["REVISE_TIER_4_STATUS"] == "ok"
+    assert calls.read_text(encoding="utf-8").splitlines() == ["codex-output.txt", "claude-output.txt", "codex-output.txt"]
+    assert "fallback fixed" in plan.read_text(encoding="utf-8")
+
+
+def test_revise_waterfall_attempts_cursor_first_when_present(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    calls = tmp_path / "calls.txt"
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        f"""#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; --prompt-file) prompt="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+printf '%s\\n' "$(basename "$out")" >>"{calls}"
+if grep -Fq 'complete replacement plan' "$prompt" && [ "$(basename "$out")" = "cursor-output.txt" ]; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+cursor fixed
+diff_lines: 2
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    assert out["REVISE_TIER_4_STATUS"] == "ok"
+    assert out["REVISE_WINNING_TIER"] == "cursor"
+    assert out["REVISE_PATCH_PATH"].endswith("revise/cursor-output.txt")
+    # Cursor-first order in both the initial unified-diff pass and the
+    # file-replacement fallback pass (Part 1: Cursor-first apply-agent).
+    assert calls.read_text(encoding="utf-8").splitlines() == [
+        "cursor-output.txt",
+        "codex-output.txt",
+        "claude-output.txt",
+        "cursor-output.txt",
+    ]
+
+
+def test_revise_waterfall_tier4_merge_keeps_invalid_patch_over_emit_plan_failed(tmp_path: Path) -> None:
+    original = "## Plan\nalpha\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+name=$(basename "$out")
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  if [ "$name" = "codex-output.txt" ]; then
+    cat >"$out" <<'PLAN'
+## Plan
+missing diff_lines trailer
+PLAN
+  elif [ "$name" = "cursor-output.txt" ]; then
+    touch "${DESIGN_TMPDIR:?}/.force-emit-fail"
+    cat >"$out" <<'PLAN'
+## Plan
+cursor fallback
+diff_lines: 1
+PLAN
+  else
+    : >"$out"
+  fi
+else
+  : >"$out"
+fi
+""",
+    )
+    driver = _write_executable(
+        tmp_path / "driver.sh",
+        """#!/usr/bin/env bash
+if [ -f "${DESIGN_TMPDIR:?}/.force-emit-fail" ]; then
+  rm -f "${DESIGN_TMPDIR:?}/.force-emit-fail"
+  printf 'EMIT_PLAN_STATUS=failed\\n'
+else
+  printf 'EMIT_PLAN_STATUS=ok\\n'
+fi
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "failed-validation"
+    assert out["REVISE_TIER_4_STATUS"] == "invalid-patch"
+    assert out["REVISE_WINNING_TIER"] == ""
+    assert out["REVISE_PATCH_PATH"] == ""
+    assert plan.read_text(encoding="utf-8") == original
+    revise_env = (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").read_text(encoding="utf-8")
+    assert "REVISE_TIER_4_STATUS=invalid-patch" in revise_env
+    assert "REVISE_PLAN_HASH_BEFORE=" in revise_env
+    assert "REVISE_PLAN_HASH_AFTER=" in revise_env
+    before, after = (line.split("=", 1)[1] for line in revise_env.splitlines() if line.startswith(("REVISE_PLAN_HASH_BEFORE=", "REVISE_PLAN_HASH_AFTER=")))
+    assert before == after
+    assert (tmp_path / "plan.txt.before-revise").is_file()
+
+
+def test_revise_waterfall_ok_fallback_persists_revise_env_metadata(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+persist fallback
+diff_lines: 1
+PLAN
+else
+  printf 'not a diff\\n' >"$out"
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok-fallback"
+    revise_env = (tmp_path / "plan-review" / "round-1" / "revise" / "revise.env").read_text(encoding="utf-8")
+    assert "REVISE_STATUS=ok-fallback" in revise_env
+    assert "REVISE_TIER_4_STATUS=ok" in revise_env
+    assert "REVISE_WINNING_TIER=codex" in revise_env
+    assert out["REVISE_PATCH_PATH"].endswith("revise/codex-output.txt")
+    assert not (tmp_path / "plan.txt.before-revise").exists()
+
+
+def test_revise_waterfall_emit_plan_failure_on_codex_tier_sets_failed_apply(tmp_path: Path) -> None:
+    original = "## Plan\nalpha\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+out=""; prompt=""
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --prompt-file) prompt="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+if grep -Fq 'complete replacement plan' "$prompt"; then
+  : >"$out"
+else
+  name=$(basename "$out")
+  if [ "$name" = "codex-output.txt" ]; then
+    cat >"$out" <<'PATCH'
+```diff
+--- a/plan.txt
++++ b/plan.txt
+@@ -1,3 +1,3 @@
+ ## Plan
+-alpha
++never persists
+ diff_lines: 1
+```
+PATCH
+  else
+    : >"$out"
+  fi
+fi
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=failed\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "true",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "failed-apply"
+    assert out["REVISE_TIER_1_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_2_STATUS"] == "emit-plan-failed"
+    assert out["REVISE_TIER_3_STATUS"] == "no-patch"
+    assert out["REVISE_TIER_4_STATUS"] == "no-patch"
+    assert "alpha" in plan.read_text(encoding="utf-8")
+
+
+def test_validate_unified_headers_rejects_malformed_diff_lines() -> None:
+    assert plan_quality.validate_unified_headers("--- \n+++ b/plan.txt\n") is False
+    assert plan_quality.validate_unified_headers("--- a/plan.txt\n+++ \n") is False
+
+
 def test_is_new_script_matches_dot_prefixed_claude_paths(tmp_path: Path) -> None:
     script = tmp_path / ".claude" / "skills" / "foo" / "scripts" / "new.sh"
     script.parent.mkdir(parents=True)
@@ -556,6 +1021,68 @@ def test_check_plan_size_non_file_baseline_recovers_without_crash(tmp_path: Path
     out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
     assert out["DRIFT_TRIGGER_FIRED"] == "false"
     assert any("drift baseline unreadable" in line for line in cp.stdout.splitlines())
+
+
+def test_heading_count_includes_optional_scope_and_rejects_malformed(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text(
+        "## Files to modify/create\n"
+        "### NEW: a.txt\n"
+        "### UPDATED: b.txt\n"
+        "### REWRITTEN: c.txt\n"
+        "### MAY_UPDATE: d.txt\n"
+        "###MAY_UPDATE: malformed.txt\n",
+        encoding="utf-8",
+    )
+
+    assert plan_quality._heading_count(plan) == 4
+
+
+def test_compose_revise_prompt_preserves_optional_heading_type(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\n### MAY_UPDATE: `docs/optional.md`\nbody\ndiff_lines: 1\n", encoding="utf-8")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("finding\n", encoding="utf-8")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n", encoding="utf-8")
+    keys_file = tmp_path / "keys.env"
+
+    prompt = plan_quality._compose_revise_prompt(plan=plan, findings=findings, feature=feature, keys_file=keys_file, patch_format="file-replacement")
+
+    assert "When the original plan has `### NEW:`, `### UPDATED:`, `### REWRITTEN:`, or `### MAY_UPDATE:` headings, preserve at least one such heading." in prompt
+    assert "Preserve `### MAY_UPDATE:` heading type when present; do not convert optional headings to `### NEW:`, `### UPDATED:`, or `### REWRITTEN:`." in prompt
+
+
+def test_revise_waterfall_heading_guard_restores_replacement(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+body without plan headings
+diff_lines: 1
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_TIER_1_STATUS"] == "skipped-binary-missing"
+    assert out["REVISE_TIER_2_STATUS"] == "invalid-patch"
+    assert out["REVISE_STATUS"] == "failed-validation"
+    assert plan.read_text(encoding="utf-8") == original
 
 
 FIXTURES_DIR = Path(__file__).resolve().parents[3] / "skills" / "design" / "scripts" / "fixtures" / "parse-plan-commands"
@@ -770,6 +1297,31 @@ def test_check_plan_size_rejects_disallowed_tmpdir() -> None:
     finally:
         plan.unlink(missing_ok=True)
         outside.rmdir()
+
+
+def test_revise_waterfall_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    disallowed = Path.home() / "larch-revise-disallowed-test"
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(disallowed),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "false",
+        "--cursor-binary-found",
+        "false",
+    )
+    assert cp.returncode == 2
+    assert "path not under allowlist" in cp.stderr
 
 
 def test_auto_fix_rejects_disallowed_design_tmpdir(tmp_path: Path) -> None:
@@ -1153,6 +1705,216 @@ printf 'VALIDATE_STATUS=ok\\n'
     assert (tmp_path / "accepted-plan-findings.md").read_text(encoding="utf-8") == "trusted accepted\n"
 
 
+def test_revise_waterfall_prompt_uses_untrusted_blocks(tmp_path: Path) -> None:
+    plan = tmp_path / "plan.txt"
+    plan.write_text("## Plan\n### UPDATED: file.txt\n<<<INJECT\nbody\ndiff_lines: 1\n")
+    findings = tmp_path / "findings.txt"
+    findings.write_text("<<<INJECT\n")
+    feature = tmp_path / "feature-description.txt"
+    feature.write_text("feature\n")
+    fake = tmp_path / "fake-launch.sh"
+    fake.write_text('#!/usr/bin/env bash\nwhile [ $# -gt 0 ]; do case "$1" in --output) out=$2; shift 2;; --prompt-file) prompt=$2; shift 2;; *) shift;; esac; done\n: > "$out"\nexit 0\n')
+    fake.chmod(0o755)
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+    }
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "false",
+        "--cursor-binary-found",
+        "false",
+        env=env,
+    )
+    assert cp.returncode == 0, cp.stderr
+    prompt = (tmp_path / "plan-review" / "round-1" / "revise" / "prompt.txt").read_text(encoding="utf-8")
+    assert '<plan encoding="literal-redacted">' in prompt
+    assert "&lt;&lt;&lt;INJECT" in prompt
+    assert "<<<INJECT" not in prompt.split("literal-redacted")[-1]
+
+
+def test_revise_waterfall_external_autofix_timing_task_kinds(tmp_path: Path) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    codex_argv = tmp_path / "codex.argv"
+    cursor_argv = tmp_path / "cursor.argv"
+    claude_argv = tmp_path / "claude.argv"
+    codex = _write_executable(
+        tmp_path / "codex.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{codex_argv}"
+exit 0
+""",
+    )
+    cursor = _write_executable(
+        tmp_path / "cursor.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{cursor_argv}"
+exit 0
+""",
+    )
+    claude = _write_executable(
+        tmp_path / "claude.sh",
+        f"""#!/usr/bin/env bash
+printf '%s\\n' "$*" >>"{claude_argv}"
+exit 0
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(codex),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(cursor),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(claude),
+    }
+
+    cp = run_cli(
+        "plan",
+        "revise-waterfall",
+        "--design-tmpdir",
+        str(tmp_path),
+        "--plan-file",
+        str(plan),
+        "--findings-file",
+        str(findings),
+        "--feature-file",
+        str(feature),
+        "--round-num",
+        "1",
+        "--codex-binary-found",
+        "true",
+        "--cursor-binary-found",
+        "true",
+        "--patch-format",
+        "file-replacement",
+        env=env,
+    )
+
+    assert cp.returncode == 0, cp.stderr
+    assert "--timing-task-kind codex-plan-autofix" in codex_argv.read_text(encoding="utf-8")
+    assert "--timing-task-kind cursor-plan-autofix" in cursor_argv.read_text(encoding="utf-8")
+
+
+def test_revise_waterfall_default_launchers_use_python_cli(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    plan, findings, feature = _revise_base(tmp_path)
+    recorded: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str] | str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(cmd, list) and "launch-review" in cmd:
+            recorded.append(list(cmd))
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        if isinstance(cmd, list) and "launch-claude-review" in cmd:
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        check = kwargs.pop("check", False)
+        return real_run(cmd, check=check, **kwargs)  # type: ignore[arg-type,call-overload]
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    for key in ("LARCH_TEST_LAUNCH_CODEX_REVIEW", "LARCH_TEST_LAUNCH_CURSOR_REVIEW", "LARCH_TEST_LAUNCH_CLAUDE_REVIEW"):
+        monkeypatch.delenv(key, raising=False)
+
+    rc = plan_quality.revise_plan_with_waterfall_main(
+        [
+            "--design-tmpdir",
+            str(tmp_path),
+            "--plan-file",
+            str(plan),
+            "--findings-file",
+            str(findings),
+            "--feature-file",
+            str(feature),
+            "--round-num",
+            "1",
+            "--codex-binary-found",
+            "true",
+            "--cursor-binary-found",
+            "true",
+            "--patch-format",
+            "file-replacement",
+        ]
+    )
+    assert rc == 0
+    codex_cmds = [cmd for cmd in recorded if "--tool" in cmd and cmd[cmd.index("--tool") + 1] == "codex"]
+    cursor_cmds = [cmd for cmd in recorded if "--tool" in cmd and cmd[cmd.index("--tool") + 1] == "cursor"]
+    assert codex_cmds
+    assert cursor_cmds
+    assert all(cmd[cmd.index("--model-role") + 1] == "fix" for cmd in codex_cmds)
+    assert all("--model-role" not in cmd for cmd in cursor_cmds)
+    for cmd in codex_cmds + cursor_cmds:
+        assert cmd[0] == sys.executable
+        assert cmd[1].endswith("python/cli.py")
+        assert cmd[2:4] == ["agent", "launch-review"]
+
+
+def test_revise_waterfall_default_design_driver_is_split_argv(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # Regression for #4434: the EMIT_PLAN gate's design-driver command must be a
+    # properly-split argv list (argv[0] == sys.executable), not a single
+    # space-joined string passed as argv[0] (which execve cannot resolve, so the
+    # gate raised FileNotFoundError and the waterfall always bailed).
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    design_driver_cmds: list[list[str]] = []
+    real_run = subprocess.run
+
+    def fake_run(cmd: list[str] | str, **kwargs: object) -> subprocess.CompletedProcess[str]:
+        if isinstance(cmd, list) and kwargs.get("input") == "ACTION=EMIT_PLAN\n":
+            design_driver_cmds.append(list(cmd))
+            return subprocess.CompletedProcess(cmd, 0, "EMIT_PLAN_STATUS=ok\n", "")
+        if isinstance(cmd, list) and ("launch-review" in cmd or "launch-claude-review" in cmd):
+            out_path = cmd[cmd.index("--output") + 1]
+            Path(out_path).write_text("## Plan\n### UPDATED: file.txt\nchanged\ndiff_lines: 2\n", encoding="utf-8")
+            return subprocess.CompletedProcess(cmd, 0, "", "")
+        check = kwargs.pop("check", False)
+        return real_run(cmd, check=check, **kwargs)  # type: ignore[arg-type,call-overload]
+
+    monkeypatch.setattr(plan_quality.subprocess, "run", fake_run)
+    for key in ("LARCH_TEST_LAUNCH_CODEX_REVIEW", "LARCH_TEST_LAUNCH_CURSOR_REVIEW", "LARCH_TEST_LAUNCH_CLAUDE_REVIEW", "LARCH_TEST_DESIGN_DRIVER"):
+        monkeypatch.delenv(key, raising=False)
+
+    rc = plan_quality.revise_plan_with_waterfall_main(
+        [
+            "--design-tmpdir",
+            str(tmp_path),
+            "--plan-file",
+            str(plan),
+            "--findings-file",
+            str(findings),
+            "--feature-file",
+            str(feature),
+            "--round-num",
+            "1",
+            "--codex-binary-found",
+            "true",
+            "--cursor-binary-found",
+            "true",
+            "--patch-format",
+            "file-replacement",
+        ]
+    )
+    assert rc == 0
+    assert design_driver_cmds, "emit_plan_gate never invoked the design driver"
+    cmd = design_driver_cmds[0]
+    assert cmd[0] == sys.executable
+    assert " " not in cmd[0]
+    assert cmd[1].endswith("python/cli.py")
+    assert cmd[2:4] == ["design", "driver"]
+    assert "--design-tmpdir" in cmd
+
+
 def test_allow_flag_accepts_dot_slash_prefixed_script(tmp_path: Path) -> None:
     script = REPO_ROOT / "skills" / "design" / "scripts" / "fixtures" / "validate-plan-commands" / "demo-stdout-help.sh"
     plan = f"""### UPDATED: {script.relative_to(REPO_ROOT)}
@@ -1341,6 +2103,41 @@ def test_validate_commands_defaults_plugin_root_without_repo_root(tmp_path: Path
     assert cp.returncode == 0, cp.stderr
     assert "VALIDATE_STATUS=defects-found" in cp.stdout
     assert log.read_text(encoding="utf-8").endswith("UNSAFE_TOKEN_COUNT=0\n")
+
+
+def test_revise_waterfall_restores_plan_after_failed_round(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --output) out="$2"; shift 2 ;;
+    --plan-file) plan="$2"; shift 2 ;;
+    *) shift ;;
+  esac
+done
+cat >"$plan" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+corrupted
+diff_lines: 9
+PLAN
+: >"$out"
+exit 0
+""",
+    )
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CURSOR_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env)
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"].startswith("failed")
+    assert plan.read_text(encoding="utf-8") == original
 
 
 def test_redact_capture_withholds_raw_text_on_failure(monkeypatch: pytest.MonkeyPatch) -> None:
