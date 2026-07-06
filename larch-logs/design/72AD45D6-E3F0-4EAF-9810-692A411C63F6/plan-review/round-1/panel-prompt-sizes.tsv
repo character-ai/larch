@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	20155	5039	13353	3339	6802	1701		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16400	4100	13065	3267	3335	834		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	20140	5035	13338	3335	6802	1701		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	20131	5033	13329	3333	6802	1701		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16376	4094	13041	3261	3335	834		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16385	4097	13050	3263	3335	834		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16398	4100	13063	3266	3335	834		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	20153	5039	13351	3338	6802	1701		0	0
+design Step 3	phase1	1	dyn-codex-plan-proposal-pasteability	plan-review	codex	dyn-codex-plan-proposal-pasteability.txt	16702	4176	12916	3229	3786	947		0	0
+design Step 3	phase1	1	dyn-cursor-plan-proposal-pasteability	plan-review	cursor	dyn-cursor-plan-proposal-pasteability.txt	20457	5115	13204	3301	7253	1814		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	18742	4686	4477	1120	14265	3567	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	13697	3425	8916	2229	4781	1196		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	13697	3425	8916	2229	4781	1196		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	13697	3425	8916	2229	4781	1196		0	0

@@ -1,0 +1,55 @@
+## Problem
+
+In the first live `/learn-from-bugs` run (report #6470), the Step 4 report sections for proposed architectural invariants (section 5) and proposed guideline entries (section 6) came out super-terse: compressed one-liners with fragment-style Why and Deviate clauses that read as obfuscated shorthand. The operator had to ask for a rewrite ("use exact wording ... what you have seems cryptic and terse") before the proposals were fileable. The accepted format is what landed in #6474 Parts B and C: every proposed guideline, invariant, and rule written as exact, complete, append-ready text.
+
+## Root cause
+
+`skills/learn-from-bugs/SKILL.md` Step 4 actively instructs the terse form:
+
+- Section 6's instruction says to write entries "in the target repo's guideline style if it has one (for larch, the terse `G-<Area>-<N>: <imperative>. Why. Deviate when.` form)". The word "terse" plus the compressed one-line template produces fragments.
+- Section 5 asks only for a best-home classification per invariant; it never requires the invariant's full normative statement, so the statement degrades to a label.
+- The skill-wide readability preamble ("shorter is better ... when unsure how short to go, go shorter") reinforces compression. That is right for chat narration; it is wrong for proposal text, which is a deliverable artifact the operator pastes into `ARCHITECTURAL_GUIDELINES.md`, an invariants file, or a `.claude/rules/*.md` file without rewriting.
+
+## Suggested fix
+
+Modify `skills/learn-from-bugs/SKILL.md` Step 4 (sections 4, 5, and 6 of the report template):
+
+1. Require exact, append-ready wording for every proposal. Each proposed guideline entry carries a full imperative statement in complete sentences, a full Why sentence citing the backing issues, and a full Deviate-when sentence. Each proposed invariant carries a full normative statement (what must always or never happen, at which boundary, with what evidence), not just a name and a classification. Each proposed lint rule states exactly what it flags, on which surface, with suppression and baseline policy. Forbid fragments, abbreviations, and shorthand the reader must expand.
+2. For invariants classified `rule`, require the complete draft `.claude/rules/*.md` file text: frontmatter `paths:` globs plus the body.
+3. Reword the "terse" instruction: match the target repo's numbering and section style, but never compress below complete sentences; state explicitly that proposal text must be pasteable into the target file without rewriting, and that for this section exactness takes precedence over the brevity axis of `skills/shared/readability-style.md`.
+4. Keep the rest of the report (scope, clusters, dedup table) under the existing brevity style; the carve-out applies only to proposal wording.
+
+## Reference
+
+Before: #6470 sections 5 and 6 (first-draft terse form). After: #6474 Parts A, B, and C (accepted full-wording form, produced on operator request in the same session).
+
+## Acceptance
+
+A `/learn-from-bugs` run produces a report whose sections 4 to 6 the operator can paste into the target files verbatim, with no follow-up expansion request. The skill's Step 4 instructions contain the exact-wording requirement and the readability-carve-out sentence.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Require full, append-ready wording for all proposal sections (4, 5, 6) in `learn-from-bugs` Step 4.
+- Eliminate the "terse" instruction and compressed template from section 6.
+- Add a readability carve-out: exactness takes precedence over brevity for proposal text.
+
+### Non-goals
+- No changes to sections 1, 2, 3, or 7 of the report template.
+- No changes to Step 1, 2, 3, or 5 of the skill.
+- No Python/Bash code changes; prose-only edit to SKILL.md.
+
+### Approach sketch
+- Edit `skills/learn-from-bugs/SKILL.md` Step 4 sections 4, 5, and 6 only.
+- Section 5: add requirement for full normative statement per invariant; add `rule` sub-requirement for complete `.claude/rules/*.md` draft.
+- Section 6: remove "terse" and the compressed one-line template; require full imperative sentence, full Why, full Deviate-when in complete sentences.
+- Section 4: add requirement that each lint rule includes a complete statement of what it flags, on which surface, with suppression and baseline policy.
+- Add an inline carve-out sentence in the proposal sections noting exactness overrides brevity.
+
+### Surfaces in scope
+- `skills/learn-from-bugs/SKILL.md` (Step 4 only: sections 4, 5, 6)
+
+### Open questions
+- None.

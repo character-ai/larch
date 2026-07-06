@@ -1,0 +1,13 @@
+### FINDING_1: Section 5 lint rows need full lint metadata
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Concern**: Section 5 still allows lint-classified invariants to omit the mechanical lint contract fields that section 4 requires, so the operator cannot paste a lint scaffold verbatim and must reconstruct the missing metadata.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: When rewriting section 5 bullets, require lint-classified rows to carry the same lint contract fields as section 4 (what it flags, surface, backing issues, false-positive risk, suppression policy, baseline policy) in addition to the normative statement, boundary, always/never rule, and evidence check
+
+### FINDING_2: Carve-out must override readability-style brevity
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: minor
+- **Concern**: The proposal carve-out does not explicitly override `skills/shared/readability-style.md`, so the global brevity guidance can still compress sections 4-6 after the shared style loads.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: In the Step 4 carve-out near sections 4-6, add one sentence that proposal wording in those sections overrides the Brevity axis of skills/shared/readability-style.md while the rest of the report and chat narration stay under the existing brevity rules
