@@ -1,0 +1,91 @@
+# Cut review costs: mini /design voters, 2-slot gpt-5.5 HARD, pinned dynamics
+
+# Cut /design and /implement review costs: all-mini plan voters, 2-slot gpt-5.5 HARD panels, pinned mini dynamics
+
+## Motivation
+
+The difficulty-tier overhaul (#6041, #6122, #6244) already lowered per-run means (design $50.26 to $28.54; implement $39.82 to $15.99, trailing-30d vs Jul 2-6 windows). The remaining panel cost concentrates in two places:
+
+- HARD tiers run every Codex reviewer row on gpt-5.5, at roughly 6.7x gpt-5.4-mini rates.
+- /design voters spawn a Claude subprocess voter and a Cursor voter every round.
+
+Historical yield says the gpt-5.5-priced rows earn the least per dollar and Cursor rows earn the most:
+
+- /implement code review (674 head-to-head runs, `python/analysis/reviewer_impact.py`): Cursor contributed 2,055 unique accepted findings (3.05/run, 72.8% of single-vendor uniques); Codex 769 (1.14/run). Top Codex archetypes: correctness 297, edge-cases 260, testing 192. The Codex dynamic slot has 3 unique accepted findings all-time; the Cursor dynamic slot has 1,038.
+- /design plan review (7,809 accepted in-scope findings across 571 runs, from `findings-classification.tsv`): Cursor archetypes out-earn Codex roughly 1.5-1.8x per archetype. Codex archetypes are nearly flat (accepted: pragmatic 1,025; requirements 986; arch 972; innovation 961). Design dyn-codex earns its slot (1,327 accepted, 524 sole-proposer).
+
+Cursor therefore stays full-width everywhere. Cuts target the gpt-5.5 rows and the /design voter panel.
+
+## Change 1: /design plan voters mirror review.voters
+
+Replace the Claude + Codex + Cursor trio in `design.plan_voters` with the `review.voters` shape:
+
+- v1 codex-validity, v2 codex-plan-fidelity, v3 codex-pragmatism (the plan voters already carry these semantic labels).
+- All three use the Codex vote role, default gpt-5.4-mini.
+- Each slot waterfalls Codex, then Cursor, then Claude.
+- Both externals down: degrade to a single Claude voter, matching code review.
+- Identical at every tier; voters still run each round.
+
+Follow-up guard: watch `/voter-calibration` agreement for the first weeks after rollout. If mini voters drift on HARD ballots, escalate one voter slot to the Codex default role on HARD only instead of reverting the panel.
+
+## Change 2: difficulty-tier panel composition
+
+All rows are per review round. The round cap stays 2 with round-2 productivity pruning.
+
+### /design plan review
+
+| Rows per round | TRIVIAL | MODERATE | HARD (new) | HARD (today) |
+|---|---|---|---|---|
+| Cursor static x4: arch, innovation, pragmatic, requirements | composer-2.5 | composer-2.5 | composer-2.5 | composer-2.5 |
+| Codex static x2: arch, innovation | gpt-5.4-mini | gpt-5.4-mini | gpt-5.4-mini | gpt-5.5 |
+| Codex static x2: pragmatic, requirements | gpt-5.4-mini | gpt-5.4-mini | gpt-5.5 | gpt-5.5 |
+| Dynamic pair, at most 1 scout archetype: cursor + codex | composer-2.5 + gpt-5.4-mini | composer-2.5 + gpt-5.4-mini | composer-2.5 + gpt-5.4-mini (pinned) | composer-2.5 + gpt-5.5 |
+
+TRIVIAL and MODERATE are unchanged. Rows stay 10 per round at every tier. HARD gpt-5.5 calls drop from 5 rows to 2.
+
+### /implement Step 5 and /review --diff
+
+| Rows per round | TRIVIAL | MODERATE | HARD (new) | HARD (today) |
+|---|---|---|---|---|
+| Cursor static x3: correctness, edge-cases, testing | none (Codex singles; Cursor singles only when Codex is down) | composer-2.5 | composer-2.5 | composer-2.5 |
+| Codex static x1: testing | gpt-5.4-mini | gpt-5.4-mini | gpt-5.4-mini | gpt-5.5 |
+| Codex static x2: correctness, edge-cases | gpt-5.4-mini | gpt-5.4-mini | gpt-5.5 | gpt-5.5 |
+| dyn-cursor, at most 1 | composer-2.5 | composer-2.5 | composer-2.5 | composer-2.5 |
+| dyn-codex, at most 1 | dropped (today gpt-5.4-mini) | gpt-5.4-mini | gpt-5.4-mini (pinned) | gpt-5.5 |
+
+MODERATE is unchanged. Rows: 4/8/8 (today 5/8/8). HARD gpt-5.5 calls drop from 4 rows to 2.
+
+### Rules the tables encode
+
+- HARD substitutes models per archetype: a static archetype runs gpt-5.4-mini or gpt-5.5, never both.
+- The gpt-5.5 slots go to the top-yield archetypes. Code review: correctness + edge-cases (clear from data). Plan review: pragmatic + requirements (provisional pick from a nearly flat distribution; swapping archetypes later is cheap).
+- Dynamics never escalate to gpt-5.5. The dynamic pair runs composer-2.5 + gpt-5.4-mini at MODERATE and HARD in both skills.
+- dyn-codex leaves TRIVIAL code review only. Caveat: the dyn pair has existed only since ~Jun 13 (#4226), so its near-zero yield has limited exposure. Design keeps its dynamic pair at all tiers.
+
+## Explicitly unchanged
+
+- Round cap 2 at all tiers; round-2 productivity pruning.
+- `--no-fallback` row-drop semantics for reviewer panels.
+- Findings aggregators (Codex review role).
+- Dynamic-archetype scout waterfall (Cursor then Claude).
+- 1-in-30 audit upgrade; it just gets cheaper when it fires.
+- Plan-revision and review-fix Codex roles (already gpt-5.4-mini).
+- /implement and /review voters (#6041 shape).
+- TRIVIAL everywhere, except the dyn-codex drop above.
+
+## Implementation notes (non-binding)
+
+- `design.plan_voters` in `python/larch/core/config.py` adopts the `review.voters` policy shape; `plan_review_panel.dispatch_voters` keeps the dedicated Claude launch only as the both-externals-down floor.
+- `DIFFICULTY_CODEX_MODEL_ROLES` is tier-wide today. HARD substitution needs a per-archetype override, for example a (panel, archetype) to role map applied at HARD, consumed by `plan_review_panel._static_slot_rows` and `review_dispatch_panel._append_static_specialist_rows`.
+- Dynamic row synthesis pins the codex dyn row to the review role at every tier; TRIVIAL code review emits no codex dyn row.
+- Update in lockstep: `docs/review-agents.md` (Difficulty-tiered panels), `docs/external-reviewers.md`, `docs/voting-process.md`, `docs/configuration-and-permissions.md`, and the `skills/shared/topology.tsv` projection where slot rows change.
+- Cost attribution needs no new work: per-model Codex pricing already splits gpt-5.5 and gpt-5.4-mini lanes (#5321).
+
+## Acceptance criteria
+
+- /design voter dispatch emits three Codex-primary gpt-5.4-mini voters with the per-slot waterfall above; degraded modes match `review.voters`, including the single-Claude floor.
+- Panel manifests match the tables per tier for both skills: slot names, tools, and resolved models.
+- HARD runs show exactly 2 gpt-5.5 reviewer rows per round per skill, and no archetype appears at both gpt-5.4-mini and gpt-5.5.
+- TRIVIAL code review emits dyn-cursor only; MODERATE and HARD emit the full pinned dynamic pair.
+- Tier dispatch tests updated; new tests cover HARD substitution, dynamic pinning, and the TRIVIAL dyn-codex drop.
+- `/voter-calibration` parses the new design voter labels.

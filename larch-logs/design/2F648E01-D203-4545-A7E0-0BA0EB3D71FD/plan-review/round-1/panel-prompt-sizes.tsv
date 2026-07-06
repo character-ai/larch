@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	28840	7210	13320	3330	15520	3880		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19811	4953	13032	3258	6779	1695		0	0
+design Step 3	phase1	1	dyn-codex-plan-panel-topology-auditor	plan-review	codex	dyn-codex-plan-panel-topology-auditor.txt	20166	5042	12898	3225	7268	1817		0	0
+design Step 3	phase1	1	dyn-cursor-plan-panel-topology-auditor	plan-review	cursor	dyn-cursor-plan-panel-topology-auditor.txt	29195	7299	13186	3297	16009	4003		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	28855	7214	13335	3334	15520	3880		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	28853	7214	13333	3334	15520	3880		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19802	4951	13023	3256	6779	1695		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	28831	7208	13311	3328	15520	3880		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19826	4957	13047	3262	6779	1695		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19824	4956	13045	3262	6779	1695		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	37386	9347	4462	1116	32924	8231	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	17927	4482	8901	2226	9026	2257		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	17927	4482	8901	2226	9026	2257		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	17927	4482	8901	2226	9026	2257		0	0

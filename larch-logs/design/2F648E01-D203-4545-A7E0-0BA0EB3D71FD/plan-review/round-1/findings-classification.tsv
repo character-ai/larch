@@ -1,0 +1,18 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Codex-Arch, Cursor-Innovation, Codex-Innovation, Cursor-Pragmatic, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Cursor-dyn-Panel Topology Auditor, Codex-dyn-Panel Topology Auditor	accepted	YES	true	major	excellent	false	Claude	YES	true	major	good	false	Codex	YES	true	major	excellent	false	Cursor	major	in_scope
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Panel Topology Auditor	neutral	NO	false-positive	minor	adequate	false	Claude	NO	false-positive	minor	adequate	false	Codex	YES	true	major	good	false	Cursor	major	oos
+FINDING_3	Cursor-Arch, Codex-Innovation	neutral	NO	true	minor	adequate	false	Claude	NO	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	in_scope
+FINDING_4	Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Panel Topology Auditor	neutral	NO	partially-true	minor	good	false	Claude	NO	true	minor	good	false	Codex	YES	true	major	excellent	false	Cursor	major	oos
+FINDING_5	Cursor-Arch, Codex-Innovation, Cursor-Innovation, Cursor-dyn-Panel Topology Auditor	accepted	NO	partially-true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	in_scope
+FINDING_6	Cursor-Innovation, Cursor-dyn-Panel Topology Auditor	accepted	YES	true	major	good	false	Claude	YES	true	major	good	false	Codex	YES	true	major	good	false	Cursor	major	in_scope
+FINDING_7	Cursor-Innovation	neutral	NO	partially-true	minor	weak	false	Claude	YES	true	major	good	false	Codex	NO	partially-true	minor	adequate	false	Cursor	major	oos
+FINDING_8	Codex-Innovation	neutral	NO	uncertain	major	weak	true	Claude	NO	false-positive	major	adequate	false	Codex	YES	true	major	good	false	Cursor	major	oos
+FINDING_9	Codex-dyn-Panel Topology Auditor	rejected	NO	partially-true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	good	false	Cursor	minor	in_scope
+FINDING_10	Codex-dyn-Panel Topology Auditor	accepted	YES	true	minor	adequate	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	in_scope
+OOS_1	Cursor-Arch	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	oos
+OOS_2	Cursor-Innovation	neutral	YES	true	minor	adequate	false	Claude	NO	true	minor	adequate	false	Codex	NO	partially-true	minor	adequate	false	Cursor	minor	oos
+OOS_3	Cursor-Innovation	accepted	YES	partially-true	minor	adequate	false	Claude	YES	true	minor	adequate	false	Codex	YES	true	minor	good	false	Cursor	minor	oos
+OOS_4	Cursor-Pragmatic	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	oos
+OOS_5	Cursor-Requirements	neutral	YES	true	minor	good	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	minor	good	false	Cursor	minor	oos
+OOS_6	Cursor-Requirements	accepted	YES	true	minor	good	false	Claude	YES	true	minor	good	false	Codex	YES	true	minor	good	false	Cursor	minor	oos
+OOS_7	Cursor-Requirements	rejected	NO	true	minor	good	false	Claude	NO	true	minor	adequate	false	Codex	NO	true	nit	adequate	false	Cursor	minor	oos
