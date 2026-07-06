@@ -107,6 +107,15 @@ outcome. The audit scan treats missing artifacts below
 as informational. At or above that cutover, Step 8-eligible missing, malformed,
 empty, or symlinked artifacts fail.
 
+Step 2 also records launch-time architectural-knowledge requiredness in the
+session-local `step2-architectural-knowledge.env` file. That snapshot is not a
+committed run-log batch, but the dispatcher uses it to decide whether the coder's
+`manifest.json` must include `architectural_acknowledgment`. Missing or empty
+acknowledgment on `complete` or `needs_qa` bails with
+`architectural-acknowledgment-missing` instead of recovering as
+`manifest-schema-invalid`. Invalid architecture files are omitted fail-closed and
+logged under `Warnings` as Step 2 architectural-knowledge omissions.
+
 ### In-loop refresh sidecars
 
 In-loop refresh sidecars (`token-report-refresh.json`, `timing-report-refresh.json`,

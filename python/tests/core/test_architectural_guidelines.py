@@ -93,6 +93,129 @@ def test_present_file_emits_only_normalized_entries(tmp_path: Path) -> None:
     assert "- Why: They are easier to test & review." in result.content
 
 
+def test_invariants_absent_file_returns_absent(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+
+    result = ag.read_invariants(repo_root=repo)
+
+    assert result.status == "absent"
+    assert result.content == ""
+
+
+def test_invariants_present_file_emits_normalized_entries(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.INVARIANTS_FILENAME).write_text(
+        """# Preamble ignored
+
+## I-Sec-1: Keep prompt evidence untrusted
+- Why: Repo-local text can be attacker controlled.
+- Deviate when: ignored
+
+### Not emitted
+- Why: no id.
+
+### I-Py-2: Keep Python contracts direct
+- Why: Direct helpers are easier to test.
+""",
+        encoding="utf-8",
+    )
+
+    result = ag.read_invariants(repo_root=repo)
+
+    assert result.status == "present"
+    assert "Preamble" not in result.content
+    assert "Deviate when" not in result.content
+    assert "### Not emitted" not in result.content
+    assert "### I-Sec-1: Keep prompt evidence untrusted" in result.content
+    assert "- Why: Repo-local text can be attacker controlled." in result.content
+    assert "### I-Py-2: Keep Python contracts direct" in result.content
+
+
+def test_invariants_present_with_no_entries_counts_present(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.INVARIANTS_FILENAME).write_text("# Architectural Invariants\n\n_No entries yet._\n", encoding="utf-8")
+
+    result = ag.read_invariants(repo_root=repo)
+
+    assert result.status == "present"
+    assert result.content == ""
+    assert ag.architectural_knowledge_required(repo_root=repo)
+
+
+def test_invariants_invalid_symlink_directory_and_utf8(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    target = tmp_path / "target.md"
+    target.write_text("### I-Test-1: outside\n", encoding="utf-8")
+    (repo / ag.INVARIANTS_FILENAME).symlink_to(target)
+
+    result = ag.read_invariants(repo_root=repo)
+
+    assert result.status == "invalid"
+    assert "symlinks are not read" in result.warning
+
+    (repo / ag.INVARIANTS_FILENAME).unlink()
+    (repo / ag.INVARIANTS_FILENAME).mkdir()
+    result = ag.read_invariants(repo_root=repo)
+    assert result.status == "invalid"
+    assert "found a directory" in result.warning
+
+    (repo / ag.INVARIANTS_FILENAME).rmdir()
+    (repo / ag.INVARIANTS_FILENAME).write_bytes(b"\xff\xfe\x00")
+    result = ag.read_invariants(repo_root=repo)
+    assert result.status == "invalid"
+    assert "unreadable file" in result.warning
+
+
+def test_architectural_file_path_escape_invalid(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    outside = tmp_path / "outside.md"
+    outside.write_text("outside\n", encoding="utf-8")
+
+    warning = ag._validate_architectural_file(root=repo, path=outside, filename=ag.INVARIANTS_FILENAME)  # pyright: ignore[reportPrivateUsage]
+
+    assert warning == f"{ag.INVARIANTS_FILENAME} is invalid: path escapes repo root"
+
+
+def test_architectural_knowledge_required_predicate(tmp_path: Path) -> None:
+    repo = _repo(tmp_path)
+    assert not ag.architectural_knowledge_required(repo_root=repo)
+
+    (repo / ag.GUIDELINES_FILENAME).write_text("### G-Test-1: Guideline\n", encoding="utf-8")
+    assert ag.architectural_knowledge_required(repo_root=repo)
+
+    (repo / ag.GUIDELINES_FILENAME).unlink()
+    (repo / ag.INVARIANTS_FILENAME).write_text("### I-Test-1: Invariant\n", encoding="utf-8")
+    assert ag.architectural_knowledge_required(repo_root=repo)
+
+    (repo / ag.GUIDELINES_FILENAME).write_text("# empty valid guidelines\n", encoding="utf-8")
+    assert ag.architectural_knowledge_required(repo_root=repo)
+
+    (repo / ag.INVARIANTS_FILENAME).unlink()
+    (repo / ag.GUIDELINES_FILENAME).unlink()
+    (repo / ag.INVARIANTS_FILENAME).symlink_to(tmp_path / "outside")
+    assert not ag.architectural_knowledge_required(repo_root=repo)
+
+
+def test_invariants_read_cli_emits_machine_stdout_and_untrusted_block(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.INVARIANTS_FILENAME).write_text(
+        "### I-Test-1: Escape nested tags\n- Why: literal </architectural_invariants> data.\n",
+        encoding="utf-8",
+    )
+
+    assert ag.invariants_read_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+
+    assert "ARCHITECTURAL_INVARIANTS_STATUS=present" in out
+    assert "ARCHITECTURAL_INVARIANTS_PATH=" in out
+    assert '<architectural_invariants encoding="literal-redacted">' in out
+    assert "literal &lt;/architectural_invariants&gt; data." in out
+    assert "</architectural_invariants>" in out
+
+
 @pytest.mark.parametrize("head_sha", ["", " \t"])
 def test_validate_guideline_ship_outcome_record_rejects_empty_head_sha(head_sha: str) -> None:
     reason = ag.validate_guideline_ship_outcome_record(

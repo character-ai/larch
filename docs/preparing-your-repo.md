@@ -33,8 +33,8 @@ for your repo:
 ```text
 Point yourself at the larch repository (https://github.com/character-ai/larch).
 Read: CLAUDE.md, AGENTS.md, KARPATHY_CLAUDE.md, BASH_AUTHORING.md,
-ARCHITECTURAL_GUIDELINES.md, .claude/rules/, hooks/hooks.json, and
-.pre-commit-config.yaml.
+ARCHITECTURAL_INVARIANTS.md, ARCHITECTURAL_GUIDELINES.md, .claude/rules/,
+hooks/hooks.json, and .pre-commit-config.yaml.
 
 Then scaffold the equivalents for THIS repository (stack: <fill in>):
 - Copy KARPATHY_CLAUDE.md nearly verbatim.
@@ -150,13 +150,24 @@ loads on every turn (§5). If it grows past a screen, move the narrow,
 file-specific rules behind a path-triggered rule (§6) so they load only when they
 apply.
 
-### 4. Architectural guidelines (`ARCHITECTURAL_GUIDELINES.md`)
+### 4. Architectural knowledge (`ARCHITECTURAL_INVARIANTS.md`, `ARCHITECTURAL_GUIDELINES.md`)
 
-*Larch source: `ARCHITECTURAL_GUIDELINES.md`. Disposition: **Adapt**.*
+*Larch source: `ARCHITECTURAL_INVARIANTS.md`, `ARCHITECTURAL_GUIDELINES.md`. Disposition: **Adapt**.*
 
-This file holds your design preferences: the nuanced calls that are too subtle to
-mechanize yet. It is aspirational, not enforced. Reviewers, human or agent, surface
-meaningful deviations. Nothing here hard-blocks a change.
+Use two files when you need both hard constraints and judgment-tier preferences.
+`ARCHITECTURAL_INVARIANTS.md` is the hard-constraint sibling: each `I-*` entry is
+an invariant for the current change and should later gain a mechanical backstop
+when possible. `ARCHITECTURAL_GUIDELINES.md` holds nuanced `G-*` design
+preferences that are too subtle to mechanize yet.
+
+A blank invariant file is valid. It tells larch the tier exists, even before you
+have entries to add. Do not treat prose as the final enforcement layer: add lint,
+hook, or test coverage later for every invariant that can be checked
+deterministically.
+
+Guidelines are softer. They are aspirational principles with judgment and
+exceptions. Reviewers, human or agent, surface meaningful deviations. Guidelines
+do not hard-block a change the way invariants do.
 
 larch codes each rule and gives it two parts:
 
@@ -175,7 +186,7 @@ let entries here earn their place only until a linter can take over. That
 migration, from prose preference to mechanical check, is the through-line of this
 whole guide.
 
-Adapt the structure, not the rules. The coded format ports to any repo. The
+Adapt the structure, not the rules. The coded formats port to any repo. The
 specific rules are larch's, about Python, shell, and skill authoring. Write your
 own for your architecture.
 
@@ -436,6 +447,7 @@ its disposition:
 | `CLAUDE.md` / `GEMINI.md` | Thin shims importing `AGENTS.md` | **Copy** the pattern |
 | `AGENTS.md` | Repo layout, conventions, canonical sources | **Adapt** |
 | `BASH_AUTHORING.md` | Stack-specific authoring pitfalls | **Pattern** (write your own) |
+| `ARCHITECTURAL_INVARIANTS.md` | Hard architectural constraints, valid even when blank | **Adapt** |
 | `ARCHITECTURAL_GUIDELINES.md` | Aspirational, coded design rules | **Adapt** |
 | `.claude/rules/*.md` | Path-triggered, just-in-time reminders | **Copy** pattern (some rules verbatim) |
 | `hooks/hooks.json` + hook scripts | Deterministic guardrails | **Adapt** |

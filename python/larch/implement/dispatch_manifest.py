@@ -411,11 +411,26 @@ def _complete_schema_valid(obj: dict[str, Any]) -> bool:
     )
 
 
+def _sanitize_architectural_acknowledgment(value: object) -> str:
+    if not isinstance(value, str):
+        return ""
+    text = re.sub(r"[\r\n]+", " ", value)
+    text = re.sub(r"\s+", " ", "".join(ch for ch in text if ch >= " " and ch != "\x7f")).strip()
+    return redact.redact_secrets_only(text).strip()[:500]
+
+
+def _require_architectural_acknowledgment(manifest: dict[str, Any]) -> bool:
+    """Return true when the manifest carries a non-empty visible architecture acknowledgment."""
+    return bool(_sanitize_architectural_acknowledgment(manifest.get("architectural_acknowledgment")))
+
+
 def _sanitize_manifest_obj(obj: dict[str, Any]) -> dict[str, Any]:  # noqa: C901
     sanitized = dict(obj)
     for key in ("commit_message",):
         if isinstance(sanitized.get(key), str):
             sanitized[key] = redact.redact_secrets_only(sanitized[key])
+    if "architectural_acknowledgment" in sanitized:
+        sanitized["architectural_acknowledgment"] = _sanitize_architectural_acknowledgment(sanitized.get("architectural_acknowledgment"))
     for key in ("summary_bullets", "todos_left"):
         if isinstance(sanitized.get(key), list):
             sanitized[key] = [redact.redact_secrets_only(v) if isinstance(v, str) else v for v in sanitized[key]]

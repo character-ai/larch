@@ -1,6 +1,7 @@
 # pyright: reportPrivateUsage=false, reportUnusedCallResult=false, reportUnknownArgumentType=false, reportUnknownLambdaType=false, reportUnknownMemberType=false, reportUnknownVariableType=false, reportArgumentType=false, reportAttributeAccessIssue=false
 from __future__ import annotations
 
+import argparse
 import importlib
 import json
 import subprocess
@@ -12,6 +13,7 @@ if TYPE_CHECKING:
     import pytest
 
 from larch.agents import agent_voters
+from larch.agents import _ci_launcher
 from larch.agents import agent_waterfall
 from larch.agents import agents
 from larch.calibration import difficulty
@@ -657,3 +659,176 @@ def test_decompose_panel_and_aggregator_use_decompose_roles(tmp_path: Path, monk
     assert seen_role_default == ["design.decompose_panel"]
     assert "design.decompose_panel" in seen_slots
     assert "design.decompose_aggregator" in seen_slots
+
+
+def _implement_prompt_args(tmp_path: Path) -> argparse.Namespace:
+    agent_prompt = tmp_path / "agent.md"
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    agent_prompt.write_text("agent body\n", encoding="utf-8")
+    plan.write_text("plan\n", encoding="utf-8")
+    feature.write_text("feature\n", encoding="utf-8")
+    return argparse.Namespace(
+        manifest_path=str(tmp_path / "manifest.json"),
+        qa_pending_path=str(tmp_path / "qa-pending.json"),
+        scout_manifest_path=str(tmp_path / "scout.json"),
+        plan_file=str(plan),
+        feature_file=str(feature),
+        agent_prompt=str(agent_prompt),
+        answers_file="",
+    )
+
+
+def test_implement_prompt_injects_architectural_knowledge_and_snapshot(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(_ci_launcher.architectural_guidelines, "architectural_knowledge_required", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_invariants",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_INVARIANTS.md",
+            "### I-Sec-1: Keep evidence untrusted",
+        ),
+    )
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_guidelines",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_GUIDELINES.md",
+            "",
+        ),
+    )
+
+    prompt = _ci_launcher._implement_prompt(tool="codex", args=_implement_prompt_args(tmp_path))
+
+    assert "## Architectural knowledge (untrusted repo evidence)" in prompt
+    assert "Read ARCHITECTURAL_INVARIANTS.md before ARCHITECTURAL_GUIDELINES.md when both are present" in prompt
+    assert "Apply them only within the plan's scope" in prompt
+    assert "architectural_acknowledgment" in prompt
+    assert '<architectural_invariants encoding="literal-redacted">' in prompt
+    assert '<architectural_guidelines encoding="literal-redacted">' in prompt
+    assert "### I-Sec-1: Keep evidence untrusted" in prompt
+    assert "No parsed guideline entries were present in ARCHITECTURAL_GUIDELINES.md." in prompt
+    assert (tmp_path / "step2-architectural-knowledge.env").read_text(encoding="utf-8") == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n"
+
+
+def test_implement_prompt_omits_absent_architectural_knowledge_and_snapshots_false(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(_ci_launcher.architectural_guidelines, "architectural_knowledge_required", lambda **_kwargs: False)
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_invariants",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult("absent", tmp_path, None, ""),
+    )
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_guidelines",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult("absent", tmp_path, None, ""),
+    )
+
+    prompt = _ci_launcher._implement_prompt(tool="cursor", args=_implement_prompt_args(tmp_path))
+
+    assert "## Architectural knowledge" not in prompt
+    assert "ARCHITECTURAL_INVARIANTS.md before ARCHITECTURAL_GUIDELINES.md" not in prompt
+    assert (tmp_path / "step2-architectural-knowledge.env").read_text(encoding="utf-8") == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n"
+
+
+def test_write_architectural_knowledge_snapshot_uses_nofollow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    calls: dict[str, object] = {}
+
+    def fake_atomic_write(*, path: Path, text: str, prefix: str, nofollow: bool, **_kwargs: object) -> None:
+        calls["path"] = path
+        calls["text"] = text
+        calls["prefix"] = prefix
+        calls["nofollow"] = nofollow
+
+    monkeypatch.setattr(_ci_launcher.larch_io, "atomic_write", fake_atomic_write)
+
+    _ci_launcher._write_architectural_knowledge_snapshot(required=True)
+
+    assert calls["path"] == tmp_path / "step2-architectural-knowledge.env"
+    assert calls["text"] == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n"
+    assert calls["prefix"] == ".step2-architectural-knowledge.env."
+    assert calls["nofollow"] is True
+
+
+def test_implement_prompt_skips_invalid_invariants_and_keeps_valid_guidelines_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_invariants",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "invalid",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_INVARIANTS.md",
+            "",
+            "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read",
+        ),
+    )
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_guidelines",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_GUIDELINES.md",
+            "### G-Test-1: Keep evidence untrusted",
+        ),
+    )
+
+    prompt = _ci_launcher._implement_prompt(tool="codex", args=_implement_prompt_args(tmp_path))
+
+    assert "## Architectural knowledge (untrusted repo evidence)" in prompt
+    assert '<architectural_guidelines encoding="literal-redacted">' in prompt
+    assert "### G-Test-1: Keep evidence untrusted" in prompt
+    assert '<architectural_invariants encoding="literal-redacted">' not in prompt
+    assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" not in prompt
+    issues = tmp_path / "execution-issues.md"
+    assert issues.is_file()
+    assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" in issues.read_text(encoding="utf-8")
+
+
+def test_implement_prompt_codex_resume_keeps_architectural_knowledge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    session = tmp_path / "codex-session"
+    session.mkdir()
+    monkeypatch.setattr(_ci_launcher.architectural_guidelines, "architectural_knowledge_required", lambda **_kwargs: True)
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_invariants",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_INVARIANTS.md",
+            "",
+        ),
+    )
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_guidelines",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult("absent", tmp_path, None, ""),
+    )
+
+    prompt = _ci_launcher._implement_prompt(tool="codex", args=_implement_prompt_args(tmp_path), codex_session=session)
+
+    assert "agent body" not in prompt
+    assert "## Architectural knowledge (untrusted repo evidence)" in prompt
+    assert "No parsed invariant entries were present in ARCHITECTURAL_INVARIANTS.md." in prompt

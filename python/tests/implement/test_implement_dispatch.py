@@ -6668,3 +6668,281 @@ def test_auth_retry_includes_stderr_path(tmp_path: Path, monkeypatch: pytest.Mon
 
 def test_parse_kv_keeps_first_duplicate_stdout_value() -> None:
     assert implement_dispatch._parse_kv("STATUS=first\nSTATUS=second\nBAD-key=no\n") == {"STATUS": "first"}
+
+def _complete_manifest(*, ack: str | None = None) -> dict[str, object]:
+    data: dict[str, object] = {
+        "schema_version": "1",
+        "status": "complete",
+        "files_touched": [{"path": "implemented.txt", "lines_added": 1, "lines_removed": 0}],
+        "tests_added_or_modified": [],
+        "summary_bullets": ["Implement the feature"],
+        "commit_message": "Implement with architecture acknowledgment",
+        "todos_left": [],
+        "oos_observations": [],
+        "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "test fixture"},
+    }
+    if ack is not None:
+        data["architectural_acknowledgment"] = ack
+    return data
+
+
+def _patch_successful_step2(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(implement_dispatch, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(dispatch_step2, "_normalize_scout", lambda st: setattr(st, "scout_status", "ok"))
+    monkeypatch.setattr(implement_dispatch, "_materialize_oos", lambda *_a, **_k: "")
+    monkeypatch.setattr(dispatch_step2, "_materialize_oos", lambda *_a, **_k: "")
+
+
+def _run_step2(tmp: Path, *, coder: str = "codex") -> int:
+    return implement_dispatch.step2_dispatch_main([
+        "--tmpdir", str(tmp),
+        "--plan-file", str(tmp / "plan.txt"),
+        "--feature-file", str(tmp / "feature-description.txt"),
+        "--coder", coder,
+        "--cursor-present", "true",
+    ])
+
+
+def test_step2_dispatch_required_architectural_acknowledgment_passes(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest(ack="honoring I-Sec-1 for this change\n")), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    _patch_successful_step2(monkeypatch)
+
+    assert _run_step2(tmp) == 0
+    out = capsys.readouterr().out
+    assert "STATUS=complete" in out
+    manifest = json.loads((tmp / "codex-step2-out" / "manifest.json").read_text(encoding="utf-8"))
+    assert manifest["architectural_acknowledgment"] == "honoring I-Sec-1 for this change"
+
+
+def test_step2_dispatch_missing_architectural_acknowledgment_bails_without_recovery(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+    assert _git(repo, "log", "-1", "--pretty=%s").stdout.strip() == "base"
+
+
+def test_step2_dispatch_needs_qa_missing_architectural_acknowledgment_bails(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text('{"schema_version":"1","status":"needs_qa","needs_qa":{"questions":[{"id":"q1","text":"question?"}]}}\n', encoding="utf-8")
+        st.qa_pending_path.write_text('{"questions":[{"id":"q1","text":"question?"}]}\n', encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+
+
+def test_step2_dispatch_bailed_manifest_does_not_require_architectural_acknowledgment(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    (tmp / "step2-spawn-branch.txt").write_text("feat/test-branch\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text('{"schema_version":"1","status":"bailed","bail_reason":"unable-to-proceed"}\n', encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    out = capsys.readouterr().out
+    assert "STATUS=bailed" in out
+    assert "REASON=unable-to-proceed" in out
+
+
+def test_step2_dispatch_snapshot_false_is_authoritative_when_knowledge_file_present(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n", encoding="utf-8")
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    _patch_successful_step2(monkeypatch)
+
+    assert _run_step2(tmp) == 0
+    assert "STATUS=complete" in capsys.readouterr().out
+
+
+def test_step2_dispatch_absent_architectural_knowledge_snapshot_requires_ack_when_files_present(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+
+
+def test_step2_dispatch_malformed_architectural_knowledge_snapshot_requires_ack_when_files_present(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=maybe\n", encoding="utf-8")
+    (repo / "ARCHITECTURAL_GUIDELINES.md").write_text("### G-Test-1: Present\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+
+
+def test_step2_dispatch_schema_invalid_missing_ack_bails_before_recovery(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text('{"schema_version":"1","status":"complete"}\n', encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+
+
+def test_step2_dispatch_missing_schema_version_missing_ack_bails_before_recovery(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (tmp / "step2-architectural-knowledge.env").write_text("ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n", encoding="utf-8")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        data = _complete_manifest()
+        data.pop("schema_version")
+        st.manifest_path.write_text(json.dumps(data), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+
+    assert _run_step2(tmp) == 0
+    _assert_bailed_no_recovery(capsys.readouterr().out, reason="architectural-acknowledgment-missing")
+
+
+def test_step2_dispatch_invalid_architectural_knowledge_warns_without_ack_requirement(
+    repo: Path,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    tmp = _session(tmp_path)
+    (repo / "ARCHITECTURAL_INVARIANTS.md").symlink_to(tmp_path / "outside-invariants.md")
+    monkeypatch.setenv("CLAUDE_PLUGIN_ROOT", str(Path(__file__).resolve().parents[3]))
+
+    def fake_launcher(st: implement_dispatch.DispatchState):
+        (repo / "implemented.txt").write_text("done\n", encoding="utf-8")
+        st.manifest_path.parent.mkdir(parents=True, exist_ok=True)
+        st.manifest_path.write_text(json.dumps(_complete_manifest()), encoding="utf-8")
+        return 0, {"LAUNCHER_EXIT": "0", "MANIFEST_WRITTEN": "true"}, ""
+
+    monkeypatch.setattr(implement_dispatch, "_run_launcher", fake_launcher)
+    monkeypatch.setattr(dispatch_step2, "_run_launcher", fake_launcher)
+    _patch_successful_step2(monkeypatch)
+
+    assert _run_step2(tmp) == 0
+    assert "STATUS=complete" in capsys.readouterr().out
+    issues = tmp / "execution-issues.md"
+    assert issues.is_file()
+    assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" in issues.read_text(encoding="utf-8")

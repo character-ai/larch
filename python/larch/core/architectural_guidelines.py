@@ -25,6 +25,7 @@ from larch.core import config
 from larch.errors import ShipError
 
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
+INVARIANTS_FILENAME = "ARCHITECTURAL_INVARIANTS.md"
 CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
 GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED = "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true"
 DESIGN_ASSESSMENT = "architectural-guideline-assessment.md"
@@ -40,6 +41,7 @@ LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
 _STATUS_VALUES = {"present", "absent", "invalid"}
 _HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
+_INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
 _MARKDOWN_HEADING_RE = re.compile(r"^#{1,6}\s+\S")
 _WHY_RE = re.compile(r"^\s*-\s*Why:\s*(.+?)\s*$")
 _DEVIATE_RE = re.compile(r"^\s*-\s*Deviate when:\s*(.+?)\s*$")
@@ -222,24 +224,55 @@ def parse_guideline_entries(raw_text: str) -> str:
     return "\n\n".join("\n".join(entry) for entry in entries).strip()
 
 
+def parse_invariant_entries(raw_text: str) -> str:
+    """Return normalized I-* invariant entries with concise supported bullets."""
+    entries: list[list[str]] = []
+    current: list[str] | None = None
+    for raw_line in raw_text.splitlines():
+        heading = _INVARIANT_HEADING_RE.match(raw_line)
+        if heading:
+            if current is not None:
+                entries.append(current)
+            current = [f"### {heading.group(1)}: {heading.group(2).strip()}"]
+            continue
+        if _MARKDOWN_HEADING_RE.match(raw_line):
+            if current is not None:
+                entries.append(current)
+                current = None
+            continue
+        if current is None:
+            continue
+        why = _WHY_RE.match(raw_line)
+        if why:
+            current.append(f"- Why: {why.group(1).strip()}")
+    if current is not None:
+        entries.append(current)
+    return "\n\n".join("\n".join(entry) for entry in entries).strip()
+
+
 def _invalid(*, repo_root: Path | None, path: Path | None, warning: str) -> ArchitecturalGuidelinesResult:
     return ArchitecturalGuidelinesResult("invalid", repo_root, path, "", warning)
 
 
-def _validate_guidelines_file(*, root: Path, path: Path) -> str | None:
-    """Return an invalid-reason for a present guidelines path, or None when it is a readable regular file."""
+def _validate_architectural_file(*, root: Path, path: Path, filename: str) -> str | None:
+    """Return an invalid-reason for a present architecture path, or None when readable."""
     if path.is_symlink():
-        return f"{GUIDELINES_FILENAME} is invalid: symlinks are not read"
+        return f"{filename} is invalid: symlinks are not read"
     try:
         resolved = path.resolve(strict=False)
         _ = resolved.relative_to(root.resolve())
     except (OSError, ValueError):
-        return f"{GUIDELINES_FILENAME} is invalid: path escapes repo root"
+        return f"{filename} is invalid: path escapes repo root"
     if path.is_dir():
-        return f"{GUIDELINES_FILENAME} is invalid: expected a regular file, found a directory"
+        return f"{filename} is invalid: expected a regular file, found a directory"
     if not path.is_file():
-        return f"{GUIDELINES_FILENAME} is invalid: expected a regular file"
+        return f"{filename} is invalid: expected a regular file"
     return None
+
+
+def _validate_guidelines_file(*, root: Path, path: Path) -> str | None:
+    """Return an invalid-reason for a present guidelines path, or None when readable."""
+    return _validate_architectural_file(root=root, path=path, filename=GUIDELINES_FILENAME)
 
 
 def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuidelinesResult:
@@ -258,6 +291,29 @@ def read_guidelines(*, repo_root: str | Path | None = None) -> ArchitecturalGuid
     except (OSError, UnicodeDecodeError) as exc:
         return _invalid(repo_root=root, path=path, warning=f"{GUIDELINES_FILENAME} is invalid: unreadable file ({exc})")
     return ArchitecturalGuidelinesResult("present", root, path.resolve(strict=False), parse_guideline_entries(raw_text), "")
+
+
+def read_invariants(*, repo_root: str | Path | None = None) -> ArchitecturalGuidelinesResult:
+    """Read and normalize ARCHITECTURAL_INVARIANTS.md for the active repo."""
+    root = _resolve_repo_root(repo_root)
+    if root is None:
+        return ArchitecturalGuidelinesResult("absent", None, None, "")
+    path = root / INVARIANTS_FILENAME
+    if not path.exists() and not path.is_symlink():
+        return ArchitecturalGuidelinesResult("absent", root, path, "")
+    warning = _validate_architectural_file(root=root, path=path, filename=INVARIANTS_FILENAME)
+    if warning is not None:
+        return _invalid(repo_root=root, path=path, warning=warning)
+    try:
+        raw_text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as exc:
+        return _invalid(repo_root=root, path=path, warning=f"{INVARIANTS_FILENAME} is invalid: unreadable file ({exc})")
+    return ArchitecturalGuidelinesResult("present", root, path.resolve(strict=False), parse_invariant_entries(raw_text), "")
+
+
+def architectural_knowledge_required(repo_root: str | Path | None = None) -> bool:
+    """Return true when any valid architectural knowledge file is present."""
+    return read_invariants(repo_root=repo_root).status == "present" or read_guidelines(repo_root=repo_root).status == "present"
 
 
 def resolve_diff_base(*, forked_target: bool) -> tuple[str, str]:
@@ -1323,6 +1379,23 @@ def read_main(argv: list[str]) -> int:
             sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", text=result.content))
     elif result.status == "invalid":
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={result.warning}")
+    return 0
+
+
+def invariants_read_main(argv: list[str]) -> int:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
+    parser = argparse.ArgumentParser(prog="architectural-invariants read")
+    parser.add_argument("--repo-root")
+    args = parser.parse_args(argv)
+    result = read_invariants(repo_root=args.repo_root)
+    print(f"ARCHITECTURAL_INVARIANTS_STATUS={result.status}")
+    if result.status == "present":
+        assert result.path is not None
+        print(f"ARCHITECTURAL_INVARIANTS_PATH={result.path}")
+        if result.content:
+            sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_invariants", text=result.content))
+    elif result.status == "invalid":
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={result.warning}")
     return 0
 
 
