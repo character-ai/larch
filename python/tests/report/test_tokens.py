@@ -621,11 +621,15 @@ def test_token_append_record_from_sidecar(tmp_path: Path) -> None:
 
 
 def test_compute_pr_line_counts_buckets(monkeypatch: pytest.MonkeyPatch) -> None:
-    def fake_check_output(cmd: list[str], **_: object) -> str:
+    def fake_run(cmd: list[str], **_: object) -> SimpleNamespace:
         assert "pulls/42/files" in " ".join(cmd)
-        return "scripts/foo.sh\t10\t2\nlarch-logs/implement/run-x/summary.md\t5\t1\nassets/binary.png\t0\t0\n"
+        return SimpleNamespace(
+            returncode=0,
+            stdout="scripts/foo.sh\t10\t2\nlarch-logs/implement/run-x/summary.md\t5\t1\nassets/binary.png\t0\t0\n",
+            stderr="",
+        )
 
-    monkeypatch.setattr(tokens.subprocess, "check_output", fake_check_output)
+    monkeypatch.setattr(tokens.proc, "run", fake_run)
     result = tokens.compute_pr_line_counts(pr_number=42, repo="owner/repo")
     assert result["LINES_STATUS"] == "ok"
     assert result["CODE_ADDED"] == 10
@@ -727,9 +731,9 @@ def test_measure_md_cost_writes_schema(tmp_path: Path, monkeypatch: pytest.Monke
     monkeypatch.setattr(tokens, "_repo_root", lambda: repo)
     monkeypatch.setattr(tokens, "_measure_stamp", lambda: "fixture-day")
     monkeypatch.setattr(
-        tokens.subprocess,
-        "check_output",
-        lambda cmd, **_kw: b"docs/sample.md\x00" if "ls-files" in cmd else b"",  # type: ignore[arg-type]
+        tokens.proc,
+        "run",
+        lambda cmd, **_kw: SimpleNamespace(returncode=0, stdout="docs/sample.md\x00", stderr=""),  # type: ignore[arg-type]
     )
     monkeypatch.setattr(tokens, "_tiktoken_count_texts", lambda texts: [len(t) for t in texts])  # type: ignore[arg-type]
     out = tokens.measure_md_cost()
