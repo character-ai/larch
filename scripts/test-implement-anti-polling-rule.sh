@@ -180,10 +180,10 @@ check "$AGENTS_MD" \
     'poll the task output file once per turn'
 check "$AGENTS_MD" \
     "AGENTS.md pins /design empty-output no-probe clause with issue reference" \
-    'For `/design`, when task output is empty, end the turn without probing (spurious notification, #5240)'
+    'For `/design`, missing or whitespace-only task-output bytes mean silent yield (spurious notification, #5240)'
 check "$AGENTS_MD" \
     "AGENTS.md pins /design prefix-identical repeat silent-yield clause" \
-    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
+    'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.'
 check "$AGENTS_MD" \
     "AGENTS.md pins /implement Steps 3 and 5 notification-only recovery" \
     'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
@@ -204,12 +204,12 @@ check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins ordered repeat handling" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
     "2" \
-    '**Apply in order:** (1) empty output → silent yield; (2) prefix-identical repeat (first 200 chars)'
+    '**Apply in order:** (0) exactly one classification `Read` of the active `tasks/*.output`; (1) missing or whitespace-only task-output bytes → silent yield; (2) prefix-identical repeat non-empty task-output bytes (first 200 chars)'
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins no-tool action" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
     "2" \
-    'no tool'
+    'no further probe, parse, or prose tools after the classification `Read`'
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins spurious notification issue" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
@@ -237,7 +237,7 @@ check "$SHARED_DESIGN_WAIT_MD" \
     '**⚠ Reviewer status table omitted: pre-rendered table not found.**'
 check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor pins prefix-identical repeat fingerprint" \
-    'If a non-empty `<task-notification>` is prefix-identical to the prior non-empty one in the same wait over the first 200 chars'
+    'If non-empty task-output bytes are prefix-identical to the prior non-empty bytes in the same wait over the first 200 chars'
 check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor pins first-200-char fingerprint definition" \
     'The fingerprint is the first 200 chars.'
@@ -248,12 +248,12 @@ check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins empty-output condition" \
     "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
     "2" \
-    'Empty output (just a newline or nothing) ends silently'
+    '(1) missing or whitespace-only task-output bytes -> silent yield'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-tool action" \
     "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
     "2" \
-    'no tool'
+    'no further probe, parse, or prose tools after the classification `Read`'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-probe turn end" \
     'Foreground terminal-sentinel probe' \
@@ -385,7 +385,7 @@ check_context_before "$DESIGN_MD" \
     "$CONFIRMATION_COMPLETION"
 check "$DESIGN_MD" \
     "/design Step 5c pins prefix-identical repeat silent-yield routing" \
-    'A prefix-identical repeat (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.'
+    'A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.'
 
 check_count "$DESIGN_MD" \
     "/design no longer carries full immediate-background boilerplate paragraphs" \
@@ -402,7 +402,7 @@ check "$ORCH_NEVER_MD" \
 
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER pins foreground-probe primary recovery guidance" \
-    'the sanctioned recovery path is one foreground terminal-sentinel probe per explicit recovery turn'
+    'New or changed non-empty task-output bytes allow one foreground terminal-sentinel probe per explicit recovery turn'
 
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER bans the background recovery waiter (#4725)" \
@@ -410,13 +410,13 @@ check "$ORCH_NEVER_MD" \
 
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER splits /design non-empty foreground recovery" \
-    'For `/design`, when a premature `<task-notification>` fires with non-empty task output'
+    'For `/design`, after a premature `<task-notification>`, first run exactly one `Read` of the active `tasks/*.output`'
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER splits /design empty no-probe recovery" \
-    'when task output is empty, end the turn without probing (#5240)'
+    'Missing or whitespace-only task-output bytes mean silent yield (#5240)'
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER pins /design prefix-identical repeat silent-yield clause" \
-    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
+    'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.'
 check "$ORCH_NEVER_MD" \
     "shared orchestrator NEVER keeps /implement Steps 3 and 5 notification-only recovery" \
     'For `/implement` Steps 3 and 5, premature notifications remain notification-only'
@@ -438,14 +438,14 @@ check_absent "$ORCH_NEVER_MD" \
 
 check "$AGENTS_MD" \
     "AGENTS.md splits /design non-empty foreground recovery" \
-    'For `/design`, when a premature `<task-notification>` fires with non-empty task output'
+    'For `/design`, after a premature `<task-notification>`, first run exactly one `Read` of the active `tasks/*.output`'
 
 check "$AGENTS_MD" \
     "AGENTS.md splits /design empty no-probe recovery" \
-    'For `/design`, when task output is empty, end the turn without probing'
+    'For `/design`, missing or whitespace-only task-output bytes mean silent yield (spurious notification, #5240)'
 check "$AGENTS_MD" \
     "AGENTS.md splits /design repeat no-probe recovery" \
-    'For `/design`, prefix-identical repeat notifications (first 200 chars) for the same wait also end silently when the relevant terminal sentinel is absent.'
+    'prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with the relevant terminal sentinel absent also mean silent yield.'
 
 check "$AGENTS_MD" \
     "AGENTS.md keeps /implement Steps 3 and 5 notification-only recovery" \
@@ -541,11 +541,11 @@ check "$SHARED_DESIGN_WAIT_MD" \
 
 check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait pins foreground terminal-sentinel probe" \
-    'Foreground terminal-sentinel probe: after a premature notification with non-empty task output'
+    'Foreground terminal-sentinel probe: after the one classification `Read` finds new or changed non-empty task-output bytes'
 
 check "$DESIGN_MD" \
     "/design Anti-patterns references detailed recovery mechanics" \
-    'read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics'
+    '`${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`'
 
 check "$AGENTS_MD" \
     "AGENTS.md pins DESIGN_TMPDIR prefix for foreground probes" \
@@ -569,7 +569,7 @@ check_absent "$ORCH_NEVER_MD" \
 
 check "$DESIGN_MD" \
     "/design Step 3 pins ordered premature-notification routing before envelope parse" \
-    'Before parsing the envelope after notification, use this ordered premature-notification contract: empty output → silent yield; prefix-identical repeat (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield'
+    'Before parsing the envelope after notification, use this ordered premature-notification contract: exactly one classification `Read` of the active `tasks/*.output`; missing or whitespace-only task-output bytes → silent yield; prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield'
 check "$DESIGN_MD" \
     "/design Step 3 proceeds only after terminal sentinel before envelope parse" \
     'Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
