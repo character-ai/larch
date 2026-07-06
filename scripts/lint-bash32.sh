@@ -119,7 +119,7 @@ scan_file() {
             if (line ~ /(^|[[:space:];|&({])coproc([[:space:]]+[A-Za-z_][A-Za-z0-9_]*)?[[:space:]]*\{/) report("coproc") # lint-bash32: ok linter pattern
             if (line ~ /\$\{[!A-Za-z_@*][A-Za-z0-9_]*\[[ \t]*-[0-9]/) report("negative array index ${arr[-N]}")
             if (line ~ /\{(-?[0-9]+|[A-Za-z])\.\.(-?[0-9]+|[A-Za-z])\.\.-?[0-9]/) report("step brace expansion {x..y..incr}")
-            if (line ~ /(^|[[:space:];|&])(if|elif)[[:space:]]+(![[:space:]]+)?command[[:space:]]+(grep|egrep|fgrep|rg|ripgrep)([[:space:];|&)]|$)/) report("if/elif command grep-family condition") # lint-bash32: ok linter pattern
+            if (line ~ /(^|[[:space:];|&(])(if|elif)[[:space:]]+(![[:space:]]+)?command[[:space:]]+(grep|egrep|fgrep|rg|ripgrep)([[:space:];|&)]|$)/) report("if/elif command grep-family condition") # lint-bash32: ok linter pattern
         }
         END { exit violations ? 1 : 0 }
     ' "$path"
