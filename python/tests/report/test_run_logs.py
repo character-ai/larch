@@ -897,10 +897,10 @@ def test_flush_logs_pre_commit_exception_returns_commit_skip(
     def noop(*_a: object, **_k: object) -> None:
         return None
 
-    monkeypatch.setattr(run_logs, "_commit_run", fail_commit)
-    monkeypatch.setattr(run_logs, "_write_final_report", noop)
-    monkeypatch.setattr(run_logs, "capture_session_transcript", noop)
-    monkeypatch.setattr(run_logs, "_render_ledger_reports", noop)
+    monkeypatch.setattr(run_log_flush, "_commit_run", fail_commit)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_write_final_report", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "capture_session_transcript", noop)  # type: ignore[arg-type]
+    monkeypatch.setattr(run_log_flush, "_render_ledger_reports", noop)  # type: ignore[arg-type]
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path))
     assert skip.skipped is True
     assert skip.reason == config.REFRESH_SKIP_COMMIT_FAILED
@@ -1320,7 +1320,7 @@ def test_flush_logs_pre_strict_final_report_error_returns_recovery_failed(
     def fail_report(*_a: object, **_k: object) -> None:
         raise ShipError("reconcile failed")
 
-    monkeypatch.setattr(run_logs, "_write_final_report", fail_report)
+    monkeypatch.setattr(run_log_flush, "_write_final_report", fail_report)  # type: ignore[arg-type]
 
     skip = run_logs.flush_logs_pre(runner=RecordingRunner(), ctx=ctx, cwd=str(tmp_path), strict_final_report=True)
 
