@@ -301,7 +301,7 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
 
 def _path_is_repo_related(path: Path) -> bool:
     candidate = path.resolve(strict=False)
-    roots = []
+    roots: list[Path] = []
     active = proc.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"])
     if active.returncode == 0 and active.stdout.strip():
         roots.append(Path(active.stdout.strip()).resolve(strict=False))

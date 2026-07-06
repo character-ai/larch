@@ -3,11 +3,13 @@ from __future__ import annotations
 import json
 import subprocess
 from pathlib import Path
-
-import pytest
+from typing import TYPE_CHECKING
 
 import review_test_support as rts
 from larch.review import compose_review
+
+if TYPE_CHECKING:
+    import pytest
 
 ROOT = rts.ROOT
 CLI = rts.CLI
@@ -102,7 +104,7 @@ def test_compose_findings_oos_missing_scratch_dir_fails_closed(
     )
     output = tmp_path / "m.jsonl"
 
-    monkeypatch.setattr(compose_review, "_compose_scratch_dir", lambda **_kwargs: None)
+    monkeypatch.setattr(compose_review, "_compose_scratch_dir", lambda **_kwargs: None)  # type: ignore[reportUnknownArgumentType, reportUnknownLambdaType]
 
     rc = compose_review.compose_findings(
         [
