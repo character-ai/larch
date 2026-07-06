@@ -124,7 +124,7 @@ def test_coverage_index_scans_repo_surface(tmp_path: Path) -> None:
 
     cov = learn_from_bugs.coverage_index(tmp_path)
     assert cov.guidelines == (("G-Py-1", "Do a thing"), ("G-Wire-1", "Another"))
-    assert cov.invariants == ()  # file absent yet, must not error
+    assert not cov.invariants  # file absent yet, must not error
     assert cov.rules == (("some-rule.md", "Some Rule"),)
     assert cov.python_lints == ("lint_foo",)
     assert cov.script_lints == ("lint-bar",)

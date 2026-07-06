@@ -219,11 +219,7 @@ def list_issues(runner: Runner, *, search: str, state: str, limit: int, repo: st
         raise LearnFromBugsError(f"gh issue list returned invalid JSON: {exc}") from exc
     if not isinstance(parsed, list):
         raise LearnFromBugsError("gh issue list did not return a JSON array")
-    rows: list[dict[str, object]] = []
-    for row in cast("list[object]", parsed):
-        if isinstance(row, dict):
-            rows.append(cast("dict[str, object]", row))
-    return rows
+    return [cast("dict[str, object]", row) for row in cast("list[object]", parsed) if isinstance(row, dict)]
 
 
 # --- Coverage index (offline, pure) -----------------------------------------
