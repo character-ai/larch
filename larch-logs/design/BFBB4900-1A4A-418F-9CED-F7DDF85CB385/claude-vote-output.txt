@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=true
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- round-1 FINDING_11 set pin scope as skills/*/SKILL.md and agents launchers; existing literals in skills/design/references/*.md are already in TIMING_TASK_KINDS_ALLOWED; expanding scope is future-proofing, not a current correctness defect
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=adequate UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 FINDING_4 (neutral, dropped); plan already scopes dropping the G-Sec-3 rule-file note; adding a replacement pointer was considered in round 1 and not accepted
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=weak UNCERTAIN=false -- round-2 suspect; MD038 lint enforcement stays; adding prose to the mechanism doc is robustness, not a correctness gap on the feature path
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 FINDING_4 (neutral, dropped) and this round's in-scope FINDING_4; already considered and not accepted
+OOS_2: YES CORRECTNESS=true SEVERITY=nit QUALITY=good UNCERTAIN=false
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of OOS_1 and round-1 FINDING_4; same observation raised three times this round
