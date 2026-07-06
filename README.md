@@ -18,6 +18,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 - **Setup**
   - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, the `python/cli.py checks run-relevant` consumer contract, prerequisites
+  - [Preparing Your Repository](docs/preparing-your-repo.md) — ready your repo for larch and agent-assisted development: instruction files (`CLAUDE.md`/`AGENTS.md`), guardrails (rules, hooks, linters), and the `checks run-relevant` contract
 - **Reference**
   - [Features](#features)
   - [Skills](#skills)

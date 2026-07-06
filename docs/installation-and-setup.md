@@ -2,6 +2,8 @@
 
 Larch is distributed as a [Claude Code plugin](https://code.claude.com/docs/en/plugin-marketplaces). Installation starts by registering the marketplace that hosts larch, then installing the plugin from that marketplace.
 
+> **Setting up a repo to use larch?** See [Preparing Your Repository](preparing-your-repo.md) for the repo-side setup — instruction files, guardrails, and the relevant-checks contract — that larch (and coding agents generally) rely on.
+
 ## Install from GitHub
 
 ### Latest stable release
