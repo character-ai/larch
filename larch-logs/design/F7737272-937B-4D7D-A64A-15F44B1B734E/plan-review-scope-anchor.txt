@@ -1,0 +1,44 @@
+**Context.** Round X's #5884 demotion pass had almost no data to target. The heatmap now has per-skill `transcript_coverage` machinery (#5976) and, once capture is repaired, accrues realized per-reference reads. Design carries 11 eager files (54,362 estimated tokens) and implement 8 (38,588). Some references are plausibly never read on green paths; only realized data can say which.
+
+**Prerequisite.** Blocked until **2026-07-17** (14 days after the #6154 capture repair merged 2026-07-03T22:33 UTC) or 50 runs of restored post-repair accrual, whichever comes first. As of 2026-07-03 (repair-merge day), zero runs have accrued under the repaired capture path: a fresh `token measure-references-heatmap` run shows `design: 0/666 runs measured (not-yet-measured)`, and the `implement` heatmap rows still reflect only pre-outage reads (1-2 reads per reference across 1,383 runs). Do not run `/design` or `/implement` on this issue until the prerequisite holds and a fresh heatmap shows real post-repair signal.
+
+**Scope.**
+
+- After at least 2 weeks or 50 runs of restored accrual, demote never-read and rare-read eager references to conditional, per skill.
+- Cite the `measure-references-heatmap` row for every demotion.
+- Keep compaction-resilience duplication (anti-halt and NEVER blocks) per standing policy.
+
+**Acceptance.**
+
+- Each demotion cites its heatmap evidence; eager closure drops with ratchet confirmation.
+- No orchestrator halt-rate regression across the next 20 runs.
+
+Part of md-to-py-XII (round XI: #5986). The transcript-capture repair child (#6154) merged 2026-07-03T22:33 UTC, resolving the code-level blocker; this issue now waits on the accrual prerequisite above. Retries #5884 with data.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Execute #6162 round 1 (design-only): drop the design eager closure by demoting eager references the repaired heatmap shows are never read on the green path.
+- Cite the heatmap row (~0/70 reads) for each demotion; confirm the eager-closure token drop via the closure-growth ratchet.
+
+### Non-goals
+- No implement-side demotions this round (read-attribution undercounted post-#6263; deferred).
+- No demotion of well-read refs (all measured ≥47%) or already-conditional refs (`validator-failure.md`).
+- No compaction-resilience demotion (anti-halt / NEVER blocks stay eager); no panel/round/turn-structure change; reference file bodies byte-preserved.
+
+### Approach sketch
+- Demote the two never-read eager-closure members by rewording/scoping their `skills/design/SKILL.md` load directives so the closure scanner no longer counts them as eager:
+  - `SKILL.md:112` → `skills/shared/external-reviewers.md` (Step 0a degraded-tools gate; Python-owned, branch handling already inlined) — scope to the `needs-degraded-decision` branch or convert to a non-Read contract pointer.
+  - `SKILL.md:99` → `skills/shared/session-setup-output.md` (Step 0a setup KVs; parse list already inlined) — convert to a contract pointer.
+- Keep the referenced files byte-identical; only SKILL.md load-directive wording changes.
+- Verify the closure-growth lint recomputes a lower design eager closure.
+
+### Surfaces in scope
+- `skills/design/SKILL.md` (two load-directive lines, ~99 and ~112)
+- `python/larch/lint/lint_skill_closure_growth.py` — recompute/ratchet verification only (no rule change unless required to bank the drop)
+- No change to `external-reviewers.md` / `session-setup-output.md` bodies
+
+### Open questions
+- Exact rewording that (a) drops eager-closure membership per the scanner's directive detection and (b) preserves the degraded-path contract for `external-reviewers.md` — settle in Step 2b; must not remove a genuinely-needed conditional reference or trip the closure lint's own directive checks.
