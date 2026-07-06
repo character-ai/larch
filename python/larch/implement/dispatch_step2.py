@@ -610,6 +610,9 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     shutil.copyfile(st.manifest_path, st.manifest_raw_path)
     raw_obj = _json_load(st.manifest_raw_path)
     status = raw_obj.get("status", "") if isinstance(raw_obj, dict) and isinstance(raw_obj.get("status", ""), str) else ""
+    raw_is_dict = isinstance(raw_obj, dict)
+    if status in {"complete", "needs_qa"} and raw_is_dict and _snapshot_architectural_knowledge_required(tmpdir, repo_root) and not _require_architectural_acknowledgment(raw_obj):
+        return st.emit_bailed("architectural-acknowledgment-missing")
     schema_version = raw_obj.get("schema_version", "") if isinstance(raw_obj, dict) else ""
     if schema_version and str(schema_version) != "1":
         return st.emit_bailed("manifest-schema-invalid")
@@ -617,9 +620,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
     if status not in {"complete", "needs_qa", "bailed"}:
         return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
-    assert isinstance(raw_obj, dict)
-    if status in {"complete", "needs_qa"} and _snapshot_architectural_knowledge_required(tmpdir, repo_root) and not _require_architectural_acknowledgment(raw_obj):
-        return st.emit_bailed("architectural-acknowledgment-missing")
+    assert raw_is_dict
     if status == "complete":
         if not _complete_schema_valid(raw_obj):
             return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)

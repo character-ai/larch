@@ -10,7 +10,7 @@
 
 ## Edit-in-sync note
 
-`agents/_implementer-base.md` carries an inline copy of the manifest shape under `## Manifest JSON template`, plus prompt-side `jq -e` checks under `## Self-validate before atomic rename`. Any schema change here MUST be mirrored there before regenerating `agents/codex-implementer.md` and `agents/cursor-implementer.md`; the duplicate exists so long-context implementer runs see the exact required JSON shape at manifest-write time. Keep the prompt-side `schema_version` predicate in the coercing form `(.schema_version | tostring) == "1"` to match dispatcher stringification, and keep the `qa-pending.json.tmp` self-validation requirement in sync with the dispatcher `qa-pending-missing` gate.
+`agents/_implementer-base.md` carries an inline copy of the manifest shape under `## Manifest JSON template`, plus prompt-side `jq -e` checks under `## Self-validate before atomic rename`. Any schema change here MUST be mirrored there before regenerating `agents/codex-implementer.md` and `agents/cursor-implementer.md`; the duplicate exists so long-context implementer runs see the exact required JSON shape at manifest-write time. Keep the prompt-side `schema_version` predicate in the coercing form `(.schema_version | tostring) == "1"` to match dispatcher stringification, keep the `qa-pending.json.tmp` self-validation requirement in sync with the dispatcher `qa-pending-missing` gate, and require `architectural_acknowledgment` in the prompt-side manifest predicate whenever `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`.
 
 ## Schema
 

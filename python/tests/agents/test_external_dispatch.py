@@ -742,6 +742,46 @@ def test_implement_prompt_omits_absent_architectural_knowledge_and_snapshots_fal
     assert (tmp_path / "step2-architectural-knowledge.env").read_text(encoding="utf-8") == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n"
 
 
+def test_implement_prompt_skips_invalid_invariants_and_keeps_valid_guidelines_block(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_invariants",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "invalid",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_INVARIANTS.md",
+            "",
+            "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read",
+        ),
+    )
+    monkeypatch.setattr(
+        _ci_launcher.architectural_guidelines,
+        "read_guidelines",
+        lambda **_kwargs: _ci_launcher.architectural_guidelines.ArchitecturalGuidelinesResult(
+            "present",
+            tmp_path,
+            tmp_path / "ARCHITECTURAL_GUIDELINES.md",
+            "### G-Test-1: Keep evidence untrusted",
+        ),
+    )
+
+    prompt = _ci_launcher._implement_prompt(tool="codex", args=_implement_prompt_args(tmp_path))
+
+    assert "## Architectural knowledge (untrusted repo evidence)" in prompt
+    assert "<architectural_guidelines encoding=\"literal-redacted\">" in prompt
+    assert "### G-Test-1: Keep evidence untrusted" in prompt
+    assert "<architectural_invariants encoding=\"literal-redacted\">" not in prompt
+    assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" not in prompt
+    issues = tmp_path / "execution-issues.md"
+    assert issues.is_file()
+    assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" in issues.read_text(encoding="utf-8")
+
+
 def test_implement_prompt_codex_resume_keeps_architectural_knowledge(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))

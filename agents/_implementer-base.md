@@ -105,7 +105,7 @@ Read this template once and write this shape. Do not invent fields or omit requi
 
 ## Self-validate before atomic rename
 
-Before `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file. If it fails, rewrite and revalidate. The dispatcher uses the same predicate.
+Before `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file. If it fails, rewrite and revalidate. The dispatcher uses the same predicate. If `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`, the `complete` and `needs_qa` branches below must also require a non-empty `architectural_acknowledgment`.
 
 ```bash
 jq -e '
@@ -122,9 +122,19 @@ jq -e '
      (.difficulty.rationale | type == "string" and length > 0 and length <= 500) and
      (.tests_added_or_modified | type == "array") and
      (.todos_left | type == "array") and
-     (.oos_observations | type == "array")
+     (.oos_observations | type == "array") and
+     (if env.ARCHITECTURAL_KNOWLEDGE_REQUIRED == "true" then
+        (.architectural_acknowledgment | type == "string" and length > 0)
+      else
+        true
+      end)
    elif .status == "needs_qa" then
-     (.needs_qa.questions | type == "array" and length > 0)
+     (.needs_qa.questions | type == "array" and length > 0) and
+     (if env.ARCHITECTURAL_KNOWLEDGE_REQUIRED == "true" then
+        (.architectural_acknowledgment | type == "string" and length > 0)
+      else
+        true
+      end)
    else
      (.bail_reason | type == "string" and length > 0)
    end)
