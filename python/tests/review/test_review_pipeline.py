@@ -4529,7 +4529,8 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"codex", "cursor"}
-    assert {row.get("model_role") for row in rows if row["tool"] == "codex"} == {"default"}
+    roles_by_slot = {str(row["slot"]): str(row.get("model_role")) for row in rows if row["tool"] == "codex"}
+    assert roles_by_slot == {"correctness": "default", "edge-cases": "default", "testing": "review"}
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
 

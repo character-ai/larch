@@ -279,7 +279,6 @@ def _append_round_generic_codex_row(*, manifest: Path, review_tmpdir: Path, roun
 
 def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex_slots_available: bool, cursor_slots_available: bool, tier: str) -> None:
     from larch.review.review_pipeline_shared import _PLUGIN_ROOT  # noqa: PLC0415
-    codex_role = difficulty.codex_review_model_role(tier)
     for slot in external_defaults.slot_defaults("review.panel"):
         if slot.slot == "generalist":
             continue
@@ -292,6 +291,11 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             continue
         if slot.tool == "cursor" and not cursor_slots_available:
             continue
+        codex_role = difficulty.codex_review_model_role_for_archetype(
+            "review.panel",
+            slot.archetype,
+            tier,
+        )
         _append_manifest_row(
             manifest=manifest,
             row={
@@ -366,14 +370,14 @@ def _synthesize_dynamic_slots(*,
         else:
             _write_text(path=rendered_prompt, text=agent_file.read_text(encoding="utf-8"))
             payload_bytes = read_panel_payload_bytes(payload_sidecar) if result.returncode == 0 else 0
-        if cursor_available and (tier != difficulty.TRIVIAL or not codex_available):
+        if cursor_available:
             cursor_out = review_tmpdir / f"dyn-{name}-output.txt"
             _append_manifest_row(
                 manifest=manifest,
                 row={"slot": f"dyn-{name}", "tool": "cursor", "output": str(cursor_out), "prompt_file": str(rendered_prompt), "payload_bytes": payload_bytes, "weight": weight, "focus_area": focus_area}
             )
             count += 1
-        if codex_available and (tier != difficulty.TRIVIAL or codex_available):
+        if codex_available and tier != difficulty.TRIVIAL:
             codex_out = review_tmpdir / f"dyn-{name}-codex-output.txt"
             _append_manifest_row(
                 manifest=manifest,
@@ -385,7 +389,7 @@ def _synthesize_dynamic_slots(*,
                     "payload_bytes": payload_bytes,
                     "weight": weight,
                     "focus_area": focus_area,
-                    "model_role": difficulty.codex_review_model_role(tier),
+                    "model_role": "review",
                 }
             )
             count += 1

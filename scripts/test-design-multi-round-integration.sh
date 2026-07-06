@@ -87,11 +87,13 @@ DESIGN_TMPDIR=""
 while [[ $# -gt 0 ]]; do
     case "$1" in --design-tmpdir) DESIGN_TMPDIR="${2:?}"; shift 2 ;; *) shift 1 ;; esac
 done
-v1="$DESIGN_TMPDIR/v1.txt"
-v2="$DESIGN_TMPDIR/v2.txt"
+v1="$DESIGN_TMPDIR/codex-validity-vote-output.txt"
+v2="$DESIGN_TMPDIR/codex-plan-fidelity-vote-output.txt"
+v3="$DESIGN_TMPDIR/codex-pragmatism-vote-output.txt"
 printf 'FINDING_1: YES\nOOS_1: YES\n' >"$v1"
 printf 'FINDING_1: YES\nOOS_1: YES\n' >"$v2"
-printf 'DISPATCH_OK=true\nVOTER_1_PATH=%s\nVOTER_1_TOOL=claude\nVOTER_1_STATUS=launched\nVOTER_2_PATH=%s\nVOTER_2_TOOL=codex\nVOTER_2_STATUS=launched\n' "$v1" "$v2"
+printf 'FINDING_1: YES\nOOS_1: YES\n' >"$v3"
+printf 'DISPATCH_OK=true\nVOTER_1_PATH=%s\nVOTER_1_TOOL=codex-validity\nVOTER_1_STATUS=launched\nVOTER_2_PATH=%s\nVOTER_2_TOOL=codex-plan-fidelity\nVOTER_2_STATUS=launched\nVOTER_3_PATH=%s\nVOTER_3_TOOL=codex-pragmatism\nVOTER_3_STATUS=launched\n' "$v1" "$v2" "$v3"
 EOS
 chmod +x "$STUB/dispatch-plan-voters.sh"
 

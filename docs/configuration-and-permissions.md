@@ -325,6 +325,8 @@ Codex reasoning effort applies at launch sites that pass `--with-effort` or use 
 
 **Scope**: Claude and Cursor agents run at their defaults. Only Codex is bumped to `high` by default. This is deliberate — Claude's sonnet default is already well-suited to review work, and Cursor has no dedicated reasoning-effort CLI flag today.
 
+HARD reviewer panels can set Codex model roles per archetype. Plan review uses the default Codex role only for `pragmatic` and `requirements`; code review uses it only for `correctness` and `edge-cases`. Other Codex reviewer rows, including dynamic rows, stay on the `review` role. Manifest `resolved_model` is derived from each row's `model_role`, so mixed HARD panels can contain both the default Codex model and `CODEX_REVIEW_MODEL_DEFAULT`.
+
 ### `LARCH_FAILED_AGENT_STDERR_TAIL_LINES`
 
 On non-zero codex/cursor/claude subprocess exits in review/collector batches (and foreground `python3 python/cli.py agent run-external-agent` runs), larch surfaces the last **N** redacted stderr lines to chat on FD 2, capped at **5120** bytes after redaction.

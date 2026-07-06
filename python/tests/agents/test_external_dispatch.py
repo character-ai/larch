@@ -487,9 +487,9 @@ def test_plan_review_panel_static_rows_zero_payload_on_render_failure(
 
 def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policies = (
-        config.VoterPolicyDefault("1", "voter-1", "claude", "claude", "validity-correctness", "claude", "claude-custom.txt", (("claude", "claude"),)),
-        config.VoterPolicyDefault("2", "voter-2", "codex", "codex", "plan-fidelity-completeness", "codex", "codex-custom.txt", (("codex", "codex"),)),
-        config.VoterPolicyDefault("3", "voter-3", "cursor", "cursor", "pragmatism-cost", "cursor", "cursor-custom.txt", (("cursor", "cursor"),)),
+        config.VoterPolicyDefault("1", "voter-1", "codex", "codex-validity", "validity-correctness", "validity", "codex-validity-custom.txt", (("codex", "codex-validity"), ("cursor", "cursor-validity"), ("claude", "claude"))),
+        config.VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-custom.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
+        config.VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-custom.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
     )
     seen_policies: list[str] = []
     run_commands: list[list[str]] = []
@@ -561,7 +561,11 @@ def test_plan_review_voter_dispatch_uses_plan_voter_policy(tmp_path: Path, monke
     manifest = tmp_path / "plan-voter-slots.ndjson"
     manifest_rows = [json.loads(line) for line in manifest.read_text(encoding="utf-8").splitlines()]
     assert rc == 0
-    assert [row["output"] for row in manifest_rows] == [str(tmp_path / "codex-custom.txt"), str(tmp_path / "cursor-custom.txt")]
+    assert [row["output"] for row in manifest_rows] == [
+        str(tmp_path / "codex-validity-custom.txt"),
+        str(tmp_path / "codex-plan-fidelity-custom.txt"),
+        str(tmp_path / "codex-pragmatism-custom.txt"),
+    ]
     # issue #5817: plan voters waterfall fully; the dispatch no longer injects --no-fallback.
     assert not any("--no-fallback" in cmd for cmd in run_commands if "dispatch-waterfall" in cmd)
     assert seen_policies == ["design.plan_voters"]
