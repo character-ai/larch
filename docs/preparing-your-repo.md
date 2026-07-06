@@ -180,11 +180,25 @@ own for your architecture.
 
 ### 5. Keep the always-loaded context lean
 
-<!-- larch source: python/cli.py lint tier1a-size | disposition: Pattern -->
-<!-- TODO:
-     Why bloat hurts: every token in the root brief is spent on every turn.
-     larch caps the size of its root imports with a lint. Lazy-load the rest (skills, rules, docs).
--->
+*Larch source: `python/cli.py lint tier1a-size`. Disposition: **Pattern**.*
+
+Everything imported by `CLAUDE.md` loads on every turn. That context is a standing
+tax: it costs tokens on each request, and it dilutes the agent's attention across
+instructions that may not apply. Treat the root brief as scarce space.
+
+Keep only always-relevant instructions in the imported files. Push everything else
+to surfaces that load on demand:
+
+- **Skills** load when invoked.
+- **Path-triggered rules** load when a matching file is touched (§6).
+- **Docs** load when the agent chooses to read them.
+
+The test is simple. If an instruction only matters when editing certain files, it
+belongs in a path-triggered rule (§6), not the root brief.
+
+larch enforces this with a lint that caps the size of its root imports, so the
+brief cannot creep upward over time. You do not need the lint to start. The habit
+is what matters, and a size cap makes it stick.
 
 ---
 
