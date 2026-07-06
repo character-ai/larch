@@ -1,1 +1,1 @@
-{"assessment_kind":"clean","base_ref":"origin/main","detail":"","guidelines_status":"present","head_sha":"2b4c6ef2997b7e41f71f6d8c85007e991da18407","outcome":"clean","phase":"implement","reason":"clean-note","schema_version":"1","step":"8"}
+{"assessment_kind":"","base_ref":"origin/main","detail":"","guidelines_status":"absent","head_sha":"bb86e9393b9bcffa40105127e44c57627f49cf56","outcome":"clean","phase":"implement","reason":"guidelines-absent","schema_version":"1","step":"8"}
