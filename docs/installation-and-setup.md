@@ -1,5 +1,7 @@
 # Installation and Setup
 
+> **New to larch?** Set up your repository first. [Preparing Your Repository](preparing-your-repo.md) covers the instruction files, guardrails, and relevant-checks contract that larch, and coding agents generally, rely on.
+
 ## Pre-requisites
 ### Install
 - **Anthropic / Claude Code**: `curl -fsSL https://claude.ai/install.sh | bash`

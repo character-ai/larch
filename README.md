@@ -2,6 +2,8 @@
 
 Larch is a Claude Code workflow automation framework that orchestrates multi-agent design, code review, and implementation through collaborative AI-driven processes.
 
+> **New to larch?** First [prepare your repository](docs/preparing-your-repo.md) for agent-assisted development, then follow the flow below.
+
 ## Primary Flow
 
 1. Create issue  describing the task/problem with `/issue` or `/bug` or manually
@@ -18,6 +20,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 - **Setup**
   - [Installation and Setup](docs/installation-and-setup.md) — prerequisites, auth (API keys or web login) for Claude / Codex / Cursor, plugin install and permissions, `/status` validation, `/upgrade-larch`
+  - [Preparing Your Repository](docs/preparing-your-repo.md). Ready your repo for larch and agent-assisted development: instruction files (`CLAUDE.md`/`AGENTS.md`), guardrails (rules, hooks, linters), and the `checks run-relevant` contract
   - [Contributing](docs/contributing.md) — local dev plugin install, plugin cache vs. working-tree version, Mermaid CLI setup
   - [Clean-Main Entry Contract](docs/clean-main-contract.md) — the `/implement` and `/design` clean `main` entry preconditions, plus `/implement` feature-branch continuation
   - [Fork CI Dry-Runs](docs/forked.md) — remote setup for `/implement --forked`
