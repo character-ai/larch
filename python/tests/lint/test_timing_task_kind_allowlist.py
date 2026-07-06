@@ -54,4 +54,3 @@ parser.add_argument("--timing-task-kind", default="new-kind")
     missing = allowlist.missing_allowlist_entries(tmp_path, [rel], allowed=set())
 
     assert missing == {"new-kind": [rel]}
-
