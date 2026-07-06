@@ -94,7 +94,7 @@ On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_
 
 ### 0a: Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch; `/implement` owns that lifecycle. Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs. This skill calls `design step0-session` with `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
+`/design` requires the default gate: `main`, clean tree, empty stash. Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs. Call `design step0-session` without `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \

@@ -10,6 +10,18 @@ import pytest
 from larch.state import admission
 
 
+def _empty_stash() -> str:
+    return "empty"
+
+
+def _assert_clean_not_called() -> str:
+    raise AssertionError("clean check should be skipped")
+
+
+def _assert_stash_not_called() -> str:
+    raise AssertionError("stash check should be skipped")
+
+
 def test_single_line_flattens_newlines() -> None:
     assert admission._single_line(" a\n b\r\n c ") == "a b c"  # pyright: ignore[reportPrivateUsage]
 
@@ -52,6 +64,7 @@ def test_preflight_without_skip_runs_branch_clean_fetch_and_sync(monkeypatch) ->
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _empty_stash)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main([]) == 0
     assert ["git", "symbolic-ref", "--short", "HEAD"] in calls
     assert any(call[:3] == ["git", "fetch", "origin"] for call in calls)
@@ -70,8 +83,67 @@ def test_preflight_dirty_tree_exits_before_fetch(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "false")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _assert_stash_not_called)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main([]) == 2
     assert "Working tree is not clean" in capsys.readouterr().out
+    assert not any(call[:3] == ["git", "fetch", "origin"] for call in calls)
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout", "expected"),
+    [
+        (0, "", "empty"),
+        (0, "stash@{0}: WIP on main\n", "nonempty"),
+        (1, "", "unknown"),
+    ],
+)
+def test_stash_check_classifies_probe_result(monkeypatch, returncode: int, stdout: str, expected: str) -> None:
+    def fake_run(argv, *, env=None):
+        _ = env
+        assert argv == ["git", "stash", "list"]
+        return subprocess.CompletedProcess(argv, returncode, stdout, "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    assert admission._stash_check() == expected  # pyright: ignore[reportPrivateUsage]
+
+
+def test_preflight_nonempty_stash_exits_before_fetch(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv, *, env=None):
+        _ = env
+        calls.append(list(argv))
+        if argv[:3] == ["git", "symbolic-ref", "--short"]:
+            return subprocess.CompletedProcess(argv, 0, "main\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", lambda: "nonempty")  # pyright: ignore[reportPrivateUsage]
+    assert admission.preflight_main([]) == 2
+    out = capsys.readouterr().out
+    assert "Git stash is not empty" in out
+    assert "git stash pop" in out
+    assert "git stash drop" in out
+    assert not any(call[:3] == ["git", "fetch", "origin"] for call in calls)
+
+
+def test_preflight_unknown_stash_exits_before_fetch(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv, *, env=None):
+        _ = env
+        calls.append(list(argv))
+        if argv[:3] == ["git", "symbolic-ref", "--short"]:
+            return subprocess.CompletedProcess(argv, 0, "main\n", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", lambda: "unknown")  # pyright: ignore[reportPrivateUsage]
+    assert admission.preflight_main([]) == 2
+    out = capsys.readouterr().out
+    assert "Could not determine git stash cleanliness" in out
     assert not any(call[:3] == ["git", "fetch", "origin"] for call in calls)
 
 
@@ -91,6 +163,7 @@ def test_preflight_skip_branch_skips_sync_and_rebase_but_fetches(monkeypatch) ->
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _empty_stash)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main(["--skip-branch-check"]) == 0
     assert any(call[:3] == ["git", "fetch", "origin"] for call in calls)
     assert not any(call[:3] == ["git", "symbolic-ref", "--short"] for call in calls)
@@ -126,6 +199,7 @@ def test_preflight_retries_transient_fetch_once(monkeypatch) -> None:
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _empty_stash)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main([]) == 0
     assert sum(1 for call in calls if call[:3] == ["git", "fetch", "origin"]) == 2
 
@@ -145,6 +219,7 @@ def test_preflight_non_transient_fetch_failure_not_retried(monkeypatch, capsys) 
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _empty_stash)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main([]) == 3
     assert "git fetch origin main failed" in capsys.readouterr().out
     assert sum(1 for call in calls if call[:3] == ["git", "fetch", "origin"]) == 1
@@ -171,7 +246,8 @@ def test_preflight_skip_clean_preserves_stalled_marker_when_status_dirty(monkeyp
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
-    monkeypatch.setattr(admission, "_clean_tree", lambda: (_ for _ in ()).throw(AssertionError("clean check should be skipped")))  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", _assert_clean_not_called)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _assert_stash_not_called)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main(["--skip-clean-check"]) == 0
     assert marker.exists()
     assert not any(call[:3] == ["git", "rev-parse", "--git-path"] for call in calls)
@@ -197,6 +273,8 @@ def test_preflight_skip_clean_clears_stalled_marker_when_status_clean(monkeypatc
         return subprocess.CompletedProcess(argv, 0, "", "")
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", _assert_clean_not_called)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _assert_stash_not_called)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main(["--skip-clean-check"]) == 0
     assert not marker.exists()
 
@@ -221,6 +299,7 @@ def test_preflight_rebase_failure_aborts(monkeypatch, capsys) -> None:
 
     monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", _empty_stash)  # pyright: ignore[reportPrivateUsage]
     assert admission.preflight_main([]) == 3
     assert "git rebase origin/main failed" in capsys.readouterr().out
     assert ["git", "rebase", "--abort"] in calls
