@@ -153,6 +153,59 @@ rc="$(run_lint "$stderr_file")"
 assert_case "comments and inline allow" 0 "$stderr_file" "$rc"
 
 reset_tree
+write_sh "$TMPROOT/scripts/command-grep-condition.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if command grep -Fq needle haystack.txt; then # lint-bash32: ok fixture
+    printf '%s\n' found
+fi
+if ! command grep -Fq missing haystack.txt; then # lint-bash32: ok fixture
+    printf '%s\n' missing
+fi
+if command rg -q needle .; then # lint-bash32: ok fixture
+    printf '%s\n' rg-found
+fi
+if false; then
+    printf '%s\n' skip
+elif command grep -Eq needle haystack.txt; then # lint-bash32: ok fixture
+    printf '%s\n' elif-found
+fi
+EOF
+sed '/lint-bash32: ok fixture/s/[[:space:]]*# lint-bash32: ok fixture//' "$TMPROOT/scripts/command-grep-condition.sh" > "$TMPROOT/scripts/command-grep-condition-unsuppressed.sh"
+rm -f "$TMPROOT/scripts/command-grep-condition.sh"
+rc="$(run_lint "$stderr_file")"
+assert_case "command grep-family conditions fail" 1 "$stderr_file" "$rc" \
+    "scripts/command-grep-condition-unsuppressed.sh" \
+    "scripts/command-grep-condition-unsuppressed.sh:4:" \
+    "scripts/command-grep-condition-unsuppressed.sh:7:" \
+    "scripts/command-grep-condition-unsuppressed.sh:10:" \
+    "scripts/command-grep-condition-unsuppressed.sh:15:" \
+    "if/elif command grep-family condition"
+
+reset_tree
+write_sh "$TMPROOT/scripts/safe-command-grep-condition.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+
+if ( command grep -Fq needle haystack.txt ) 2>/dev/null; then
+    printf '%s\n' found
+fi
+if false; then
+    printf '%s\n' skip
+elif ( command grep -Eq needle haystack.txt ) 2>/dev/null; then
+    printf '%s\n' elif-found
+fi
+cat haystack.txt | command grep -Fq needle
+if command grep -Fq needle haystack.txt; then # lint-bash32: ok reviewed fixture
+    printf '%s\n' reviewed
+fi
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "safe command grep-family conditions pass" 0 "$stderr_file" "$rc"
+assert_empty_stderr "safe command grep-family conditions pass" "$stderr_file"
+
+reset_tree
 write_sh "$TMPROOT/scripts/char-class-negation.sh" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail

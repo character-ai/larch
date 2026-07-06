@@ -17,7 +17,7 @@ Two patterns are safe for the wrapper-exit trap. They solve only that trap. Prod
 
 Every grep-family producer probe needs an explicit path operand such as `.`, `python/`, or `docs/file.md`, or `< /dev/null`, including inside subshells and `command` forms. Wrapping does not prevent background stdin blocking.
 
-> **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero. For `if` probes, use `( command grep PATTERN FILE )`, and still pass a path or `< /dev/null`.
+> **`if command grep` is NOT safe on bash 3.2**: on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero. For `if` probes, use `( command grep PATTERN FILE )`, and still pass a path or `< /dev/null`. Committed shell scripts are backstopped by `scripts/lint-bash32.sh`.
 
 Piped grep (`printf X | grep Y`, `cat file | grep Y`) is safe because the pipeline already subshells grep. Plain `grep` inside `bash script.sh` is safe because the wrapper function is not exported. The hazard is top-level `grep` in Markdown bash/sh/shell fences and direct Bash tool blocks.
 

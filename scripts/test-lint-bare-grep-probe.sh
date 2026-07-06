@@ -147,7 +147,7 @@ reset_tree
 write_file "$TMPROOT/skills/foo/SKILL.md" \
     '```bash' \
     'command grep -q PATTERN file.txt || echo NO_MATCH' \
-    'if command grep -q PATTERN file.txt; then echo found; fi' \
+    'if command grep -q PATTERN file.txt; then echo found; fi # lint-bash32: ok' \
     'command grep -v PATTERN file.txt > out.txt' \
     '```'
 rc="$(run_lint "$stderr_file")"
@@ -227,11 +227,11 @@ assert_fence_line_violation "no-path if ! rg" 'if ! rg -q PATTERN --type py; the
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path if ! ripgrep" 'if ! ripgrep -q PATTERN; then echo missing; fi' \
     "no-path rg/grep probe may block on stdin"
-assert_fence_line_violation "no-path if command grep" 'if command grep -q PATTERN; then echo found; fi' \
+assert_fence_line_violation "no-path if command grep" 'if command grep -q PATTERN; then echo found; fi # lint-bash32: ok' \
     "no-path rg/grep probe may block on stdin"
-assert_fence_line_violation "no-path if ! command ripgrep" 'if ! command ripgrep -q PATTERN; then echo missing; fi' \
+assert_fence_line_violation "no-path if ! command ripgrep" 'if ! command ripgrep -q PATTERN; then echo missing; fi # lint-bash32: ok' \
     "no-path rg/grep probe may block on stdin"
-assert_fence_line_violation "no-path if ! command rg" 'if ! command rg -q PATTERN; then echo missing; fi' \
+assert_fence_line_violation "no-path if ! command rg" 'if ! command rg -q PATTERN; then echo missing; fi # lint-bash32: ok' \
     "no-path rg/grep probe may block on stdin"
 assert_fence_line_violation "no-path subshell rg" '( rg -n PATTERN ) || true' \
     "no-path rg/grep probe may block on stdin"
@@ -321,8 +321,8 @@ assert_fence_line_allowed "path if rg" 'if rg -q PATTERN python/; then echo foun
 assert_fence_line_allowed "path if ! ripgrep" 'if ! ripgrep -q PATTERN skills/; then echo missing; fi'
 assert_fence_line_violation "then-headed no-path rg" 'if true; then rg -q PATTERN; fi' \
     "no-path rg/grep probe may block on stdin"
-assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi'
-assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi'
+assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi # lint-bash32: ok'
+assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi # lint-bash32: ok'
 assert_fence_line_allowed "path subshell grep" '( grep -n PATTERN file.txt ) || true'
 assert_fence_line_allowed "path subshell ripgrep" '( ripgrep -q PATTERN skills/ )'
 assert_fence_line_allowed "path subshell command grep" '( command grep -q PATTERN file.txt )'
