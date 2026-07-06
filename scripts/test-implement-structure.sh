@@ -862,6 +862,8 @@ for needle in [
     'Python ship driver wrapper',
     '## Load-Bearing Invariants',
     'Two invariants enforced across multiple steps',
+    '**Architectural knowledge on Claude fallback**: before Step 2.4 edits, read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`.',
+    'Emit one line before editing: `architectural_acknowledgment: <ids or no parsed entries acknowledged>`.',
 ]:
     if needle not in skill_text:
         checks.append(f'SKILL.md missing {needle!r}')

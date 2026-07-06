@@ -111,6 +111,8 @@ Default test findings to Out-of-Scope. A test is In-Scope only when it covers a 
 
 Plan-mandated deliverable carve-out: a test, doc, generated file, cleanup task, or other artifact explicitly required by the supplied implementation plan is In-Scope when omitted from the diff. This is not license to require optional tests or docs the plan did not mandate. Name or cite the matching plan requirement.
 
+Documented architectural carve-out: a concrete in-scope violation tied to a supplied `I-*` or `G-*` entry is not pure architectural preference. `I-*` invariant violations are blocking. `G-*` guideline violations are fix-required unless you record the guideline id and why no safe proportional fix is available. Personal preference, style-only advice, and undocumented idiom advice remain Out-of-Scope or omitted.
+
 High-severity neutral rescue: if exactly one judge votes YES and marks the finding `major`, the tally routes that neutral to OOS artifacts instead of dropping it. It is still not accepted inline. Single-YES `minor`, `nit`, missing, or invalid severities stay dropped.
 
 You are scored against this rubric. Putting a finding In-Scope that the panel rejects forfeits the point: -0.25 if at least one judge found it credible but below threshold, and -1 if none did. A real-but-non-essential finding belongs Out-of-Scope, where panel acceptance earns provisional +1 at vote time. `/analyze-issues` may later dock filed OOS to 0 in its fate-adjusted diagnostic report without changing live vote tallies. Win by placing necessary findings In-Scope and real-but-not-necessary findings Out-of-Scope, not by maximizing In-Scope volume.

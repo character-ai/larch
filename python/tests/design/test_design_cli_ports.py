@@ -36,6 +36,7 @@ AGENT_EXPECTED = {
     ("agent", "launch-claude-drafter"): ("larch.agents.agents", "launch_claude_drafter_main"),
 }
 ARCHITECTURAL_GUIDELINES_EXPECTED = {
+    ("architectural-invariants", "read"): ("larch.core.architectural_guidelines", "invariants_read_main"),
     ("architectural-guidelines", "read"): ("larch.core.architectural_guidelines", "read_main"),
     ("architectural-guidelines", "present-note"): ("larch.core.architectural_guidelines", "present_note_main"),
     ("architectural-guidelines", "materialize-diff"): ("larch.core.architectural_guidelines", "materialize_diff_main"),

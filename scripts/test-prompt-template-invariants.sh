@@ -231,6 +231,12 @@ assert_contains "codex implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/codex-implementer.md"
 assert_contains "cursor implementer PLR0911 checklist" \
     'PLR0911 is enforced; when a function is near the return limit' "$REPO_ROOT/agents/cursor-implementer.md"
+assert_contains "implementer base architectural acknowledgment field" \
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer architectural acknowledgment field" \
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/codex-implementer.md"
+assert_contains "cursor implementer architectural acknowledgment field" \
+    '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/cursor-implementer.md"
 
 # ── python/cli.py render plan-review runtime render smoke ────────────────────────
 

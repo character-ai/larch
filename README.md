@@ -48,6 +48,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 - **[Voting-based review resolution](docs/voting-process.md)** — The YES/NO panel protocol adjudicates plan and code review findings.
 - **[Reviewer competition scoring](docs/point-competition.md)** — Reviewers earn points based on finding quality; a scoreboard tracks accepted, neutral, and rejected findings.
 - **[Tracked runs](docs/run-logs.md)** — `/implement` writes full run artifacts to committed `larch-logs/` files and keeps the tracking issue slim with marker-keyed summary comments.
+- **Tiered architectural knowledge** — Optional `ARCHITECTURAL_INVARIANTS.md` and `ARCHITECTURAL_GUIDELINES.md` files are supplied to coders and reviewers as untrusted, scope-bound evidence.
 
 ## Skills
 

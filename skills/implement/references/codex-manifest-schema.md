@@ -23,6 +23,7 @@
   ],
   "tests_added_or_modified": ["<repo-relative path>", ...],
   "summary_bullets": ["<bullet 1>", "<bullet 2>", "<bullet 3>"],
+  "architectural_acknowledgment": "<one-line acknowledgment when architectural knowledge was supplied>",
   "commit_message": "<subject line>\n\n<optional body paragraphs>",
   "difficulty": {"predicted_tier": "TRIVIAL|MODERATE|HARD", "confidence": "low|medium|high", "rationale": "bounded rationale"},
   "todos_left": ["<actionable todo>", ...],
@@ -45,6 +46,7 @@
 | `files_touched` (array of `{path, lines_added, lines_removed}`) | required, non-empty | optional | optional |
 | `tests_added_or_modified` (array of strings) | required (may be empty) | optional | optional |
 | `summary_bullets` (array of strings, length 1–5) | required | optional | optional |
+| `architectural_acknowledgment` (string) | required when architectural knowledge was supplied | required when architectural knowledge was supplied | optional |
 | `commit_message` (string) | required, non-empty | optional | optional |
 | `difficulty` (object with `predicted_tier`, `confidence`, `rationale`) | required | optional | optional |
 | `todos_left` (array of strings) | required (may be empty) | optional | optional |
@@ -56,6 +58,8 @@
 
 Optional fields MAY be present in the non-`complete` statuses but are not required and are not consumed by downstream SKILL.md steps.
 
+`architectural_acknowledgment` is required only when Step 2 launch supplied valid architectural knowledge from `ARCHITECTURAL_INVARIANTS.md` and/or `ARCHITECTURAL_GUIDELINES.md`. The launcher records that decision in `$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env` as `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true|false`; the dispatcher treats a well-formed snapshot as authoritative and falls back to the shared reader predicate only when the snapshot is absent or malformed. Missing or empty acknowledgment on `status=complete` or `status=needs_qa` is a non-recoverable `STATUS=bailed REASON=architectural-acknowledgment-missing` result, with no `RECOVERY_FROM=` fallback and no dispatcher commit. `status=bailed` is exempt because the coder may have stopped before reading all context. This field proves visible acknowledgment only; reviewers enforce semantic compliance.
+
 ## Validation rules (dispatcher applies via `jq -e`)
 
 1. `schema_version == "1"`. Future schema bumps will add new accepted values.
@@ -63,7 +67,7 @@ Optional fields MAY be present in the non-`complete` statuses but are not requir
 3. Per-status required keys per the table; the dispatcher rejects (`STATUS=bailed reason=manifest-schema-invalid`) any manifest that fails this check.
 4. `difficulty.predicted_tier` is one of `TRIVIAL`, `MODERATE`, or `HARD`; `confidence` is one of `low`, `medium`, or `high`; `rationale` must be non-empty after control-character stripping and is capped by the dispatcher. Codex and Cursor self-rate every `complete` invocation against the shared rubric in `python/cli.py difficulty render-rubric`.
 5. **Path normalization** (applied to every `path` in `files_touched` and every entry in `tests_added_or_modified`): the path MUST be repo-relative. Reject if it contains `..` or starts with `/`. NUL bytes are rejected implicitly: bash variables cannot hold a NUL, so the dispatcher's `read -r` over the jq output terminates the field at any NUL in upstream JSON, and the iterator never sees a path-with-NUL. Also reject any path equal to OR under a submodule root (per `git submodule status --recursive`). Symlink-aware containment (rejecting paths that resolve outside the repo via a symlink chain) is **not** mechanically enforced today — external implementers are trusted not to commit symlink-escape paths under the same trust model documented in `SECURITY.md`.
-6. **Sanitization** (applied AFTER schema validation, BEFORE the canonical manifest is written to `$IMPLEMENT_TMPDIR/manifest.json`): `summary_bullets[*]`, `commit_message`, `oos_observations[*].title`, `oos_observations[*].description`, and `todos_left[*]` are piped through `python/cli.py redact secrets`, which redacts the secrets family (API keys, tokens, OAuth, JWT, passwords, certificates) → `<REDACTED-TOKEN>`. Internal hostnames/URLs and PII redaction are NOT mechanically applied by the dispatcher — external implementers are instructed to pre-redact those patterns before manifest emission, and downstream consumers (`/issue` outbound shell scrubber, `python3 python/cli.py tracking-issue`) provide a second-line backstop for the secrets family only. Operators handling internal-URL- or PII-rich content should review the manifest before allowing PR / issue / release notes publication. `bail_reason` is NOT piped through `redact secrets`; it is sanitized only for KV-grammar safety (whitespace and control characters collapsed; capped at ~200 chars) so the bail token cannot break the orchestrator's KV stdout parser. `needs_qa.questions[*].text` is NOT mechanically sanitized — the orchestrator surfaces questions verbatim via `AskUserQuestion`; external implementers are instructed to phrase questions without sensitive content.
+6. **Sanitization** (applied AFTER schema validation, BEFORE the canonical manifest is written to `$IMPLEMENT_TMPDIR/manifest.json`): `summary_bullets[*]`, `architectural_acknowledgment`, `commit_message`, `oos_observations[*].title`, `oos_observations[*].description`, and `todos_left[*]` are piped through `python/cli.py redact secrets`, which redacts the secrets family (API keys, tokens, OAuth, JWT, passwords, certificates) → `<REDACTED-TOKEN>`. `architectural_acknowledgment` also has CR/LF collapsed to spaces and is capped to 500 characters. Internal hostnames/URLs and PII redaction are NOT mechanically applied by the dispatcher — external implementers are instructed to pre-redact those patterns before manifest emission, and downstream consumers (`/issue` outbound shell scrubber, `python3 python/cli.py tracking-issue`) provide a second-line backstop for the secrets family only. Operators handling internal-URL- or PII-rich content should review the manifest before allowing PR / issue / release notes publication. `bail_reason` is NOT piped through `redact secrets`; it is sanitized only for KV-grammar safety (whitespace and control characters collapsed; capped at ~200 chars) so the bail token cannot break the orchestrator's KV stdout parser. `needs_qa.questions[*].text` is NOT mechanically sanitized — the orchestrator surfaces questions verbatim via `AskUserQuestion`; external implementers are instructed to phrase questions without sensitive content.
 
 ## Atomic write rule
 
@@ -82,6 +86,7 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
 - `dirty-state-after-timeout` — Codex timed out and the dispatcher refused to retry because the working tree / index was dirty. Set by the dispatcher.
 - `wrapper-validation-failure` — the Step 2 launcher wrapper exited 2 before producing a valid implementer result (missing or invalid wrapper flags, path validation failure, or equivalent wrapper-side validation). The dispatcher does not retry this class because the invocation contract, not the external model runtime, failed. Set by the dispatcher.
 - `qa-pending-missing` — Codex emitted `status=needs_qa` but `qa-pending.json` is missing, empty, or its `questions` array is missing/empty. Set by the dispatcher.
+- `architectural-acknowledgment-missing` — architectural knowledge was supplied at launch time, but a `complete` or `needs_qa` manifest omitted a non-empty `architectural_acknowledgment`. This is a hard bail, not recoverable `manifest-schema-invalid` fallback. Set by the dispatcher.
 - `redactor-not-executable` — `python/cli.py redact secrets` is missing or not executable; dispatcher fails closed rather than emit unsanitized text (covers both the pre-`git commit` redactor probe in Step 7b and the post-validation redactor probe in Step 8). Set by the dispatcher.
 - `codex-runtime-failure` — launcher returned non-zero exit code or no manifest written, and the bounded retry also failed. **Carve-out (issue #3383)**: a non-zero `LAUNCHER_EXIT` does NOT bail when the on-disk `manifest.json` parses as `schema_version "1"` / `status "complete"`; the dispatcher salvages that complete manifest (continuing to schema validation + the dispatcher commit) and annotates the run with `WARN_CODEX_NONZERO_EXIT=true` instead. This covers Codex finishing the work and writing the manifest, then a self-verification step exiting non-zero. A non-zero exit with no manifest, or with a non-`complete` manifest, still bails here.
 - `cursor-runtime-failure` — Cursor launcher returned non-zero exit code or no manifest written, and the bounded retry also failed. The Codex complete-manifest salvage carve-out above is intentionally not applied to Cursor (classified launcher-parity asymmetry; see `.claude/rules/external-tool-launcher-parity.md` and `skills/implement/references/step2-dispatch.md`).
@@ -109,6 +114,7 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
     "Wire helper into skills/foo/SKILL.md Step 3",
     "Cover helper with offline harness"
   ],
+  "architectural_acknowledgment": "honoring G-Skill-1 for this change",
   "commit_message": "Add foo-helper.sh and wire it into /foo Step 3\n\nReplaces the inline awk block previously inlined in SKILL.md.",
   "difficulty": {"predicted_tier": "MODERATE", "confidence": "medium", "rationale": "Adds a helper and skill wiring with harness coverage."},
   "todos_left": [],
@@ -127,6 +133,7 @@ When `status=bailed`, `bail_reason` MUST be one of these stable tokens (downstre
   "files_touched": [],
   "tests_added_or_modified": [],
   "summary_bullets": [],
+  "architectural_acknowledgment": "honoring no parsed invariant entries for this question",
   "commit_message": "",
   "todos_left": [],
   "oos_observations": [],

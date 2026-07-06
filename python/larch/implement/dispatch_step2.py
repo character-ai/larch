@@ -17,6 +17,7 @@ from pathlib import Path
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core import architectural_guidelines
 from larch.core import logging_util
 from larch.calibration import difficulty
 from larch.core import redact
@@ -55,6 +56,7 @@ from larch.implement.dispatch_manifest import (
     _materialize_oos,
     _normalize_scout,
     _post_implementer_safety_reason,
+    _require_architectural_acknowledgment,
     _sanitize_manifest_obj,
     _validate_manifest_paths,
     _write_prelaunch_baseline,
@@ -62,6 +64,7 @@ from larch.implement.dispatch_manifest import (
 
 _ASCII_CONTROL_MAX = 31
 _ASCII_DELETE = 127
+_ARCH_KNOWLEDGE_SNAPSHOT = "step2-architectural-knowledge.env"
 
 
 def run_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR0911,PLR0912,PLR0915,RUF100
@@ -265,6 +268,30 @@ def _append_warning(*, st: DispatchState, text: str) -> None:
     # plain warning text to a bullet so it is not dropped from the final summary.
     entry = text if text.startswith("- ") else f"- {text}"
     _invoke_cli(["run-log", "append-entry", "--log", str(st.tmpdir / "execution-issues.md"), "--category", "Warnings", "--entry", entry])
+
+
+def _snapshot_architectural_knowledge_required(tmpdir: Path, repo_root: Path) -> bool:
+    snapshot = tmpdir / _ARCH_KNOWLEDGE_SNAPSHOT
+    if snapshot.is_file():
+        value = larch_io.read_kv(
+            path=snapshot,
+            key="ARCHITECTURAL_KNOWLEDGE_REQUIRED",
+            default="",
+            first_match=True,
+            on_error_default=True,
+        )
+        if value in {"true", "false"}:
+            return value == "true"
+    return architectural_guidelines.architectural_knowledge_required(repo_root=repo_root)
+
+
+def _append_architectural_knowledge_warnings(st: DispatchState) -> None:
+    for result in (
+        architectural_guidelines.read_invariants(repo_root=st.repo_root),
+        architectural_guidelines.read_guidelines(repo_root=st.repo_root),
+    ):
+        if result.status == "invalid" and result.warning:
+            _append_warning(st=st, text=f"Step 2 architectural knowledge omitted: {result.warning}")
 
 
 def _working_tree_touched_paths_and_failures(repo_root: Path) -> tuple[set[str] | None, list[str]]:
@@ -496,6 +523,7 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
         return 2
     repo_root = Path(repo_result.stdout.strip()).resolve()
     st = _dispatch_state(args=args, repo_root=repo_root, tmpdir=tmpdir, plugin_root=plugin_root)
+    _append_architectural_knowledge_warnings(st)
     if not (plugin_root / "agents" / f"{st.tool_tag}-implementer.md").is_file():
         _err(f"implement step2-dispatch: agent prompt missing: {plugin_root / 'agents' / (st.tool_tag + '-implementer.md')}")
         return 2
@@ -590,6 +618,8 @@ def step2_dispatch_main(argv: list[str] | None = None) -> int:  # noqa: C901,PLR
     if status not in {"complete", "needs_qa", "bailed"}:
         return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
     assert isinstance(raw_obj, dict)
+    if status in {"complete", "needs_qa"} and _snapshot_architectural_knowledge_required(tmpdir, repo_root) and not _require_architectural_acknowledgment(raw_obj):
+        return st.emit_bailed("architectural-acknowledgment-missing")
     if status == "complete":
         if not _complete_schema_valid(raw_obj):
             return _emit_manifest_invalid_or_recover(st=st, status=status, raw_obj=raw_obj)
