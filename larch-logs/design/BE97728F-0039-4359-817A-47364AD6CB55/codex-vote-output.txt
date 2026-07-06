@@ -1,0 +1,5 @@
+FINDING_1: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- compose-findings already writes an empty output without needing tempfile setup when both inputs are absent.
+FINDING_2: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- python/tests/design/test_design_pause.py exists; this is just a test-target cleanup, not feature-critical.
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the extra review pytest split is verification curation, not required for the tempfile-dir feature.
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the publish worktree is created under a separate temp parent, not inside design_tmpdir, so the self-copy scenario is not real.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- using log_root.parent here is a side-case safety refinement, not required for the feature to ship correctly.
