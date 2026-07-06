@@ -4,6 +4,8 @@ import json
 import subprocess
 from pathlib import Path
 
+import pytest
+
 import review_test_support as rts
 from larch.review import compose_review
 

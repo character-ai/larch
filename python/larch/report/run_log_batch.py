@@ -8,7 +8,6 @@ import hashlib
 import json
 import os
 import re
-import subprocess
 import sys
 import tempfile
 import time
@@ -16,6 +15,7 @@ from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
+from larch.core import proc
 from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
 from larch.core import redact
 from larch import io as larch_io
@@ -302,13 +302,7 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
 def _path_is_repo_related(path: Path) -> bool:
     candidate = path.resolve(strict=False)
     roots = []
-    active = subprocess.run(
-        ["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"],
-        check=False,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL,
-        text=True,
-    )
+    active = proc.run(["git", "-C", str(Path.cwd()), "rev-parse", "--show-toplevel"])
     if active.returncode == 0 and active.stdout.strip():
         roots.append(Path(active.stdout.strip()).resolve(strict=False))
     roots.append(_REPO_ROOT.resolve(strict=False))

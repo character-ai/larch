@@ -84,6 +84,25 @@ def test_calls_with_dir_are_ignored_and_occurrences_count_all_calls(tmp_path: Pa
     ]
 
 
+def test_with_context_expression_counts_before_nested_body_call(tmp_path: Path) -> None:
+    larch_dir = tmp_path / "python" / "larch"
+    larch_dir.mkdir(parents=True)
+    path = larch_dir / "mod.py"
+    _ = path.write_text(
+        "import tempfile\n\n"
+        "def run():\n"
+        "    with tempfile.TemporaryDirectory() as tmp:\n"
+        "        tempfile.mkdtemp(dir=tmp)\n"
+        "        tempfile.NamedTemporaryFile()\n",
+        encoding="utf-8",
+    )
+
+    assert [(finding.callee, finding.occurrence) for finding in ltd.scan_file(path, larch_dir=larch_dir)] == [
+        ("TemporaryDirectory", 1),
+        ("NamedTemporaryFile", 3),
+    ]
+
+
 def test_scope_excludes_tests_and_vendor_cache_dirs(tmp_path: Path) -> None:
     larch_dir = tmp_path / "python" / "larch"
     for relpath in [

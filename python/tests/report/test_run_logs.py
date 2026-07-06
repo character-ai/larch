@@ -177,7 +177,7 @@ def test_capture_transcript_scratch_dir_uses_active_checkout_root(tmp_path: Path
     def fake_git_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
         return subprocess.CompletedProcess(argv, 0, stdout=f"{repo}\n", stderr="")
 
-    monkeypatch.setattr(run_log_batch.subprocess, "run", fake_git_run)  # type: ignore[attr-defined]
+    monkeypatch.setattr(run_log_batch.proc, "run", fake_git_run)  # type: ignore[attr-defined]
     monkeypatch.setattr(run_log_batch, "_REPO_ROOT", tmp_path / "plugin-root")  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(run_log_batch, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
 
@@ -2944,7 +2944,7 @@ def test_capture_transcript_main_defer_commit_no_warning(
                 break
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(run_log_batch.proc, "run", _fake_run)  # type: ignore[attr-defined]
 
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
@@ -2988,6 +2988,10 @@ def test_capture_transcript_main_uses_explicit_tmpdir_for_render_path(
     rendered_payload = '{"type":"stub"}\n'
 
     def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == "git" and "rev-parse" in args and "--show-toplevel" in args:
+            return subprocess.CompletedProcess(args, 0, stdout=f"{tmp_path.parent / 'repo-root'}\n", stderr="")
+        if "--output" not in args:
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
         output = Path(args[args.index("--output") + 1])
         assert output.is_relative_to(scratch_tmp)
         assert not output.is_relative_to(system_tmp)

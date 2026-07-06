@@ -101,16 +101,25 @@ def _qualified(prefix: tuple[str, ...]) -> str:
     return ".".join(prefix) if prefix else MODULE_SYMBOL
 
 
+def _child_position(node: ast.AST, *, index: int) -> tuple[int, int, int]:
+    if isinstance(node, ast.withitem):
+        context_expr = node.context_expr
+        return (
+            getattr(context_expr, "lineno", 10**9),
+            getattr(context_expr, "col_offset", 10**9),
+            index,
+        )
+    return (
+        getattr(node, "lineno", 10**9),
+        getattr(node, "col_offset", 10**9),
+        index,
+    )
+
+
 def _ordered_child_nodes(node: ast.AST) -> list[ast.AST]:
     children = list(ast.iter_child_nodes(node))
     indexed = list(enumerate(children))
-    indexed.sort(
-        key=lambda item: (
-            getattr(item[1], "lineno", 10**9),
-            getattr(item[1], "col_offset", 10**9),
-            item[0],
-        )
-    )
+    indexed.sort(key=lambda item: _child_position(item[1], index=item[0]))
     return [node for _, node in indexed]
 
 
