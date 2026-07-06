@@ -282,9 +282,9 @@ def _run_revise(*, tmpdir: Path, round_num: int, values: dict[str, str]) -> int:
             "--round-num",
             str(round_num),
             "--codex-binary-found",
-            os.environ.get("CODEX_BINARY_FOUND", ""),
+            os.environ.get(config.ENV_CODEX_BINARY_FOUND, ""),
             "--cursor-binary-found",
-            os.environ.get("CURSOR_BINARY_FOUND", ""),
+            os.environ.get(config.ENV_CURSOR_BINARY_FOUND, ""),
             "--patch-format",
             "file-replacement",
         ]
