@@ -1973,7 +1973,17 @@ def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> No
     assert rc == 1
 
 
-def test_larch_log_commit_accepts_tmpdir_flag(tmp_path: Path) -> None:
+def test_larch_log_commit_accepts_tmpdir_flag(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    # Hermetic: run inside a temp feature-branch repo so the commit chokepoint's
+    # default-branch guard does not fire when the suite itself is checked out on
+    # main. Without this, `run-log commit` returns rc=1 ("refusing larch-log
+    # commit on default branch main") on every push-to-main CI run.
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _init_git_repo_on_feature(repo)
+    monkeypatch.chdir(repo)
     rc = run_logs.larch_log_commit_main(
         [
             "--log-root",
