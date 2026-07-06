@@ -54,13 +54,53 @@ The always-on brief. Keep it small; everything here is paid for on every turn.
 
 ### 1. `CLAUDE.md` + `AGENTS.md`: a thin root that imports a shared file
 
-<!-- larch source: CLAUDE.md, GEMINI.md, AGENTS.md | disposition: Copy the pattern, write your own AGENTS.md -->
-<!-- TODO:
-     - AGENTS.md is the emerging cross-vendor standard (Codex/Cursor read it too).
-     - CLAUDE.md and GEMINI.md are one-line shims that @-import AGENTS.md, so you
-       write shared instructions ONCE. (larch: CLAUDE.md imports 3 files; GEMINI.md imports AGENTS.md.)
-     - What belongs in AGENTS.md: repo layout, conventions, editing rules, canonical sources.
--->
+*Larch source: `CLAUDE.md`, `GEMINI.md`, `AGENTS.md` · Disposition: **Copy** the pattern, write your own `AGENTS.md`.*
+
+Keep one shared instruction file — `AGENTS.md` — and make every tool's native
+entry file a thin shim that imports it. `AGENTS.md` is the emerging cross-vendor
+convention: Claude Code, Codex, Cursor, and others look for it. Writing your
+instructions there once, instead of duplicating them across `CLAUDE.md`,
+`GEMINI.md`, and per-tool configs, gives you a single source of truth that can't
+drift out of sync.
+
+In larch, the shims are one line per import. `CLAUDE.md`:
+
+```text
+@AGENTS.md
+@KARPATHY_CLAUDE.md
+@BASH_AUTHORING.md
+```
+
+`GEMINI.md`:
+
+```text
+@./AGENTS.md
+```
+
+Claude Code inlines each `@path` into the always-loaded context, so `CLAUDE.md`
+pulls in the shared repo brief plus the behavioral guardrails (§2) and
+stack-authoring notes (§3); `GEMINI.md` pulls in just the brief. Keep the shim to
+imports only — anything you write directly in `CLAUDE.md` is one more instruction
+that can contradict `AGENTS.md` later.
+
+**What to put in `AGENTS.md`.** Treat it as the briefing you would give a new
+contributor who is capable but unfamiliar with the repo:
+
+- **What the repo is** — a line or two orienting the agent: what it produces, who
+  consumes it.
+- **Repository layout** — the runtime/shipping surface versus everything
+  supplementary, so edits land in the right place.
+- **Editing rules** — what is off-limits, and what must be re-run after a change
+  (lints, tests).
+- **Conventions** — language and tooling defaults, style, commit-message norms.
+- **How to answer questions about this repo** — an escalation policy (see §11).
+- **Canonical sources** — a "for X, read Y" map (see §11).
+- **Honesty and reporting rules** — don't fabricate, don't overstate completion,
+  surface failures.
+
+The shims are copyable as-is (swap the imported filenames for yours); `AGENTS.md`
+is the one file you write from scratch — and most of this guide is about what goes
+in it.
 
 ### 2. Behavioral guardrails (the `KARPATHY_CLAUDE.md` pattern)
 
