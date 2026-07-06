@@ -8,6 +8,7 @@
 === larch-quiet-cli.py-67865.log ===
 === larch-quiet-cli.py-74949.log ===
 === larch-quiet-cli.py-79345.log ===
+=== larch-quiet-cli.py-80419.log ===
 === larch-quiet-read-session-env-key.sh-21385.log ===
 === larch-quiet-read-session-env-key.sh-21387.log ===
 === larch-quiet-read-session-env-key.sh-21389.log ===
@@ -79,5 +80,6 @@ ci_monitor: CI status query #3 in progress after 27s
 ci_monitor: poll 3/180 pending after 31s; sleeping 10s
 ci_monitor: CI status query #4 in progress after 41s
 ci_monitor: CI fail after 45s -> evaluate_failure
+=== larch-quiet-ship.py-80859.log ===
 === larch-quiet-tracking-issue-upsert-summary-57721.log ===
 === larch-quiet-tracking-issue-upsert-summary-68387.log ===
