@@ -1,14 +1,15 @@
-## /implement run EE26FD50-76F6-4060-8F15-35D4F17D370B: shipping
+## /implement run EE26FD50-76F6-4060-8F15-35D4F17D370B: stalled
 
-- **Outcome**: shipping
+- **Outcome**: STALLED
 - **Duration**: 00:24:11
-- **Cost**: 💰 TOTAL ~$12.07: Claude $1.08, Codex-5.5 $3.28, Codex-mini $2.02, Cursor $5.37, Claude (subprocess) $0.32  |  Tokens: 25863k
+- **Cost**: 💰 TOTAL ~$12.08: Claude $1.08, Codex-5.5 $3.28, Codex-mini $2.02, Cursor $5.37, Claude (subprocess) $0.33  |  Tokens: 25896k
 - **Issue**: #6454: https://github.com/character-ai/larch/issues/6454
+- **PR**: #6460: https://github.com/character-ai/larch/pull/6460
 - **Plan review**: N/A
 - **Difficulty**: predicted MODERATE; applied MODERATE
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 1/1 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +168/-13, larch-logs +787/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -78,7 +79,3 @@ codex/apply                    │                                              
 6. dynamic/dyn-stash-gate: 1
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
