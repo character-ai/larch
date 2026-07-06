@@ -15,6 +15,7 @@ larch-logs/
   design/
     <RUN_ID>/
       manifest.json
+      architectural-invariant-assessment.md
       architectural-guideline-assessment.md
       (design session artifacts: files from `$DESIGN_TMPDIR` plus `render-cache/` subtree, filtered to exclude raw per-lane transcripts and sidecars via `design_log_publish_flow._publish_excluded`, then trimmed and redacted per `python/design_log_publish_flow.py`; `composed-plan.diff` is a unified diff of `composed-plan.md` vs final `plan.txt` — reconstruct with `patch plan.txt composed-plan.diff -o composed-plan.md`)
       plan-review/
@@ -34,6 +35,7 @@ larch-logs/
       codex-impl-manifest-raw.json
       plan-review-tally.json
       difficulty-rating.json
+      architectural-invariant-outcome.json
       architectural-guideline-outcome.json
       code-review-tally.json
       review-findings-full.jsonl
@@ -78,31 +80,32 @@ larch-logs/
 
 `<RUN_ID>` is the UUID assigned at the start of each `/implement` session. Batch payload files under a run directory are redacted for secrets and tmpdir paths before commit. `manifest.json` schema version 2 keeps `operator_cwd` / `operator_repo_root` only as stable redacted placeholders (`"<OPERATOR_CWD>"`, `"<REPO_ROOT>"`) so committed logs preserve schema shape without exposing operator-local absolute paths.
 
-### design architectural guideline assessment
+### design architectural invariant and guideline assessments
 
-`larch-logs/design/<RUN_ID>/architectural-guideline-assessment.md` is a
-top-level design artifact written from Gate C only. It is present only when
-`ARCHITECTURAL_GUIDELINES.md` is present and valid at final Gate C approval.
-It contains either the deterministic clean note or the orchestrator-authored
-deviation assessment.
+`larch-logs/design/<RUN_ID>/architectural-invariant-assessment.md` and
+`architectural-guideline-assessment.md` are top-level design artifacts written
+from Gate C only. The invariant artifact is present only when
+`ARCHITECTURAL_INVARIANTS.md` is present, valid, and has parsed `I-*` entries;
+it records either the deterministic clean note or a blocking violation
+assessment. The guideline artifact keeps the existing clean/deviation contract.
 
-When guidelines are absent or invalid, Gate C removes any stale assessment
-artifact before approval, so no stale copy is committed. The artifact publishes
+When a knowledge file is absent, invalid, or empty for invariants, Gate C removes any stale assessment
+artifact before approval, so no stale copy is committed. The artifacts publish
 through the existing design-log copy, tmpdir redaction, and secret-scrub flow.
 It is auditable through `/fluff-analysis` guideline assessment coverage and
 `python/cli.py audit-runs scan-run --skill design`.
 
-### implement architectural guideline outcome
+### implement architectural invariant and guideline outcomes
 
-`larch-logs/implement/<RUN_ID>/architectural-guideline-outcome.json` is the
-durable Step 8 compose-time outcome for the implement PR body guideline note.
-It records whether the note was `pinned`, was `clean`, or was `dropped`, plus a
-stable reason token, redacted detail, `head_sha`, `base_ref`,
-`guidelines_status`, and `assessment_kind`.
+`larch-logs/implement/<RUN_ID>/architectural-invariant-outcome.json` records
+the invariant Step 8 compose-time outcome before guideline handling. It records
+`clean`, `violation`, or `dropped`; violations are blocking and feed autonomous
+remediation. `architectural-guideline-outcome.json` keeps the existing
+`pinned`, `clean`, or `dropped` guideline contract with stable reason token,
+redacted detail, `head_sha`, `base_ref`, status, and `assessment_kind`.
 
-The artifact is written for terminal Step 8 guideline results. Runs that still
-need the operator's architectural-guideline assessment do not write a partial
-outcome. The audit scan treats missing artifacts below
+The artifacts are written for terminal Step 8 results. Runs that still
+need architectural assessment do not write partial outcomes. The audit scan treats missing artifacts below
 `GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION`, and runs that did not reach Step 8,
 as informational. At or above that cutover, Step 8-eligible missing, malformed,
 empty, or symlinked artifacts fail.
@@ -620,8 +623,8 @@ By default, larch accumulates full-fidelity run logs indefinitely. The `/gc-run-
 **Default policy (slim)**:
 
 - Run dirs whose `started_at` date (or first-commit date fallback) is older than `--older-than DAYS` (default 90) are slimmed to the consumer-core keep set.
-- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `architectural-guideline-outcome.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
-- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
+- The consumer-core keep set for `/implement` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `architectural-invariant-outcome.json`, `architectural-guideline-outcome.json`, `token-report.json`, `timing-report.json`, `review-findings-full.jsonl`, `execution-issues.ndjson`, `run-statistics.md`, `checks-digest-sizes.tsv`.
+- The consumer-core keep set for `/design` dirs: `manifest.json`, `final-summary.md`, `difficulty-rating.json`, `token-report-final.json`, `timing-report-final.json`, `run-params.json`, `plan.txt`, `architectural-invariant-assessment.md`, `architectural-guideline-assessment.md`, and any `larch-tokens-*.jsonl` token ledger. The ledger is retained so cost reporting can recover design runs that committed token data but never finalized `token-report-final.json` (the reader-side fallback in `report_tokens_scan.py`; issue #5133).
 - The consumer-core keep set for `/review` dirs includes `manifest.json`, `final-summary.md`, `difficulty-rating.json`, and `checks-digest-sizes.tsv`, so digest savings telemetry survives default slimming before enough samples accrue.
 - All other files and subdirectories (round forensics, voter outputs, aggregator artifacts, etc.) are removed.
 - A `gc-slimmed` marker file is written into each slimmed dir.

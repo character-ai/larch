@@ -149,6 +149,11 @@ def _format_architectural_guidelines_section(text: str) -> str:
     return "## Architectural guidelines\n\n" + stripped + "\n" if stripped else ""
 
 
+def _format_architectural_invariants_section(text: str) -> str:
+    stripped = text.strip()
+    return "## Architectural invariants\n\n" + stripped + "\n" if stripped else ""
+
+
 def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) -> str:
     try:
         note = architectural_guidelines.durable_note_path(implement_tmpdir).read_text(
@@ -161,6 +166,18 @@ def _read_consumable_architectural_guidelines_section(implement_tmpdir: Path) ->
     return _format_architectural_guidelines_section(redacted)
 
 
+def _read_consumable_architectural_invariants_section(implement_tmpdir: Path) -> str:
+    try:
+        note = architectural_guidelines.invariant_durable_note_path(implement_tmpdir).read_text(
+            encoding="utf-8",
+            errors="replace",
+        )
+    except OSError:
+        return ""
+    redacted = pr_body.redact_pr_body(note)
+    return _format_architectural_invariants_section(redacted)
+
+
 def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     head_sha = _current_head_sha()
     if head_sha and architectural_guidelines.note_consumable(
@@ -169,6 +186,28 @@ def _architectural_guidelines_section(implement_tmpdir: Path) -> str:
     ):
         return _read_consumable_architectural_guidelines_section(implement_tmpdir)
     return ""
+
+
+def _architectural_invariants_section(implement_tmpdir: Path) -> str:
+    head_sha = _current_head_sha()
+    if head_sha and architectural_guidelines.invariant_note_consumable(
+        implement_tmpdir=implement_tmpdir,
+        head_sha=head_sha,
+    ):
+        return _read_consumable_architectural_invariants_section(implement_tmpdir)
+    return ""
+
+
+def _append_architectural_knowledge(body: str, implement_tmpdir: Path) -> str:
+    """Append invariant and guideline sections to the report body, fail-soft."""
+    for section_fn in (_architectural_invariants_section, _architectural_guidelines_section):
+        try:
+            section = section_fn(implement_tmpdir)
+        except Exception:
+            section = ""
+        if section:
+            body = body.rstrip("\n") + "\n\n" + section
+    return body
 
 
 def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
@@ -772,12 +811,7 @@ def write_final_report(
     except Exception:
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
-    try:
-        guidelines_section = _architectural_guidelines_section(implement_tmpdir)
-    except Exception:
-        guidelines_section = ""
-    if guidelines_section:
-        body = body.rstrip("\n") + "\n\n" + guidelines_section
+    body = _append_architectural_knowledge(body, implement_tmpdir)
     summary = implement_tmpdir / "summary-final.md"
     try:
         summary.write_text(body, encoding="utf-8")

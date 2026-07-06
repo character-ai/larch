@@ -1,0 +1,2 @@
+{"slot":"testing","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.5.2/agents/reviewer-testing.md","vendor":"cursor","resolved_model":"composer-2.5"}
+{"slot":"testing","tool":"codex","output":"<TMPDIR>/round-2/codex-specialist-testing-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.5.2/agents/reviewer-testing.md","model_role":"default","vendor":"codex","resolved_model":"gpt-5.5"}

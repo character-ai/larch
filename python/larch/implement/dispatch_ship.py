@@ -196,6 +196,10 @@ def _ship_route_required_str(*, payload: Mapping[str, object], key: str) -> tupl
 def _classify_ship_needs_user_reason(reason: str) -> str:
     if reason == "oos-filing":
         return "oos-pipeline"
+    if reason == "architectural-invariants-assessment":
+        return "invariants-assessment"
+    if reason == "architectural-invariants-violation":
+        return "ci-fix"
     if reason == "architectural-guidelines-assessment":
         return "guidelines-assessment"
     if reason in _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS or reason.startswith("ci-local-unfixable:"):

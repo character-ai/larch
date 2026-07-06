@@ -1,3 +1,4 @@
 name	type	pattern	expected_outcome	severity
 cache-freshness	manifest-field	manifest.json::larch_version < latest	run plugin matches or lags current (informational when behind)	low
+invariant-assessment	file	architectural-invariant-assessment.md	committed Gate C invariant assessment present and non-empty when file exists	high
 guideline-assessment	file	architectural-guideline-assessment.md	committed Gate C guideline assessment present and non-empty when file exists	low

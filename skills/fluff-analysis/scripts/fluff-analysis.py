@@ -32,7 +32,7 @@ if str(python_dir) not in sys.path:
     sys.path.insert(0, str(python_dir))
 
 from larch.core import config  # noqa: E402
-from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR  # noqa: E402
+from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, DESIGN_ASSESSMENT, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_DESIGN_ASSESSMENT, INVARIANT_SHIP_OUTCOME_SIDECAR, validate_invariant_ship_outcome_record  # noqa: E402
 from larch.issue.audit_runs import implement_step8_reachable  # noqa: E402
 from larch.issue.rejected_analysis import (  # noqa: E402
     _lookup_jsonl_record,
@@ -696,22 +696,22 @@ def _enumerate_design_run_dirs(design_root, cutoff, since_version):
     return run_dirs
 
 
-def _collect_guideline_assessment_coverage(design_root, cutoff, since_version):
+def _collect_arch_assessment_coverage(design_root, cutoff, since_version, *, artifact_name, clean_note, violation_kind):
     coverage = []
     for run_dir, manifest in _enumerate_design_run_dirs(design_root, cutoff, since_version):
-        path = os.path.join(run_dir, DESIGN_ASSESSMENT)
+        path = os.path.join(run_dir, artifact_name)
         has_artifact = False
         kind = "missing"
         if os.path.exists(path) or os.path.islink(path):
             regular_file = os.path.isfile(path) and not os.path.islink(path)
             body = read_text(path) if regular_file else ""
             if regular_file and body.strip():
-                if body.rstrip("\n") == CLEAN_PRESENTATION_NOTE:
+                if body.rstrip("\n") == clean_note:
                     has_artifact = True
                     kind = "clean"
                 else:
                     has_artifact = True
-                    kind = "deviation"
+                    kind = violation_kind
         coverage.append({
             "run_id": os.path.basename(run_dir),
             "larch_version": manifest.get("larch_version", "") if isinstance(manifest.get("larch_version", ""), str) else "",
@@ -720,6 +720,28 @@ def _collect_guideline_assessment_coverage(design_root, cutoff, since_version):
             "assessment_kind": kind,
         })
     return coverage
+
+
+def _collect_guideline_assessment_coverage(design_root, cutoff, since_version):
+    return _collect_arch_assessment_coverage(
+        design_root,
+        cutoff,
+        since_version,
+        artifact_name=DESIGN_ASSESSMENT,
+        clean_note=CLEAN_PRESENTATION_NOTE,
+        violation_kind="deviation",
+    )
+
+
+def _collect_invariant_assessment_coverage(design_root, cutoff, since_version):
+    return _collect_arch_assessment_coverage(
+        design_root,
+        cutoff,
+        since_version,
+        artifact_name=INVARIANT_DESIGN_ASSESSMENT,
+        clean_note=CLEAN_INVARIANT_PRESENTATION_NOTE,
+        violation_kind="violation",
+    )
 
 
 def _enumerate_implement_run_dirs(implement_root, cutoff, since_version):
@@ -791,6 +813,50 @@ def _collect_implement_guideline_outcome_coverage(implement_root, cutoff, since_
             except (ValueError, TypeError):
                 data = None
             if _valid_guideline_outcome(data):
+                classification = "valid"
+                outcome = str(data.get("outcome") or "")
+                reason = str(data.get("reason") or "")
+                assessment_kind = str(data.get("assessment_kind") or "")
+        coverage.append({
+            "run_id": os.path.basename(run_dir),
+            "larch_version": version,
+            "started_at": manifest.get("started_at", "") if isinstance(manifest.get("started_at", ""), str) else "",
+            "classification": classification,
+            "outcome": outcome,
+            "reason": reason,
+            "assessment_kind": assessment_kind,
+        })
+    return coverage
+
+
+
+
+def _valid_invariant_outcome(data):
+    return validate_invariant_ship_outcome_record(data) is None
+
+
+def _collect_implement_invariant_outcome_coverage(implement_root, cutoff, since_version):
+    coverage = []
+    cutover = parse_larch_version(config.INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION)
+    for run_dir, manifest in _enumerate_implement_run_dirs(implement_root, cutoff, since_version):
+        run_path = Path(run_dir)
+        version = manifest.get("larch_version", "") if isinstance(manifest.get("larch_version", ""), str) else ""
+        version_tuple = parse_larch_version(version)
+        step8 = implement_step8_reachable(run_path, manifest)
+        at_cutover = version_tuple is not None and cutover is not None and version_tuple >= cutover
+        classification = "missing-legacy"
+        outcome = ""
+        reason = ""
+        assessment_kind = ""
+        artifact = os.path.join(run_dir, INVARIANT_SHIP_OUTCOME_SIDECAR)
+        if step8 and at_cutover:
+            classification = "missing-current"
+        if os.path.exists(artifact) or os.path.islink(artifact):
+            try:
+                data = json.loads(read_text(artifact) or "{}")
+            except (ValueError, TypeError):
+                data = None
+            if _valid_invariant_outcome(data):
                 classification = "valid"
                 outcome = str(data.get("outcome") or "")
                 reason = str(data.get("reason") or "")
@@ -879,9 +945,11 @@ def acc_rate(rows):
 # --------------------------------------------------------------------------
 # report rendering
 # --------------------------------------------------------------------------
-def render(records, cutoff, min_group, since_version=None, assessment_coverage=None, guideline_outcome_coverage=None, i_fn_rows=None):
+def render(records, cutoff, min_group, since_version=None, assessment_coverage=None, guideline_outcome_coverage=None, invariant_assessment_coverage=None, invariant_outcome_coverage=None, i_fn_rows=None):
     assessment_coverage = assessment_coverage or []
     guideline_outcome_coverage = guideline_outcome_coverage or []
+    invariant_assessment_coverage = invariant_assessment_coverage or []
+    invariant_outcome_coverage = invariant_outcome_coverage or []
     i_fn_rows = i_fn_rows or []
     design = [r for r in records if r["skill"] == "design"]
     impl = [r for r in records if r["skill"] == "implement"]
@@ -906,7 +974,9 @@ def render(records, cutoff, min_group, since_version=None, assessment_coverage=N
     src = collections.Counter(r["source"] for r in records)
     out.append("- Sources: " + ", ".join("%s=%d" % (k, v) for k, v in sorted(src.items())))
     if not i_all and not d_inscope:
+        out += _section_guideline_assessment_coverage(invariant_assessment_coverage, title="Invariant assessment coverage")
         out += _section_guideline_assessment_coverage(assessment_coverage)
+        out += _section_implement_guideline_outcome_coverage(invariant_outcome_coverage, title="Implement invariant outcome coverage")
         out += _section_implement_guideline_outcome_coverage(guideline_outcome_coverage)
         out += _section_false_negatives(i_fn_rows, d_fn_inscope, cutoff=cutoff, since_version=since_version)
         out.append("")
@@ -914,7 +984,9 @@ def render(records, cutoff, min_group, since_version=None, assessment_coverage=N
         return "\n".join(out) + "\n"
 
     out += _section_baselines(i_all, d_inscope, design)
+    out += _section_guideline_assessment_coverage(invariant_assessment_coverage, title="Invariant assessment coverage")
     out += _section_guideline_assessment_coverage(assessment_coverage)
+    out += _section_implement_guideline_outcome_coverage(invariant_outcome_coverage, title="Implement invariant outcome coverage")
     out += _section_implement_guideline_outcome_coverage(guideline_outcome_coverage)
     out += _section_groups(i_all, d_inscope, min_group)
     out += _section_testing(i_all)
@@ -944,14 +1016,14 @@ def _section_baselines(i_all, d_inscope, design):
     return out
 
 
-def _section_guideline_assessment_coverage(assessment_coverage):
+def _section_guideline_assessment_coverage(assessment_coverage, title="Guideline assessment coverage"):
     if not assessment_coverage:
         return []
     total = len(assessment_coverage)
     with_artifact = sum(1 for row in assessment_coverage if row.get("has_artifact"))
     clean = sum(1 for row in assessment_coverage if row.get("assessment_kind") == "clean")
     deviation = sum(1 for row in assessment_coverage if row.get("assessment_kind") == "deviation")
-    out = ["", "## Guideline assessment coverage", ""]
+    out = ["", "## " + title, ""]
     out.append("| runs scanned | runs with assessment artifact | clean count | deviation count |")
     out.append("|--:|--:|--:|--:|")
     out.append("| %d | %d | %d | %d |" % (total, with_artifact, clean, deviation))
@@ -971,7 +1043,7 @@ def _section_guideline_assessment_coverage(assessment_coverage):
     return out
 
 
-def _section_implement_guideline_outcome_coverage(guideline_outcome_coverage):
+def _section_implement_guideline_outcome_coverage(guideline_outcome_coverage, title="Implement guideline outcome coverage"):
     if not guideline_outcome_coverage:
         return []
     total = len(guideline_outcome_coverage)
@@ -982,7 +1054,7 @@ def _section_implement_guideline_outcome_coverage(guideline_outcome_coverage):
     clean = sum(1 for row in valid_rows if row.get("outcome") == "clean")
     dropped = sum(1 for row in valid_rows if row.get("outcome") == "dropped")
     reasons = collections.Counter(row.get("reason", "") for row in valid_rows if row.get("outcome") == "dropped")
-    out = ["", "## Implement guideline outcome coverage", ""]
+    out = ["", "## " + title, ""]
     out.append("| runs scanned | valid | missing-current | missing-legacy | pinned | clean | dropped | drop rate |")
     out.append("|--:|--:|--:|--:|--:|--:|--:|--:|")
     out.append(
@@ -1405,7 +1477,9 @@ def main(argv=None):
                       post_only_tags=args.post_only_tags)
     i_fn_rows = build_impl_fn_rows(log_root, cutoff=cutoff, since_version=args.since_version)
     assessment_coverage = _collect_guideline_assessment_coverage(os.path.join(log_root, "design"), cutoff, args.since_version)
+    invariant_assessment_coverage = _collect_invariant_assessment_coverage(os.path.join(log_root, "design"), cutoff, args.since_version)
     guideline_outcome_coverage = _collect_implement_guideline_outcome_coverage(os.path.join(log_root, "implement"), cutoff, args.since_version)
+    invariant_outcome_coverage = _collect_implement_invariant_outcome_coverage(os.path.join(log_root, "implement"), cutoff, args.since_version)
     report = render(
         records,
         cutoff,
@@ -1413,6 +1487,8 @@ def main(argv=None):
         since_version=args.since_version,
         assessment_coverage=assessment_coverage,
         guideline_outcome_coverage=guideline_outcome_coverage,
+        invariant_assessment_coverage=invariant_assessment_coverage,
+        invariant_outcome_coverage=invariant_outcome_coverage,
         i_fn_rows=i_fn_rows,
     )
 

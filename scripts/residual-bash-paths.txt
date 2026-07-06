@@ -116,6 +116,7 @@ skills/implement/scripts/step-5-review.sh
 skills/implement/scripts/step-7a.sh
 skills/implement/scripts/step-architectural-guidelines-write-compose.sh
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh
+skills/implement/scripts/step-architectural-invariants-write-compose.sh
 skills/implement/scripts/test-architectural-guidelines-step.sh
 skills/implement/scripts/test-cleanup.sh
 skills/implement/scripts/test-flush-execution-issues.sh

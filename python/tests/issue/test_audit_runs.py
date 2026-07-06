@@ -127,6 +127,20 @@ def _scan_design_guideline(tmp_path: Path, run: Path, capsys: pytest.CaptureFixt
     return json.loads(capsys.readouterr().out.splitlines()[0])
 
 
+def _scan_invariant_assessment(tmp_path: Path, run: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    scans = tmp_path / "scans-invariant-assessment.tsv"
+    scans.write_text("name\ttype\ninvariant-assessment\tnamed-handler\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill", "implement", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    return json.loads(capsys.readouterr().out.splitlines()[0])
+
+
+def _scan_invariant_outcome(tmp_path: Path, run: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    scans = tmp_path / "scans-invariant-outcome.tsv"
+    scans.write_text("name\ttype\ninvariant-ship-outcome\tnamed-handler\n", encoding="utf-8")
+    assert audit_runs.scan_run_main(["--skill", "implement", "--run-dir", str(run), "--pr", "7", "--scans-tsv", str(scans)]) == 0
+    return json.loads(capsys.readouterr().out.splitlines()[0])
+
+
 def test_scan_run_design_guideline_assessment_missing_is_informational(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     run = tmp_path / "run"
     run.mkdir()
@@ -155,6 +169,29 @@ def test_scan_run_design_guideline_assessment_classifies_clean_and_deviation(tmp
 
     assert deviation_row["result"] == "pass"
     assert deviation_row["assessment_kind"] == "deviation"
+
+
+def test_scan_run_invariant_assessment_missing_is_informational(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+
+    row = _scan_invariant_assessment(tmp_path, run, capsys)
+
+    assert row["scan"] == "invariant-assessment"
+    assert row["result"] == "informational"
+
+
+def test_scan_run_invariant_assessment_symlink_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    run = tmp_path / "run"
+    run.mkdir()
+    target = tmp_path / "target.md"
+    target.write_text("Violation\n", encoding="utf-8")
+    (run / ag.INVARIANT_DESIGN_ASSESSMENT).symlink_to(target)
+
+    row = _scan_invariant_assessment(tmp_path, run, capsys)
+
+    assert row["result"] == "fail"
+    assert "regular non-symlink file" in str(row.get("detail", ""))
 
 
 def test_scan_run_design_guideline_assessment_empty_or_nonregular_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -327,6 +364,38 @@ def test_guideline_ship_outcome_scan_step8_parity(
     row = _scan_guideline_outcome(tmp_path, run, capsys)
 
     assert row["result"] == expected_result
+
+
+def test_scan_run_invariant_ship_outcome_missing_and_malformed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    missing_run = tmp_path / "missing"
+    missing_run.mkdir()
+    (missing_run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}) + "\n",
+        encoding="utf-8",
+    )
+    (missing_run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+
+    missing_row = _scan_invariant_outcome(tmp_path, missing_run, capsys)
+
+    assert missing_row["result"] == "fail"
+    assert "missing invariant outcome artifact" in str(missing_row["detail"])
+
+    malformed_run = tmp_path / "malformed"
+    malformed_run.mkdir()
+    (malformed_run / "manifest.json").write_text(
+        json.dumps({"larch_version": config.INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION, "steps_ran": {"step8": True}}) + "\n",
+        encoding="utf-8",
+    )
+    (malformed_run / "final-summary.md").write_text("summary\n", encoding="utf-8")
+    (malformed_run / ag.INVARIANT_SHIP_OUTCOME_SIDECAR).write_text("{not-json\n", encoding="utf-8")
+
+    malformed_row = _scan_invariant_outcome(tmp_path, malformed_run, capsys)
+
+    assert malformed_row["result"] == "fail"
+    assert "malformed" in str(malformed_row["detail"])
 
 
 def test_guideline_ship_outcome_scan_legacy_and_malformed(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:

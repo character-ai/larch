@@ -9,6 +9,7 @@ IMPL_MD="$ROOT/skills/implement/SKILL.md"
 SHARED_DESIGN_WAIT_MD="$ROOT/skills/shared/design-background-wait.md"
 ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
+DESIGN_OUTLINE_MD="$ROOT/skills/design/references/design-outline.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
@@ -375,6 +376,10 @@ contains "$SKILL_MD" 'If `STEP1D5_ACTION=run`: **MANDATORY: READ ENTIRE FILE**: 
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.7 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.' 'Step 1d.7 must stop on PAUSE_OK before skip-approve and outline work'
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`' 'Step 1d.7 must fail closed on pause failure or missing skip-approve directive'
 not_contains "$SKILL_MD" 'Run exactly once after skip or finish' 'Step 1d.5 must not describe completion fence as after skip'
+contains "$DESIGN_OUTLINE_MD" 'When `skip_approve_requested=true`: run Output, run Presentation via `present-note --repo-root "$REPO_ROOT"`, assess invariants before guidelines, and if invariant violations remain, enter the remediation loop instead of auto-approving.' 'Design outline must block skip-approve auto-approval until invariant remediation clears'
+contains "$DESIGN_OUTLINE_MD" 'Bound the invariant outline remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-outline-remediation.count`, read on Step 1d.7 invariant entry, incremented per rewrite, mirroring Gate C. Hard-stop after the bound and record a warning.' 'Design outline must pin bounded remediation counter contract'
+contains "$APPROVAL_GATES_MD" 'If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving.' 'Gate C must block auto-approval until invariant remediation clears'
+contains "$APPROVAL_GATES_MD" 'Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.' 'Gate C must pin bounded remediation counter contract'
 
 contains "$MAKEFILE" 'python3 -m pytest python/tests/design/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 
@@ -484,6 +489,9 @@ not_contains "$SKILL_MD" 'Before any reviewer-finding `plan.txt` replacement, ru
 not_contains "$SKILL_MD" '**Gate B resume idempotency**' 'SKILL must not retain inline Gate B resume idempotency block'
 not_contains "$SKILL_MD" 'do not probe the apply-ready marker' 'SKILL must not retain old Gate B idempotency probe wording'
 contains "$SKILL_MD" 'Apply the `approval-gates.md` §Gate B **Resume idempotency guard** before executing Gate B.' 'SKILL must point Gate B idempotency to approval-gates'
+contains "$SKILL_MD" 'Consult `ARCHITECTURAL_INVARIANTS.md` before `ARCHITECTURAL_GUIDELINES.md`' 'SKILL must keep invariant knowledge ahead of guidelines'
+contains "$SKILL_MD" 'Call `python/cli.py architectural-invariants read` or the in-process helper before `python/cli.py architectural-guidelines read`.' 'SKILL must read invariants before guidelines'
+contains "$SKILL_MD" 'If invariants are `present` with parsed content, fold hard constraints from helper output first;' 'SKILL must fold invariant constraints first'
 contains "$SKILL_MD" 'runs FINALIZE, runs probe-only dialectic eligibility, emits and persists `STEP4_MODE`, then writes `.completed/step-3b`' 'Step 3b prose must document finalize ordering'
 contains "$SKILL_MD" 'Bind `STEP2B5_NEXT_ACTION` from `.design-postplan-emit-result.env` and branch on that action key.' 'Step 2b.5 direct-entry must be action-row only'
 not_contains "$SKILL_MD" 'Gate A / discussion-round2 fallback rc `12`' 'Step 2b.5 direct-entry must not mention Gate A fallback rc 12'

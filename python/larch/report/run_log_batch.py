@@ -16,7 +16,12 @@ from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
 from larch.core import proc
-from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
+from collections.abc import Callable
+
+from larch.core.architectural_guidelines import (
+    validate_guideline_ship_outcome_record,
+    validate_invariant_ship_outcome_record,
+)
 from larch.core import redact
 from larch import io as larch_io
 from larch.errors import ShipError
@@ -80,6 +85,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "session-transcript": BatchInfo(".jsonl", "replace", "none"),
     "vendor-failure-diagnostics": BatchInfo(".txt", "replace", "none"),
     "plan-goals-test": BatchInfo(".md", "replace", "plan-goals"),
+    config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
 }
@@ -224,6 +230,12 @@ def _validate_plan_goals_payload(path: Path) -> None:
         )
 
 
+_JSON_OBJECT_VALIDATORS: dict[str, Callable[[object], str | None]] = {
+    config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: validate_guideline_ship_outcome_record,
+    config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: validate_invariant_ship_outcome_record,
+}
+
+
 def _batch_validate_payload(*, batch: str, path: Path) -> None:
     sanitizer = _batch_sanitizer(batch)
     text = path.read_text(encoding="utf-8", errors="replace")
@@ -231,10 +243,11 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
         data = json.loads(text)
         if not isinstance(data, dict):
             raise ValueError(f"batch {batch} requires a JSON object")
-        if batch == config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME:
-            reason = validate_guideline_ship_outcome_record(data)  # type: ignore[reportUnknownArgumentType]
+        validator = _JSON_OBJECT_VALIDATORS.get(batch)
+        if validator is not None:
+            reason = validator(data)  # type: ignore[reportUnknownArgumentType]
             if reason is not None:
-                raise ValueError(f"batch {batch} requires a valid guideline outcome artifact: {reason}")
+                raise ValueError(f"batch {batch} validation failed: {reason}")
     elif sanitizer == "json-lines":
         for line in text.splitlines():
             if not line.strip():

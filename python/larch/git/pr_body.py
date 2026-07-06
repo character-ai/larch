@@ -380,12 +380,25 @@ def architectural_guidelines_section(body: str) -> str:
     return section.strip()
 
 
+def architectural_invariants_section(body: str) -> str:
+    """Return normalized architectural-invariants section body, or empty when absent."""
+    heading = "## Architectural invariants"
+    idx = body.find(heading)
+    if idx < 0:
+        return ""
+    rest = body[idx + len(heading) :].lstrip("\n")
+    next_heading = rest.find("\n## ")
+    section = rest[:next_heading] if next_heading >= 0 else rest
+    return section.strip()
+
+
 def compose_pr_body(
     *,
     summary: str,
     mermaid: str = "",
     test_plan: str = "- [ ] `make py-lint`\n- [ ] `make py-test`\n",
     issue_number: int | None = None,
+    architectural_invariants_note: str = "",
     architectural_guidelines_note: str = "",
 ) -> str:
     if mermaid.strip():
@@ -394,6 +407,8 @@ def compose_pr_body(
             msg = f"mermaid fragment rejected: {','.join(mermaid_result.reason_tokens)}"
             raise ShipError(msg)
     parts = [summary.rstrip(), ""]
+    if architectural_invariants_note.strip():
+        parts.extend(["## Architectural invariants", "", architectural_invariants_note.strip(), ""])
     if architectural_guidelines_note.strip():
         parts.extend(["## Architectural guidelines", "", architectural_guidelines_note.strip(), ""])
     if mermaid.strip():

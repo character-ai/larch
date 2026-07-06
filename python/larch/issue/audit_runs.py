@@ -18,9 +18,9 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from larch.issue import oos_disposition
 from larch.core import config
-from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
+from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import proc
-from larch.core.architectural_guidelines import CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR
+from larch.core.architectural_guidelines import CLEAN_INVARIANT_PRESENTATION_NOTE, CLEAN_PRESENTATION_NOTE, GUIDELINE_SHIP_OUTCOME_SIDECAR, INVARIANT_SHIP_OUTCOME_SIDECAR
 from larch.report.run_log_tolerance import stale_bail_heading_with_pr_evidence
 from larch.review.self_review_tally import self_review_tally_items
 
@@ -202,6 +202,27 @@ def _guideline_assessment_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict
     return {"scan": name, "pr": pr, "result": "pass", "assessment_kind": kind}
 
 
+def _invariant_assessment_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
+    path = run_dir / "architectural-invariant-assessment.md"
+    if not path.exists() and not path.is_symlink():
+        return {
+            "scan": name,
+            "pr": pr,
+            "result": "informational",
+            "detail": "no committed invariant assessment artifact; expected for older runs or absent/invalid/empty invariants",
+        }
+    if path.is_symlink() or not path.is_file():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact must be a regular non-symlink file"}
+    try:
+        body = path.read_text(encoding="utf-8", errors="replace")
+    except OSError as exc:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": f"assessment artifact unreadable: {exc}"}
+    if not body.strip():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "assessment artifact is empty"}
+    kind = "clean" if body.rstrip("\n") == CLEAN_INVARIANT_PRESENTATION_NOTE else "violation"
+    return {"scan": name, "pr": pr, "result": "pass", "assessment_kind": kind}
+
+
 def _version_tuple(raw: str) -> tuple[int, int, int] | None:
     match = re.match(r"^(\d+)\.(\d+)\.(\d+)$", (raw or "").strip())
     if not match:
@@ -214,6 +235,13 @@ def _at_or_above_guideline_outcome_cutover(manifest: object | None) -> bool:
     version = str(manifest.get("larch_version") or "") if isinstance(manifest, dict) else ""
     parsed = _version_tuple(version)
     cutover = _version_tuple(config.GUIDELINE_SHIP_OUTCOME_MIN_LARCH_VERSION)
+    return parsed is not None and cutover is not None and parsed >= cutover
+
+
+def _at_or_above_invariant_outcome_cutover(manifest: object | None) -> bool:
+    version = str(manifest.get("larch_version") or "") if isinstance(manifest, dict) else ""
+    parsed = _version_tuple(version)
+    cutover = _version_tuple(config.INVARIANT_SHIP_OUTCOME_MIN_LARCH_VERSION)
     return parsed is not None and cutover is not None and parsed >= cutover
 
 
@@ -320,8 +348,49 @@ def _guideline_ship_outcome_scan_obj(*, name: str, pr: int, run_dir: Path) -> di
     return obj
 
 
+def _invariant_ship_outcome_scan_obj(*, name: str, pr: int, run_dir: Path) -> dict[str, object]:
+    manifest = _read_json_file(run_dir / "manifest.json")
+    path = run_dir / INVARIANT_SHIP_OUTCOME_SIDECAR
+    if (run_dir / "gc-slimmed").exists() and not path.exists() and not path.is_symlink():
+        return {"scan": name, "pr": pr, "result": "informational", "detail": "gc-slimmed run lacks invariant outcome artifact"}
+    manifest_dict = manifest if isinstance(manifest, dict) else None
+    if manifest_dict is None or not implement_step8_reachable(run_dir, manifest_dict, pr=pr):
+        return {"scan": name, "pr": pr, "result": "informational", "detail": "run did not reach implement Step 8"}
+    if not path.exists() and not path.is_symlink():
+        if not _at_or_above_invariant_outcome_cutover(manifest):
+            return {"scan": name, "pr": pr, "result": "informational", "detail": "pre-cutover run lacks invariant outcome artifact"}
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "missing invariant outcome artifact"}
+    if path.is_symlink() or not path.is_file():
+        return {"scan": name, "pr": pr, "result": "fail", "detail": "invariant outcome artifact must be a regular non-symlink file"}
+    try:
+        raw = path.read_text(encoding="utf-8", errors="replace")
+        if not raw.strip():
+            return {"scan": name, "pr": pr, "result": "fail", "detail": "invariant outcome artifact is empty"}
+        data = json.loads(raw)
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": f"invariant outcome artifact malformed: {exc}"}
+    reason = validate_invariant_ship_outcome_record(data)
+    if reason is not None:
+        return {"scan": name, "pr": pr, "result": "fail", "detail": reason}
+    typed = data
+    obj: dict[str, object] = {
+        "scan": name,
+        "pr": pr,
+        "result": "pass",
+        "outcome": str(typed.get("outcome") or ""),
+        "reason": str(typed.get("reason") or ""),
+        "invariants_status": str(typed.get("invariants_status") or ""),
+    }
+    assessment_kind = str(typed.get("assessment_kind") or "")
+    if assessment_kind:
+        obj["assessment_kind"] = assessment_kind
+    return obj
+
+
 _NAMED_RUN_SCAN_HANDLERS = {
     "codex-round1-adherence": _codex_round_adherence_scan_obj,
+    "invariant-assessment": _invariant_assessment_scan_obj,
+    "invariant-ship-outcome": _invariant_ship_outcome_scan_obj,
     "guideline-assessment": _guideline_assessment_scan_obj,
     "guideline-ship-outcome": _guideline_ship_outcome_scan_obj,
 }
@@ -1053,7 +1122,7 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
             return int(str(value))
         except (TypeError, ValueError):
             return 0
-    de=dm=dc=db=dn=dskip=dch=0; gout_runs=gout_pinned=gout_clean=gout_dropped=0; partial=False; files=0
+    de=dm=dc=db=dn=dskip=dch=0; gout_runs=gout_pinned=gout_clean=gout_dropped=0; iout_runs=iout_violation=iout_clean=iout_dropped=0; partial=False; files=0
     for f in d.glob("scan-results-*.ndjson"):
         files+=1; rows,_=_iter_ndjson(f)
         for r in rows:
@@ -1073,8 +1142,14 @@ def compute_counters_main(argv: list[str] | None = None) -> int:
                 if outcome == "pinned": gout_pinned += 1
                 elif outcome == "clean": gout_clean += 1
                 elif outcome == "dropped": gout_dropped += 1
+            elif r.get("scan")=="invariant-ship-outcome" and r.get("result")=="pass":
+                iout_runs += 1
+                outcome = str(r.get("outcome") or "")
+                if outcome == "violation": iout_violation += 1
+                elif outcome == "clean": iout_clean += 1
+                elif outcome == "dropped": iout_dropped += 1
     gout_drop_rate_bps = int((gout_dropped * 10000) / gout_runs) if gout_runs else 0
-    for k,v in [("SCAN_FILES_FOUND",files),("EXON_MISCLASSIFICATIONS",p_exon+de),("EXON_DELTA",de),("OOS_CATEGORIES_MANGLED",p_mang+dm),("OOS_MANGLED_DELTA",dm),("OOS_CATEGORIES_CLEAN",p_clean+dc),("OOS_CLEAN_DELTA",dc),("OOS_CATEGORIES_BLANK",p_blank+db),("OOS_BLANK_DELTA",db),("NS_RETRIES_CURSOR_SPECIALIST",p_ns+dn),("NS_RETRIES_DELTA",dn),("NS_RETRIES_SKIPPED_RUNS",dskip),("CHANGELOG_REBASE_CONFLICTS",p_ch+dch),("CHANGELOG_DELTA",dch),("GUIDELINE_OUTCOME_RUNS",gout_runs),("GUIDELINE_OUTCOME_PINNED",gout_pinned),("GUIDELINE_OUTCOME_CLEAN",gout_clean),("GUIDELINE_OUTCOME_DROPPED",gout_dropped),("GUIDELINE_DROP_RATE_BPS",gout_drop_rate_bps)]: print(f"{k}={v}")
+    for k,v in [("SCAN_FILES_FOUND",files),("EXON_MISCLASSIFICATIONS",p_exon+de),("EXON_DELTA",de),("OOS_CATEGORIES_MANGLED",p_mang+dm),("OOS_MANGLED_DELTA",dm),("OOS_CATEGORIES_CLEAN",p_clean+dc),("OOS_CLEAN_DELTA",dc),("OOS_CATEGORIES_BLANK",p_blank+db),("OOS_BLANK_DELTA",db),("NS_RETRIES_CURSOR_SPECIALIST",p_ns+dn),("NS_RETRIES_DELTA",dn),("NS_RETRIES_SKIPPED_RUNS",dskip),("CHANGELOG_REBASE_CONFLICTS",p_ch+dch),("CHANGELOG_DELTA",dch),("GUIDELINE_OUTCOME_RUNS",gout_runs),("GUIDELINE_OUTCOME_PINNED",gout_pinned),("GUIDELINE_OUTCOME_CLEAN",gout_clean),("GUIDELINE_OUTCOME_DROPPED",gout_dropped),("GUIDELINE_DROP_RATE_BPS",gout_drop_rate_bps),("INVARIANT_OUTCOME_RUNS",iout_runs),("INVARIANT_OUTCOME_VIOLATION",iout_violation),("INVARIANT_OUTCOME_CLEAN",iout_clean),("INVARIANT_OUTCOME_DROPPED",iout_dropped)]: print(f"{k}={v}")
     print(f"CATEGORY_STATS_PARTIAL={str(partial).lower()}")
     return 0
 
