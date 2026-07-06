@@ -46,5 +46,6 @@ ci_monitor: CI status query #2 in progress after 14s
 ci_monitor: poll 2/180 pending after 18s; sleeping 10s
 ci_monitor: CI status query #3 in progress after 28s
 ci_monitor: CI fail after 32s -> evaluate_failure
+=== larch-quiet-ship.py-68980.log ===
 === larch-quiet-tracking-issue-upsert-summary-57721.log ===
 === larch-quiet-tracking-issue-upsert-summary-68387.log ===
