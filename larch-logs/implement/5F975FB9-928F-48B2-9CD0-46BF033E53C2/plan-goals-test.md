@@ -1,0 +1,166 @@
+## Goal
+Implement issue #6472: [IMPLEMENTING] [BUG] design-step3b-tail.sh: elif command grep under set -e aborts on macOS bash 3.2.
+
+## Implementation Plan
+## Plan
+
+## Scope
+
+Fix the live jq-less fallback in `/design` Step 4b tail handling. Add mechanical enforcement in the existing Bash 3.2 lint. Keep the change narrow.
+
+Approach synthesis is `NO_SKETCHES`, so this plan uses direct repository inspection and the approved outline.
+
+## Files to modify/create
+
+### UPDATED: skills/design/scripts/design-step3b-tail.sh
+
+Change the jq-less `skip_approve_requested` fallback from:
+
+- `elif command grep -Eq ... 2>/dev/null; then`
+
+to the Bash 3.2-safe condition shape:
+
+- `elif ( command grep -Eq ... "$DESIGN_TMPDIR/run-params.json" ) 2>/dev/null; then`
+
+Do not change the jq path or Gate C behavior.
+
+### UPDATED: scripts/test-lint-awk-multibyte-regex.sh
+
+Convert the two assertion helper probes at the existing `if ! command grep -Fq ...` and `if command grep -Fq ...` sites to subshell form.
+
+Use the same redirect shape as the live fix, for example:
+
+- `if ! ( command grep -Fq "$needle" "$stderr_file" ) 2>/dev/null; then`
+- `if ( command grep -Fq "$needle" "$stderr_file" ) 2>/dev/null; then`
+
+This is consistency cleanup, not a claim that these harness sites currently fail, because the helper bodies run under `set +e`.
+
+### UPDATED: scripts/lint-bash32.sh
+
+Extend the existing `awk` scan in `scan_file` with a new rule that flags grep-family probes in `if` and `elif` conditions when they use bare `command`.
+
+**Anchoring requirement (FINDING_1)**: the awk pattern MUST match only the exact unsafe shapes. It must NOT flag:
+
+- The sanctioned subshell form: `if ( command grep ... )` — the opening `(` before `command` is the distinguishing token.
+- Piped probes: `printf ... | command grep ...` or `cat file | command grep ...` — these are safe per BASH_AUTHORING.md because the pipeline already subshells grep.
+- Non-conditional uses: `command grep ... || true` or bare `command grep` — the rule fires only when the `if`/`elif` keyword immediately precedes the `command` keyword (allowing leading `!`).
+
+Use an awk regex that matches lines where `if` or `elif` is followed (after optional whitespace and optional `!`) by `command` and then a grep-family binary (`grep`, `egrep`, `fgrep`, `rg`, `ripgrep`), but where the `command` token is NOT preceded by `(`. A workable shape:
+
+```
+/( if |[\t;]if )(![ \t]+)?command[ \t]+(grep|egrep|fgrep|rg|ripgrep)/ && !/\([ \t]*command/
+
+Adapt exact boundary anchors for POSIX awk. Test the pattern against:
+- Positive: `if command grep`, `elif command grep`, `if ! command grep`
+- Negative (must NOT flag): `if ( command grep`, `elif ( command grep`, `printf x | command grep`
+
+Keep the existing behavior:
+
+- Ignore full-line comments.
+- Allow same-line `# lint-bash32: ok <reason>`.
+- Emit the normal `lint-bash32: <path>:<line>: Bash 3.2 incompatible: <rule>` format.
+- Exit `1` when any file violates.
+
+Keep it Bash 3.2 and POSIX-awk friendly. Do not add a new lint script.
+
+### UPDATED: scripts/residual-bash-paths.txt
+
+Add `skills/design/scripts/design-step3b-tail.sh` to the residual-bash-paths.txt manifest so `lint-bash32` and pre-commit cover the live jq-less fallback site (FINDING_4). Insert in alphabetical order among the other `skills/design/scripts/design-step*.sh` entries.
+
+### UPDATED: scripts/test-lint-bash32.sh
+
+Add black-box regression cases for the new lint rule.
+
+Include at least:
+
+- A failing fixture with `if command grep`.
+- A failing fixture with `elif command grep`.
+- A failing fixture with `if ! command grep`.
+- A grep-family variant such as `rg`, if present only as text in a fixture.
+- A passing fixture using the sanctioned `( command grep ... )` condition.
+- A passing fixture using `# lint-bash32: ok <reason>` on an intentional unsafe fixture line.
+- A passing fixture using a piped probe: `cat file | command grep ...` (must NOT flag).
+
+Assert the stderr includes the new rule text and relevant fixture path. Keep fixture lines with unsafe tokens suppressed in the harness itself when needed, then strip the suppression into generated temp fixtures as the harness already does for Bash 4 tokens.
+
+### UPDATED: scripts/lint-bash32.md
+
+Update the contract to list the new `if`/`elif command grep` rule and grep-family coverage. Document the anchoring boundary: the rule fires only when `command <grep-family>` appears directly after `if`/`elif` (plus optional `!`), not when preceded by `(` or inside a pipeline.
+
+Keep the suppression contract clear: `# lint-bash32: ok <reason>` is only for narrow fixtures or reviewed exceptions.
+
+### MAY_UPDATE: docs/linting.md
+
+Update the Bash 3.2 portability row only if the implementer keeps that row as an exhaustive summary of `lint-bash32` rules.
+
+Mention that the lint also rejects direct `command grep` grep-family probes in `if` and `elif` conditions.
+
+### MAY_UPDATE: BASH_AUTHORING.md
+
+Add a short pointer from the existing `if command grep` warning to `scripts/lint-bash32.sh` only if the new wording improves discoverability.
+
+Do not restate the full lint rule. The file already documents the safe `( command grep ... )` form.
+
+## Approach
+
+1. Fix the live shell site first.
+2. Clean up the two sibling harness probes for consistency.
+3. Add `skills/design/scripts/design-step3b-tail.sh` to `scripts/residual-bash-paths.txt`.
+4. Add the anchored `lint-bash32` rule (must not flag subshell or piped forms).
+5. Add harness coverage that proves unsafe forms fail and sanctioned/piped forms pass.
+6. Update the lint contract docs.
+7. Run only changed-file relevant checks.
+
+## Edge cases
+
+- Redirection placement matters. Put `2>/dev/null` outside the subshell for condition probes so the subshell receives the same grep argv and stderr stays quiet.
+- Do not flag `( command grep ... )` because that is the sanctioned form — the `(` before `command` is the distinguishing token the awk rule must check.
+- Do not flag non-conditional `command grep ... || true`; `BASH_AUTHORING.md` says that shape is valid outside `if` probes.
+- Do not flag piped probes; the pipeline already subshells grep.
+- Do not flag comments.
+- Do not require `rg` to exist on PATH in tests. It can appear inside fixture text because the linter is static.
+- Avoid regexes that require Bash 4, GNU awk extensions, or PCRE.
+
+## Failure modes
+
+- The new lint can flag its own regression harness fixtures. Keep fixture suppressions on committed fixture lines and strip them only in temp generated files.
+- An over-broad regex can flag the sanctioned `( command grep ... )` form — the NOT-preceded-by-`(` guard is critical.
+- An under-broad regex can miss `elif` or negated `if !` forms.
+- Updating only the live script without the lint leaves the recurring bug class unguarded.
+- Omitting `skills/design/scripts/design-step3b-tail.sh` from `residual-bash-paths.txt` means CI never runs lint-bash32 on the file where the live defect lives.
+
+## Testing strategy
+
+Run these focused checks after editing:
+
+- `bash scripts/lint-bash32.sh skills/design/scripts/design-step3b-tail.sh scripts/test-lint-awk-multibyte-regex.sh scripts/lint-bash32.sh scripts/test-lint-bash32.sh`
+- `bash scripts/test-lint-bash32.sh`
+- `bash scripts/test-lint-awk-multibyte-regex.sh`
+- `make test-lint-bash32`
+- `make lint-bash32`
+
+If docs changed, also run the relevant markdown/pre-commit checks for the changed docs.
+
+## Difficulty
+
+This is a small code change but it alters a runtime `/design` script and a committed-script lint. The lint anchoring must distinguish `if command grep` from the sanctioned `if ( command grep )` form, which requires a careful awk pattern. Integration risk is moderate.
+
+## Acceptance
+
+Run these focused checks after editing:
+
+- `bash scripts/lint-bash32.sh skills/design/scripts/design-step3b-tail.sh scripts/test-lint-awk-multibyte-regex.sh scripts/lint-bash32.sh scripts/test-lint-bash32.sh`
+- `bash scripts/test-lint-bash32.sh`
+- `bash scripts/test-lint-awk-multibyte-regex.sh`
+- `make test-lint-bash32`
+- `make lint-bash32`
+
+If docs changed, also run the relevant markdown/pre-commit checks for the changed docs.
+
+review_status: complete
+rounds_completed: 1
+difficulty: MODERATE
+diff_lines: 85
+
+## Test plan
+(no test plan section in plan-file)
