@@ -136,6 +136,12 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
     <tr><td colspan="2">Recover verified real rejected code-review findings from committed run logs and file issues by default. Security-sensitive findings are not public-filed, OOS-deferred findings are excluded, and the stable <code>finding_hash</code> uses file plus concern only, excluding run metadata and filesystem state.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
+      <td><a href="docs/skills.md#learn-from-bugs"><code>/learn-from-bugs</code></a></td>
+      <td><code>[-n COUNT] [--state closed|open|all] [--repo OWNER/REPO] [--search QUERY] [description]</code></td>
+    </tr>
+    <tr><td colspan="2">Mine a repository's closed bug reports for recurring root-cause patterns, then propose preventions ranked by mechanical enforceability: lint rules, architectural invariants, guideline entries, and issues to file for still-broken code. Report-only by default: it compresses each body to a compact root-cause digest, maps every recurring principle to the repo's existing coverage (guidelines, <code>.claude/rules/</code>, lints) before proposing the residual gap, and runs the synthesis inline with no sub-agent fan-out. Repository and GitHub changes are gated behind explicit approval; filing goes through <code>/issue</code>.</td></tr>
+    <tr><td colspan="2"><hr></td></tr>
+    <tr>
       <td><a href="docs/skills.md#difficulty-calibration"><code>/difficulty-calibration</code></a></td>
       <td><code>[--log-root DIR] [--out FILE]</code></td>
     </tr>
