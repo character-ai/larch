@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- plan already requires persist stdout registration; filter helper emits content not machine KV rows
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- Gate C audit works with tmpdir-only snapshot; publish exclusion is log hygiene not feature necessity
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- duplicate of round-1 OOS_2/OOS_3 and FINDING_6
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=excellent UNCERTAIN=false -- duplicate exclusion concern already raised in round 1
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false

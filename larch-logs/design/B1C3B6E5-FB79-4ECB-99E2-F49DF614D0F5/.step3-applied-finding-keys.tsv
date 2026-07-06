@@ -1,0 +1,9 @@
+1	the gate c `--skip-approve` flow still has a stale auto-approve carve-out and an insufficient post-audit predicate, so unattended runs can approve before audit or ignore strong dissent.
+1	gate c prompt render calls do not reliably propagate the audit outcome into `--accepted-audit-escalation`, so strong dissent can be dropped from the prompt on initial and re-fire paths.
+1	the gate c audit read list omits durable round 1 refusal and approved-outline non-goal sources, so the strong-dissent bar can miss conflicts that are not copied into `plan.txt`.
+1	auditing raw `accepted-plan-findings-all.md` without one-by-one skip filtering can misclassify operator-skipped findings as application failures or false dissent.
+1	an old accepted-findings audit can be reused on gate c re-entry, so later discussion or fixes may ship against stale audit state.
+1	mild disagreements need a printed compact digest before prompt or skip-approve breadcrumb, or the audit trail becomes non-obvious.
+2	gate c must explicitly select the accepted findings corpus it passes to `filter-gate-b-skipped`, and its fallback precedence must mirror `compose_review.py`; otherwise it can filter the wrong set and mis-handle cumulative accepted findings or one-by-one skips.
+2	gate c fidelity must compare the final plan against the cumulative applied findings set, not only the last round’s `accepted-plan-findings.md`, or it can misread valid earlier applied changes as unrelated damage.
+2	if `filter-gate-b-skipped` fails, gate c must stop rather than continue with an unfiltered accepted set; otherwise it can emit false dissent or fidelity failures and incorrectly block `--skip-approve`.

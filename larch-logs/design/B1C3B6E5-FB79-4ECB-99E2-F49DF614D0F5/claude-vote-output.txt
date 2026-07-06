@@ -1,0 +1,10 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- overlaps prior neutral round-1 FINDING_7; plan's conditional "if they emit status rows" already mandates registration for persist-accepted-audit, and filter-gate-b-skipped emits prompt-side stdout not a machine-stdout key row
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan mandates SKILL.md update; structural harness check is additional verification, same category as round-1 accepted OOS_4
+FINDING_6: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 FINDING_9 (rejected, YES=0/3) and round-1 OOS_1 (accepted OOS); panel already routed this concern to tracked issue
+OOS_1: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 OOS_1 (accepted OOS, YES=3/3)
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of round-1 OOS_1 (accepted OOS, YES=3/3)
+OOS_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false

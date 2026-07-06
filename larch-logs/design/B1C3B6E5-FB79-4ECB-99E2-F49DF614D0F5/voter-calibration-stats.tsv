@@ -1,0 +1,4 @@
+tool	yes_votes	valid_yes_severity_count	major	minor	nit	missing_severity	high_rate	calibration_score	uncalibrated
+claude	244	244	145	90	9	0	0.594	1.000	false
+codex	545	545	347	195	3	0	0.637	1.000	false
+cursor	346	346	195	143	8	0	0.564	1.000	false

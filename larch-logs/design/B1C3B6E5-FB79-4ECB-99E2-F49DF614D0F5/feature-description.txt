@@ -1,0 +1,32 @@
+# /design: main-agent audit of accepted plan-review findings at Gate C
+
+/design: main-agent audit of accepted plan-review findings at Gate C
+
+## Motivation
+
+Cost reductions lowered the model quality of /design subtask agents. The Step 3 loop applies accepted findings inside a background task via `plan revise-waterfall` (Codex `--model-role fix`, then Cursor, then Claude subagent). That step does whole-file rewrites of `plan.txt`. No one semantically checks either side of this channel:
+
+- **Acceptance judgment**: the quality-reduced panel may accept findings that should not pass.
+- **Application fidelity**: the reviser may apply findings wrong, or damage unrelated plan sections in the rewrite. Postplan validation is mechanical only (trailers, command validation, size, drift).
+
+The main agent applies findings itself (prompt-side Gate B with semantic dedup) only on loop bail-outs. On the happy path it sees `voting-tally.md` and the rejected-findings report. It sees the full revised plan only when the plan is at or under `LARCH_DESIGN_PLAN_SUMMARY_THRESHOLD` lines, or when a guidelines assessment forces an on-disk read.
+
+## Proposal
+
+Add a mandatory main-agent audit sub-step to Gate C Presentation (Step 4b, before the prompt). Mirror the shape of the existing architectural-guidelines assessment.
+
+1. **Audit acceptance.** The main agent reads `accepted-plan-findings-all.md` plus the complete on-disk `plan.txt`. It classifies each accepted finding: agree, mild-disagree (printed note), or strong-disagree (escalate).
+2. **Audit application fidelity.** The Step 3 loop emits per-round mechanical before/after diffs from existing snapshots (`plan.txt.before-revise`, `plan-pre-apply-round-N.txt`). The main agent verifies findings were applied faithfully and no unrelated sections changed.
+3. **Escalate, never silently revert.** A silent main-agent veto would corrupt the voting contract and reviewer points. On strong disagreement, surface the dissent in the Gate C `AskUserQuestion`. Reversal flows through the existing Discuss further to Gate A path. This matches the 0-eligible-voters main-agent-adjudication precedent.
+4. **Concrete escalation bar.** Escalate only when an applied finding would cause concrete breakage, or contradicts an explicit Round-1 refusal or approved-outline non-goal. Everything else is a note.
+5. **`--skip-approve` interplay.** Strong disagreement overrides auto-approve and forces the Gate C prompt. This is the tripwire for unattended runs. Agree and mild-disagree keep auto-approve.
+6. **Persistence.** Persist the assessment into the design log via the `persist-design-assessment` pattern. Consider a `plan-review preview --variant accepted-audit` helper to emit the digest.
+7. **Bias guard.** Confine escalation to concrete defects, not style preference. On the inline-fallback drafting path the main agent judges reviewer changes to its own draft.
+
+## Cost
+
+Low single-digit percent of a run: roughly 10-15k extra input tokens plus about 2k output at Gate C, carried through the few remaining turns mostly as cache reads. End-of-run placement is deliberate. Per-round main-agent participation would force loop bail-outs and reopen the background Step 3 loop.
+
+## Out of scope
+
+Raising the reviser tier in `plan revise-waterfall` (it currently leads with Codex `--model-role fix`). That is a complementary lever, not part of this proposal.
