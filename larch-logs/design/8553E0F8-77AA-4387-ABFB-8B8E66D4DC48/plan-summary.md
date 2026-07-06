@@ -1,0 +1,1 @@
+Plan: update the poll guard to allow `Read` access to `tasks/*.output`, add Step 3 review keepalives without breaking KV stdout, document the new recovery contract, and pin both behaviors with focused harness updates.
