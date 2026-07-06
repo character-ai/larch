@@ -16,6 +16,7 @@ from larch.core import redact
 from larch.report import tokens
 from larch.report import run_log_corpus
 from larch.errors import ShipError
+from larch.git import gh
 from larch.core.proc import Runner
 from larch.report.report_tokens_models import PhaseRow, RunRecord, Skill, VendorName, VendorTotals, VENDORS, safe_int
 
@@ -65,7 +66,7 @@ def _repo_slug(*, runner: Runner, override: str | None) -> str | None:
             return override
         raise ShipError(f"ERROR: {config.ENV_LARCH_REPORT_TOKENS_REPO} must be a safe OWNER/REPO slug")
     try:
-        result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+        result = gh.repo_name_with_owner_read(runner)
     except OSError as exc:
         print(f"ERROR: could not resolve GitHub repo owner/name: {redact.redact(str(exc))}", file=sys.stderr)
         return None

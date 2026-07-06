@@ -225,6 +225,10 @@ def _body_file_args(body: str, *, redact_body: bool = True) -> Generator[tuple[s
         Path(path).unlink(missing_ok=True)
 
 
+def _effective_read_timeout(timeout: float | None) -> float | None:
+    return timeout if timeout is not None else config.CI_STATUS_QUERY_TIMEOUT_SEC
+
+
 def _retry_read(
     runner: Runner,
     argv: Sequence[str],
@@ -234,15 +238,33 @@ def _retry_read(
 ) -> CommandResult:
     """Retry reads on transient net failures; return last result (may be non-zero).
 
-    A per-call ``timeout`` (when set) bounds each attempt; a timed-out read returns
-    exit ``EXIT_TIMEOUT`` with no transient signature, so it is not retried here.
+    Every gh read is bounded by the caller-supplied timeout or the shared default.
+    A timed-out read returns exit ``EXIT_TIMEOUT`` with no transient signature, so
+    it is not retried here.
     """
+    effective_timeout = _effective_read_timeout(timeout)
+
     def attempt() -> tuple[CommandResult, int, str]:
-        res = _gh(runner, argv, cwd=cwd, timeout=timeout)
+        res = _gh(runner, argv, cwd=cwd, timeout=effective_timeout)
         return res, res.returncode, _combined(res)
 
     retried: RetryResult[CommandResult] = with_transient_retry(attempt)
     return retried.value
+
+
+def pr_view_field_read(
+    runner: Runner,
+    number: int | str,
+    field: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["pr", "view", str(number), "--repo", repo, "--json", field],
+        cwd=cwd,
+    )
 
 
 def pr_view_read(
@@ -277,9 +299,10 @@ def pr_view(
     cwd: str | None = None,
     timeout: float | None = None,
 ) -> PullRequest:
+    effective_timeout = _effective_read_timeout(timeout)
     result = pr_view_read(runner, number, repo=repo, cwd=cwd, timeout=timeout)
-    if timeout is not None and result.returncode == config.EXIT_TIMEOUT:
-        msg = f"gh pr view timed out after {timeout:.0f}s ({' '.join(result.argv)})"
+    if effective_timeout is not None and result.returncode == config.EXIT_TIMEOUT:
+        msg = f"gh pr view timed out after {effective_timeout:.0f}s ({' '.join(result.argv)})"
         raise GhReadTimeout(msg)
     if result.returncode != 0:
         _raise_read_failure(result)
@@ -295,8 +318,9 @@ def pr_view_body(
     cwd: str | None = None,
 ) -> str | None:
     """Return the PR body text, or None when gh cannot read it."""
-    result = runner.run(
-        ["gh", "pr", "view", str(number), "--repo", repo, "--json", "body"],
+    result = _retry_read(
+        runner,
+        ["pr", "view", str(number), "--repo", repo, "--json", "body"],
         cwd=cwd,
     )
     if result.returncode != 0:
@@ -732,20 +756,20 @@ def pr_checks_read(
     *,
     repo: str,
     cwd: str | None = None,
+    required: bool = False,
 ) -> CommandResult:
-    return _retry_read(
-        runner,
-        [
-            "pr",
-            "checks",
-            str(number),
-            "--repo",
-            repo,
-            "--json",
-            "name,state,bucket,link",
-        ],
-        cwd=cwd,
-    )
+    argv = [
+        "pr",
+        "checks",
+        str(number),
+        "--repo",
+        repo,
+        "--json",
+        "name,state,bucket,link",
+    ]
+    if required:
+        argv.append("--required")
+    return _retry_read(runner, argv, cwd=cwd)
 
 
 _CHECKS_JSON_BLOCKING_BUCKETS: Final = frozenset({"fail", "pending"})
@@ -815,14 +839,12 @@ def pr_checks_text_read(
     *,
     repo: str,
     cwd: str | None = None,
-    timeout: float | None = None,
+    required: bool = False,
 ) -> CommandResult:
-    return _retry_read(
-        runner,
-        ["pr", "checks", str(number), "--repo", repo],
-        cwd=cwd,
-        timeout=timeout,
-    )
+    argv = ["pr", "checks", str(number), "--repo", repo]
+    if required:
+        argv.append("--required")
+    return _retry_read(runner, argv, cwd=cwd)
 
 
 _CHECKS_TEXT_BAD_RE = re.compile(
@@ -1203,7 +1225,7 @@ def run_log_read(
     cwd: str | None = None,
 ) -> CommandResult:
     """Download the full combined log for a workflow run (gh run view --log)."""
-    return _gh(runner, ["run", "view", str(run_id), "--log", "--repo", repo], cwd=cwd)
+    return _retry_read(runner, ["run", "view", str(run_id), "--log", "--repo", repo], cwd=cwd)
 
 
 def run_list_successful_read(
@@ -1284,6 +1306,15 @@ def workflow_dispatch(
         ["workflow", "run", workflow, "--repo", repo, "--ref", ref],
         cwd=cwd,
     )
+
+
+def api_read(
+    runner: Runner,
+    args: Sequence[str],
+    *,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _retry_read(runner, ["api", *args], cwd=cwd)
 
 
 def issue_comments_list_read(
@@ -1623,11 +1654,16 @@ def issue_view_body(
     raise ShipError(msg)
 
 
-def resolve_repo_gh_only(runner: Runner, *, cwd: str | None = None) -> str | None:
-    result = runner.run(
-        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
+def repo_name_with_owner_read(runner: Runner, *, cwd: str | None = None) -> CommandResult:
+    return _retry_read(
+        runner,
+        ["repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
         cwd=cwd,
     )
+
+
+def resolve_repo_gh_only(runner: Runner, *, cwd: str | None = None) -> str | None:
+    result = repo_name_with_owner_read(runner, cwd=cwd)
     if result.returncode != 0:
         return None
     candidate = result.stdout.strip()
@@ -1727,10 +1763,7 @@ def remote_repo(
 
 
 def resolve_repo(runner: Runner, *, cwd: str | None = None) -> str | None:
-    result = runner.run(
-        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-        cwd=cwd,
-    )
+    result = repo_name_with_owner_read(runner, cwd=cwd)
     candidate = result.stdout.strip() if result.returncode == 0 else ""
     if not candidate:
         candidate = remote_repo(runner, "origin", cwd=cwd) or ""
@@ -1769,6 +1802,21 @@ def pr_edit_body_file(
     )
 
 
+def run_log_failed_read(
+    runner: Runner,
+    run_id: str,
+    *,
+    repo: str,
+    cwd: str | None = None,
+) -> CommandResult:
+    return _gh(
+        runner,
+        ["run", "view", run_id, "--repo", repo, "--log-failed"],
+        cwd=cwd,
+        timeout=_effective_read_timeout(None),
+    )
+
+
 def run_logs_failed(
     runner: Runner,
     run_id: str,
@@ -1780,7 +1828,7 @@ def run_logs_failed(
         f"--- CI log (run {run_id}, repo {repo}): failed-job log shown. "
         f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
     )
-    result = runner.run(["gh", "run", "view", run_id, "--repo", repo, "--log-failed"], cwd=cwd)
+    result = run_log_failed_read(runner, run_id, repo=repo, cwd=cwd)
     combined = result.stdout + result.stderr
     text = f"{pointer}\n"
     if combined:
@@ -1805,8 +1853,9 @@ def extract_closes_issue_from_current_pr(
     repo: str,
     cwd: str | None = None,
 ) -> str:
-    result = runner.run(
-        ["gh", "pr", "view", "--repo", repo, "--json", "body", "--jq", ".body"],
+    result = _retry_read(
+        runner,
+        ["pr", "view", "--repo", repo, "--json", "body", "--jq", ".body"],
         cwd=cwd,
     )
     if result.returncode != 0:

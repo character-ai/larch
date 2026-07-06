@@ -215,19 +215,13 @@ def _gh_pr_checks(
     cwd: str | None,
     required: bool = False,
 ) -> CommandResult:
-    argv = [
-        "gh",
-        "pr",
-        "checks",
-        str(pr),
-        "--repo",
-        repo,
-        "--json",
-        "name,state,bucket,link",
-    ]
-    if required:
-        argv.append("--required")
-    return runner.run(argv, cwd=cwd, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC)
+    return gh.pr_checks_read(
+        runner,
+        pr,
+        repo=repo,
+        cwd=cwd,
+        required=required,
+    )
 
 
 def _warn_stderr(message: str) -> None:
@@ -445,20 +439,13 @@ def _read_pr_checks_text(
     cwd: str | None,
     required: bool = False,
 ) -> str:
-    if required:
-        result = runner.run(
-            ["gh", "pr", "checks", str(pr), "--repo", repo, "--required"],
-            cwd=cwd,
-            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
-        )
-    else:
-        result = gh.pr_checks_text_read(
-            runner,
-            pr,
-            repo=repo,
-            cwd=cwd,
-            timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC,
-        )
+    result = gh.pr_checks_text_read(
+        runner,
+        pr,
+        repo=repo,
+        cwd=cwd,
+        required=required,
+    )
     _raise_on_status_query_timeout(result, label="gh pr checks")
     if result.returncode == 0:
         return result.stdout
@@ -1010,10 +997,7 @@ def collect_failed_logs(
         f"{config.CI_MONITOR_LOG_TAIL_LINES} lines shown. "
         f"Full log: https://github.com/{repo}/actions/runs/{run_id} ---"
     )
-    result = runner.run(
-        ["gh", "run", "view", run_id, "--repo", repo, "--log-failed"],
-        cwd=cwd,
-    )
+    result = gh.run_log_failed_read(runner, run_id, repo=repo, cwd=cwd)
     combined = result.stdout + result.stderr
     lines = combined.splitlines()
     tail = lines[-config.CI_MONITOR_LOG_TAIL_LINES :]

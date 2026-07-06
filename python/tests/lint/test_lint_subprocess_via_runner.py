@@ -351,3 +351,80 @@ def test_malformed_json_and_syntax_error_conventions(tmp_path: Path) -> None:
     _ = (python_dir / lsvr.BASELINE_FILENAME).write_text("[]", encoding="utf-8")
     _ = (python_dir / lsvr.EXEMPTIONS_FILENAME).write_text("{", encoding="utf-8")
     assert lsvr.main(["--root", str(tmp_path)]) == 2
+
+
+def test_direct_gh_runner_run_outside_wrapper_fails(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"mod.py": "def run(runner):\n    runner.run(['gh', 'pr', 'view'])\n"},
+        baseline=[],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 1
+
+
+def test_direct_gh_runner_run_inside_wrapper_is_exempt(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"larch/git/gh.py": "def run(runner):\n    runner.run(['gh', 'pr', 'view'])\n"},
+        baseline=[],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_git_runner_run_is_not_gh_finding(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"mod.py": "def run(runner):\n    runner.run(['git', 'status'])\n"},
+        baseline=[],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_dynamic_argv_is_not_gh_finding(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"mod.py": "def run(runner, argv):\n    runner.run(argv)\n"},
+        baseline=[],
+    )
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 0
+
+
+def test_gh_baseline_and_suppression_work(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    _write_project(
+        tmp_path,
+        files={
+            "mod.py": "def run(runner):\n    runner.run(['gh', 'pr', 'view'])\n",
+            "suppressed.py": "def run(runner):\n    runner.run(['gh', 'issue', 'view'])  # lint-subprocess-via-runner: ok fixture\n",
+        },
+        baseline=[],
+    )
+    gh_baseline = tmp_path / "python" / lsvr.GH_BASELINE_FILENAME
+    _ = gh_baseline.write_text(
+        json.dumps([
+            {
+                "file": "mod.py",
+                "qualified_symbol": "run",
+                "occurrence": 1,
+                "reason": "legacy direct gh call",
+            }
+        ]),
+        encoding="utf-8",
+    )
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 0
+    assert "runner.run([gh, ...]) occurrence 1 (baselined)" in capsys.readouterr().err
+
+
+def test_old_subprocess_baseline_rows_still_validate_with_gh_baseline(tmp_path: Path) -> None:
+    _write_project(
+        tmp_path,
+        files={"mod.py": _source("    subprocess.run(['true'])\n")},
+        baseline=[_record()],
+    )
+    _ = (tmp_path / "python" / lsvr.GH_BASELINE_FILENAME).write_text("[]", encoding="utf-8")
+
+    assert lsvr.main(["--root", str(tmp_path)]) == 0

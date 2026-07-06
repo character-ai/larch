@@ -120,10 +120,7 @@ def _resolve_repo_for_clarify(
         if not gh.validate_repo_slug(repo):
             raise _ClarifyValidationError("invalid-repo")
         return repo
-    result = runner.run(
-        ["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"],
-        cwd=cwd,
-    )
+    result = gh.repo_name_with_owner_read(runner, cwd=cwd)
     candidate = result.stdout.strip() if result.returncode == 0 else ""
     if not candidate:
         raise _ClarifyRepoResolutionError

@@ -14,6 +14,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from collections.abc import Callable
 
+from larch.core import config
 from larch.core import proc
 from larch.core.redact import redact_secrets_outbound
 
@@ -34,6 +35,10 @@ REVIEWER_RE = re.compile(r"^-[ \t]+\*\*Reviewer(?:\(s\))?\*\*:[ \t]+(.+)$")
 VOTE_RE = re.compile(r"^-[ \t]+\*\*Vote tally\*\*:[ \t]+(.+)$")
 PHASE_RE = re.compile(r"^-[ \t]+\*\*Phase\*\*:[ \t]+(.+)$")
 URL_RE = re.compile(r"https?://[^\s]+/issues/[0-9]+")
+
+
+def _gh_read(argv: list[str], *, cwd: str | None = None) -> proc.CommandResult:
+    return proc.run(argv, timeout=config.CI_STATUS_QUERY_TIMEOUT_SEC, cwd=cwd)
 
 
 def emit_kv(key: str, value: object, *, stream: object | None = None) -> None:
@@ -326,7 +331,7 @@ def _parse_create_args(argv: list[str]) -> tuple[dict[str, object], str | None]:
 
 
 def _resolve_repo() -> str:
-    result = proc.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+    result = _gh_read(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
     if result.returncode != 0:
         return ""
     return result.stdout.strip()
@@ -338,7 +343,7 @@ def _valid_labels(repo: str, labels: list[str], *, dry_run: bool) -> list[str]:
         if not repo and dry_run:
             valid.append(label)
             continue
-        result = proc.run(
+        result = _gh_read(
             ["gh", "label", "list", "--repo", repo, "--search", label, "--json", "name", "--jq", ".[].name"],
         )
         if result.returncode == 0 and label in result.stdout.splitlines():
@@ -439,7 +444,7 @@ def _rollback_orphan(repo: str, number: str, url: str, *, close_error: str = "")
 
 
 def _resolve_created_issue_id(*, repo: str, number: str, url: str, final_title: str) -> int:
-    lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv(key="ISSUE_NUMBER", value=number)
@@ -459,7 +464,7 @@ def _resolve_created_from_output(*, repo: str, output: str, final_title: str) ->
     if not parsed:
         return _emit_issue_failed(f"gh issue create did not emit a URL (output: {_flat_error(text=output)})")
     number, url = parsed
-    lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
+    lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{number}", "--jq", ".id"])
     issue_id = lookup.stdout.strip()
     if lookup.returncode == 0 and _positive_int(value=issue_id):
         emit_kv(key="ISSUE_NUMBER", value=number)
@@ -695,7 +700,7 @@ def add_blocked_by_main(argv: list[str], sleep_fn: Callable[[float], None] = tim
         if not repo:
             return _blocked_failure(client=client, blocker=blocker, message="could not determine repo")
     if not blocker_id:
-        lookup = proc.run(["gh", "api", f"/repos/{repo}/issues/{blocker}", "--jq", ".id"])
+        lookup = _gh_read(["gh", "api", f"/repos/{repo}/issues/{blocker}", "--jq", ".id"])
         blocker_id = lookup.stdout.strip()
         if lookup.returncode != 0:
             return _blocked_failure(client=client, blocker=blocker, message=f"blocker-id lookup failed for #{blocker}: {lookup.stderr}")
@@ -777,7 +782,7 @@ def list_issues_main(argv: list[str]) -> int:
             emit_kv(key="LIST_STATUS", value="failed")
             warn("WARN: failed to resolve repository name via 'gh repo view'")
             return 0
-    result = proc.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=all&per_page=100"])
+    result = _gh_read(["gh", "api", "--paginate", f"repos/{repo}/issues?state=all&per_page=100"])
     if result.returncode != 0:
         emit_kv(key="LIST_STATUS", value="failed")
         warn(f"WARN: gh api --paginate failed for repo {repo} (network, auth, or rate limit)")
@@ -873,7 +878,7 @@ def fetch_issue_details_main(argv: list[str]) -> int:
         if repo:
             cmd.extend(["--repo", repo])
         cmd.extend(["--json", "number,title,body,state,url,closedAt,comments"])
-        result = proc.run(cmd)
+        result = _gh_read(cmd)
         if result.returncode != 0 or not result.stdout.strip():
             emit_kv(key=f"FETCH_STATUS_{number}", value="failed")
             warn(f"WARN: gh issue view failed for #{number}")

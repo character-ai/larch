@@ -99,15 +99,124 @@ scan_file() {
 
     [[ -f "$path" && ! -L "$path" ]] || return 0
     set +e
-    awk -v rel="$rel" '
+    awk -v rel="$rel" -v baseline_file="$ROOT/scripts/lint-bash32-empty-array-baseline.tsv" '
+        BEGIN {
+            if_depth = 0
+            if (baseline_file != "" && (getline _line < baseline_file) >= 0) {
+                do {
+                    if (_line == "" || _line ~ /^[[:space:]]*#/) continue
+                    fields = split(_line, parts, "	")
+                    if (fields != 3 || parts[1] == "" || parts[2] == "" || parts[3] == "") {
+                        printf("lint-bash32: invalid empty-array baseline row: %s\n", _line) > "/dev/stderr"
+                        violations = 1
+                        continue
+                    }
+                    empty_array_baseline[parts[1] SUBSEP parts[2]] = 1
+                } while ((getline _line < baseline_file) > 0)
+                close(baseline_file)
+            }
+        }
         function report(rule) {
             printf("lint-bash32: %s:%s: Bash 3.2 incompatible: %s\n", rel, FNR, rule) > "/dev/stderr"
             violations = 1
+        }
+        function report_empty_array_expansion(name, suffix) {
+            if ((rel SUBSEP name) in empty_array_baseline) return
+            report("unguarded empty-array expansion ${" name suffix "}")
+        }
+        function line_opens_guard_block(line) {
+            return line ~ /(^|[[:space:];|&({])if[[:space:]]+/ && line ~ /(^|[[:space:];|&({])then([[:space:];|&)]|$)/
+        }
+        function line_closes_guard_block(line) {
+            return line ~ /(^|[[:space:];|&({])fi([[:space:];|&)]|$)/
+        }
+        function clear_line_guarded(    name) {
+            for (name in line_guarded) delete line_guarded[name]
+        }
+        function scan_empty_array_line(line,    cursor, rest, best_pos, best_type, best_name, best_len, best_suffix, name, pos, assignment_text, assignment_value, candidate) {
+            cursor = 1
+            while (cursor <= length(line)) {
+                rest = substr(line, cursor)
+                best_pos = 0
+                best_type = ""
+                best_name = ""
+                best_len = 0
+                best_suffix = ""
+
+                if (match(rest, /(^|[[:space:];|&({])([A-Za-z_][A-Za-z0-9_]*)=\([[:space:]]*[^)]*\)/)) {
+                    best_pos = RSTART
+                    best_type = "assignment"
+                    best_len = RLENGTH
+                    assignment_text = substr(rest, RSTART, RLENGTH)
+                    best_name = assignment_text
+                    sub(/^[^A-Za-z_]*/, "", best_name)
+                    sub(/=.*/, "", best_name)
+                    assignment_value = assignment_text
+                    sub(/^[^=]*=\(/, "", assignment_value)
+                    sub(/\)[[:space:]]*$/, "", assignment_value)
+                }
+
+                for (name in empty_arrays) {
+                    candidate = "${#" name "[@]}"
+                    pos = index(rest, candidate)
+                    if (pos > 0 && (best_pos == 0 || pos < best_pos)) {
+                        best_pos = pos
+                        best_type = "guard"
+                        best_name = name
+                        best_len = length(candidate)
+                        best_suffix = ""
+                    }
+                    candidate = "${" name "[@]}"
+                    pos = index(rest, candidate)
+                    if (pos > 0 && (best_pos == 0 || pos < best_pos)) {
+                        best_pos = pos
+                        best_type = "expand"
+                        best_name = name
+                        best_len = length(candidate)
+                        best_suffix = "[@]"
+                    }
+                    candidate = "${" name "[*]}"
+                    pos = index(rest, candidate)
+                    if (pos > 0 && (best_pos == 0 || pos < best_pos)) {
+                        best_pos = pos
+                        best_type = "expand"
+                        best_name = name
+                        best_len = length(candidate)
+                        best_suffix = "[*]"
+                    }
+                }
+
+                if (best_pos == 0) return
+                if (best_type == "assignment") {
+                    if (assignment_value ~ /^[[:space:]]*$/) {
+                        empty_arrays[best_name] = 1
+                        delete guard_block_depth[best_name]
+                    } else {
+                        delete empty_arrays[best_name]
+                        delete guard_block_depth[best_name]
+                    }
+                } else if (best_type == "guard") {
+                    line_guarded[best_name] = 1
+                    if (line_opens_guard_block(line)) {
+                        guard_block_depth[best_name] = if_depth + 1
+                    }
+                } else if (best_type == "expand") {
+                    if (!((best_name in line_guarded) || ((best_name in guard_block_depth) && if_depth >= guard_block_depth[best_name]))) {
+                        report_empty_array_expansion(best_name, best_suffix)
+                    }
+                }
+                cursor += best_pos + best_len - 1
+            }
         }
         {
             line = $0
             if (line ~ /lint-bash32: ok/) next
             if (line ~ /^[[:space:]]*#/) next
+
+            scan_empty_array_line(line)
+            if (line_opens_guard_block(line)) if_depth++
+            if (line_closes_guard_block(line) && if_depth > 0) if_depth--
+            clear_line_guarded()
 
             if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("declare -A associative arrays") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])typeset[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("typeset -A associative arrays") # lint-bash32: ok linter pattern

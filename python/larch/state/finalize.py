@@ -18,6 +18,7 @@ from typing import Any
 
 from larch.core import config, process_identity
 from larch.issue import execution_issues
+from larch.git import gh
 from larch.git import git
 from larch.issue import issue_query
 from larch.core import logging_util
@@ -535,10 +536,7 @@ def _rename_issue(
     if not issue or ctx.repo_unavailable:
         return "skipped"
     current = ctx.pr_title or f"Issue {issue}"
-    result = runner.run(
-        ["gh", "issue", "view", str(issue), "--repo", ctx.repo, "--json", "title,state"],
-        cwd=cwd,
-    )
+    result = gh.issue_view_field_read(runner, str(issue), "title,state", repo=ctx.repo, cwd=cwd)
     if result.returncode != 0:
         return "failed"
     try:

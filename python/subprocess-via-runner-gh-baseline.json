@@ -1,0 +1,332 @@
+[
+  {
+    "file": "larch/calibration/difficulty.py",
+    "qualified_symbol": "sync_labels_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/calibration/difficulty.py",
+    "qualified_symbol": "sync_labels_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/calibration/difficulty.py",
+    "qualified_symbol": "sync_labels_main",
+    "occurrence": 3,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/core/forked_repo.py",
+    "qualified_symbol": "phase_github",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/core/forked_repo.py",
+    "qualified_symbol": "phase_preflight",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/core/upgrade_larch.py",
+    "qualified_symbol": "_get_stable_releases",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/analyze_issues.py",
+    "qualified_symbol": "_detect_repo",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/analyze_issues.py",
+    "qualified_symbol": "fetch_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "_merged_prs",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "close_priors_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "close_priors_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "close_priors_main",
+    "occurrence": 3,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "map_runs_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "map_runs_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "preflight_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "preflight_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "resolve_prs_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "resolve_prs_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "resolve_prs_main",
+    "occurrence": 3,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "resolve_prs_main",
+    "occurrence": 4,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/combine_issues.py",
+    "qualified_symbol": "_close_issue_with_retry",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/combine_issues.py",
+    "qualified_symbol": "_repo",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/combine_issues.py",
+    "qualified_symbol": "apply_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/combine_issues.py",
+    "qualified_symbol": "fetch_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/combine_issues.py",
+    "qualified_symbol": "list_open_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/deps_audit.py",
+    "qualified_symbol": "_apply_close",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/deps_audit.py",
+    "qualified_symbol": "_apply_rewrite",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/deps_audit.py",
+    "qualified_symbol": "_fetch_open_issue_rows",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_block.py",
+    "qualified_symbol": "_repo",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_block.py",
+    "qualified_symbol": "add_blocked_by_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_block.py",
+    "qualified_symbol": "add_blocked_by_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_create_fallback",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_resolve_created_from_output",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_resolve_created_issue_id",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_resolve_repo",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_rollback_orphan",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "_valid_labels",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "add_blocked_by_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "add_blocked_by_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "cleanup_failed_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "create_one_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "list_issues_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_latest_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_latest_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_latest_main",
+    "occurrence": 3,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_main",
+    "occurrence": 2,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_main",
+    "occurrence": 3,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_main",
+    "occurrence": 4,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/promote_release.py",
+    "qualified_symbol": "promote_main",
+    "occurrence": 5,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/release_finish.py",
+    "qualified_symbol": "_gh",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/release_prepare.py",
+    "qualified_symbol": "_gh_json",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/release/release_prepare.py",
+    "qualified_symbol": "main",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/report/tokens.py",
+    "qualified_symbol": "compute_pr_line_counts",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  },
+  {
+    "file": "larch/state/_report.py",
+    "qualified_symbol": "dedup_tier_a_report",
+    "occurrence": 1,
+    "reason": "Legacy direct gh calls pending wrapper migration."
+  }
+]

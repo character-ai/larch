@@ -1,0 +1,78 @@
+[
+  {
+    "kind": "basename",
+    "artifact": "manifest.json"
+  },
+  {
+    "kind": "basename",
+    "artifact": "final-summary.md"
+  },
+  {
+    "kind": "basename",
+    "artifact": "execution-issues.md"
+  },
+  {
+    "kind": "basename",
+    "artifact": "execution-issues.ndjson"
+  },
+  {
+    "kind": "basename",
+    "artifact": "token-report.json"
+  },
+  {
+    "kind": "basename",
+    "artifact": "timing-report.json"
+  },
+  {
+    "kind": "basename",
+    "artifact": "review-findings-full.jsonl"
+  },
+  {
+    "kind": "basename",
+    "artifact": "review-panel-manifest.ndjson"
+  },
+  {
+    "kind": "basename",
+    "artifact": "review-scout-manifest.json"
+  },
+  {
+    "kind": "basename",
+    "artifact": "difficulty-rating.json"
+  },
+  {
+    "kind": "basename",
+    "artifact": "run-statistics.md"
+  },
+  {
+    "kind": "basename",
+    "artifact": "oos-issues.ndjson"
+  },
+  {
+    "kind": "relative_path",
+    "artifact": ".ship-route-exit-handoff.env"
+  },
+  {
+    "kind": "relative_path",
+    "artifact": ".design-step5c-status.env"
+  },
+  {
+    "kind": "basename",
+    "artifact": "design-report-gate-sidecars.md"
+  },
+  {
+    "kind": "basename",
+    "artifact": "plan-review-slots.ndjson"
+  },
+  {
+    "kind": "relative_path",
+    "artifact": ".completed/step-3-terminal"
+  },
+  {
+    "kind": "relative_path",
+    "artifact": ".completed/step-5c-terminal"
+  },
+  {
+    "kind": "relative_path",
+    "artifact": ".completed/step-final-summary"
+  }
+]

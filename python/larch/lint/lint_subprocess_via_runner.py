@@ -22,8 +22,10 @@ from typing import TypedDict, cast
 TOOL_FAILURE_EXIT = 2
 BASELINE_FILENAME = "subprocess-via-runner-baseline.json"
 EXEMPTIONS_FILENAME = "subprocess-via-runner-exemptions.json"
+GH_BASELINE_FILENAME = "subprocess-via-runner-gh-baseline.json"
 ALLOWED_CALLEES = frozenset({"run", "Popen", "check_output", "call"})
 BASELINE_KEYS = frozenset({"file", "qualified_symbol", "callee", "occurrence", "reason"})
+GH_BASELINE_KEYS = frozenset({"file", "qualified_symbol", "occurrence", "reason"})
 EXEMPTION_KEYS = frozenset({"file", "reason"})
 EXEMPT_FILENAMES = frozenset({"conftest.py", "test_support.py", "review_test_support.py"})
 # Virtual-environment and vendored trees live under python/ but are not larch
@@ -33,6 +35,7 @@ EXCLUDED_DIRS = frozenset({".git", "node_modules", ".venv", ".agents", "__pycach
 # python/ tree is migrating to a package layout (larch/core/ is the first subdir);
 # update this single constant when proc.py moves again.
 RUNNER_RELPATH = "larch/core/proc.py"
+GH_WRAPPER_RELPATH = "larch/git/gh.py"
 MODULE_SYMBOL = "<module>"
 PRAGMA_RE = re.compile(r"#\s*lint-subprocess-via-runner:\s*ok\s+(\S.*)$")
 STANDALONE_PRAGMA_RE = re.compile(r"^\s*#\s*lint-subprocess-via-runner:\s*ok\s+(\S.*)$")
@@ -51,6 +54,13 @@ class Exemption(TypedDict):
     reason: str
 
 
+class GhRecord(TypedDict):
+    file: str
+    qualified_symbol: str
+    occurrence: int
+    reason: str
+
+
 class BaselineError(ValueError):
     """Raised when a baseline or exemption file cannot be trusted."""
 
@@ -65,6 +75,17 @@ class Finding:
 
     def key(self) -> tuple[str, str, str, int]:
         return (self.file, self.qualified_symbol, self.callee, self.occurrence)
+
+
+@dataclass(frozen=True)
+class GhFinding:
+    file: str
+    qualified_symbol: str
+    occurrence: int
+    lineno: int
+
+    def key(self) -> tuple[str, str, int]:
+        return (self.file, self.qualified_symbol, self.occurrence)
 
 
 def normalize_file_path(raw: str) -> str:
@@ -146,6 +167,21 @@ def _subprocess_callee(node: ast.AST) -> str | None:
     return func.attr
 
 
+def _runner_run_gh_call(node: ast.AST) -> bool:
+    if not isinstance(node, ast.Call):
+        return False
+    func = node.func
+    if not isinstance(func, ast.Attribute) or func.attr != "run":
+        return False
+    if not node.args:
+        return False
+    argv = node.args[0]
+    if not isinstance(argv, (ast.List, ast.Tuple)) or not argv.elts:
+        return False
+    first = argv.elts[0]
+    return isinstance(first, ast.Constant) and first.value == "gh"
+
+
 def _collect_scope(
     body: list[ast.stmt],
     *,
@@ -192,6 +228,72 @@ def _collect_scope(
 
     for statement in body:
         walk(statement)
+
+
+def _collect_gh_scope(
+    body: list[ast.stmt],
+    *,
+    prefix: tuple[str, ...],
+    normalized_file: str,
+    findings: list[GhFinding],
+) -> None:
+    occurrence = 0
+    symbol = _qualified(prefix)
+
+    def walk(node: ast.AST) -> None:
+        nonlocal occurrence
+        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)):
+            _collect_gh_scope(
+                node.body,
+                prefix=(*prefix, node.name),
+                normalized_file=normalized_file,
+                findings=findings,
+            )
+            return
+        if isinstance(node, ast.ClassDef):
+            _collect_gh_scope(
+                node.body,
+                prefix=(*prefix, node.name),
+                normalized_file=normalized_file,
+                findings=findings,
+            )
+            return
+        if _runner_run_gh_call(node):
+            occurrence += 1
+            lineno = getattr(node, "lineno", 0)
+            findings.append(
+                GhFinding(
+                    file=normalized_file,
+                    qualified_symbol=symbol,
+                    occurrence=occurrence,
+                    lineno=lineno if isinstance(lineno, int) else 0,
+                )
+            )
+        for child in _ordered_child_nodes(node):
+            walk(child)
+
+    for statement in body:
+        walk(statement)
+
+
+def scan_gh_file(path: Path, *, python_dir: Path) -> list[GhFinding]:
+    """Return direct runner.run(["gh", ...]) findings for one source file."""
+    try:
+        source = path.read_text(encoding="utf-8")
+    except OSError:
+        return []
+    try:
+        tree = ast.parse(source)
+    except SyntaxError:
+        return []
+    findings: list[GhFinding] = []
+    _collect_gh_scope(
+        tree.body,
+        prefix=(),
+        normalized_file=path.relative_to(python_dir).as_posix(),
+        findings=findings,
+    )
+    return findings
 
 
 def scan_file(path: Path, *, python_dir: Path) -> list[Finding]:
@@ -292,6 +394,53 @@ def load_baseline(path: Path) -> list[Record]:
     return records
 
 
+def _gh_record_key(record: GhRecord) -> tuple[str, str, int]:
+    return (record["file"], record["qualified_symbol"], record["occurrence"])
+
+
+def _validate_gh_record(item: object, *, index: int, source: Path) -> GhRecord:
+    if not isinstance(item, dict):
+        raise BaselineError(f"{source}: gh record {index} must have exactly {sorted(GH_BASELINE_KEYS)}")
+    record = cast("dict[str, object]", item)
+    if set(record) != set(GH_BASELINE_KEYS):
+        raise BaselineError(f"{source}: gh record {index} must have exactly {sorted(GH_BASELINE_KEYS)}")
+    file_name = _validate_normalized_file(record["file"], source=source, index=index, kind="gh record")
+    qualified_symbol = record["qualified_symbol"]
+    occurrence = record["occurrence"]
+    reason = record["reason"]
+    if not isinstance(qualified_symbol, str) or not qualified_symbol:
+        raise BaselineError(f"{source}: gh record {index} has invalid qualified_symbol")
+    if not isinstance(occurrence, int) or isinstance(occurrence, bool) or occurrence < 1:
+        raise BaselineError(f"{source}: gh record {index} has invalid occurrence")
+    if not isinstance(reason, str) or not reason.strip():
+        raise BaselineError(f"{source}: gh record {index} has invalid reason")
+    return {
+        "file": file_name,
+        "qualified_symbol": qualified_symbol,
+        "occurrence": occurrence,
+        "reason": reason,
+    }
+
+
+def load_gh_baseline(path: Path) -> list[GhRecord]:
+    """Load and validate the optional gh wrapper-bypass baseline."""
+    if not path.is_file():
+        return []
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except OSError as exc:
+        raise BaselineError(f"{path}: cannot read gh baseline: {exc}") from exc
+    except json.JSONDecodeError as exc:
+        raise BaselineError(f"{path}: invalid JSON: {exc}") from exc
+    if not isinstance(data, list):
+        raise BaselineError(f"{path}: gh baseline must be a top-level JSON array")
+    records = [_validate_gh_record(item, index=index, source=path) for index, item in enumerate(cast("list[object]", data))]
+    duplicate = _first_duplicate_gh(_gh_record_key(record) for record in records)
+    if duplicate is not None:
+        raise BaselineError(f"{path}: duplicate gh baseline identity {format_gh_key(duplicate)}")
+    return records
+
+
 def _validate_exemption(item: object, *, index: int, source: Path) -> Exemption:
     if not isinstance(item, dict):
         raise BaselineError(f"{source}: exemption {index} must be an object")
@@ -325,7 +474,7 @@ def load_exemptions(path: Path) -> list[Exemption]:
 
 
 def _has_inline_pragma(
-    finding: Finding, *, source_lines_by_file: dict[str, tuple[str, ...]]
+    finding: Finding | GhFinding, *, source_lines_by_file: dict[str, tuple[str, ...]]
 ) -> bool:
     lines = source_lines_by_file.get(finding.file, ())
     index = finding.lineno - 1
@@ -352,10 +501,31 @@ def _collect_all(python_dir: Path) -> tuple[list[Finding], dict[str, tuple[str, 
     return findings, source_lines_by_file
 
 
+def _collect_all_gh(python_dir: Path) -> list[GhFinding]:
+    findings: list[GhFinding] = []
+    for path in iter_source_files(python_dir):
+        normalized = path.relative_to(python_dir).as_posix()
+        if normalized == GH_WRAPPER_RELPATH:
+            continue
+        findings.extend(scan_gh_file(path, python_dir=python_dir))
+    return findings
+
+
 def _first_duplicate(
     keys: Iterable[tuple[str, str, str, int]],
 ) -> tuple[str, str, str, int] | None:
     seen: set[tuple[str, str, str, int]] = set()
+    for key in keys:
+        if key in seen:
+            return key
+        seen.add(key)
+    return None
+
+
+def _first_duplicate_gh(
+    keys: Iterable[tuple[str, str, int]],
+) -> tuple[str, str, int] | None:
+    seen: set[tuple[str, str, int]] = set()
     for key in keys:
         if key in seen:
             return key
@@ -390,6 +560,11 @@ def format_key(key: tuple[str, str, str, int]) -> str:
     return f"{file_name}:{qualified_symbol} {callee}#{occurrence}"
 
 
+def format_gh_key(key: tuple[str, str, int]) -> str:
+    file_name, qualified_symbol, occurrence = key
+    return f"{file_name}:{qualified_symbol} gh#{occurrence}"
+
+
 def _format_relocation_key(key: tuple[str, str, str, int]) -> str:
     file_name, qualified_symbol, callee, occurrence = key
     return f"{file_name}:{qualified_symbol} {callee}#{occurrence}"
@@ -398,6 +573,11 @@ def _format_relocation_key(key: tuple[str, str, str, int]) -> str:
 def serialize_baseline(records: list[Record]) -> str:
     """Return canonical sorted JSON for the baseline."""
     ordered = sorted(records, key=_record_key)
+    return json.dumps(ordered, indent=2) + "\n"
+
+
+def serialize_gh_baseline(records: list[GhRecord]) -> str:
+    ordered = sorted(records, key=_gh_record_key)
     return json.dumps(ordered, indent=2) + "\n"
 
 
@@ -464,10 +644,43 @@ def _records_for_write(
     return records
 
 
+def _gh_records_for_write(
+    findings: list[GhFinding],
+    *,
+    gh_baseline_path: Path,
+    initial_reason: str | None,
+) -> list[GhRecord]:
+    baseline_records = load_gh_baseline(gh_baseline_path)
+    preserved = {_gh_record_key(record): record["reason"] for record in baseline_records}
+    reason_default = initial_reason.strip() if initial_reason is not None else None
+    records: list[GhRecord] = []
+    missing: list[str] = []
+    for finding in sorted(findings, key=lambda item: item.key()):
+        reason = preserved.get(finding.key()) or reason_default
+        if reason is None:
+            missing.append(format_gh_key(finding.key()))
+            continue
+        records.append(
+            {
+                "file": finding.file,
+                "qualified_symbol": finding.qualified_symbol,
+                "occurrence": finding.occurrence,
+                "reason": reason,
+            }
+        )
+    if missing:
+        raise BaselineError(
+            "missing baseline reasons for live gh wrapper-bypass findings:\n  "
+            + "\n  ".join(missing)
+        )
+    return records
+
+
 def _run_write(
     python_dir: Path,
     *,
     baseline_path: Path,
+    gh_baseline_path: Path,
     exemptions: list[Exemption],
     initial_reason: str | None,
 ) -> int:
@@ -486,33 +699,89 @@ def _run_write(
             baseline_path=baseline_path,
             initial_reason=initial_reason,
         )
+        gh_findings = [
+            finding
+            for finding in _collect_all_gh(python_dir)
+            if not _has_inline_pragma(finding, source_lines_by_file=source_lines_by_file)
+        ]
+        gh_records = _gh_records_for_write(
+            gh_findings,
+            gh_baseline_path=gh_baseline_path,
+            initial_reason=initial_reason,
+        )
     except BaselineError as exc:
         print(f"lint-subprocess-via-runner: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
     _ = baseline_path.write_text(serialize_baseline(records), encoding="utf-8")
+    _ = gh_baseline_path.write_text(serialize_gh_baseline(gh_records), encoding="utf-8")
     print(
         f"lint-subprocess-via-runner: wrote {len(records)} records to {baseline_path}",
         file=sys.stderr,
     )
+    print(
+        f"lint-subprocess-via-runner: wrote {len(gh_records)} gh records to {gh_baseline_path}",
+        file=sys.stderr,
+    )
     return 0
+
+
+
+def _check_gh_findings(
+    all_gh_findings: list[GhFinding],
+    *,
+    gh_baseline_keys: frozenset[tuple[str, str, int]],
+    source_lines_by_file: dict[str, tuple[str, ...]],
+) -> list[GhFinding]:
+    live_gh_findings = [
+        finding
+        for finding in all_gh_findings
+        if not _has_inline_pragma(finding, source_lines_by_file=source_lines_by_file)
+    ]
+    new_gh_findings: list[GhFinding] = []
+    warned_gh: list[GhFinding] = []
+    for finding in sorted(live_gh_findings, key=lambda item: item.key()):
+        if finding.key() in gh_baseline_keys:
+            warned_gh.append(finding)
+        else:
+            new_gh_findings.append(finding)
+    for finding in warned_gh:
+        print(
+            f"warning: {finding.file}:{finding.qualified_symbol} calls runner.run([gh, ...]) "
+            f"occurrence {finding.occurrence} (baselined)",
+            file=sys.stderr,
+        )
+    for finding in new_gh_findings:
+        print(
+            f"{finding.file}:{finding.qualified_symbol} calls runner.run([gh, ...]) "
+            f"occurrence {finding.occurrence}; use larch.git.gh",
+            file=sys.stderr,
+        )
+    return [*new_gh_findings]
 
 
 def _run_check(
     python_dir: Path,
     *,
     baseline_path: Path,
+    gh_baseline_path: Path,
     exemptions: list[Exemption],
 ) -> int:
     try:
         baseline_records = load_baseline(baseline_path)
+        gh_baseline_records = load_gh_baseline(gh_baseline_path)
         all_findings, source_lines_by_file = _collect_all(python_dir)
         duplicate = _check_duplicate_live(all_findings)
         if duplicate is not None:
             raise BaselineError(duplicate)
+        all_gh_findings = _collect_all_gh(python_dir)
+        gh_duplicate = _first_duplicate_gh(finding.key() for finding in all_gh_findings)
+        if gh_duplicate is not None:
+            raise BaselineError(f"duplicate live gh identity {format_gh_key(gh_duplicate)}")
     except BaselineError as exc:
         print(f"lint-subprocess-via-runner: {exc}", file=sys.stderr)
         return TOOL_FAILURE_EXIT
     baseline_keys = frozenset(_record_key(record) for record in baseline_records)
+    gh_baseline_keys = frozenset(_gh_record_key(record) for record in gh_baseline_records)
     live_findings = _filter_suppressed(
         all_findings,
         exemptions=exemptions,
@@ -538,7 +807,12 @@ def _run_check(
             f"occurrence {finding.occurrence}; route through proc.Runner or document an exemption",
             file=sys.stderr,
         )
-    return 1 if new_findings else 0
+    new_gh_findings = _check_gh_findings(
+        all_gh_findings,
+        gh_baseline_keys=gh_baseline_keys,
+        source_lines_by_file=source_lines_by_file,
+    )
+    return 1 if new_findings or new_gh_findings else 0
 
 
 def _parse_args(argv: list[str]) -> argparse.Namespace | None:
@@ -576,6 +850,7 @@ def main(argv: list[str] | None = None) -> int:
         )
         return TOOL_FAILURE_EXIT
     baseline_path = python_dir / BASELINE_FILENAME
+    gh_baseline_path = python_dir / GH_BASELINE_FILENAME
     exemptions_path = python_dir / EXEMPTIONS_FILENAME
     initial_reason = cast("str | None", parsed.initial_reason)
     if initial_reason is not None and not initial_reason.strip():
@@ -590,10 +865,16 @@ def main(argv: list[str] | None = None) -> int:
         return _run_write(
             python_dir,
             baseline_path=baseline_path,
+            gh_baseline_path=gh_baseline_path,
             exemptions=exemptions,
             initial_reason=initial_reason,
         )
-    return _run_check(python_dir, baseline_path=baseline_path, exemptions=exemptions)
+    return _run_check(
+        python_dir,
+        baseline_path=baseline_path,
+        gh_baseline_path=gh_baseline_path,
+        exemptions=exemptions,
+    )
 
 
 if __name__ == "__main__":

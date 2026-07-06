@@ -49,6 +49,7 @@ py-lint-checks-fast:
 	$(PYTHON) python/cli.py lint complexity-baseline
 	$(PYTHON) python/cli.py lint keyword-only
 	$(PYTHON) python/cli.py lint subprocess-via-runner
+	$(PYTHON) python/cli.py lint wire-artifact-pairing
 	$(PYTHON) python/cli.py lint tempfile-dir
 	$(PYTHON) python/cli.py lint env-via-config-constant
 	$(PYTHON) python/cli.py lint layering
@@ -74,7 +75,7 @@ py-lint-shard:
 	@if [ "$(PYLINT_SHARD_ID)" = "1" ]; then $(MAKE) py-lint-checks-fast; fi
 	cd python && $(PYTHON) cli.py lint pylint-shard --shard-id $(PYLINT_SHARD_ID) --shard-count $(PYLINT_SHARD_COUNT) --jobs $(PYLINT_JOBS)
 
-.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-tempfile-dir-baseline regen-env-via-config-constant-baseline regen-layering-baseline regen-skill-closure-baseline
+.PHONY: regen-complexity-baseline regen-keyword-only-baseline regen-subprocess-via-runner-baseline regen-wire-artifact-pairing-baseline regen-tempfile-dir-baseline regen-env-via-config-constant-baseline regen-layering-baseline regen-skill-closure-baseline
 regen-complexity-baseline:
 	# Mechanically regenerate python/complexity-baseline.json from live ruff
 	# output so the ratchet baseline is generated, not hand-edited (issue #5041).
@@ -92,6 +93,16 @@ regen-subprocess-via-runner-baseline:
 		$(PYTHON) python/cli.py lint subprocess-via-runner --write; \
 	else \
 		$(PYTHON) python/cli.py lint subprocess-via-runner --write --initial-reason 'grandfathered direct subprocess usage pre-G-Py-9 ratchet'; \
+	fi
+
+regen-wire-artifact-pairing-baseline:
+	# Regenerate python/wire-artifact-pairing-baseline.json from live manifest scan.
+	# Routine regen preserves matching per-record reasons; the bootstrap reason
+	# is used only when the baseline file is absent.
+	@if [ -f python/wire-artifact-pairing-baseline.json ]; then \
+		$(PYTHON) python/cli.py lint wire-artifact-pairing --write; \
+	else \
+		$(PYTHON) python/cli.py lint wire-artifact-pairing --write --initial-reason 'grandfathered one-sided wire artifact pre-pairing ratchet'; \
 	fi
 
 regen-tempfile-dir-baseline:

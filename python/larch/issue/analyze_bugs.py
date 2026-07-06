@@ -252,12 +252,11 @@ def _parse_json_object(stdout: str, *, desc: str) -> dict[str, Any]:
 def resolve_repo(runner: Runner, explicit: str = "") -> str:
     if explicit:
         return explicit
-    result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner"])
+    result = gh.repo_name_with_owner_read(runner)
     if result.returncode != 0:
         raise AnalyzeBugsError("could not resolve GitHub repo; pass --repo OWNER/REPO")
-    data = _parse_json_object(result.stdout, desc="gh repo view")
-    repo = data.get("nameWithOwner")
-    if not isinstance(repo, str) or "/" not in repo:
+    repo = result.stdout.strip()
+    if "/" not in repo:
         raise AnalyzeBugsError("gh repo view did not return nameWithOwner")
     return repo
 
@@ -443,7 +442,7 @@ def find_fix_by_pr_refs(runner: Runner, *, issue: IssueRecord, repo: str) -> Fix
         pr_number = _pr_number_from_ref(ref)
         if not pr_number:
             continue
-        result = runner.run(["gh", "pr", "view", pr_number, "--repo", repo, "--json", "mergeCommit"])
+        result = gh.pr_view_field_read(runner, pr_number, "mergeCommit", repo=repo)
         if result.returncode != 0:
             continue
         try:

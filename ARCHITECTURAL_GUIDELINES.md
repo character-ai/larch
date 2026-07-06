@@ -2,6 +2,13 @@
 
 These guidelines are aspirational. Surface meaningful deviations in design or implementation reviews. Move deterministic requirements into lints, hooks, or tests instead of relying on this file.
 
+## Fix discipline
+
+### G-Fix-1: Fix the class, not the instance
+- Why: one-site fixes produced the largest recurring family in the closed bug backlog; the aggregator-retry, guideline-pin, fast-fail-lane, and `NO_OPEN_BROWSER` chains each took four to nine follow-up bugs to converge (#4881, #5222, #5969, #6021, #5971, #6022, #6264).
+- Guidance: when the defect you are fixing has the same shape at sibling sites (launch lanes, step wrappers, retry classes, tally writers, sentinel cases, grace windows), enumerate the siblings by grep in the same change, and fix each one or file a tracking issue for it in the same run; never leave a conscious descope untracked.
+- Deviate when: a sibling is provably unreachable or intentionally different; say so, with the sibling list, in the PR description.
+
 ## Python coding practices
 
 ### G-Py-1: Pass composite data as frozen dataclasses
@@ -132,6 +139,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a provisional marker written before the checkpoint succeeds lets a crashed or partial run look complete. larch fails audit when `step9a1=true` lacks `run-statistics.md`, and treats disposition evidence like `oos-issues.ndjson` as separate from the completion signal.
 - Deviate when: a step whose only effect is the marker itself, with no separate postcondition artifact.
 
+### G-Idem-3: On resume or reseed, persisted run state outranks caller-supplied defaults
+- Why: a hardcoded `--merge false` reseed permanently erased operator intent after a stall (#5308), and a persisted dispatcher-committed flag skipped committing later lint-fix edits, leaving a dirty tree at rebase (#6199, #5922, #4487).
+- Guidance: read the prior state file before seeding; never reseed with hardcoded constants, and never let a sticky completion flag suppress handling of new work performed after the flag was set.
+- Deviate when: only on an explicit operator override, and record the override next to the overwritten value.
+
 ## Determinism and identity
 
 ### G-Det-1: Derive a stable cross-run identity (hash, dedup key) only from durable content, excluding run ids, paths, line hints, timestamps, and filesystem state
@@ -148,6 +160,16 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: unbounded fan-out is a cost and latency risk, and a silent cross-vendor substitution corrupts attribution and independence. larch caps review rounds and panel size, drops missing vendor rows where attribution matters (`--no-fallback`), and uses a shape-preserving Claude fallback only where the panel shape must hold (`/research`).
 - Deviate when: n/a for having a cap; the degradation policy itself is the judgment to state per surface.
 
+### G-Orch-3: Treat zero findings as a first-class result
+- Why: empty-versus-failed ambiguity silently degraded panels, retried guaranteed-empty ballots, and reported completed reviews as N/A (#3402, #5032, #6026, #4885, #4618).
+- Guidance: at every agent-output boundary (reviewer, voter, aggregator, validator, tally, self-review), represent empty-success with an explicit typed sentinel or status distinct from failure, and never let a consumer infer health or failure from emptiness alone.
+- Deviate when: the boundary already returns a machine-typed status that separates the two; never deviate by adding a new emptiness heuristic.
+
+### G-Orch-4: Record a per-slot diagnostic before any panel slot disappears
+- Why: silent slot drops hid systemic reviewer loss for weeks, and the coverage gates downstream could not see drops that were never persisted (#3392, #3423, #5047, #5529).
+- Guidance: when a reviewer or voter slot is dropped, substituted, pruned, format-rejected, or excused, append a per-slot record naming the slot, the stage, and the reason to the execution-issues log or the slot manifest before removing it from accounting; an aggregate count or generic warning does not satisfy this.
+- Deviate when: never; when volume is a concern, bound the record size, not its existence.
+
 ## Observability and telemetry
 
 ### G-Obs-1: Keep telemetry writes best-effort, count-only, and fail-soft; a write failure skips the metric without failing the parent, and telemetry never stores prompt or payload text
@@ -161,6 +183,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Obs-3: Record every skill-execution error or noteworthy failure to the run's category-keyed execution-issues log, so it flushes into the committed run logs for later analysis
 - Why: a failure that lives only in the session tmpdir vanishes at cleanup, so audits, calibration skills, and follow-up filing never see it. larch appends tool failures, reviewer issues, CI issues, and warnings to `execution-issues.ndjson` as the durable audit trail.
 - Deviate when: a run that produces no committed logs at all, like `repo_unavailable`, where the tmpdir `execution-issues.md` is the only possible trail.
+
+### G-Obs-4: Commit only neutral in-progress outcome labels for runs that are still in flight; reconcile the terminal outcome at the last allowed commit window
+- Why: pre-terminal snapshots froze merged runs as bailed or stalled in the committed logs, corrupting every downstream outcome census (#5646, #5676, #5970, #4900).
+- Guidance: a pre-terminal run-log snapshot says `shipping` or `in-progress`, never `stalled` or `bailed`, and a stalled-then-recovered run must not stay committed as stalled.
+- Deviate when: never for failure words; a neutral label is always available.
 
 ## Skill authoring and context economy
 
@@ -203,6 +230,11 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ### G-Ext-1: Verify a new or changed external-CLI invocation with the exact argv, or a side-effect-free `--help` or `--dry-run` probe, before commit; document platform-specific flags and treat the output as untrusted
 - Why: a flag-unavailability failure (`--sandbox`, `--prompt` vs `--print`) shows up as a silent reviewer or CI miss, not a loud error, and external-agent output can carry injected instructions. Probing the real argv and framing the output as data closes both gaps.
 - Deviate when: an unchanged invocation already covered by a harness that runs the real command.
+
+### G-Ext-2: Verify a remote mutation by re-reading the surface you mutated
+- Why: an asynchronous rollup counter read back zero immediately after a successful dependency write and produced a false "may already exist" warning (#3701); inferring merge state from unrelated output fields misreported a PR (#4025).
+- Guidance: after a GraphQL write, verify with a GraphQL read of the same relationship; never verify through a denormalized or eventually-consistent rollup, and when only an eventually-consistent read exists, poll it with bounded retries and label the wait.
+- Deviate when: no same-surface read exists; then bound the retries and record the residual uncertainty.
 
 ## Documentation and Markdown
 

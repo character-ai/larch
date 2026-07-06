@@ -936,7 +936,7 @@ def _query_open_issues(runner: proc.Runner, *, repo_root: Path) -> list[OpenIssu
     repo = gh.resolve_repo(runner, cwd=str(repo_root))
     if not repo:
         raise RejectedAnalysisError("open issue snapshot failed: cannot resolve repository")
-    result = runner.run(["gh", "api", "--paginate", f"repos/{repo}/issues?state=open&per_page=100"], check=False)
+    result = gh.api_read(runner, ["--paginate", f"repos/{repo}/issues?state=open&per_page=100"])
     if result.returncode != 0:
         raise RejectedAnalysisError("open issue snapshot failed")
     rows = [row for row in gh.loads_json_paginated_list(result.stdout) if isinstance(row, Mapping)]

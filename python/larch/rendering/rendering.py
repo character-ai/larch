@@ -1717,7 +1717,7 @@ def diagrams_upsert_main(argv: list[str]) -> int:
         runner = proc.ProcRunner()
         if not args.dry_run:
             if not repo:
-                result = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "--jq", ".nameWithOwner"])
+                result = gh.repo_name_with_owner_read(runner)
                 if result.returncode != 0 or not result.stdout.strip():
                     raise ShipError("could not determine repo")
                 repo = result.stdout.strip()
@@ -1731,7 +1731,7 @@ def diagrams_upsert_main(argv: list[str]) -> int:
                 raise ShipError("multiple summary comments found for marker")
             comment_id = found
             if comment_id is not None:
-                result = runner.run(["gh", "api", f"/repos/{repo}/issues/comments/{comment_id}", "--jq", '.body // ""'])
+                result = gh.api_read(runner, [f"/repos/{repo}/issues/comments/{comment_id}", "--jq", '.body // ""'])
                 if result.returncode != 0:
                     raise ShipError("gh api comment fetch failed")
                 existing = result.stdout
