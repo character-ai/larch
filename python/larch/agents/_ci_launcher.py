@@ -15,6 +15,7 @@ import tempfile
 import time
 from pathlib import Path
 
+from larch import io as larch_io
 from larch.core import architectural_guidelines
 from larch.core import config
 from larch.core import logging_util
@@ -538,7 +539,12 @@ def _write_architectural_knowledge_snapshot(*, required: bool) -> None:
     tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not tmpdir:
         return
-    _write(path=Path(tmpdir) / "step2-architectural-knowledge.env", text=f"ARCHITECTURAL_KNOWLEDGE_REQUIRED={str(required).lower()}\n")
+    larch_io.atomic_write(
+        path=Path(tmpdir) / "step2-architectural-knowledge.env",
+        text=f"ARCHITECTURAL_KNOWLEDGE_REQUIRED={str(required).lower()}\n",
+        prefix=".step2-architectural-knowledge.env.",
+        nofollow=True,
+    )
 
 
 def _append_architectural_knowledge_warning(warning: str) -> None:

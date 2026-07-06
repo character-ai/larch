@@ -237,6 +237,18 @@ assert_contains "codex implementer architectural acknowledgment field" \
     '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/codex-implementer.md"
 assert_contains "cursor implementer architectural acknowledgment field" \
     '"architectural_acknowledgment": "honoring I-Sec-1, G-Py-4 for this change",' "$REPO_ROOT/agents/cursor-implementer.md"
+assert_contains "implementer base architectural knowledge snapshot load" \
+    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer architectural knowledge snapshot load" \
+    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/codex-implementer.md"
+assert_contains "cursor implementer architectural knowledge snapshot load" \
+    '. "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"' "$REPO_ROOT/agents/cursor-implementer.md"
+assert_contains "implementer base architectural knowledge jq prefix" \
+    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/_implementer-base.md"
+assert_contains "codex implementer architectural knowledge jq prefix" \
+    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/codex-implementer.md"
+assert_contains "cursor implementer architectural knowledge jq prefix" \
+    'ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e' "$REPO_ROOT/agents/cursor-implementer.md"
 
 # ── python/cli.py render plan-review runtime render smoke ────────────────────────
 

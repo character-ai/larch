@@ -126,10 +126,17 @@ Read this template once and write this shape. Do not invent fields or omit requi
 
 ## Self-validate before atomic rename
 
-Before `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file. If it fails, rewrite and revalidate. The dispatcher uses the same predicate. If `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`, the `complete` and `needs_qa` branches below must also require a non-empty `architectural_acknowledgment`.
+Before `mv <MANIFEST_PATH>.tmp <MANIFEST_PATH>`, run `jq -e` on the tmp file. If it fails, rewrite and revalidate. The dispatcher uses the same predicate. Load `step2-architectural-knowledge.env` before `jq` so the snapshot value is available during self-validation. If `step2-architectural-knowledge.env` records `ARCHITECTURAL_KNOWLEDGE_REQUIRED=true`, the `complete` and `needs_qa` branches below must also require a non-empty `architectural_acknowledgment`.
 
 ```bash
-jq -e '
+jq_arch_required="false"
+if [ -r "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env" ]; then
+  # shellcheck disable=SC1090
+  . "$IMPLEMENT_TMPDIR/step2-architectural-knowledge.env"
+  jq_arch_required="${ARCHITECTURAL_KNOWLEDGE_REQUIRED:-false}"
+fi
+
+ARCHITECTURAL_KNOWLEDGE_REQUIRED="$jq_arch_required" jq -e '
   ((.schema_version | tostring) == "1") and
   (.status == "complete" or .status == "needs_qa" or .status == "bailed") and
   (if .status == "complete" then

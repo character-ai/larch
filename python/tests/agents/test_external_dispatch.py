@@ -742,6 +742,29 @@ def test_implement_prompt_omits_absent_architectural_knowledge_and_snapshots_fal
     assert (tmp_path / "step2-architectural-knowledge.env").read_text(encoding="utf-8") == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=false\n"
 
 
+def test_write_architectural_knowledge_snapshot_uses_nofollow(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp_path))
+    calls: dict[str, object] = {}
+
+    def fake_atomic_write(*, path: Path, text: str, prefix: str, nofollow: bool, **_kwargs: object) -> None:
+        calls["path"] = path
+        calls["text"] = text
+        calls["prefix"] = prefix
+        calls["nofollow"] = nofollow
+
+    monkeypatch.setattr(_ci_launcher.larch_io, "atomic_write", fake_atomic_write)
+
+    _ci_launcher._write_architectural_knowledge_snapshot(required=True)
+
+    assert calls["path"] == tmp_path / "step2-architectural-knowledge.env"
+    assert calls["text"] == "ARCHITECTURAL_KNOWLEDGE_REQUIRED=true\n"
+    assert calls["prefix"] == ".step2-architectural-knowledge.env."
+    assert calls["nofollow"] is True
+
+
 def test_implement_prompt_skips_invalid_invariants_and_keeps_valid_guidelines_block(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
