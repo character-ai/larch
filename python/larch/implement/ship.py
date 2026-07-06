@@ -95,10 +95,15 @@ from larch.implement.ship_result import (
 from larch.implement.ship_guidelines import (
     GuidelinesGateResult,
     GuidelinesShipOutcome,
+    InvariantsGateResult,
+    InvariantsShipOutcome,
     _pin_and_load_guidelines_note,
     clear_guideline_ship_outcome_sidecar,
+    clear_invariant_ship_outcome_sidecar,
     load_or_prepare_guidelines_note,
+    load_or_prepare_invariants_note,
     write_guideline_ship_outcome,
+    write_invariant_ship_outcome,
 )
 from larch.implement.ship_pr import (
     _postmerge_should_flush,
@@ -217,6 +222,18 @@ def _committed_guideline_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
         return False
 
 
+def _committed_invariant_outcome_matches(*, ctx: RunContext, cwd: str) -> bool:
+    run_id = run_logs.effective_run_id(ctx)
+    if not run_id:
+        return False
+    sidecar = architectural_guidelines.invariant_ship_outcome_path(Path(ctx.tmpdir))
+    committed = Path(cwd) / "larch-logs" / "implement" / run_id / architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR
+    try:
+        return sidecar.is_file() and committed.is_file() and sidecar.read_bytes() == committed.read_bytes()
+    except OSError:
+        return False
+
+
 def _flush_guideline_outcome_before_pr(
     *,
     runner: Runner,
@@ -265,10 +282,59 @@ def _flush_guideline_outcome_before_pr(
     raise Stalled(f"architectural-guidelines outcome run-log refresh skipped: {reason}")
 
 
+def _flush_invariant_outcome_before_pr(
+    *,
+    runner: Runner,
+    ctx: RunContext,
+    cwd: str,
+    resume: ResumePlan,
+) -> None:
+    step = "pr-create-invariant-outcome-refresh"
+    try:
+        refresh = run_logs.flush_logs_pre(
+            runner=runner,
+            ctx=ctx.with_(state_file=None),
+            cwd=cwd,
+        )
+    except (OSError, ShipError) as exc:
+        detail = logging_util.sanitize_diagnostic_line(str(exc).strip())
+        refresh = run_logs.RefreshSkip(
+            skipped=True,
+            reason=config.REFRESH_SKIP_COMMIT_FAILED,
+            error=detail,
+        )
+    if not refresh.skipped:
+        return
+    reason = refresh.reason or "unknown"
+    if refresh.error:
+        reason = f"{reason}: {logging_util.sanitize_diagnostic_line(refresh.error)}"
+    if refresh.reason == config.REFRESH_SKIP_NO_LOGS_COMMIT:
+        _breadcrumb(
+            step="warning",
+            detail=f"invariant outcome refresh skipped: {reason} (outcome cannot be committed)",
+        )
+        return
+    if refresh.reason == config.REFRESH_SKIP_VOLATILE_ONLY and _committed_invariant_outcome_matches(ctx=ctx, cwd=cwd):
+        _breadcrumb(step="warning", detail="invariant outcome refresh skipped: volatile-only with matching committed artifact")
+        return
+    _breadcrumb(step="warning", detail=f"invariant outcome refresh skipped: {reason}")
+    _write_terminal_state(
+        ctx=ctx.with_(stall_tracking=True, stall_step=step),
+        result=Outcome.STALLED,
+        step=step,
+        iteration=resume.iteration,
+        rebase_count=resume.rebase_count,
+        fix_attempts=resume.fix_attempts,
+        transient_retries=resume.transient_retries,
+    )
+    raise Stalled(f"architectural-invariants outcome run-log refresh skipped: {reason}")
+
+
 def _compose_pr_body_for_pr_create(
     *,
     pr_context: RunContext,
-    architectural_guidelines_note: str,
+    architectural_invariants_note: str = "",
+    architectural_guidelines_note: str = "",
 ) -> str:
     return pr_body.compose_pr_body(
         summary=_summary_from_manifest(pr_context),
@@ -277,8 +343,80 @@ def _compose_pr_body_for_pr_create(
         issue_number=int(pr_context.issue_number or pr_context.issue)
         if (pr_context.issue_number or pr_context.issue).isdigit()
         else None,
+        architectural_invariants_note=architectural_invariants_note,
         architectural_guidelines_note=architectural_guidelines_note,
     )
+
+
+def _invariants_gate_before_pr(
+    *,
+    runner: Runner,
+    pr_context: RunContext,
+    repo_root: str,
+    base_ref: str,
+    resume: ResumePlan,
+    flush_outcome: bool = True,
+) -> InvariantsGateResult:
+    compose_head_sha = git.try_rev_parse(runner, "HEAD", cwd=repo_root) or ""
+    compose_base_ref = f"{'upstream' if pr_context.forked or pr_context.forked_target else 'origin'}/{base_ref}"
+    clear_invariant_ship_outcome_sidecar(implement_tmpdir=pr_context.tmpdir)
+    invariant_file = architectural_guidelines.read_invariants(repo_root=repo_root)
+    if invariant_file.status == "absent":
+        result = InvariantsGateResult(invariants_status="absent", reason="invariants-absent")
+    elif invariant_file.status == "invalid":
+        result = InvariantsGateResult(invariants_status="invalid", reason="invariants-invalid", detail=invariant_file.warning)
+    elif not invariant_file.content.strip():
+        result = InvariantsGateResult(invariants_status="present", assessment_kind="clean", reason="invariants-empty")
+    else:
+        result = load_or_prepare_invariants_note(
+            implement_tmpdir=pr_context.tmpdir,
+            head_sha=compose_head_sha,
+            base_ref=compose_base_ref,
+            repo_root=repo_root,
+            forked_target=pr_context.forked or pr_context.forked_target,
+        )
+    if result.needs_assessment:
+        return result
+    if not compose_head_sha and not result.note:
+        return result
+    if not flush_outcome:
+        return result
+    outcome: InvariantsShipOutcome | None = None
+    try:
+        outcome = write_invariant_ship_outcome(
+            implement_tmpdir=pr_context.tmpdir,
+            result=result,
+            head_sha=compose_head_sha,
+            base_ref=compose_base_ref,
+        )
+    except OSError as exc:
+        if pr_context.no_logs_commit:
+            _breadcrumb(step="warning", detail=f"invariant outcome sidecar write skipped: {logging_util.sanitize_diagnostic_line(str(exc))}")
+            return result
+        _write_terminal_state(
+            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-invariant-outcome-write"),
+            result=Outcome.STALLED,
+            step="pr-create-invariant-outcome-write",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        raise Stalled(f"architectural-invariants outcome sidecar write failed: {logging_util.sanitize_diagnostic_line(str(exc))}") from exc
+    if pr_context.no_logs_commit:
+        return result
+    if outcome is not None and outcome.outcome == "dropped":
+        _write_terminal_state(
+            ctx=pr_context.with_(stall_tracking=True, stall_step="pr-create-invariant-outcome-dropped"),
+            result=Outcome.STALLED,
+            step="pr-create-invariant-outcome-dropped",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        raise Stalled(f"architectural-invariants outcome dropped: {outcome.reason}")
+    return result
 
 
 def _guidelines_gate_before_pr(
@@ -358,6 +496,30 @@ def _refresh_guidelines_gate_after_rebase(
 ) -> ShipResult | None:
     if pr_context.pr_number is None:
         return None
+    invariants_gate = _invariants_gate_before_pr(
+        runner=runner,
+        pr_context=pr_context,
+        repo_root=repo_root,
+        base_ref=base_ref,
+        resume=resume,
+        flush_outcome=True,
+    )
+    if invariants_gate.needs_assessment:
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="architectural-invariants-assessment",
+            detail=invariants_gate.detail,
+            pr_number=pr_context.pr_number,
+            pr_url=pr_context.pr_url,
+        )
+    if invariants_gate.assessment_kind == "violation":
+        return ShipResult(
+            Outcome.NEEDS_USER_INPUT,
+            needs_user_reason="architectural-invariants-violation",
+            detail=invariants_gate.note or invariants_gate.detail,
+            pr_number=pr_context.pr_number,
+            pr_url=pr_context.pr_url,
+        )
     guidelines_gate = _guidelines_gate_before_pr(
         runner=runner,
         pr_context=pr_context,
@@ -376,6 +538,7 @@ def _refresh_guidelines_gate_after_rebase(
         )
     body = _compose_pr_body_for_pr_create(
         pr_context=pr_context,
+        architectural_invariants_note=invariants_gate.note,
         architectural_guidelines_note=guidelines_gate.note,
     )
     title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)
@@ -684,6 +847,38 @@ def run_ship(
 
         _write_ship_state(
             pr_context,
+            phase="invariants-assessment",
+            iteration=resume.iteration,
+            rebase_count=resume.rebase_count,
+            fix_attempts=resume.fix_attempts,
+            transient_retries=resume.transient_retries,
+        )
+        invariants_gate = _invariants_gate_before_pr(
+            runner=runner,
+            pr_context=pr_context,
+            repo_root=repo_root,
+            base_ref=base_ref,
+            resume=resume,
+            flush_outcome=True,
+        )
+        if invariants_gate.needs_assessment:
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason="architectural-invariants-assessment",
+                detail=invariants_gate.detail,
+                pr_number=pr_context.pr_number,
+                pr_url=pr_context.pr_url,
+            )
+        if invariants_gate.assessment_kind == "violation":
+            return ShipResult(
+                Outcome.NEEDS_USER_INPUT,
+                needs_user_reason="architectural-invariants-violation",
+                detail=invariants_gate.note or invariants_gate.detail,
+                pr_number=pr_context.pr_number,
+                pr_url=pr_context.pr_url,
+            )
+        _write_ship_state(
+            pr_context,
             phase="guidelines-assessment",
             iteration=resume.iteration,
             rebase_count=resume.rebase_count,
@@ -717,6 +912,7 @@ def run_ship(
         _breadcrumb(step="pr-create", detail="PR")
         body = _compose_pr_body_for_pr_create(
             pr_context=pr_context,
+            architectural_invariants_note=invariants_gate.note,
             architectural_guidelines_note=guidelines_gate.note,
         )
         title = _pr_title(ctx=pr_context, runner=runner, cwd=repo_root)

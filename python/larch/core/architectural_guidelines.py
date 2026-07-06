@@ -27,18 +27,29 @@ from larch.errors import ShipError
 GUIDELINES_FILENAME = "ARCHITECTURAL_GUIDELINES.md"
 INVARIANTS_FILENAME = "ARCHITECTURAL_INVARIANTS.md"
 CLEAN_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified."
+CLEAN_INVARIANT_PRESENTATION_NOTE = "Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified."
 GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED = "GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true"
+INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED = "INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true"
 DESIGN_ASSESSMENT = "architectural-guideline-assessment.md"
+INVARIANT_DESIGN_ASSESSMENT = "architectural-invariant-assessment.md"
 STAGED_ASSESSMENT = "architectural-guideline-staged-assessment.md"
+INVARIANT_STAGED_ASSESSMENT = "architectural-invariant-staged-assessment.md"
 STAGED_ASSESSMENT_ENV = "architectural-guideline-staged-assessment.env"
+INVARIANT_STAGED_ASSESSMENT_ENV = "architectural-invariant-staged-assessment.env"
 MATERIALIZED_DIFF = "architectural-guideline-materialized-diff.txt"
+INVARIANT_MATERIALIZED_DIFF = "architectural-invariant-materialized-diff.txt"
 DURABLE_NOTE = "architectural-guideline-note.md"
+INVARIANT_DURABLE_NOTE = "architectural-invariant-note.md"
 DURABLE_NOTE_ENV = "architectural-guideline-note.meta.env"
+INVARIANT_DURABLE_NOTE_ENV = "architectural-invariant-note.meta.env"
 DROPPED_NOTE_ARTIFACT = "architectural-guideline-drop-notice.txt"
+INVARIANT_DROPPED_NOTE_ARTIFACT = "architectural-invariant-drop-notice.txt"
 GUIDELINE_SHIP_OUTCOME_SIDECAR = "architectural-guideline-outcome.json"
+INVARIANT_SHIP_OUTCOME_SIDECAR = "architectural-invariant-outcome.json"
 LEGACY_WARNING = "architectural-guideline-warnings.md"
 LEGACY_WARNING_ENV = "architectural-guideline-warnings.meta.env"
 MATERIALIZE_ENV = "architectural-guideline-materialize.env"
+INVARIANT_MATERIALIZE_ENV = "architectural-invariant-materialize.env"
 _STATUS_VALUES = {"present", "absent", "invalid"}
 _HEADING_RE = re.compile(r"^###\s+(G-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
 _INVARIANT_HEADING_RE = re.compile(r"^#{1,6}\s+(I-[A-Za-z0-9-]+-\d+):\s*(.+?)\s*$")
@@ -157,6 +168,55 @@ def validate_guideline_ship_outcome_record(data: object) -> str | None:  # noqa:
             return "guideline outcome fields are inconsistent for dropped guidelines"
         return None
     return "guideline outcome fields are inconsistent"
+
+
+def validate_invariant_ship_outcome_record(data: object) -> str | None:  # noqa: C901, PLR0911, PLR0912
+    """Return an error string unless data is a valid invariant Step 8 outcome."""
+    if not isinstance(data, dict):
+        return "invariant outcome artifact must be a JSON object"
+    d: dict[str, object] = data  # type: ignore[assignment]
+    if str(d.get("schema_version") or "") != "1":
+        return "invariant outcome schema_version must be 1"
+    phase = str(d.get("phase") or "")
+    step = str(d.get("step") or "")
+    base_ref = str(d.get("base_ref") or "")
+    head_sha = str(d.get("head_sha") or "")
+    outcome = str(d.get("outcome") or "")
+    reason = str(d.get("reason") or "")
+    invariants_status = str(d.get("invariants_status") or "")
+    assessment_kind = str(d.get("assessment_kind") or "")
+    if phase != "implement":
+        return "invariant outcome phase must be implement"
+    if step != "8":
+        return "invariant outcome step must be 8"
+    if not base_ref:
+        return "invariant outcome base_ref is empty"
+    if not head_sha.strip():
+        return "invariant outcome head_sha is empty"
+    if outcome not in {"clean", "violation", "dropped"}:
+        return "invariant outcome token is unknown"
+    if invariants_status not in {"present", "absent", "invalid"}:
+        return "invariant outcome invariants_status is unknown"
+    if assessment_kind not in {"", "clean", "violation"}:
+        return "invariant outcome assessment_kind is unknown"
+    if invariants_status in {"absent", "invalid"}:
+        expected_reason = "invariants-absent" if invariants_status == "absent" else "invariants-invalid"
+        if outcome != "clean" or reason != expected_reason or assessment_kind:
+            return f"invariant outcome fields are inconsistent for {invariants_status} invariants"
+        return None
+    if outcome == "clean":
+        if reason not in {"clean-note", "invariants-empty"} or assessment_kind != "clean":
+            return "invariant outcome fields are inconsistent for clean invariants"
+        return None
+    if outcome == "violation":
+        if reason != "violation-note" or assessment_kind != "violation":
+            return "invariant outcome fields are inconsistent for invariant violations"
+        return None
+    if outcome == "dropped":
+        if assessment_kind or reason not in {"note-read-failed", "note-redaction-failed", "compose-materialization-failed", "unknown"}:
+            return "invariant outcome fields are inconsistent for dropped invariants"
+        return None
+    return "invariant outcome fields are inconsistent"
 
 
 def _run_git_toplevel(candidate: Path) -> Path | None:
@@ -361,20 +421,40 @@ def staged_assessment_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / STAGED_ASSESSMENT
 
 
+def invariant_staged_assessment_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_STAGED_ASSESSMENT
+
+
 def durable_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DURABLE_NOTE
+
+
+def invariant_durable_note_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_DURABLE_NOTE
 
 
 def design_assessment_path(design_tmpdir: Path) -> Path:
     return design_tmpdir / DESIGN_ASSESSMENT
 
 
+def invariant_design_assessment_path(design_tmpdir: Path) -> Path:
+    return design_tmpdir / INVARIANT_DESIGN_ASSESSMENT
+
+
 def dropped_note_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DROPPED_NOTE_ARTIFACT
 
 
+def invariant_dropped_note_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_DROPPED_NOTE_ARTIFACT
+
+
 def guideline_ship_outcome_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / GUIDELINE_SHIP_OUTCOME_SIDECAR
+
+
+def invariant_ship_outcome_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_SHIP_OUTCOME_SIDECAR
 
 
 def _validate_design_tmpdir_arg(candidate: str) -> Path:
@@ -391,12 +471,24 @@ def _sidecar_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / STAGED_ASSESSMENT_ENV
 
 
+def _invariant_sidecar_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_STAGED_ASSESSMENT_ENV
+
+
 def _durable_meta_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / DURABLE_NOTE_ENV
 
 
+def _invariant_durable_meta_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_DURABLE_NOTE_ENV
+
+
 def _diff_path(implement_tmpdir: Path) -> Path:
     return implement_tmpdir / MATERIALIZED_DIFF
+
+
+def _invariant_diff_path(implement_tmpdir: Path) -> Path:
+    return implement_tmpdir / INVARIANT_MATERIALIZED_DIFF
 
 
 def _env_escape(value: str) -> str:
@@ -423,6 +515,22 @@ def _write_design_assessment_atomic(*, design_tmpdir: Path, text: str) -> None:
         raise OSError(f"{DESIGN_ASSESSMENT}: target must not be a symlink")
     if path.exists() and not path.is_file():
         raise OSError(f"{DESIGN_ASSESSMENT}: target must be a regular file")
+    if tmp.is_symlink():
+        raise OSError(f"{tmp.name}: temp path must not be a symlink")
+    if tmp.exists() and not tmp.is_file():
+        raise OSError(f"{tmp.name}: temp path must be a regular file")
+    tmp.write_text(text, encoding="utf-8")
+    tmp.replace(path)
+
+
+def _write_invariant_design_assessment_atomic(*, design_tmpdir: Path, text: str) -> None:
+    design_tmpdir.mkdir(parents=True, exist_ok=True)
+    path = invariant_design_assessment_path(design_tmpdir)
+    tmp = path.with_name(path.name + ".tmp")
+    if path.is_symlink():
+        raise OSError(f"{INVARIANT_DESIGN_ASSESSMENT}: target must not be a symlink")
+    if path.exists() and not path.is_file():
+        raise OSError(f"{INVARIANT_DESIGN_ASSESSMENT}: target must be a regular file")
     if tmp.is_symlink():
         raise OSError(f"{tmp.name}: temp path must not be a symlink")
     if tmp.exists() and not tmp.is_file():
@@ -487,9 +595,22 @@ def durable_note_present(implement_tmpdir: Path) -> bool:
     return _read_env(meta).get("STATUS") == "present"
 
 
+def invariant_durable_note_present(implement_tmpdir: Path) -> bool:
+    note = invariant_durable_note_path(implement_tmpdir)
+    meta = _invariant_durable_meta_path(implement_tmpdir)
+    if not _regular_file(note) or not _regular_file(meta):
+        return False
+    return _read_env(meta).get("STATUS") == "present"
+
+
 def note_readable_any_head(implement_tmpdir: Path) -> bool:
     """Return true when a present durable note is readable regardless of HEAD."""
     return durable_note_present(implement_tmpdir)
+
+
+def invariant_note_readable_any_head(implement_tmpdir: Path) -> bool:
+    """Return true when a present invariant durable note is readable regardless of HEAD."""
+    return invariant_durable_note_present(implement_tmpdir)
 
 
 def dropped_note_message() -> str:
@@ -563,6 +684,24 @@ def clear_staged_and_dropped_artifacts(implement_tmpdir: Path) -> None:
             pass
 
 
+def clear_invariant_staged_and_dropped_artifacts(implement_tmpdir: Path) -> None:
+    """Clear retired invariant staged-assessment and drop-notice artifacts."""
+    for name in (
+        INVARIANT_STAGED_ASSESSMENT,
+        INVARIANT_STAGED_ASSESSMENT_ENV,
+        INVARIANT_DROPPED_NOTE_ARTIFACT,
+        INVARIANT_SHIP_OUTCOME_SIDECAR,
+    ):
+        path = implement_tmpdir / name
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            elif _artifact_still_present(path):
+                path.unlink()
+        except OSError:
+            pass
+
+
 def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer; bundling its pin-metadata fields would churn 14 call sites
     *, implement_tmpdir: Path,
     assessment_text: str,
@@ -590,6 +729,35 @@ def write_staged_assessment(  # noqa: PLR0913 - cohesive Phase A artifact writer
     _write_text_atomic(path=_sidecar_path(implement_tmpdir), text=sidecar)
 
 
+def write_invariant_staged_assessment(  # noqa: PLR0913 - mirrors guideline artifact writer
+    *, implement_tmpdir: Path,
+    assessment_text: str,
+    assessed_head_sha: str,
+    diff_fingerprint_value: str,
+    base_ref: str,
+    diff_text: str = "",
+) -> None:
+    """Persist orchestrator-authored invariant assessment artifacts."""
+    implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    _write_text_atomic(path=invariant_staged_assessment_path(implement_tmpdir), text=assessment_text)
+    _write_text_atomic(path=_invariant_diff_path(implement_tmpdir), text=diff_text)
+    written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    sidecar = "\n".join(
+        [
+            "STATUS=present",
+            f"ASSESSED_HEAD_SHA={_env_escape(assessed_head_sha)}",
+            f"DIFF_FINGERPRINT={_env_escape(diff_fingerprint_value)}",
+            f"BASE_REF={_env_escape(base_ref)}",
+            f"DIFF_SNAPSHOT={_env_escape(str(_invariant_diff_path(implement_tmpdir)))}",
+            "INVARIANTS_STATUS=present",
+            f"ASSESSMENT_KIND={_env_escape(_invariant_assessment_kind(assessment_text))}",
+            f"WRITTEN_AT={written_at}",
+            "",
+        ]
+    )
+    _write_text_atomic(path=_invariant_sidecar_path(implement_tmpdir), text=sidecar)
+
+
 def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
     """Write the durable compose-time note and HEAD-pinned metadata."""
     _write_text_atomic(path=durable_note_path(implement_tmpdir), text=note_text)
@@ -610,6 +778,28 @@ def write_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: st
     )
     _write_text_atomic(path=_durable_meta_path(implement_tmpdir), text=meta)
     clear_staged_and_dropped_artifacts(implement_tmpdir)
+
+
+def write_invariant_implement_note(*, implement_tmpdir: Path, note_text: str, head_sha: str, metadata: dict[str, str], base_ref: str) -> None:
+    """Write the durable invariant compose-time note and HEAD-pinned metadata."""
+    _write_text_atomic(path=invariant_durable_note_path(implement_tmpdir), text=note_text)
+    diff_snapshot = metadata.get("DIFF_SNAPSHOT", "")
+    meta = "\n".join(
+        [
+            "STATUS=present",
+            f"HEAD_SHA={_env_escape(head_sha)}",
+            f"ASSESSED_HEAD_SHA={_env_escape(metadata.get('ASSESSED_HEAD_SHA', ''))}",
+            f"DIFF_FINGERPRINT={_env_escape(metadata.get('DIFF_FINGERPRINT', ''))}",
+            f"BASE_REF={_env_escape(base_ref or metadata.get('BASE_REF', ''))}",
+            f"DIFF_SNAPSHOT={_env_escape(diff_snapshot)}",
+            f"INVARIANTS_STATUS={_env_escape(metadata.get('INVARIANTS_STATUS', 'present'))}",
+            f"ASSESSMENT_KIND={_env_escape(metadata.get('ASSESSMENT_KIND', ''))}",
+            f"WRITTEN_AT={datetime.now(UTC).replace(microsecond=0).isoformat().replace('+00:00', 'Z')}",
+            "",
+        ]
+    )
+    _write_text_atomic(path=_invariant_durable_meta_path(implement_tmpdir), text=meta)
+    clear_invariant_staged_and_dropped_artifacts(implement_tmpdir)
 
 
 def _materialize_live_diff(*, repo_root: Path | None, resolved_base: str) -> tuple[str, str] | None:
@@ -648,6 +838,30 @@ def _staged_fingerprint_valid(
         if live_fp is not None:
             return live_fp == stored_fp
     diff_path = _diff_path(implement_tmpdir)
+    if diff_path.is_file() and not diff_path.is_symlink():
+        try:
+            snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError:
+            return False
+        return diff_fingerprint(snapshot_text) == stored_fp
+    return False
+
+
+def _invariant_staged_fingerprint_valid(
+    *, implement_tmpdir: Path,
+    metadata: dict[str, str],
+    base_ref: str,
+    repo_root: Path | None = None,
+) -> bool:
+    stored_fp = metadata.get("DIFF_FINGERPRINT", "")
+    if not stored_fp:
+        return False
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if repo_root is not None and resolved_base:
+        live_fp = _live_fingerprint(repo_root=repo_root, resolved_base=resolved_base)
+        if live_fp is not None:
+            return live_fp == stored_fp
+    diff_path = _invariant_diff_path(implement_tmpdir)
     if diff_path.is_file() and not diff_path.is_symlink():
         try:
             snapshot_text = diff_path.read_text(encoding="utf-8", errors="replace")
@@ -829,6 +1043,16 @@ _INVALIDATE_ARTIFACTS = (
 )
 
 
+_INVARIANT_INVALIDATE_ARTIFACTS = (
+    INVARIANT_STAGED_ASSESSMENT,
+    INVARIANT_STAGED_ASSESSMENT_ENV,
+    INVARIANT_DURABLE_NOTE,
+    INVARIANT_DURABLE_NOTE_ENV,
+    INVARIANT_DROPPED_NOTE_ARTIFACT,
+    INVARIANT_SHIP_OUTCOME_SIDECAR,
+)
+
+
 def _artifact_still_present(path: Path) -> bool:
     try:
         path.lstat()
@@ -853,9 +1077,30 @@ def invalidate_implement_note(implement_tmpdir: Path) -> None:
         raise OSError("artifact(s) survived invalidation: " + ", ".join(surviving))
 
 
+def invalidate_invariant_implement_note(implement_tmpdir: Path) -> None:
+    """Clear staged and durable invariant note artifacts."""
+    for name in _INVARIANT_INVALIDATE_ARTIFACTS:
+        path = implement_tmpdir / name
+        try:
+            if path.is_dir() and not path.is_symlink():
+                shutil.rmtree(path)
+            elif _artifact_still_present(path):
+                path.unlink()
+        except FileNotFoundError:
+            pass
+    surviving = [name for name in _INVARIANT_INVALIDATE_ARTIFACTS if _artifact_still_present(implement_tmpdir / name)]
+    if surviving:
+        raise OSError("artifact(s) survived invalidation: " + ", ".join(surviving))
+
+
 def durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
     """Return durable-note sidecar metadata when present."""
     return _read_env(_durable_meta_path(implement_tmpdir))
+
+
+def invariant_durable_note_metadata(implement_tmpdir: Path) -> dict[str, str]:
+    """Return invariant durable-note sidecar metadata when present."""
+    return _read_env(_invariant_durable_meta_path(implement_tmpdir))
 
 
 def note_consumable(
@@ -886,6 +1131,40 @@ def note_consumable(
     ):
         return False
     return not note_fingerprint_stale(
+        implement_tmpdir,
+        base_ref=resolved_base,
+        repo_root=repo_root,
+    )
+
+
+def invariant_note_consumable(
+    *,
+    implement_tmpdir: Path,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
+    """Return true when the durable invariant note is safe to surface for head_sha."""
+    note = invariant_durable_note_path(implement_tmpdir)
+    meta = _invariant_durable_meta_path(implement_tmpdir)
+    if not note.is_file() or note.is_symlink() or not meta.is_file() or meta.is_symlink():
+        return False
+    metadata = _read_env(meta)
+    if metadata.get("STATUS") != "present":
+        return False
+    if metadata.get("HEAD_SHA") == head_sha:
+        return True
+    resolved_base = (base_ref or metadata.get("BASE_REF", "")).strip()
+    if not resolved_base or repo_root is None:
+        return False
+    stored_head = metadata.get("HEAD_SHA", "")
+    if not _head_change_larch_logs_only(
+        repo_root=repo_root,
+        old_head=stored_head,
+        new_head=head_sha,
+    ):
+        return False
+    return not invariant_note_fingerprint_stale(
         implement_tmpdir,
         base_ref=resolved_base,
         repo_root=repo_root,
@@ -937,8 +1216,39 @@ def note_fingerprint_stale(
     return live_fp != stored_fp
 
 
+def invariant_note_fingerprint_stale(
+    implement_tmpdir: Path,
+    *,
+    base_ref: str,
+    repo_root: str | Path | None = None,
+) -> bool:
+    """Return true when the durable invariant note fingerprint no longer matches the implementation diff."""
+    meta = _read_env(_invariant_durable_meta_path(implement_tmpdir))
+    stored_fp = meta.get("DIFF_FINGERPRINT", "")
+    if not stored_fp or not base_ref:
+        return False
+    if repo_root is None:
+        return True
+    root = Path(repo_root).resolve()
+    live_fp = _live_fingerprint(repo_root=root, resolved_base=base_ref)
+    if live_fp is None:
+        return True
+    return live_fp != stored_fp
+
+
 def clear_guideline_ship_outcome(implement_tmpdir: Path) -> None:
     path = guideline_ship_outcome_path(implement_tmpdir)
+    try:
+        if path.is_dir() and not path.is_symlink():
+            shutil.rmtree(path)
+        elif _artifact_still_present(path):
+            path.unlink()
+    except OSError:
+        pass
+
+
+def clear_invariant_ship_outcome(implement_tmpdir: Path) -> None:
+    path = invariant_ship_outcome_path(implement_tmpdir)
     try:
         if path.is_dir() and not path.is_symlink():
             shutil.rmtree(path)
@@ -967,6 +1277,41 @@ def _write_compose_materialization_metadata(
                 f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
                 f"GUIDELINES_STATUS={_env_escape(materialized.guidelines_status)}",
                 f"GUIDELINES_PATH={_env_escape(materialized.guidelines_path)}",
+                f"ASSESSMENT_KIND={_env_escape(materialized.assessment_kind)}",
+                f"WRITTEN_AT={written_at}",
+                "",
+            ]
+        ),
+    )
+
+
+def _invariant_assessment_kind(note: str) -> str:
+    if not note.strip():
+        return ""
+    if note.rstrip("\n") == CLEAN_INVARIANT_PRESENTATION_NOTE:
+        return "clean"
+    return "violation"
+
+
+def _write_invariant_compose_materialization_metadata(
+    *,
+    implement_tmpdir: Path,
+    materialized: ComposeMaterializationResult,
+) -> None:
+    written_at = datetime.now(UTC).replace(microsecond=0).isoformat().replace("+00:00", "Z")
+    diff_path = materialized.diff_path or _invariant_diff_path(implement_tmpdir)
+    _write_text_atomic(
+        path=implement_tmpdir / INVARIANT_MATERIALIZE_ENV,
+        text="\n".join(
+            [
+                "STATUS=present",
+                f"HEAD_SHA={_env_escape(materialized.head_sha)}",
+                f"ASSESSED_HEAD_SHA={_env_escape(materialized.head_sha)}",
+                f"BASE_REF={_env_escape(materialized.base_ref)}",
+                f"DIFF_FINGERPRINT={_env_escape(materialized.diff_fingerprint)}",
+                f"DIFF_SNAPSHOT={_env_escape(str(diff_path))}",
+                f"INVARIANTS_STATUS={_env_escape(materialized.guidelines_status)}",
+                f"INVARIANTS_PATH={_env_escape(materialized.guidelines_path)}",
                 f"ASSESSMENT_KIND={_env_escape(materialized.assessment_kind)}",
                 f"WRITTEN_AT={written_at}",
                 "",
@@ -1077,6 +1422,116 @@ def prepare_compose_assessment(
     return materialized
 
 
+def _invariant_compose_precheck_result(  # noqa: PLR0911 - fail-closed precheck mirrors guideline gate exits.
+    *,
+    implement_tmpdir: Path,
+    root: Path | None,
+    current_head: str,
+    expected_head_sha: str,
+) -> tuple[ArchitecturalGuidelinesResult | None, ComposeMaterializationResult | None]:
+    if expected_head_sha and current_head and expected_head_sha != current_head:
+        return None, ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            warning="HEAD changed before architectural-invariants compose materialization",
+        )
+    if current_head and invariant_note_consumable(implement_tmpdir=implement_tmpdir, head_sha=current_head):
+        if root is None:
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+        metadata = invariant_durable_note_metadata(implement_tmpdir)
+        stored_base_ref = metadata.get("BASE_REF", "")
+        if stored_base_ref and not invariant_note_fingerprint_stale(
+            implement_tmpdir,
+            base_ref=stored_base_ref,
+            repo_root=root,
+        ):
+            return None, ComposeMaterializationResult(status="current", head_sha=current_head)
+    result = read_invariants(repo_root=root)
+    if result.status in {"absent", "invalid"}:
+        return None, ComposeMaterializationResult(
+            status=result.status,
+            head_sha=current_head,
+            guidelines_status=result.status,
+            warning=result.warning if result.status == "invalid" else "",
+        )
+    if not result.content.strip():
+        return None, ComposeMaterializationResult(
+            status="present-empty",
+            head_sha=current_head,
+            guidelines_status=result.status,
+            guidelines_path=str(result.path or ""),
+            assessment_kind="clean",
+        )
+    if root is None:
+        return None, ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            guidelines_status=result.status,
+            warning="could not resolve repo root",
+        )
+    return result, None
+
+
+def prepare_invariant_compose_assessment(
+    *,
+    implement_tmpdir: Path,
+    repo_root: str | Path | None = None,
+    forked_target: bool = False,
+    expected_head_sha: str = "",
+) -> ComposeMaterializationResult:
+    """Prepare Step 8 compose-time invariant evidence for prompt-authored assessment."""
+    implement_tmpdir.mkdir(parents=True, exist_ok=True)
+    clear_invariant_staged_and_dropped_artifacts(implement_tmpdir)
+    root = _resolve_repo_root(repo_root)
+    current_head = _current_head(root, verify_commit=True) if root is not None else ""
+    result, precheck = _invariant_compose_precheck_result(
+        implement_tmpdir=implement_tmpdir,
+        root=root,
+        current_head=current_head,
+        expected_head_sha=expected_head_sha,
+    )
+    if precheck is not None:
+        return precheck
+    if result is None:
+        return ComposeMaterializationResult(status="failed", head_sha=current_head, warning="invariants precheck failed")
+    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
+    base_label = f"{base_remote}/{base_ref}"
+    try:
+        diff_text = materialize_implementation_diff(root, base_remote=base_remote, base_ref=base_ref)
+    except (OSError, RuntimeError) as exc:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=base_label,
+            guidelines_status=result.status,
+            warning=str(exc).replace("\n", " "),
+        )
+    materialized = ComposeMaterializationResult(
+        status="assessment-required",
+        head_sha=current_head,
+        base_ref=base_label,
+        diff_fingerprint=diff_fingerprint(diff_text),
+        diff_path=_invariant_diff_path(implement_tmpdir),
+        guidelines_status=result.status,
+        guidelines_path=str(result.path or ""),
+    )
+    try:
+        _write_text_atomic(path=_invariant_diff_path(implement_tmpdir), text=diff_text)
+        _write_invariant_compose_materialization_metadata(
+            implement_tmpdir=implement_tmpdir,
+            materialized=materialized,
+        )
+    except OSError as exc:
+        return ComposeMaterializationResult(
+            status="failed",
+            head_sha=current_head,
+            base_ref=base_label,
+            guidelines_status=result.status,
+            warning=str(exc).replace("\n", " "),
+        )
+    return materialized
+
+
 def write_compose_assessment(
     *,
     implement_tmpdir: Path,
@@ -1098,6 +1553,37 @@ def write_compose_assessment(
     if metadata.get("STATUS") != "present":
         raise ValueError("compose materialization metadata is not present")
     write_implement_note(
+        implement_tmpdir=implement_tmpdir,
+        note_text=normalized,
+        head_sha=materialized_head,
+        metadata=metadata,
+        base_ref=metadata.get("BASE_REF", ""),
+    )
+
+
+def write_invariant_compose_assessment(
+    *,
+    implement_tmpdir: Path,
+    assessment_text: str,
+    repo_root: str | Path | None = None,
+) -> None:
+    """Write a prompt-authored invariant compose-time assessment as the durable note."""
+    normalized = _normalize_assessment_text(assessment_text)
+    if not normalized.strip():
+        raise ValueError("assessment-file: content must not be empty")
+    metadata = _read_env(implement_tmpdir / INVARIANT_MATERIALIZE_ENV)
+    materialized_head = metadata.get("HEAD_SHA", "")
+    if not materialized_head:
+        raise ValueError("compose materialization metadata is missing HEAD_SHA")
+    root = _resolve_repo_root(repo_root)
+    current_head = _current_head(root, verify_commit=True)
+    if current_head != materialized_head:
+        raise ValueError("HEAD changed after compose materialization; rerun Step 8")
+    if metadata.get("STATUS") != "present":
+        raise ValueError("compose materialization metadata is not present")
+    metadata = dict(metadata)
+    metadata["ASSESSMENT_KIND"] = metadata.get("ASSESSMENT_KIND") or _invariant_assessment_kind(normalized)
+    write_invariant_implement_note(
         implement_tmpdir=implement_tmpdir,
         note_text=normalized,
         head_sha=materialized_head,
@@ -1275,6 +1761,26 @@ def append_deviation_note_main(argv: list[str]) -> int:
     return 1 if status == _APPEND_DEVIATION_FAILED else 0
 
 
+def invariants_append_deviation_note_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants append-deviation-note")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--note-file", required=True)
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print(f"ARCHITECTURAL_INVARIANTS_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    try:
+        note_text = _read_regular_text_no_follow(Path(args.note_file))
+        status = append_deviation_note(Path(args.implement_tmpdir), note_text)
+    except (OSError, UnicodeDecodeError, ValueError, ShipError) as exc:
+        print(f"ARCHITECTURAL_INVARIANTS_APPEND_STATUS={_APPEND_DEVIATION_FAILED}")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    print(f"ARCHITECTURAL_INVARIANTS_APPEND_STATUS={status}")
+    return 1 if status == _APPEND_DEVIATION_FAILED else 0
+
+
 def _bool_arg(value: str) -> bool:
     return value.strip().lower() in {"1", "true", "yes", "on"}
 
@@ -1319,6 +1825,31 @@ def persist_design_assessment(
     return 0
 
 
+def persist_invariant_design_assessment(
+    *,
+    repo_root: str | Path | None,
+    design_tmpdir: str,
+    assessment: str = "",
+    assessment_text: str | None = None,
+) -> int:
+    design_tmpdir_path = _validate_design_tmpdir_arg(design_tmpdir)
+    result = read_invariants(repo_root=repo_root)
+    path = invariant_design_assessment_path(design_tmpdir_path)
+    if result.status in {"absent", "invalid"} or not result.content.strip():
+        _safe_unlink_assessment(path)
+        if path.exists() or path.is_symlink():
+            raise OSError(f"{INVARIANT_DESIGN_ASSESSMENT}: stale entry could not be removed (not a regular file)")
+        return 0
+    if assessment == "clean":
+        text = CLEAN_INVARIANT_PRESENTATION_NOTE + "\n"
+    elif assessment_text is not None:
+        text = _normalize_assessment_text(assessment_text)
+    else:
+        raise ValueError("present invariants require exactly one assessment source")
+    _write_invariant_design_assessment_atomic(design_tmpdir=design_tmpdir_path, text=text)
+    return 0
+
+
 def persist_design_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines persist-design-assessment")
     parser.add_argument("--repo-root")
@@ -1355,6 +1886,53 @@ def persist_design_assessment_main(argv: list[str]) -> int:
             return 1
     try:
         return persist_design_assessment(
+            repo_root=args.repo_root,
+            design_tmpdir=str(design_tmpdir),
+            assessment=args.assessment or "",
+            assessment_text=assessment_text,
+        )
+    except (OSError, ValueError) as exc:
+        print(f"persist-design-assessment: {exc}", file=sys.stderr)
+        return 1
+
+
+def invariants_persist_design_assessment_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants persist-design-assessment")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--design-tmpdir", default=os.environ.get("DESIGN_TMPDIR", ""))
+    parser.add_argument("--assessment", choices=("clean",))
+    parser.add_argument("--assessment-file")
+    args = parser.parse_args(argv)
+    try:
+        design_tmpdir = _validate_design_tmpdir_arg(args.design_tmpdir)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    result = read_invariants(repo_root=args.repo_root)
+    has_clean = args.assessment == "clean"
+    has_file = bool(args.assessment_file)
+    flag_error: str | None = None
+    requires_assessment = result.status == "present" and bool(result.content.strip())
+    if requires_assessment:
+        if has_clean == has_file:
+            flag_error = "present architectural invariants require exactly one of --assessment clean or --assessment-file"
+    elif has_clean or has_file:
+        flag_error = "absent, empty, or invalid architectural invariants do not accept assessment source flags"
+    if flag_error is not None:
+        print(flag_error, file=sys.stderr)
+        return 1
+    assessment_text: str | None = None
+    if has_file:
+        try:
+            assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
+        except OSError as exc:
+            print(f"assessment-file: {exc}", file=sys.stderr)
+            return 1
+        if not assessment_text.strip():
+            print("assessment-file: content must not be empty", file=sys.stderr)
+            return 1
+    try:
+        return persist_invariant_design_assessment(
             repo_root=args.repo_root,
             design_tmpdir=str(design_tmpdir),
             assessment=args.assessment or "",
@@ -1407,6 +1985,14 @@ def _emit_present_guidelines(result: ArchitecturalGuidelinesResult) -> None:
         sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_guidelines", text=result.content))
 
 
+def _emit_present_invariants(result: ArchitecturalGuidelinesResult) -> None:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
+    assert result.path is not None
+    print(f"ARCHITECTURAL_INVARIANTS_PATH={result.path}")
+    if result.content:
+        sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_invariants", text=result.content))
+
+
 def present_note_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines present-note")
     parser.add_argument("--repo-root")
@@ -1423,6 +2009,27 @@ def present_note_main(argv: list[str]) -> int:
         return 0
     _emit_present_guidelines(result)
     print(GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED)
+    return 0
+
+
+def invariants_present_note_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants present-note")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--assessment", choices=("pending", "clean"), default="pending")
+    args = parser.parse_args(argv)
+    result = read_invariants(repo_root=args.repo_root)
+    if result.status == "absent":
+        return 0
+    if result.status == "invalid":
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={result.warning}")
+        return 0
+    if args.assessment == "clean":
+        if result.content.strip():
+            print(CLEAN_INVARIANT_PRESENTATION_NOTE)
+        return 0
+    _emit_present_invariants(result)
+    if result.content.strip():
+        print(INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED)
     return 0
 
 
@@ -1491,6 +2098,71 @@ def materialize_diff_main(argv: list[str]) -> int:
     )
 
 
+def _emit_invariant_materialized_diff(
+    repo_root: Path,
+    *,
+    forked_target: bool,
+    output: str = "",
+    implement_tmpdir: str = "",
+) -> int:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
+    base_remote, base_ref = resolve_diff_base(forked_target=forked_target)
+    base_label = f"{base_remote}/{base_ref}"
+    try:
+        diff_text = materialize_implementation_diff(repo_root, base_remote=base_remote, base_ref=base_ref)
+    except RuntimeError as exc:
+        print("ARCHITECTURAL_INVARIANTS_DIFF_STATUS=failed")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    fingerprint = diff_fingerprint(diff_text)
+    output_path: Path | None = Path(output) if output else None
+    try:
+        if implement_tmpdir:
+            tmpdir = Path(implement_tmpdir)
+            output_path = output_path or _invariant_diff_path(tmpdir)
+            meta_path = tmpdir / INVARIANT_MATERIALIZE_ENV
+            _write_text_atomic(
+                path=meta_path,
+                text="\n".join(
+                    [
+                        f"BASE_REF={_env_escape(base_label)}",
+                        f"DIFF_FINGERPRINT={_env_escape(fingerprint)}",
+                        "",
+                    ]
+                ),
+            )
+        if output_path is not None:
+            _write_text_atomic(path=output_path, text=diff_text)
+    except OSError as exc:
+        print("ARCHITECTURAL_INVARIANTS_DIFF_STATUS=failed")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    print("ARCHITECTURAL_INVARIANTS_DIFF_STATUS=ok")
+    print(f"ARCHITECTURAL_INVARIANTS_BASE_REF={base_label}")
+    print(f"ARCHITECTURAL_INVARIANTS_DIFF_FINGERPRINT={fingerprint}")
+    sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_invariants_diff", text=diff_text))
+    return 0
+
+
+def invariants_materialize_diff_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants materialize-diff")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--output")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    args = parser.parse_args(argv)
+    repo_root = _resolve_repo_root(args.repo_root)
+    if repo_root is None:
+        print("ARCHITECTURAL_INVARIANTS_DIFF_STATUS=absent")
+        return 0
+    return _emit_invariant_materialized_diff(
+        repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        output=args.output or "",
+        implement_tmpdir=args.implement_tmpdir,
+    )
+
+
 def prepare_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines prepare")
     parser.add_argument("--repo-root")
@@ -1515,6 +2187,39 @@ def prepare_main(argv: list[str]) -> int:
     assert result.repo_root is not None
     _emit_present_guidelines(result)
     return _emit_materialized_diff(
+        result.repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        output=args.output or "",
+        implement_tmpdir=args.implement_tmpdir,
+    )
+
+
+def invariants_prepare_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants prepare")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--output")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    args = parser.parse_args(argv)
+    if args.implement_tmpdir:
+        try:
+            invalidate_invariant_implement_note(Path(args.implement_tmpdir))
+        except OSError as exc:
+            print("ARCHITECTURAL_INVARIANTS_INVALIDATE_STATUS=failed")
+            print(f"ARCHITECTURAL_INVARIANTS_WARNING={exc}")
+            return 2
+    result = read_invariants(repo_root=args.repo_root)
+    print(f"ARCHITECTURAL_INVARIANTS_STATUS={result.status}")
+    if result.status == "absent":
+        return 0
+    if result.status == "invalid":
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={result.warning}")
+        return 0
+    assert result.repo_root is not None
+    _emit_present_invariants(result)
+    if not result.content.strip():
+        return 0
+    return _emit_invariant_materialized_diff(
         result.repo_root,
         forked_target=_bool_arg(args.forked_target),
         output=args.output or "",
@@ -1575,6 +2280,59 @@ def prepare_compose_main(argv: list[str]) -> int:
     return 1 if result.status == "failed" else 0
 
 
+def _emit_invariant_compose_prepare_result(*, result: ComposeMaterializationResult, implement_tmpdir: Path, repo_root: str | Path | None) -> None:
+    from larch.issue import issue_wire  # noqa: PLC0415  # lint-layering: ok content blocks must match issue-wire format.
+    print(f"ARCHITECTURAL_INVARIANTS_COMPOSE_STATUS={result.status}")
+    for key, value in (
+        ("ARCHITECTURAL_INVARIANTS_HEAD_SHA", result.head_sha),
+        ("ARCHITECTURAL_INVARIANTS_BASE_REF", result.base_ref),
+        ("ARCHITECTURAL_INVARIANTS_DIFF_FINGERPRINT", result.diff_fingerprint),
+        ("ARCHITECTURAL_INVARIANTS_DIFF_PATH", str(result.diff_path) if result.diff_path is not None else ""),
+        ("ARCHITECTURAL_INVARIANTS_WARNING", result.warning),
+    ):
+        if value:
+            print(f"{key}={value}")
+    invariants = read_invariants(repo_root=repo_root)
+    print(f"ARCHITECTURAL_INVARIANTS_STATUS={invariants.status}")
+    if invariants.status != "present":
+        return
+    _emit_present_invariants(invariants)
+    diff_path = result.diff_path or _invariant_diff_path(implement_tmpdir)
+    if not diff_path.is_file() or diff_path.is_symlink():
+        return
+    try:
+        diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if diff_text:
+        sys.stdout.write(issue_wire.emit_untrusted_content_block(tag="architectural_invariants_diff", text=diff_text))
+
+
+def invariants_prepare_compose_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants prepare-compose")
+    parser.add_argument("--repo-root")
+    parser.add_argument("--forked-target", default="false")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--expected-head-sha", default="")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_INVARIANTS_COMPOSE_STATUS=failed")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    result = prepare_invariant_compose_assessment(
+        implement_tmpdir=Path(args.implement_tmpdir),
+        repo_root=args.repo_root,
+        forked_target=_bool_arg(args.forked_target),
+        expected_head_sha=args.expected_head_sha,
+    )
+    _emit_invariant_compose_prepare_result(
+        result=result,
+        implement_tmpdir=Path(args.implement_tmpdir),
+        repo_root=args.repo_root,
+    )
+    return 1 if result.status == "failed" else 0
+
+
 def write_compose_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-compose-assessment")
     parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
@@ -1602,6 +2360,36 @@ def write_compose_assessment_main(argv: list[str]) -> int:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={str(exc).replace(chr(10), ' ')}")
         return 1
     print("ARCHITECTURAL_GUIDELINES_WRITE_STATUS=ok")
+    return 0
+
+
+def invariants_write_compose_assessment_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants write-compose-assessment")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
+    parser.add_argument("--repo-root")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--assessment-file")
+    source.add_argument("--assessment-text")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    try:
+        if args.assessment_file:
+            assessment_text = _read_regular_text_no_follow(Path(args.assessment_file))
+        else:
+            assessment_text = str(args.assessment_text or "")
+        write_invariant_compose_assessment(
+            implement_tmpdir=Path(args.implement_tmpdir),
+            assessment_text=assessment_text,
+            repo_root=args.repo_root,
+        )
+    except (OSError, UnicodeDecodeError, ValueError) as exc:
+        print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={str(exc).replace(chr(10), ' ')}")
+        return 1
+    print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=ok")
     return 0
 
 
@@ -1651,6 +2439,52 @@ def write_staged_assessment_main(argv: list[str]) -> int:
     return 0
 
 
+def invariants_write_staged_assessment_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants write-staged-assessment")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--assessment-file")
+    source.add_argument("--assessment-text")
+    parser.add_argument("--assessed-head-sha", default="")
+    parser.add_argument("--diff-fingerprint", default="")
+    parser.add_argument("--base-ref", default="")
+    parser.add_argument("--diff-file")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    if args.assessment_file:
+        assessment_text = Path(args.assessment_file).read_text(encoding="utf-8")
+    else:
+        assessment_text = args.assessment_text
+    diff_text = ""
+    if args.diff_file:
+        diff_path = Path(args.diff_file)
+        if not diff_path.is_file() or diff_path.is_symlink():
+            print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
+            print("ARCHITECTURAL_INVARIANTS_WARNING=missing diff file")
+            return 1
+        try:
+            diff_text = diff_path.read_text(encoding="utf-8", errors="replace")
+        except OSError as exc:
+            print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=failed")
+            print(f"ARCHITECTURAL_INVARIANTS_WARNING=unreadable diff file ({exc})")
+            return 1
+    fingerprint = args.diff_fingerprint or diff_fingerprint(diff_text)
+    head_sha = args.assessed_head_sha or _current_head()
+    write_invariant_staged_assessment(
+        implement_tmpdir=Path(args.implement_tmpdir),
+        assessment_text=assessment_text,
+        assessed_head_sha=head_sha,
+        diff_fingerprint_value=fingerprint,
+        base_ref=args.base_ref,
+        diff_text=diff_text,
+    )
+    print("ARCHITECTURAL_INVARIANTS_WRITE_STATUS=ok")
+    return 0
+
+
 def pin_note_from_staged_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines pin-note-from-staged")
     parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
@@ -1673,6 +2507,61 @@ def pin_note_from_staged_main(argv: list[str]) -> int:
     return 0
 
 
+def pin_invariant_note_from_staged(
+    implement_tmpdir: Path,
+    *,
+    head_sha: str,
+    base_ref: str = "",
+    repo_root: str | Path | None = None,
+) -> bool:
+    """Copy the staged invariant assessment into a durable note pinned to head_sha."""
+    staged = invariant_staged_assessment_path(implement_tmpdir)
+    sidecar = _invariant_sidecar_path(implement_tmpdir)
+    if not staged.is_file() or staged.is_symlink() or not sidecar.is_file() or sidecar.is_symlink():
+        return False
+    metadata = _read_env(sidecar)
+    if metadata.get("STATUS") != "present":
+        return False
+    if not _invariant_staged_fingerprint_valid(
+        implement_tmpdir=implement_tmpdir,
+        metadata=metadata,
+        base_ref=base_ref,
+        repo_root=Path(repo_root).resolve() if repo_root is not None else None,
+    ):
+        return False
+    try:
+        note_text = staged.read_text(encoding="utf-8")
+    except OSError:
+        return False
+    try:
+        write_invariant_implement_note(implement_tmpdir=implement_tmpdir, note_text=note_text, head_sha=head_sha, metadata=metadata, base_ref=base_ref)
+    except OSError:
+        return False
+    return True
+
+
+def invariants_pin_note_from_staged_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants pin-note-from-staged")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--head-sha", default="")
+    parser.add_argument("--base-ref", default="")
+    parser.add_argument("--repo-root")
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_INVARIANTS_PIN_STATUS=failed")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    head_sha = args.head_sha or _current_head()
+    pinned = pin_invariant_note_from_staged(
+        Path(args.implement_tmpdir),
+        head_sha=head_sha,
+        base_ref=args.base_ref,
+        repo_root=args.repo_root,
+    )
+    print(f"ARCHITECTURAL_INVARIANTS_PIN_STATUS={'ok' if pinned else 'skipped'}")
+    return 0
+
+
 def invalidate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines invalidate")
     parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
@@ -1688,6 +2577,24 @@ def invalidate_main(argv: list[str]) -> int:
         print(f"ARCHITECTURAL_GUIDELINES_WARNING={exc}")
         return 2
     print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=ok")
+    return 0
+
+
+def invariants_invalidate_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="architectural-invariants invalidate")
+    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    args = parser.parse_args(argv)
+    if not args.implement_tmpdir:
+        print("ARCHITECTURAL_INVARIANTS_INVALIDATE_STATUS=failed")
+        print("ARCHITECTURAL_INVARIANTS_WARNING=missing implement tmpdir")
+        return 2
+    try:
+        invalidate_invariant_implement_note(Path(args.implement_tmpdir))
+    except OSError as exc:
+        print("ARCHITECTURAL_INVARIANTS_INVALIDATE_STATUS=failed")
+        print(f"ARCHITECTURAL_INVARIANTS_WARNING={exc}")
+        return 2
+    print("ARCHITECTURAL_INVARIANTS_INVALIDATE_STATUS=ok")
     return 0
 # pyright: reportArgumentType=false
 # lint-env-via-config-constant: IMPLEMENT_TMPDIR is read in CLI entry points.

@@ -163,12 +163,12 @@ After the mandatory preview and before either Prompt or `--skip-approve` breadcr
 ```bash
 . "$DESIGN_TMPDIR/source-env.sh"
 if [ -z "${REPO_ROOT:-}" ]; then
-  printf '%s\n' '**⚠ 4b: REPO_ROOT unavailable; repair Step 0 source-env.sh before architectural guideline presentation.**'
+  printf '%s\n' '**⚠ 4b: REPO_ROOT unavailable; repair Step 0 source-env.sh before architectural invariant/guideline presentation.**'
   exit 1
 fi
 ```
 
-If `REPO_ROOT` is still empty or unavailable after binding, stop Gate C for repair before `present-note`, `persist-design-assessment`, `AskUserQuestion`, approval, auto-approval, or Step 5. Then run `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`.
+If `REPO_ROOT` is still empty or unavailable after binding, stop Gate C for repair before `present-note`, `persist-design-assessment`, `AskUserQuestion`, approval, auto-approval, or Step 5. Then run `python/cli.py architectural-invariants present-note --repo-root "$REPO_ROOT"` before `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`. A present-but-empty invariants file is a clean no-assessment no-op.
 
 - If it emits no `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true` marker, print the helper output as emitted.
 - If it emits `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.

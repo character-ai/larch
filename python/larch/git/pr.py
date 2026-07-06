@@ -74,7 +74,10 @@ def ensure_pr(
         guidelines_changed = remote_body is not None and pr_body.architectural_guidelines_section(
             remote_body
         ) != pr_body.architectural_guidelines_section(linked)
-        if linked != body or guidelines_changed:
+        invariants_changed = remote_body is not None and pr_body.architectural_invariants_section(
+            remote_body
+        ) != pr_body.architectural_invariants_section(linked)
+        if linked != body or guidelines_changed or invariants_changed:
             pr_body.update_pr_body(
                 runner=runner,
                 number=existing.number,

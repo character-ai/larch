@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from larch.core import config
 from larch.core import proc
-from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record
+from larch.core.architectural_guidelines import validate_guideline_ship_outcome_record, validate_invariant_ship_outcome_record
 from larch.core import redact
 from larch import io as larch_io
 from larch.errors import ShipError
@@ -80,6 +80,7 @@ _LARCH_LOG_BATCHES: dict[str, BatchInfo] = {
     "session-transcript": BatchInfo(".jsonl", "replace", "none"),
     "vendor-failure-diagnostics": BatchInfo(".txt", "replace", "none"),
     "plan-goals-test": BatchInfo(".md", "replace", "plan-goals"),
+    config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME: BatchInfo(".json", "replace", "json-object"),
     "ship-route-exit-handoff": BatchInfo(".env", "replace", "none"),
 }
@@ -235,6 +236,10 @@ def _batch_validate_payload(*, batch: str, path: Path) -> None:
             reason = validate_guideline_ship_outcome_record(data)  # type: ignore[reportUnknownArgumentType]
             if reason is not None:
                 raise ValueError(f"batch {batch} requires a valid guideline outcome artifact: {reason}")
+        if batch == config.RUN_LOG_BATCH_INVARIANT_SHIP_OUTCOME:
+            reason = validate_invariant_ship_outcome_record(data)  # type: ignore[reportUnknownArgumentType]
+            if reason is not None:
+                raise ValueError(f"batch {batch} requires a valid invariant outcome artifact: {reason}")
     elif sanitizer == "json-lines":
         for line in text.splitlines():
             if not line.strip():

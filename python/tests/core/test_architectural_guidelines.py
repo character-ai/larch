@@ -1773,3 +1773,66 @@ def test_log_only_head_advance_keeps_durable_note_consumable_without_repin(
         repo_root=repo,
     )
 # pyright: reportPrivateUsage=false
+
+
+def test_invariants_present_note_empty_has_no_assessment_marker(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    repo = _repo(tmp_path)
+    (repo / ag.INVARIANTS_FILENAME).write_text("# No entries yet\n", encoding="utf-8")
+
+    assert ag.invariants_present_note_main(["--repo-root", str(repo)]) == 0
+    out = capsys.readouterr().out
+
+    assert "ARCHITECTURAL_INVARIANTS_PATH=" in out
+    assert ag.INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED not in out
+
+
+def test_invariant_compose_assessment_persists_durable_note(tmp_path: Path) -> None:
+    repo = _repo(tmp_path / "git")
+    (repo / ag.INVARIANTS_FILENAME).write_text(
+        "### I-Test-1: Keep tests direct\n- Why: invariant coverage.\n",
+        encoding="utf-8",
+    )
+    (repo / "README.md").write_text("base\ninvariant\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+    _git(repo, "commit", "-m", "invariant")
+    head_sha = subprocess.run(
+        ["git", "-C", str(repo), "rev-parse", "HEAD"],
+        text=True,
+        capture_output=True,
+        check=False,
+    ).stdout.strip()
+    tmpdir = tmp_path / "implement"
+
+    result = ag.prepare_invariant_compose_assessment(implement_tmpdir=tmpdir, repo_root=repo, expected_head_sha=head_sha)
+    assert result.status == "assessment-required"
+    assert result.diff_path == tmpdir / ag.INVARIANT_MATERIALIZED_DIFF
+    assert (tmpdir / ag.INVARIANT_MATERIALIZE_ENV).is_file()
+
+    ag.write_invariant_compose_assessment(
+        implement_tmpdir=tmpdir,
+        assessment_text=ag.CLEAN_INVARIANT_PRESENTATION_NOTE,
+        repo_root=repo,
+    )
+
+    assert (tmpdir / ag.INVARIANT_DURABLE_NOTE).read_text(encoding="utf-8") == ag.CLEAN_INVARIANT_PRESENTATION_NOTE + "\n"
+    assert ag.invariant_note_consumable(implement_tmpdir=tmpdir, head_sha=head_sha)
+    assert ag.invariant_durable_note_metadata(tmpdir)["ASSESSMENT_KIND"] == "clean"
+
+
+def test_validate_invariant_ship_outcome_record_accepts_violation() -> None:
+    reason = ag.validate_invariant_ship_outcome_record(
+        {
+            "schema_version": "1",
+            "phase": "implement",
+            "step": "8",
+            "outcome": "violation",
+            "reason": "violation-note",
+            "detail": "I-Test-1 violated",
+            "invariants_status": "present",
+            "head_sha": "abc123",
+            "base_ref": "origin/main",
+            "assessment_kind": "violation",
+        }
+    )
+
+    assert reason is None

@@ -26,7 +26,7 @@ Read before composing or refining:
 - `$DESIGN_TMPDIR/feature-description.txt`: always.
 - `$DESIGN_TMPDIR/discussion-round1.md`: when present and non-empty.
 - `$DESIGN_TMPDIR/brainstorm.md`: when present and non-empty.
-- Parsed `ARCHITECTURAL_GUIDELINES.md` entries: only through `python/cli.py architectural-guidelines read` or in-process `read_guidelines()` when the helper returns `present`. Never use Read or Write on the repo-root guidelines path.
+- Parsed `ARCHITECTURAL_INVARIANTS.md` entries before parsed `ARCHITECTURAL_GUIDELINES.md` entries: only through `python/cli.py architectural-invariants read` / `architectural-guidelines read` or in-process helpers when the helper returns `present`. Never use Read or Write on the repo-root knowledge paths.
 
 Ground the outline in those inputs. Do not add unsupported goals, scope, files, or approaches. Use present guidelines while composing Goals, Non-goals, and Approach, not only during later deviation checks.
 
@@ -69,14 +69,14 @@ After Output and before approval or auto-approval, bind `REPO_ROOT` from the Ste
 ```bash
 . "$DESIGN_TMPDIR/source-env.sh"
 if [ -z "${REPO_ROOT:-}" ]; then
-  printf '%s\n' '**⚠ 1d.7: REPO_ROOT unavailable; repair Step 0 source-env.sh before architectural guideline presentation.**'
+  printf '%s\n' '**⚠ 1d.7: REPO_ROOT unavailable; repair Step 0 source-env.sh before architectural invariant/guideline presentation.**'
   exit 1
 fi
 ```
 
-If `REPO_ROOT` is still empty or unavailable after binding, stop Step 1d.7 for repair before `present-note`, approval, auto-approval, or plan drafting. Then run `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`.
+If `REPO_ROOT` is still empty or unavailable after binding, stop Step 1d.7 for repair before `present-note`, approval, auto-approval, or plan drafting. Then run `python/cli.py architectural-invariants present-note --repo-root "$REPO_ROOT"` before `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`. A present-but-empty invariants file is a clean no-assessment no-op.
 
-- Without `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, print the helper output as emitted.
+- Without `INVARIANTS_VIOLATION_ASSESSMENT_REQUIRED=true` or `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, print the helper output as emitted.
 - With `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess parsed untrusted entries against the just-printed `$DESIGN_TMPDIR/design-outline.md`, not `plan.txt` or the final plan.
   - If deviations exist, print a short deviations list with rationale.
   - If none exist, run `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT" --assessment clean` and print that helper output.

@@ -1,8 +1,14 @@
 [
   {
+<<<<<<< HEAD
     "closure_content_estimated_tokens": 50710,
     "closure_estimated_tokens": 50864,
     "closure_lines": 1711,
+=======
+    "closure_content_estimated_tokens": 53656,
+    "closure_estimated_tokens": 53822,
+    "closure_lines": 1870,
+>>>>>>> d3567a480 (Wire architectural invariants across consumers)
     "conditional_content_estimated_tokens": 17927,
     "conditional_estimated_tokens": 18000,
     "conditional_files": [
@@ -30,16 +36,21 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
+<<<<<<< HEAD
     "skill_md_content_estimated_tokens": 25291,
     "skill_md_estimated_tokens": 25346,
+=======
+    "skill_md_content_estimated_tokens": 25373,
+    "skill_md_estimated_tokens": 25428,
+>>>>>>> d3567a480 (Wire architectural invariants across consumers)
     "skill_md_lines": 700
   },
   {
-    "closure_content_estimated_tokens": 39473,
-    "closure_estimated_tokens": 39586,
-    "closure_lines": 1228,
-    "conditional_content_estimated_tokens": 25864,
-    "conditional_estimated_tokens": 25923,
+    "closure_content_estimated_tokens": 39857,
+    "closure_estimated_tokens": 39971,
+    "closure_lines": 1233,
+    "conditional_content_estimated_tokens": 26521,
+    "conditional_estimated_tokens": 26582,
     "conditional_files": [
       "skills/shared/orchestrator-never.md",
       "skills/implement/references/extracted-script-registry.md",
@@ -50,12 +61,13 @@
       "skills/implement/references/force-mode.md",
       "skills/implement/references/phantom-probe.md",
       "skills/implement/references/execution-issues-tracking.md",
+      "skills/implement/references/architectural-invariants-present.md",
       "skills/implement/references/architectural-guidelines-present.md",
       "skills/implement/references/ship-pr-ci-fix.md",
       "skills/implement/references/conflict-resolution.md",
       "skills/implement/references/stall-recovery.md"
     ],
-    "conditional_lines": 718,
+    "conditional_lines": 749,
     "files": [
       "skills/implement/SKILL.md",
       "skills/shared/readability-style.md",
@@ -68,9 +80,9 @@
       "skills/implement/references/step18-cleanup.md"
     ],
     "skill": "implement",
-    "skill_md_content_estimated_tokens": 29555,
-    "skill_md_estimated_tokens": 29630,
-    "skill_md_lines": 782
+    "skill_md_content_estimated_tokens": 29731,
+    "skill_md_estimated_tokens": 29807,
+    "skill_md_lines": 784
   },
   {
     "closure_content_estimated_tokens": 46082,

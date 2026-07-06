@@ -13,4 +13,5 @@ changelog-rebase-conflicts	jsonl-field	execution-issues.ndjson: body mentions ch
 coder-tool	env-field	round-*/coder.env: CODER_TOOL	coder tool recorded in each round	low
 trailing-content-no-issues-found	reviewer-signals	round-meta.json reviewer_signals[].first_pass_trailing_content	no first-pass trailing content after NO_ISSUES_FOUND in round-meta.json	medium
 oos-silent-drop	composite	oos-accepted*.md vs union(oos-issues.ndjson,oos-issues-created.md) URLs + git-log Inline-triage + rejected markers	non-security OOS blocks have filed URL, inline-triage, or explicit rejected-OOS evidence	high
+invariant-ship-outcome	named-handler	architectural-invariant-outcome.json	implement Step 8 invariant outcome artifact exists and validates at or above the feature-era cutover	high
 guideline-ship-outcome	named-handler	architectural-guideline-outcome.json	implement Step 8 guideline outcome artifact exists and validates at or above the feature-era cutover	high

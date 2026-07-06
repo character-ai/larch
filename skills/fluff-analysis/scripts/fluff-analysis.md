@@ -21,6 +21,7 @@ data-driven recommendations.
   sibling `findings.md` for content.
 - `larch-logs/design/<run>/manifest.json` for manifest-enumerated guideline
   assessment coverage. This scan reads
+  `architectural-invariant-assessment.md` and
   `architectural-guideline-assessment.md` independently of
   `findings-classification.tsv`.
 - Optional (`--include-in-progress`): in-progress `/design` session temp dirs

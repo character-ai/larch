@@ -1,5 +1,6 @@
 ---
 # Referenced implement script files:
+# skills/implement/scripts/step-architectural-invariants-write-compose.md
 # skills/implement/scripts/step-architectural-guidelines-write-compose.md
 # skills/implement/scripts/test-architectural-guidelines-step.sh
 # skills/implement/scripts/test-architectural-guidelines-step.md
@@ -376,7 +377,7 @@ Print one of the following based on which path landed here, evaluated **in this 
 
 If `coder=cursor` and Step 2 returned `STATUS=claude_fallback`, that is **not** a Step 2.4 messaging branch. Step 2 must already have failed closed before entering 2.4 because the bootstrap-selected Cursor path is not allowed to silently drift into Claude fallback.
 
-**Architectural knowledge on Claude fallback**: before Step 2.4 edits, read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`. Treat invariants as hard constraints and guidelines as judgment-tier principles only for the current plan scope; they do not authorize unrelated edits. Emit one line before editing: `architectural_acknowledgment: <ids or no parsed entries acknowledged>`. Do not rerun the Step 8 compose-time architectural-guidelines assessment early; Step 8 still owns compose-time guideline note materialization.
+**Architectural knowledge on Claude fallback**: before Step 2.4 edits, read valid present `ARCHITECTURAL_INVARIANTS.md` before valid present `ARCHITECTURAL_GUIDELINES.md`. Treat invariants as hard constraints and guidelines as judgment-tier principles only for the current plan scope; they do not authorize unrelated edits. Emit one line before editing: `architectural_acknowledgment: <ids or no parsed entries acknowledged>`. Do not rerun the Step 8 compose-time architectural assessments early; Step 8 still owns invariant-first and then guideline note materialization.
 
 **Opportunistic questions**: before edits, if the plan leaves choices that codebase patterns do not resolve, consult `CLAUDE.md` when useful, then batch remaining 1-4 questions in one `AskUserQuestion`. Ask about plan ambiguities only. Do NOT ask whether to do the plan, scope, or capacity.
 
@@ -645,7 +646,8 @@ Regression harness: `skills/implement/scripts/test-step-8-ship.sh`.
 **Post-driver branch skeleton** (details live in `ship-pr-exit-matrix.md` `## Branch semantics`):
 
 - **`complete`**: continue to Step 16.
-- **`guidelines-assessment`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Author the compose-time assessment from `$IMPLEMENT_TMPDIR/architectural-guideline-materialized-diff.txt` and helper metadata, write `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`, run `step-architectural-guidelines-write-compose.sh`, then run the foreground stale-handoff clear and relaunch `step-8-ship.sh` in the same turn. Continue to Step 8, not Step 16. Do not recap.
+- **`invariants-assessment`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-invariants-present.md` completely. Author the compose-time assessment from `$IMPLEMENT_TMPDIR/architectural-invariant-materialized-diff.txt` and helper metadata, write `$IMPLEMENT_TMPDIR/architectural-invariant-assessment-draft.md`, run `step-architectural-invariants-write-compose.sh`, then run the foreground stale-handoff clear and relaunch `step-8-ship.sh` in the same turn. Continue to Step 8, not Step 16. Do not ask for an operator override.
+- **`guidelines-assessment`**: **MANDATORY: READ ENTIRE FILE**: Read `${CLAUDE_PLUGIN_ROOT}/skills/implement/references/architectural-guidelines-present.md` completely. Invariant assessment runs first when requested. Author the compose-time assessment from `$IMPLEMENT_TMPDIR/architectural-guideline-materialized-diff.txt` and helper metadata, write `$IMPLEMENT_TMPDIR/architectural-guideline-assessment-draft.md`, run `step-architectural-guidelines-write-compose.sh`, then run the foreground stale-handoff clear and relaunch `step-8-ship.sh` in the same turn. Continue to Step 8, not Step 16. Do not recap.
 - **`reship`**: If `.ship-route-exit-handoff.env` has `RESUME_PHASE=ship-pr-rrr-phase14` and `CALLER_KIND=ship_pr_pre_push`, skip the pre-fix rebase. This is an existing conflict-resolution continuation. Proceed to the foreground stale-handoff clear, preserving those keys until conflict-resolution Phase 4 completes. For every other `reship`, run the foreground pre-fix rebase before the stale-handoff clear. Do not sleep.
 
 ```bash
