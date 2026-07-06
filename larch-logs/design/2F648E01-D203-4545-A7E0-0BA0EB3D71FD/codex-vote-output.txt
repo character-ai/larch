@@ -1,0 +1,7 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of the earlier tally-label OOS concern and limited to empty-slot fallback labels
+FINDING_3: YES CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=false-positive SEVERITY=nit QUALITY=no-fix UNCERTAIN=false -- the prompt-invariant smoke already targets the semantic plan-voter prompt files, so this is not a necessary feature blocker
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of the prior progress-report counting OOS
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of the prior stale voting-protocol doc concern
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of the prior progress-report counting OOS

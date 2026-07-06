@@ -1,0 +1,248 @@
+Reviewing the codebase for voter dispatch and test harness details so the revised plan matches the accepted findings.
+## Plan
+
+## Approach
+
+- Mirror `review.voters` for `design.plan_voters`: three Codex-primary voters with labels `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`.
+- Refactor `plan_review_panel.dispatch_voters` to mirror `agent_voters.dispatch_voters` (#5837): all launched slots in one waterfall manifest, semantic `VOTER_N_TOOL` labels from policy bindings, and a dedicated Claude launch only on the both-externals-down floor.
+- Resolve all three voter slots through the same `_semantic_label` + `_state_from_bindings` pattern as `agent_voters`: derive `voter_N_tool`, output paths, and per-slot prompt files from `bind_manifest_slot_outputs`, then thread those semantic tools through `_parse_rate_retry`, voter-status-block emission, and final `VOTER_N_TOOL` KVs (reuse `_emit_final_kvs` or an equivalent helper). Use raw `claude` only on the both-externals-down floor branch.
+- Keep the both-externals-down floor as one Claude voter.
+- Add a small HARD-only per-panel, per-archetype Codex role override.
+- Use row-level `model_role` in panel manifests so a HARD panel can mix `default` and `review` Codex roles without duplicating archetypes; assert `resolved_model` on manifest rows matches role (`CODEX_DEFAULT_MODEL` vs `CODEX_REVIEW_MODEL_DEFAULT`).
+- Pin all dynamic Codex reviewer rows to the `review` role.
+- On TRIVIAL code review, always emit `dyn-cursor` when Cursor is available; drop only `dyn-codex`.
+- Update voter calibration fallback labels for new design voter slots.
+- Update docs, topology rows, prompt-invariant harness, and round-loop integration mocks in lockstep.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+- Change `design.plan_voters` policies to match the `review.voters` shape:
+  - `voter-1`: Codex primary, label `codex-validity`, output `codex-validity-vote-output.txt`.
+  - `voter-2`: Codex primary, label `codex-plan-fidelity`, output `codex-plan-fidelity-vote-output.txt`.
+  - `voter-3`: Codex primary, label `codex-pragmatism`, output `codex-pragmatism-vote-output.txt`.
+  - Each slot waterfalls Codex, then Cursor, then Claude with matching semantic labels.
+- Add a frozen config map for HARD Codex role overrides, keyed by panel role and archetype:
+  - `design.plan_review_panel`: `pragmatic`, `requirements` => `default`.
+  - `review.panel`: `correctness`, `edge-cases` => `default`.
+- Keep tier-wide `DIFFICULTY_CODEX_MODEL_ROLES` for existing consumers, but stop treating it as the only source for per-row Codex reviewer model roles.
+
+### UPDATED: python/larch/calibration/difficulty.py
+
+- Add a helper such as `codex_review_model_role_for_archetype(panel_role_id, archetype, tier)`.
+- Return `review` for all non-HARD tiers.
+- Return the config override for HARD when present, otherwise `review`.
+- Keep `codex_review_model_role(tier)` unchanged for compatibility and audit records unless tests show a better narrow rename path.
+
+### UPDATED: python/larch/review/plan_review_panel.py
+
+**`dispatch_voters` refactor (policy-driven; mirrors `agent_voters.dispatch_voters`):**
+
+- Load `design.plan_voters` policies via `external_defaults.voter_policies`.
+- Compute `launched_policies`:
+  - Both externals down: `[voter-1]` only (single Claude floor).
+  - Otherwise: all three policies when at least one external is present.
+- Build per-slot Codex/Cursor/Claude prompt maps for every launched policy (reuse or extend `agent_voters._build_voter_prompt_files` / shared waterfall helpers rather than duplicating logic).
+- Write one `plan-voter-slots.ndjson` manifest containing all launched slots (three rows on the happy path, one row on the floor).
+- Dispatch through `agent dispatch-waterfall` with `--model-role vote`, `--site design Step 3`, and `--claude-read-tools-add-dir str(design)` on the non-floor path (terminal Claude tier needs ballot read access under `$DESIGN_TMPDIR`).
+- Remove the happy-path standalone `subprocess.Popen` / `_launch_claude_voter` path for voter-1; keep the dedicated Claude launch/retry only in the both-externals-down branch.
+- Parse waterfall bindings with `agent_waterfall.bind_manifest_slot_outputs`.
+- Build a `DispatchState` via `_state_from_bindings` (or a shared helper extracted beside `agent_voters`): for each launched policy, resolve `voter_N_path`, `voter_N_tool` (`_semantic_label(policy, binding.tool)`), and `voter_N_status` from bindings; skipped slots keep policy `default_label` and `skipped`/`failed` semantics.
+- Map each slot's resolved vendor tool to the matching prompt file from the per-slot prompt map (same lookup `agent_voters` uses after bindings), not a legacy single `claude_prompt` for slot 1.
+- Run `_parse_rate_retry` for every launched slot with the resolved semantic `voter_N_tool` and matching prompt file; never hardcode `voter_tool="claude"` on the externals-present happy path.
+- Emit final KVs through `_emit_final_kvs` (or equivalent) so `VOTER_1_TOOL` / `VOTER_2_TOOL` / `VOTER_3_TOOL`, parse-rate statuses, and `plan-review-voter-paths.txt` all use the same semantic labels tally and calibration consume.
+- On the both-externals-down floor only: keep dedicated `_launch_claude_voter`, `VOTER_1_TOOL=claude`, and `voter_1_parse` with `voter_tool="claude"`; emit skipped/failed voters 2/3 with policy default labels.
+- Keep degraded-panel warnings, parse-rate retries, `plan-review-voter-paths.txt`, and `DISPATCH_OK` semantics aligned with `agent_voters`.
+
+**Reviewer panel rows:**
+
+- In `_static_slot_rows`, set Codex row `model_role` from the new per-archetype helper; keep `resolved_model` population via `_resolved_model_for_row`.
+- In `_generic_plan_codex_row`, keep any generic row on the tier-wide role, though the current policy emits no generic rows.
+- In `_dynamic_slot_rows`, always set Codex dynamic rows to `review`.
+- Keep dynamic design rows at all tiers.
+- Keep `--no-fallback`.
+- Keep the waterfall `--model-role` as a fallback role only; make row-level `model_role` authoritative for mixed HARD manifests.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+- In `_append_static_specialist_rows`, set Codex row `model_role` from the new per-archetype helper; keep `resolved_model` via `_resolved_model_for_row`.
+- In `_synthesize_dynamic_slots`:
+  - Always emit `dyn-cursor` when `cursor_available` is true (including TRIVIAL with Codex present).
+  - Emit `dyn-codex` only when `codex_available` and `tier != difficulty.TRIVIAL`.
+  - Set Codex dynamic row `model_role` to `review` for MODERATE and HARD.
+- Preserve TRIVIAL static singles behavior: Codex singles when Codex is available, Cursor singles only when Codex is unavailable.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+- Expand valid plan voter labels if any validation still assumes only `Claude`, `Codex`, or `Cursor`.
+- Accept `codex-validity`, `codex-plan-fidelity`, `codex-pragmatism`, and Cursor fallback labels (`cursor-validity`, `cursor-plan-fidelity`, `cursor-pragmatism`) for plan voter attribution.
+- Ensure tally consumes semantic `VOTER_N_TOOL` values emitted by the refactored `dispatch_voters`.
+
+### UPDATED: python/larch/review/_voting_calibration.py
+
+- Change design fallback voter labels to `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`.
+- Keep parsing tolerant of old committed design TSV labels `Claude`, `Codex`, and `Cursor`.
+- Add tests for both new and legacy design labels.
+
+### UPDATED: python/tests/core/test_external_role_defaults.py
+
+- Update `design.plan_voters` expectations to the Codex-primary labels and outputs.
+- Assert each design voter has Codex, Cursor, Claude semantic labels.
+- Add coverage for the HARD override map.
+
+### UPDATED: python/tests/calibration/test_difficulty.py
+
+- Add tests for per-archetype role resolution:
+  - plan HARD `pragmatic` and `requirements` => `default`.
+  - plan HARD `arch` and `innovation` => `review`.
+  - code HARD `correctness` and `edge-cases` => `default`.
+  - code HARD `testing` => `review`.
+  - all MODERATE/TRIVIAL archetypes => `review`.
+
+### UPDATED: python/tests/review/test_plan_review_panel.py
+
+- Update design voter dispatch tests for three Codex-primary slots in one manifest.
+- Assert both-externals-down still emits one Claude floor voter (no waterfall manifest rows for voters 2/3).
+- Update manifest prompt-file assertions for `codex-validity`, `codex-plan-fidelity`, and `codex-pragmatism`.
+- Assert `_parse_rate_retry` receives semantic `voter_tool` for slot 1 on the happy path (`codex-validity`, or `cursor-validity` / `claude` on fallback tiers), not a hardcoded `claude`.
+- Assert final stdout `VOTER_1_TOOL=codex-validity` (or semantic fallback label) when externals are present.
+- Replace the HARD plan panel assertion from "all Codex rows are default" to:
+  - exactly two Codex static rows are `default`.
+  - the `default` rows are `pragmatic` and `requirements`.
+  - `arch`, `innovation`, and all dynamic Codex rows are `review`.
+- Assert no plan archetype appears twice across Codex roles.
+- Add default-env assertions on HARD design manifests:
+  - exactly two Codex rows have `resolved_model=config.CODEX_DEFAULT_MODEL`.
+  - all other Codex static and dynamic rows have `resolved_model=config.CODEX_REVIEW_MODEL_DEFAULT`.
+
+### UPDATED: python/tests/review/test_plan_review_round.py
+
+- Rewrite round-loop voter-dispatch mocks that still emit `VOTER_1_TOOL=claude`, `claude-vote-output.txt`, or assume happy-path `subprocess.Popen` voter-1 dispatch.
+- On the externals-present path, assert three-row `plan-voter-slots.ndjson`, semantic output basenames (`codex-validity-vote-output.txt`, `codex-plan-fidelity-vote-output.txt`, `codex-pragmatism-vote-output.txt`), and `VOTER_1_TOOL=codex-validity` (or `cursor-validity` / `claude` when bindings fall back).
+- Keep both-externals-down mocks on `VOTER_1_TOOL=claude` with voters 2/3 skipped/failed.
+- Delete or replace any test that monkeypatches `subprocess.Popen` to validate the retired Claude-first happy path; narrow Popen coverage to the floor branch only.
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+- Replace the HARD code-review assertion from "all Codex rows are default" to:
+  - `correctness` and `edge-cases` are `default`.
+  - `testing` is `review`.
+- Add default-env assertions on HARD code manifests:
+  - `testing` and all dynamic Codex rows have `resolved_model=config.CODEX_REVIEW_MODEL_DEFAULT`.
+- Add or update dynamic manifest tests:
+  - TRIVIAL with non-empty scout manifest and both externals present emits `dyn-cursor` only (no `dyn-codex`).
+  - MODERATE emits dyn-cursor plus dyn-codex with `review`.
+  - HARD emits dyn-cursor plus dyn-codex with `review`.
+
+### UPDATED: python/tests/agents/test_external_dispatch.py
+
+- Update `test_plan_review_voter_dispatch_uses_plan_voter_policy` (and related harnesses) for the refactored dispatch:
+  - three-row `plan-voter-slots.ndjson` on the Codex-primary happy path.
+  - semantic output basenames (`codex-validity-vote-output.txt`, etc.).
+  - no standalone Claude `Popen` on the happy path.
+  - `dispatch-waterfall` receives `--claude-read-tools-add-dir` pointing at the design tmpdir.
+  - both-externals-down keeps a single Claude floor voter with semantic `VOTER_1_TOOL=claude` and skipped/failed voters 2/3.
+  - parse-rate retry hooks receive semantic slot-1 tool labels on the happy path.
+
+### UPDATED: python/tests/review/test_voting.py
+
+- Update design classification fallback label tests for the new design voter labels.
+- Add legacy design TSV coverage so old `Claude`, `Codex`, and `Cursor` rows remain readable.
+
+### UPDATED: scripts/test-prompt-template-invariants.sh
+
+- Retarget the plan-voter runtime render smoke away from legacy `codex-plan-voter-prompt-codex.txt` / `cursor-plan-voter-prompt-cursor.txt` basenames.
+- Prefer discovering generated prompt files from a happy-path `plan-voter-slots.ndjson` manifest (or policy-derived semantic basenames such as `codex-validity-voter-prompt-codex.txt`) instead of hard-coded legacy names.
+- Preserve invariant checks for `Verify silently`, plan/file verification allowance, `Output ONLY vote lines`, and `OOS_N: YES` on the resolved Codex-primary and Cursor-fallback prompt files.
+- Keep the assertion that no standalone `*plan-voter-prompt-retry.txt` is rendered at dispatch time.
+
+### UPDATED: scripts/test-design-multi-round-integration.sh
+
+- Update mocked voter-dispatch stdout from `VOTER_1_TOOL=claude` / legacy output basenames to semantic Codex-primary labels and `codex-*-vote-output.txt` paths on the externals-present path.
+- Keep `VOTER_1_TOOL=claude` only for both-externals-down integration fixtures.
+
+### UPDATED: docs/review-agents.md
+
+- Update the difficulty-tiered panel section:
+  - Design HARD has four Cursor rows, two Codex `default` rows, two Codex `review` rows, and pinned dynamic rows.
+  - Code HARD has three Cursor rows, two Codex `default` rows, one Codex `review` row, and pinned dynamic rows.
+  - TRIVIAL code review drops dyn-codex but keeps dyn-cursor when Cursor is available.
+- Keep round cap, pruning, and `--no-fallback` statements unchanged.
+
+### UPDATED: docs/external-reviewers.md
+
+- Update voting docs so `design.plan_voters` and `review.voters` now share the three Codex-primary voter shape and one shared waterfall dispatch contract.
+- Note the single-Claude floor when both external tools are down.
+- Document `--claude-read-tools-add-dir` on plan-voter waterfall dispatch.
+- Document semantic `VOTER_N_TOOL` emission and parse-rate retry attribution from binding-resolved labels.
+- Update any plan-voter Cursor-primary wording.
+
+### UPDATED: docs/voting-process.md
+
+- Replace `/design` "Claude + Codex + Cursor" voter prose with the new Codex-primary three-slot shape.
+- Document `v1`, `v2`, and `v3` labels for design and code-review voters.
+- Note that old committed logs may still contain `Claude`, `Codex`, and `Cursor`.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+- Update Codex model role prose for review panels.
+- State that HARD reviewer panels can set Codex model roles per archetype, while dynamic Codex rows stay on the review role.
+- Note `resolved_model` derives from row `model_role` (`CODEX_DEFAULT_MODEL` vs `CODEX_REVIEW_MODEL_DEFAULT`).
+
+### UPDATED: skills/shared/topology.tsv
+
+- Update plan-review and code-review topology descriptions where row counts, voter dispatch, or model-role details changed.
+
+### UPDATED: docs/topology.md
+
+- Regenerate or manually sync the topology projection from `skills/shared/topology.tsv` if its rendered text changes.
+
+### UPDATED: README.md
+
+- Update stale skill-summary prose that still says HARD uses the Codex default role for every Codex reviewer row or that `/design` voters are Claude-first.
+
+### UPDATED: docs/skills.md
+
+- Update stale `/implement`, `/review`, `/design`, or `/voter-calibration` prose that repeats the old voter or HARD panel shapes.
+
+## Edge cases
+
+- Both external voter tools down must still avoid launching voters 2 and 3; only voter-1 runs via the dedicated Claude floor path with `VOTER_1_TOOL=claude`.
+- Codex down with Cursor up should still run all three design voter slots through Cursor fallback in one waterfall manifest with semantic labels like `cursor-validity`.
+- HARD row overrides must not create duplicate Codex rows for the same archetype.
+- Row-level `model_role` must override the waterfall fallback role; `resolved_model` must follow the resolved role.
+- TRIVIAL code review with both externals present and a non-empty scout manifest must still emit `dyn-cursor` and must not emit `dyn-codex`.
+- Existing committed design classification TSVs with old labels must remain parseable.
+- Parse-rate retries and `VOTER_N_TOOL` emission must use binding-resolved semantic labels for all three slots on the happy path; hardcoding `claude` for slot 1 would desync tally, calibration, and committed logs.
+
+## Failure modes
+
+- Leaving the Claude-first `dispatch_voters` happy path in place would negate config changes and break semantic `VOTER_N_TOOL` / tally attribution.
+- Hardcoding `voter_tool="claude"` in slot-1 `_parse_rate_retry` or status emission would preserve legacy vendor labels in tallying and calibration despite semantic output filenames.
+- A tier-wide `--model-role default` could accidentally upshift all HARD Codex rows if row-level overrides are missing.
+- Renaming plan voter output files can break status parsing if every `VOTER_N_PATH` emitter is not updated.
+- Calibration may split old and new labels unless fallback and parser tests cover both shapes.
+- TRIVIAL `dyn-cursor` suppression when Codex is up would leave TRIVIAL review without dynamic rows.
+- Docs can drift from manifests unless tests assert row-level `model_role` and `resolved_model`.
+- Round-loop integration mocks (`test_plan_review_round.py`, `test-design-multi-round-integration.sh`) can keep testing deleted Popen/Claude-first behavior while narrow panel tests pass.
+- The prompt-invariant harness can fail CI if it still asserts legacy plan-voter prompt basenames after semantic rename.
+
+## Testing strategy
+
+- Run targeted Python tests:
+  - `python -m pytest python/tests/core/test_external_role_defaults.py`
+  - `python -m pytest python/tests/calibration/test_difficulty.py`
+  - `python -m pytest python/tests/review/test_plan_review_panel.py`
+  - `python -m pytest python/tests/review/test_plan_review_round.py`
+  - `python -m pytest python/tests/review/test_review_pipeline.py`
+  - `python -m pytest python/tests/agents/test_external_dispatch.py`
+  - `python -m pytest python/tests/review/test_voting.py`
+- Run harness checks:
+  - `bash scripts/test-prompt-template-invariants.sh`
+  - `bash scripts/test-design-multi-round-integration.sh` (or the `make test-design-multi-round-integration` target if present)
+- Run relevant checks for changed files with `python3 python/cli.py checks run-relevant`.
+- If topology docs are generated by an existing helper, run that helper and commit only the deterministic projection.
+
+difficulty: HARD
+diff_lines: 1180
