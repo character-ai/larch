@@ -1,0 +1,2 @@
+1	the planned `lint-bash32` rule needs line-start anchoring and token-sensitive matching. a substring-style rule would false-flag sanctioned `if ( command grep ... )` / piped probes and literal fixture strings in `scripts/test-lint-bare-grep-probe.sh`, which would make repo-wide `make lint-bash32` fail after the rule lands.
+1	`skills/design/scripts/design-step3b-tail.sh` is still outside the repo-wide `lint-bash32` / pre-commit scan surface, so the live jq-less bash 3.2 abort can remain untested in ci.

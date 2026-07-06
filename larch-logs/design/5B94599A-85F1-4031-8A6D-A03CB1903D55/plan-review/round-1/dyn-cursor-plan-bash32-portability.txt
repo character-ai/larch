@@ -1,0 +1,55 @@
+Reviewing the plan against the codebase: reading the cited files and lint contracts.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	scripts/lint-bash32.sh:102-122	New lint rule must anchor at line-start if/elif, not substring-match command grep-family anywhere on the line	An unanchored awk regex such as /(if|elif)[[:space:]]+command[[:space:]]+(grep|rg)/ matches quoted fixture text inside assert_fence_line_* calls in scripts/test-lint-bare-grep-probe.sh:150,230,232,234,324,325 (e.g. 'if command rg -q PATTERN python/; then echo found; fi'), so make lint-bash32 / whole-repo scans exit 1 even though those lines are non-executable literals	Document and implement the rule as ^[[:space:]]*(if|elif)[[:space:]]+!?[[:space:]]*command[[:space:]]+(grep|egrep|fgrep|rg)([[:space:]]|;|\)|$)/ with an early reject when the token after if/elif optional ! is ( so if ( command grep ... ) and if ! ( command grep ... ) stay allowed; only add # lint-bash32: ok suppressions if a reviewed exception still matches after anchoring
+1	in_scope	minor	risk-integration	scripts/test-lint-bash32.sh:96-153	Passing regression fixture omits the negated subshell shape the plan applies to scripts/test-lint-awk-multibyte-regex.sh:58,87	Plan requires a passing ( command grep ... ) fixture but the harness rewrite is if ! ( command grep -Fq "$needle" "$stderr_file" ) 2>/dev/null; an over-broad rule that treats ! as optional whitespace before command without rejecting a leading ( could false-flag the fixed harness while the non-negated passing case still passes	Add an explicit clean fixture using if ! ( command grep -Fq needle file ) 2>/dev/null; then (and optionally elif ! ( command rg ... ) ) to scripts/test-lint-bash32.sh passing cases
+
+## Findings
+
+### 1. Line-anchored lint matching (major, correctness)
+
+The plan adds an awk rule in `scripts/lint-bash32.sh` but does not require matching only at the start of a conditional. Several committed lines in `scripts/test-lint-bare-grep-probe.sh` embed the unsafe pattern inside single-quoted fixture strings, not as executable code:
+
+```150:150:scripts/test-lint-bare-grep-probe.sh
+    'if command grep -q PATTERN file.txt; then echo found; fi' \
+```
+
+```230:235:scripts/test-lint-bare-grep-probe.sh
+assert_fence_line_violation "no-path if command grep" 'if command grep -q PATTERN; then echo found; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! command ripgrep" 'if ! command ripgrep -q PATTERN; then echo missing; fi' \
+    "no-path rg/grep probe may block on stdin"
+assert_fence_line_violation "no-path if ! command rg" 'if ! command rg -q PATTERN; then echo missing; fi' \
+```
+
+```324:325:scripts/test-lint-bare-grep-probe.sh
+assert_fence_line_allowed "path if command rg" 'if command rg -q PATTERN python/; then echo found; fi'
+assert_fence_line_allowed "path if command ripgrep" 'if command ripgrep -q PATTERN skills/; then echo missing; fi'
+```
+
+That file is in `scripts/residual-bash-paths.txt`, so whole-repo `make lint-bash32` scans it. A substring-style rule would flag these lines and break CI. The plan’s failure-mode note about harness self-flagging covers `scripts/test-lint-bash32.sh` only, not this sibling harness.
+
+**Suggested revision:** Require `^[[:space:]]*(if|elif)` anchoring, reject `if (` / `elif (` before `command`, and treat `test-lint-bare-grep-probe.sh` suppressions as unnecessary if anchoring is correct.
+
+### 2. Negated subshell passing fixture (minor, risk-integration)
+
+The live fix at `skills/design/scripts/design-step3b-tail.sh:154` is `elif command grep` (unsafe on bash 3.2 under `set -euo pipefail` at line 4). The proposed subshell with stderr outside the group is correct:
+
+`elif ( command grep -Eq ... "$DESIGN_TMPDIR/run-params.json" ) 2>/dev/null; then`
+
+That preserves no-match as a false condition instead of aborting, and keeps stderr quiet the same way the current line’s trailing `2>/dev/null` does.
+
+The harness cleanup targets a different shape at `scripts/test-lint-awk-multibyte-regex.sh:58,87`:
+
+```58:58:scripts/test-lint-awk-multibyte-regex.sh
+        if ! command grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
+```
+
+The plan’s passing lint fixture only mentions bare `( command grep ... )`, not `if ! ( command grep ... ) 2>/dev/null`. Given the stated failure mode of an over-broad regex, a passing case for the negated subshell form would lock the shape the harness will use after the fix.
+
+## Verified OK (no finding)
+
+- **Live defect:** `skills/design/scripts/design-step3b-tail.sh:154` matches the reported bash 3.2 `set -e` hazard; the subshell redirect placement in the plan matches `BASH_AUTHORING.md` guidance.
+- **Sanctioned forms already in tree:** `if ( command grep ... )` sites such as `scripts/test-design-structure.sh:73` and `skills/design/scripts/test-design-step3-review.sh:853` should remain clean with a line-anchored rule.
+- **Non-conditional probes:** shapes like `command grep ... || return 1` at `skills/design/scripts/design-step3-review.sh:447` are outside `if`/`elif` and correctly out of lint scope per the plan.
+- **Harness grep sites under `set +e`:** `scripts/test-lint-awk-multibyte-regex.sh:48,77` disable errexit before the probes; treating those edits as consistency-only is proportionate.
+- **Scope:** limiting grep-family tools to `grep|egrep|fgrep|rg` matches current committed unsafe sites; no live `if command ripgrep` executable code exists (only fixture strings in `test-lint-bare-grep-probe.sh`).
