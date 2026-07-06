@@ -332,6 +332,7 @@ pass 'Step 3 wrapper keeps stdout KV-only'
 
 D_REARM=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-bg-wait-rearm.XXXXXX")
 FAKE_REARM="$D_REARM/fake-plugin"
+# shellcheck disable=SC2016
 make_fake_step3_plugin "$FAKE_REARM" 'printf "%s\n" start >"$DESIGN_TMPDIR/body-entered"
 waited=0
 while [[ ! -f "$DESIGN_TMPDIR/release-body" && "$waited" -lt 100 ]]; do
