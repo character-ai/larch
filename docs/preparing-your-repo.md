@@ -104,11 +104,29 @@ in it.
 
 ### 2. Behavioral guardrails (the `KARPATHY_CLAUDE.md` pattern)
 
-<!-- larch source: KARPATHY_CLAUDE.md | disposition: Copy near-verbatim (stack-agnostic) -->
-<!-- TODO:
-     - Think before coding; simplicity first; surgical changes; goal-driven execution.
-     - This file is portable as-is — the mistakes it prevents are model mistakes, not repo mistakes.
--->
+*Larch source: `KARPATHY_CLAUDE.md` · Disposition: **Copy** near-verbatim.*
+
+Some agent mistakes are model mistakes, not repo mistakes — assuming instead of
+asking, over-engineering a simple task, refactoring code that wasn't in scope,
+declaring done without verifying. A short behavioral file heads these off, and
+because it targets the model's habits rather than your codebase, it ports to any
+repo almost unchanged.
+
+larch's `KARPATHY_CLAUDE.md` is four rules:
+
+- **Think before coding** — state assumptions, surface tradeoffs, ask when unclear
+  instead of guessing silently.
+- **Simplicity first** — the minimum code that solves the problem; nothing
+  speculative.
+- **Surgical changes** — touch only what the task requires; don't "improve"
+  adjacent code.
+- **Goal-driven execution** — turn the task into a verifiable check, then loop
+  until it passes.
+
+Copy the file, wire it into your `CLAUDE.md` import list (§1), and keep only the
+one framing line that hands off to your repo-specific instructions. The filename
+is arbitrary — larch's is an homage; `BEHAVIORAL_GUIDELINES.md` reads just as
+well — as long as the `CLAUDE.md` import matches.
 
 ### 3. Stack-specific authoring notes (the `BASH_AUTHORING.md` pattern)
 
