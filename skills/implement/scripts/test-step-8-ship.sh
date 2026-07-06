@@ -54,6 +54,8 @@ assert_contains 'TIMEOUT_S=21600' "$helper_text" 'static: marker pins Step 8 tim
 assert_contains 'CLONE_PATH=%s' "$helper_text" 'static: marker includes clone identity field'
 assert_contains 'no-progress-turns.count' "$helper_text" 'static: wrapper clears no-progress counter'
 assert_contains 'no-progress-circuit-breaker-armed' "$helper_text" 'static: wrapper clears no-progress breaker'
+assert_contains 'no-progress-stop-block-emitted' "$helper_text" 'static: wrapper clears stop-block sidecar'
+assert_contains 'bg-poll-guard-task-output-read' "$helper_text" 'static: wrapper clears task-output clamp sidecars'
 assert_contains 'bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count' "$helper_text" 'static: wrapper clears Step 8 rc probe clamp counter'
 # shellcheck disable=SC2016
 assert_contains 'rm -f "$HANDOFF_RC" "$HANDOFF_JSON"' "$helper_text" 'static: wrapper removes stale handoff sidecars at entry'

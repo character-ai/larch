@@ -5,6 +5,7 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd -P)"
 MODULE="$ROOT/python/larch/review/plan_review.py"
 NORMALIZE_MODULE="$ROOT/python/larch/review/plan_review_normalize.py"
 WRAPPER="$ROOT/skills/design/scripts/design-step3-review.sh"
+TAIL_WRAPPER="$ROOT/skills/design/scripts/design-step3b-tail.sh"
 SKILL_MD="$ROOT/skills/design/SKILL.md"
 fail() { printf 'FAIL: %s\n' "$*" >&2; exit 1; }
 pass() { printf 'PASS: %s\n' "$*"; }
@@ -118,6 +119,10 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
   fail 'postplan-failed stdout must remain KV-only'
 fi
 grep -Fq 'plan-review normalize-status' "$WRAPPER" || fail 'normalizer delegation missing'
+grep -Fq 'no-progress-stop-block-emitted' "$WRAPPER" || fail 'Step 3 wrapper must clear stale stop-block sidecars before bg-wait marker write'
+grep -Fq 'bg-poll-guard-task-output-read' "$WRAPPER" || fail 'Step 3 wrapper must clear stale task-output clamp sidecars before bg-wait marker write'
+grep -Fq 'no-progress-stop-block-emitted' "$TAIL_WRAPPER" || fail 'Step 4 tail wrapper must clear stale stop-block sidecars before bg-wait marker write'
+grep -Fq 'bg-poll-guard-task-output-read' "$TAIL_WRAPPER" || fail 'Step 4 tail wrapper must clear stale task-output clamp sidecars before bg-wait marker write'
 grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$NORMALIZE_MODULE" || fail 'postplan-failed summary KV missing from normalizer'
 grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$NORMALIZE_MODULE" || fail 'panel-init-failed summary KV missing from normalizer'
 grep -Fq 'file=sys.stderr' "$NORMALIZE_MODULE" || fail 'normalizer markdown warnings must route to stderr'
@@ -324,6 +329,50 @@ if grep 'printf.*\*\*⚠ Step 3' "$WRAPPER" | grep -qv '>&2'; then
   fail 'design-step3-review.sh must route Step 3 markdown warnings to stderr'
 fi
 pass 'Step 3 wrapper keeps stdout KV-only'
+
+D_REARM=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-bg-wait-rearm.XXXXXX")
+FAKE_REARM="$D_REARM/fake-plugin"
+make_fake_step3_plugin "$FAKE_REARM" 'printf "%s\n" start >"$DESIGN_TMPDIR/body-entered"
+waited=0
+while [[ ! -f "$DESIGN_TMPDIR/release-body" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+printf "%s\n" "LOOP_STATUS=complete" "TALLY_PLAN_REVIEW_STATUS=ok" "ACCEPTED_COUNT=0"'
+printf 'anchor\n' >"$D_REARM/plan-review-scope-anchor.txt"
+: >"$D_REARM/no-progress-turns.count"
+: >"$D_REARM/no-progress-circuit-breaker-armed"
+: >"$D_REARM/no-progress-stop-block-emitted"
+: >"$D_REARM/bg-poll-guard-task-output-read.step-3-terminal.count"
+set +e
+env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_REARM" DESIGN_TMPDIR="$D_REARM" ISSUE_NUMBER=9 \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" "$WRAPPER" >"$D_REARM/stdout.log" 2>"$D_REARM/stderr.log" &
+rearm_pid=$!
+set -e
+cleanup_rearm_harness() {
+  touch "$D_REARM/release-body" 2>/dev/null || true
+  if kill -0 "$rearm_pid" 2>/dev/null; then
+    kill "$rearm_pid" 2>/dev/null || true
+  fi
+  wait "$rearm_pid" 2>/dev/null || true
+  rm -rf "$D_REARM" 2>/dev/null || true
+}
+trap cleanup_rearm_harness EXIT
+waited=0
+while [[ ! -f "$D_REARM/body-entered" && "$waited" -lt 100 ]]; do
+  sleep 0.1
+  waited=$((waited + 1))
+done
+[[ -f "$D_REARM/body-entered" ]] || fail "re-arm wrapper did not start; stderr=$(cat "$D_REARM/stderr.log")"
+[[ -f "$D_REARM/.bg-wait-active" ]] || fail 're-arm wrapper must write the bg-wait marker before launch'
+for sidecar in no-progress-turns.count no-progress-circuit-breaker-armed no-progress-stop-block-emitted bg-poll-guard-task-output-read.step-3-terminal.count; do
+  [[ ! -e "$D_REARM/$sidecar" ]] || fail "re-arm wrapper must clear stale $sidecar before marker write"
+done
+touch "$D_REARM/release-body"
+wait "$rearm_pid" || fail "re-arm wrapper failed; stderr=$(cat "$D_REARM/stderr.log")"
+trap - EXIT
+rm -rf "$D_REARM"
+pass 'Step 3 bg-wait re-arm clears stale stop and clamp sidecars before marker write'
 
 D_MISSING=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-missing-result.XXXXXX")
 FAKE_MISSING="$D_MISSING/fake-plugin"
