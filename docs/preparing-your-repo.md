@@ -210,40 +210,122 @@ matters.
 
 ### 6. Path-triggered rules (`.claude/rules/`)
 
-<!-- larch source: .claude/rules/*.md | disposition: Copy the pattern (some rules verbatim) -->
-<!-- TODO:
-     `paths:` frontmatter globs inject a system reminder when a matching file is read or edited.
-     Just-in-time, local guidance instead of bloating the always-on brief.
-     Rules worth copying verbatim: drift-prone-prose-in-docs, shell-strict-mode.
--->
+*Larch source: `.claude/rules/*.md`. Disposition: **Copy** the pattern; some rules copy verbatim.*
+
+A path-triggered rule loads only when it applies. Each rule is a Markdown file with
+a `paths:` frontmatter glob. When the agent reads or edits a matching file, Claude
+Code injects the rule as a system reminder. The rest of the time it costs nothing.
+
+This is how you keep the always-on brief lean (§5) without losing the guidance. A
+rule about shell scripts fires when the agent touches a `.sh` file, and stays
+silent otherwise. The shape is small:
+
+```text
+---
+paths: ["scripts/**/*.sh", "hooks/**/*.sh"]
+---
+
+# Shell Strict Mode
+
+Shell scripts use `set -euo pipefail` by default. Comment when you omit `-e` on
+purpose.
+```
+
+larch ships many of these. Two are generic enough to copy straight into any repo:
+`drift-prone-prose-in-docs` (no hardcoded counts or line numbers in prose) and
+`shell-strict-mode`. Others encode larch-specific structure.
+
+Rules are advisory reminders, not hard blocks. When you need the agent stopped, not
+reminded, use a hook (§7).
 
 ### 7. Hooks (guardrails the agent cannot skip)
 
-<!-- larch source: hooks/hooks.json, scripts/block-submodule-edit.sh, scripts/sessionstart-health.sh | disposition: Adapt -->
-<!-- TODO:
-     PreToolUse (block edits, guard bad patterns), PostToolUse, SessionStart (health probe), Stop (fail-close).
-     Deterministic enforcement the model cannot argue with.
-     Generic wins: block edits to vendored or submodule dirs; warn on missing required tools at session start.
--->
+*Larch source: `hooks/hooks.json`, `scripts/block-submodule-edit.sh`, `scripts/sessionstart-health.sh`. Disposition: **Adapt**.*
+
+A hook runs your own command at a lifecycle point. Unlike a rule (§6), which only
+advises, a `PreToolUse` hook can deny a tool call outright. This is the layer the
+model cannot talk its way past.
+
+Claude Code fires hooks at several points. larch uses four:
+
+- **`PreToolUse`** runs before a tool call and can block it.
+- **`PostToolUse`** runs after a tool call.
+- **`SessionStart`** runs at session start or resume and can inject context.
+- **`Stop`** runs when the agent tries to end a turn and can fail closed.
+
+Two of larch's hooks copy well into any repo:
+
+- **Block edits to off-limits files.** `block-submodule-edit.sh` denies `Edit` and
+  `Write` on files inside a git submodule. Point the same idea at vendored,
+  generated, or build-output directories.
+- **Warn on missing tools at session start.** `sessionstart-health.sh` checks that
+  required binaries are on `PATH` and warns early, before the first failed command.
+
+You wire hooks in `hooks.json` (for a plugin) or in `.claude/settings.json` (per
+project). Adapt larch's wiring; the specific scripts are larch's own.
 
 ### 8. Linters (lint what changed; encode your recurring gotchas)
 
-<!-- larch source: .pre-commit-config.yaml, docs/linting.md, scripts/lint-*.sh | disposition: Adapt -->
-<!-- TODO:
-     pre-commit as the single source of truth. Run on changed files locally, full sweep in CI.
-     Custom lints turn repeated review comments into mechanical checks. This is G-Enf-1 in practice.
--->
+*Larch source: `.pre-commit-config.yaml`, `docs/linting.md`, `scripts/lint-*.sh`. Disposition: **Adapt**.*
+
+Linters are the mechanical backstop. A linter catches a whole class of mistake
+every time, so you never review it by hand again. Two habits from larch carry over
+to any stack.
+
+**One source of truth, changed files locally, full sweep in CI.** larch defines its
+linters once (in `pre-commit`), runs them on changed files locally for fast
+feedback, and runs the full set in CI as the enforced backstop. The agent sees
+problems in seconds; CI guarantees nothing slips through.
+
+**Write a lint for the mistake that recurs.** When the same review comment shows up
+twice, larch turns it into a lint. This is `G-Enf-1` (§4) in practice: a judgment
+call becomes a mechanical check that never tires. larch has lints that ban unsafe
+shell probes and non-portable shell constructs, both former sources of repeated
+bugs.
+
+Adapt, do not copy. Use whatever runner fits your stack: `pre-commit`, a Makefile,
+or package scripts. The habits port; the specific lints are larch's. These linters
+also feed the single self-validation command in §9.
 
 ### 9. The relevant-checks contract (one command to self-validate)
 
-<!-- larch source: python/cli.py checks run-relevant, docs/skills.md "Relevant checks script", README "Non-skill entrypoints" | disposition: Implement your own -->
-<!-- TODO:
-     THE key integration point: larch calls a consumer-provided entrypoint that runs the RIGHT
-     checks for the changed files, and expects a fail-closed result.
-     Not part of the plugin surface. Each repo ships its own executable.
-     Document the contract larch expects (invocation, --site, --tmpdir, exit codes, output envelope).
-     Doubles as the "how does my agent know its change is good?" answer for any agent.
--->
+*Larch source: `python/cli.py checks run-relevant`, `docs/skills.md` ("Relevant checks script"), README ("Non-skill entrypoints"). Disposition: **Implement** your own.*
+
+This is the most important item in the guide, and the one most agents miss. It
+answers a single question: how does the agent know its change is good?
+
+larch does not hardcode how to validate your repo. It calls one command that you
+provide. That command runs the right checks for the changed files and returns a
+fail-closed verdict. larch reads the verdict. On failure it loops, fixes, and calls
+again. Any agent can use the same loop.
+
+**The contract.** larch ships a reference implementation for its own repo, and a
+consuming repo provides its own at the same entrypoint. You can see the behavior
+larch expects by running the reference:
+
+```text
+$ python3 python/cli.py checks run-relevant --site my-change --tmpdir <session dir>
+RELEVANT_CHECKS_OK=true SITE=my-change COVERAGE=full PHASE=unknown
+```
+
+- **It scopes to the change.** It finds branch, staged, unstaged, and untracked
+  files, then runs the checks that apply to them. It does not lint the whole repo
+  on every call.
+- **It runs your real checks.** In larch that means changed-file `pre-commit`, a
+  pin-validation check, and agent-config linting when available. In your repo it
+  means your linters (§8) and fast tests.
+- **It fails closed.** On success it prints the green `RELEVANT_CHECKS_OK=true`
+  envelope. On any structural error it prints `STATUS=fail FAILURE_REASON=...` and
+  exits non-zero. It never passes silently.
+- **`--site`** is a telemetry label. **`--tmpdir`** is a session scratch directory
+  for verbose logs, validated to block path injection.
+
+**What to build.** An executable that computes the changed files, runs your linters
+and fast tests on them, prints a clear pass-or-fail envelope, and exits non-zero on
+any failure. Whether you match larch's `checks run-relevant` invocation or wrap your
+own runner, keep the two properties that make it useful: changed-file scope, and
+fail-closed output. That is the single command your agent runs before it calls a
+change done.
 
 ---
 
