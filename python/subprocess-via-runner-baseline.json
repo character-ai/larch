@@ -63,20 +63,6 @@
     "reason": "pre-existing call in agents.py, migrated to sibling module during module split (#5766)"
   },
   {
-    "file": "larch/agents/agent_voters.py",
-    "qualified_symbol": "_launch_claude_voter",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/agents/agent_voters.py",
-    "qualified_symbol": "_launch_voter1_external",
-    "callee": "Popen",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/agents/agent_waterfall.py",
     "qualified_symbol": "_launch_slot",
     "callee": "Popen",
@@ -179,6 +165,27 @@
     "qualified_symbol": "main",
     "callee": "run",
     "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "_redact_capture",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/design/_plan_quality_commands.py",
+    "qualified_symbol": "validate_plan_command_rows",
+    "callee": "run",
+    "occurrence": 2,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -623,20 +630,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/design_terminal.py",
-    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/design/design_terminal.py",
-    "qualified_symbol": "failure_report_core.file_tier_a_after_compose",
-    "callee": "run",
-    "occurrence": 2,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/design/plan_quality.py",
     "qualified_symbol": "_dispatch_vendor_fix",
     "callee": "check_output",
@@ -721,13 +714,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "_redact_capture",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/design/plan_quality.py",
     "qualified_symbol": "_validator_operator_cancel_audit",
     "callee": "run",
@@ -763,17 +749,24 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
+    "file": "larch/design/plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/design/_plan_quality_commands.py",
-    "qualified_symbol": "validate_plan_command_rows",
+    "file": "larch/design/plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.attempt",
     "callee": "run",
     "occurrence": 2,
+    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
+  },
+  {
+    "file": "larch/design/plan_quality.py",
+    "qualified_symbol": "revise_plan_with_waterfall_main.emit_plan_gate",
+    "callee": "run",
+    "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
@@ -994,13 +987,6 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/implement/step_7a.py",
-    "qualified_symbol": "run_step7a",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
     "file": "larch/issue/analyze_issues.py",
     "qualified_symbol": "_detect_repo",
     "callee": "run",
@@ -1111,13 +1097,6 @@
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/lint/check_topology_rule_paths.py",
-    "qualified_symbol": "_check_git_tracked",
-    "callee": "run",
-    "occurrence": 1,
-    "reason": "lint-layer git ls-files tracked-path probe; direct subprocess consistent with lint_common git helpers"
   },
   {
     "file": "larch/lint/lint_codex_exec_auth.py",
@@ -1274,15 +1253,15 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/report/run_log_manifest.py",
-    "qualified_symbol": "_resolve_consumer_repo_root",
+    "file": "larch/report/run_log_flush.py",
+    "qualified_symbol": "capture_transcript_main",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
-    "file": "larch/report/run_log_flush.py",
-    "qualified_symbol": "capture_transcript_main",
+    "file": "larch/report/run_log_manifest.py",
+    "qualified_symbol": "_resolve_consumer_repo_root",
     "callee": "run",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
