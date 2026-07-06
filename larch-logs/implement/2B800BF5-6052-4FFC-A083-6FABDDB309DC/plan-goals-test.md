@@ -1,0 +1,98 @@
+## Goal
+Implement issue #6475: [IMPLEMENTING] learn-from-bugs: emit full append-ready wording for guidelines and invariants.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Update only `skills/learn-from-bugs/SKILL.md` Step 4, sections 4, 5, and 6.
+
+Keep sections 1, 2, 3, and 7 unchanged. Keep Steps 1, 2, 3, and 5 unchanged. Do not edit the skill-wide readability preamble.
+
+Add an inline proposal-text carve-out near sections 4 to 6:
+
+- Exactness and pasteability take precedence over brevity for proposal wording.
+- Proposal text must be complete, append-ready, and usable without operator expansion.
+- The rest of the report stays brief.
+
+For section 4, require each proposed lint rule to state:
+
+- exactly what it flags
+- which surface it scans
+- backing issues
+- false-positive risk
+- suppression policy
+- baseline policy, including whether an existing-violation baseline must be shrinking and reason-bearing
+
+For section 5, require each proposed invariant to include:
+
+- a full normative statement
+- the boundary where it applies
+- what must always or never happen
+- the evidence or check that proves it
+- the existing best-home classification: `lint`, `rule`, `invariants-file`, or `guideline`
+
+For `rule` classifications, require complete draft `.claude/rules/*.md` file text, including frontmatter `paths:` globs and body.
+
+For `invariants-file` classifications, require a complete proposed entry formatted for the target repo's invariants file: a heading using the target repo's invariant-ID pattern and a full body statement (no Deviate-when clause), append-ready to paste directly into the target file.
+
+For section 6, replace the terse larch template with:
+
+- match target repo numbering and section style
+- never compress below complete sentences
+- include a full imperative statement
+- include a full Why sentence citing backing issues
+- include a full Deviate-when sentence
+- forbid fragments, abbreviations, and shorthand the reader must expand
+
+## Files to modify/create
+
+### UPDATED: skills/learn-from-bugs/SKILL.md
+
+Rewrite only the Step 4 report-template bullets for sections 4, 5, and 6, plus a short local carve-out sentence for proposal wording. Remove the word `terse` and the compressed `G-<Area>-<N>: <imperative>. Why. Deviate when.` template from section 6.
+
+## Edge cases
+
+- A target repo may not have an existing guideline style. The instruction should still require complete sentences and append-ready text.
+- A proposed invariant may be mechanizable. It should stay classified as `lint`, but still include the full normative statement.
+- A proposed invariant may be classified as `rule`. The report must include the full draft rule file text, not only a suggested filename or label.
+- A lint rule with existing violations must say whether to use a shrinking reason-bearing baseline instead of a hard ban.
+
+## Failure modes
+
+- The revised prompt could over-apply the carve-out and make the whole report verbose. Keep the carve-out scoped to proposal wording in sections 4 to 6.
+- The rule-file requirement could become ambiguous if it only says "draft a rule." Require full `.claude/rules/*.md` text with frontmatter and body.
+- The guideline wording could still regress to fragments if the larch style reference remains compressed. Remove the compressed template and state complete-sentence requirements directly.
+
+## Testing strategy
+
+Run prompt and Markdown-focused checks for this prose-only skill edit:
+
+- `python3 python/cli.py lint readability-preamble`
+- `python3 python/cli.py lint skill-md-flag-signature`
+- `python3 python/cli.py lint skill-awk-field-refs`
+- `python3 python/cli.py lint skill-description-length`
+- `python3 python/cli.py lint consecutive-bash`
+- `python3 python/cli.py lint em-dash-output`
+
+Also inspect the edited Step 4 text manually to confirm sections 1, 2, 3, and 7 did not change.
+
+## Acceptance
+
+Run prompt and Markdown-focused checks for this prose-only skill edit:
+
+- `python3 python/cli.py lint readability-preamble`
+- `python3 python/cli.py lint skill-md-flag-signature`
+- `python3 python/cli.py lint skill-awk-field-refs`
+- `python3 python/cli.py lint skill-description-length`
+- `python3 python/cli.py lint consecutive-bash`
+- `python3 python/cli.py lint em-dash-output`
+
+Also inspect the edited Step 4 text manually to confirm sections 1, 2, 3, and 7 did not change.
+
+mechanical_churn: false
+diff_lines: 24
+
+## Test plan
+(no test plan section in plan-file)
