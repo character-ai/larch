@@ -1,0 +1,40 @@
+Reviewing the plan against the hook guard, Step 3 wrapper, and background-wait contracts in the repo.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	correctness	skills/design/SKILL.md:81,413	Plan omits skills/design/SKILL.md but leaves duplicate Step 3 premature-notification contract stale	The Files section updates design-background-wait.md and AGENTS.md only. skills/design/SKILL.md anti-pattern #5 (line 81) and the Step 3 post-loop routing table (line 413) still pin empty-output → silent yield with no post-notification Read of tasks/*.output and no STEP3_REVIEW_KEEPALIVE=waiting carve-out. /design loads SKILL.md as normative; orchestrator can still probe or mis-route on heartbeat-only notifications while the shared doc says otherwise.	Add ### UPDATED: skills/design/SKILL.md: extend anti-pattern #5 and the line-413 contract with (a) one Read of the notified tasks/*.output after <task-notification> to verify emptiness, (b) heartbeat-only output is non-terminal until .completed/step-3-terminal exists, and (c) prefix-identical repeat still applies when output is only keepalive KVs.
+1	in_scope	major	risk-integration	skills/shared/orchestrator-never.md:9	Plan omits orchestrator-never.md while hook now allows live-wait Read of task outputs	NEVER #3 still bans Read of task outputs between launch and notification but documents no /design exception after a premature notification. With Fix A the hook permits same-clone Read anytime the marker is live, so the only timing guard is prose. Recovery paths that load orchestrator-never.md will not tell the orchestrator to Read once for empty verification, leaving the original deadlock class if AGENTS/shared-wait edits are missed.	Add ### UPDATED: skills/shared/orchestrator-never.md: after the launch-to-notification ban, state that /design may perform one Read of the notified tasks/*.output only after <task-notification> to distinguish empty spurious output from in-progress keepalive or terminal KVs; TaskOutput, Monitor, Bash probes, and repeated reads remain forbidden.
+1	in_scope	major	correctness	skills/design/scripts/design-step3-review.sh:617-634	Keepalive stop must be inline after wait, not only in EXIT cleanup trap	On the success path the wrapper replaces trap _step3_review_cleanup with _step3_review_guarantee_post_loop_exit at line 634 immediately after wait. Cleanup (where the plan also stops keepalive) no longer runs on normal completion. If keepalive teardown is implemented only inside _step3_review_cleanup, the helper can outlive wait, continue printf to wrapper stdout, and append heartbeat KVs after normalize-status begins or after .bg-wait-active removal.	In design-step3-review.sh plan text, require an explicit _step3_review_stop_keepalive call immediately after wait "$_loop_pid" and before trap replacement/normalize-status, with cleanup/detach/signal paths calling the same helper.
+1	in_scope	minor	correctness	plan Approach §2; skills/design/scripts/design-step3-review.sh:609-617	Keepalive start is scoped only to fresh _loop_pid=$! launch, not reattach/detach wait paths	Plan says start keepalive after _loop_pid is known at line 609. Reattach uses _step3_review_reattach_detached_loop (lines 479-528) with python await-loop-identity instead of that wait block; detach can disown the loop while a sibling keepalive keeps writing. Long reattach/detach waits can still hit stdout-inactivity premature notifications without heartbeat mitigation.	Document in design-step3-review.md that keepalive is intentionally limited to the primary launch+wait path, or start/stop the same helper around any long wait where wrapper stdout would otherwise stay silent (reattach await included).
+
+**1. [correctness] Missing `skills/design/SKILL.md` update (lines 81, 413)**
+
+The plan updates `skills/shared/design-background-wait.md` and `AGENTS.md` but not the inline `/design` skill contract. Anti-pattern #5 and the Step 3 routing table still describe only empty-output / prefix-identical / probe ordering, with no post-notification `Read` of `tasks/*.output` and no `STEP3_REVIEW_KEEPALIVE=waiting` handling. The orchestrator treats `skills/design/SKILL.md` as authoritative; without aligned edits, Fix A and Fix C docs will not bind Step 3 behavior.
+
+**2. [risk-integration] Missing `skills/shared/orchestrator-never.md` update (line 9)**
+
+NEVER #3 still forbids reading task outputs before notification and does not document the Fix A carve-out after notification. The hook cannot enforce “read only after notification,” so this file is the cross-skill enforcement layer. Omitting it leaves a documentation gap on the primary recovery path the bug report describes.
+
+**3. [correctness] Keepalive teardown must survive the trap swap at `design-step3-review.sh:634`**
+
+The plan correctly says to stop keepalive after `wait` and in cleanup, but the success path swaps the EXIT trap at line 634 before `normalize-status`. Cleanup will not run on normal completion. Implementation must call a shared stop helper inline between `wait` (line 617) and trap replacement (line 634), not rely on `_step3_review_cleanup` alone.
+
+**4. [correctness] Keepalive scope limited to primary launch path (`design-step3-review.sh:609-617` vs reattach `479-528`)**
+
+Keepalive is only specified after `_loop_pid=$!` on the main Python launch path. Reattach/detach flows use different wait semantics and can still leave wrapper stdout silent for long periods. Fix A covers deadlock there, but Fix C’s upstream notification mitigation may not apply on those paths unless explicitly scoped in the plan.
+
+---
+
+**[OUT_OF_SCOPE] `SECURITY.md:224` still claims the hook denies task-output reads during live waits; update when hook behavior changes (repo policy, not on the execution path).**
+
+**[OUT_OF_SCOPE] `scripts/test-design-structure.sh:202-223` could add pins for new SKILL/orchestrator-never literals; existing substring pins likely still pass without new coverage.**
+
+**[OUT_OF_SCOPE] Plan could note that unrestricted `Read` of `tasks/*.output` during a live marker removes hook enforcement of “no read before notification,” relying on orchestrator discipline; this is the accepted Option A trade-off in the issue scope, not a plan defect.**
+
+---
+
+**What the plan gets right**
+
+- Fix A targets only the `Read` branch (`hook-bg-poll-guard.sh:1140-1154`); Bash `tasks/*.output` probes stay denied via `bash_has_probe_target` (`1016-1055`), and Monitor/TaskOutput denial is unchanged (`1115-1125`).
+- Compound probe regression is explicitly retained (`test-hook-bg-poll-guard.sh:326-332` pattern).
+- Heartbeat goes to wrapper stdout, not `_plan_review_stdout_file` (`design-step3-review.sh:600-607`), so `normalize-status` input is not corrupted.
+- Edge cases cover heartbeat-only output, prefix-identical repeats, and final output with heartbeat prefixes before terminal KVs.
+- Testing strategy includes the right focused harnesses (`make test-hook-bg-poll-guard`, `make test-design-step3-review`, `make test-design-structure`).

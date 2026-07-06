@@ -1,0 +1,127 @@
+## Summary
+
+When `/design` Step 3 (`design-step3-review.sh`) runs via `run_in_background: true`, Claude Code fires a premature `<task-notification>` ("completed exit code 0") roughly 319 seconds into a 14-minute review while the script is still blocked on `wait $_loop_pid`. At that moment the task output file is empty (nothing is written to the wrapper's stdout until `normalize-status` runs at the very end). The hook (`hook-bg-poll-guard.sh`) simultaneously blocks every tool call because the `.bg-wait-active` marker is legitimately live. Crucially, the hook also blocks reads of the task output file via `path_is_task_output + bash_probe_target_dir_plausible`, so the orchestrator cannot verify whether the notification is spurious (empty output rule: "end the turn without probing"). The result is a locked turn loop — 28 denied probes over 518 seconds — until the task truly completes, the EXIT trap removes the marker, and a user message starts a fresh turn.
+
+## Original report
+
+Premature `run_in_background` task notification deadlocks `/design` Step 3 review for ~8 min: Claude Code fires "completed" notification when background task stdout goes silent (before actual exit), hook blocks all tool calls including task-output reads, orchestrator cannot confirm empty-output spurious notification rule, accumulates 28 denied probes with no escape until task truly exits and EXIT trap clears the marker.
+
+## Reproduction scenario
+
+1. Start `/design` on any issue in a repo with Codex and Cursor available.
+2. Allow the run to reach Step 3 plan review.
+3. `design-step3-review.sh` is launched via `run_in_background: true`.
+4. The script creates `.bg-wait-active` (marker, line 299), launches Python in background (lines 602-608), then calls `wait $_loop_pid` (line 617).
+5. The wrapper's stdout produces **no output** between marker creation and `wait` (the only stdout write in that window is line 573, which fires only on scope-anchor failure).
+6. After approximately 5-6 minutes of stdout inactivity, Claude Code fires a `<task-notification>` with "completed exit code 0" and an **empty** task output file (normalize-status, which writes the KV output, runs only after `wait` returns).
+7. The orchestrator receives the notification and attempts a sentinel probe.
+8. The hook denies the probe: `.bg-wait-active` is present, PID is alive (`kill -0` succeeds), terminal sentinel absent → `marker_is_live` returns 0.
+9. The hook also denies reading the task output file: `path_is_task_output("tasks/*.output")` matches AND `bash_probe_target_dir_plausible` returns true (marker clone tag `larch2` equals cwd clone tag `larch2`).
+10. The orchestrator cannot check whether the task output is empty to apply the AGENTS.md "empty output → silent yield" rule.
+11. Each turn: notification re-fires → probe denied → turn ends → notification re-fires.
+12. After 28 denials and 518 seconds, the Python loop finishes, `wait` returns, `_step3_review_guarantee_post_loop_exit` removes the marker (line 377), and the hook unblocks.
+13. A user message provides the exit from the loop.
+
+This was observed in a live session. Timing artifacts preserved in the session tmpdir confirm the premature notification firing at **15:06:09** while the task output was not written until **15:14:47** (837 seconds total review duration).
+
+## Expected behavior
+
+One of the following should hold:
+
+**Option A (preferred):** The task output file should be readable by the orchestrator even while a live marker is present, so the orchestrator can check for emptiness and apply the silent-yield rule. The hook should exempt `tasks/*.output` reads from denial when the task notification has already fired.
+
+**Option B:** The premature notification should not fire at all. Claude Code should not emit "completed" for a `run_in_background` task whose process has not yet exited, regardless of stdout inactivity duration.
+
+**Option C:** AGENTS.md should document that task output reads are blocked during a live wait, and the orchestrator should infer empty-output purely from the absence of the terminal sentinel — without needing to read the file. The hook error message should include whether the notification's output is empty or not.
+
+## Observed behavior
+
+- Claude Code fires a premature `<task-notification>` ("completed exit code 0") at 15:06:09, 319 s into a 13m57s review that truly completes at 15:14:47.
+- The task output file (`tasks/b471v9ne7.output`) is empty at notification time; it is written at 15:14:47 by `normalize-status`.
+- The hook (`hook-bg-poll-guard.sh`) denies all tool calls: Bash probes, `Read` on the terminal sentinel, and `Read` on the task output file.
+- The `bg-poll-guard-denials.count` file records 28 denials, first written at 15:06:09.
+- The same notification ("Task b471v9ne7 completed with exit code 0") re-fires every turn until the marker is removed at true completion.
+- The `no-progress-turns.count` file contains `1`, reflecting one turn that the Python reviewer loop recognized as non-progressing.
+- The deadlock breaks only when the user sends a new message after the marker is removed.
+
+## Root cause analysis
+
+**Two compounding factors cause the deadlock:**
+
+**Factor 1 — Premature notification (Claude Code side):**
+`run_in_background: true` fires the "completed" task notification after a period of stdout inactivity, while the bash wrapper (`design-step3-review.sh`) is still blocked on `wait $_loop_pid`. The script produces no stdout output between marker creation (line 299) and `wait` (line 617) in the normal path. After ~5 minutes of silence, Claude Code's background-task tracking apparently interprets the quiet stdout as completion and fires the notification. This is a different class of spurious notification from #5240 (which was bash `set -m` job-control emitting sub-job exit events); there is no `set -m` here.
+
+**Factor 2 — Hook blocks task output reads (larch side):**
+After a `<task-notification>` fires, AGENTS.md instructs the orchestrator: "when task output is empty, end the turn without probing (spurious notification, #5240)." To follow this rule the orchestrator must read the task output file. However `hook-bg-poll-guard.sh` denies `Read` on `tasks/*.output` when (a) a live `.bg-wait-active` marker is present AND (b) `bash_probe_target_dir_plausible` correlates the marker's clone tag to the cwd (which it does whenever the design session matches the repo name). This was partially addressed by #5925 (added the plausibility gate to prevent foreign-clone false positives), but it still denies same-clone reads. A task output file is a write-once completion artifact, not a polling artifact; blocking its read prevents the only mechanism by which the orchestrator can distinguish spurious from genuine notifications.
+
+**The resulting deadlock is self-reinforcing:** notification arrives → orchestrator tries to probe/read → hook denies → orchestrator ends turn → notification re-fires → repeat. The only exits are (a) the task truly completes and the EXIT trap removes the marker, or (b) the timeout in `marker_is_live` exceeds `TIMEOUT_S + 60 = 21660 s`, which would take 6 hours.
+
+**Note:** The #6268 fix (`_step3_review_guarantee_post_loop_exit` removing `.bg-wait-active` at line 377) is present in 52.4.17 and functioned correctly — the marker was removed at true completion (15:14:47). This bug is not a regression of #6268.
+
+## Evidence
+
+- `plan-review-loop-stderr.log` mtime: **15:00:50** (Python review process started)
+- `plan-review-slots.ndjson` mtime: **15:00:51** (review slots dispatched)
+- `bg-poll-guard-denials.count` mtime: **15:06:09**, value: **28** (first probe denied 319 s after review start, 28 total denials)
+- `tasks/b471v9ne7.output` mtime: **15:14:47**, size: **398 bytes** (task output written at true completion, 519 s after first denial)
+- `.step3-review-result.env` mtime: **15:14:47** (normalize-status output)
+- `.completed/step-3-terminal` mtime: **15:14:47** (sentinel written by EXIT trap guarantee)
+- `no-progress-turns.count` value: **1**
+- Task output at completion: `NEXT_ACTION=gate-b LOOP_STATUS=complete ROUNDS_COMPLETED=1 ACCEPTED_COUNT=3`
+- `design-step3-review.sh` lines 566-617: The only stdout write between scope-anchor validation and `wait $_loop_pid` is line 573 (`SUMMARY_OUTCOME=failed-judge-panel`), which fires only on scope-anchor failure. On a normal run, the wrapper's stdout is **silent for the entire duration of the plan review** (~14 min in this case).
+- `hook-bg-poll-guard.sh` line 1150: Read is denied when `path_is_task_output` matches AND `bash_probe_target_dir_plausible` returns true. For `tasks/*.output` with marker clone tag `larch2` and cwd basename `larch2`, the plausibility check returns true.
+- `hook-bg-poll-guard.sh` lines 607-617: `marker_is_live` releases only when `marker_step_completed` (sentinel+sidecar present), PID dies (`kill -0` fails), or age exceeds `TIMEOUT_S + 60 = 21660 s`. None of these applied during the 28-denial window.
+
+## Affected files
+
+- `skills/design/scripts/design-step3-review.sh` — wrapper whose stdout is silent during the review; the marker PID stored at line 162 is the bash wrapper's own PID; `wait $_loop_pid` blocks exit.
+- `scripts/hook-bg-poll-guard.sh` — denies `tasks/*.output` reads during a live same-clone wait (lines 1140-1154, `path_is_task_output + bash_probe_target_dir_plausible`). Fix candidate: exempt `tasks/*.output` reads from denial, or scope denial only to Bash probe commands.
+- `AGENTS.md` / `skills/shared/design-background-wait.md` — documents the empty-output silent-yield rule but does not document that verifying emptiness via a Read is impossible during the wait.
+
+## Suggested fix(es)
+
+**Fix A (larch, minimal change):** In `hook-bg-poll-guard.sh`, remove the `path_is_task_output` block from the Read denial logic (lines 1140-1154). Task output files are write-once completion artifacts; the orchestrator reading them is not polling. The existing Bash-probe denial already blocks sentinel polling. Risk: if Claude Code writes task output incrementally (before process exit), an early read would return partial data; add a note in AGENTS.md that empty task output means spurious.
+
+**Fix B (larch, documentation):** Update AGENTS.md and `design-background-wait.md` to state explicitly that task output file reads are denied during a live wait and that the empty-output rule must be applied based on sentinel absence alone, not by reading the file. Update the hook deny message to include whether the read target is a task output file, to aid diagnostics.
+
+**Fix C (workaround, larch):** In `design-step3-review.sh`, write a keepalive heartbeat to stdout at the start of the Python launch (e.g., `printf 'REVIEW_RUNNING=1\n'`). This prevents Claude Code's inactivity timeout from firing a premature notification for the 14-minute silent window.
+
+**Fix D (upstream):** File a report with the Claude Code team (Anthropic) about the `run_in_background` notification firing prematurely based on stdout inactivity rather than actual process exit. The "completed" notification should only fire when the tracked process (the bash PID) has actually exited.
+
+Fix A or Fix C would address the larch-visible symptom. Fix D would address the root trigger in Claude Code. Fix B is needed regardless to clarify the AGENTS.md contract.
+
+## Open questions
+
+1. Does Claude Code fire the `run_in_background` "completed" notification based on stdout inactivity (timeout), stdout close, or something else? Knowing the exact trigger would narrow the upstream fix.
+2. Does the task output file exist as an empty file from launch time, or is it created only at completion? If it exists empty from the start, Fix A (allow task output reads) immediately works.
+3. Should `path_is_bg_wait_marker` (line 709-714) be broadened to also allow reads of the task output file associated with the active wait's task ID?
+4. Is there a way for the hook to know "this Read is checking whether the notification for the live task is spurious" and exempt it?
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Eliminate the `/design` Step 3 background-wait deadlock (premature `<task-notification>` + hook denial → up to ~14 min stall, 28 denied probes).
+- Let the orchestrator confirm a spurious notification mid-wait by reading the write-once task-output file, which the hook currently denies.
+- Reduce/prevent the premature notification itself during the long silent review window (defense in depth).
+
+### Non-goals
+- No upstream Claude Code fix (Fix D); capture it as an OOS follow-up.
+- Do not weaken the hook's denial of genuine Bash sentinel-polling probes during a live wait.
+- No change to plan-review loop logic, the round cap, or the `normalize-status` terminal KV contract.
+
+### Approach sketch (Fix A + B + C, defense in depth)
+- Fix A: in `scripts/hook-bg-poll-guard.sh` Read path (~line 1150), drop the `path_is_task_output && bash_probe_target_dir_plausible` OR-clause so write-once `tasks/*.output` reads are never denied; remove the orphaned `path_is_task_output` helper.
+- Fix C: in `skills/design/scripts/design-step3-review.sh`, emit a periodic stdout keepalive during the blocking `wait "$_loop_pid"` window, torn down before `normalize-status` so terminal KV stays clean.
+- Fix B: document in `AGENTS.md` + `skills/shared/design-background-wait.md` that task-output reads are allowed and how empty / heartbeat-only output maps to silent-yield vs the terminal sentinel.
+- Update harnesses in the same change.
+
+### Surfaces in scope
+- `scripts/hook-bg-poll-guard.sh` (+ `.md` sibling), `scripts/test-hook-bg-poll-guard.sh`
+- `skills/design/scripts/design-step3-review.sh` (+ `.md` sibling), `skills/design/scripts/test-design-step3-review.sh`
+- `skills/shared/design-background-wait.md`, `AGENTS.md`
+
+### Open questions
+- Heartbeat interval + stdout format that keeps activity without tripping the empty-output rule or the KV parser (resolve in drafting/review).
+- Exact Claude Code notification trigger is unknown (upstream); Fix A/B are the guaranteed recovery, Fix C is best-effort prevention.
