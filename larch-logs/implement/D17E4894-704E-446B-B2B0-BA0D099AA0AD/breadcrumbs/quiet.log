@@ -102,6 +102,20 @@ ci_monitor: CI status query #3 in progress after 28s
 ci_monitor: CI fail after 33s -> evaluate_failure
 === larch-quiet-ship.py-87269.log ===
 === larch-quiet-ship.py-88034.log ===
+ship.py: pr-create: PR
+ship.py: post-ensure-pr: Push
+ci_monitor: CI status query #1 in progress after 0s
+ci_monitor: poll 1/180 pending after 4s; sleeping 10s
+ci_monitor: CI status query #2 in progress after 14s
+ci_monitor: poll 2/180 pending after 18s; sleeping 10s
+ci_monitor: CI status query #3 in progress after 28s
+ci_monitor: poll 3/180 pending after 32s; sleeping 10s
+ci_monitor: CI status query #4 in progress after 42s
+ci_monitor: poll 4/180 pending after 47s; sleeping 10s
+ci_monitor: CI status query #5 in progress after 57s
+ci_monitor: poll 5/180 pending after 61s; sleeping 10s
+ci_monitor: CI status query #6 in progress after 71s
+ci_monitor: CI fail after 74s -> evaluate_failure
 === larch-quiet-tracking-issue-upsert-summary-57721.log ===
 === larch-quiet-tracking-issue-upsert-summary-68387.log ===
 === larch-quiet-tracking-issue-upsert-summary-86864.log ===
