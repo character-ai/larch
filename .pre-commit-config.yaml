@@ -209,6 +209,14 @@ repos:
         files: ^python/.*\.py$
         pass_filenames: true
 
+      - id: lint-wire-artifact-pairing
+        name: lint wire-artifact-pairing
+        entry: python3 python/cli.py lint wire-artifact-pairing
+        language: system
+        files: ^python/.*\.py$|^scripts/.*|^python/wire-artifact-.*\.json$
+        pass_filenames: false
+        always_run: true
+
   - repo: https://github.com/zhupanov/agent-lint
     rev: v2.3.2
     hooks:

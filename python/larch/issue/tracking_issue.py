@@ -663,13 +663,12 @@ def _render_issue_task(
     cwd: str | None = None,
 ) -> ReadOutput:
     task_file = str(Path(out_dir) / "task.md")
-    body_result = runner.run(["gh", "api", f"/repos/{repo}/issues/{issue}", "--jq", '.body // ""'], cwd=cwd)
+    body_result = gh.api_read(runner, [f"/repos/{repo}/issues/{issue}", "--jq", '.body // ""'], cwd=cwd)
     if body_result.returncode != 0:
         raise CliFailure(f"gh api issue fetch failed: {_redact_gh_error(body_result.stderr)}", 2)
-    comments_result = runner.run(
+    comments_result = gh.api_read(
+        runner,
         [
-            "gh",
-            "api",
             f"/repos/{repo}/issues/{issue}/comments",
             "--paginate",
             "--jq",
@@ -847,10 +846,7 @@ def append_comment_main(argv: list[str]) -> int:
 
 
 def _fetch_issue_title(runner: Runner, issue: str, *, repo: str, cwd: str | None = None) -> str:
-    result = runner.run(
-        ["gh", "issue", "view", issue, "--repo", repo, "--json", "title", "--jq", ".title"],
-        cwd=cwd,
-    )
+    result = gh.api_read(runner, [f"/repos/{repo}/issues/{issue}", "--jq", ".title"], cwd=cwd)
     if result.returncode != 0:
         raise CliFailure(f"gh issue view failed: {_redact_gh_error(result.stderr)}", 2)
     return result.stdout.rstrip("\n")

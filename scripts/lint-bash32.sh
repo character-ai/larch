@@ -99,15 +99,64 @@ scan_file() {
 
     [[ -f "$path" && ! -L "$path" ]] || return 0
     set +e
-    awk -v rel="$rel" '
+    awk -v rel="$rel" -v baseline_file="$ROOT/scripts/lint-bash32-empty-array-baseline.tsv" '
+        BEGIN {
+            if (baseline_file != "" && (getline _line < baseline_file) >= 0) {
+                do {
+                    if (_line == "" || _line ~ /^[[:space:]]*#/) continue
+                    fields = split(_line, parts, "	")
+                    if (fields != 3 || parts[1] == "" || parts[2] == "" || parts[3] == "") {
+                        printf("lint-bash32: invalid empty-array baseline row: %s\n", _line) > "/dev/stderr"
+                        violations = 1
+                        continue
+                    }
+                    empty_array_baseline[parts[1] SUBSEP parts[2]] = 1
+                } while ((getline _line < baseline_file) > 0)
+                close(baseline_file)
+            }
+        }
         function report(rule) {
             printf("lint-bash32: %s:%s: Bash 3.2 incompatible: %s\n", rel, FNR, rule) > "/dev/stderr"
             violations = 1
+        }
+        function track_empty_array_assignment(line,    matched, name) {
+            matched = line
+            while (match(matched, /(^|[[:space:];|&({])([A-Za-z_][A-Za-z0-9_]*)=\([[:space:]]*\)/)) {
+                name = substr(matched, RSTART, RLENGTH)
+                sub(/^[^A-Za-z_]*/, "", name)
+                sub(/=.*/, "", name)
+                empty_arrays[name] = 1
+                guarded_arrays[name] = 0
+                matched = substr(matched, RSTART + RLENGTH)
+            }
+        }
+        function track_length_guards(line,    name) {
+            for (name in empty_arrays) {
+                if (index(line, "${#" name "[@]}") > 0) {
+                    guarded_arrays[name] = 1
+                }
+            }
+        }
+        function report_empty_array_expansion(name, suffix) {
+            if ((rel SUBSEP name) in empty_array_baseline) return
+            report("unguarded empty-array expansion ${" name suffix "}")
+        }
+        function check_empty_array_expansions(line,    name) {
+            for (name in empty_arrays) {
+                if (guarded_arrays[name]) continue
+                if (index(line, "${" name "[@]+") > 0 || index(line, "${" name "[*]+") > 0) continue
+                if (index(line, "${" name "[@]}") > 0) report_empty_array_expansion(name, "[@]")
+                if (index(line, "${" name "[*]}") > 0) report_empty_array_expansion(name, "[*]")
+            }
         }
         {
             line = $0
             if (line ~ /lint-bash32: ok/) next
             if (line ~ /^[[:space:]]*#/) next
+
+            check_empty_array_expansions(line)
+            track_empty_array_assignment(line)
+            track_length_guards(line)
 
             if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("declare -A associative arrays") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])typeset[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("typeset -A associative arrays") # lint-bash32: ok linter pattern

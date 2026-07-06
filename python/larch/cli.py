@@ -414,6 +414,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("lint", "complexity-baseline"): ("larch.lint.lint_complexity_baseline", "main"),
     ("lint", "keyword-only"): ("larch.lint.lint_keyword_only", "main"),
     ("lint", "subprocess-via-runner"): ("larch.lint.lint_subprocess_via_runner", "main"),
+    ("lint", "wire-artifact-pairing"): ("larch.lint.lint_wire_artifact_pairing", "main"),
     ("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main"),
     ("lint", "env-via-config-constant"): ("larch.lint.lint_env_via_config_constant", "main"),
     ("lint", "layering"): ("larch.lint.lint_layering", "main"),

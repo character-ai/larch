@@ -1,0 +1,12 @@
+[
+  {
+    "artifact": ".ship-route-exit-handoff.env",
+    "side": "intentionally-one-sided",
+    "reason": "Artifact is currently produced outside the scanned production writer surface."
+  },
+  {
+    "artifact": "design-report-gate-sidecars.md",
+    "side": "intentionally-one-sided",
+    "reason": "Artifact is currently produced outside the scanned production writer surface."
+  }
+]

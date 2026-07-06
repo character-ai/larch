@@ -1,0 +1,13 @@
+# path<TAB>array-name<TAB>reason
+scripts/pre-commit-bash-syntax.sh	manifest_paths	legacy manifest array may be empty before hook scope cleanup
+scripts/pre-commit-shellcheck.sh	manifest_paths	legacy manifest array may be empty before hook scope cleanup
+scripts/test-audit-edit-write.sh	FAILED_TESTS	legacy harness accumulator is intentionally baselined before fixture cleanup
+scripts/test-block-submodule-edit.sh	FAILED_TESTS	legacy harness accumulator is intentionally baselined before fixture cleanup
+scripts/test-check-topology-rule-paths.sh	FAIL_DETAILS	legacy harness diagnostics array is intentionally baselined before fixture cleanup
+scripts/test-external-tool-registry.sh	FAIL_DETAILS	legacy harness diagnostics array is intentionally baselined before fixture cleanup
+scripts/test-lint-bash32.sh	items	self-test fixture contains unguarded expansion examples for this lint
+scripts/test-sessionstart-health.sh	FAILED_TESTS	legacy harness accumulator is intentionally baselined before fixture cleanup
+skills/design/scripts/design-clarify.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
+skills/design/scripts/design-step5.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
+skills/implement/scripts/step-architectural-guidelines-write-staged.sh	DIFF_ARGS	legacy diff argv array is intentionally baselined before wrapper cleanup
+skills/rejected-analysis/scripts/rejected-analysis.sh	args	legacy wrapper argv array is intentionally baselined before wrapper cleanup

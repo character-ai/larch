@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import pytest
@@ -19,6 +20,37 @@ from test_support import RecordingRunner as _RecordingRunner
 @dataclass
 class RecordingRunner(_RecordingRunner):
     strict: bool = True
+
+
+def _empty_timeouts() -> list[float | None]:
+    return []
+
+
+@dataclass
+class TimeoutRecordingRunner(RecordingRunner):
+    timeouts: list[float | None] = field(default_factory=_empty_timeouts)
+
+    def run(
+        self,
+        argv: Sequence[str],
+        *,
+        timeout: float | None = None,
+        cwd: str | None = None,
+        env: Mapping[str, str] | None = None,
+        check: bool = False,
+        stdout: int | None = None,
+        stderr: int | None = None,
+    ) -> CommandResult:
+        self.timeouts.append(timeout)
+        return super().run(
+            argv,
+            timeout=timeout,
+            cwd=cwd,
+            env=env,
+            check=check,
+            stdout=stdout,
+            stderr=stderr,
+        )
 
 
 def test_pr_view_parses_json() -> None:
@@ -48,17 +80,47 @@ def test_pr_view_timeout_raises_gh_read_timeout() -> None:
         _ = gh.pr_view(runner, 1, repo="o/r", timeout=120.0)
 
 
-def test_pr_view_exit_timeout_without_timeout_arg_raises_plain_ship_error() -> None:
-    # Without a threaded timeout, an EXIT_TIMEOUT return is a generic read failure,
-    # not the distinguishable GhReadTimeout that the CI monitor routes on.
+def test_pr_view_exit_timeout_without_timeout_arg_raises_gh_read_timeout() -> None:
     runner = RecordingRunner(
         responses=[
             CommandResult(("gh", "pr", "view", "1"), config.EXIT_TIMEOUT, "", "", 0.01),
         ],
     )
-    with pytest.raises(ShipError) as exc_info:
+    with pytest.raises(gh.GhReadTimeout):
         _ = gh.pr_view(runner, 1, repo="o/r")
-    assert not isinstance(exc_info.value, gh.GhReadTimeout)
+
+
+
+
+def test_retry_read_applies_default_and_explicit_timeouts() -> None:
+    default_runner = TimeoutRecordingRunner(
+        responses=[CommandResult(("gh", "repo", "view"), 0, "o/r\n", "", 0.01)],
+    )
+    assert gh.resolve_repo_gh_only(default_runner) == "o/r"
+    assert default_runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC]
+
+    explicit_runner = TimeoutRecordingRunner(
+        responses=[CommandResult(("gh", "pr", "view", "1"), 0, '{"number":1,"url":"u","state":"OPEN","headRefName":"b"}', "", 0.01)],
+    )
+    _ = gh.pr_view(explicit_runner, 1, repo="o/r", timeout=5.0)
+    assert explicit_runner.timeouts == [5.0]
+
+
+def test_read_helpers_that_bypass_retry_are_bounded() -> None:
+    runner = TimeoutRecordingRunner(
+        responses=[
+            CommandResult(("gh", "pr", "view", "1"), 0, '{"body":"body"}', "", 0.01),
+            CommandResult(("gh", "run", "view", "7"), 0, "log", "", 0.01),
+            CommandResult(("gh", "run", "view", "7"), 0, "failed", "", 0.01),
+            CommandResult(("gh", "pr", "view"), 0, "Closes #1", "", 0.01),
+        ],
+    )
+
+    assert gh.pr_view_body(runner, 1, repo="o/r") == "body"
+    assert gh.run_log_read(runner, 7, repo="o/r").returncode == 0
+    assert gh.run_logs_failed(runner, "7", repo="o/r")[1] == 0
+    assert gh.extract_closes_issue_from_current_pr(runner, repo="o/r") == "1"
+    assert runner.timeouts == [config.CI_STATUS_QUERY_TIMEOUT_SEC] * 4
 
 
 def test_pr_create_deduplicates_existing() -> None:

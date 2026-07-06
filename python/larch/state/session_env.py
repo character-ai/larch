@@ -24,6 +24,7 @@ from larch import io as larch_io
 from larch.core import logging_util
 from larch.core import proc
 from larch.errors import ShipError
+from larch.git import gh
 from larch.core.proc import Runner
 
 _BOOL = {"true", "false"}
@@ -1547,11 +1548,11 @@ def entry_gate_main(argv: list[str]) -> int:
 
 def _repo_from_gh_or_git(runner: Runner) -> str:
     try:
-        gh = runner.run(["gh", "repo", "view", "--json", "nameWithOwner", "-q", ".nameWithOwner"])
+        gh_result = gh.repo_name_with_owner_read(runner)
     except (FileNotFoundError, OSError):
-        gh = proc.CommandResult(("gh",), 127, "", "", 0.0)
-    if gh.returncode == 0 and gh.stdout.strip():
-        return gh.stdout.strip()
+        gh_result = proc.CommandResult(("gh",), 127, "", "", 0.0)
+    if gh_result.returncode == 0 and gh_result.stdout.strip():
+        return gh_result.stdout.strip()
     helper = runner.run([sys.executable, str(Path(__file__).resolve().parents[2] / "cli.py"), "gh", "remote-repo", "origin"])
     return helper.stdout.strip() if helper.returncode == 0 else ""
 

@@ -387,6 +387,94 @@ rc="$(run_lint "$stderr_file")"
 assert_case "manifest scopes repo scan to in-scope paths" 0 "$stderr_file" "$rc"
 assert_not_in_stderr "manifest scopes repo scan to in-scope paths" "$stderr_file" "out-of-scope-bad.sh"
 
+
+reset_tree
+write_sh "$TMPROOT/scripts/empty-array-at.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "unguarded empty-array at expansion fails" 1 "$stderr_file" "$rc" \
+    "scripts/empty-array-at.sh:4:" \
+    "unguarded empty-array expansion \${items[@]}"
+
+reset_tree
+write_sh "$TMPROOT/scripts/empty-array-star.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+printf '%s\n' "${items[*]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "unguarded empty-array star expansion fails" 1 "$stderr_file" "$rc" \
+    "scripts/empty-array-star.sh:4:" \
+    "unguarded empty-array expansion \${items[*]}"
+
+reset_tree
+write_sh "$TMPROOT/scripts/guarded-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+if [ "${#items[@]}" -gt 0 ]; then
+    printf '%s\n' "${items[@]}"
+fi
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "length-guarded empty-array expansion passes" 0 "$stderr_file" "$rc"
+assert_empty_stderr "length-guarded empty-array expansion passes" "$stderr_file"
+
+reset_tree
+write_sh "$TMPROOT/scripts/non-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=(one)
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "non-empty literal array is not flagged" 0 "$stderr_file" "$rc"
+assert_empty_stderr "non-empty literal array is not flagged" "$stderr_file"
+
+reset_tree
+write_sh "$TMPROOT/scripts/suppressed-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+printf '%s\n' "${items[@]}" # lint-bash32: ok reviewed fixture
+other=()
+printf '%s\n' "${other[@]}" # lint-bash32: ok
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "empty-array pragma suppresses with or without reason" 0 "$stderr_file" "$rc"
+assert_empty_stderr "empty-array pragma suppresses with or without reason" "$stderr_file"
+
+reset_tree
+write_sh "$TMPROOT/scripts/commented-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+# printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "commented empty-array expansion is ignored" 0 "$stderr_file" "$rc"
+assert_empty_stderr "commented empty-array expansion is ignored" "$stderr_file"
+
+
+reset_tree
+cat > "$TMPROOT/scripts/lint-bash32-empty-array-baseline.tsv" <<'EOF'
+scripts/baselined-empty-array.sh	items	fixture legacy empty expansion
+EOF
+write_sh "$TMPROOT/scripts/baselined-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "empty-array baseline suppresses with reason" 0 "$stderr_file" "$rc"
+assert_empty_stderr "empty-array baseline suppresses with reason" "$stderr_file"
+
 rm -f "$stderr_file"
 
 printf 'Summary: %s passed, %s failed\n' "$PASS" "$FAIL"
