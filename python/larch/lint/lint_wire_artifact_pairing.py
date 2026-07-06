@@ -13,7 +13,7 @@ import ast
 import json
 import re
 import sys
-from functools import lru_cache
+from functools import cache
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -202,17 +202,17 @@ def _artifact_token(row: ManifestRow) -> str:
     return row["artifact"]
 
 
-@lru_cache(maxsize=None)
+@cache
 def _basename_artifact_pattern(artifact: str) -> re.Pattern[str]:
     return re.compile(rf"(?<![A-Za-z0-9_.-]){re.escape(artifact)}(?![A-Za-z0-9_.-])")
 
 
-@lru_cache(maxsize=None)
+@cache
 def _relative_path_artifact_pattern(artifact: str) -> re.Pattern[str]:
     parts = [re.escape(part) for part in artifact.split("/") if part]
     if not parts:
         return re.compile(r"^$")
-    return re.compile(r".*?".join(parts), re.S)
+    return re.compile(r".*?".join(parts), re.DOTALL)
 
 
 def _mentions_artifact(text: str, row: ManifestRow) -> bool:
@@ -226,10 +226,6 @@ def _mentions_artifact(text: str, row: ManifestRow) -> bool:
         or all(part in text for part in parts)
         or _relative_path_artifact_pattern(artifact).search(text) is not None
     )
-
-
-def _line_mentions_artifact(line: str, row: ManifestRow) -> bool:
-    return _mentions_artifact(line, row)
 
 
 def _python_call_name(node: ast.Call) -> str | None:
@@ -255,8 +251,7 @@ def _literal_open_write_mode(node: ast.Call) -> bool:
 def _python_call_writes(name: str) -> bool:
     return (
         name in PY_WRITE_NAMES
-        or name.startswith("_write_")
-        or name.startswith("_atomic_")
+        or name.startswith(("_write_", "_atomic_"))
         or name.endswith("_atomic")
         or "atomic_write" in name
     )
@@ -300,10 +295,12 @@ def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
 
 def _shell_line_writes_artifact(line: str, row: ManifestRow) -> bool:
     artifact = _artifact_token(row)
-    if row["kind"] == "basename":
-        matches_artifact = lambda text: _basename_artifact_pattern(artifact).search(text) is not None
-    else:
-        matches_artifact = lambda text: artifact in text or f"/{artifact}" in text
+
+    def matches_artifact(text: str) -> bool:
+        if row["kind"] == "basename":
+            return _basename_artifact_pattern(artifact).search(text) is not None
+        return artifact in text or f"/{artifact}" in text
+
     if re.search(r"(^|[;&|\s])touch\b", line) and matches_artifact(line):
         return True
     if re.search(r"(^|[;&|\s])tee\b", line) and matches_artifact(line):
