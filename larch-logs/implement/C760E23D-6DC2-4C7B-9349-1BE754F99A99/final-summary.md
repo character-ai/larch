@@ -1,14 +1,15 @@
-## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: shipping
+## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: pr-created
 
-- **Outcome**: shipping
+- **Outcome**: DONE
 - **Duration**: 01:15:45
-- **Cost**: 💰 TOTAL ~$61.51: Claude $13.98, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.38  |  Tokens: 120046k
+- **Cost**: 💰 TOTAL ~$62.80: Claude $15.27, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.38  |  Tokens: 124114k
 - **Issue**: #6476: https://github.com/character-ai/larch/issues/6476
+- **PR**: #6510: https://github.com/character-ai/larch/pull/6510
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/18 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +2061/-108, larch-logs +1835/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -81,7 +82,3 @@ codex/apply              │                                           ███
 4. cursor/edge-cases: 2
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
