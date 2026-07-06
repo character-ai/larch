@@ -1,0 +1,1 @@
+1	the real design-scan regression test still expects the two demoted shared files to be eager closure members, so verification will fail after the skill.md demotion even if the closure scan and baseline are otherwise correct.

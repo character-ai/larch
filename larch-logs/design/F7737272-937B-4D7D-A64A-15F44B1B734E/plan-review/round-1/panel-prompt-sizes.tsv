@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	19561	4891	13320	3330	6241	1561		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	14875	3719	13032	3258	1843	461		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	14866	3717	13023	3256	1843	461		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	19552	4888	13311	3328	6241	1561		0	0
+design Step 3	phase1	1	dyn-codex-plan-closure-ratchet-auditor	plan-review	codex	dyn-codex-plan-closure-ratchet-auditor.txt	15194	3799	12898	3225	2296	574		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	19574	4894	13333	3334	6241	1561		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	19576	4894	13335	3334	6241	1561		0	0
+design Step 3	phase1	1	dyn-cursor-plan-closure-ratchet-auditor	plan-review	cursor	dyn-cursor-plan-closure-ratchet-auditor.txt	19880	4970	13186	3297	6694	1674		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	14890	3723	13047	3262	1843	461		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	14888	3722	13045	3262	1843	461		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	25569	6393	4459	1115	21110	5278	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	12938	3235	8898	2225	4040	1010		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	12938	3235	8898	2225	4040	1010		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	12938	3235	8898	2225	4040	1010		0	0

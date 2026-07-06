@@ -1,0 +1,18 @@
+# [BLOCKED] md-to-py-XII: first heatmap-driven eager-reference demotion round (blocked until 2026-07-17+ or 50 post-repair runs)
+
+**Context.** Round X's #5884 demotion pass had almost no data to target. The heatmap now has per-skill `transcript_coverage` machinery (#5976) and, once capture is repaired, accrues realized per-reference reads. Design carries 11 eager files (54,362 estimated tokens) and implement 8 (38,588). Some references are plausibly never read on green paths; only realized data can say which.
+
+**Prerequisite.** Blocked until **2026-07-17** (14 days after the #6154 capture repair merged 2026-07-03T22:33 UTC) or 50 runs of restored post-repair accrual, whichever comes first. As of 2026-07-03 (repair-merge day), zero runs have accrued under the repaired capture path: a fresh `token measure-references-heatmap` run shows `design: 0/666 runs measured (not-yet-measured)`, and the `implement` heatmap rows still reflect only pre-outage reads (1-2 reads per reference across 1,383 runs). Do not run `/design` or `/implement` on this issue until the prerequisite holds and a fresh heatmap shows real post-repair signal.
+
+**Scope.**
+
+- After at least 2 weeks or 50 runs of restored accrual, demote never-read and rare-read eager references to conditional, per skill.
+- Cite the `measure-references-heatmap` row for every demotion.
+- Keep compaction-resilience duplication (anti-halt and NEVER blocks) per standing policy.
+
+**Acceptance.**
+
+- Each demotion cites its heatmap evidence; eager closure drops with ratchet confirmation.
+- No orchestrator halt-rate regression across the next 20 runs.
+
+Part of md-to-py-XII (round XI: #5986). The transcript-capture repair child (#6154) merged 2026-07-03T22:33 UTC, resolving the code-level blocker; this issue now waits on the accrual prerequisite above. Retries #5884 with data.
