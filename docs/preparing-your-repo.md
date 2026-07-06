@@ -127,12 +127,27 @@ Just match the import in `CLAUDE.md`.
 
 ### 3. Stack-specific authoring notes (the `BASH_AUTHORING.md` pattern)
 
-<!-- larch source: BASH_AUTHORING.md | disposition: Pattern (write your own) -->
-<!-- TODO:
-     Capture the recurring, non-obvious pitfalls your agents hit in YOUR language and tooling.
-     larch's cover Bash quoting, Bash 3.2 portability, and grep-probe traps.
-     Payoff: a mistake the agent makes twice becomes a paragraph it reads before the third.
--->
+*Larch source: `BASH_AUTHORING.md`. Disposition: **Pattern**; write your own.*
+
+§2 covers mistakes the model makes anywhere. This file covers mistakes specific to
+your stack: your language, shell, framework, build tool, or test runner. An agent
+repeats a subtle environment gotcha until something tells it not to. This file is
+that something. It turns a lost debugging session into a paragraph the agent reads
+before it writes.
+
+larch's `BASH_AUTHORING.md` is all Bash: quoting hygiene, macOS Bash 3.2
+portability, and exit-code traps in shell probes. None of it helps a Python or
+TypeScript repo. That is the point. Copy the habit, not the content.
+
+Build the file from real incidents. Each time you or your agent burns time on a
+stack-specific trap, add a short entry: the trap, the symptom, the fix. A Python
+repo might note import-time side effects or fixture teardown order. A TypeScript
+repo might note `strictNullChecks` corners or ESM-versus-CommonJS resolution.
+
+Wire the file into your `CLAUDE.md` import list (§1). Keep it lean, because it
+loads on every turn (§5). If it grows past a screen, move the narrow,
+file-specific rules behind a path-triggered rule (§6) so they load only when they
+apply.
 
 ### 4. Architectural guidelines (`ARCHITECTURAL_GUIDELINES.md`)
 
