@@ -10,6 +10,7 @@
   "operator_cwd": "<OPERATOR_CWD>",
   "operator_repo_root": "<REPO_ROOT>",
   "parent_skill": null,
+  "pr_number": 6502,
   "run_id": "EA4B2486-B3EE-4C6A-AAE6-47C46F3CD4F7",
   "schema_version": 2,
   "skill": "implement",
@@ -22,5 +23,5 @@
     "step9a1": true
   },
   "superseded_by": null,
-  "updated_at": "2026-07-06T20:07:35Z"
+  "updated_at": "2026-07-06T20:10:37Z"
 }
