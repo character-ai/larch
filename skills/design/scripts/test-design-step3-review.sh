@@ -120,8 +120,10 @@ if grep -Fq '**⚠ Step 3: postplan failed' "$WRAPPER"; then
 fi
 grep -Fq 'plan-review normalize-status' "$WRAPPER" || fail 'normalizer delegation missing'
 grep -Fq 'no-progress-stop-block-emitted' "$WRAPPER" || fail 'Step 3 wrapper must clear stale stop-block sidecars before bg-wait marker write'
+grep -Fq 'no-progress-task-output-clamped' "$WRAPPER" || fail 'Step 3 wrapper must clear stale task-output Stop bridge before bg-wait marker write'
 grep -Fq 'bg-poll-guard-task-output-read' "$WRAPPER" || fail 'Step 3 wrapper must clear stale task-output clamp sidecars before bg-wait marker write'
 grep -Fq 'no-progress-stop-block-emitted' "$TAIL_WRAPPER" || fail 'Step 4 tail wrapper must clear stale stop-block sidecars before bg-wait marker write'
+grep -Fq 'no-progress-task-output-clamped' "$TAIL_WRAPPER" || fail 'Step 4 tail wrapper must clear stale task-output Stop bridge before bg-wait marker write'
 grep -Fq 'bg-poll-guard-task-output-read' "$TAIL_WRAPPER" || fail 'Step 4 tail wrapper must clear stale task-output clamp sidecars before bg-wait marker write'
 grep -Fq 'SUMMARY_OUTCOME=failed-postplan' "$NORMALIZE_MODULE" || fail 'postplan-failed summary KV missing from normalizer'
 grep -Fq 'SUMMARY_OUTCOME=failed-judge-panel' "$NORMALIZE_MODULE" || fail 'panel-init-failed summary KV missing from normalizer'
@@ -344,6 +346,7 @@ printf 'anchor\n' >"$D_REARM/plan-review-scope-anchor.txt"
 : >"$D_REARM/no-progress-turns.count"
 : >"$D_REARM/no-progress-circuit-breaker-armed"
 : >"$D_REARM/no-progress-stop-block-emitted"
+: >"$D_REARM/no-progress-task-output-clamped"
 : >"$D_REARM/bg-poll-guard-task-output-read.step-3-terminal.count"
 set +e
 env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 CLAUDE_PLUGIN_ROOT="$FAKE_REARM" DESIGN_TMPDIR="$D_REARM" ISSUE_NUMBER=9 \
@@ -366,7 +369,7 @@ while [[ ! -f "$D_REARM/body-entered" && "$waited" -lt 100 ]]; do
 done
 [[ -f "$D_REARM/body-entered" ]] || fail "re-arm wrapper did not start; stderr=$(cat "$D_REARM/stderr.log")"
 [[ -f "$D_REARM/.bg-wait-active" ]] || fail 're-arm wrapper must write the bg-wait marker before launch'
-for sidecar in no-progress-turns.count no-progress-circuit-breaker-armed no-progress-stop-block-emitted bg-poll-guard-task-output-read.step-3-terminal.count; do
+for sidecar in no-progress-turns.count no-progress-circuit-breaker-armed no-progress-stop-block-emitted no-progress-task-output-clamped bg-poll-guard-task-output-read.step-3-terminal.count; do
   [[ ! -e "$D_REARM/$sidecar" ]] || fail "re-arm wrapper must clear stale $sidecar before marker write"
 done
 touch "$D_REARM/release-body"

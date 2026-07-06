@@ -121,8 +121,22 @@ case "$out" in
   *) fail "T5: UserPromptSubmit with armed breaker: out='$out'" ;;
 esac
 
+# --- T5b: task-output clamp bridge blocks Stop immediately and is not one-shot ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-task-output-clamped"
+write_marker $$ "$(( $(date +%s) - 10 ))" 21600 design-step3-review
+: >"$D/no-progress-task-output-clamped"
+: >"$D/no-progress-circuit-breaker-armed"
+: >"$D/no-progress-stop-block-emitted"
+out1=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ LARCH_NO_PROGRESS_GUARD_THRESHOLD=99 run_hook "$(stop_event)")
+out2=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ LARCH_NO_PROGRESS_GUARD_THRESHOLD=99 run_hook "$(stop_event)")
+if printf '%s' "$out1" | jq -e '.decision == "block"' >/dev/null 2>&1 && printf '%s' "$out2" | jq -e '.decision == "block"' >/dev/null 2>&1; then
+  pass "T5b: task-output clamp bridge repeats Stop block before generic threshold"
+else
+  fail "T5b: task-output clamp bridge should block every notification Stop: out1='$out1' out2='$out2'"
+fi
+
 # --- T6: UserPromptSubmit without armed breaker → allowed ---
-rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-turns.count"
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-turns.count" "$D/no-progress-task-output-clamped"
 write_marker $$
 out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
 if [ -z "$out" ]; then
@@ -132,16 +146,17 @@ else
 fi
 
 # --- T7: Step terminal sentinel present → not live, no count ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-task-output-clamped"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
 touch "$D/.completed/step-3-terminal"
 touch "$D/no-progress-stop-block-emitted"
+touch "$D/no-progress-task-output-clamped"
 out=$(run_hook "$(stop_event)")
 cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
-if [ -z "$out" ] && [ "$cnt" -eq 0 ] && [ ! -f "$D/no-progress-stop-block-emitted" ]; then
-  pass "T7: terminal sentinel present → marker not live and stop-emitted sidecar clears"
+if [ -z "$out" ] && [ "$cnt" -eq 0 ] && [ ! -f "$D/no-progress-stop-block-emitted" ] && [ ! -f "$D/no-progress-task-output-clamped" ]; then
+  pass "T7: terminal sentinel present → marker not live and no-progress sidecars clear"
 else
-  fail "T7: expected no count and no stop-emitted with sentinel: out='$out' cnt=$cnt emitted=$(test -f "$D/no-progress-stop-block-emitted" && echo yes || echo no)"
+  fail "T7: expected no count and no-progress sidecars cleared with sentinel: out='$out' cnt=$cnt emitted=$(test -f "$D/no-progress-stop-block-emitted" && echo yes || echo no) clamp=$(test -f "$D/no-progress-task-output-clamped" && echo yes || echo no)"
 fi
 
 # --- T8: DISABLE env var → no action ---
@@ -195,9 +210,10 @@ else
   fail "T10b: invalid threshold should direct-block on third Stop: out1='$out1' out2='$out2' out3='$out3'"
 fi
 
-# --- T10c: Python marker arm-time reset clears stale Stop sidecar ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
+# --- T10c: Python marker arm-time reset clears stale Stop sidecars ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-task-output-clamped"
 : >"$D/no-progress-stop-block-emitted"
+: >"$D/no-progress-task-output-clamped"
 PYTHONPATH="$REPO_ROOT/python" python3 - "$D" <<'PY'
 import sys
 from pathlib import Path
@@ -206,10 +222,10 @@ from larch.implement.bg_wait import _write_bg_wait_marker
 tmpdir = Path(sys.argv[1])
 _write_bg_wait_marker(tmpdir=tmpdir, step="implement-step3-checks", timeout_s=21600)
 PY
-if [ ! -f "$D/no-progress-stop-block-emitted" ]; then
-  pass "T10c: Python bg-wait marker arm clears stale no-progress-stop-block-emitted"
+if [ ! -f "$D/no-progress-stop-block-emitted" ] && [ ! -f "$D/no-progress-task-output-clamped" ]; then
+  pass "T10c: Python bg-wait marker arm clears stale no-progress Stop sidecars"
 else
-  fail "T10c: Python bg-wait marker arm left stale no-progress-stop-block-emitted"
+  fail "T10c: Python bg-wait marker arm left stale no-progress Stop sidecars"
 fi
 
 # --- T11: Step 3 sentinel without persist sidecar → marker still live, counter increments ---

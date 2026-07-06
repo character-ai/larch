@@ -192,6 +192,7 @@ reset_no_progress_state() {
     "$dir/no-progress-turns.count" \
     "$dir/no-progress-circuit-breaker-armed" \
     "$dir/no-progress-stop-block-emitted" \
+    "$dir/no-progress-task-output-clamped" \
     2>/dev/null || true
 }
 
@@ -276,6 +277,18 @@ json_block_prompt() {
     "$count" "$threshold" "$dir" "$dir" "$dir" "$dir"
 }
 
+json_block_task_output_clamp() {
+  local dir="$1"
+  printf '{"decision":"block","reason":"No-progress circuit breaker: hook-bg-poll-guard.sh already clamped an unchanged or empty /design tasks/*.output classification Read under this active background-wait marker. Marker: %s/.bg-wait-active. End this task-notification turn without tools or prose until a later notification has new non-empty task output or the terminal sentinel is present. Recovery sidecars: %s/no-progress-task-output-clamped, %s/no-progress-circuit-breaker-armed, %s/no-progress-stop-block-emitted."}\n' \
+    "$dir" "$dir" "$dir" "$dir"
+}
+
+task_output_clamp_armed() {
+  local dir="$1" flag
+  flag="$dir/no-progress-task-output-clamped"
+  [ -f "$flag" ] && [ ! -L "$flag" ]
+}
+
 if [ "$event_type" = "Stop" ]; then
   # Count this turn only for live bg-wait markers owned by this repo clone. The
   # UserPromptSubmit block below is already clone-scoped (#5927); scoping the
@@ -294,6 +307,13 @@ if [ "$event_type" = "Stop" ]; then
     is_marker_live "$marker" || continue
     dir="$LIVE_MARKER_DIR"
     marker_foreign_clone "$dir" "$cwd_canon" && continue
+    if task_output_clamp_armed "$dir"; then
+      touch "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true
+      : >"$dir/no-progress-stop-block-emitted" 2>/dev/null || true
+      rm -f "$dir/no-progress-turns.count" 2>/dev/null || true
+      json_block_task_output_clamp "$dir"
+      exit 0
+    fi
     cnt=$(counter_bump "$dir")
     if [ "$cnt" -ge "$THRESHOLD" ]; then
       touch "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true

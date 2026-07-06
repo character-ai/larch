@@ -62,7 +62,7 @@ if [ "$SITE" = "step3" ]; then
   _step3_timeout_s=$(python3 -c "import sys; sys.path.insert(0, '$CLAUDE_PLUGIN_ROOT/python'); from larch.implement.dispatch_leg import CHECKS_STEP3_BG_WAIT_TIMEOUT_S; print(CHECKS_STEP3_BG_WAIT_TIMEOUT_S)" 2>/dev/null || printf '%s\n' '10800')
   case "$_step3_timeout_s" in ''|*[!0-9]*) _step3_timeout_s=10800 ;; esac
   rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" 2>/dev/null || true
+  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
   rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
   rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
   _step3_cleanup() {
