@@ -1,15 +1,16 @@
 [
   {
-    "closure_content_estimated_tokens": 53220,
-    "closure_estimated_tokens": 53387,
-    "closure_lines": 1868,
-    "conditional_content_estimated_tokens": 17927,
-    "conditional_estimated_tokens": 18000,
+    "closure_content_estimated_tokens": 52814,
+    "closure_estimated_tokens": 52977,
+    "closure_lines": 1813,
+    "conditional_content_estimated_tokens": 18325,
+    "conditional_estimated_tokens": 18403,
     "conditional_files": [
       "skills/design/references/flags.md",
       "skills/design/references/brainstorm.md",
       "skills/shared/final-summary-emit.md",
       "skills/design/references/sentinel-host-table.md",
+      "skills/shared/session-setup-output.md",
       "skills/design/references/settle-rc-dispatch.md",
       "skills/design/references/step2b-drafter-failsafe.md",
       "skills/design/references/step2b5-rc-handling.md",
@@ -17,12 +18,11 @@
       "skills/design/references/dialectic-clarifier.md",
       "skills/design/references/validator-failure.md"
     ],
-    "conditional_lines": 793,
+    "conditional_lines": 848,
     "files": [
       "skills/design/SKILL.md",
       "skills/design/scripts/step-name-registry.tsv",
       "skills/shared/readability-style.md",
-      "skills/shared/session-setup-output.md",
       "skills/shared/external-reviewers.md",
       "skills/shared/design-background-wait.md",
       "skills/design/references/discussion-rounds.md",
@@ -32,8 +32,8 @@
       "skills/design/references/finalize-step5.md"
     ],
     "skill": "design",
-    "skill_md_content_estimated_tokens": 25250,
-    "skill_md_estimated_tokens": 25304,
+    "skill_md_content_estimated_tokens": 25242,
+    "skill_md_estimated_tokens": 25297,
     "skill_md_lines": 698
   },
   {
