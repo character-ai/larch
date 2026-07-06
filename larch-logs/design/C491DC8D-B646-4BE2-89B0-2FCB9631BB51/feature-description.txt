@@ -1,0 +1,87 @@
+# learn-from-bugs preventions: lint rules, invariants, guideline entries (#6470)
+
+Prevention proposals from the 2026-07-05 `/learn-from-bugs -n 1000` mining run over all 523 closed `[BUG]` issues. Full report: #6470 (sections 4, 5, 6). The two still-broken-code findings from that run are filed separately: #6472 (`command grep` in `if` under bash 3.2) and #6473 (tempfile calls without `dir=`).
+
+Related: #6471 (migrate rules to `ARCHITECTURAL_GUIDELINES.md` and `ARCHITECTURAL_INVARIANTS.md`). Part B's placement recommendations should follow whatever structure #6471 lands.
+
+Each proposal below carries its exact, full wording, ready to paste. Nothing here is shorthand for text to be written later.
+
+## Part A — Proposed mechanical lint rules
+
+Ranked by precision times frequency. Items A1 and A2 are already carried as work items inside #6472 and #6473 respectively; they appear here for completeness and should be implemented once, under those bugs. Items A3, A4, and A5 are this issue's own actionable scope.
+
+#### A1. Extend `lint-bash32`: forbid `command grep` inside `if`/`elif` conditions in committed shell scripts (tracked in #6472)
+
+Exact rule: flag any line in a committed shell script where an `if` or `elif` condition invokes `command grep` (or `command egrep`, `command fgrep`, `command rg`), including the negated form `if ! command grep`. The sanctioned replacement is the subshell form `( command grep ... )`, which is safe on macOS bash 3.2. Suppression uses the existing `# lint-bash32: ok <reason>` pragma. Backing: #3935, #3899, and the live site fixed by #6472. False-positive risk: very low; the pattern is syntactically precise. Baseline: none needed beyond the three sites in #6472.
+
+#### A2. New Python lint: run-scoped `tempfile` calls must pass `dir=` (tracked in #6473)
+
+Exact rule: an AST-based lint (working name `lint_tempfile_dir`) fails when any call to `tempfile.mkstemp`, `tempfile.mkdtemp`, `tempfile.NamedTemporaryFile`, or `tempfile.TemporaryDirectory` inside `python/larch/` lacks an explicit `dir=` keyword argument. The check must be AST-based, not grep-based, because the already-fixed sites in the tree carry `dir=` on continuation lines that line-oriented scans misread. Deliberate system-tmp sites are grandfathered in a shrinking reason-bearing baseline per G-Enf-2, one line per site with the reason. Backing: #5923, #5973, #6259, #3381, #4218, and the 37 sites enumerated in #6473. False-positive risk: medium until the baseline stabilizes.
+
+#### A3. New lint: wire-artifact writer/reader pairing
+
+Exact rule: maintain a curated manifest of wire-artifact basenames (many already exist as `Final` constants per G-Cfg-1: run-log batch names, design/implement sidecars, review round artifacts). The lint fails when a manifest basename has at least one reader reference in `python/larch/` but zero writer references in `python/` or `scripts/`. Prose in a `SKILL.md` does not count as a writer; a prose-only writer is exactly the defect this lint exists to catch (#6211's only "writer" was Step 2b prose). New basenames must be added to the manifest with both a writer and a reader, or a baseline entry stating why one side is external. Backing: #6211 (five readers, zero writers), #5645 (publish gate on a directory nothing creates), #4848 (consumers present, producer absent), #5791 (required-files list names files nothing writes), #4038 and #5836 (renderer preconditions never produced). False-positive risk: medium until the manifest stabilizes; start with the run-log and design/implement sidecar families. Baseline: yes, reason-bearing.
+
+#### A4. Extend `lint-bash32`: unguarded empty-array expansion under `set -u`
+
+Exact rule: flag `"${name[@]}"` (and `"${name[*]}"`) in a committed shell script when the same script assigns `name=()` on some path and the expansion site does not use the guarded form `${name[@]+"${name[@]}"}`. On macOS bash 3.2 under `set -u`, expanding an empty array raises `unbound variable` and aborts the script; bash 4.4+ does not, so CI on Linux cannot catch it. Suppression uses the existing `# lint-bash32: ok <reason>` pragma. Backing: #3039, #3758, #1496, #1509, #511. False-positive risk: medium (arrays provably non-empty before expansion); ship with a reason-bearing baseline.
+
+#### A5. Timeouts on `gh` read calls, enforced at the wrapper
+
+Exact rule, two halves. Code invariant: every read helper in `larch.git.gh` that shells out to `gh` passes a bounded timeout (thread a default through `_retry_read`), so a hung `gh pr view` cannot freeze a poll loop where a hang is not an error return and no failure counter advances. Lint half: no `runner.run(["gh", ...])` invocation exists outside `python/larch/git/gh.py`, so the wrapper invariant cannot be bypassed (extends the existing `lint_subprocess_via_runner` / G-Py-7 layering). Backing: #5066 (ship CI monitor froze inside a poll-time `gh pr view` with no timeout), #3891. False-positive risk: low; gh access is already centralized per G-Py-7.
+
+## Part B — Proposed architectural invariants
+
+Full normative statements with a best-home classification each: `lint` when mechanizable, `rule` when path-scoped for `.claude/rules/`, `invariants-file` when never-violate but neither mechanizable nor path-scoped, `guideline` when aspirational. If #6471 creates `ARCHITECTURAL_INVARIANTS.md`, the invariants-file candidates below belong there.
+
+#### B1. Fix the class, not the instance
+
+Statement: when a fix touches one of several same-shaped sites (launch lanes, step wrappers, retry classes, tally writers, sentinel cases, grace windows), enumerate the sibling sites by grep in the same change, and either fix each sibling or file a tracking issue for it in the same run. A conscious descope without a tracking issue is a defect in the change. Backing: the largest recurring meta-pattern in the closed backlog, about 30 issues across the aggregator-retry chain (#4868, #4881, #5077, #5222, #5503), the guideline-pin chain (#5337, #5675, #5969, #6059, #6021, #6062, #6106), the vendor fast-fail chain (#5543, #5605, #5674, #5714, #5971, #6023), the `NO_OPEN_BROWSER` chain (#5797, #5972, #6022), and the trap and sentinel chains (#6237 to #6264, #4441 to #4450). Classification: guideline (process discipline; not mechanizable in general). Exact guideline wording: Part C, G-Fix-1.
+
+#### B2. Terminal sentinel before final stdout
+
+Statement: a background wrapper script must write its terminal completion sentinel, and remove its `.bg-wait-active` marker, before the last stdout flush that can fire a task notification; and every trap replacement inside such a wrapper must preserve marker removal and sentinel writing. A notification that can arrive while the sentinel is still unwritten reopens the premature-notification class. Backing: #5418, #6309, #5695, #6080, #6268, #4724. Classification: rule (path-scoped `.claude/rules/` reminder for background wrapper scripts). Exact draft rule file:
+
+> File `.claude/rules/wrapper-sentinel-before-stdout.md`, frontmatter `paths:` covering `skills/*/scripts/*review*.sh`, `skills/*/scripts/*step*.sh`, and `python/larch/design/design_lifecycle.py`. Body: "# Wrapper Sentinel Ordering. A background wrapper must write its terminal sentinel and remove `.bg-wait-active` before its final stdout flush. The harness fires `<task-notification>` on stdout activity, not process exit, so any stdout emitted before the sentinel exists creates a window where the orchestrator probes and finds nothing (#5418, #6080). When replacing an EXIT trap mid-script, the replacement must retain marker removal and sentinel writing; a sentinel-only replacement trap caused a permanent hook-denial loop (#6268)."
+
+#### B3. In-flight runs never commit failure labels
+
+Statement: a run-log snapshot committed before the run reaches a terminal state must carry a neutral in-progress outcome label such as `shipping` or `in-progress`, never a failure label such as `stalled` or `bailed`; terminal outcomes are reconciled at the last allowed commit window, and a run that stalls and then recovers must not stay permanently recorded as stalled. Backing: #5646, #5676, #5970, #4900, #5011, #6229. Classification: invariants-file candidate (never-violate, spans many flush writers, not cleanly path-scoped). If no invariants file exists when this lands, use the guideline form in Part C, G-Obs-4.
+
+#### B4. Zero findings is a first-class result
+
+Statement: every boundary that can legitimately produce zero findings (reviewer output, voter ballots, validators, tallies, self-review) must distinguish empty-success from failure with an explicit typed sentinel or status, and no consumer may infer either health or failure from emptiness alone. Backing: #3402 (healthy no-findings reviewer indistinguishable from a garbled one), #5032 and #6026 (empty ballot voted and then classified as degraded panel), #4886 and #4885 (valid no-issues sentinel dropped because it did not lead the output), #4424 and #4618 (self-review zero conflated with no-review). Classification: guideline. Exact wording: Part C, G-Orch-3.
+
+#### B5. Every dropped slot leaves a per-slot diagnostic
+
+Statement: a panel slot that is dropped, substituted, pruned, format-rejected, or excused must append a per-slot diagnostic record (to `execution-issues` or the slot manifest) before it disappears from accounting; an aggregate warning without per-slot attribution does not satisfy this. Backing: #3392 and #3423 (first-line format gate silently omitted slots with no record of which or why), #5047 (drops tracked in memory but never persisted, downstream coverage gate blind), #5529 (dynamic reviewers invisible to failure accounting), #3378 (silent quota degradation). Classification: guideline. Exact wording: Part C, G-Orch-4.
+
+#### B6. Persisted resume state outranks caller defaults
+
+Statement: on resume, re-entry, or reseed, code must read prior persisted run state and prefer it over caller-supplied defaults; a wrapper must never reseed state files with hardcoded constants, and a sticky "already done" flag must not suppress handling of new work performed after the flag was set. Backing: #5308 (a hardcoded `--merge false` reseed permanently erased the operator's `--merge`), #6199 (a persisted `DISPATCHER_COMMITTED` flag skipped commits of later lint-fix edits), #5922, #4487 (terminal `LOOP_STATUS` overwritten by a later default). Classification: guideline. Exact wording: Part C, G-Idem-3.
+
+#### B7. Verify mutations on the mutated surface
+
+Statement: after a remote mutation, verification must re-read the same API surface that was mutated (a GraphQL write is verified by a GraphQL read of the relationship, not by a denormalized rollup counter); when only an eventually-consistent surface exists, poll it with bounded retries and say so, rather than failing on the first stale read. Backing: #3701 (GraphQL `addBlockedBy` succeeded; the REST rollup counter read back 0 and produced a false warning), #4025 (merge state inferred from an unrelated output field instead of one `gh pr view`). Classification: guideline. Exact wording: Part C, G-Ext-2.
+
+## Part C — Proposed guideline entries, exact append-ready wording
+
+Six entries for `ARCHITECTURAL_GUIDELINES.md`, written in full. Numbering continues each existing area (Orch has 1-2, Idem has 1-2, Obs has 1-3, Ext has 1; Fix is a new area).
+
+> **G-Fix-1**: Fix the class, not the instance. When the defect you are fixing has the same shape at sibling sites (launch lanes, step wrappers, retry classes, tally writers, sentinel cases, grace windows), enumerate the siblings by grep in the same change, and fix each one or file a tracking issue for it in the same run; never leave a conscious descope untracked. Why: one-site fixes produced the largest recurring family in the closed bug backlog; the aggregator-retry, guideline-pin, fast-fail-lane, and `NO_OPEN_BROWSER` chains each took four to nine follow-up bugs to converge (#4881, #5222, #5969, #6021, #5971, #6022, #6264). Deviate when a sibling is provably unreachable or intentionally different; say so, with the sibling list, in the PR description.
+
+> **G-Orch-3**: Treat zero findings as a first-class result. At every agent-output boundary (reviewer, voter, aggregator, validator, tally, self-review), represent empty-success with an explicit typed sentinel or status distinct from failure, and never let a consumer infer health or failure from emptiness alone. Why: empty-versus-failed ambiguity silently degraded panels, retried guaranteed-empty ballots, and reported completed reviews as N/A (#3402, #5032, #6026, #4885, #4618). Deviate when the boundary already returns a machine-typed status that separates the two; never deviate by adding a new emptiness heuristic.
+
+> **G-Orch-4**: Record a per-slot diagnostic before any panel slot disappears. When a reviewer or voter slot is dropped, substituted, pruned, format-rejected, or excused, append a per-slot record naming the slot, the stage, and the reason to the execution-issues log or the slot manifest before removing it from accounting; an aggregate count or generic warning does not satisfy this. Why: silent slot drops hid systemic reviewer loss for weeks, and the coverage gates downstream could not see drops that were never persisted (#3392, #3423, #5047, #5529). Deviate never; when volume is a concern, bound the record size, not its existence.
+
+> **G-Idem-3**: On resume or reseed, persisted run state outranks caller-supplied defaults. Read the prior state file before seeding; never reseed with hardcoded constants, and never let a sticky completion flag suppress handling of new work performed after the flag was set. Why: a hardcoded `--merge false` reseed permanently erased operator intent after a stall (#5308), and a persisted dispatcher-committed flag skipped committing later lint-fix edits, leaving a dirty tree at rebase (#6199, #5922, #4487). Deviate only on an explicit operator override, and record the override next to the overwritten value.
+
+> **G-Obs-4**: Commit only neutral in-progress outcome labels for runs that are still in flight; reconcile the terminal outcome at the last allowed commit window. A pre-terminal run-log snapshot says `shipping` or `in-progress`, never `stalled` or `bailed`, and a stalled-then-recovered run must not stay committed as stalled. Why: pre-terminal snapshots froze merged runs as bailed or stalled in the committed logs, corrupting every downstream outcome census (#5646, #5676, #5970, #4900). Deviate never for failure words; a neutral label is always available.
+
+> **G-Ext-2**: Verify a remote mutation by re-reading the surface you mutated. After a GraphQL write, verify with a GraphQL read of the same relationship; never verify through a denormalized or eventually-consistent rollup, and when only an eventually-consistent read exists, poll it with bounded retries and label the wait. Why: an asynchronous rollup counter read back zero immediately after a successful dependency write and produced a false "may already exist" warning (#3701); inferring merge state from unrelated output fields misreported a PR (#4025). Deviate when no same-surface read exists; then bound the retries and record the residual uncertainty.
+
+## Suggested sequencing
+
+1. Land A3, A4, A5 (this issue's lint scope) as one or more `/design` children; A1 and A2 ride #6472 and #6473.
+2. Append the Part C entries to `ARCHITECTURAL_GUIDELINES.md` in one doc PR, or fold them into #6471's migration if that lands first.
+3. Decide B3's home (invariants file versus G-Obs-4) inside #6471.

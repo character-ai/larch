@@ -1,0 +1,410 @@
+## Plan
+
+## Approach
+
+Implement the approved scope in small ratchets.
+
+- Add A3 as an AST-backed Python lint with a curated manifest and reason-bearing baseline.
+- Extend A4 inside the existing Bash 3.2 lint and its harness.
+- Enforce A5 in two layers: default bounded timeouts in `larch.git.gh` read helpers, plus a Python lint extension that blocks direct `runner.run(["gh", ...])` outside the wrapper.
+- Append the six Part C guideline entries.
+- Add the B2 wrapper-sentinel rule.
+- Do not implement A1 or A2. They are tracked by #6472 and #6473.
+- Do not create `ARCHITECTURAL_INVARIANTS.md` or decide B3's final home. That is #6471 scope.
+
+## Files to modify/create
+
+### NEW: python/larch/lint/lint_wire_artifact_pairing.py
+
+Create a stdlib-only lint module modeled on the existing baseline lints.
+
+Implementation shape:
+
+- Load `python/wire-artifact-manifest.json`.
+- Load `python/wire-artifact-pairing-baseline.json`.
+- Validate manifest fail-closed:
+  - top-level JSON array of objects with exact keys `artifact` (non-empty string) and `kind` (`"basename"` or `"relative_path"`); no other keys; no `reason` field
+  - `kind=basename`: artifact must be a plain basename (no `/`, no empty string)
+  - `kind=relative_path`: artifact must be a relative path without `..`
+  - duplicate `(kind, artifact)` pairs rejected
+- Validate baseline fail-closed:
+  - top-level JSON array of objects with exact keys `artifact`, `side`, and `reason`
+  - `side` is `external-writer`, `external-reader`, or `intentionally-one-sided`
+  - non-empty reason fields
+  - duplicate `artifact` values rejected
+  - identity key is `artifact`
+- For each manifest row:
+  - find reader references in `python/larch/` (excluding `python/tests/`, `python/test_fixtures/`, and `__pycache__` trees — only runtime production code counts)
+  - find writer references in:
+    - `python/` (excluding `python/tests/`, `python/test_fixtures/`, `__pycache__`) — Python write APIs: `.write_text`, `.open("w")`, `.open("a")`, `atomic_write`, `larch_io.atomic_write`, `Path.touch()`, `_touch(...)` wrappers; also treat `_LARCH_LOG_BATCHES` keys (or `BatchInfo` slug fields) as writers for manifest rows matching `{slug}{extension}` (e.g. `"token-report"` + `".json"` → `token-report.json`)
+    - `scripts/` and `skills/*/scripts/` — production shell writes only: `touch`, `printf ... >`, `tee`, `> file`, `mv ... file` patterns; exclude `scripts/test-*.sh` and `skills/*/scripts/test-*.sh` (test harnesses)
+  - do not count `SKILL.md` prose, Python test files, or shell test harnesses as writers
+- For `kind=basename`: match writer/reader evidence on the basename token alone.
+- For `kind=relative_path`: match writer/reader evidence on the full artifact string or an anchored suffix (e.g. `/.completed/step-5c-terminal` suffix in a path).
+- Fail when a manifest row has at least one reader and no writer unless a baseline row covers it.
+- Warn, but pass, for baselined live defects.
+- Support `--root`, `--write`, and `--initial-reason`, matching the existing ratchet UX.
+- Keep identity stable as `(kind, artifact)` pair.
+
+Start deliberately narrow. Seed only run-log and design/implement sidecar families named in the issue and directly discoverable in code. Do not try to enumerate every temporary transcript basename.
+
+### NEW: python/wire-artifact-manifest.json
+
+Add the initial curated basename list.
+
+Each row is a JSON object: `{"kind": "basename"|"relative_path", "artifact": "<value>"}`. No `reason` field in the manifest.
+
+Seed from code-owned wire artifacts. Include:
+
+- `{"kind": "basename", "artifact": "manifest.json"}`
+- `{"kind": "basename", "artifact": "final-summary.md"}`
+- `{"kind": "basename", "artifact": "execution-issues.md"}`
+- `{"kind": "basename", "artifact": "execution-issues.ndjson"}`
+- `{"kind": "basename", "artifact": "token-report.json"}`
+- `{"kind": "basename", "artifact": "timing-report.json"}`
+- `{"kind": "basename", "artifact": "review-findings-full.jsonl"}`
+- `{"kind": "basename", "artifact": "review-panel-manifest.ndjson"}`
+- `{"kind": "basename", "artifact": "review-scout-manifest.json"}`
+- `{"kind": "basename", "artifact": "difficulty-rating.json"}`
+- `{"kind": "basename", "artifact": "run-statistics.md"}`
+- `{"kind": "basename", "artifact": "oos-issues.ndjson"}`
+- `{"kind": "relative_path", "artifact": ".ship-route-exit-handoff.env"}`
+- `{"kind": "relative_path", "artifact": ".design-step5c-status.env"}`
+- `{"kind": "basename", "artifact": "design-report-gate-sidecars.md"}`
+- `{"kind": "basename", "artifact": "plan-review-slots.ndjson"}`
+- `{"kind": "relative_path", "artifact": ".completed/step-3-terminal"}`
+- `{"kind": "relative_path", "artifact": ".completed/step-5c-terminal"}`
+- `{"kind": "relative_path", "artifact": ".completed/step-final-summary"}`
+
+Do NOT seed `.bg-wait-active`: it is already covered by `lint_bg_wait_writer_parity` and `lint_bg_wait_coverage`. Seeding it would create a duplicate ratchet surface without new defect signal.
+
+### NEW: python/wire-artifact-pairing-baseline.json
+
+Add a shrinking baseline for intentionally one-sided artifacts.
+
+Each row: `{"artifact": "<value>", "side": "external-writer"|"external-reader"|"intentionally-one-sided", "reason": "<non-empty reason>"}`. Identity key is `artifact`.
+
+Do not baseline rows that only exist because code needs a writer. Fix those instead.
+
+### UPDATED: python/larch/cli.py
+
+Register the new lint verb:
+
+- `("lint", "wire-artifact-pairing")`
+- target `larch.lint.lint_wire_artifact_pairing`, `main`
+
+Keep registry ordering near the other lint verbs.
+
+### UPDATED: Makefile
+
+Wire the new lint into Python lint targets.
+
+- Add `$(PYTHON) python/cli.py lint wire-artifact-pairing` to `py-lint-checks-fast`.
+- Add `.PHONY` entries and a regen target, likely `regen-wire-artifact-pairing-baseline`.
+- The regen target should preserve reasons and require `--initial-reason` only for first bootstrap, matching nearby baseline targets.
+
+### UPDATED: .pre-commit-config.yaml
+
+Add a local pre-commit hook for `lint wire-artifact-pairing`.
+
+- Use `language: system`.
+- Use `pass_filenames: false`.
+- Use `always_run: true`.
+- Scope `files` to `^python/.*\.py$|^scripts/.*|^python/wire-artifact-.*\.json$`.
+
+### UPDATED: docs/linting.md
+
+Document the new wire-artifact lint.
+
+Include:
+
+- purpose
+- manifest row schema (`{kind, artifact}`, no reason)
+- baseline row schema (`{artifact, side, reason}`)
+- writer and reader scope (production code only; tests and fixtures excluded)
+- shell write evidence scope (`scripts/`, `skills/*/scripts/`)
+- that `SKILL.md` prose does not count as a writer
+- regen command
+
+Also update the custom ratchet section if needed so the baseline contract is listed with the other JSON ratchets.
+
+### NEW: python/tests/lint/test_lint_wire_artifact_pairing.py
+
+Add unit coverage for the new lint.
+
+Test cases:
+
+- reader plus writer passes
+- reader with no writer fails
+- prose-only `SKILL.md` writer does not pass
+- test-file-only writer does not satisfy the lint (Python test and shell test harness excluded)
+- shell-script writer (`touch`, `printf >`) in production scripts satisfies the lint
+- shell test harness writer (`scripts/test-*.sh`) does NOT satisfy the lint
+- `Path.touch()` Python call satisfies the lint
+- run-log batch name maps to matching manifest artifact name
+- baseline suppresses and warns
+- malformed manifest exits 2 (e.g. manifest row with `reason` field, or missing `kind`)
+- malformed baseline exits 2
+- duplicate manifest or baseline identities exit 2
+- `--write` preserves reasons and drops obsolete rows
+- `kind=relative_path` rows work for `.completed/<name>` artifacts
+- positional repo root handling works in a temp project
+
+### UPDATED: scripts/lint-bash32.sh
+
+Add A4 detection.
+
+
+- Keep the current awk-based scan.
+- In a first pass per file, collect array names assigned with `name=()`.
+- In the scan pass, also track: if a preceding non-comment line contains `${#name[@]}` (length guard), treat expansion of `${name[@]}` or `${name[*]}` on subsequent lines as guarded.
+- Flag `"${name[@]}"` and `"${name[*]}"` when:
+  - `name` was assigned `()`
+  - no preceding `[ "${#name[@]}" -gt 0 ]` or `[ "${#name[@]}" -eq 0 ] ... return/exit` guard is in scope
+  - the line does not carry `# lint-bash32: ok <reason>` (reason is required; bare pragma without reason is not accepted)
+  - the line is not a comment
+- Include both `@` and `*`.
+- Avoid matching guarded expansions.
+- Ship with a reason-bearing baseline for each current committed hit in the repo. Run `bash scripts/lint-bash32.sh` after enabling the rule and add a baseline entry for each existing hit, with the reason. This baseline starts shrinking as hits are fixed.
+
+### UPDATED: scripts/test-lint-bash32.sh
+
+Add A4 harness cases.
+
+Cover:
+
+- unguarded empty-array `[@]` fails
+- unguarded empty-array `[*]` fails
+- guarded `[@]` with `${#arr[@]} -gt 0` passes
+- length-guarded array does not produce a false positive
+- non-empty literal arrays are not flagged unless the same script also assigns `name=()`
+- inline `# lint-bash32: ok <reason>` suppresses (reason text required, pragma alone without reason still suppresses per existing convention)
+- comments are ignored
+
+### UPDATED: python/larch/git/gh.py
+
+Thread a default timeout through `_retry_read`.
+
+
+- Reuse `CI_STATUS_QUERY_TIMEOUT_SEC` from `python/larch/core/config.py` as the default read timeout. Do NOT add `GH_READ_TIMEOUT_SECONDS`; `CI_STATUS_QUERY_TIMEOUT_SEC` already exists and is cross-module.
+- Change `_retry_read(..., timeout: float | None = None)` so the effective timeout is `timeout if timeout is not None else CI_STATUS_QUERY_TIMEOUT_SEC`.
+- Preserve explicit caller timeouts (caller-supplied value always wins).
+- Update `pr_view` and any helper that wraps `EXIT_TIMEOUT` to raise `GhReadTimeout` whenever the **effective** timeout was applied — default or explicit. The current guard `if timeout is not None and result.returncode == EXIT_TIMEOUT` must become `if effective_timeout is not None and result.returncode == EXIT_TIMEOUT`.
+- Update read helpers that bypass `_retry_read` to pass the effective timeout:
+  - `pr_view_body`
+  - `run_log_read`
+  - `resolve_repo_gh_only`
+  - `resolve_repo`
+  - `run_logs_failed`
+  - `extract_closes_issue_from_current_pr`
+- For mutating helpers such as `pr_edit_body_file`, keep the mutating policy separate unless the code already treats it as read-only.
+- Replace direct `runner.run(["gh", ...])` inside this file with `_gh(...)` where doing so preserves behavior.
+
+### UPDATED: python/larch/core/config.py
+
+`CI_STATUS_QUERY_TIMEOUT_SEC` is already defined here and is the canonical default for bounded `gh` reads. The A5 implementation must reuse it; do not add a second constant. Confirm the value is appropriate as the general gh read default (currently 120s). If a different value is needed for non-CI reads, alias one name to the other with a comment rather than introducing a new constant.
+
+### UPDATED: python/larch/implement/ci_monitor.py
+
+Migrate all direct `runner.run(["gh", ...])` sites to `larch.git.gh` helpers.
+
+- `collect_failed_logs` (currently no bounded timeout): do NOT alias to `gh.run_logs_failed` — it tails the log, redacts, and reports in-progress state differently. Instead, thread `_retry_read`/`_gh` with default `CI_STATUS_QUERY_TIMEOUT_SEC` directly inside `collect_failed_logs`, preserving its tail, redaction, and `LogCollectResult` semantics.
+- PR checks call sites (`_gh_pr_checks`, `_read_pr_checks_text`): extend `gh.pr_checks_read` with `timeout` and `required` parameters (append `--required` to argv when `required=True`). Migrate both call sites to the extended helper; preserve JSON stdout parsing, run-id extraction, and required-checks classification.
+- Preserve `CI_STATUS_QUERY_TIMEOUT_SEC` semantics; do not duplicate the constant.
+
+### UPDATED: python/larch/design/clarify.py
+
+Migrate the direct `runner.run(["gh", ...])` call(s) through `larch.git.gh`. Preserve return-code behavior.
+
+### UPDATED: python/larch/state/finalize.py
+
+Migrate direct `runner.run(["gh", ...])` calls through `larch.git.gh`.
+
+- `_rename_issue`: route the read-only `gh issue view` call through an existing helper (e.g. `issue_view_field_read` or `issue_view_state_url_read`) with default `CI_STATUS_QUERY_TIMEOUT_SEC`. Preserve `check=False` branching and the stalled-title skip behavior.
+
+
+### UPDATED: python/larch/issue/tracking_issue.py
+
+Migrate all direct gh reads through `larch.git.gh` helpers.
+
+- Issue body read: use `gh.issue_view_body` or equivalent helper.
+- Comments list read: use `gh.issue_comments_list_read`.
+- Issue title read: use `gh.issue_view_field_read` or `gh.issue_view_title_body_read`.
+
+Preserve cwd, return-code behavior, and `CliFailure` semantics.
+
+### UPDATED: python/larch/issue/issue_create.py
+
+Migrate direct `runner.run(["gh", ...])` call(s) through `larch.git.gh`. Preserve return-code and caller branching.
+
+### MAY_UPDATE: python/larch/release/promote_release.py
+
+Audit for any `runner.run(["gh", ...])` literal calls. If found, migrate to `larch.git.gh`; if the call is dynamic (non-literal first element), add a baseline entry with reason.
+
+### MAY_UPDATE: python/tests/git/test_gh.py
+
+If a gh wrapper test module exists, add or update tests there.
+
+
+- `_retry_read` applies `CI_STATUS_QUERY_TIMEOUT_SEC` as default when caller omits `timeout`.
+- explicit `timeout=` overrides the default.
+- `pr_view` raises `GhReadTimeout` on `EXIT_TIMEOUT` when the default timeout is applied (no explicit timeout passed).
+- `pr_view` raises `GhReadTimeout` on `EXIT_TIMEOUT` when an explicit timeout is passed.
+- read helper wrappers that formerly bypassed `_retry_read` now pass a timeout.
+
+### NEW: python/tests/git/test_gh_read_timeout.py
+
+Create this only if no suitable gh wrapper test module exists.
+
+Use a fake `Runner` that records argv and timeout values. Avoid invoking real `gh`.
+
+### UPDATED: python/larch/lint/lint_subprocess_via_runner.py
+
+Extend the lint to reject direct `runner.run(["gh", ...])` outside `python/larch/git/gh.py`.
+
+
+- Keep existing subprocess detection intact.
+- Add a second finding type for `runner.run` calls whose first positional arg is a list or tuple literal beginning with `"gh"`.
+- Exempt `python/larch/git/gh.py`.
+- Prefer a separate baseline file (e.g. `python/subprocess-via-runner-gh-baseline.json`) to avoid destabilizing the existing subprocess baseline schema.
+- Inline suppression should use the same pragma and require a reason.
+- Error text should tell callers to use `larch.git.gh`.
+
+### UPDATED: python/tests/lint/test_lint_subprocess_via_runner.py
+
+Add tests for the A5 lint half.
+
+
+- `runner.run(["gh", "pr", "view"])` outside `larch/git/gh.py` fails.
+- `_gh` or `runner.run(["gh", ...])` inside `larch/git/gh.py` is exempt.
+- `runner.run(["git", ...])` is not an A5 finding.
+- dynamic argv is not falsely flagged unless the first element is statically `"gh"`.
+- baseline or suppression behavior works for gh findings.
+- old subprocess baseline rows still validate.
+
+### UPDATED: python/larch/state/session_env.py
+
+Move direct read-only `gh repo view` usage through `larch.git.gh` or a new wrapper helper.
+
+### UPDATED: python/larch/issue/rejected_analysis.py
+
+Move direct read-only `gh api --paginate ... issues` usage through `larch.git.gh` or a new wrapper helper.
+
+Preserve `check=False` behavior by returning `CommandResult` and leaving caller branching intact.
+
+### UPDATED: python/larch/issue/analyze_bugs.py
+
+Move direct read-only `gh repo view` and `gh pr view ... mergeCommit` usage through `larch.git.gh`.
+
+Keep parsing behavior unchanged.
+
+### UPDATED: python/larch/report/report_tokens_scan.py
+
+Move direct read-only `gh repo view` usage through `larch.git.gh`.
+
+### UPDATED: python/larch/rendering/rendering.py
+
+Move direct read-only `gh repo view` and issue-comment body reads through `larch.git.gh`.
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+Append or insert the six exact Part C entries.
+
+Placement:
+
+- Add new `## Fix discipline` section with `G-Fix-1`.
+- Add `G-Orch-3` and `G-Orch-4` after `G-Orch-2`.
+- Add `G-Idem-3` after `G-Idem-2`.
+- Add `G-Obs-4` after `G-Obs-3`.
+- Add `G-Ext-2` after `G-Ext-1`.
+
+Preserve exact wording from the issue unless #6471 lands first and changes placement.
+
+### NEW: .claude/rules/wrapper-sentinel-before-stdout.md
+
+Create the B2 rule file.
+
+Use frontmatter with `paths:` covering:
+
+- `skills/*/scripts/*review*.sh`
+- `skills/*/scripts/*step*.sh`
+- `python/larch/design/design_lifecycle.py`
+- `python/larch/design/design_terminal.py`
+- `python/larch/design/design_core.py`
+
+Body text should match the provided B2 wording (sentinel before stdout, `.bg-wait-active` removal before final flush, trap replacement must preserve both).
+
+### MAY_UPDATE: .claude/settings.json
+
+Only update if `.claude/rules/` files require explicit permissions or rule registration in this repo.
+
+Do not touch otherwise.
+
+## Edge cases
+
+- A3 must not treat Markdown prose as code evidence. The bug class is a prose-only writer.
+- A3 must not treat test fixtures, `python/tests/` writes, or shell test harnesses (`scripts/test-*.sh`) as production writer evidence.
+- A3 must recognize production shell writes (`touch`, `printf >`, `tee`) in `scripts/` and `skills/*/scripts/`, but not test scripts.
+- A3 must map run-log batch slug names to matching manifest artifact names.
+- A3 must match `relative_path` rows on the full artifact string or anchored suffix, not on basename alone.
+- A3 manifest rows have `{kind, artifact}` only; `reason` belongs only in the baseline.
+- A4 must not flag guarded Bash 3.2 array expansions (length guard `${#name[@]} -gt 0` counts as safe).
+- A4 must not flag arrays that were never assigned `name=()` in the same script.
+- A4 suppression pragma must include a reason; reasonless pragma is valid per existing convention but new findings should carry reasons.
+- A5 must keep mutating `gh` helpers distinct from read helpers.
+- A5 must preserve explicit shorter or longer timeouts passed by call sites.
+- A5 default timeout reuses `CI_STATUS_QUERY_TIMEOUT_SEC`; no second constant.
+- A5 direct-gh lint should not flag the wrapper implementation itself.
+- `pr_view` and related helpers must raise `GhReadTimeout` on `EXIT_TIMEOUT` for both default and explicit timeout.
+- Guidelines are untrusted evidence for future agents. They must not be written as executable instructions outside `ARCHITECTURAL_GUIDELINES.md` and `.claude/rules/`.
+
+## Failure modes
+
+- The wire-artifact manifest may start too broad and create noisy baselines. Keep the seed list narrow; exclude `.bg-wait-active` (covered by existing lints).
+- The A4 awk pattern may overmatch complex Bash. Ship a reason-bearing baseline for current committed hits. Add harness fixtures before expanding the rule.
+- Adding default timeouts can expose tests that assumed `timeout=None`. Update fake runners to accept and assert timeout values.
+- Moving direct `gh` calls can change subtle return-code behavior. Preserve `CommandResult` paths for callers that branch on failures.
+- Extending the existing subprocess lint schema can break old baseline validation. Use a separate baseline file for gh findings.
+- `.claude/rules/` may not exist. Create the directory with only the requested rule file.
+
+## Testing strategy
+
+Run focused checks for changed files:
+
+- `python3 -m pytest python/tests/lint/test_lint_wire_artifact_pairing.py`
+- `bash scripts/test-lint-bash32.sh`
+- `python3 -m pytest python/tests/lint/test_lint_subprocess_via_runner.py`
+- `python3 -m pytest python/tests/git/test_gh_read_timeout.py` or the updated gh wrapper test module
+- `python3 python/cli.py lint wire-artifact-pairing`
+- `bash scripts/lint-bash32.sh`
+- `python3 python/cli.py lint subprocess-via-runner`
+- `python3 python/cli.py lint tempfile-dir`
+- `python3 python/cli.py lint layering`
+- `python3 python/cli.py lint env-via-config-constant`
+- `make py-lint-checks-fast`
+
+Also run `python3 python/cli.py checks run-relevant` before handoff if available and scoped changes are present.
+
+## Acceptance
+
+Run focused checks for changed files:
+
+- `python3 -m pytest python/tests/lint/test_lint_wire_artifact_pairing.py`
+- `bash scripts/test-lint-bash32.sh`
+- `python3 -m pytest python/tests/lint/test_lint_subprocess_via_runner.py`
+- `python3 -m pytest python/tests/git/test_gh_read_timeout.py` or the updated gh wrapper test module
+- `python3 python/cli.py lint wire-artifact-pairing`
+- `bash scripts/lint-bash32.sh`
+- `python3 python/cli.py lint subprocess-via-runner`
+- `python3 python/cli.py lint tempfile-dir`
+- `python3 python/cli.py lint layering`
+- `python3 python/cli.py lint env-via-config-constant`
+- `make py-lint-checks-fast`
+
+Also run `python3 python/cli.py checks run-relevant` before handoff if available and scoped changes are present.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+mechanical_churn: false
+diff_lines: 1550
