@@ -1853,7 +1853,7 @@ def persist_invariant_design_assessment(
 def persist_design_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines persist-design-assessment")
     parser.add_argument("--repo-root")
-    parser.add_argument("--design-tmpdir", default=os.environ.get("DESIGN_TMPDIR", ""))
+    parser.add_argument("--design-tmpdir", default=os.environ.get(config.ENV_DESIGN_TMPDIR, ""))
     parser.add_argument("--assessment", choices=("clean",))
     parser.add_argument("--assessment-file")
     args = parser.parse_args(argv)
@@ -1899,7 +1899,7 @@ def persist_design_assessment_main(argv: list[str]) -> int:
 def invariants_persist_design_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants persist-design-assessment")
     parser.add_argument("--repo-root")
-    parser.add_argument("--design-tmpdir", default=os.environ.get("DESIGN_TMPDIR", ""))
+    parser.add_argument("--design-tmpdir", default=os.environ.get(config.ENV_DESIGN_TMPDIR, ""))
     parser.add_argument("--assessment", choices=("clean",))
     parser.add_argument("--assessment-file")
     args = parser.parse_args(argv)
@@ -2084,7 +2084,7 @@ def materialize_diff_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
     parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     repo_root = _resolve_repo_root(args.repo_root)
     if repo_root is None:
@@ -2149,7 +2149,7 @@ def invariants_materialize_diff_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
     parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     repo_root = _resolve_repo_root(args.repo_root)
     if repo_root is None:
@@ -2168,7 +2168,7 @@ def prepare_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
     parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     if args.implement_tmpdir:
         try:
@@ -2199,7 +2199,7 @@ def invariants_prepare_main(argv: list[str]) -> int:
     parser.add_argument("--repo-root")
     parser.add_argument("--forked-target", default="false")
     parser.add_argument("--output")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     if args.implement_tmpdir:
         try:
@@ -2395,7 +2395,7 @@ def invariants_write_compose_assessment_main(argv: list[str]) -> int:
 
 def write_staged_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines write-staged-assessment")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--assessment-file")
     source.add_argument("--assessment-text")
@@ -2441,7 +2441,7 @@ def write_staged_assessment_main(argv: list[str]) -> int:
 
 def invariants_write_staged_assessment_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants write-staged-assessment")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     source = parser.add_mutually_exclusive_group(required=True)
     source.add_argument("--assessment-file")
     source.add_argument("--assessment-text")
@@ -2487,7 +2487,7 @@ def invariants_write_staged_assessment_main(argv: list[str]) -> int:
 
 def pin_note_from_staged_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines pin-note-from-staged")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--head-sha", default="")
     parser.add_argument("--base-ref", default="")
     parser.add_argument("--repo-root")
@@ -2542,7 +2542,7 @@ def pin_invariant_note_from_staged(
 
 def invariants_pin_note_from_staged_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants pin-note-from-staged")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     parser.add_argument("--head-sha", default="")
     parser.add_argument("--base-ref", default="")
     parser.add_argument("--repo-root")
@@ -2564,7 +2564,7 @@ def invariants_pin_note_from_staged_main(argv: list[str]) -> int:
 
 def invalidate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-guidelines invalidate")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
         print("ARCHITECTURAL_GUIDELINES_INVALIDATE_STATUS=failed")
@@ -2582,7 +2582,7 @@ def invalidate_main(argv: list[str]) -> int:
 
 def invariants_invalidate_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="architectural-invariants invalidate")
-    parser.add_argument("--implement-tmpdir", default=os.environ.get("IMPLEMENT_TMPDIR", ""))
+    parser.add_argument("--implement-tmpdir", default=os.environ.get(config.ENV_IMPLEMENT_TMPDIR, ""))
     args = parser.parse_args(argv)
     if not args.implement_tmpdir:
         print("ARCHITECTURAL_INVARIANTS_INVALIDATE_STATUS=failed")

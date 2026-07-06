@@ -282,7 +282,7 @@ def _flush_guideline_outcome_before_pr(
     raise Stalled(f"architectural-guidelines outcome run-log refresh skipped: {reason}")
 
 
-def _flush_invariant_outcome_before_pr(
+def _flush_invariant_outcome_before_pr(  # type: ignore[reportUnusedFunction]
     *,
     runner: Runner,
     ctx: RunContext,

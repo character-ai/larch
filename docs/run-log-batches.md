@@ -16,7 +16,6 @@ Replace-mode batches must use `run-log write`.
 The registry includes the durable implement, review, design, token, timing,
 execution-issue, transcript, vendor-diagnostic, and checks-digest telemetry carriers.
 
-
 `architectural-invariant-outcome` is a replace-mode `.json` batch with the
 `json-object` sanitizer. It writes
 `larch-logs/implement/<RUN_ID>/architectural-invariant-outcome.json` when an
