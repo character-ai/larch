@@ -39,18 +39,18 @@ This warning fires once per `session-setup.sh` invocation from a larch dev clone
 
 `/design` and `/implement` produce Mermaid architecture and code-flow
 diagrams as fenced Markdown blocks. These render automatically in the
-Claude Code chat panel and on GitHub — no extra tooling is needed to
+Claude Code chat panel and on GitHub. No extra tooling is needed to
 view them.
 
-## Mermaid CLI (contributors only — required when editing `.md` files with Mermaid fences)
+## Mermaid CLI (contributors only: required when editing `.md` files with Mermaid fences)
 
 If you work from a **full dev clone** (not a marketplace sparse checkout)
 and edit any `.md` file, the `lint-mermaid-fences` pre-commit hook
 validates staged Mermaid fences with `mmdc` before they land in
 tracking-issue summaries or PR bodies. If fences are present and the
-CLI is not installed the hook hard-fails (exit 2).
+CLI is not installed, the hook hard-fails (exit 2).
 
-**Prerequisite:** Node.js (LTS recommended — needed by `npm ci`).
+**Prerequisite:** Node.js (LTS recommended, needed by `npm ci`).
 
 ```bash
 cd larch

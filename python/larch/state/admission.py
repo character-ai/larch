@@ -298,8 +298,8 @@ def fork_env_main(argv: list[str]) -> int:
     if upstream.returncode != 0:
         print("--forked requires the clone to be configured for the fork-PR workflow:", file=sys.stderr)
         print("  origin -> your fork; upstream -> the upstream repo.", file=sys.stderr)
-        print("See docs/installation-and-setup.md (Fork CI dry-runs) for the full", file=sys.stderr)
-        print("remote-add walkthrough; the minimum is:", file=sys.stderr)
+        print("See docs/forked.md for the full remote-add walkthrough;", file=sys.stderr)
+        print("the minimum is:", file=sys.stderr)
         print("  git remote add upstream <https-or-ssh-url-of-upstream-repo>", file=sys.stderr)
         return 1
     origin_rc, fork_repo, origin_err = _github_remote_repo("origin")
