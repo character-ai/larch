@@ -1,15 +1,15 @@
-## /implement run 0B6248BB-6698-4FCE-8445-9219D3A34A0A: stalled
+## /implement run 0B6248BB-6698-4FCE-8445-9219D3A34A0A: pr-created
 
-- **Outcome**: STALLED
+- **Outcome**: DONE
 - **Duration**: 01:02:50
-- **Cost**: 💰 TOTAL ~$27.40: Claude $4.27, Codex-5.5 $15.14, Codex-mini $1.21, Cursor $5.69, Claude (subprocess) $1.09  |  Tokens: 46061k
+- **Cost**: 💰 TOTAL ~$28.17: Claude $5.03, Codex-5.5 $15.14, Codex-mini $1.21, Cursor $5.69, Claude (subprocess) $1.10  |  Tokens: 48449k
 - **Issue**: #6469: https://github.com/character-ai/larch/issues/6469
 - **PR**: #6487: https://github.com/character-ai/larch/pull/6487
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 6/8 accepted
-- **Lines (PR diff)**: code +1057/-79, larch-logs +1213/-0
+- **Lines (PR diff)**: code +1059/-79, larch-logs +1246/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -86,3 +86,7 @@ codex/apply              │                                      ████�
 5. cursor/testing: 3
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
