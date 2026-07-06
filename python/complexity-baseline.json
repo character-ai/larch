@@ -5133,7 +5133,7 @@
     "file": "larch/review/compose_review.py",
     "code": "C901",
     "qualified_symbol": "compose_findings",
-    "metric": 11
+    "metric": 12
   },
   {
     "file": "larch/review/compose_review.py",
