@@ -13,6 +13,7 @@ import ast
 import json
 import re
 import sys
+from functools import lru_cache
 from collections.abc import Iterable
 from dataclasses import dataclass
 from pathlib import Path
@@ -201,10 +202,15 @@ def _artifact_token(row: ManifestRow) -> str:
     return row["artifact"]
 
 
+@lru_cache(maxsize=None)
+def _basename_artifact_pattern(artifact: str) -> re.Pattern[str]:
+    return re.compile(rf"(?<![A-Za-z0-9_.-]){re.escape(artifact)}(?![A-Za-z0-9_.-])")
+
+
 def _mentions_artifact(text: str, row: ManifestRow) -> bool:
     artifact = _artifact_token(row)
     if row["kind"] == "basename":
-        return artifact in text
+        return _basename_artifact_pattern(artifact).search(text) is not None
     return artifact in text or f"/{artifact}" in text
 
 
@@ -232,6 +238,16 @@ def _literal_open_write_mode(node: ast.Call) -> bool:
     return False
 
 
+def _python_call_writes(name: str) -> bool:
+    return (
+        name in PY_WRITE_NAMES
+        or name.startswith("_write_")
+        or name.startswith("_atomic_")
+        or name.endswith("_atomic")
+        or "atomic_write" in name
+    )
+
+
 def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
     try:
         tree = ast.parse(source)
@@ -242,7 +258,7 @@ def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
         if not isinstance(node, ast.Call):
             continue
         name = _python_call_name(node)
-        if name not in PY_WRITE_NAMES and name != "open":
+        if name is None or (name != "open" and not _python_call_writes(name)):
             continue
         if name == "open" and not _literal_open_write_mode(node):
             continue
@@ -250,8 +266,31 @@ def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
         end_lineno = getattr(node, "end_lineno", lineno)
         start = lineno - 1 if isinstance(lineno, int) else 0
         end = end_lineno if isinstance(end_lineno, int) else start + 1
-        snippet = "\n".join(lines[max(start, 0) : max(end, start + 1)])
+        snippet = "\n".join(lines[max(start - 2, 0) : min(len(lines), end + 1)])
         if _mentions_artifact(snippet, row):
+            return True
+    return False
+
+
+def _shell_line_writes_artifact(line: str, row: ManifestRow) -> bool:
+    artifact = _artifact_token(row)
+    if row["kind"] == "basename":
+        matches_artifact = lambda text: _basename_artifact_pattern(artifact).search(text) is not None
+    else:
+        matches_artifact = lambda text: artifact in text or f"/{artifact}" in text
+    if re.search(r"(^|[;&|\s])touch\b", line) and matches_artifact(line):
+        return True
+    if re.search(r"(^|[;&|\s])tee\b", line) and matches_artifact(line):
+        return True
+    if re.search(r"(^|[;&|\s])mv\b", line):
+        mv_tail = line.split("mv", 1)[1]
+        mv_targets = [token for token in mv_tail.split() if token and not token.startswith("-")]
+        if mv_targets and matches_artifact(mv_targets[-1]):
+            return True
+    redirect_index = max(line.rfind(">>"), line.rfind(">"))
+    if redirect_index >= 0:
+        tail = line[redirect_index + (2 if line[redirect_index : redirect_index + 2] == ">>" else 1) :]
+        if matches_artifact(tail):
             return True
     return False
 
@@ -285,7 +324,7 @@ def _count_writers(root: Path, row: ManifestRow, *, batch_artifacts: set[str]) -
             stripped = line.lstrip()
             if stripped.startswith("#"):
                 continue
-            if _line_mentions_artifact(line, row) and SHELL_WRITE_RE.search(line):
+            if _shell_line_writes_artifact(line, row):
                 writers += 1
                 break
     return writers

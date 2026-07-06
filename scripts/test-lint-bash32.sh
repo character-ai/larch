@@ -460,6 +460,35 @@ rc="$(run_lint "$stderr_file")"
 assert_case "commented empty-array expansion is ignored" 0 "$stderr_file" "$rc"
 assert_empty_stderr "commented empty-array expansion is ignored" "$stderr_file"
 
+reset_tree
+write_sh "$TMPROOT/scripts/assignment-before-expansion.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "same-line empty assignment before expansion fails" 1 "$stderr_file" "$rc" \
+    "scripts/assignment-before-expansion.sh:4:" \
+    "unguarded empty-array expansion \${items[@]}"
+
+reset_tree
+write_sh "$TMPROOT/scripts/repopulated-empty-array.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+if [ "${#items[@]}" -gt 0 ]; then
+    printf '%s\n' "${items[@]}"
+fi
+items=(one)
+items=()
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "guard state clears after repopulation" 1 "$stderr_file" "$rc" \
+    "scripts/repopulated-empty-array.sh:9:" \
+    "unguarded empty-array expansion \${items[@]}"
+
 
 reset_tree
 cat > "$TMPROOT/scripts/lint-bash32-empty-array-baseline.tsv" <<'EOF'

@@ -38,6 +38,13 @@ def test_reader_with_no_writer_fails(tmp_path: Path) -> None:
     assert lwa.main(["--root", str(tmp_path)]) == 1
 
 
+def test_reader_with_sibling_manifest_name_does_not_count(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row("manifest.json")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = "scout-coder-manifest.json"\n')
+
+    assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
 def test_skill_md_prose_writer_does_not_count(tmp_path: Path) -> None:
     _project(tmp_path, manifest=[_row()])
     _write(tmp_path / "python/larch/reader.py", 'NAME = "artifact.env"\n')
@@ -72,12 +79,55 @@ def test_path_touch_counts(tmp_path: Path) -> None:
     assert lwa.main(["--root", str(tmp_path)]) == 0
 
 
+def test_python_atomic_writer_with_split_binding_counts(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row("design-report-gate-sidecars.md")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = "design-report-gate-sidecars.md"\n')
+    _write(
+        tmp_path / "python/larch/writer.py",
+        'from pathlib import Path\n'
+        'artifact = "design-report-gate-sidecars.md"\n'
+        'target = Path("build") / artifact\n'
+        '_write_text_atomic(\n'
+        '    path=target,\n'
+        '    text="x",\n'
+        ')\n',
+    )
+
+    assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
 def test_run_log_batch_name_counts_as_writer(tmp_path: Path) -> None:
     _project(tmp_path, manifest=[_row("token-report.json")])
     _write(tmp_path / "python/larch/reader.py", 'NAME = "token-report.json"\n')
     _write(tmp_path / "python/larch/report/run_log_batch.py", 'BatchInfo = tuple\n_LARCH_LOG_BATCHES = {"token-report": BatchInfo(".json")}\n')
 
     assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
+def test_skills_scripts_manifest_artifact_shell_writer_counts(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row("design-report-gate-sidecars.md")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = "design-report-gate-sidecars.md"\n')
+    _write(
+        tmp_path / "skills/demo/scripts/write.sh",
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' ok > design-report-gate-sidecars.md\n",
+    )
+
+    assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
+def test_shell_redirect_with_artifact_input_does_not_count(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row("design-report-gate-sidecars.md")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = "design-report-gate-sidecars.md"\n')
+    _write(
+        tmp_path / "skills/demo/scripts/write.sh",
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "printf '%s\\n' design-report-gate-sidecars.md > output.txt\n",
+    )
+
+    assert lwa.main(["--root", str(tmp_path)]) == 1
 
 
 def test_baseline_suppresses_and_warns(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
