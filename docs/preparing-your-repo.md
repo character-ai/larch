@@ -335,41 +335,92 @@ Reduce friction, and help the agent find its way around.
 
 ### 10. Permissions and settings (`.claude/settings.json`)
 
-<!-- larch source: .claude/settings.json, docs/configuration-and-permissions.md | disposition: Adapt -->
-<!-- TODO:
-     Allowlist common safe commands so the agent is not constantly prompted.
-     env vars, model selection, additionalDirectories.
-     Note the /fewer-permission-prompts helper as a way to generate the allowlist from real transcripts.
--->
+*Larch source: `.claude/settings.json`, `docs/configuration-and-permissions.md`. Disposition: **Adapt**.*
+
+`settings.json` sets how much friction the agent hits. The main lever is the
+permission allowlist. Without one, the agent pauses to ask before every common
+command. With one, it runs the safe commands and keeps moving.
+
+larch allowlists the commands it uses constantly: `git`, `gh`, `jq`, `grep`, and
+the like, plus its own scripts and skills. It also sets `env` (model, effort level)
+and `additionalDirectories` (extra writable roots, such as `/tmp`).
+
+You do not have to write the list by hand. The `/fewer-permission-prompts` helper
+scans your transcripts and proposes an allowlist from the calls you already
+approve. Start there, then trim.
+
+Allowlist only what you trust. Add the safe, frequent commands. Leave destructive
+ones to prompt every time.
 
 ### 11. A canonical-sources map and a "how to answer questions" policy
 
-<!-- larch source: AGENTS.md "Canonical sources" and "Answering questions about this repo" | disposition: Adapt -->
-<!-- TODO:
-     A curated map: "for X, read Y", so the agent reads the right file instead of guessing or grepping.
-     An escalation policy: direct reads first, then targeted grep, then subagents. Saves tokens and tangents.
--->
+*Larch source: `AGENTS.md` ("Canonical sources", "Answering questions about this repo"). Disposition: **Adapt**.*
+
+Two habits help the agent orient fast instead of wandering.
+
+**A canonical-sources map.** A curated "for X, read Y" list in `AGENTS.md`. Instead
+of letting the agent grep around and guess, you tell it where the truth lives.
+larch lists, per topic, the file that owns it: setup, linting, the workflow
+lifecycle, security. The agent reads the right file first.
+
+**A how-to-answer policy.** An escalation ladder for questions about the repo.
+Direct file reads first. Then one or two targeted greps. Escalate to a subagent
+only when the answer spans many files. larch spells this out so the agent does not
+default to a broad, noisy search.
+
+Together they turn "explore the repo" into "read these three files." That is faster
+and cheaper on every task. Write your own map and policy; the shape ports directly.
 
 ### 12. Anti-drift prose conventions
 
-<!-- larch source: .claude/rules/drift-prone-prose-in-docs.md | disposition: Copy -->
-<!-- TODO:
-     No hardcoded counts, no line-number references, no machine-local absolute paths in prose.
-     Single source of truth for derived values. Keeps docs (and this instruction set) from rotting.
--->
+*Larch source: `.claude/rules/drift-prone-prose-in-docs.md`. Disposition: **Copy**.*
+
+Prose in docs and instruction files goes stale in silence. A hardcoded count, a
+line-number reference, or a machine-local path rots the moment the code moves. The
+agent then reads a confident, wrong instruction and acts on it.
+
+larch's rule bans the drift-prone shapes:
+
+- **No hardcoded counts in prose.** Point at a single source of truth instead.
+- **No line-number references** like `file.py:74`. Refer to a symbol by name; the
+  name survives edits.
+- **No machine-local absolute paths.** Use repo-relative paths.
+- **On a rename, grep the docs and instructions** for the old name before you
+  finish.
+
+This matters most for the very files this guide is about. Your instruction set
+guides every future change, so it must not rot. Copy larch's rule as a
+path-triggered rule (§6) scoped to your docs.
 
 ### 13. Multi-tool support
 
-<!-- larch source: CLAUDE.md, GEMINI.md, AGENTS.md, docs/external-reviewers.md | disposition: Pattern -->
-<!-- TODO:
-     One AGENTS.md, many front doors (CLAUDE.md and GEMINI.md shims).
-     Optional: wiring external tools (Codex, Cursor) as reviewers or implementers.
--->
+*Larch source: `CLAUDE.md`, `GEMINI.md`, `AGENTS.md`, `docs/external-reviewers.md`. Disposition: **Pattern**.*
+
+This is the payoff of the §1 split. Because your instructions live in `AGENTS.md`,
+adding another tool is one shim, not a rewrite. larch supports Claude Code and
+Gemini through `CLAUDE.md` and `GEMINI.md`, both pointing at `AGENTS.md`. Any tool
+that reads its own entry file gets the same brief for one line of wiring.
+
+The same shared brief lets you bring in more than one agent per task. larch runs
+Codex and Cursor as extra reviewers and coders alongside Claude, all starting from
+the same `AGENTS.md`. That orchestration is larch-specific, but the enabling idea
+is not: one source of instructions, many tools reading it.
+
+You already did the work in §1. This section is the reason it pays off.
 
 ### 14. Keep `SECURITY.md` in sync
 
-<!-- larch source: SECURITY.md, AGENTS.md editing rule | disposition: Pattern -->
-<!-- TODO: update the security policy when security-relevant behavior changes. Make that an editing rule. -->
+*Larch source: `SECURITY.md`, AGENTS.md editing rule. Disposition: **Pattern**.*
+
+Keep a `SECURITY.md`, and make updating it a required step when security-relevant
+behavior changes. larch's `AGENTS.md` carries the rule outright: update
+`SECURITY.md` when security-relevant behavior changes. That turns a good intention
+into a step the agent follows.
+
+Agents need this stated. An agent will change auth, secret handling, or input
+validation to satisfy a task and never notice the policy doc fell behind. A written
+editing rule catches the gap. Add the sync rule to your `AGENTS.md` editing rules,
+or scope it as a path-triggered rule (§6).
 
 ---
 
