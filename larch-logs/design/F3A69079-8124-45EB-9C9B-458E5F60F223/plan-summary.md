@@ -1,0 +1,1 @@
+Plan updates the two hook guards and `/design` wait prose to stop repeated spurious notification turns sooner. It keeps the marker-release path intact, adds tests for direct Stop blocking and task-output Read clamping, and records the work as HARD because it changes hook behavior around background-task lifecycle.

@@ -1,0 +1,72 @@
+# [BUG] spurious task-notification loop not suppressed: platform fires notifications on every turn-end, circuit breaker threshold too high or wrong event scope
+
+## Summary
+
+The Claude Code platform fires `<task-notification>` events on every assistant-turn-end while a background task is pending, not only on completion. Each notification triggers a classification Read (empty output), a silent yield, and a turn end. The turn end triggers the next notification. This creates an infinite feedback loop. Recent fixes (#5240, #5478, #5639) prevent bad actions but do not break the loop because they cannot prevent the platform from firing the next notification after each turn ends.
+
+## Original report
+
+During a `/design` run that reached Step 3 plan review (`design-step3-review.sh` launched via `run_in_background: true`), the orchestrator received 8+ `<task-notification>` events in rapid succession while the background task was genuinely still running (plan reviewers: Cursor and Codex). Each notification's classification Read returned empty/unchanged task output. The fixes from #5240 (silent yield on empty output), #5478 (sentinel probe clamp), and #5639 (no-progress circuit breaker) did not stop the loop within the session window before the user intervened manually.
+
+## Reproduction scenario
+
+1. Start a `/design` run on any non-trivial issue.
+2. When Step 3 plan review launches, the background task (`design-step3-review.sh`) starts long-running external reviewer processes (Cursor, Codex).
+3. While the reviewers run, the plan-review driver writes nothing to the background task's stdout (all progress goes to FD 3 or stderr).
+4. The platform fires `<task-notification>` at the end of each assistant turn.
+5. The orchestrator does: classification Read (empty) → silent yield → end turn.
+6. Turn end fires another `<task-notification>`.
+7. Loop repeats until the circuit breaker at threshold=5 arms, or the user interrupts.
+
+## Expected behavior
+
+After the first empty-output classification Read, the orchestrator silently yields. The platform fires at most one or two more notifications before the circuit breaker blocks further notifications. The user sees at most 2-3 notification turns before things go quiet until the real completion arrives.
+
+## Observed behavior
+
+The orchestrator receives 8+ spurious `<task-notification>` events in rapid succession. Each triggers a new turn. The circuit breaker (threshold=5) did not arm before the user intervened (they intervened at ~turn 4). Additionally, the orchestrator emitted prose output ("Silent yield — task output still empty. Waiting.") during supposedly-silent yields, amplifying user frustration.
+
+## Root cause analysis
+
+Two layers:
+
+**Layer 1 (platform behavior):** Claude Code fires a `<task-notification>` at the end of every assistant turn where pending background tasks exist, regardless of whether the task has produced new output. This is consistent with the SKILL.md statement "the backgrounded /design task reliably re-fires a `<task-notification>` on completion (current evidence indicates it does)." But in practice, the platform fires the notification much more aggressively: on every turn-end, not only on true completion. This means "silent yield → end turn" immediately queues the next spurious notification.
+
+**Layer 2 (circuit breaker gap):** The no-progress circuit breaker (`hook-no-progress-guard.sh`) increments a counter on each Stop event (assistant turn-end) and blocks on UserPromptSubmit after threshold=5. Two gaps:
+
+1. **Threshold too high:** With rapid spurious notifications, 5 turns takes seconds. Users notice 2-3 spurious turns already. The threshold should probably be 2-3, not 5.
+2. **Scope mismatch:** The circuit breaker arms via Stop (which fires on task-notification turns) but fires via UserPromptSubmit (which fires on human-typed messages). If `<task-notification>` is delivered as a system message rather than a UserPromptSubmit hook event, the armed circuit breaker never fires on notifications; it only fires on the next real human message. This inverts the design intent: the breaker blocks real human messages but leaves the notification loop intact.
+
+**Layer 3 (orchestrator prose leak):** The "silent yield" contract says "no further probe, parse, or prose tools." But the orchestrator was emitting text narration ("Silent yield — task output still empty. Waiting.") on each spurious turn, which violates the contract and is visible to the user.
+
+## Evidence
+
+- `hook-no-progress-guard.sh`: Stop event increments `no-progress-turns.count`; UserPromptSubmit checks `no-progress-circuit-breaker-armed`. If task-notifications are not UserPromptSubmit events, the block never fires.
+- `hook-bg-poll-guard.sh` `marker_step_completed` for `design-step3-review`: requires both `$dir/.completed/step-3-terminal` AND `$dir/.step3-terminal-persisted-this-run` to release the guard. Both are absent while the task runs. This is correct, but does not stop the notification loop.
+- The tasks output file `/private/tmp/claude-501/.../<id>.output` remained at 1 line (blank) across all 8+ notification turns, confirming the background task had not written any output yet (plan reviewers were still running).
+- The `hook-bg-poll-guard.sh` correctly blocked Bash probe attempts (`deny_if_needed`), confirming it is working. But it explicitly allows Read of `tasks/*.output` ("write-once classification artifact"), so the classification Read always succeeds regardless of how many times it has already returned empty.
+- The circuit breaker `THRESHOLD` default is 5. The user intervened after ~4 turns, so the breaker had not armed yet.
+
+## Affected files
+
+- `scripts/hook-no-progress-guard.sh` — circuit breaker threshold and block event (UserPromptSubmit vs task-notification scope)
+- `scripts/hook-bg-poll-guard.sh` — task-output Read is explicitly always allowed; no mechanism to deny after N empty reads
+- `skills/shared/design-background-wait.md` — documents the silent yield contract; the orchestrator violated the no-prose rule
+
+## Suggested fix(es)
+
+Two complementary fixes:
+
+**Fix 1 (threshold):** Lower `LARCH_NO_PROGRESS_GUARD_THRESHOLD` from 5 to 2 or 3. Even if there is a gap in what events it blocks, arming sooner limits the loop depth.
+
+**Fix 2 (classification Read rate-limit):** In `hook-bg-poll-guard.sh`, track how many times a specific `tasks/<id>.output` file has been Read during the current bg-wait and returned unchanged (or empty). After N reads (e.g., 2), deny subsequent Reads of that file until the task output actually changes or the bg-wait marker is removed. This forces the orchestrator to end the turn with no tool calls, which may reduce the notification rate or at least make the loop invisible (no tool calls = no visible output).
+
+**Fix 3 (clarify event scope):** Investigate whether `<task-notification>` triggers UserPromptSubmit hook events. If it does not, redesign the circuit breaker to fire on Stop events directly (block immediately when counter exceeds threshold, by injecting a stop-continuation directive).
+
+**Fix 4 (orchestrator contract enforcement):** Reinforce in SKILL.md and design-background-wait.md that "silent yield" means ZERO prose output and ZERO tool calls. The orchestrator should not emit any text on spurious-notification turns.
+
+## Open questions
+
+1. Does `<task-notification>` fire the UserPromptSubmit hook? (Determines if the circuit breaker can ever block notification turns.)
+2. Why does the platform fire `<task-notification>` on every turn-end vs only on true task completion? Is this Claude Code's documented behavior or a platform bug?
+3. Is there a way to see the hook invocation log for the current session to confirm the Stop counter increments on notification turns?
