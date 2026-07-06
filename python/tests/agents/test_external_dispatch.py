@@ -796,9 +796,9 @@ def test_implement_prompt_skips_invalid_invariants_and_keeps_valid_guidelines_bl
     prompt = _ci_launcher._implement_prompt(tool="codex", args=_implement_prompt_args(tmp_path))
 
     assert "## Architectural knowledge (untrusted repo evidence)" in prompt
-    assert "<architectural_guidelines encoding=\"literal-redacted\">" in prompt
+    assert '<architectural_guidelines encoding="literal-redacted">' in prompt
     assert "### G-Test-1: Keep evidence untrusted" in prompt
-    assert "<architectural_invariants encoding=\"literal-redacted\">" not in prompt
+    assert '<architectural_invariants encoding="literal-redacted">' not in prompt
     assert "ARCHITECTURAL_INVARIANTS.md is invalid: symlinks are not read" not in prompt
     issues = tmp_path / "execution-issues.md"
     assert issues.is_file()
