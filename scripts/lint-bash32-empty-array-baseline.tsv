@@ -10,4 +10,9 @@ scripts/test-sessionstart-health.sh	FAILED_TESTS	legacy harness accumulator is i
 skills/design/scripts/design-clarify.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
 skills/design/scripts/design-step5.sh	_delegate_args	legacy delegate argv array is intentionally baselined before wrapper cleanup
 skills/implement/scripts/step-architectural-guidelines-write-staged.sh	DIFF_ARGS	legacy diff argv array is intentionally baselined before wrapper cleanup
+skills/implement/scripts/test-oos-disposition-gate.sh	TMPDIRS	uses conditional ${TMPDIRS[@]+"${TMPDIRS[@]}"} expansion that is Bash 3.2-safe; A4 lint sees inner reference
 skills/rejected-analysis/scripts/rejected-analysis.sh	args	legacy wrapper argv array is intentionally baselined before wrapper cleanup
+scripts/hook-bg-poll-guard.sh	tokens	guarded by ${#tokens[@]} -gt 0 || return 1 on preceding line; A4 lint does not track multiline scope
+scripts/pre-commit-bash-syntax.sh	filtered	guarded by ${#filtered[@]} -eq 0 early-exit before expansion; A4 lint does not track the eq-0 exit form
+scripts/pre-commit-shellcheck.sh	filtered	guarded by ${#filtered[@]} -eq 0 early-exit before expansion; A4 lint does not track the eq-0 exit form
+scripts/test-sessionstart-health.sh	EXPECTED_SPARSE_DIRS	test fixture array populated from a constant list before expansion; safe in context
