@@ -151,12 +151,32 @@ apply.
 
 ### 4. Architectural guidelines (`ARCHITECTURAL_GUIDELINES.md`)
 
-<!-- larch source: ARCHITECTURAL_GUIDELINES.md | disposition: Adapt -->
-<!-- TODO:
-     Aspirational, coded rules (larch: G-Py-1, G-Sec-1, ...) surfaced in review, not hard-enforced.
-     They cannot override AGENTS.md or skills.
-     Meta-principle (G-Enf-1): when a rule can be mechanized, graduate it to a lint. Bridges to Part II.
--->
+*Larch source: `ARCHITECTURAL_GUIDELINES.md`. Disposition: **Adapt**.*
+
+This file holds your design preferences: the nuanced calls that are too subtle to
+mechanize yet. It is aspirational, not enforced. Reviewers, human or agent, surface
+meaningful deviations. Nothing here hard-blocks a change.
+
+larch codes each rule and gives it two parts:
+
+- **Why it exists.** One line of rationale, so the agent can weigh it in context.
+- **When to deviate.** The explicit exceptions.
+
+The "when to deviate" line matters most. It stops an aspirational rule from
+becoming dogma the agent applies blindly. larch's `G-Py-4`, for example, says to
+fail loudly and never swallow errors, then names the one narrow case where a quiet
+degraded path is fine.
+
+Keep this the softest layer. It cannot override your `AGENTS.md` or your skills.
+When a rule stops needing judgment, graduate it to a lint, hook, or test (§6, §8).
+larch states this as its own rule, `G-Enf-1`: prefer mechanical enforcement, and
+let entries here earn their place only until a linter can take over. That
+migration, from prose preference to mechanical check, is the through-line of this
+whole guide.
+
+Adapt the structure, not the rules. The coded format ports to any repo. The
+specific rules are larch's, about Python, shell, and skill authoring. Write your
+own for your architecture.
 
 ### 5. Keep the always-loaded context lean
 
