@@ -207,11 +207,25 @@ def _basename_artifact_pattern(artifact: str) -> re.Pattern[str]:
     return re.compile(rf"(?<![A-Za-z0-9_.-]){re.escape(artifact)}(?![A-Za-z0-9_.-])")
 
 
+@lru_cache(maxsize=None)
+def _relative_path_artifact_pattern(artifact: str) -> re.Pattern[str]:
+    parts = [re.escape(part) for part in artifact.split("/") if part]
+    if not parts:
+        return re.compile(r"^$")
+    return re.compile(r".*?".join(parts), re.S)
+
+
 def _mentions_artifact(text: str, row: ManifestRow) -> bool:
     artifact = _artifact_token(row)
     if row["kind"] == "basename":
         return _basename_artifact_pattern(artifact).search(text) is not None
-    return artifact in text or f"/{artifact}" in text
+    parts = [part for part in artifact.split("/") if part]
+    return (
+        artifact in text
+        or f"/{artifact}" in text
+        or all(part in text for part in parts)
+        or _relative_path_artifact_pattern(artifact).search(text) is not None
+    )
 
 
 def _line_mentions_artifact(line: str, row: ManifestRow) -> bool:
@@ -248,11 +262,27 @@ def _python_call_writes(name: str) -> bool:
     )
 
 
+def _python_scope_lines(*, source: str, lines: list[str], parent_map: dict[int, ast.AST], node: ast.AST) -> str:
+    scope: ast.AST | None = node
+    while scope is not None and not isinstance(scope, (ast.FunctionDef, ast.AsyncFunctionDef, ast.Module)):
+        scope = parent_map.get(id(scope))
+
+    if scope is None:
+        return source
+    start = getattr(scope, "lineno", 1) - 1 if not isinstance(scope, ast.Module) else 0
+    end = getattr(scope, "end_lineno", len(source.splitlines()))
+    return "\n".join(lines[max(start, 0) : min(len(lines), end)])
+
+
 def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
     try:
         tree = ast.parse(source)
     except SyntaxError:
         return False
+    parent_map: dict[int, ast.AST] = {}
+    for parent in ast.walk(tree):
+        for child in ast.iter_child_nodes(parent):
+            parent_map[id(child)] = parent
     lines = source.splitlines()
     for node in ast.walk(tree):
         if not isinstance(node, ast.Call):
@@ -262,12 +292,8 @@ def _python_has_write_call(source: str, *, row: ManifestRow) -> bool:
             continue
         if name == "open" and not _literal_open_write_mode(node):
             continue
-        lineno = getattr(node, "lineno", 0)
-        end_lineno = getattr(node, "end_lineno", lineno)
-        start = lineno - 1 if isinstance(lineno, int) else 0
-        end = end_lineno if isinstance(end_lineno, int) else start + 1
-        snippet = "\n".join(lines[max(start - 2, 0) : min(len(lines), end + 1)])
-        if _mentions_artifact(snippet, row):
+        scope_text = _python_scope_lines(source=source, lines=lines, parent_map=parent_map, node=node)
+        if _mentions_artifact(scope_text, row):
             return True
     return False
 

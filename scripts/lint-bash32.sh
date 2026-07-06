@@ -101,6 +101,7 @@ scan_file() {
     set +e
     awk -v rel="$rel" -v baseline_file="$ROOT/scripts/lint-bash32-empty-array-baseline.tsv" '
         BEGIN {
+            if_depth = 0
             if (baseline_file != "" && (getline _line < baseline_file) >= 0) {
                 do {
                     if (_line == "" || _line ~ /^[[:space:]]*#/) continue
@@ -122,6 +123,15 @@ scan_file() {
         function report_empty_array_expansion(name, suffix) {
             if ((rel SUBSEP name) in empty_array_baseline) return
             report("unguarded empty-array expansion ${" name suffix "}")
+        }
+        function line_opens_guard_block(line) {
+            return line ~ /(^|[[:space:];|&({])if[[:space:]]+/ && line ~ /(^|[[:space:];|&({])then([[:space:];|&)]|$)/
+        }
+        function line_closes_guard_block(line) {
+            return line ~ /(^|[[:space:];|&({])fi([[:space:];|&)]|$)/
+        }
+        function clear_line_guarded(    name) {
+            for (name in line_guarded) delete line_guarded[name]
         }
         function scan_empty_array_line(line,    cursor, rest, best_pos, best_type, best_name, best_len, best_suffix, name, pos, assignment_text, assignment_value, candidate) {
             cursor = 1
@@ -156,7 +166,6 @@ scan_file() {
                         best_len = length(candidate)
                         best_suffix = ""
                     }
-                    if (guarded_arrays[name]) continue
                     candidate = "${" name "[@]}"
                     pos = index(rest, candidate)
                     if (pos > 0 && (best_pos == 0 || pos < best_pos)) {
@@ -181,15 +190,20 @@ scan_file() {
                 if (best_type == "assignment") {
                     if (assignment_value ~ /^[[:space:]]*$/) {
                         empty_arrays[best_name] = 1
-                        guarded_arrays[best_name] = 0
+                        delete guard_block_depth[best_name]
                     } else {
                         delete empty_arrays[best_name]
-                        delete guarded_arrays[best_name]
+                        delete guard_block_depth[best_name]
                     }
                 } else if (best_type == "guard") {
-                    guarded_arrays[best_name] = 1
+                    line_guarded[best_name] = 1
+                    if (line_opens_guard_block(line)) {
+                        guard_block_depth[best_name] = if_depth + 1
+                    }
                 } else if (best_type == "expand") {
-                    if (!guarded_arrays[best_name]) report_empty_array_expansion(best_name, best_suffix)
+                    if (!((best_name in line_guarded) || ((best_name in guard_block_depth) && if_depth >= guard_block_depth[best_name]))) {
+                        report_empty_array_expansion(best_name, best_suffix)
+                    }
                 }
                 cursor += best_pos + best_len - 1
             }
@@ -200,6 +214,9 @@ scan_file() {
             if (line ~ /^[[:space:]]*#/) next
 
             scan_empty_array_line(line)
+            if (line_opens_guard_block(line)) if_depth++
+            if (line_closes_guard_block(line) && if_depth > 0) if_depth--
+            clear_line_guarded()
 
             if (line ~ /(^|[[:space:];|&({])declare[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("declare -A associative arrays") # lint-bash32: ok linter pattern
             if (line ~ /(^|[[:space:];|&({])typeset[[:space:]]+(-[A-Za-z]+[[:space:]]+)*-[A-Za-z]*A[A-Za-z]*([[:space:];|&)]|$)/) report("typeset -A associative arrays") # lint-bash32: ok linter pattern

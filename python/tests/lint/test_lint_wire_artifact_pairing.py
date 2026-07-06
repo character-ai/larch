@@ -96,6 +96,45 @@ def test_python_atomic_writer_with_split_binding_counts(tmp_path: Path) -> None:
     assert lwa.main(["--root", str(tmp_path)]) == 0
 
 
+def test_python_writer_with_distant_split_binding_counts(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row(".completed/step-final-summary", "relative_path")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/step-final-summary"\n')
+    _write(
+        tmp_path / "python/larch/writer.py",
+        'from pathlib import Path\n'
+        '\n'
+        'def write_summary(tmpdir: Path) -> None:\n'
+        '    completed = tmpdir / ".completed"\n'
+        '    target = completed / "step-final-summary"\n'
+        '    prefix = "ignored"\n'
+        '    for _ in range(2):\n'
+        '        prefix = prefix\n'
+        '    target.write_text("x")\n'
+        '\n'
+        'write_summary(Path("build"))\n',
+    )
+
+    assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
+def test_python_writer_with_joinpath_counts(tmp_path: Path) -> None:
+    _project(tmp_path, manifest=[_row(".completed/step-5c-terminal", "relative_path")])
+    _write(tmp_path / "python/larch/reader.py", 'NAME = tmpdir / ".completed/step-5c-terminal"\n')
+    _write(
+        tmp_path / "python/larch/writer.py",
+        'from pathlib import Path\n'
+        '\n'
+        'def write_terminal(tmpdir: Path) -> None:\n'
+        '    artifact = "step-5c-terminal"\n'
+        '    target = Path(tmpdir).joinpath(".completed").joinpath(artifact)\n'
+        '    target.touch()\n'
+        '\n'
+        'write_terminal(Path("build"))\n',
+    )
+
+    assert lwa.main(["--root", str(tmp_path)]) == 0
+
+
 def test_run_log_batch_name_counts_as_writer(tmp_path: Path) -> None:
     _project(tmp_path, manifest=[_row("token-report.json")])
     _write(tmp_path / "python/larch/reader.py", 'NAME = "token-report.json"\n')

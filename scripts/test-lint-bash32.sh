@@ -489,6 +489,21 @@ assert_case "guard state clears after repopulation" 1 "$stderr_file" "$rc" \
     "scripts/repopulated-empty-array.sh:9:" \
     "unguarded empty-array expansion \${items[@]}"
 
+reset_tree
+write_sh "$TMPROOT/scripts/guarded-block-does-not-globalize.sh" <<'EOF'
+#!/usr/bin/env bash
+set -euo pipefail
+items=()
+if [ "${#items[@]}" -gt 0 ]; then
+    printf '%s\n' "${items[@]}"
+fi
+printf '%s\n' "${items[@]}"
+EOF
+rc="$(run_lint "$stderr_file")"
+assert_case "later unguarded empty-array expansion still fails after guarded block" 1 "$stderr_file" "$rc" \
+    "scripts/guarded-block-does-not-globalize.sh:7:" \
+    "unguarded empty-array expansion \${items[@]}"
+
 
 reset_tree
 cat > "$TMPROOT/scripts/lint-bash32-empty-array-baseline.tsv" <<'EOF'
