@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	2	dyn-dyn-bash32-grep-codex	specialist	codex	dyn-dyn-bash32-grep-codex-output.txt	50929	12733	25461	6366	25468	6367		0	0
+implement Step 5	phase1	2	dyn-dyn-bash32-grep	specialist	cursor	dyn-dyn-bash32-grep-output.txt	50929	12733	25461	6366	25468	6367		0	0
+implement Step 5	phase1	2	correctness	specialist	codex	codex-specialist-correctness-output.txt	54127	13532	29198	7300	24929	6233	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	54414	13604	29485	7372	24929	6233	agents/reviewer-edge-cases.md	6112	1528
+implement Step 5	phase1	2	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	54127	13532	29198	7300	24929	6233	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	54414	13604	29485	7372	24929	6233	agents/reviewer-edge-cases.md	6112	1528
+implement Step 5	phase1	2	testing	specialist	codex	codex-specialist-testing-output.txt	53856	13464	28927	7232	24929	6233	agents/reviewer-testing.md	5579	1395
+implement Step 5	phase1	2	testing	specialist	cursor	cursor-specialist-testing-output.txt	53856	13464	28927	7232	24929	6233	agents/reviewer-testing.md	5579	1395
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	13484	3371	4140	1035	9344	2336	agents/orchestrator-aggregator.md	4363	1091
+implement Step 5	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	10554	2639	8223	2056	2331	583		0	0
+implement Step 5	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	10900	2725	8569	2143	2331	583		0	0
+implement Step 5	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	10611	2653	8280	2070	2331	583		0	0
+review.fix_coder	review.fix_coder	2	implementer	implementer	codex	coder-output.log	1746	437	1202	301	544	136		0	0
