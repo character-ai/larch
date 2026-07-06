@@ -9,6 +9,7 @@ IMPL_MD="$ROOT/skills/implement/SKILL.md"
 SHARED_DESIGN_WAIT_MD="$ROOT/skills/shared/design-background-wait.md"
 ORCH_NEVER_MD="$ROOT/skills/shared/orchestrator-never.md"
 BRAINSTORM_MD="$ROOT/skills/design/references/brainstorm.md"
+DESIGN_OUTLINE_MD="$ROOT/skills/design/references/design-outline.md"
 APPROVAL_GATES_MD="$ROOT/skills/design/references/approval-gates.md"
 DISCUSSION_ROUNDS_MD="$ROOT/skills/design/references/discussion-rounds.md"
 SETTLE_DISPATCH_MD="$ROOT/skills/design/references/settle-rc-dispatch.md"
@@ -375,6 +376,10 @@ contains "$SKILL_MD" 'If `STEP1D5_ACTION=run`: **MANDATORY: READ ENTIRE FILE**: 
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=true` row, treat Step 1d.7 as a terminal pause-save boundary. Stop `/design` for operator resume; do not parse `SKIP_APPROVE_REQUESTED`; do not read or execute `references/design-outline.md`.' 'Step 1d.7 must stop on PAUSE_OK before skip-approve and outline work'
 contains "$SKILL_MD" 'If the fence output contains a whole-line `PAUSE_OK=false` row or `SKIP_APPROVE_REQUESTED` is missing or empty, print `**⚠ 1d.7: missing SKIP_APPROVE_REQUESTED from step1d7 fence; aborting /design**` and abort `/design`' 'Step 1d.7 must fail closed on pause failure or missing skip-approve directive'
 not_contains "$SKILL_MD" 'Run exactly once after skip or finish' 'Step 1d.5 must not describe completion fence as after skip'
+contains "$DESIGN_OUTLINE_MD" 'When `skip_approve_requested=true`: run Output, run Presentation via `present-note --repo-root "$REPO_ROOT"`, assess invariants before guidelines, and if invariant violations remain, enter the remediation loop instead of auto-approving.' 'Design outline must block skip-approve auto-approval until invariant remediation clears'
+contains "$DESIGN_OUTLINE_MD" 'Bound the invariant outline remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-outline-remediation.count`, read on Step 1d.7 invariant entry, incremented per rewrite, mirroring Gate C. Hard-stop after the bound and record a warning.' 'Design outline must pin bounded remediation counter contract'
+contains "$APPROVAL_GATES_MD" 'If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving.' 'Gate C must block auto-approval until invariant remediation clears'
+contains "$APPROVAL_GATES_MD" 'Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.' 'Gate C must pin bounded remediation counter contract'
 
 contains "$MAKEFILE" 'python3 -m pytest python/tests/design/test_design_lifecycle.py' 'Make targets must route retired shell harnesses to pytest'
 

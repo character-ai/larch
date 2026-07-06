@@ -98,3 +98,34 @@ test -f "$TMPDIR/architectural-guideline-note.meta.env"
 test ! -e "$TMPDIR/architectural-guideline-staged-assessment.md"
 test ! -e "$TMPDIR/architectural-guideline-drop-notice.txt"
 cmp "$ASSESSMENT" "$TMPDIR/architectural-guideline-note.md"
+
+INVARIANT_ASSESSMENT="$TMPDIR/architectural-invariant-assessment-draft.md"
+printf 'Consulted ARCHITECTURAL_INVARIANTS.md; no violations identified.\n' > "$INVARIANT_ASSESSMENT"
+cat > "$TMPDIR/architectural-invariant-materialize.env" <<EOF
+STATUS=present
+HEAD_SHA=$HEAD_SHA
+ASSESSED_HEAD_SHA=$HEAD_SHA
+BASE_REF=origin/main
+DIFF_FINGERPRINT=$(python3 -c "import hashlib; print(hashlib.sha256(b'').hexdigest())")
+DIFF_SNAPSHOT=$TMPDIR/architectural-invariant-materialized-diff.txt
+INVARIANTS_STATUS=present
+EOF
+printf '' > "$TMPDIR/architectural-invariant-materialized-diff.txt"
+printf 'legacy staged\n' > "$TMPDIR/architectural-invariant-staged-assessment.md"
+printf 'legacy drop\n' > "$TMPDIR/architectural-invariant-drop-notice.txt"
+(
+  cd "$ROOT"
+  IMPLEMENT_TMPDIR="$TMPDIR" CLAUDE_PLUGIN_ROOT="$ROOT" \
+    "$ROOT/skills/implement/scripts/step-architectural-invariants-write-compose.sh" architectural-invariant-assessment-draft.md >/dev/null
+)
+
+test -f "$TMPDIR/architectural-invariant-note.md"
+test -f "$TMPDIR/architectural-invariant-note.meta.env"
+test ! -e "$TMPDIR/architectural-invariant-staged-assessment.md"
+test ! -e "$TMPDIR/architectural-invariant-drop-notice.txt"
+cmp "$INVARIANT_ASSESSMENT" "$TMPDIR/architectural-invariant-note.md"
+grep -Fxq "STATUS=present" "$TMPDIR/architectural-invariant-note.meta.env"
+grep -Fxq "HEAD_SHA=$HEAD_SHA" "$TMPDIR/architectural-invariant-note.meta.env"
+grep -Fxq "ASSESSED_HEAD_SHA=$HEAD_SHA" "$TMPDIR/architectural-invariant-note.meta.env"
+grep -Fxq "INVARIANTS_STATUS=present" "$TMPDIR/architectural-invariant-note.meta.env"
+grep -Fxq "ASSESSMENT_KIND=clean" "$TMPDIR/architectural-invariant-note.meta.env"

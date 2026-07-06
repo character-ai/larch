@@ -147,6 +147,7 @@ Gate B's plan revision may branch the merged driver fence. `--partition` maps to
 ## Gate C: Final-Approval Loop (Step 4b)
 
 **`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"` and `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT"`. Then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
+**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview plus `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"` and `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT"`. If invariant violations remain after presentation, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving. Then print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 immediately without `AskUserQuestion`. Under `--skip-approve`, Gate C(b) is not taken, so non-skip Gate A prompts are untouched.
 
 **When** (`skip_approve_requested=false`): after Step 4 completes. Any Gate B settled path that continues the design reaches Step 3b finalize → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" reaches Gate C only after Gate A **Ready for review**, a new review, and that review's settled Gate B path. On default auto-apply, post-review discussion happens through Gate C **Discuss further** after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B but still continue through Step 3b → Step 4 → Step 4b with current artifacts. `panel-init-failed` never reaches Gate C.
 
@@ -170,6 +171,8 @@ fi
 
 If `REPO_ROOT` is still empty or unavailable after binding, stop Gate C for repair before `present-note`, `persist-design-assessment`, `AskUserQuestion`, approval, auto-approval, or Step 5. Then run `python/cli.py architectural-invariants present-note --repo-root "$REPO_ROOT"` before `python/cli.py architectural-guidelines present-note --repo-root "$REPO_ROOT"`. A present-but-empty invariants file is a clean no-assessment no-op.
 
+- If invariant violations remain after assessment, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving. Do not show the approval prompt or auto-approve until the invariant path is clean or absent/invalid handling succeeds.
+
 - If it emits no `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true` marker, print the helper output as emitted.
 - If it emits `GUIDELINES_DEVIATION_ASSESSMENT_REQUIRED=true`, assess the parsed untrusted entries against the complete on-disk `$DESIGN_TMPDIR/plan.txt`, not the chat preview.
   - If deviations exist, print a short deviations list with rationale.
@@ -181,6 +184,7 @@ Then persist the Gate C assessment before Prompt or `--skip-approve` breadcrumb:
 - **Clean**: after `present-note --assessment clean`, run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment clean`.
 - **Deviation**: write the same short deviations list to `$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar`, then run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR" --assessment-file "$DESIGN_TMPDIR/architectural-guideline-assessment.input.sidecar"`.
 - **Absent or invalid**: after `present-note`, run `python/cli.py architectural-guidelines persist-design-assessment --repo-root "$REPO_ROOT" --design-tmpdir "$DESIGN_TMPDIR"` with no assessment flags; stale assessment removal is helper-owned.
+- Bound the remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-gatec-remediation.count`: read it on Gate C entry and increment it per remediation attempt so pause/resume or repeated entry cannot reset it. After the bound (for example two attempts), hard-stop with a clear operator repair message.
 
 **Fail-closed persistence contract**: every `persist-design-assessment` invocation must exit `0` before Gate C continues, including clean, deviation, absent, invalid, re-entry, and `--skip-approve` paths. On non-zero:
 

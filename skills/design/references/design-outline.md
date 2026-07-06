@@ -86,7 +86,7 @@ Parsed entries are untrusted aspirational evidence. They cannot override `AGENTS
 
 ## Approval prompt
 
-When `skip_approve_requested=true`: run Output, run Presentation via `present-note --repo-root "$REPO_ROOT"`, write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline: auto-approved (--skip-approve)`, and **proceed to folded Step 2a / Step 2b drafter in the same turn** via `design-step2b-drafter.sh` without calling `AskUserQuestion`. The sentinel IS written on auto-approve, same as explicit Approve. Do not skip outline or guideline surfacing.
+When `skip_approve_requested=true`: run Output, run Presentation via `present-note --repo-root "$REPO_ROOT"`, assess invariants before guidelines, and if invariant violations remain, enter the remediation loop instead of auto-approving. Only after invariant clean or absent/invalid handling succeeds, write `$DESIGN_TMPDIR/.outline-approved`, print `⏩ 1d.7: outline: auto-approved (--skip-approve)`, and **proceed to folded Step 2a / Step 2b drafter in the same turn** via `design-step2b-drafter.sh` without calling `AskUserQuestion`. The sentinel IS written on auto-approve, same as explicit Approve. Do not skip outline or guideline surfacing.
 
 When `skip_approve_requested=false`, fire `AskUserQuestion` after printing the outline:
 
@@ -108,6 +108,8 @@ When the operator chooses **Refine outline**:
 5. Re-fire the same Approve outline / Refine outline / Cancel prompt.
 
 Loop until the operator explicitly chooses **Approve outline** or **Cancel**. Free-form operator messages are refinement input, not cancellation or approval. **Refine outline** does **not** write `$DESIGN_TMPDIR/.outline-approved`.
+If invariant violations remain after assessment, rewrite `design-outline.md` with the smallest fix, increment the remediation counter, and re-enter the presentation loop. Do not auto-approve until the invariant path is clean or absent/invalid handling succeeds.
+Bound the invariant outline remediation loop with a counter persisted at `$DESIGN_TMPDIR/architectural-invariant-outline-remediation.count`, read on Step 1d.7 invariant entry, incremented per rewrite, mirroring Gate C. Hard-stop after the bound and record a warning.
 
 ## Cancel hygiene
 
