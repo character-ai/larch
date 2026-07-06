@@ -1,0 +1,8 @@
+1	missing `architectural_acknowledgment` can still fall through recovery or pass the `needs_qa` path, so a complete or early-exit manifest can ship without the required proof of acknowledgment.
+1	the launcher and validator do not share one authoritative `architectural_knowledge_required` contract, so prompt injection, tmpdir state, and manifest validation can disagree about whether acknowledgment is required.
+1	the planned prompt-text edits will ratchet skill-closure-growth, but the closure-baseline artifact is not updated, so lint/ci can fail even when the feature code is correct.
+2	review-time architectural knowledge should not collapse a present file with zero parsed entries into the same empty output as an absent file, or the reviewer block, no-parsed-entries cue, and cache-key contribution disappear.
+2	resume launches should carry the architectural-knowledge section and read-order instructions, not only the first-launch static body, or codex retries lose the acknowledgment context.
+2	the launcher/dispatcher handshake should make the launch-time architectural-knowledge snapshot authoritative when present, otherwise a file that appears after launch can trigger a false missing-ack bailout.
+2	architectural acknowledgment should be required before schema-invalid complete manifests can route into manifest-invalid recovery, or a required ack can be skipped entirely.
+2	external coder prompts should wrap parsed architectural knowledge in the same untrusted content-block envelope used for reviewer feeds, so repo text cannot masquerade as higher-priority instructions.

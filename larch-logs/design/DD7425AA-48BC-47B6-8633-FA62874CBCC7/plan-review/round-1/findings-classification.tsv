@@ -1,0 +1,13 @@
+finding_id	finding_reviewers	voting_result	v1_vote	v1_correctness	v1_severity	v1_quality	v1_uncertain	v1_tool	v2_vote	v2_correctness	v2_severity	v2_quality	v2_uncertain	v2_tool	v3_vote	v3_correctness	v3_severity	v3_quality	v3_uncertain	v3_tool	body_severity	scope
+FINDING_1	Cursor-Arch, Cursor-Pragmatic, Cursor-Requirements, Cursor-dyn-Prompt Contract Architect	accepted	YES	true	major	good	false	Claude							YES	true	major	excellent	false	Cursor	major	in_scope
+FINDING_2	Cursor-Arch, Cursor-Innovation, Cursor-Requirements, Cursor-dyn-Prompt Contract Architect, Codex-dyn-Prompt Contract Architect	accepted	YES	true	major	good	false	Claude							YES	true	major	excellent	false	Cursor	major	in_scope
+FINDING_3	Codex-Arch, Codex-Innovation, Codex-Requirements	neutral	NO	partially-true	minor	adequate	false	Claude							YES	true	minor	good	false	Cursor	major	in_scope
+FINDING_4	Codex-Arch, Codex-Innovation	accepted	YES	true	minor	good	false	Claude							YES	true	major	excellent	false	Cursor	major	in_scope
+FINDING_5	Codex-Innovation, Codex-Pragmatic, Cursor-Requirements, Codex-Requirements, Codex-dyn-Prompt Contract Architect	neutral	NO	partially-true	minor	adequate	false	Claude							YES	true	major	excellent	false	Cursor	major	oos
+FINDING_6	Cursor-Innovation	neutral	NO	partially-true	minor	adequate	false	Claude							YES	true	major	good	false	Cursor	major	oos
+FINDING_7	Cursor-Innovation	rejected	NO	partially-true	nit	adequate	false	Claude							NO	partially-true	nit	adequate	false	Cursor	minor	in_scope
+FINDING_8	Codex-dyn-Prompt Contract Architect	rejected	NO	partially-true	minor	adequate	false	Claude							NO	partially-true	minor	adequate	false	Cursor	minor	in_scope
+FINDING_9	Cursor-Innovation	rejected	NO	partially-true	nit	adequate	false	Claude							NO	partially-true	nit	adequate	false	Cursor	minor	in_scope
+FINDING_10	Cursor-Pragmatic	rejected	NO	partially-true	minor	adequate	false	Claude							NO	partially-true	nit	good	false	Cursor	minor	in_scope
+OOS_1	Cursor-Arch	accepted	YES	true	minor	adequate	false	Claude							NO	partially-true	nit	weak	false	Cursor	minor	oos
+OOS_2	Cursor-dyn-Prompt Contract Architect	accepted	YES	true	minor	adequate	false	Claude							YES	true	minor	good	false	Cursor	minor	oos

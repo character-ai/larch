@@ -1,0 +1,69 @@
+## Problem
+
+`ARCHITECTURAL_GUIDELINES.md` is currently routed as untrusted, review-only evidence: `/design` folds it into the plan drafter and a Gate C assessment, and `/implement` uses it only for a compose-time self-assessment, the PR body, and the final summary. The one actor that most needs engineering knowledge, the coder (Step 2 implementer), never receives it, and reviewers do not enforce it. Its Bash sibling `BASH_AUTHORING.md` is, by contrast, a first-class `CLAUDE.md` import. This asymmetry is historical, not principled.
+
+## Model: three tiers of knowledge
+
+1. **Invariants** (`ARCHITECTURAL_INVARIANTS.md`, new): absolute, no "Deviate when". A violation is always a defect. Fed to the coder as hard constraints and mechanically backstopped (lint/hook/test) wherever expressible.
+2. **Language / idiomatic guidelines** (`ARCHITECTURAL_GUIDELINES.md`, existing): judgment-tier, carry "Deviate when". Fed to the coder as principles, targeted to the diff's language.
+3. **Deterministic style**: owned by ruff/pylint/pyright. Unchanged.
+
+## Coder (Step 2 implementer)
+
+- Receives the invariants and the relevant-language guidelines.
+- Delivery: path reference with a **mandatory read order** plus a one-line **acknowledgment** the coder must emit (e.g. "honoring I-Sec-1, G-Py-4 for this change"), so a skipped read becomes visible. For external coders (Codex/Cursor), prefer AGENTS.md-tier placement / verification over a loose path mention for the invariant tier.
+- Scope guard: apply within the change being made; not license to touch unrelated code.
+
+## Reviewers
+
+- Receive both files.
+- **Invariant violation**: in-scope, blocking. High-precision, concrete-breakage finding, exactly what the rubric rewards.
+- **Guideline violation**: in-scope and **fix-required, NOT OOS**. OOS is de facto "noted and shipped anyway", which is the nonchalant drift we want gone. Escape valve: require the fix only when the reviewer sees a safe way to make it; when declining, **record the guideline id and the reason** (reuse the architectural-guideline assessment note; same spirit as G-Py-11).
+- **Rubric carve-out** (required, else this no-ops): `reviewer-templates.md` currently sends "architectural preference" to OOS. Carve out: a violation of a *documented* `ARCHITECTURAL_GUIDELINES.md` / `ARCHITECTURAL_INVARIANTS.md` entry (keyed to a written `G-*` / `I-*` id) is in-scope, distinct from a reviewer's personal "more idiomatic" opinion, which stays OOS.
+
+## Robustness
+
+- Every file is independently optional: present -> include; absent -> omit silently; invalid/symlink/non-regular -> omit and warn (fail closed). Reuse the existing `architectural-guidelines read` present/absent/invalid contract.
+- No inter-file dependencies: each file self-contained, so any subset works.
+- The prompt assembler existence-gates every include, so a missing file never produces a dangling "read this path" instruction.
+- Invariants are mechanically backstopped: a missing doc costs quality, never safety (the lint/hook/test still catches the violation at CI).
+
+## Related
+
+- Seed file + tracking: #6467, PR #6468.
+
+## Out of scope for this issue
+
+- Populating `ARCHITECTURAL_INVARIANTS.md` with actual invariants (the seed file lands blank via its own PR/tracking issue).
+- Reader/parser implementation details (`I-*` heading grammar) beyond mirroring the existing `G-*` reader.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Promote architectural knowledge from review-only evidence to a tiered feed delivered to the Step 2 coder and to reviewers: invariants (hard constraints) + language-targeted guidelines (judgment).
+- Add a thin `ARCHITECTURAL_INVARIANTS.md` (`I-*`) reader that mirrors the existing `G-*` reader and reuses the present/absent/invalid fail-closed contract.
+- Make documented `G-*`/`I-*` violations in-scope for reviewers (invariant = blocking; guideline = fix-required-not-OOS) via a `reviewer-templates.md` rubric carve-out.
+
+### Non-goals
+- Populating `ARCHITECTURAL_INVARIANTS.md` with real invariants (blank seed lands via #6467 / #6468).
+- Any lint/hook/test backstop for invariants (deferred until invariants exist).
+- Reader/parser sophistication beyond mirroring the `G-*` reader.
+
+### Approach sketch
+- Extend the reader + `cli.py` to also read `ARCHITECTURAL_INVARIANTS.md` as a thin `I-*` mirror; leave `read_guidelines` and its consumers intact.
+- Inject invariants + relevant-language guidelines into the Step 2 implementer prompt (Claude + Codex/Cursor) with a mandatory read-order and a one-line acknowledgment; the dispatcher mechanically verifies the acknowledgment (manifest/output field) and warns/fails when missing.
+- Feed both files as untrusted content blocks (G-Sec-2) to code reviewers and `/design` plan reviewers; existence-gate every include so a missing file never leaves a dangling read instruction.
+- Carve out documented `G-*`/`I-*` violations in `reviewer-templates.md`, then regenerate the four archetypes + pre-rendered variants and pass CI `generate check`.
+- Update `SECURITY.md` (new untrusted-input feed) and the `README.md` / `docs` feature surface.
+
+### Surfaces in scope
+- `python/larch/core/architectural_guidelines.py`, `python/larch/cli.py`
+- Step 2 implementer prompts (`agents/_implementer-base.md`, `agents/codex-implementer.md`, `agents/cursor-implementer.md`) + dispatch/manifest under `python/larch/implement/`
+- Reviewer feed: `python/larch/rendering/rendering.py`, `skills/shared/reviewer-templates.md` + generated `agents/reviewer-*.md` / `agents/pre-rendered/`
+- Docs: `SECURITY.md`, `README.md`, `docs/`
+
+### Open questions
+- Exact manifest/output field and severity (warn vs hard-fail) for a missing acknowledgment: resolve in plan drafting/review.
+- Whether external Codex/Cursor coders verify the acknowledgment through the same manifest path (assume uniform) vs. an AGENTS.md-tier-only reference.
