@@ -1,0 +1,18 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	30193	7549	13329	3333	16864	4216		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	16481	4121	13041	3261	3440	860		0	0
+design Step 3	phase1	1	dyn-codex-plan-prompt-contract-architect	plan-review	codex	dyn-codex-plan-prompt-contract-architect.txt	16805	4202	12907	3227	3898	975		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	16496	4124	13056	3264	3440	860		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	30206	7552	13342	3336	16864	4216		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	16472	4118	13032	3258	3440	860		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	16494	4124	13054	3264	3440	860		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	30184	7546	13320	3330	16864	4216		0	0
+design Step 3	phase1	1	dyn-cursor-plan-prompt-contract-architect	plan-review	cursor	dyn-cursor-plan-prompt-contract-architect.txt	30517	7630	13195	3299	17322	4331		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	30208	7552	13344	3336	16864	4216		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	33338	8335	4610	1153	28728	7182	agents/orchestrator-aggregator.md	4363	1091
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	33812	8453	5001	1251	28811	7203	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	15053	3764	8907	2227	6146	1537		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	15053	3764	8907	2227	6146	1537		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	15053	3764	8907	2227	6146	1537		0	0
+design Step 3	phase2	1	voter-2	voter	cursor	codex-vote-output-phase2.txt	15053	3764	8907	2227	6146	1537		0	0
+design Step 3	phase3	1	voter-2	voter	claude	codex-vote-output-phase3.txt	15053	3764	8907	2227	6146	1537		0	0

@@ -1,0 +1,1 @@
+Please grant permission to read files from `<OPERATOR_REPO_PATH>/larch/sessions/` so I can access the ballot.

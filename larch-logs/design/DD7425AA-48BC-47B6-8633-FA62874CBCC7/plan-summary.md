@@ -1,0 +1,1 @@
+Implement tiered architectural knowledge across Step 2 coder prompts, manifest validation, plan/code reviewer prompts, generated reviewer artifacts, and docs. Treat this as a HARD prompt-contract and workflow change.

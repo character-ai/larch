@@ -1,0 +1,9 @@
+slot=2
+voter_tool=claude
+judge_error_count=12
+total_findings=12
+total_ballot_items=12
+voter_file=<TMPDIR>/codex-vote-output-phase3.txt
+voter_sha256=998e244bcef62299546137adb590190918352d0bc2f93974e571ff3c9974b20f
+--- first 200 bytes of voter output ---
+Please grant permission to read files from `<OPERATOR_REPO_PATH>/larch/sessions/` so I can access the ballot.

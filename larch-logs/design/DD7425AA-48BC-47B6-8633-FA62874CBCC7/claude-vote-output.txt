@@ -1,0 +1,7 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan edge cases explicitly say present-but-zero counts as present and to include a no-entries cue; "include both valid present files" in rendering.py is sufficient direction; second-round finding, and the primary feature (I-*/G-* violation flagging) works with zero entries
+FINDING_2: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- plan dispatch_step2.py section explicitly states "apply the same direct-bail for status=complete and status=needs_qa"; the dispatcher is authoritative
+FINDING_4: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_5: YES CORRECTNESS=true SEVERITY=major QUALITY=excellent UNCERTAIN=false
+FINDING_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- scope anchor explicitly distinguishes coder delivery (AGENTS.md-tier placement) from reviewer delivery (untrusted content blocks); the plan follows that distinction and SECURITY.md documents the untrusted nature
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of round 1 FINDING_6 which ended oos (YES=1/2); no materially new evidence
