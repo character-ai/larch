@@ -1,0 +1,10 @@
+slot=1
+voter_tool=codex-plan-fidelity
+judge_error_count=8
+total_findings=10
+total_ballot_items=10
+voter_file=<TMPDIR>/round-1/codex-plan-fidelity-vote-output.txt
+voter_sha256=b2fccf99f2efb637e7f9484ac35b9ec9b3275cf363a8e4cad116b2b7d84b67bb
+--- first 200 bytes of voter output ---
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- real lint gap, but it only affects future default-literal additions and is not required for the shipped feature path.
+

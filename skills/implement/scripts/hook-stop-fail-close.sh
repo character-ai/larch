@@ -2,7 +2,7 @@
 # hook-stop-fail-close.sh — Stop hook for post-/review halt protection.
 #
 # set -e omitted: every probe must fail open; the hook must always exit 0.
-# Intentional per .claude/rules/shell-strict-mode.md.
+# Intentional per G-Bash-4: this hook must fail open and exit 0.
 
 set -uo pipefail
 

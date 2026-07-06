@@ -1113,6 +1113,13 @@
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },
   {
+    "file": "larch/lint/check_topology_rule_paths.py",
+    "qualified_symbol": "_check_git_tracked",
+    "callee": "run",
+    "occurrence": 1,
+    "reason": "lint-layer git ls-files tracked-path probe; direct subprocess consistent with lint_common git helpers"
+  },
+  {
     "file": "larch/lint/lint_codex_exec_auth.py",
     "qualified_symbol": "_git_files",
     "callee": "run",
@@ -1289,43 +1296,8 @@
   },
   {
     "file": "larch/report/tokens.py",
-    "qualified_symbol": "_claude_project_dir",
-    "callee": "check_output",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "qualified_symbol": "_ngram_source_files",
-    "callee": "check_output",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "qualified_symbol": "_resolve_claude_source_from_project",
-    "callee": "check_output",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
     "qualified_symbol": "_tiktoken_count_texts",
     "callee": "run",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "qualified_symbol": "compute_pr_line_counts",
-    "callee": "check_output",
-    "occurrence": 1,
-    "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
-  },
-  {
-    "file": "larch/report/tokens.py",
-    "qualified_symbol": "measure_md_cost",
-    "callee": "check_output",
     "occurrence": 1,
     "reason": "grandfathered direct subprocess usage pre-G-Py-9 ratchet"
   },

@@ -50,9 +50,9 @@ def _python_files(root: Path) -> list[str]:
 
 def _markdown_files(root: Path) -> list[str]:
     if git_rooted(root):
-        return _git_files(root=root, patterns=["skills/**/*.md", ".claude/skills/**/*.md", ".claude/rules/*.md"])
+        return _git_files(root=root, patterns=["skills/**/*.md", ".claude/skills/**/*.md"])
     rels: list[str] = []
-    for base in (root / "skills", root / ".claude" / "skills", root / ".claude" / "rules"):
+    for base in (root / "skills", root / ".claude" / "skills"):
         if base.exists():
             rels.extend([str(path.relative_to(root)) for path in base.glob("**/*.md") if path.is_file()])
     return rels

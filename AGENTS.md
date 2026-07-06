@@ -12,7 +12,6 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 
 - **Tier 1a: Claude root imports**: `CLAUDE.md` imports `AGENTS.md`, `KARPATHY_CLAUDE.md`, and `BASH_AUTHORING.md` with `@...` lines.
 - **Tier 1b: Skill prompts**: `skills/*/SKILL.md` and dev-only `.claude/skills/*/SKILL.md` load when invoked.
-- **Tier 1c: path-triggered Claude Code rules**: `.claude/rules/*.md` frontmatter `paths:` globs trigger Claude Code system reminders when matching files are read or edited. They are not `CLAUDE.md` imports or standalone Skills.
 
 ## Editing rules
 
@@ -55,7 +54,7 @@ The plugin ships the repo. **Runtime surface**: `skills/`, `agents/`, `hooks/`, 
 ## Conventions
 
 - Follow recent commit history style.
-- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**; see also [.claude/rules/python-first-scripts.md](.claude/rules/python-first-scripts.md).
+- New larch scripts are Python by default. Put new logic in `python/` behind `python3 python/cli.py`. Residual Bash is limited to `scripts/residual-bash-paths.txt`: hooks, bash-targeting linters, thin delegation wrappers, `scripts/sleep-seconds.sh`, the combine-issues helper, manifest-listed includes when needed, and harnesses. Do not add terminal shared Bash libraries, stray includes, or non-thin utilities. Migration and voluntary ports must repoint consumers to direct `cli.py` calls per [docs/python-migration.md](docs/python-migration.md) **No shims**.
 - Single-runner invariant: run only one `/implement` per repo. Dirty-tree guards in `python/cli.py agent launch-review --tool cursor` and `python/cli.py agent launch-review --tool codex` detect pollution but do not serialize runners.
 - Single-`/design` invariant: one `/design` per repo for workflow/`gh` hygiene. PID-keyed symlinks isolate per Claude PID, not per repo.
 - Session rehydration refreshes `~/.cache/larch/sessions/current-design-env-$PPID.sh` via `python/cli.py session write-design-env --claude-pid "$PPID"` in Step 0 so Claude processes do not share one global `current-design-env.sh`.

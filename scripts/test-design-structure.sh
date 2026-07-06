@@ -189,6 +189,10 @@ check_context_before_step3_launch() {
   printf '%s\n' "$context" | grep -Fq -e "$literal" || fail "$label"
 }
 
+assert_timing_task_kind_allowlist() {
+  PYTHONPATH="$ROOT/python" python3 -m larch.lint.timing_task_kind_allowlist --root "$ROOT"
+}
+
 ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step0-init step0-abort-cleanup step0-ap-continue step0c step1d5 step1d7 step1e-reentry'
 retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.sh design-step0-clarify-hard-halt.sh design-step0-init.sh design-step0-abort-cleanup.sh design-step0-ap-continue.sh design-step0c.sh design-step1d5.sh design-step1d7.sh design-step1e-reentry.sh test-design-step0-init.sh test-design-step1d5.sh'
 
@@ -664,5 +668,7 @@ contains "$SESSION_ENV" 'design step6-prelude --session-env-path "$SESSION_ENV_P
 contains "$SESSION_ENV" 'design-step6-cleanup.sh)' 'launcher must map design-step6-cleanup.sh'
 contains "$SESSION_ENV" 'design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step6-cleanup to python/cli.py'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step6' 'SKILL Step 6 fence must use bare launcher verb'
+
+assert_timing_task_kind_allowlist
 
 printf '%s\n' 'test-design-structure: ok'

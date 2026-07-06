@@ -21,6 +21,7 @@ from collections.abc import Mapping, Sequence
 
 from larch import io as larch_io
 from larch.core import config
+from larch.core import proc
 from larch.errors import ShipError
 from larch.report import run_log_corpus
 from larch.report.report_tokens_models import RunRecord, Skill, VendorTotals, safe_int
@@ -1419,7 +1420,7 @@ def _find_latest_claude_transcript(*, project_dir: Path, env_map: Mapping[str, s
 
 def _resolve_claude_source_from_project(env_map: Mapping[str, str]) -> dict[str, str]:
     try:
-        repo_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"], text=True, stderr=subprocess.DEVNULL).strip()
+        repo_root = proc.run(["git", "rev-parse", "--show-toplevel"], stderr=subprocess.DEVNULL, check=True).stdout.strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
     except (OSError, subprocess.SubprocessError):
         return {"STATUS": "unavailable", "REASON": "not inside a git repository"}
@@ -1511,11 +1512,11 @@ def _claude_project_dir(*, env: Mapping[str, str]) -> Path | None:
     if not home:
         return None
     try:
-        repo_root = subprocess.check_output(
+        repo_root = proc.run(
             ["git", "rev-parse", "--show-toplevel"],
-            text=True,
             stderr=subprocess.DEVNULL,
-        ).strip()
+            check=True,
+        ).stdout.strip()
         repo_root = str(Path(repo_root).resolve(strict=True))
     except (OSError, subprocess.SubprocessError):
         return None
@@ -1726,7 +1727,11 @@ def compute_pr_line_counts(*, pr_number: int, repo: str | None = None) -> dict[s
         return {"LINES_STATUS": "skipped", "REASON": "invalid-repo"}
     endpoint = f"repos/{repo}/pulls/{pr_number}/files" if repo else f"repos/{{owner}}/{{repo}}/pulls/{pr_number}/files"
     try:
-        out = subprocess.check_output(["gh", "api", "--paginate", endpoint, "--jq", ".[] | [.filename, .additions, .deletions] | @tsv"], text=True, stderr=subprocess.DEVNULL)
+        out = proc.run(
+            ["gh", "api", "--paginate", endpoint, "--jq", ".[] | [.filename, .additions, .deletions] | @tsv"],
+            stderr=subprocess.DEVNULL,
+            check=True,
+        ).stdout
     except (OSError, subprocess.CalledProcessError):
         return {"LINES_STATUS": "unavailable", "REASON": "gh-failed"}
     code_added = code_deleted = logs_added = logs_deleted = 0
@@ -1781,8 +1786,6 @@ def _classify_md_tier(*, rel: str, tier1_imports: set[str]) -> str:
         return "tier-1b-runtime-skill"
     if rel.startswith(".claude/skills/") and rel.endswith("/SKILL.md"):
         return "tier-1b-dev-skill"
-    if rel.startswith(".claude/rules/") and rel.endswith(".md"):
-        return "tier-1c-claude-rule"
     if rel.startswith("skills/shared/"):
         return "tier-2-shared-reference"
     if "/references/" in rel:
@@ -1954,11 +1957,11 @@ def _ngram_source_files(repo: Path) -> list[str]:
             seen.add(rel)
             files.append(rel)
     for pattern in ("skills/*/SKILL.md", ".claude/skills/*/SKILL.md"):
-        tracked = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z", pattern]).split(b"\0")
+        tracked = proc.run(["git", "-C", str(repo), "ls-files", "-z", pattern], check=True).stdout.split("\x00")
         for raw in tracked:
             if not raw:
                 continue
-            rel = raw.decode()
+            rel = raw
             if rel not in seen and (repo / rel).is_file():
                 seen.add(rel)
                 files.append(rel)
@@ -1995,7 +1998,7 @@ def _tiktoken_count_texts(texts: list[str]) -> list[int]:
 def measure_md_cost() -> Path:
     repo = _repo_root()
     out_path = repo / "larch-logs" / "measure-md-cost" / f"{_measure_stamp()}.tsv"
-    files = subprocess.check_output(["git", "-C", str(repo), "ls-files", "-z", "*.md"], stderr=subprocess.DEVNULL).split(b"\0")
+    files = proc.run(["git", "-C", str(repo), "ls-files", "-z", "*.md"], stderr=subprocess.DEVNULL, check=True).stdout.split("\x00")
     out_path.parent.mkdir(parents=True, exist_ok=True)
     tier1_imports = _claude_root_imports(repo)
     entries: list[tuple[str, str, int, str, int, int]] = []
@@ -2003,7 +2006,7 @@ def measure_md_cost() -> Path:
     for raw in files:
         if not raw:
             continue
-        rel = raw.decode()
+        rel = raw
         path = repo / rel
         if not path.is_file():
             continue

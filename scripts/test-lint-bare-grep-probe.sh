@@ -19,7 +19,7 @@ FAIL=0
 
 reset_tree() {
     find "$TMPROOT" -mindepth 1 -maxdepth 1 -exec rm -rf {} +
-    mkdir -p "$TMPROOT/skills/foo" "$TMPROOT/.claude/skills/bar" "$TMPROOT/.claude/rules"
+    mkdir -p "$TMPROOT/skills/foo" "$TMPROOT/.claude/skills/bar"
 }
 
 write_file() {
@@ -83,6 +83,20 @@ assert_negative() {
             return
         fi
     done
+    printf 'PASS [%s]\n' "$label"
+    PASS=$((PASS + 1))
+}
+
+assert_not_contains() {
+    local label="$1"
+    local stderr_file="$2"
+    local needle="$3"
+    if grep -Fq "$needle" "$stderr_file"; then
+        printf 'FAIL [%s]: stderr unexpectedly contains: %s\n' "$label" "$needle" >&2
+        cat "$stderr_file" >&2
+        FAIL=$((FAIL + 1))
+        return
+    fi
     printf 'PASS [%s]\n' "$label"
     PASS=$((PASS + 1))
 }
@@ -459,20 +473,21 @@ rc="$(run_lint "$stderr_file")"
 assert_negative "prose grep ignored" "$stderr_file" "$rc" \
     "skills/foo/SKILL.md"
 
-# 13. .claude/skills/ and .claude/rules/ surfaces are scanned.
+# 13. .claude/skills/ surfaces are scanned; retired rule directories are ignored.
 reset_tree
 write_file "$TMPROOT/.claude/skills/bar/SKILL.md" \
     '```bash' \
     'grep -q PATTERN file.txt || echo NO' \
     '```'
-write_file "$TMPROOT/.claude/rules/quux.md" \
+mkdir -p "$TMPROOT/.claude"/"rules"
+write_file "$TMPROOT/.claude"/"rules/quux.md" \
     '```bash' \
     'if grep -q X y; then echo hi; fi' \
     '```'
 rc="$(run_lint "$stderr_file")"
-assert_case ".claude/skills + rules scanned" 1 "$stderr_file" "$rc" \
-    ".claude/skills/bar/SKILL.md:2:" \
-    ".claude/rules/quux.md:2:"
+assert_case ".claude skills scanned and rules ignored" 1 "$stderr_file" "$rc" \
+    ".claude/skills/bar/SKILL.md:2:"
+assert_not_contains "retired rules ignored" "$stderr_file" ".claude"/"rules/quux.md"
 
 # 14. sh and shell info-strings count as bash fences.
 reset_tree

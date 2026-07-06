@@ -97,7 +97,6 @@ class CoverageIndex:
 
     guidelines: tuple[tuple[str, str], ...]
     invariants: tuple[tuple[str, str], ...]
-    rules: tuple[tuple[str, str], ...]
     python_lints: tuple[str, ...]
     script_lints: tuple[str, ...]
 
@@ -105,7 +104,6 @@ class CoverageIndex:
         return {
             "guidelines": [list(item) for item in self.guidelines],
             "invariants": [list(item) for item in self.invariants],
-            "rules": [list(item) for item in self.rules],
             "python_lints": list(self.python_lints),
             "script_lints": list(self.script_lints),
         }
@@ -232,20 +230,6 @@ def _scan_marked_ids(path: Path, pattern: re.Pattern[str]) -> tuple[tuple[str, s
     return tuple((match.group(1), match.group(2)) for match in pattern.finditer(text))
 
 
-def _scan_rules(rules_dir: Path) -> tuple[tuple[str, str], ...]:
-    if not rules_dir.is_dir():
-        return ()
-    rows: list[tuple[str, str]] = []
-    for path in sorted(rules_dir.glob("*.md")):
-        heading = ""
-        for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
-            if line.startswith("# "):
-                heading = line[2:].strip()
-                break
-        rows.append((path.name, heading))
-    return tuple(rows)
-
-
 def _scan_lint_names(directory: Path, glob: str, prefix: str) -> tuple[str, ...]:
     if not directory.is_dir():
         return ()
@@ -253,11 +237,10 @@ def _scan_lint_names(directory: Path, glob: str, prefix: str) -> tuple[str, ...]
 
 
 def coverage_index(root: Path) -> CoverageIndex:
-    """Scan the repo root for existing guidelines, invariants, rules, and lints."""
+    """Scan the repo root for existing guidelines, invariants, and lints."""
     return CoverageIndex(
         guidelines=_scan_marked_ids(root / "ARCHITECTURAL_GUIDELINES.md", _GUIDELINE_ID_RE),
         invariants=_scan_marked_ids(root / "ARCHITECTURAL_INVARIANTS.md", _INVARIANT_ID_RE),
-        rules=_scan_rules(root / ".claude" / "rules"),
         python_lints=_scan_lint_names(root / "python" / "larch" / "lint", "lint_*.py", "lint_"),
         script_lints=_scan_lint_names(root / "scripts", "lint-*", "lint-"),
     )
@@ -296,7 +279,6 @@ def run_prepare(runner: Runner, request: PrepareRequest) -> dict[str, object]:
         "DIGEST_TOKENS_EST": digest_chars // 4,
         "GUIDELINES_INDEXED": len(coverage.guidelines),
         "INVARIANTS_INDEXED": len(coverage.invariants),
-        "RULES_INDEXED": len(coverage.rules),
         "PYTHON_LINTS_INDEXED": len(coverage.python_lints),
         "SCRIPT_LINTS_INDEXED": len(coverage.script_lints),
     }

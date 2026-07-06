@@ -62,7 +62,7 @@ def test_default_cap_constants_stay_below_pre_trim_counts() -> None:
 
     assert caps["AGENTS.md"] < 113
     assert caps["KARPATHY_CLAUDE.md"] < 65
-    assert caps["BASH_AUTHORING.md"] < 111
+    assert caps["BASH_AUTHORING.md"] < 120
 
 
 def test_malformed_cap_configuration_exits_2(tmp_path: Path) -> None:

@@ -60,7 +60,7 @@ the lint contract, including:
   fixture.
 - Non-bash fences (`python`, untagged) and out-of-fence prose `grep` → exit 0.
 - `sh` and `shell` info-strings count as bash fences.
-- `.claude/skills/**/*.md` and `.claude/rules/*.md` are scanned.
+- `.claude/skills/**/*.md` is scanned; retired rule directories are ignored.
 - Top-level `README.md`, `docs/`, and `larch-logs/` are out of scope.
 - Multiple violations in one file and indented violations inside fence bodies
   are reported.

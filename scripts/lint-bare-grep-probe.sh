@@ -52,13 +52,13 @@ TMP_FILES="$(mktemp "${TMPDIR:-/tmp}/lint-bare-grep-probe-files.XXXXXX")"
 trap 'rm -f "$TMP_FILES"' EXIT
 
 # Orchestrator-facing markdown surfaces only: SKILL.md, references/, shared/,
-# .claude/skills/, and .claude/rules/. Documentation under docs/ and top-level
+# and .claude/skills/. Documentation under docs/ and top-level
 # *.md (README, release notes, BASH_AUTHORING) is excluded — those are not executed
 # as Bash tool blocks by the orchestrator.
 list_markdown_files() {
     if git -C "$ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
         git -C "$ROOT" ls-files --cached --others --exclude-standard -z -- \
-            'skills/**/*.md' '.claude/skills/**/*.md' '.claude/rules/*.md' \
+            'skills/**/*.md' '.claude/skills/**/*.md' \
             | while IFS= read -r -d '' rel; do
                 case "$rel" in
                     larch-logs/*) continue ;;
@@ -68,7 +68,7 @@ list_markdown_files() {
     else
         (
             cd "$ROOT"
-            find skills .claude/skills .claude/rules \
+            find skills .claude/skills \
                 \( -path '*/larch-logs/*' \) -prune -o \
                 -type f -name '*.md' -print 2>/dev/null \
                 | sed 's#^\./##' \

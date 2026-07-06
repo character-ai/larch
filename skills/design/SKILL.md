@@ -679,7 +679,7 @@ When `VALIDATE_STATUS=defects-found` after `ACTION=VALIDATE_PLAN_COMMANDS`, ente
 
 Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not resolve the defects, use **AskUserQuestion** with exactly these three option labels (verbatim): **Fix-and-retry**, **Override**, **Cancel**. Execute the missing-script summary and option bodies from `validator-failure.md`.
 
-**Plan helper contracts** (per `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`):
+**Plan helper contracts**:
 - `${CLAUDE_PLUGIN_ROOT}/skills/design/scripts/python/cli.py design driver`: ACTION dispatcher; sibling `design-driver.md`.
 - `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan parse-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate-commands`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validate`, `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan validator-autofix`, and `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan check-size`: plan-command extraction, validation, auto-repair, and size gates; implementation `${CLAUDE_PLUGIN_ROOT}/python/plan_quality.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_plan_quality.py`, plus `skills/design/scripts/test-check-plan-size.md`, `test-invoke-plan-validator`, `test-auto-fix-plan-commands`, and `make test-trailer-helpers` for optional trailers.
 - `${CLAUDE_PLUGIN_ROOT}/python/cli.py design postplan-emit`: Step 2b / re-emit post-plan driver wrapping `ACTION=EMIT_PLAN` and `plan validate`; implementation `${CLAUDE_PLUGIN_ROOT}/python/design_postplan.py`; harness `${CLAUDE_PLUGIN_ROOT}/python/test_design_postplan.py`.

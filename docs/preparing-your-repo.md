@@ -33,8 +33,8 @@ for your repo:
 ```text
 Point yourself at the larch repository (https://github.com/character-ai/larch).
 Read: CLAUDE.md, AGENTS.md, KARPATHY_CLAUDE.md, BASH_AUTHORING.md,
-ARCHITECTURAL_INVARIANTS.md, ARCHITECTURAL_GUIDELINES.md, .claude/rules/,
-hooks/hooks.json, and .pre-commit-config.yaml.
+ARCHITECTURAL_INVARIANTS.md, ARCHITECTURAL_GUIDELINES.md, hooks/hooks.json,
+docs/linting.md, and .pre-commit-config.yaml.
 
 Then scaffold the equivalents for THIS repository (stack: <fill in>):
 - Copy KARPATHY_CLAUDE.md nearly verbatim.
@@ -146,9 +146,7 @@ repo might note import-time side effects or fixture teardown order. A TypeScript
 repo might note `strictNullChecks` corners or ESM-versus-CommonJS resolution.
 
 Wire the file into your `CLAUDE.md` import list (§1). Keep it lean, because it
-loads on every turn (§5). If it grows past a screen, move the narrow,
-file-specific rules behind a path-triggered rule (§6) so they load only when they
-apply.
+loads on every turn (§5). If it grows past a screen, move narrow file-specific guidance into controlled docs, hooks, lints, or tests (§6) so the root brief stays small.
 
 ### 4. Architectural knowledge (`ARCHITECTURAL_INVARIANTS.md`, `ARCHITECTURAL_GUIDELINES.md`)
 
@@ -180,7 +178,7 @@ fail loudly and never swallow errors, then names the one narrow case where a qui
 degraded path is fine.
 
 Keep this the softest layer. It cannot override your `AGENTS.md` or your skills.
-When a rule stops needing judgment, graduate it to a lint, hook, or test (§6, §8).
+When a guideline stops needing judgment, graduate it to a lint, hook, or test (§6, §8).
 larch states this as its own rule, `G-Enf-1`: prefer mechanical enforcement, and
 let entries here earn their place only until a linter can take over. That
 migration, from prose preference to mechanical check, is the through-line of this
@@ -202,11 +200,10 @@ Keep only always-relevant instructions in the imported files. Push everything el
 to surfaces that load on demand:
 
 - **Skills** load when invoked.
-- **Path-triggered rules** load when a matching file is touched (§6).
+- **Guidelines, hooks, lints, and tests** carry conditional guidance and enforcement.
 - **Docs** load when the agent chooses to read them.
 
-The test is simple. If an instruction only matters when editing certain files, it
-belongs in a path-triggered rule (§6), not the root brief.
+The test is simple. If an instruction only matters when editing certain files, it belongs in a narrower controlled source, not the root brief.
 
 larch enforces this with a lint that caps the size of its root imports, so the
 brief cannot creep upward over time. You do not need the lint to start. The habit
@@ -216,46 +213,28 @@ is what matters, and a size cap makes it stick.
 
 ## Part II: From judgment to machinery (enforcement)
 
-The core move: when a judgment call recurs, promote it to a rule, hook, lint, or
+The core move: when a judgment call recurs, promote it to a guideline, hook, lint, or
 test. Then the agent cannot get it wrong, or it gets reminded exactly when it
 matters.
 
-### 6. Path-triggered rules (`.claude/rules/`)
+### 6. Controlled sources for conditional guidance
 
-*Larch source: `.claude/rules/*.md`. Disposition: **Copy** the pattern; some rules copy verbatim.*
+*Larch source: `ARCHITECTURAL_GUIDELINES.md`, hook sibling docs, `docs/linting.md`, and regression harnesses. Disposition: **Adapt**.*
 
-A path-triggered rule loads only when it applies. Each rule is a Markdown file with
-a `paths:` frontmatter glob. When the agent reads or edits a matching file, Claude
-Code injects the rule as a system reminder. The rest of the time it costs nothing.
+Keep the always-on brief lean by routing conditional guidance to controlled sources:
 
-This is how you keep the always-on brief lean (§5) without losing the guidance. A
-rule about shell scripts fires when the agent touches a `.sh` file, and stays
-silent otherwise. The shape is small:
+- Put judgment-tier design advice in `ARCHITECTURAL_GUIDELINES.md`.
+- Put never-skip constraints in hooks or tests.
+- Put mechanical gotchas in linters and the linter docs.
+- Put hook behavior beside the hook script and keep the harness in sync.
 
-```text
----
-paths: ["scripts/**/*.sh", "hooks/**/*.sh"]
----
-
-# Shell Strict Mode
-
-Shell scripts use `set -euo pipefail` by default. Comment when you omit `-e` on
-purpose.
-```
-
-larch ships many of these. Two are generic enough to copy straight into any repo:
-`drift-prone-prose-in-docs` (no hardcoded counts or line numbers in prose) and
-`shell-strict-mode`. Others encode larch-specific structure.
-
-Rules are advisory reminders, not hard blocks. When you need the agent stopped, not
-reminded, use a hook (§7).
+This keeps advice available at deliberate review points and lets mechanical checks block mistakes. Advisory reminders alone are not enforcement; when you need the agent stopped, use a hook, lint, or test.
 
 ### 7. Hooks (guardrails the agent cannot skip)
 
 *Larch source: `hooks/hooks.json`, `scripts/block-submodule-edit.sh`, `scripts/sessionstart-health.sh`. Disposition: **Adapt**.*
 
-A hook runs your own command at a lifecycle point. Unlike a rule (§6), which only
-advises, a `PreToolUse` hook can deny a tool call outright. This is the layer the
+A hook runs your own command at a lifecycle point. Unlike advisory prose, a `PreToolUse` hook can deny a tool call outright. This is the layer the
 model cannot talk its way past.
 
 Claude Code fires hooks at several points. larch uses four:
@@ -385,13 +364,13 @@ and cheaper on every task. Write your own map and policy; the shape ports direct
 
 ### 12. Anti-drift prose conventions
 
-*Larch source: `.claude/rules/drift-prone-prose-in-docs.md`. Disposition: **Copy**.*
+*Larch source: `ARCHITECTURAL_GUIDELINES.md` (`G-Md-1` / `G-Md-2`) and docs linters. Disposition: **Adapt**.*
 
 Prose in docs and instruction files goes stale in silence. A hardcoded count, a
 line-number reference, or a machine-local path rots the moment the code moves. The
 agent then reads a confident, wrong instruction and acts on it.
 
-larch's rule bans the drift-prone shapes:
+larch's guideline and lint-backed conventions ban the drift-prone shapes:
 
 - **No hardcoded counts in prose.** Point at a single source of truth instead.
 - **No line-number references** like `file.py:74`. Refer to a symbol by name; the
@@ -401,8 +380,7 @@ larch's rule bans the drift-prone shapes:
   finish.
 
 This matters most for the very files this guide is about. Your instruction set
-guides every future change, so it must not rot. Copy larch's rule as a
-path-triggered rule (§6) scoped to your docs.
+guides every future change, so it must not rot. Copy larch's guideline shape and back it with docs linting where practical.
 
 ### 13. Multi-tool support
 
@@ -431,8 +409,7 @@ into a step the agent follows.
 
 Agents need this stated. An agent will change auth, secret handling, or input
 validation to satisfy a task and never notice the policy doc fell behind. A written
-editing rule catches the gap. Add the sync rule to your `AGENTS.md` editing rules,
-or scope it as a path-triggered rule (§6).
+editing rule catches the gap. Add the sync requirement to your `AGENTS.md` editing rules or enforce it with a hook, lint, or test (§6).
 
 ---
 
@@ -449,7 +426,6 @@ its disposition:
 | `BASH_AUTHORING.md` | Stack-specific authoring pitfalls | **Pattern** (write your own) |
 | `ARCHITECTURAL_INVARIANTS.md` | Hard architectural constraints, valid even when blank | **Adapt** |
 | `ARCHITECTURAL_GUIDELINES.md` | Aspirational, coded design rules | **Adapt** |
-| `.claude/rules/*.md` | Path-triggered, just-in-time reminders | **Copy** pattern (some rules verbatim) |
 | `hooks/hooks.json` + hook scripts | Deterministic guardrails | **Adapt** |
 | `.pre-commit-config.yaml` | Changed-file linting | **Adapt** to your stack |
 | `checks run-relevant` entrypoint | One command the agent runs to validate a change | **Implement** your own |
@@ -463,6 +439,6 @@ You do not need all of it at once. Adopt in three passes.
    (§2), and a `checks run-relevant` entrypoint (§9). This alone makes an agent
    markedly more effective.
 2. **Enforcement.** Changed-file linting (§8), a hook or two (§7), and
-   path-triggered rules (§6).
+   controlled source docs or structural tests (§6).
 3. **Polish.** Architectural guidelines (§4), the canonical-sources map (§11), a
    permissions allowlist (§10), and multi-tool shims (§13).

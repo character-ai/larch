@@ -1,0 +1,22 @@
+{
+  "applied_tier": "HARD",
+  "audit_evaluated": false,
+  "audit_upgrade": null,
+  "codex_model_role": "default",
+  "confidence": "high",
+  "design_tier": null,
+  "escalated_round": false,
+  "escalations": [],
+  "floors_applied": [],
+  "implement_tier": "HARD",
+  "override_source": "none",
+  "panel_skipped": null,
+  "panel_tier": "HARD",
+  "predicted_tier": "HARD",
+  "rater": "implement",
+  "rater_model": "gpt-5.5",
+  "rater_tool": "codex",
+  "rationale": "Deletes a prompt layer and updates multi-file lint, docs, generated prompts, and harness contracts across runtime surfaces.",
+  "round_cap": 2,
+  "schema_version": 1
+}

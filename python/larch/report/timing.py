@@ -17,6 +17,7 @@ from collections.abc import Mapping
 
 from larch.report import tokens
 
+# Canonical allow-list for literal --timing-task-kind values; update with every new literal call site.
 TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-review", "cursor-review", "codex-review-generic", "cursor-review-generic",
     "codex-implement", "cursor-implement", "codex-review-fix", "cursor-review-fix", "claude-review-fix",
@@ -40,6 +41,7 @@ TIMING_TASK_KINDS_ALLOWED: frozenset[str] = frozenset({
     "codex-phase1-edge-cases", "codex-phase1-testing", "codex-phase2-correctness",
     "codex-phase2-edge-cases", "codex-phase2-testing", "codex-exec", "codex-plan-draft",
     "claude-relevant-checks", "claude-lint-fix", "vendor-misc", "implement-code-flow",
+    "exec-issue-assessment", "rejected-analysis-verify",
 })
 TIMING_VENDOR_MIN_COLS = 13
 TIMING_LOCK_TIMEOUT_S = 5.0
