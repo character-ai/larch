@@ -1,14 +1,15 @@
-## /implement run 3197F45B-E1CD-49FE-9C88-6B15AD218C11: shipping
+## /implement run 3197F45B-E1CD-49FE-9C88-6B15AD218C11: stalled
 
-- **Outcome**: shipping
+- **Outcome**: STALLED
 - **Duration**: 00:49:21
 - **Cost**: 💰 TOTAL ~$32.86: Claude $1.39, Codex-5.5 $25.27, Codex-mini $1.05, Cursor $4.34, Claude (subprocess) $0.81  |  Tokens: 48169k
 - **Issue**: #6478: https://github.com/character-ai/larch/issues/6478
+- **PR**: #6489: https://github.com/character-ai/larch/pull/6489
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 4/8 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +618/-81, larch-logs +1091/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 0
@@ -80,7 +81,3 @@ codex/validity-vote      │                                         ███�
 7. dynamic/dyn-hook-state: 2
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
