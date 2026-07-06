@@ -1,0 +1,8 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior-round rejected multiple-marker ambiguity finding
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- clamp already runs before the path gate, so absolute tasks/*.output reads do not bypass it
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior accepted NEVER-threshold doc gap
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior accepted shared NEVER-threshold doc gap
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=no-fix UNCERTAIN=false -- duplicate of prior accepted shared NEVER pinning gap
