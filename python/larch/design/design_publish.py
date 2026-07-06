@@ -534,6 +534,8 @@ def _capture_design_transcript(*, ctx: _TranscriptCaptureContext) -> bool:  # py
             canonical_session_id,
             "--log-root",
             str(staging_root),
+            "--tmpdir",
+            str(ctx.design_tmpdir),
             "--defer-commit",
             "true",
             "--execution-issues-log",

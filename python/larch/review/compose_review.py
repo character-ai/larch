@@ -9,15 +9,29 @@ import os
 import re
 import tempfile
 from contextlib import suppress
+from dataclasses import dataclass
 from pathlib import Path
 from larch.core import logging_util
 from larch.core import redact
 from larch.review import voting
 
+
+class ScratchDirError(ValueError):
+    """Raised when review composition needs scratch but none is available."""
+
+
 _PLUGIN_ROOT = Path(__file__).resolve().parent.parent
 _CANONICAL_CATEGORIES = {"code-quality", "risk-integration", "correctness", "architecture", "security"}
 _CATEGORY_LOCATION_PARTS = 3
 _TSV_MIN_FIELDS = 2
+
+
+@dataclass
+class _ParseContext:
+    issue: str
+    design_map: dict[str, str]
+    records: list[dict[str, object]]
+    scratch_dir: Path | None
 
 
 def _fail(message: str) -> int:
@@ -167,8 +181,15 @@ def _normalize_design_reviewer(*, reviewer: str, mapping: dict[str, str]) -> str
     return ",".join(out) if out else reviewer
 
 
-def _is_security_text(body: str) -> bool:
-    fd, tmp_name = tempfile.mkstemp()
+def _require_scratch_dir(scratch_dir: Path | None) -> Path:
+    if scratch_dir is None:
+        raise ScratchDirError("review scratch directory is required before tempfile staging")
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    return scratch_dir
+
+
+def _is_security_text(body: str, *, scratch_dir: Path | None) -> bool:
+    fd, tmp_name = tempfile.mkstemp(dir=_require_scratch_dir(scratch_dir))
     tmp = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -210,7 +231,7 @@ def _synthetic_id(*, prefix: str, counter: int, round_num: str) -> str:
     return f"{prefix}R{round_num}_{counter}" if round_num else f"{prefix}{counter}"
 
 
-def _parse_artifact(*, path: Path, kind: str, round_num: str, issue: str, design_map: dict[str, str], records: list[dict[str, object]]) -> None:
+def _parse_artifact(*, path: Path, kind: str, round_num: str, ctx: _ParseContext) -> None:
     if not path.is_file() or path.stat().st_size == 0:
         return
     phase = "plan-review" if kind.startswith("plan-review") else "code-review"
@@ -228,11 +249,11 @@ def _parse_artifact(*, path: Path, kind: str, round_num: str, issue: str, design
         if pending_title:
             body = f"## {pending_title}\n\n{body}"
         reviewer = pending_reviewer or _extract_reviewer(body) or "panel"
-        if kind == "code-review-oos" and _is_security_text(body):
+        if kind == "code-review-oos" and _is_security_text(body, scratch_dir=ctx.scratch_dir):
             pending_id = pending_title = pending_reviewer = ""
             pending_lines = []
             return
-        _emit_record(records=records, item_id=pending_id, phase=phase, outcome=outcome, reviewer=reviewer, body=body, round_num=round_num, issue=issue, design_map=design_map)
+        _emit_record(records=ctx.records, item_id=pending_id, phase=phase, outcome=outcome, reviewer=reviewer, body=body, round_num=round_num, issue=ctx.issue, design_map=ctx.design_map)
         pending_id = pending_title = pending_reviewer = ""
         pending_lines = []
 
@@ -284,6 +305,29 @@ def _parse_artifact(*, path: Path, kind: str, round_num: str, issue: str, design
     flush()
 
 
+def _parse_design_accepted(*, accepted: Path, design_dir: Path, ctx: _ParseContext) -> int:
+    rejected = design_dir / "rejected-findings.md"
+    if accepted.is_file() and rejected.is_file() and "rejected by user during one-by-one review" in _read(rejected):
+        try:
+            fd, tmp_name = tempfile.mkstemp(
+                prefix="review-findings-design-accepted.",
+                dir=_require_scratch_dir(ctx.scratch_dir),
+            )
+        except ScratchDirError as exc:
+            return _fail(str(exc))
+        os.close(fd)
+        tmp = Path(tmp_name)
+        try:
+            _ = tmp.write_text(_filter_gate_b(accepted=accepted, rejected=rejected), encoding="utf-8")
+            _parse_artifact(path=tmp, kind="plan-review-accepted", round_num="", ctx=ctx)
+        finally:
+            with suppress(OSError):
+                tmp.unlink()
+    else:
+        _parse_artifact(path=accepted, kind="plan-review-accepted", round_num="", ctx=ctx)
+    return 0
+
+
 def _filter_gate_b(*, accepted: Path, rejected: Path) -> str:
     reason = "rejected by user during one-by-one review"
     rejected_text = _read(rejected) if rejected.is_file() else ""
@@ -314,6 +358,15 @@ def _parse_args(argv: list[str]) -> argparse.Namespace:
     return parser.parse_args(argv)
 
 
+def _compose_scratch_dir(*, implement_tmpdir: Path | None, design_dir: Path | None) -> Path | None:
+    if implement_tmpdir is not None:
+        return implement_tmpdir
+    if design_dir is not None:
+        return design_dir
+    review_tmpdir = os.environ.get("REVIEW_TMPDIR", "")
+    return Path(review_tmpdir) if review_tmpdir else None
+
+
 def compose_findings(argv: list[str]) -> int:
     logging_util.quiet_init(argv0="compose-findings")
     try:
@@ -325,39 +378,34 @@ def compose_findings(argv: list[str]) -> int:
     output = Path(args.output)
     design_dir = Path(args.design_artifacts_dir) if args.design_artifacts_dir else None
     implement_tmpdir = Path(args.implement_tmpdir) if args.implement_tmpdir else None
+    scratch_dir = _compose_scratch_dir(implement_tmpdir=implement_tmpdir, design_dir=design_dir)
     records: list[dict[str, object]] = []
     design_map = _build_design_reviewer_map(design_dir)
+    ctx = _ParseContext(issue=args.issue, design_map=design_map, records=records, scratch_dir=scratch_dir)
     if design_dir:
         accepted = design_dir / "accepted-plan-findings-all.md"
         if not accepted.is_file() or accepted.stat().st_size == 0:
             accepted = design_dir / "accepted-plan-findings.md"
-        if accepted.is_file() and (design_dir / "rejected-findings.md").is_file() and "rejected by user during one-by-one review" in _read(design_dir / "rejected-findings.md"):
-            fd, tmp_name = tempfile.mkstemp(prefix="review-findings-design-accepted.")
-            os.close(fd)
-            tmp = Path(tmp_name)
-            _ = tmp.write_text(_filter_gate_b(accepted=accepted, rejected=design_dir / "rejected-findings.md"), encoding="utf-8")
-            _parse_artifact(path=tmp, kind="plan-review-accepted", round_num="", issue=args.issue, design_map=design_map, records=records)
-            with suppress(OSError):
-                tmp.unlink()
-        else:
-            _parse_artifact(path=accepted, kind="plan-review-accepted", round_num="", issue=args.issue, design_map=design_map, records=records)
-        _parse_artifact(path=design_dir / "rejected-findings.md", kind="plan-review-rejected", round_num="", issue=args.issue, design_map=design_map, records=records)
+        accepted_rc = _parse_design_accepted(accepted=accepted, design_dir=design_dir, ctx=ctx)
+        if accepted_rc != 0:
+            return accepted_rc
+        _parse_artifact(path=design_dir / "rejected-findings.md", kind="plan-review-rejected", round_num="", ctx=ctx)
     if implement_tmpdir:
         round_dirs = sorted([p for p in implement_tmpdir.glob("round-*") if p.is_dir()], key=lambda p: p.name)
         rejected_found = False
         for round_dir in round_dirs:
             round_num = round_dir.name.removeprefix("round-")
-            _parse_artifact(path=round_dir / "accepted-findings.md", kind="code-review-accepted", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
-            _parse_artifact(path=round_dir / "oos.md", kind="code-review-oos", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
+            _parse_artifact(path=round_dir / "accepted-findings.md", kind="code-review-accepted", round_num=round_num, ctx=ctx)
+            _parse_artifact(path=round_dir / "oos.md", kind="code-review-oos", round_num=round_num, ctx=ctx)
             if (round_dir / "rejected-findings-full.md").is_file() and (round_dir / "rejected-findings-full.md").stat().st_size > 0:
                 rejected_found = True
-                _parse_artifact(path=round_dir / "rejected-findings-full.md", kind="code-review-rejected", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
+                _parse_artifact(path=round_dir / "rejected-findings-full.md", kind="code-review-rejected", round_num=round_num, ctx=ctx)
             elif (round_dir / "rejected-findings.md").is_file() and (round_dir / "rejected-findings.md").stat().st_size > 0:
                 rejected_found = True
-                _parse_artifact(path=round_dir / "rejected-findings.md", kind="code-review-rejected", round_num=round_num, issue=args.issue, design_map=design_map, records=records)
+                _parse_artifact(path=round_dir / "rejected-findings.md", kind="code-review-rejected", round_num=round_num, ctx=ctx)
         if not rejected_found:
             full = implement_tmpdir / "rejected-findings-full.md"
-            _parse_artifact(path=full if full.is_file() and full.stat().st_size > 0 else implement_tmpdir / "rejected-findings.md", kind="code-review-rejected", round_num="", issue=args.issue, design_map=design_map, records=records)
+            _parse_artifact(path=full if full.is_file() and full.stat().st_size > 0 else implement_tmpdir / "rejected-findings.md", kind="code-review-rejected", round_num="", ctx=ctx)
     output.parent.mkdir(parents=True, exist_ok=True)
     output.write_text("".join(json.dumps(record, sort_keys=True, separators=(",", ":")) + "\n" for record in records), encoding="utf-8")
     logging_util.emit_kv(key="COMPOSED", value="true")

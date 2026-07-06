@@ -335,7 +335,7 @@ def _run_step0_init_driver(
     claude_pid: str,
     emit_stdout: bool,
 ) -> tuple[int, dict[str, str]]:
-    with tempfile.NamedTemporaryFile(prefix="larch-init-stdout.", delete=False, mode="w+", encoding="utf-8") as capture:
+    with tempfile.NamedTemporaryFile(prefix="larch-init-stdout.", delete=False, mode="w+", encoding="utf-8", dir=design_tmpdir) as capture:
         capture_path = Path(capture.name)
     proc: subprocess.CompletedProcess[str] | None = None
     result: dict[str, str] = {}
@@ -451,7 +451,7 @@ def step0_route_main(argv: Sequence[str]) -> int:
         env["ISSUE_TITLE"] = title
         env["HAS_CLARIFY_LABEL"] = has_clarify
         (design_tmpdir / "issue-body.txt").write_text(body, encoding="utf-8")
-    with tempfile.NamedTemporaryFile(prefix="larch-route-stdout.", delete=False, mode="w+", encoding="utf-8") as capture:
+    with tempfile.NamedTemporaryFile(prefix="larch-route-stdout.", delete=False, mode="w+", encoding="utf-8", dir=design_tmpdir) as capture:
         capture_path = Path(capture.name)
     try:
         route_cmd = _cli_cmd(

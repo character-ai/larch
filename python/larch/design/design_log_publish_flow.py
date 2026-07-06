@@ -285,6 +285,11 @@ def _run_log_commit_scrub_failed(commit: subprocess.CompletedProcess[str]) -> bo
     return bool(_RUN_LOG_COMMIT_SCRUB_FAILURE_RE.search(text))
 
 
+def _design_log_worktree_parent(design_tmpdir: Path) -> Path:
+    wt_scratch = design_tmpdir.parent / f".{design_tmpdir.name}-worktrees"
+    wt_scratch.mkdir(parents=True, exist_ok=True)
+    return Path(tempfile.mkdtemp(prefix="larch-design-log-", dir=wt_scratch))
+
 def _publish_design_logs(
     *, plugin_root: Path,
     design_tmpdir: Path,
@@ -307,7 +312,7 @@ def _publish_design_logs(
     branch = f"larch-logs/design-{run_id}"
     cli = str(plugin_root / "python" / "cli.py")
     repo_args = ["--repo", repo] if repo else []
-    wt_parent = Path(tempfile.mkdtemp(prefix="larch-design-log-"))
+    wt_parent = _design_log_worktree_parent(design_tmpdir)
     worktree = wt_parent / "wt"
     branch_created = False
     keep_branch_for_recovery = False

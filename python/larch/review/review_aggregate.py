@@ -183,8 +183,8 @@ def _strip_agent_frontmatter(path: Path) -> str:
     return text
 
 
-def _run_scope_marker(block: str) -> bool:
-    fd, tmp_name = tempfile.mkstemp()
+def _run_scope_marker(block: str, *, review_tmpdir: Path) -> bool:
+    fd, tmp_name = tempfile.mkstemp(dir=review_tmpdir)
     tmp_path = Path(tmp_name)
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as handle:
@@ -210,7 +210,7 @@ def _split_plan_scope_blocks(*, findings_file: Path, review_tmpdir: Path) -> tup
     tagged: list[str] = []
     untagged: list[str] = []
     for block in blocks:
-        (tagged if _run_scope_marker(block) else untagged).append(block)
+        (tagged if _run_scope_marker(block, review_tmpdir=review_tmpdir) else untagged).append(block)
     untagged_path = review_tmpdir / "aggregate-untagged-input.md"
     tagged_path = review_tmpdir / "aggregate-scope-reduction-tagged.md"
     _write_text(path=untagged_path, text="\n\n".join(untagged) + ("\n" if untagged else ""))
@@ -571,13 +571,13 @@ def _problem_score(*, a: str, b: str) -> float:
     return (len(at & bt) / len(at | bt)) if at and bt else 0.0
 
 
-def _plan_scope_reduction_parity_ok(*, merged_path: Path, tagged_path: Path | None, combined_text: str) -> bool:
+def _plan_scope_reduction_parity_ok(*, merged_path: Path, tagged_path: Path | None, combined_text: str, review_tmpdir: Path) -> bool:
     blocks = _finding_blocks(combined_text)
     tagged_inputs = _finding_blocks(_read_text(tagged_path)) if tagged_path and tagged_path.is_file() else []
-    combined_tagged = [block for block in blocks if _run_scope_marker(block)]
+    combined_tagged = [block for block in blocks if _run_scope_marker(block, review_tmpdir=review_tmpdir)]
     if len(combined_tagged) < len(tagged_inputs):
         return False
-    merged_untagged = [block for block in _finding_blocks(_read_text(merged_path)) if not _run_scope_marker(block)]
+    merged_untagged = [block for block in _finding_blocks(_read_text(merged_path)) if not _run_scope_marker(block, review_tmpdir=review_tmpdir)]
     for untagged in merged_untagged:
         for tagged_block in tagged_inputs:
             if _problem_score(a=untagged, b=tagged_block) >= _SCOPE_REDUCTION_UNTAGGED_MATCH:
@@ -733,7 +733,7 @@ def _apply_aggregate_candidate(*, candidate: Path, source_file: Path, findings_f
         if tagged_file and tagged_file.is_file() and tagged_file.stat().st_size > 0:
             combined += "\n" + _read_text(tagged_file)
         renumbered = _renumber_findings(combined)
-        if not _plan_scope_reduction_parity_ok(merged_path=findings_file, tagged_path=tagged_file, combined_text=renumbered):
+        if not _plan_scope_reduction_parity_ok(merged_path=findings_file, tagged_path=tagged_file, combined_text=renumbered, review_tmpdir=review_tmpdir):
             _atomic_write(path=findings_file, text=original)
             parity_log = review_tmpdir / "aggregator-scope-parity.stderr"
             _write_text(path=parity_log, text="plan scope-reduction parity validation failed\n")

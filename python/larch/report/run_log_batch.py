@@ -298,13 +298,33 @@ def _read_state_kv(*, state_file: str | None, key: str) -> str:
     return _read_kv_file(path=Path(state_file), key=key)
 
 
-def _redact_to_temp(input_file: Path, *, cap_bytes: int | None = None) -> Path:
+def _path_is_repo_related(path: Path) -> bool:
+    candidate = path.resolve(strict=False)
+    repo = _REPO_ROOT.resolve(strict=False)
+    return candidate == repo or candidate in repo.parents or repo in candidate.parents
+
+
+def _larch_sessions_scratch_dir() -> Path:
+    scratch_dir = Path.home() / ".cache" / "larch" / "sessions"
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    return scratch_dir
+
+
+def _scratch_dir_for_log_root(log_root: Path) -> Path:
+    candidate = log_root.parent
+    if _path_is_repo_related(candidate):
+        return _larch_sessions_scratch_dir()
+    candidate.mkdir(parents=True, exist_ok=True)
+    return candidate
+
+
+def _redact_to_temp(input_file: Path, *, scratch_dir: Path, cap_bytes: int | None = None) -> Path:
     content = redact.redact(input_file.read_text(encoding="utf-8", errors="replace"))
     if cap_bytes is not None and len(content.encode("utf-8")) > cap_bytes:
         original = len(content.encode("utf-8"))
         raw = content.encode("utf-8")[:cap_bytes].decode("utf-8", errors="ignore")
         content = f"{raw}\n[TRUNCATED: original {original} bytes]\n"
-    fd, tmp_name = tempfile.mkstemp(prefix="larch-log-payload.", suffix=".tmp")
+    fd, tmp_name = tempfile.mkstemp(prefix="larch-log-payload.", suffix=".tmp", dir=scratch_dir)
     os.close(fd)
     tmp = Path(tmp_name)
     tmp.write_text(content, encoding="utf-8")
@@ -323,7 +343,7 @@ def _write_batch(
     if _batch_mode(batch) != "replace":
         raise ValueError(f"batch {batch} is append-only; use append")
     cap = 8192 if batch == "codex-impl-transcript" else None
-    tmp = _redact_to_temp(_rebase_under_tmpdir(input_file), cap_bytes=cap)
+    tmp = _redact_to_temp(_rebase_under_tmpdir(input_file), scratch_dir=_scratch_dir_for_log_root(log_root), cap_bytes=cap)
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)
@@ -346,7 +366,7 @@ def _append_batch(
         raise ValueError(f"unknown batch: {batch}")
     if _batch_mode(batch) != "append":
         raise ValueError(f"batch {batch} is replace-only; use write")
-    tmp = _redact_to_temp(_rebase_under_tmpdir(record_file))
+    tmp = _redact_to_temp(_rebase_under_tmpdir(record_file), scratch_dir=_scratch_dir_for_log_root(log_root))
     try:
         _batch_validate_payload(batch=batch, path=tmp)
         path = _batch_path(log_root=log_root, skill=skill, run_id=run_id, batch=batch)

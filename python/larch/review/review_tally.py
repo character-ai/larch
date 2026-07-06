@@ -1230,14 +1230,14 @@ def _review_round_summary_body(
     return body
 
 
-def _non_security_oos_count(path: Path) -> int:
+def _non_security_oos_count(path: Path, *, review_tmpdir: Path) -> int:
     if not path.is_file() or path.stat().st_size == 0:
         return 0
     count = 0
     for block in re.split(r"(?m)^(?=### OOS_[0-9]+:)", _read(path)):
         if not block.startswith("### OOS_"):
             continue
-        fd, tmp_name = tempfile.mkstemp()
+        fd, tmp_name = tempfile.mkstemp(dir=review_tmpdir)
         os.close(fd)
         tmp = Path(tmp_name)
         try:
@@ -1280,7 +1280,7 @@ def _finalize_emit_oos_filing(
         rejected_full=rejected_full,
         oos_accepted_file=oos_accepted_file,
     )
-    return str(_non_security_oos_count(oos_accepted_file))
+    return str(_non_security_oos_count(oos_accepted_file, review_tmpdir=review_tmpdir))
 
 
 def _copy_emit_artifacts(
@@ -1380,7 +1380,7 @@ def emit_tally(argv: list[str]) -> int:
         + "\n"
     )
     sink_has_content = oos_accepted_file.is_file() and oos_accepted_file.stat().st_size > 0
-    sink_count = _non_security_oos_count(oos_accepted_file)
+    sink_count = _non_security_oos_count(oos_accepted_file, review_tmpdir=review_tmpdir)
     if sink_has_content and sink_count >= oos_accepted_count:
         pass
     elif sink_has_content and sink_count < oos_accepted_count:
@@ -1392,7 +1392,7 @@ def emit_tally(argv: list[str]) -> int:
             if proc.returncode != 0:
                 print(proc.stderr, file=sys.stderr, end="")
                 return proc.returncode
-            rebuilt_count = _non_security_oos_count(oos_accepted_file)
+            rebuilt_count = _non_security_oos_count(oos_accepted_file, review_tmpdir=review_tmpdir)
             if rebuilt_count != oos_accepted_count:
                 print(f"emit-tally: OOS_ACCEPTED_COUNT={oos_accepted_count} but rebuild produced {rebuilt_count} non-security block(s)", file=sys.stderr)
                 return 1
