@@ -1,0 +1,153 @@
+## Plan
+
+## Approach
+
+Implement the approved narrow path in the shared admission preflight.
+
+- Keep `CleanTreeResult` and `python/larch/git/git.py::clean_tree()` unchanged.
+- Add a private stash probe in `python/larch/state/admission.py`.
+- Run it only inside the existing clean-check block, after `_clean_tree()` passes.
+- Fail with `PREFLIGHT=fail` and a stash-specific `PREFLIGHT_ERROR` when `git stash list` is non-empty.
+- Fail closed if the stash probe itself cannot run.
+- Remove `/design`'s internal `--skip-branch-check` so `session setup` enforces `main`.
+- Keep `/implement`'s `<USER_PREFIX>/*` bypass unchanged.
+- Update user-facing recovery text so stash recovery is explicit.
+
+## Files to modify/create
+
+### UPDATED: python/larch/state/admission.py
+
+Add `_stash_check()` near `_clean_tree()`.
+
+Suggested shape:
+
+- Call `_run(["git", "stash", "list"])`.
+- Return `"empty"` for exit 0 with empty stdout.
+- Return `"nonempty"` for exit 0 with any stdout.
+- Return `"unknown"` for non-zero exits.
+- Do not print raw stash contents.
+
+Update `preflight_main()`:
+
+- After `clean == "true"`, call `_stash_check()`.
+- Both failure branches (nonempty stash and unknown) must emit `PREFLIGHT=fail` and exit with `return 2` before fetch, mirroring the dirty-tree fail-closed pattern.
+- Nonempty branch `PREFLIGHT_ERROR`: `"Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop."`
+- Unknown branch `PREFLIGHT_ERROR`: `"Could not determine git stash cleanliness. Inspect git stash list and re-run."`
+- Preserve current dirty-tree and helper-no-`CLEAN=` branches.
+- Preserve `--skip-clean-check` as a full bypass for both working-tree and stash checks.
+
+### UPDATED: python/larch/design/design_step0.py
+
+Remove `"--skip-branch-check"` from the `session setup` argv in `step0_session_main()`.
+
+Keep `"--skip-repo-check"` and `"--check-reviewers"` unchanged.
+
+### UPDATED: python/larch/state/bootstrap.py
+
+Update the normalized `/implement` `session-setup` message to split stash and dirty-tree recovery explicitly.
+
+New wording (informational; coder decides exact phrasing):
+
+- Remediation path (a): `git checkout main && git status` clean, re-run.
+- Remediation path (b): check out or create a `<USER_PREFIX>/*` feature branch and re-run. Note in the message that this bypass covers branch position and main-sync check only; stash cleanliness still applies on a feature branch.
+- Remediation path (c) dirty tree: commit or stash uncommitted changes on `main` first.
+- Remediation path (d) non-empty stash: run `git stash pop` (to restore and commit) or `git stash drop` (to discard) to clear the stash.
+
+### UPDATED: docs/clean-main-contract.md
+
+Rewrite to reflect the new contract precisely:
+
+- **(a) Default: clean `main`.** Requires: on `main`, working tree clean, stash list empty, `origin/main` fetched, local `main` rebased onto `origin/main`.
+- **(b) Continuation opt-in: `<USER_PREFIX>/*` feature branch.** Explicitly state that this bypass covers branch position and main-sync check only. Working-tree cleanliness and empty stash still apply when on a feature branch.
+- **(c) `--issue <N>` does not waive the gate.** No change needed.
+- **(d) Failure modes and recovery.** Add stash-specific paths alongside existing dirty-tree and fetch-failure paths:
+  - Non-empty stash: run `git stash pop` or `git stash drop` before re-running.
+  - Keep existing dirty-tree hint: commit or stash uncommitted changes.
+  - Keep existing branch and fetch-failure hints.
+- **Standalone `/design`.** Rewrite to state that `/design` now requires the same default entry gate as `/implement`: on `main`, working tree clean, stash list empty. Remove the claim that `/design` does not check the branch.
+
+### UPDATED: python/tests/state/test_admission.py
+
+Add focused preflight tests:
+
+- Clean tree plus empty stash continues to fetch and sync.
+- Non-empty stash exits 2 before fetch and emits the stash-specific hint.
+- Stash probe failure exits 2 before fetch with the fail-closed message.
+- Dirty tree still exits before stash probe.
+- `--skip-clean-check` skips both `_clean_tree()` and `_stash_check()`.
+
+Update existing tests that monkeypatch `_clean_tree()` to also monkeypatch `_stash_check()` where the path should proceed past clean checking.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+Add or adjust a Step 0 session test that captures the `session setup` command and asserts it does not include `--skip-branch-check`.
+
+Do not require a real git branch in this test. The wrapper should still be tested with mocked `subprocess.run`.
+
+### UPDATED: python/tests/state/test_bootstrap.py
+
+Add a small assertion for `_invoke_error(step_failed="session-setup", ...)` or the public invoke path that verifies the normalized `/implement` message includes the new stash recovery wording.
+
+### MAY_UPDATE: skills/design/SKILL.md
+
+Update the Step 0a prose only if it still says the design wrapper calls session setup with `--skip-branch-check`.
+
+Keep the fenced command shape unchanged unless the surrounding prose becomes inaccurate. This is a runtime prompt surface, so avoid leaving it in conflict with `design_step0.py`.
+
+### MAY_UPDATE: README.md
+
+Check the entry at `README.md:22` (or nearby) that describes `/design`'s branch requirements. If it says `/design` may start from any branch or a `<USER_PREFIX>/*` branch, update it to say `/design` now requires `main`.
+
+## Edge cases
+
+- Stash entries can contain arbitrary text. Do not echo stash contents in `PREFLIGHT_ERROR`.
+- `git stash list` can fail outside a repo or under a broken git install. Fail closed.
+- A dirty working tree should still report the existing dirty-tree hint, not the stash hint.
+- `--skip-clean-check` should remain a complete escape hatch for recovery paths that already rely on it.
+- `/design` may now fail before creating `DESIGN_TMPDIR` when run off `main`. The existing setup failure path should still print the raw `PREFLIGHT_ERROR`.
+- On a `<USER_PREFIX>/*` feature branch for `/implement`: the stash check still runs. The recovery message must not imply that checking out a feature branch also clears the stash check.
+
+## Failure modes
+
+- If tests monkeypatch only `_clean_tree()` and not the new stash helper, they may start touching real git state. Patch those tests to keep them hermetic.
+- If `docs/clean-main-contract.md` section (b) still implies the `<USER_PREFIX>/*` bypass covers stash, users may think checking out a feature branch is enough. State the bypass is branch-position and sync only.
+- If `skills/design/SKILL.md` stays stale, future prompt-side edits may reintroduce the branch-check skip.
+
+## Testing strategy
+
+Run only changed-file checks.
+
+Suggested commands:
+
+```bash
+python3 -m pytest python/tests/state/test_admission.py python/tests/design/test_design_lifecycle.py python/tests/state/test_bootstrap.py
+```
+
+If `skills/design/SKILL.md` or `README.md` changes, also run the relevant markdown/prompt checks for those files, or the repo's relevant-checks flow on the changed set.
+
+## Scope guard
+
+Do not add a `git stash-check` CLI verb.
+
+Do not modify `CleanTreeResult`.
+
+Do not change `/implement`'s `<USER_PREFIX>/*` branch bypass.
+
+confidence: high
+
+## Acceptance
+
+Run only changed-file checks.
+
+Suggested commands:
+
+```bash
+python3 -m pytest python/tests/state/test_admission.py python/tests/design/test_design_lifecycle.py python/tests/state/test_bootstrap.py
+```
+
+If `skills/design/SKILL.md` or `README.md` changes, also run the relevant markdown/prompt checks for those files, or the repo's relevant-checks flow on the changed set.
+
+review_status: complete
+rounds_completed: 2
+difficulty: MODERATE
+diff_lines: 125

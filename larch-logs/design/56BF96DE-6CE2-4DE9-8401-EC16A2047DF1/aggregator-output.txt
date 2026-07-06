@@ -1,0 +1,28 @@
+### FINDING_1: Make Step 0a mandatory and remove stale branch-check prose
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Entry Gate Integrator, Codex-dyn-Entry Gate Integrator
+- **Severity**: major
+- **Concern**: `skills/design/SKILL.md` still advertises `/design` as branch-agnostic and/or `--skip-branch-check`-based, so the shipped prompt can conflict with the runtime entry gate and reintroduce the skipped branch check.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Promote skills/design/SKILL.md to ### UPDATED:; rewrite Step 0a to state /design requires clean main with an empty stash via shared admission preflight, remove --skip-branch-check references, and keep the no feature-branch-creation wording separate from entry branch enforcement
+  - From Cursor-Pragmatic: Promote skills/design/SKILL.md from ### MAY_UPDATE: to ### UPDATED: and revise Step 0a prose to state /design now requires main via shared admission preflight while keeping the existing fenced design step0-session command shape unchanged
+  - From Cursor-dyn-Entry Gate Integrator: Promote skills/design/SKILL.md from MAY_UPDATE to UPDATED; replace the skip-branch-check sentence and fix "does not check a feature branch" to state /design requires clean main entry (on main, clean tree, empty stash) with no USER_PREFIX continuation
+  - From Codex-dyn-Entry Gate Integrator: Make the Step 0a prose a required update, not an optional MAY_UPDATE. Say /design now requires main and remove the --skip-branch-check wording.
+
+### FINDING_2: Clarify the clean-main contract and failure-mode docs
+- **Reviewer(s)**: Cursor-Innovation, Cursor-Pragmatic, Cursor-dyn-Entry Gate Integrator
+- **Severity**: minor
+- **Concern**: `docs/clean-main-contract.md` still under-describes the entry gate by omitting stash requirements and rebase language in the default/standalone summaries and remediation text, and by describing the `USER_PREFIX` path too broadly, so readers can miss what still stays enforced.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Innovation: Add a bullet that local main is rebased onto origin/main (or explicitly say both skills share the existing preflight rebase step) and extend the remediation-path paragraph to cover non-empty stash on an otherwise clean tree
+  - From Cursor-Pragmatic: In the planned docs/clean-main-contract.md update, revise section (b) to say branch/main sync is bypassed while working-tree cleanliness and an empty stash list remain required; add stash failure/recovery to section (d) alongside dirty-tree and fetch failures
+  - From Cursor-dyn-Entry Gate Integrator: Rewrite the Standalone /design section to require main, clean working tree, and empty git stash list, matching section (a) defaults
+  - From Cursor-dyn-Entry Gate Integrator: Extend section (a) with empty stash list; add a stash remediation path in (d); update the line-15 summary to include non-empty stash alongside dirty tree and wrong-branch starts
+  - From Cursor-dyn-Entry Gate Integrator: Narrow section (b) to branch-position and main-sync bypass only; state working-tree and stash checks still run on USER_PREFIX/* branches
+
+### FINDING_3: Add stash remediation to session-setup errors
+- **Reviewer(s)**: Cursor-Pragmatic, Cursor-dyn-Entry Gate Integrator
+- **Severity**: major
+- **Concern**: The normalized `session-setup` recovery text in `python/larch/state/bootstrap.py` does not tell operators how to recover from a non-empty stash on a continuation branch, so the error message can point them at the wrong fix.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Pragmatic: In `bootstrap.py` `_invoke_error` `session-setup` copy, add an explicit stash-clear remediation (for example `git stash pop` or `git stash drop`) and state that `<USER_PREFIX>/*` bypasses branch/main sync only, not working-tree or stash cleanliness; optionally tailor the normalized text when `PREFLIGHT_ERROR` mentions stash
+  - From Cursor-dyn-Entry Gate Integrator: When updating _invoke_error session-setup text, split remediation: uncommitted changes vs non-empty git stash list (pop/drop), and keep USER_PREFIX branch path separate from stash clearing

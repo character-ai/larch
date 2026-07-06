@@ -1,0 +1,53 @@
+Feature request: `/design` should require a clean git stash and being currently on main branch at start, in addition to the clean git status it already requires, matching `/implement`'s entry gate exactly.
+
+## Verified current state
+
+`/implement` and `/design` already share one entry-gate code path:
+
+- `python/larch/state/admission.py::preflight_main` calls `_clean_tree()`, which shells out to `python/cli.py git clean-tree --fail-closed`, implemented by `clean_tree()` in `python/larch/git/git.py` (~line 1167). That function only runs `git status --porcelain` and fails when the tree is dirty.
+- `/design`'s Step 0 (`design_step0.py::step0_session_main`) calls `session setup --prefix claude-design --skip-branch-check --skip-repo-check --check-reviewers`. There is no `--skip-clean-check` flag defined anywhere in `session_env.py::setup_main`, so the working-tree-clean check already runs unconditionally for `/design` too, the same way it does for `/implement`.
+
+So the "git status clean" half of this request is already satisfied identically for both skills today.
+
+## The gap
+
+Grepping `python/larch/`, `skills/implement/`, and `skills/design/` for "stash" returns zero hits. The only "git stash" references anywhere in the repo are inside personal shell alias examples in `docs/installation-and-setup.md`, unrelated to the entry gate. Neither `/implement` nor `/design` currently refuses to start when `git stash list` is non-empty.
+
+## Requested change
+
+Add a stash-clear check to the shared `clean_tree()` helper in `python/larch/git/git.py` (or an adjacent check in the same `admission preflight` path), so a non-empty `git stash list` fails the gate the same way a dirty working tree already does, with an analogous `CLEAN=false` / `PREFLIGHT_ERROR=` style result.
+
+Because `/implement` and `/design` already call through this same shared helper, fixing it once there gives both skills identical, simultaneous behavior rather than needing two separate implementations.
+
+Also update `docs/clean-main-contract.md`'s failure-mode description and the `/implement` clean-main warning message if the recovery instructions need a stash-specific hint (for example "git stash pop" versus "commit or stash").
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fail `/design` and `/implement` entry when `git stash list` is non-empty.
+- Require `/design` to start on the `main` branch (currently skipped via `--skip-branch-check`).
+- Emit a stash-specific recovery hint in `PREFLIGHT_ERROR` distinct from the dirty-tree hint.
+
+### Non-goals
+- Changing `/implement`'s `<USER_PREFIX>/*` bypass for feature-branch continuation.
+- Modifying `CleanTreeResult` or `_clean_tree()` return type (no composite-data refactor).
+- Adding a new `git stash-check` CLI verb.
+
+### Approach sketch
+- Add `_stash_check()` helper in `admission.py` (adjacent to `_clean_tree()`): calls `git stash list` via `_run()`, returns a scalar string status.
+- In `preflight_main()`, call `_stash_check()` after the clean-tree check passes; emit a stash-specific `PREFLIGHT_ERROR` hint on non-empty stash.
+- Remove `"--skip-branch-check"` from `design_step0.py` line 166.
+- Update the normalized error message in `bootstrap.py` + `docs/clean-main-contract.md`.
+- Update tests in `test_admission.py` (new stash test cases; no change to `test_git.py` existing tests).
+
+### Surfaces in scope
+- `python/larch/state/admission.py` (new `_stash_check`, updated `preflight_main`)
+- `python/larch/design/design_step0.py` (remove `--skip-branch-check`)
+- `python/larch/state/bootstrap.py` (error message string)
+- `docs/clean-main-contract.md`
+- `python/tests/state/test_admission.py`
+
+### Open questions
+- None.
