@@ -215,6 +215,13 @@ def _clean_tree() -> str:
     return ""
 
 
+def _stash_check() -> str:
+    result = _run(["git", "stash", "list"])
+    if result.returncode != 0:
+        return "unknown"
+    return "nonempty" if result.stdout.strip() else "empty"
+
+
 def preflight_main(argv: list[str]) -> int:
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="admission preflight", add_help=False)
@@ -244,6 +251,18 @@ def preflight_main(argv: list[str]) -> int:
         if clean != "true":
             _emit_kv(key="PREFLIGHT", value="fail")
             _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine working-tree cleanliness (helper produced no CLEAN= line).")
+            return 2
+        stash = _stash_check()
+        if stash == "nonempty":
+            _emit_kv(key="PREFLIGHT", value="fail")
+            _emit_kv(
+                key="PREFLIGHT_ERROR",
+                value="Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop.",
+            )
+            return 2
+        if stash != "empty":
+            _emit_kv(key="PREFLIGHT", value="fail")
+            _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine git stash cleanliness. Inspect git stash list and re-run.")
             return 2
     fetch = _git_fetch_origin_main()
     if fetch.returncode != 0:

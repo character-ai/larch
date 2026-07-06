@@ -388,6 +388,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     home.mkdir()
     design = tmp_path / "design"
     design.mkdir()
+    setup_cmds: list[list[str]] = []
     stale = home / ".cache" / "larch" / "sessions" / "step0-parsed-123.env"
     stale.parent.mkdir(parents=True)
     stale.write_text("POSITIONAL_KIND=issue\nPOSITIONAL_VALUE=99\n", encoding="utf-8")
@@ -395,6 +396,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     monkeypatch.delenv("DESIGN_TMPDIR", raising=False)
 
     def fake_setup(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        setup_cmds.append(cmd)
         return subprocess.CompletedProcess(cmd, 0, "SESSION_TMPDIR=" + str(design) + "\nSESSION_ID=run-1\nCODEX_BINARY_FOUND=false\nCURSOR_BINARY_FOUND=false\nCODEX_PRESENT=false\nCURSOR_PRESENT=false\n", "")
 
     def fake_gate(cmd: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
@@ -402,7 +404,7 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
 
     def fake_run(cmd: list[str], **kwargs: object) -> subprocess.CompletedProcess[str]:
         joined = " ".join(cmd)
-        if "session" in joined and "setup" in joined:
+        if cmd[2:4] == ["session", "setup"]:
             return fake_setup(cmd, **kwargs)
         if "degraded-tools-gate" in joined:
             return fake_gate(cmd, **kwargs)
@@ -421,6 +423,10 @@ def test_step0_session_parse_kvs_precede_session_tmpdir(tmp_path: Path, monkeypa
     parse_idx = stdout.index("POSITIONAL_KIND=none")
     session_idx = stdout.index("SESSION_TMPDIR=")
     assert parse_idx < session_idx
+    assert setup_cmds
+    assert "--skip-branch-check" not in setup_cmds[0]
+    assert "--skip-repo-check" in setup_cmds[0]
+    assert "--check-reviewers" in setup_cmds[0]
 
 
 def test_step0_session_threads_repo_root_to_design_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
