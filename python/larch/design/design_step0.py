@@ -163,7 +163,7 @@ def step0_session_main(argv: Sequence[str]) -> int:
     _emit_parse_kvs(cache=cache, data=parsed)
     _run_best_effort(command=_cli_cmd(plugin_root, "timing", "mark", "design Step 0: session setup"), env={**os.environ, "LARCH_TIMING_SKILL": "design"})
     setup = subprocess.run(
-        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-branch-check", "--skip-repo-check", "--check-reviewers"),
+        _cli_cmd(plugin_root, "session", "setup", "--prefix", "claude-design", "--skip-repo-check", "--check-reviewers"),
         stdout=subprocess.PIPE,
         stderr=subprocess.STDOUT,
         text=True,

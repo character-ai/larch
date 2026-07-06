@@ -1,0 +1,46 @@
+Reviewing the plan against the codebase: tracing admission preflight, design Step 0 session setup, and related docs/tests.
+schema_version	scope	severity	focus_area	location	what	scenario_or_breakage	suggested_fix
+1	in_scope	major	risk-integration	skills/design/SKILL.md:97	Step 0a runtime prose still claims design skips branch check via --skip-branch-check and does not check branch	After design_step0.py drops --skip-branch-check, orchestrators reading SKILL.md will believe /design allows any branch and may reintroduce the skip or mis-handle off-main failures	Promote skills/design/SKILL.md from MAY_UPDATE to UPDATED; replace the skip-branch-check sentence and fix "does not check a feature branch" to state /design requires clean main entry (on main, clean tree, empty stash) with no USER_PREFIX continuation
+1	in_scope	minor	correctness	docs/clean-main-contract.md:17-21	Standalone /design section only updates branch-check claim implicitly; it still describes working-tree-only entry	Operators reading only the /design subsection will miss new main and empty-stash requirements after branch enforcement lands	Rewrite the Standalone /design section to require main, clean working tree, and empty git stash list, matching section (a) defaults
+1	in_scope	minor	correctness	docs/clean-main-contract.md:5-15	Default-clean and failure-mode sections omit stash from enumerated gates and remediation paths	Section (a) and (d) still list dirty tree, wrong branch, and fetch failures only; stash failures have no doc home after the new gate ships	Extend section (a) with empty stash list; add a stash remediation path in (d); update the line-15 summary to include non-empty stash alongside dirty tree and wrong-branch starts
+1	in_scope	minor	risk-integration	docs/clean-main-contract.md:7-8	USER_PREFIX continuation described as full gate bypass though only branch/sync/rebase are skipped today and stash will still be enforced	Section (b) "The gate is bypassed" reads as skipping all clean-main checks; after stash enforcement, feature-branch /implement runs still fail on non-empty stash and confuse operators who chose path (b)	Narrow section (b) to branch-position and main-sync bypass only; state working-tree and stash checks still run on USER_PREFIX/* branches
+1	in_scope	minor	correctness	python/larch/state/bootstrap.py:1332	Plan updates bootstrap session-setup text but does not require disambiguating dirty-tree stash verb from non-empty stash list	Normalized option (c) still says "commit or stash uncommitted changes"; users with a clean tree but existing stash entries get the wrong fix (plan failure mode)	When updating _invoke_error session-setup text, split remediation: uncommitted changes vs non-empty git stash list (pop/drop), and keep USER_PREFIX branch path separate from stash clearing
+1	out_of_scope	minor	code-quality	README.md:22	README TOC blurb still says /design may start from USER_PREFIX/* branch	After design requires main, the README summary contradicts docs/clean-main-contract.md until someone updates it separately	File a follow-up to change the README clean-main blurb to main-only for /design while keeping USER_PREFIX continuation for /implement only
+
+## Findings
+
+### 1. [risk-integration] `skills/design/SKILL.md:97` — stale Step 0a lifecycle prose (major)
+
+The plan removes `--skip-branch-check` from `design_step0.py:166` but leaves `skills/design/SKILL.md` as **MAY_UPDATE**. Line 97 still instructs orchestrators that `/design` "calls `design step0-session` with `--skip-branch-check`" and that it "does not check a feature branch."
+
+After the code change, `/design` will enforce `main` through shared `admission.preflight_main()` (`session_env.py:1614-1617`). Stale runtime prompt prose is a direct contract conflict and matches the plan's own failure mode about reintroducing the skip.
+
+**Suggested revision:** Promote to **UPDATED**; replace line 97 with clean-main entry requirements (main, clean tree, empty stash) and drop all `--skip-branch-check` guidance.
+
+### 2. [correctness] `docs/clean-main-contract.md:17-21` — incomplete `/design` subsection (minor)
+
+The plan says to remove the stale "design does not check branch" claim but does not explicitly rewrite the Standalone `/design` block. That block still says design "still requires a clean working tree" only, with no `main` or stash requirements.
+
+**Suggested revision:** Rewrite lines 17-21 to mirror the updated default gate: on `main`, clean working tree, empty stash, fetch/sync pass; no `<USER_PREFIX>/*` continuation for `/design`.
+
+### 3. [correctness] `docs/clean-main-contract.md:5-15` — stash missing from contract enumeration (minor)
+
+Section **(a)** lists dirty tree and wrong branch but not stash. Section **(d)** remediation paths (line 13-15) omit non-empty stash. The plan's doc bullets add stash to the default definition but do not call out updating **(d)**'s three-path summary.
+
+**Suggested revision:** Add empty stash to **(a)**; add stash pop/drop to **(d)**; extend line 15 to cover stash failures.
+
+### 4. [risk-integration] `docs/clean-main-contract.md:7-8` — USER_PREFIX "gate bypassed" overstates scope (minor)
+
+Section **(b)** says the entire gate is bypassed on `<USER_PREFIX>/*`. Code today only skips branch/sync/rebase via `--skip-branch-check` (`admission.py:231-237`, `253-272`; `bootstrap.py:431-432`). Working-tree checks always run (`admission.py:238-247`). After the plan, stash checks run in the same block and are not skipped by `--skip-branch-check`.
+
+**Suggested revision:** Clarify in **(b)** and the plan's "unchanged" language that USER_PREFIX bypass is branch-position only; dirty-tree and stash checks remain enforced.
+
+### 5. [correctness] `python/larch/state/bootstrap.py:1332` — normalized message needs stash disambiguation (minor)
+
+The plan updates bootstrap text but only says to "mention both dirty working trees and non-empty stash." Current option **(c)** uses "commit or stash" as a verb for uncommitted changes (`bootstrap.py:1332`, `docs/clean-main-contract.md:13`), which conflicts with the new failure mode where `git stash list` must be empty (`admission.py` proposed messages in plan).
+
+**Suggested revision:** Spell out in the plan that **(c)** must distinguish uncommitted changes from clearing an existing stash stack; add explicit `git stash pop` / `git stash drop` guidance.
+
+### [OUT_OF_SCOPE] `README.md:22`
+
+The README TOC still describes `/design` and `/implement` sharing "clean `main` or a `<USER_PREFIX>/*` branch." After this change, `/design` is main-only. Worth a tracked doc fix, but outside the plan's file list.

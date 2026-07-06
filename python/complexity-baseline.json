@@ -2253,7 +2253,7 @@
     "file": "larch/git/pr_body.py",
     "code": "C901",
     "qualified_symbol": "render_run_summary",
-    "metric": 16
+    "metric": 14
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2277,7 +2277,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0912",
     "qualified_symbol": "render_run_summary",
-    "metric": 16
+    "metric": 14
   },
   {
     "file": "larch/git/pr_body.py",
@@ -2301,7 +2301,7 @@
     "file": "larch/git/pr_body.py",
     "code": "PLR0915",
     "qualified_symbol": "render_run_summary",
-    "metric": 57
+    "metric": 54
   },
   {
     "file": "larch/git/push.py",
@@ -6147,7 +6147,7 @@
     "file": "larch/state/admission.py",
     "code": "C901",
     "qualified_symbol": "preflight_main",
-    "metric": 16
+    "metric": 18
   },
   {
     "file": "larch/state/admission.py",
@@ -6165,7 +6165,7 @@
     "file": "larch/state/admission.py",
     "code": "PLR0911",
     "qualified_symbol": "preflight_main",
-    "metric": 10
+    "metric": 12
   },
   {
     "file": "larch/state/admission.py",
@@ -6177,7 +6177,7 @@
     "file": "larch/state/admission.py",
     "code": "PLR0912",
     "qualified_symbol": "preflight_main",
-    "metric": 15
+    "metric": 17
   },
   {
     "file": "larch/state/admission.py",
@@ -6189,7 +6189,7 @@
     "file": "larch/state/admission.py",
     "code": "PLR0915",
     "qualified_symbol": "preflight_main",
-    "metric": 53
+    "metric": 60
   },
   {
     "file": "larch/state/bootstrap.py",

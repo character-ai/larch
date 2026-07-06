@@ -1,0 +1,3 @@
+warning: fix text for slot 'codex-specialist-correctness' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add test_preflight_skip_branch_check_still_rejects_nonempty_stash asserting exit')
+warning: fix text for slot 'codex-specialist-testing' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a companion test that runs preflight_main(["--skip-branch-check"]) with _sta')
+warning: fix text for slot 'dyn-dyn-stash-gate' in FINDING_2 not traceable to scoped input (first 80 chars: 'Add a dedicated test that calls preflight_main(["--skip-branch-check"]) with _st')

@@ -77,8 +77,8 @@ Consolidated NEVER rules from the steps below. Each gives WHY; step-local mentio
 
 3. **NEVER bypass launcher-owned rehydration and pause checks after Step 0a.** **Why:** wrappers must self-terminate at Bash boundaries so pause/resume keeps pause requests and current-env paths. **Apply:** every post-Step-0a Bash fence invokes the launcher with a bare ported Step 0/1 verb or unported `*.sh` basename. The launcher supplies source-env and Claude PID; wrappers own source-env, pause checks, folded sentinel ordering, and the Step 6 cleanup exception. Harness: `scripts/test-design-structure.sh` `assert_wrapper_pause_before_work`.
 
-4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** **Why:** Monitor is for streams, not waits. **Apply:** use `run_in_background: true` Bash and rely on `<task-notification>` for completion. Do not spawn a Bash polling loop (`for`/`while`/`until` + `sleep`) for another background job. On premature-notification recovery, read `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` for detailed mechanics; the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn. NEVER launch a background recovery waiter. Do NOT fall back to Monitor.
-5. **NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits.** **Why:** empty output is spurious (`set -m`, #5240); repeats can arrive pre-completion. **Apply in order:** (1) empty output → silent yield; (2) prefix-identical repeat (first 200 chars) for the same wait with the active wait's terminal sentinel absent → silent yield; (3) new or changed non-empty output → one foreground terminal-sentinel probe. Silent yield means call no tool: no Bash/`wc`/sentinel check/`ScheduleWakeup`/"still running" prose. See `skills/shared/design-background-wait.md`.
+4. **NEVER use the `Monitor` tool anywhere within the `/design` orchestrator.** Use `run_in_background: true` and `<task-notification>`, not Bash polling loops. For premature recovery, see `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`; the sanctioned recovery path is one foreground, non-sleeping terminal-sentinel probe per recovery turn. NEVER launch a background recovery waiter. Do NOT fall back to Monitor.
+5. **NEVER act on empty-output or prefix-identical repeat `<task-notification>` during `/design` immediate-background waits.** Empty bytes are spurious (#5240). **Apply in order:** (0) exactly one classification `Read` of the active `tasks/*.output`; (1) missing or whitespace-only task-output bytes → silent yield; (2) prefix-identical repeat non-empty task-output bytes (first 200 chars) with sentinel absent → silent yield; (3) new/changed non-empty bytes → one foreground probe. Silent yield means no further probe, parse, or prose tools after the classification `Read`. See `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md`.
 6. **NEVER treat an AskUserQuestion no-response fallback as an operator answer.** **Why:** a 60-second platform fallback is no answer. **Apply:** when a `/design` `AskUserQuestion` returns the no-response fallback, do not choose, infer consent or cancellation, refine, or use "best judgment." Re-fire the identical `AskUserQuestion`, retry without a cap, and keep repeats quiet unless the tool must show the prompt. Terse real answers still count.
 
 <!-- step:0: Session Setup -->
@@ -94,7 +94,9 @@ On success, Step 0b consumes the bound booleans, optional `run_id`, `POSITIONAL_
 
 ### 0a: Reviewer session (`DESIGN_TMPDIR`)
 
-`/design` no longer creates or checks a feature branch; `/implement` owns that lifecycle. Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs. This skill calls `design step0-session` with `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
+`/design` requires the default gate: `main`, clean tree, empty stash. Call `design step0-session` without `--skip-branch-check`; keep the single Bash block so setup stdout and `session write-design-env` share one subshell.
+
+Use `${CLAUDE_PLUGIN_ROOT}/skills/shared/session-setup-output.md` for setup KVs. Parse `SESSION_TMPDIR`, `SESSION_ID`, `CODEX_BINARY_FOUND`, `CURSOR_BINARY_FOUND`, `CODEX_PRESENT`, and `CURSOR_PRESENT`; set `DESIGN_TMPDIR=SESSION_TMPDIR`. Execution-issues logging targets `$DESIGN_TMPDIR/execution-issues.md`.
 
 ```bash
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" design step0-session \
@@ -170,13 +172,13 @@ Step 1d.7 outline-approval is NOT invoked on the ad-hoc Q&A-only branch because 
 
 **When**: after `DESIGN_TMPDIR` exists and before any terminal machine footer, `**⚠ 5: plan-block-write failed**`, or `**ℹ /design cancelled by operator.**` on Step 0b / Steps 5–6 paths. Do not run on Step 0a setup failure or pre-Step-0 public argv abort. Runs before cleanup. Split-path invokes it only for terminal `SUMMARY_OUTCOME=approved-partition`, `cancelled-decompose`, or `failed-judge-panel`; other Split returns preserve `$DESIGN_TMPDIR`.
 **Orchestrator contract**: immediately before this single-phase fence, export `SUMMARY_OUTCOME` to one of `cancelled-already-planned` | `cancelled-clarify` | `cancelled-decompose` | `cancelled-outline` | `cancelled-plan-size` | `cancelled-sprawl` | `cancelled-title-filter` | `approved` | `approved-partition` | `failed-plan-write` | `failed-publish` | `failed-clarify` | `failed-postplan` | `failed-judge-panel` | `failed-publish-tail`. Gate-C success uses `python/cli.py design step5c`; do not run this fence on that happy path.
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely; include its classification `Read`.
 Parameters:
 - breadcrumb: `⏳ final-summary: writing final summary...`
 - terminal sentinel: `.completed/step-final-summary`
 - confirmation purpose: durable completion
-- after present: parse `FINAL_SUMMARY_PATH` from completed stdout, confirm empty readiness markers, then Read the disk file
-- extra guards: `WAIT` when absent is expected. When present, parse `FINAL_SUMMARY_PATH` from completed stdout, confirm empty readiness markers, then Read the disk file. When absent, yield without `ps` polling.
+- after present: parse `FINAL_SUMMARY_PATH`, confirm readiness markers, then Read disk file
+- extra guards: `WAIT` when absent is expected. Present: follow after-present; absent: yield without `ps` polling.
 
 **⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
 
@@ -410,7 +412,7 @@ Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/ski
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
 Plan-review scope anchoring: Step 3 entry creates `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from issue narrative with prior `larch:plan` stripped and appends approved outline when present. Missing/empty/invalid anchor at launch yields `panel-init-failed` and hard-stop. Brainstorm context is optional/non-binding. Scout, reviewers, voters (`--scope-anchor-file`), MainAgent fallback, and pre-vote staged-anchor path use the staged anchor. `SCOPE_ANCHOR_FILE` is a path-only handoff in normalized envs on `ok` / `main-agent-vote-required`; tally/re-tally omit it. Scope-reduction findings use leading `[SCOPE-REDUCTION]` with normal vote thresholds.
 **Post-loop `NEXT_ACTION` routing table** (read `NEXT_ACTION` from the normalized loop envelope before raw status fields; `.step3-review-result.env` remains the per-round handoff):
-Before parsing the envelope after notification, use this ordered premature-notification contract: empty output → silent yield; prefix-identical repeat (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield; new or changed non-empty output → one foreground probe against `.completed/step-3-terminal`. Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and readable `.step3-review-result.env` exist. Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too; do not advance from `.step3-review-result.env` alone.
+Before parsing the envelope after notification, use this ordered premature-notification contract: exactly one classification `Read` of the active `tasks/*.output`; missing or whitespace-only task-output bytes → silent yield; prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield; new/changed non-empty bytes → one foreground probe against `.completed/step-3-terminal`. Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and readable `.step3-review-result.env` exist. Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too; do not advance from `.step3-review-result.env` alone.
 
 - `NEXT_ACTION=step3b`: proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
 - `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=degraded-empty-collector`: print `**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**`, append a bounded `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`, read `$DESIGN_TMPDIR/plan.txt`, the feature description or scope anchor, and relevant code/docs directly, then self-review the plan. Revise `$DESIGN_TMPDIR/plan.txt` in place only when you find a concrete plan defect. If you revise, run the same post-plan validation and settle path used after direct plan revision so `diff-lines.txt`, trailers, and validators stay coherent. Then run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and proceed to Step 3b as below. Do not enter Gate B because there is no findings list to vote or apply.
@@ -518,7 +520,7 @@ If `STEP4_MODE=foreground`, run the tail in the foreground:
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
 ```
 
-If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, and after-present parsing of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout. Then run the tail with `run_in_background: true` and timeout `900000`:
+If `STEP4_MODE=background`, **MANDATORY: READ ENTIRE FILE**: read and apply `${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md` with terminal sentinel `.completed/step-4`, confirmation purpose `durable completion`, after-present parse of rejected-findings markers, `SKIP_APPROVE_REQUESTED_GATEC`, and digest stdout, plus classification `Read`. Then run the tail with `run_in_background: true` and timeout `900000`:
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3b-tail.sh
@@ -599,7 +601,7 @@ If `DIAGRAM_REQUIRED=true`, follow `finalize-step5.md` for diagram composition, 
 
 Step 4b Gate C already returned **Approve**. Proceed without an additional prompt. Follow `finalize-step5.md` for composing the final plan block with `$DESIGN_TMPDIR/diff-lines.txt`, driver parsing, validator repair routing, WARN replay, and publish-tail decisions.
 
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
+Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely; include its classification `Read`.
 
 Parameters:
 - breadcrumb: `⏳ 5c: writing plan to GitHub...`
@@ -619,7 +621,7 @@ Invoke `design-step5c.sh` (contract: `design-step5c.md`) for deterministic Step 
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh
 ```
 
-Wait for `<task-notification>` before parsing `_publish_rc`, reading `.design-publish-result.env`, replaying WARN bodies, emitting `final-summary.md`, or entering Step 6. Probe only `.completed/step-5c-terminal` after new or changed non-empty premature output; empty output yields silently. A prefix-identical repeat (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently. `.completed/step-5c` is not completion.
+Wait for `<task-notification>` before `_publish_rc` parse, `.design-publish-result.env` read, WARN replay, `final-summary.md` emit, or Step 6. First classify active `tasks/*.output` bytes with exactly one `Read`. Probe `.completed/step-5c-terminal` only after new/changed non-empty bytes; missing or whitespace-only bytes yield silently. A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently. `.completed/step-5c` is not completion.
 
 **Driver exit-code contract:** Follow `finalize-step5.md` for `_publish_rc` abort handling, stdout fallback, validator-defect routing, and `PLAN_WRITE_OK` branches. On `_publish_rc=2` or unexpected non-zero value: parse `FINAL_SUMMARY_PATH=<path>` from source `design-step5c.sh` completed `<task-notification>` stdout and follow the `/design` Read-always readiness profile in `${CLAUDE_PLUGIN_ROOT}/skills/shared/final-summary-emit.md` only when `_publish_rc` is 2 or another unexpected value before stopping. Complete the shared sidecar follow-on before stopping.
 

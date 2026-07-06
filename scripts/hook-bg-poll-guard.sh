@@ -692,13 +692,6 @@ path_same_dir_alias() {
   return 1
 }
 
-path_is_task_output() {
-  case "$1" in
-    tasks/*.output|*/tasks/*.output) return 0 ;;
-  esac
-  return 1
-}
-
 path_is_known_result() {
   case "$(basename "$1" 2>/dev/null)" in
     .step3-review-result.env|.design-publish-result.env|final-summary.md) return 0 ;;
@@ -1139,15 +1132,10 @@ if [ "$tool_name" = "Read" ]; then
   fi
   while IFS= read -r dir || [ -n "$dir" ]; do
     [ -n "$dir" ] || continue
-    # #5925 follow-up: path_is_task_output matches the tasks/*.output read-path pattern
-    # regardless of which live marker $dir this loop iteration holds, so it previously
-    # denied a session's read of its OWN just-completed bg task output whenever ANY clone
-    # (including a foreign one) had a live marker — the model then misread the deny as its
-    # own wait still running and stalled. Gate it on clone correlation like the Bash paths.
-    # path_under_dir (task output is never under the marker tmpdir) and the known-result
-    # branch already require the read to bind to this session, so only path_is_task_output
-    # needs the plausibility gate.
-    if path_under_dir "$read_abs" "$dir" || { path_is_task_output "$read_path" && bash_probe_target_dir_plausible "$dir" "$cwd_canon"; } || { path_is_known_result "$read_path" && { path_under_dir "$read_abs" "$dir" || [ "$cwd_canon" = "$dir" ]; }; }; then
+    # Allow Read of tasks/*.output while a live same-clone wait marker exists.
+    # The task-output file is the write-once classification artifact used after
+    # a <task-notification>; Bash probes and TaskOutput remain denied elsewhere.
+    if path_under_dir "$read_abs" "$dir" || { path_is_known_result "$read_path" && { path_under_dir "$read_abs" "$dir" || [ "$cwd_canon" = "$dir" ]; }; }; then
       deny_if_needed "$dir"
     fi
   done <"$live_dirs_file"

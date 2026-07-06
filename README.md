@@ -19,8 +19,13 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 ## Table of Contents
 
 - **Setup**
-  - [Installation and Setup](docs/installation-and-setup.md) — plugin install, local development, agent setup recipes (Claude / Codex / Cursor), [clean-main entry contract](docs/installation-and-setup.md#clean-main-entry-contract-for-implement-and-design) for `/implement` and `/design`, what the plugin provides, the `python/cli.py checks run-relevant` consumer contract, prerequisites
+  - [Installation and Setup](docs/installation-and-setup.md) — prerequisites, auth (API keys or web login) for Claude / Codex / Cursor, plugin install and permissions, `/status` validation, `/upgrade-larch`
   - [Preparing Your Repository](docs/preparing-your-repo.md). Ready your repo for larch and agent-assisted development: instruction files (`CLAUDE.md`/`AGENTS.md`), guardrails (rules, hooks, linters), and the `checks run-relevant` contract
+  - [Contributing](docs/contributing.md) — local dev plugin install, plugin cache vs. working-tree version, Mermaid CLI setup
+  - [Clean-Main Entry Contract](docs/clean-main-contract.md) — the `/implement` and `/design` clean `main` entry preconditions, plus `/implement` feature-branch continuation
+  - [Fork CI Dry-Runs](docs/forked.md) — remote setup for `/implement --forked`
+  - [macOS Keychain Interactions](docs/macos-keychain-interactions.md) — Cursor `CURSOR_API_KEY` and keychain auth troubleshooting
+  - [Optional Helpers](docs/optional-helpers.md) — installing optional tools like ast-grep
 - **Reference**
   - [Features](#features)
   - [Skills](#skills)

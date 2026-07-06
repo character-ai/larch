@@ -1,0 +1,9 @@
+slot=0
+voter_tool=codex-validity
+judge_error_count=6
+total_findings=7
+total_ballot_items=7
+voter_file=<TMPDIR>/round-1/codex-validity-vote-output.txt
+voter_sha256=bb747a6a1cb169c22cdc4514aa418498b7b0da7f3d7d08d483b737710d2a7e59
+--- first 200 bytes of voter output ---
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- stale recovery text only; /design still has a valid recovery path, so this is wording cleanup rather than a broken feature

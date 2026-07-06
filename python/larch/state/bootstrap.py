@@ -1329,7 +1329,7 @@ def _invoke_error(*, step_failed: str, out: str, implement_tmpdir: str) -> None:
         print(line, file=sys.stderr)
     messages = {
         "session-entry-gate": "**⚠ /implement: internal Step 0 contract violation in session-entry-gate.sh. Aborting.**",
-        "session-setup": "**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run; (c) commit or stash uncommitted changes on `main` first.**",
+        "session-setup": "**⚠ /implement requires clean main to start. To continue, choose one of: (a) `git checkout main && git status` clean → re-run; (b) check out or create a `<USER_PREFIX>/*` feature branch and re-run. This bypass covers branch position and main-sync only; stash cleanliness still applies on feature branches; (c) commit or stash uncommitted changes on `main` first; (d) clear a non-empty stash with `git stash pop` to restore and commit, or `git stash drop` to discard.**",
         "get-issue-state": "**⚠ /implement Step 0 tracking: could not verify the adopted issue state. Aborting.**",
         "issue-number-required-for-resume": "**⚠ /implement Step 0 tracking: --issue-number is required to resume an adopted tracking sentinel. Re-run `/implement <issue-N>` for the sentinel's issue.**",
         "copy-plan": "**⚠ /implement Step 0 plan materialization: could not copy the preflight plan into the implement session. Aborting.**",

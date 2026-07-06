@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	15300	3825	13032	3258	2268	567		0	0
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	21226	5307	13320	3330	7906	1977		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	15315	3829	13047	3262	2268	567		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	15291	3823	13023	3256	2268	567		0	0
+design Step 3	phase1	1	dyn-codex-plan-entry-gate-integrator	plan-review	codex	dyn-codex-plan-entry-gate-integrator.txt	15625	3907	12898	3225	2727	682		0	0
+design Step 3	phase1	1	dyn-cursor-plan-entry-gate-integrator	plan-review	cursor	dyn-cursor-plan-entry-gate-integrator.txt	21551	5388	13186	3297	8365	2092		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	15313	3829	13045	3262	2268	567		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	21239	5310	13333	3334	7906	1977		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	21241	5311	13335	3334	7906	1977		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	21217	5305	13311	3328	7906	1977		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	17397	4350	4465	1117	12932	3233	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	12846	3212	8904	2226	3942	986		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	12846	3212	8904	2226	3942	986		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	12846	3212	8904	2226	3942	986		0	0

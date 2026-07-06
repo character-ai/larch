@@ -797,6 +797,19 @@ def test_invoke_contract_failure_leaves_stdout_empty(monkeypatch, capsys) -> Non
     assert "STEP_FAILED=session-setup" in captured.err
 
 
+def test_invoke_error_session_setup_mentions_stash_recovery(capsys) -> None:
+    bootstrap._invoke_error(  # pyright: ignore[reportPrivateUsage]
+        step_failed="session-setup",
+        out="STEP_FAILED=session-setup\nPREFLIGHT_ERROR=Git stash is not empty\n",
+        implement_tmpdir="",
+    )
+    err = capsys.readouterr().err
+    assert "PREFLIGHT_ERROR=Git stash is not empty" in err
+    assert "git stash pop" in err
+    assert "git stash drop" in err
+    assert "stash cleanliness still applies on feature branches" in err
+
+
 def test_invoke_routing_write_failure_preserves_stdout_envelope(tmp_path, monkeypatch, capsys) -> None:
     def fake_run_bootstrap(_opts: bootstrap.BootstrapOptions) -> int:
         print(f"IMPLEMENT_TMPDIR={tmp_path}")

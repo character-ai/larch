@@ -215,6 +215,13 @@ def _clean_tree() -> str:
     return ""
 
 
+def _stash_check() -> str:
+    result = _run(["git", "stash", "list"])
+    if result.returncode != 0:
+        return "unknown"
+    return "nonempty" if result.stdout.strip() else "empty"
+
+
 def preflight_main(argv: list[str]) -> int:
     os.environ["LARCH_QUIET_DISABLE"] = "1"
     parser = argparse.ArgumentParser(prog="admission preflight", add_help=False)
@@ -244,6 +251,18 @@ def preflight_main(argv: list[str]) -> int:
         if clean != "true":
             _emit_kv(key="PREFLIGHT", value="fail")
             _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine working-tree cleanliness (helper produced no CLEAN= line).")
+            return 2
+        stash = _stash_check()
+        if stash == "nonempty":
+            _emit_kv(key="PREFLIGHT", value="fail")
+            _emit_kv(
+                key="PREFLIGHT_ERROR",
+                value="Git stash is not empty. Apply or drop stashed changes first, for example with git stash pop or git stash drop.",
+            )
+            return 2
+        if stash != "empty":
+            _emit_kv(key="PREFLIGHT", value="fail")
+            _emit_kv(key="PREFLIGHT_ERROR", value="Could not determine git stash cleanliness. Inspect git stash list and re-run.")
             return 2
     fetch = _git_fetch_origin_main()
     if fetch.returncode != 0:
@@ -298,8 +317,8 @@ def fork_env_main(argv: list[str]) -> int:
     if upstream.returncode != 0:
         print("--forked requires the clone to be configured for the fork-PR workflow:", file=sys.stderr)
         print("  origin -> your fork; upstream -> the upstream repo.", file=sys.stderr)
-        print("See docs/installation-and-setup.md (Fork CI dry-runs) for the full", file=sys.stderr)
-        print("remote-add walkthrough; the minimum is:", file=sys.stderr)
+        print("See docs/forked.md for the full remote-add walkthrough;", file=sys.stderr)
+        print("the minimum is:", file=sys.stderr)
         print("  git remote add upstream <https-or-ssh-url-of-upstream-repo>", file=sys.stderr)
         return 1
     origin_rc, fork_repo, origin_err = _github_remote_repo("origin")

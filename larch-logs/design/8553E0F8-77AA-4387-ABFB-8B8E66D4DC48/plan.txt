@@ -1,0 +1,86 @@
+## Approach
+
+Implement Fix A + Fix B only. Fix C (Step 3 stdout keepalive heartbeat) is dropped per plan review (six reviewers, `[SCOPE-REDUCTION]`): Fix A alone breaks the deadlock, and a stdout heartbeat risks prefixing the completion output so the existing first-200-char "prefix-identical repeat -> silent-yield" rule hides the true completion notification. Fix C (heartbeat / premature-notification prevention) and Fix D (upstream Claude Code report) are out of scope here; capture them as follow-ups.
+
+Root fix (Fix A): once the hook lets the orchestrator `Read` the write-once task-output file during a live wait, it can confirm the output is empty and apply the silent-yield rule instead of looping on denied probes. Fix B makes every loaded contract surface state the exact post-notification order so the orchestrator actually takes that path.
+
+1. Fix A -- allow `Read` of `tasks/*.output` during a live same-clone bg wait.
+   - In `scripts/hook-bg-poll-guard.sh`, in the `Read` branch (~line 1150), remove ONLY the `path_is_task_output "$read_path" && bash_probe_target_dir_plausible "$dir" "$cwd_canon"` OR-arm. Keep the `path_under_dir` and `path_is_known_result` arms unchanged: task outputs never satisfy them, so removing just this arm fully un-gates task-output reads without weakening marker-dir, result-env, or sentinel guards.
+   - Delete the now-orphaned `path_is_task_output` helper (defined ~line 695, used only at the removed arm) and rewrite the stale `#5925` comment block (~lines 1142-1149).
+   - Leave the Bash-command probe path denied: `cat`/`wc`/`stat` of `tasks/*.output` stays a polling probe and stays denied (the separate Bash arm ~lines 1046-1052 and `bash_probe_target_dir_plausible` are untouched).
+   - Keep every other guard intact: `TaskOutput`/`Monitor` denials, same-clone marker-dir reads, result-env reads, and terminal-sentinel polling.
+
+2. Fix B -- document one post-notification classification `Read` across all loaded contract surfaces, using one canonical ordered sequence.
+   - Canonical order after a `<task-notification>` (mirror verbatim intent in every surface): (0) exactly one `Read` of the active `tasks/*.output` to classify; (1) file missing or empty (absent or whitespace-only bytes) -> silent yield; (2) prefix-identical repeat (first 200 chars) with terminal sentinel absent -> silent yield; (3) new/changed non-empty file bytes -> one terminal-sentinel probe; then the after-completion result parse once the terminal sentinel exists.
+   - Redefine "silent yield": it means no further probe/parse/prose tools AFTER the one classification `Read`, not "no tools at all". The current "call no tool" / "no tool, wc, sentinel check, or prose" wording must be reworded so it does not forbid the classification `Read` itself.
+   - State explicitly that empty vs non-empty refers to the `tasks/*.output` file BYTES (missing, whitespace-only, or content), not the notification wrapper/summary text.
+   - Keep the per-turn no-polling ban, the single terminal-sentinel probe limit, and the Monitor / TaskOutput / sleep-loop / repeated-Read bans otherwise unchanged.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-bg-poll-guard.sh
+
+- Remove the `tasks/*.output` `Read` deny arm at ~line 1150; keep the `path_under_dir` and `path_is_known_result` arms.
+- Delete the orphaned `path_is_task_output` helper; rewrite the stale `#5925` comment block.
+- Leave Bash-probe task-output matching and `bash_probe_target_dir_plausible` clone-gating unchanged.
+
+### UPDATED: scripts/hook-bg-poll-guard.md
+
+- Update invariants: `Read` of `tasks/*.output` is allowed during live waits (write-once completion artifact); Bash probes of it and the `TaskOutput` tool remain denied; the carve-out exists so the orchestrator can classify empty spurious output after a premature notification.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+
+- Flip the `live marker + Read tasks/foo.output` assertions from deny to allow, running them from a repo-clone cwd DISTINCT from the marker dir (per accepted round-1 FINDING_3).
+- Add or keep a separate assertion that a `Read` of a path UNDER the live marker dir still denies.
+- Keep `cat`/`wc tasks/foo.output` Bash-probe assertions denied.
+- Keep the foreign-clone allow tests intact.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Refresh pinned literals for the new post-notification classification-`Read` order and the reworded silent-yield wording in SKILL.md, AGENTS.md, design-background-wait.md, and orchestrator-never.md; drop pins that require the old task-output Read-deny story.
+
+### UPDATED: scripts/test-implement-anti-polling-rule.sh
+
+- Refresh the anchored AGENTS.md / design-background-wait.md / orchestrator-never.md literals (including `no tool`, empty-output, and Step 3 ordered-routing pins) for the one post-notification classification `Read`, while retaining the no-polling and implement-side bans.
+
+### UPDATED: AGENTS.md
+
+- Revise the bg-wait rule (line ~65) to distinguish one post-notification classification `Read` of the active task output (not polling; not the after-completion parse) from the after-completion result read; apply the reworded silent-yield definition; keep the no-polling ban and the Monitor / TaskOutput / sleep-loop / repeated-probe bans.
+
+### UPDATED: skills/shared/design-background-wait.md
+
+- Apply the canonical ordered sequence and reworded silent-yield definition to the Immediate-background wait rule and the Step 3 sections; preserve the terminal-sentinel probe limit and the prefix-identical-repeat rule. This file is the authority the other inline-wait bullets defer to.
+
+### UPDATED: skills/design/SKILL.md
+
+- Extend anti-pattern NEVER #5 and the Step 3 premature-notification/routing contract to the canonical ordered classification-`Read` sequence; delegate mechanics to design-background-wait.md. Add one deferral sentence to the Step 4 / Step 5c / Final-summary inline-wait bullets pointing at the updated design-background-wait.md rule.
+
+### UPDATED: skills/shared/orchestrator-never.md
+
+- Mirror the post-notification classification-`Read` carve-out in NEVER #3 (one `Read` after `<task-notification>` to classify empty); keep the launch-to-notification ban and the Bash / TaskOutput / Monitor / repeated-read bans.
+
+## Edge cases
+
+- The task-output file may be missing or whitespace-only at notification time; treat missing/empty bytes as spurious -> silent yield. Non-empty bytes -> single terminal-sentinel probe, then routing.
+- Removing the arm entirely also fixes the `#5925` foreign-clone case: a session's `Read` of its own task output no longer denies when a foreign clone holds a live marker.
+- A `Read` of a result-env or reviewer artifact under the live tmpdir must still deny until the terminal sentinel releases the marker.
+- Bash commands that read `tasks/*.output` remain polling probes and must still deny.
+
+## Failure modes
+
+- Over-broad hook exemption could reopen polling. Mitigate: exempt only the `Read` tool arm; keep Bash-probe and `TaskOutput` denials.
+- Silent-yield rewording could read as permitting repeated reads. Mitigate: exactly one classification `Read` per notification, then no further tools; keep the repeated-Read ban explicit.
+- Stale pinned literals in test-design-structure.sh or test-implement-anti-polling-rule.sh could fail CI. Mitigate: update both harnesses' pins in the same change and run them locally.
+
+## Testing strategy
+
+Run focused changed-file checks:
+
+- `make test-hook-bg-poll-guard`
+- `make test-design-structure`
+- `make test-implement-anti-polling-rule`
+- `pre-commit run shellcheck --files scripts/hook-bg-poll-guard.sh`
+- If Markdown changed, run the scoped Markdown hooks through `python3 python/cli.py checks run-relevant` or the equivalent changed-file pre-commit flow.
+
+difficulty: HARD
+diff_lines: 200
