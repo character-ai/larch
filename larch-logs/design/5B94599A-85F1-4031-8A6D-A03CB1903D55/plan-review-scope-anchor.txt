@@ -1,0 +1,93 @@
+## Summary
+
+`skills/design/scripts/design-step3b-tail.sh` reads `skip_approve_requested` from `run-params.json` with a jq-less fallback shaped `elif command grep -Eq ... ; then` under `set -euo pipefail`. On macOS system bash 3.2.57, `command grep` inside an `if`/`elif` condition loses the `set -e` exemption: a non-zero grep exit aborts the whole script. No-match is the common case (`skip_approve_requested` is usually false), so any jq-less macOS host aborts the Step 4b tail wrapper. This is the same class as closed #3935 and #3899, and no committed-script lint enforces the sanctioned `( command grep ... )` form, so the class can recur.
+
+## Original report
+
+`design-step3b-tail.sh` jq-less fallback uses `elif command grep` under `set -euo pipefail`, which aborts on macOS bash 3.2 (documented BASH_AUTHORING hazard, same class as closed #3935/#3899); plus no script-surface lint enforces the safe `( command grep ... )` form. On macOS system bash 3.2.57, `command grep` inside if/elif fires `set -e` when grep exits non-zero, and no-match is the common case (`skip_approve_requested` false), so any jq-less macOS host aborts the Step 4b tail wrapper. Reachability low (jq usually present): severity latent. Two sibling `if ! command grep -Fq` sites exist in `scripts/test-lint-awk-multibyte-regex.sh` (negated form; needs a bash-3.2 repro to confirm). Surfaced by /learn-from-bugs mining (report issue #6470, section 7 item 1). Suggested numbered work items in one issue: (1) rewrite the sites to the sanctioned `( command grep ... )` subshell form per BASH_AUTHORING.md; (2) extend lint-bash32 (or a sibling script lint) to flag `if command grep` / `elif command grep` / `if ! command grep` in committed shell scripts, with a regression fixture; note lint-bare-grep-probe covers only orchestrator-facing Markdown fences, not committed scripts.
+
+## Reproduction scenario
+
+On a macOS host with system bash 3.2.57 and **no `jq` on PATH**, run any `/design` flow that reaches the Step 4b tail (`design-step3b-tail.sh`) with `skip_approve_requested` absent or false in `$DESIGN_TMPDIR/run-params.json`. The `elif command grep -Eq ...` probe exits 1 (no match), `set -e` fires, and the wrapper aborts before `design dialectic-gatec`.
+
+Minimal shape repro (from the #3935 investigation; macOS system bash only):
+
+```
+/bin/bash -c 'set -euo pipefail; if command grep -q nomatch /dev/null 2>/dev/null; then echo hit; fi; echo done'
+```
+
+On bash 3.2.57 `done` never prints; on bash 4+ it does. Not reproduced live in this run: the dev host has `jq`, so the fallback branch is unreachable here.
+
+## Expected behavior
+
+The jq-less fallback evaluates the grep probe as an ordinary `if`/`elif` condition: no match means `_skip_approve_requested_gatec` stays `false` and the script continues to the Gate C call.
+
+## Observed behavior
+
+Would-abort (latent): on bash 3.2.57 with jq absent, the script exits at line 154 with a non-zero status on the common no-match case. Nothing in CI or lint catches the pattern; the two prior incidents of this class (#3935 in `tally-plan-review.sh`, #3899 in `tally-code-votes.sh`) were found only by live-run stalls.
+
+## Root cause analysis
+
+Two layers:
+
+1. **Site defect.** `design-step3b-tail.sh:154` uses the exact shape `BASH_AUTHORING.md` §1 marks unsafe: "on macOS bash 3.2.57, `if command grep ...; then` triggers `set -e` when grep exits non-zero. For `if` probes, use `( command grep PATTERN FILE )`". The script declares `set -euo pipefail` at line 4. The #3935/#3899 fixes swept their own files but not this sibling (the file may postdate those sweeps).
+2. **Enforcement gap.** `lint-bash32` forbids feature tokens (associative arrays, namerefs, `mapfile`, case conversion, `&>>`, coprocs) but has no rule for `if`/`elif` `command grep`. `lint-bare-grep-probe` covers orchestrator-facing Markdown fences, not committed scripts. So the class has no mechanical backstop.
+
+The harness sites (`test-lint-awk-multibyte-regex.sh:58` `if ! command grep -Fq ...`, `:87` `if command grep -Fq ...`) are stated with lower confidence: the file toggles `set -e` inside its assert helpers, and whether the negated `if !` form triggers the 3.2 divergence needs a repro.
+
+## Evidence
+
+- `skills/design/scripts/design-step3b-tail.sh:4` — `set -euo pipefail`; `:154` — `elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then` (verified at HEAD `9db723ca2`).
+- `scripts/test-lint-awk-multibyte-regex.sh:4` — `set -euo pipefail`; `:58` and `:87` — `if [!] command grep -Fq ...` sites (same file toggles `set -e` around the assert loop; reachability unconfirmed).
+- `grep -n "grep" scripts/lint-bash32.sh` returns no rule for this shape (probe run at HEAD `9db723ca2`).
+- `BASH_AUTHORING.md` §1 documents the hazard and the sanctioned `( command grep ... )` form.
+- Prior incidents of the identical class: #3935 (`tally-plan-review.sh:512`, plan-review tally crash), #3899 (`tally-code-votes.sh:579`, round-failed-unknown stalls).
+- Surfaced by the `/learn-from-bugs` mining run recorded in #6470 (section 7, item 1).
+
+## Affected files
+
+- `skills/design/scripts/design-step3b-tail.sh` — the live defect site (jq-less Gate C fallback).
+- `scripts/test-lint-awk-multibyte-regex.sh` — two suspect sibling sites in the regression harness.
+- `scripts/lint-bash32.sh` (or a new sibling script lint) — home for the mechanical rule.
+- `BASH_AUTHORING.md` — already documents the hazard; may gain a pointer to the new lint.
+
+## Suggested fix(es)
+
+1. Rewrite `design-step3b-tail.sh:154` to the sanctioned subshell form: `elif ( command grep -Eq '...' "$DESIGN_TMPDIR/run-params.json" ) 2>/dev/null; then`. Apply the same form to the two `test-lint-awk-multibyte-regex.sh` sites if the bash-3.2 repro confirms them (or unconditionally, since the subshell form is safe on both shells and costs one fork).
+2. Extend `lint-bash32` (or add a sibling committed-script lint) to flag `if command grep`, `elif command grep`, and `if ! command grep` (grep-family: `grep`, `egrep`, `fgrep`, `rg`) in committed shell scripts, with the standard `# lint-bash32: ok <reason>` suppression and a regression fixture covering the `elif` and negated forms.
+
+## Open questions
+
+1. Does the negated `if ! command grep` form trigger the 3.2 divergence, or only the plain form? (Determines whether the harness sites are real.)
+2. Is `set -e` actually live at `test-lint-awk-multibyte-regex.sh:58`/`:87` given the file's `set +e`/`set -e` toggling?
+3. Lint home: extend `lint-bash32` versus a new `lint-command-grep-in-if` script lint; the fix owner should match whichever keeps the suppression-pragma story consistent.
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Fix the live bash 3.2 defect in `design-step3b-tail.sh:154` by using the sanctioned `( command grep ... )` subshell form.
+- Add a lint rule to `lint-bash32.sh` that flags `if`/`elif` `command grep` (and grep-family variants) in committed shell scripts.
+- Add regression fixtures to `test-lint-bash32.sh` covering the new rule.
+
+### Non-goals
+- Do not change the jq path; only the fallback `elif` branch needs fixing.
+- Do not add a new standalone lint script; extend the existing `lint-bash32.sh`.
+- Do not fix the `test-lint-awk-multibyte-regex.sh` sites as bugs (they run under `set +e`); fix unconditionally for consistency.
+
+### Approach sketch
+- Rewrite `design-step3b-tail.sh:154` from `elif command grep -Eq '...'` to `elif ( command grep -Eq '...' ... ) 2>/dev/null;`.
+- Add an awk pattern to `lint-bash32.sh` that flags `if command grep`, `elif command grep`, `if ! command grep`, and grep-family equivalents; suppress with `# lint-bash32: ok`.
+- Add positive and negative test cases to `test-lint-bash32.sh`.
+- Optionally update `BASH_AUTHORING.md` with a pointer to the new lint rule.
+
+### Surfaces in scope
+- `skills/design/scripts/design-step3b-tail.sh` (line ~154)
+- `scripts/lint-bash32.sh` (new awk rule in `scan_file`)
+- `scripts/test-lint-bash32.sh` (new regression cases)
+- `scripts/test-lint-awk-multibyte-regex.sh` (unconditional cleanup)
+- `BASH_AUTHORING.md` (optional lint pointer)
+
+### Open questions
+- None.

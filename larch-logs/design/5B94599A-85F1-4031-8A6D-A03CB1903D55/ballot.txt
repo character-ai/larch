@@ -1,0 +1,35 @@
+### FINDING_1: awk matcher must anchor real condition starts and include `elif`
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: The planned `lint-bash32` awk pattern is both incomplete and over-broad: it can miss the live `elif command grep` defect, and it can also false-flag quoted fixture/label text that merely contains `if command grep`. The matcher needs statement-start anchoring and `elif` coverage so it catches the real shell probe shape without matching harness prose.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Cursor-Arch: Anchor at line start with `^[[:space:]]*(if|elif)[[:space:]]+(![[:space:]]+)?command[[:space:]]+(grep|egrep|fgrep|rg|ripgrep)` (POSIX-awk boundaries), keep the `!/\([[:space:]]*command/` guard, and assert the rule text against an `elif command grep` fixture
+  - From Cursor-Arch: Require the conditional keyword at line start (after whitespace): `^[[:space:]]*(if|elif)...` rather than any inline ` if ` token; keep piped and `( command ... )` negatives; add a regression fixture modeled on the bare-grep-probe assert label line to prove it stays clean
+  - From Codex-Arch: Tighten the plan to require matching only real condition starts, for example line start or shell separators before `if`/`elif`, optional `!`, then `command <grep-family>`, and add an existing-fixture negative case or suppress only real committed fixture lines that remain unavoidable.
+  - From Cursor-Pragmatic: Extend the matcher to `(^|[;{&|])[ \t]*(if|elif)([ \t]+![ \t]+|[ \t]+)command[ \t]+(grep|egrep|fgrep|rg|ripgrep)` (keep the `!/\([ \t]*command/` guard). Add a failing `elif command grep` fixture to `scripts/test-lint-bash32.sh`
+  - From Cursor-Pragmatic: Anchor probes to statement starts only: `(^|[;{&|])[ \t]*(if|elif)...`, not bare ` if ` anywhere on the line. Re-run `make lint-bash32` against `scripts/test-lint-bare-grep-probe.sh` before merge
+  - From Cursor-Requirements: Replace the sample with a pattern that includes `elif`, e.g. match `^[[:space:]]*(if|elif)[[:space:]]+(![[:space:]]+)?command[[:space:]]+(grep|egrep|fgrep|rg|ripgrep)` plus a same-line `;[[:space:]]*(if|elif)` branch if needed, still with `&& !/\([[:space:]]*command/`
+  - From Cursor-Requirements: Anchor on statement-leading `if`/`elif` only (`^[[:space:]]*(if|elif)[[:space:]]+...`) or match the existing lint-bash32 boundary style without matching inside quoted strings; add an explicit `make lint-bash32` / test-lint-bare-grep-probe pass to the testing strategy if suppressions are unavoidable
+
+### FINDING_2: residual-bash-paths row should preserve alphabetical manifest order
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Concern**: The new `skills/design/scripts/design-step3b-tail.sh` row in `scripts/residual-bash-paths.txt` should be inserted before `skills/design/scripts/design-step5.sh` so the manifest stays in its existing alphabetical block; placing it later would make the coverage update easier to misread.
+- **Suggested revisions (informational for voters; coder decides)**:
+
+### FINDING_3: pre-commit hook files filter must include the live design script
+- **Reviewer(s)**: anonymous
+- **Severity**: major
+- **Concern**: Adding the live script to `scripts/residual-bash-paths.txt` alone does not make `lint-bash32` run for it in pre-commit/CI, because the hook's `files` allowlist still excludes `skills/design/scripts/design-step3b-tail.sh`.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From Codex-Innovation: Add `skills/design/scripts/design-step3b-tail.sh` to the `lint-bash32` hook `files` regex, near the other `skills/design/scripts/design-step*.sh` entries.
+  - From Codex-Pragmatic: Add a firm UPDATED section for .pre-commit-config.yaml and insert skills/design/scripts/design-step3b-tail.sh into the lint-bash32 hook files block; include a focused pre-commit run for that path in validation
+  - From Codex-Requirements: Add `.pre-commit-config.yaml` as a firm update and include `skills/design/scripts/design-step3b-tail.sh` in the `lint-bash32` hook `files` regex; validate the hook against that path.
+
+### FINDING_4:
+- **Reviewer(s)**: anonymous
+- **Severity**: minor
+- **Focus area**: correctness
+- **Location**: scripts/test-lint-bash32.sh
+- **Concern**: [SCOPE-REDUCTION] Drop firm subshell rewrite of scripts/test-lint-awk-multibyte-regex.sh. Scenario: The plan admits lines 58 and 87 run under `set +e` and are not known bash 3.2 abort sites. Converting them is consistency-only churn once the lint exists. After the lint rule, satisfy CI with two `# lint-bash32: ok harness uses set +e` suppressions on those lines instead of an UPDATED harness file; keep the live tail fix, residual manifest entry, lint rule, and bash32 tests as the firm deliverables.
+- **Proposed resolution**:

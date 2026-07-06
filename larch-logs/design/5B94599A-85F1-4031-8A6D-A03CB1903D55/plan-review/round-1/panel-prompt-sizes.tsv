@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	25644	6411	13345	3337	12299	3075		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	19860	4965	13057	3265	6803	1701		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	25635	6409	13336	3334	12299	3075		0	0
+design Step 3	phase1	1	dyn-codex-plan-bash32-portability	plan-review	codex	dyn-codex-plan-bash32-portability.txt	20209	5053	12923	3231	7286	1822		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	25657	6415	13358	3340	12299	3075		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	25659	6415	13360	3340	12299	3075		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	19875	4969	13072	3268	6803	1701		0	0
+design Step 3	phase1	1	dyn-cursor-plan-bash32-portability	plan-review	cursor	dyn-cursor-plan-bash32-portability.txt	25993	6499	13211	3303	12782	3196		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	19873	4969	13070	3268	6803	1701		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	19851	4963	13048	3262	6803	1701		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	25682	6421	4487	1122	21195	5299	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	17393	4349	8926	2232	8467	2117		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	17393	4349	8926	2232	8467	2117		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	17393	4349	8926	2232	8467	2117		0	0

@@ -1,0 +1,7 @@
+{
+  "command_signature": "/opt/homebrew/Cellar/python@3.11/3.11.11/Frameworks/Python.framework/Versions/3.11/Resources/Python.app/Contents/MacOS/Python <OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.5.0/python/cli.py plan-review run --design-tmpdir <TMPDIR> --mode loop --starting-round 1 --new-process-group --orphan-timeout-s 7200",
+  "expected_signature": "plan-review run",
+  "pgid": 32901,
+  "pid": 32901,
+  "start_time": "Mon Jul 6 00:29:14 2026"
+}
