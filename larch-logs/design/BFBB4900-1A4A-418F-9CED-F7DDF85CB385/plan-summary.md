@@ -1,0 +1,1 @@
+Retire `.claude/rules/` by deleting all 19 rule files, moving only unresolved guidance to controlled docs or guidelines, and updating lints, tests, generators, docs, and generated agent prompts so no runtime or prose surface still depends on path-triggered rules.

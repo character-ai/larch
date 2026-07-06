@@ -1,0 +1,8 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- out-of-scope for this plan; learn-from-bugs can keep an empty rules bucket after deletion, and the coverage-index contract cleanup is a follow-on issue.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the prior-round G-Sec-3 pointer issue; the plan already removes the rule citation, so the extra replacement requirement is optional.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- MD38 is already named in docs/linting.md; adding another reminder is a doc polish follow-up, not required to ship the rule migration.
+OOS_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the same gh-body-pointer concern already raised in the main findings; keep it as a follow-up, not an added OOS acceptance.
+OOS_2: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- stale path in python/README.md is a docs cleanup, not a functional regression from deleting .claude/rules.
+OOS_3: NO CORRECTNESS=true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- duplicate of the G-Sec-3 pointer concern; it is real but not necessary to ship the deletion plan.

@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	35017	8755	13362	3341	21655	5414		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	17811	4453	13074	3269	4737	1185		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	17826	4457	13089	3273	4737	1185		0	0
+design Step 3	phase1	1	dyn-codex-plan-rule-retirement-sweep	plan-review	codex	dyn-codex-plan-rule-retirement-sweep.txt	18107	4527	12940	3235	5167	1292		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	35030	8758	13375	3344	21655	5414		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	35008	8752	13353	3339	21655	5414		0	0
+design Step 3	phase1	1	dyn-cursor-plan-rule-retirement-sweep	plan-review	cursor	dyn-cursor-plan-rule-retirement-sweep.txt	35313	8829	13228	3307	22085	5522		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	17824	4456	13087	3272	4737	1185		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	17802	4451	13065	3267	4737	1185		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	35032	8758	13377	3345	21655	5414		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	38751	9688	4643	1161	34108	8527	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	15782	3946	8940	2235	6842	1711		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	15782	3946	8940	2235	6842	1711		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	15782	3946	8940	2235	6842	1711		0	0

@@ -1,0 +1,461 @@
+## Plan
+
+## Approach
+
+Use the approved outline and round-1 constraints as scope:
+
+- Do not add new `AGENTS.md` rule content. Only remove stale rule references there.
+- Do not add `ARCHITECTURAL_INVARIANTS.md` entries.
+- Delete mechanically enforced rules without duplicating prose.
+- Put the slim `gh --body` / `--notes` authoring guidance in `BASH_AUTHORING.md`.
+- Keep the existing Python `gh-body-inline` lint. Do not add a Bash shim.
+
+Sequence:
+
+1. Convert topology coverage away from `.claude/rules/topology-generation.md`.
+2. Remove `.claude/rules` from lint scan scopes and token accounting.
+3. Move only needed residual guidance to controlled destinations.
+4. Delete all rule files.
+5. Sweep docs, generated prompts, skills, tests, and pre-commit config for `.claude/rules` references.
+6. Run focused lint and harness tests.
+
+## Files to modify/create
+
+### UPDATED: python/larch/lint/check_topology_rule_paths.py
+
+Retain the existing CLI verb for compatibility, but remove `RULE_PATH`, frontmatter parsing, and rule-file reads.
+
+Make the lint validate `skills/shared/topology.tsv` directly:
+
+- Keep TSV row count, CRLF, four-column, repo-relative path, symlink-containment, and empty-data checks.
+- Add or reuse checks already enforced by the topology generator where practical: runtime authority exists, is a regular file, and contains the row value.
+- Gate the tracked-by-git assertion on `lint_common.git_rooted(repo_root)`: skip it when running with an isolated `--root` fixture tree; keep it for the live checkout smoke. This prevents fixture failures when the temp root is not a git repo.
+- Keep `--root` fixture support.
+- Update diagnostics so they name `skills/shared/topology.tsv`, not `.claude/rules/topology-generation.md`.
+
+### UPDATED: python/check_topology_rule_paths.md
+
+Rewrite the contract from "TSV authorities must appear in rule frontmatter paths" to "TSV runtime authorities are self-contained and valid."
+
+Document:
+
+- The command name stays `lint topology-rule-paths` for compatibility.
+- The TSV is the source of truth.
+- The rule frontmatter parser no longer exists.
+- Fixture contract: each fixture creates a temp root, writes `skills/shared/topology.tsv`, writes the referenced authority files (containing the row value), and optionally runs `git init && git add` when testing tracked-by-git behavior. The tracked-by-git check is skipped when `--root` points at a non-git tree.
+- Real-registry smoke runs without `--root` against the live checkout so git-tracking assertions execute.
+
+### UPDATED: scripts/test-check-topology-rule-paths.sh
+
+Rework fixtures to stop creating `.claude/rules/topology-generation.md`.
+
+Replace rule-frontmatter cases with TSV-authority cases:
+
+- Happy path with an authority file that exists and contains the row value.
+- Missing authority file (non-git fixture root: no tracked-by-git check).
+- Authority file exists but does not contain the row value.
+- Untracked authority file in a git-init fixture (the git-tracking check fires and fails).
+- Symlink escape still fails.
+- TSV path grammar failures still fail.
+- Empty TSV still fails.
+- Real-registry smoke still passes (git-tracking check is active on the live checkout).
+
+Keep the current command shape and non-root cwd smoke.
+
+### UPDATED: scripts/test-check-topology-rule-paths.md
+
+Update fixture and coverage prose to remove `.claude/rules/topology-generation.md`.
+
+### UPDATED: .pre-commit-config.yaml
+
+Update `check-topology-rule-paths` trigger files:
+- Replace the stale `python/check_topology_rule_paths.py` path with `python/larch/lint/check_topology_rule_paths.py`.
+- Replace the stale `python/check_topology_rule_paths.md` path with `python/check_topology_rule_paths.md` if present, or drop it; keep `skills/shared/topology.tsv`.
+- Remove `.claude/rules/topology-generation.md`.
+- Remove `.claude/rules/.*.md` from the `agnix` file scope.
+
+### UPDATED: python/larch/lint/lint_codex_exec_auth.py
+
+Remove `.claude/rules/*.md` from markdown enumeration in both git and find-fallback branches.
+
+### UPDATED: python/tests/lint/test_lint_codex_exec_auth.py
+
+Add or update coverage so `.claude/skills/**/*.md` is still scanned and `.claude/rules/*.md` is no longer part of the expected scan scope.
+
+### UPDATED: python/larch/report/tokens.py
+
+Remove the `.claude/rules/*.md` tier classification branch.
+
+If tests assert tier labels, update them to reflect that deleted rules no longer contribute a token-cost line.
+
+### UPDATED: BASH_AUTHORING.md
+
+Add a short section for GitHub CLI body-like payloads.
+
+Keep it slim:
+
+- Use `--body-file` / `--notes-file`.
+- Avoid inline `--body` / `--notes`.
+- Use `python3 python/cli.py pr create` for PR creation.
+- Redact dynamic public-boundary body content before writing the file when the caller does not already do so.
+
+Do not copy the whole old rule.
+
+### UPDATED: ARCHITECTURAL_GUIDELINES.md
+
+Remove direct `.claude/rules/...` citations from existing entries.
+
+Add concise guideline entries only for residual, non-mechanical guidance that is not already covered:
+
+- Skill runtime root paths: public skills use `${CLAUDE_PLUGIN_ROOT}/...`; dev-only `.claude/skills/...` may use `$PWD/...`.
+- Python test monkeypatch callables: prefer typed helpers for `monkeypatch.setattr` callables with parameters; use narrow pyright suppressions only when needed.
+- Version bumps: release-owned version changes must use the release flow, and its reserved commit-message shape must not be reused manually.
+- Skill editing trace: when editing a skill, start at the skill `SKILL.md`, trace local scripts and shared helpers, and inspect `scripts/test-implement-fence-shape.sh` when `skills/implement/SKILL.md` Bash fences change.
+
+Do not add invariant entries.
+
+### UPDATED: scripts/deny-edit-write.md
+
+Fold in the small amount of hook-coupling prose not already present if needed.
+
+Keep it focused on the existing mechanical contract: `/research` and `/bug` matchers, activation token prefixes, `/tmp` containment, and harness sync.
+
+### MAY_UPDATE: SECURITY.md
+
+Update only if the `deny-edit-write` or `gh` public-boundary prose changes security-relevant behavior or leaves a stale reference.
+
+Expected change is small or no-op because the current file already documents read-only hook coupling and outbound redaction.
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+Keep the existing "Update triggers" section as the reviewer-archetype destination.
+
+Add only missing old-rule details if needed:
+
+- Generated reviewers come from `skills/shared/reviewer-templates.md` and `scripts/generators.tsv`.
+- Hand-maintained specialist variants are edited directly.
+- `generate pre-rendered-reviewer-prompts` keeps pre-rendered prompts in sync.
+
+### UPDATED: python/larch/report/timing.py
+
+Add a short comment near `TIMING_TASK_KINDS_ALLOWED` that it is the canonical allow-list for `--timing-task-kind`.
+
+No behavior change unless a test exposes missing validation.
+
+### UPDATED: scripts/test-design-structure.sh
+
+Add or confirm structural pins that enforce the allow-list maintenance requirement:
+
+- **Reconcile first**: before enabling the pin, enumerate all existing literal `--timing-task-kind <value>` call sites in the scan scope, compare against `TIMING_TASK_KINDS_ALLOWED` in `python/larch/report/timing.py`, and add any missing kinds (or fix stale literals at their call sites) so the harness starts green.
+- **Scan scope** (matching the retired rule's coverage): `skills/*/SKILL.md`, `skills/*/references/*.md`, `skills/*/scripts/*.sh`, Python launcher modules that pass `--timing-task-kind`, and other tracked non-test surfaces that carry literal values. Do not restrict to `skills/*/SKILL.md` and `agents/` only.
+- Each pin must fail CI when a new `--timing-task-kind` literal appears in the scan scope without a matching entry in `TIMING_TASK_KINDS_ALLOWED`.
+- If existing pins already cover this scope, confirm they are comprehensive, reconcile any stale literals, and update comments that cited `.claude/rules`.
+
+### UPDATED: scripts/test-design-structure.md
+
+Remove `.claude/rules` phrasing if present. Describe the timing allow-list coverage as harness-owned.
+
+### UPDATED: scripts/lint-bare-grep-probe.sh
+
+Remove `.claude/rules/*.md` from the markdown scan scope and find fallback.
+
+Keep `skills/**/*.md` and `.claude/skills/**/*.md`.
+
+### UPDATED: scripts/test-lint-bare-grep-probe.sh
+
+Update the scan-scope test to cover `.claude/skills/` only, not `.claude/rules/`.
+
+### UPDATED: scripts/lint-bare-grep-probe.md
+
+Update the scope list to remove `.claude/rules/*.md`.
+
+### UPDATED: scripts/test-lint-bare-grep-probe.md
+
+Update expected scope prose and coverage bullets.
+
+### UPDATED: docs/linting.md
+
+Remove `.claude/rules` mentions from lint scope prose.
+
+Update `gh-body-inline` docs so the lint is the backstop, not a rule backstop.
+
+Update topology-rule-paths docs to describe TSV authority validation, not rule frontmatter coverage.
+
+### UPDATED: docs/preparing-your-repo.md
+
+Remove the recommendation to copy `.claude/rules/` as a path-triggered layer.
+
+Reframe the setup guide around controlled sources: root instruction files, architectural guidelines, hooks, lints, and tests.
+
+Update the starter kit table accordingly.
+
+### UPDATED: docs/skills.md
+
+Update `/learn-from-bugs` prose so existing coverage and best-home classification no longer propose `.claude/rules/`.
+
+Use current destinations: lint, hook, guideline, invariant, or issue.
+
+### UPDATED: README.md
+
+Update `/learn-from-bugs` summary to remove `.claude/rules/` from coverage mapping.
+
+### UPDATED: docs/python-migration.md
+
+Remove the stale link to `.claude/rules/python-first-scripts.md`.
+
+Keep `AGENTS.md` and the migration recipe as the sources of truth.
+
+### UPDATED: skills/learn-from-bugs/SKILL.md
+
+Update all steps to be consistent with the new coverage-index contract:
+
+- **Step 3** (read coverage index): read only `guidelines`, `invariants`, `python_lints`, and `script_lints` from `coverage-index.json`. Remove the `rules` field read. Hooks are not index-backed; state that hooks are checked by reading `hooks/hooks.json` and hook sibling docs directly.
+- **Step 4** (dedup): for guideline/invariant/lint dedup, use the indexed fields. For hooks, read `hooks/hooks.json` and sibling docs (e.g., `scripts/deny-edit-write.md`, `scripts/block-submodule-edit.md`) directly. Do not treat hooks as index-backed.
+- **Step 5** (follow-up gates): remove the option to draft `.claude/rules/*.md`. Best-home maps to: guideline, invariant, hook, Python lint, script lint, or new issue.
+- Remove all stale rule-era language throughout.
+
+### UPDATED: python/larch/issue/learn_from_bugs.py
+
+Remove the `rules` field from `CoverageIndex`, delete `_scan_rules` and `RULES_INDEXED`, and remove the `.claude/rules` scan loop. Align the coverage-index JSON shape and stats output with the new SKILL.md report schema (`guidelines`, `invariants`, `hooks`, `python_lints`, `script_lints`). Do not add a hook-scanning branch unless the updated schema explicitly includes hooks as a tracked field; if the SKILL.md schema maps hooks to dedup prose but not indexed counts, leave that field unindexed and document the gap.
+
+### UPDATED: python/tests/issue/test_learn_from_bugs.py
+
+Remove test assertions that check for the `rules` field, `RULES_INDEXED`, or `.claude/rules` scan behavior. Add assertions that confirm the new coverage-index shape matches the updated skill schema. Add a test for the removed `_scan_rules` path to confirm it no longer appears in the index output.
+
+### UPDATED: agents/_implementer-base.md
+
+Replace "read matching `.claude/rules/*.md`" with controlled-source guidance.
+
+Point implementers to `CLAUDE.md`, `AGENTS.md`, relevant `SKILL.md` or sibling `.md` contracts, `BASH_AUTHORING.md`, and `ARCHITECTURAL_GUIDELINES.md` through existing orchestrator flow.
+
+### UPDATED: agents/codex-implementer.md
+
+Regenerate from `agents/_implementer-base.md`.
+
+### UPDATED: agents/cursor-implementer.md
+
+
+### UPDATED: skills/design/SKILL.md
+
+Remove the plan-helper-contract citation to `${CLAUDE_PLUGIN_ROOT}/.claude/rules/script-md-siblings.md`.
+
+Point to the sibling `.md` convention directly, or to an existing controlled doc if nearby prose already names it.
+
+### UPDATED: skills/shared/skill-design-principles.md
+
+Remove `.claude/rules/script-md-siblings.md` citation.
+
+Keep the sibling `.md` convention as a direct convention or point to `AGENTS.md` only if it is already existing content, not new rule content.
+
+### UPDATED: skills/implement/references/codex-manifest-schema.md
+
+Replace `.claude/rules/external-tool-launcher-parity.md` citations with `G-Ext-1`, `G-Wire-1`, or local `step2-dispatch.md` wording.
+
+### UPDATED: skills/implement/references/step2-dispatch.md
+
+Remove any stale rule citations if present in nearby parity or generated-prompt prose.
+
+### UPDATED: skills/implement/scripts/hook-stop-fail-close.sh
+
+Replace the `.claude/rules/shell-strict-mode.md` comment with a direct note that strict mode is intentionally omitted for the hook contract, or cite `G-Bash-4`.
+
+### UPDATED: scripts/lint-harness-pytest-partition.md
+
+Replace the `.claude/rules/script-md-siblings.md` citation with direct sibling-contract prose.
+
+### UPDATED: scripts/block-submodule-edit.md
+
+Move the retained submodule workflow and detection contract from the deleted rule into this hook sibling doc:
+
+- Do not edit files inside a submodule directly; make the change via a PR in the submodule repo, then bump the superproject pin (`git add <submodule-path>` and commit).
+- Detection: the hook walks from the target file to the first containing git repo and verifies via `rev-parse --show-superproject-working-tree` that it is a submodule of the superproject; symlinks resolve before classification; `cd` into a submodule does not bypass the guard.
+
+Keep the existing hook-contract prose (`hooks/hooks.json`, `permissionDecision: deny`, `CLAUDE_PROJECT_DIR` anchoring).
+
+### UPDATED: scripts/test-block-submodule-edit.md
+
+
+### UPDATED: scripts/test-harness-shards-coverage.md
+
+
+### UPDATED: scripts/test-audit-edit-write.md
+
+
+### UPDATED: python/test_fixtures/plan-fidelity-calibration/plans/33A6D738-B665-43BE-B89E-EDA96E7C887E_FINDING_3.plan.txt
+
+Update stale fixture text only if tests grep it or reviewers consume it as current plan guidance.
+
+### UPDATED: python/test_fixtures/plan-fidelity-calibration/diffs/66A96EAD-3088-4750-AE3A-64A0E11EABBD_FINDING_10.diff
+
+
+### UPDATED: AGENTS.md
+
+Delete the Tier 1c load-semantics bullet.
+
+Remove the `.claude/rules/python-first-scripts.md` citation from the Python-first convention without adding new rule prose.
+
+### UPDATED: .claude/rules/drift-prone-prose-in-docs.md
+
+Delete the file.
+
+### UPDATED: .claude/rules/external-tool-launcher-parity.md
+
+
+### UPDATED: .claude/rules/gh-body-file.md
+
+
+### UPDATED: .claude/rules/launcher-argv-test-coverage.md
+
+
+### UPDATED: .claude/rules/markdown-no-space-in-code-span.md
+
+
+### UPDATED: .claude/rules/no-direct-submodule-edits.md
+
+
+### UPDATED: .claude/rules/python-first-scripts.md
+
+
+### UPDATED: .claude/rules/python-test-monkeypatch-lambdas.md
+
+
+### UPDATED: .claude/rules/research-readonly-hook-coupling.md
+
+
+### UPDATED: .claude/rules/reviewer-archetype-generation.md
+
+
+### UPDATED: .claude/rules/script-md-siblings.md
+
+
+### UPDATED: .claude/rules/shell-strict-mode.md
+
+
+### UPDATED: .claude/rules/skill-editing-trace.md
+
+
+### UPDATED: .claude/rules/skill-md-description-trigger.md
+
+
+### UPDATED: .claude/rules/skill-runtime-root-paths.md
+
+
+### UPDATED: .claude/rules/timing-task-kind-allowlist.md
+
+
+### UPDATED: .claude/rules/topology-generation.md
+
+
+### UPDATED: .claude/rules/verify-external-tool-invocations.md
+
+
+### UPDATED: .claude/rules/version-bump-reserved-message.md
+
+
+## Per-rule disposition checklist
+
+- `markdown-no-space-in-code-span`: delete only. `markdownlint` MD038 covers it.
+- `skill-md-description-trigger`: delete only. `agent-lint` S017 covers it.
+- `no-direct-submodule-edits`: delete after moving submodule workflow and detection contract to `scripts/block-submodule-edit.md`.
+- `python-first-scripts`: delete. Existing `AGENTS.md`, `docs/python-migration.md`, and residual-bash lint cover it.
+- `gh-body-file`: slim guidance to `BASH_AUTHORING.md`; mechanical enforcement stays in `python/larch/lint/lint_gh_body_inline.py`.
+- `research-readonly-hook-coupling`: keep in `scripts/deny-edit-write.md` and `SECURITY.md` only as needed.
+- `reviewer-archetype-generation`: keep in `skills/shared/reviewer-templates.md` and generator sync.
+- `topology-generation`: replace rule-frontmatter coupling with TSV validation and generator docs.
+- `timing-task-kind-allowlist`: keep in `TIMING_TASK_KINDS_ALLOWED` and `scripts/test-design-structure.sh`.
+- `drift-prone-prose-in-docs`: already covered by `G-Md-1` / `G-Md-2`; remove rule citation.
+- `verify-external-tool-invocations`: already covered by `G-Ext-1`.
+- `shell-strict-mode`: already covered by `G-Bash-4`.
+- `external-tool-launcher-parity`: fold residual principle into `G-Wire-1` / `G-Ext-1`; avoid copying path lists.
+- `launcher-argv-test-coverage`: fold residual principle into `G-Wire-1`; tests own concrete harness paths.
+- `script-md-siblings`: use direct sibling-contract prose where needed, not a rule citation.
+- `skill-runtime-root-paths`: add compact guideline entry.
+- `version-bump-reserved-message`: add compact guideline entry.
+- `python-test-monkeypatch-lambdas`: add compact guideline entry.
+- `skill-editing-trace`: add compact guideline entry.
+
+## Edge cases
+
+- Keep the `lint topology-rule-paths` command name unless all callers are renamed in the same change. Compatibility avoids a larger CLI migration.
+- Do not create `scripts/lint-gh-body-inline.sh`; the existing Python lint is the current implementation.
+- Do not add new `AGENTS.md` guidance. Round 1 explicitly disallows it as a routing destination for new content.
+- Do not add invariant entries. The outline marks them out of scope.
+- Generated files must be regenerated, not hand-edited.
+- If a stale `.claude/rules` mention appears only in historical run logs, leave it. Do not rewrite committed run history.
+- For plan-fidelity fixtures, update only current-test fixtures that are intended to reflect live guidance. Avoid broad fixture churn.
+
+## Failure modes
+
+- Deleting `.claude/rules/topology-generation.md` before the topology lint is repointed breaks pre-commit and CI.
+- Leaving `.claude/rules` in `lint_codex_exec_auth`, `lint-bare-grep-probe`, `agnix`, or token classification keeps dead scan paths and may fail on missing directories.
+- Duplicating mechanically enforced prose can reintroduce the dominated middle layer under another name. Keep moved prose minimal.
+- Missing generated prompt regeneration leaves `generate check` failing.
+- Updating `BASH_AUTHORING.md` without `docs/linting.md` can leave two conflicting sources for `gh --body` handling.
+- Removing `.claude/rules` from the learn-from-bugs taxonomy changes a user-facing report schema and the `CoverageIndex` JSON shape; update `python/larch/issue/learn_from_bugs.py`, `python/tests/issue/test_learn_from_bugs.py`, `skills/learn-from-bugs/SKILL.md`, README, and docs together.
+- Pre-commit hook triggers that still name the old lint module path (`python/check_topology_rule_paths.py`) will miss edits to the repointed implementation; replace with `python/larch/lint/check_topology_rule_paths.py`.
+
+## Testing strategy
+
+Focused tests:
+
+- `python3 python/cli.py lint topology-rule-paths`
+- `bash scripts/test-check-topology-rule-paths.sh`
+- `python3 -m pytest -q python/tests/lint/test_lint_codex_exec_auth.py`
+- `python3 -m pytest -q python/tests/lint/test_lint_gh_body_inline.py`
+- `python3 -m pytest -q python/tests/issue/test_learn_from_bugs.py`
+- `python3 python/cli.py lint codex-exec-auth`
+- `bash scripts/lint-bare-grep-probe.sh`
+- `bash scripts/test-lint-bare-grep-probe.sh`
+- `python3 python/cli.py lint gh-body-inline`
+- `python3 python/cli.py generate check`
+
+Docs and global sweeps:
+
+- `grep -R "\.claude/rules" -n . --exclude-dir=.git --exclude-dir=.ruff_cache --exclude-dir=__pycache__ --exclude-dir=larch-logs`
+- `make markdownlint`
+- `make agent-lint`
+- `make lint-skill-closure-growth` if skill or agent prompt text changes.
+- `make test-design-structure` to verify timing-task-kind structural pins pass (always run after this change).
+- `make test-prompt-template-invariants` if implementer prompts change.
+
+Final safety check:
+
+- `find .claude/rules -maxdepth 1 -type f -name '*.md'` should fail because the directory is gone, or print nothing if the directory is retained empty during an intermediate local step.
+- `git status --short` should show no `.claude/rules/*.md` files left except deletions.
+
+## Acceptance
+
+Focused tests:
+
+- `python3 python/cli.py lint topology-rule-paths`
+- `bash scripts/test-check-topology-rule-paths.sh`
+- `python3 -m pytest -q python/tests/lint/test_lint_codex_exec_auth.py`
+- `python3 -m pytest -q python/tests/lint/test_lint_gh_body_inline.py`
+- `python3 -m pytest -q python/tests/issue/test_learn_from_bugs.py`
+- `python3 python/cli.py lint codex-exec-auth`
+- `bash scripts/lint-bare-grep-probe.sh`
+- `bash scripts/test-lint-bare-grep-probe.sh`
+- `python3 python/cli.py lint gh-body-inline`
+- `python3 python/cli.py generate check`
+
+Docs and global sweeps:
+
+- `grep -R "\.claude/rules" -n . --exclude-dir=.git --exclude-dir=.ruff_cache --exclude-dir=__pycache__ --exclude-dir=larch-logs`
+- `make markdownlint`
+- `make agent-lint`
+- `make lint-skill-closure-growth` if skill or agent prompt text changes.
+- `make test-design-structure` to verify timing-task-kind structural pins pass (always run after this change).
+- `make test-prompt-template-invariants` if implementer prompts change.
+
+Final safety check:
+
+- `find .claude/rules -maxdepth 1 -type f -name '*.md'` should fail because the directory is gone, or print nothing if the directory is retained empty during an intermediate local step.
+- `git status --short` should show no `.claude/rules/*.md` files left except deletions.
+
+review_status: complete
+rounds_completed: 2
+difficulty: HARD
+diff_added: 360
+diff_deleted: 620
+mechanical_churn: true
+diff_lines: 980

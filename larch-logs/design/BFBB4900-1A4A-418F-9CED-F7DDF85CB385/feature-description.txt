@@ -1,0 +1,65 @@
+# Eliminate .claude/rules/: route each rule to a hook, lint, guideline, or invariant, then delete the directory
+
+## Problem and justification
+
+`.claude/rules/*.md` are path-triggered reminders. The Claude Code harness injects a rule's body into context whenever a read or edited file matches the rule's `paths:` glob. They are a dominated middle layer, worth removing:
+
+- **Uncontrolled timing.** The harness decides when a rule fires, keyed on file globs. We cannot. `ARCHITECTURAL_GUIDELINES.md` and `ARCHITECTURAL_INVARIANTS.md` are the opposite: skills read them at fixed points (`/design` drafting and Gate C, `/implement` Step 8 compose), so we control exactly when and to whom they load.
+- **Fire on read/write only, never in review.** A rule nudges the agent editing a matching file. It never enters the `/design` or `/implement` review lens. So the guidance reaches authoring but not assessment.
+- **Repeated, expensive injection.** Broad globs re-inject on nearly every file operation. `no-direct-submodule-edits` uses `paths: ["**/*"]`; `markdown-no-space-in-code-span` uses `["**/*.md"]`. Observed live: reading those files re-injects their full bodies. `python/larch/report/tokens.py` already special-cases `.claude/rules/*.md` as a token-cost line, so the cost was real enough to instrument.
+- **No enforcement value.** A rule only injects text. It never gates a tool call. Anything mechanical is better as a hook or lint, which actually blocks, at commit time. Anything judgment is better in a guideline or invariant read at a controlled point.
+
+Goal: route every rule's content to its correct home, then delete `.claude/rules/`. Enforcement (hooks, lints, tests) stays intact. Only the prose moves.
+
+## Prerequisite (do first, or the build breaks)
+
+`python/larch/lint/check_topology_rule_paths.py` reads `.claude/rules/topology-generation.md` as its source of truth (`RULE_PATH`). Repoint it to `skills/shared/topology.tsv` (or inline the list) BEFORE deleting that rule. Also drop the `.claude/rules/*.md` glob from `python/larch/lint/lint_codex_exec_auth.py` and the accounting branch in `python/larch/report/tokens.py`.
+
+## Disposition per rule
+
+Route each rule by its backing. Destinations: a mechanism doc (hook or lint sibling `.md`, `AGENTS.md`, `SECURITY.md`), a `G-*` guideline entry, or an `I-*` invariant entry.
+
+**Hook-backed** (enforcement stays; move prose to the hook doc):
+
+- `no-direct-submodule-edits` -> `scripts/block-submodule-edit.sh`; `AGENTS.md` already cites it.
+- `research-readonly-hook-coupling` -> `scripts/deny-edit-write.sh`; `SECURITY.md` already frames it.
+
+**Lint or test-backed** (enforcement stays; move prose to the mechanism doc):
+
+- `markdown-no-space-in-code-span` -> markdownlint MD038.
+- `skill-md-description-trigger` -> agent-lint S017.
+- `topology-generation` -> `check_topology_rule_paths.py` (after the repoint above).
+- `timing-task-kind-allowlist` -> `test-design-structure.sh`.
+- `gh-body-file` -> `lint gh-body-inline`.
+- `launcher-argv-test-coverage`, `external-tool-launcher-parity` -> the launcher harnesses; the principle folds into `G-Wire-1`.
+- `python-first-scripts` -> residual-bash lint plus `AGENTS.md` Conventions.
+- `reviewer-archetype-generation` -> the generator (`scripts/generators.tsv`, rendering).
+- `script-md-siblings` -> `AGENTS.md` repo convention.
+
+**Already twinned in GUIDELINES** (delete the rule; the review lens covers it):
+
+- `drift-prone-prose-in-docs` -> `G-Md-1`.
+- `verify-external-tool-invocations` -> `G-Ext-1`.
+- `shell-strict-mode` -> `G-Bash-4`.
+
+**Advisory, deterministic** (graduate to a lint per `G-Enf-1`, then delete): `skill-runtime-root-paths`, `version-bump-reserved-message`, `python-test-monkeypatch-lambdas`.
+
+**Advisory, judgment** (fold into `AGENTS.md` or a `G-*` / `I-*` entry): `skill-editing-trace`.
+
+Decide guideline vs. invariant per entry: an absolute constraint with no "deviate when" becomes an `I-*` entry; a judgment-tier one becomes `G-*`. This is the per-rule sort that #6471 asked for.
+
+## Cleanup after routing
+
+- Delete `.claude/rules/`.
+- Remove the "Tier 1c: path-triggered Claude Code rules" bullet from `AGENTS.md` Load Semantics.
+- Drop the `.claude/rules` scan-scope mentions in `docs/linting.md`.
+- Remove in-text rule citations in `ARCHITECTURAL_GUIDELINES.md` (`G-Md-1`, `G-Sec-3`) and any other prose.
+
+## Dependencies
+
+Routing hard-constraint rules into `ARCHITECTURAL_INVARIANTS.md` needs that file wired first. Sequence this migration after #6476 (wire `ARCHITECTURAL_INVARIANTS.md` to mirror `ARCHITECTURAL_GUIDELINES.md`).
+
+## Related
+
+- Supersedes #6471 (same intent; this issue adds the per-rule disposition, the build-breaking prerequisite, and the justification).
+- Depends on #6476.
