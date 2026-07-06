@@ -151,7 +151,7 @@ if command -v jq >/dev/null 2>&1; then
   case "$(jq -r '.skip_approve_requested // false' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null)" in
     true) _skip_approve_requested_gatec=true ;;
   esac
-elif command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" 2>/dev/null; then
+elif ( command grep -Eq '"skip_approve_requested"[[:space:]]*:[[:space:]]*true([,}[:space:]]|$)' "$DESIGN_TMPDIR/run-params.json" ) 2>/dev/null; then
   _skip_approve_requested_gatec=true
 fi
 

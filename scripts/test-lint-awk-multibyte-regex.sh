@@ -55,7 +55,7 @@ assert_case() {
         return 0
     fi
     for needle in "$@"; do
-        if ! command grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
+        if ! ( command grep -Fq "$needle" "$stderr_file" ) 2>/dev/null; then
             printf 'FAIL [%s]: stderr missing expected needle: %s\n' "$label" "$needle" >&2
             command grep -F . "$stderr_file" 2>/dev/null >&2 || true
             FAIL=$((FAIL + 1))
@@ -84,7 +84,7 @@ assert_negative() {
         return 0
     fi
     for needle in "$@"; do
-        if command grep -Fq "$needle" "$stderr_file" 2>/dev/null; then
+        if ( command grep -Fq "$needle" "$stderr_file" ) 2>/dev/null; then
             printf 'FAIL [%s]: stderr unexpectedly contains: %s\n' "$label" "$needle" >&2
             command grep -F . "$stderr_file" 2>/dev/null >&2 || true
             FAIL=$((FAIL + 1))
