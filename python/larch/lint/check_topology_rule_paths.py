@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import argparse
-import subprocess
 import sys
+import subprocess
+
 from pathlib import Path
+
+from larch.core.proc import Runner
 from typing import NoReturn
 
 from larch.lint import lint_common
@@ -56,7 +59,7 @@ def validate_repo_path(*, row: int, path: str, repo_root: Path, repo_root_resolv
 
 
 def _check_git_tracked(*, row: int, path: str, repo_root: Path) -> None:
-    proc = subprocess.run(
+        proc = Runner().run(
         [lint_common.GIT, "-C", str(repo_root), "ls-files", "--error-unmatch", "--", path],
         check=False,
         stdout=subprocess.DEVNULL,
