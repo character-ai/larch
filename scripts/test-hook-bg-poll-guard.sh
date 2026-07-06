@@ -180,8 +180,8 @@ watcher_cmd="while [ ! -f .step3-review-result.env ]; do sleep 5; $design_tmpdir
 out=$(run_payload "$(payload_bash "$watcher_cmd")")
 assert_deny "$out" 'live marker plus watcher loop denies' "$EXPECTED_STEP"
 
-out=$(run_payload "$(payload_read 'tasks/foo.output')")
-assert_deny "$out" 'live marker plus Read tasks/foo.output denies' "$EXPECTED_STEP"
+out=$(run_payload "$(payload_read 'tasks/foo.output' "$REPO_ROOT")")
+assert_allow "$out" 'live marker plus Read tasks/foo.output allows classification'
 
 out=$(run_payload "$(payload_bash "\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh")")
 assert_allow "$out" 'wrapper-routed design-run call allows'
@@ -970,7 +970,7 @@ assert_deny "$out" '#6108: same-clone keepalive still denies Monitor from a repo
 out=$(run_payload_auto_markers "$(payload_taskoutput "$CWD_OWN_SUB")")
 assert_deny "$out" '#6108: same-clone keepalive still denies TaskOutput from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_read 'tasks/foo.output' "$CWD_OWN_SUB")")
-assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Read from a repo subdirectory cwd' "$EXPECTED_STEP"
+assert_allow "$out" '#6108: same-clone keepalive allows tasks/*.output Read classification from a repo subdirectory cwd'
 out=$(run_payload_auto_markers "$(payload_bash 'cat tasks/foo.output' "$CWD_OWN_SUB")")
 assert_deny "$out" '#6108: same-clone keepalive still denies tasks/*.output Bash from a repo subdirectory cwd' "$EXPECTED_STEP"
 out=$(run_payload_auto_markers "$(payload_read "$D_OWN/plan-review/ballot.txt" "$CWD_OWN")")
