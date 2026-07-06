@@ -613,7 +613,7 @@ repos:
         entry: python3 python/cli.py lint topology-rule-paths
         language: system
         pass_filenames: false
-        files: ^(skills/shared/topology\.tsv|\.claude/rules/topology-generation\.md|python/check_topology_rule_paths\.py)$
+        files: ^(skills/shared/topology\.tsv|python/larch/lint/check_topology_rule_paths\.py|python/check_topology_rule_paths\.md)$
 
   - repo: local
     hooks:
@@ -734,7 +734,6 @@ repos:
             .*AGENTS\.md|
             agents/.*\.md|
             \.claude/agents/.*\.md|
-            \.claude/rules/.*\.md|
             \.claude/settings\.json|
             \.claude/settings\.local\.json|
             hooks/hooks\.json|

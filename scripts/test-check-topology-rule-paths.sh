@@ -85,7 +85,7 @@ assert_abs_success() {
 new_fixture() {
   local name="$1"
   local dir="$TMP_ROOT/$name"
-  mkdir -p "$dir/skills/shared" "$dir/.claude/rules"
+  mkdir -p "$dir/skills/shared"
   printf '%s\n' "$dir"
 }
 
@@ -95,93 +95,66 @@ write_tsv() {
   printf '%b' "$body" >"$dir/skills/shared/topology.tsv"
 }
 
-write_rule_flow() {
-  local dir="$1"
-  shift
-  {
-    printf '%s\n' '---'
-    printf 'paths: ['
-    local sep=""
-    local path
-    for path in "$@"; do
-      printf '%s"%s"' "$sep" "$path"
-      sep=", "
-    done
-    printf ']\n'
-    printf '%s\n' '---' '# Topology Generation'
-  } >"$dir/.claude/rules/topology-generation.md"
-}
-
-write_rule_block() {
-  local dir="$1"
-  shift
-  {
-    printf '%s\n' '---'
-    printf '%s\n' 'paths:'
-    local path
-    for path in "$@"; do
-      printf '  - "%s"\n' "$path"
-    done
-    printf '%s\n' '---' '# Topology Generation'
-  } >"$dir/.claude/rules/topology-generation.md"
-}
-
 write_valid_tsv() {
   local dir="$1"
-  local authority="$2"
-  printf 'key\tvalue\tcomposition\t%s\n' "$authority" >"$dir/skills/shared/topology.tsv"
+  local value="$2"
+  local authority="$3"
+  printf 'key\t%s\tcomposition\t%s\n' "$value" "$authority" >"$dir/skills/shared/topology.tsv"
 }
 
-# a. Happy path.
+write_authority() {
+  local dir="$1"
+  local authority="$2"
+  local body="$3"
+  mkdir -p "$(dirname "$dir/$authority")"
+  printf '%s\n' "$body" >"$dir/$authority"
+}
+
+# a. Happy path with a non-git fixture root.
 dir="$(new_fixture happy)"
-write_valid_tsv "$dir" "skills/foo.md"
-write_rule_flow "$dir" "skills/foo.md"
+write_valid_tsv "$dir" "needle" "skills/foo.md"
+write_authority "$dir" "skills/foo.md" "contains needle"
 assert_success "happy path" "$dir"
 
-# b. Missing-authority failure.
-dir="$(new_fixture missing-authority)"
-write_valid_tsv "$dir" "skills/foo.md"
-write_rule_flow "$dir" "skills/bar.md"
-assert_failure_contains "missing authority" "$dir" "skills/foo.md"
+# b. Missing authority file fails in a non-git fixture root.
+dir="$(new_fixture missing-authority-file)"
+write_valid_tsv "$dir" "needle" "skills/foo.md"
+assert_failure_contains "missing authority file" "$dir" "runtime_authority file does not exist: skills/foo.md"
 
-# c. Extra rule paths permitted.
-dir="$(new_fixture extra-rule-paths)"
-write_valid_tsv "$dir" "skills/foo.md"
-write_rule_flow "$dir" "skills/foo.md" "docs/topology.md" "scripts/a.py" "scripts/b.py" "skills/bar.md" "README.md"
-assert_success "extra rule paths" "$dir"
+# c. Authority file exists but does not contain the row value.
+dir="$(new_fixture authority-missing-value)"
+write_valid_tsv "$dir" "needle" "skills/foo.md"
+write_authority "$dir" "skills/foo.md" "wrong body"
+assert_failure_contains "authority missing value" "$dir" "does not contain value 'needle'"
 
-# d. Multiple missing authorities are listed sorted.
-dir="$(new_fixture multiple-missing)"
-write_tsv "$dir" 'z\tvalue\tcomposition\tskills/z.md\na\tvalue\tcomposition\tskills/a.md\n'
-write_rule_flow "$dir" "skills/covered.md"
-if (
-  cd "$dir"
-  python3 "$CLI" lint topology-rule-paths --root "$dir"
-) >"$dir/stdout.txt" 2>"$dir/stderr.txt"; then
-  fail_case "multiple missing: expected failure"
-else
-  assert_contains "multiple missing sorted" $'skills/a.md\n  - skills/z.md' "$(cat "$dir/stderr.txt")"
-fi
+# d. Untracked authority file fails when --root points at a git work tree.
+dir="$(new_fixture untracked-authority)"
+write_valid_tsv "$dir" "needle" "skills/foo.md"
+write_authority "$dir" "skills/foo.md" "contains needle"
+git -C "$dir" init -q
+git -C "$dir" add skills/shared/topology.tsv
+assert_failure_contains "untracked authority" "$dir" "runtime_authority is not tracked by git: skills/foo.md"
 
-# e. CRLF rejection in TSV.
+# e. Tracked authority succeeds when --root points at a git work tree.
+dir="$(new_fixture tracked-authority)"
+write_valid_tsv "$dir" "needle" "skills/foo.md"
+write_authority "$dir" "skills/foo.md" "contains needle"
+git -C "$dir" init -q
+git -C "$dir" add skills/shared/topology.tsv skills/foo.md
+assert_success "tracked authority" "$dir"
+
+# f. CRLF rejection in TSV.
 dir="$(new_fixture tsv-crlf)"
-printf 'key\tvalue\tcomposition\tskills/foo.md\r\n' >"$dir/skills/shared/topology.tsv"
-write_rule_flow "$dir" "skills/foo.md"
+printf 'key\tneedle\tcomposition\tskills/foo.md\r\n' >"$dir/skills/shared/topology.tsv"
+write_authority "$dir" "skills/foo.md" "contains needle"
 assert_failure_contains "tsv CRLF" "$dir" "CRLF line endings not allowed"
 
-# e2. CRLF rejection in rule frontmatter.
-dir="$(new_fixture rule-crlf)"
-write_valid_tsv "$dir" "skills/foo.md"
-printf -- '---\r\npaths: ["skills/foo.md"]\r\n---\r\n# Topology Generation\n' >"$dir/.claude/rules/topology-generation.md"
-assert_failure_contains "rule CRLF" "$dir" "CRLF line endings not allowed"
-
-# f. Malformed TSV row.
+# g. Malformed TSV row.
 dir="$(new_fixture malformed-row)"
 write_tsv "$dir" 'key\tvalue\tonly-three\n'
-write_rule_flow "$dir" "skills/foo.md"
 assert_failure_contains "malformed row" "$dir" "row 1: malformed row"
 
-# g1, g2, g4. Empty required TSV columns.
+# h1, h2, h4. Empty required TSV columns.
 for spec in \
   "empty-col-1|\tvalue\tcomposition\tskills/foo.md" \
   "empty-col-2|key\t\tcomposition\tskills/foo.md" \
@@ -190,11 +163,10 @@ for spec in \
   row="${spec#*|}"
   dir="$(new_fixture "$name")"
   write_tsv "$dir" "$row\n"
-  write_rule_flow "$dir" "skills/foo.md"
   assert_failure_contains "$name" "$dir" "row 1: malformed row"
 done
 
-# h. Path-grammar rejection in TSV column 4.
+# i. Path-grammar rejection in TSV column 4.
 for spec in \
   "absolute|/foo|repo-relative" \
   "leading-dot|./foo|must not start with ./" \
@@ -205,69 +177,38 @@ for spec in \
   path="${rest%%|*}"
   needle="${rest#*|}"
   dir="$(new_fixture "path-$name")"
-  write_valid_tsv "$dir" "$path"
-  write_rule_flow "$dir" "$path"
+  write_valid_tsv "$dir" "needle" "$path"
   assert_failure_contains "path $name" "$dir" "$needle"
 done
 
-# h2. Trailing-whitespace rejection in TSV column 4.
+# i2. Trailing-whitespace rejection in TSV column 4.
 dir="$(new_fixture trailing-whitespace)"
-write_tsv "$dir" 'key\tvalue\tcomposition\tskills/foo.md \n'
-write_rule_flow "$dir" "skills/foo.md "
+write_tsv "$dir" 'key\tneedle\tcomposition\tskills/foo.md \n'
 assert_failure_contains "trailing whitespace" "$dir" "leading or trailing whitespace"
 
-# h3. Symlink escapes are rejected even when the manifest path is repo-relative.
+# i3. Symlink escapes are rejected even when the manifest path is repo-relative.
 dir="$(new_fixture symlink-escape)"
 mkdir -p "$dir/skills"
-printf 'outside\n' >"$TMP_ROOT/outside.md"
+printf 'outside needle\n' >"$TMP_ROOT/outside.md"
 ln -s "$TMP_ROOT/outside.md" "$dir/skills/link.md"
-write_valid_tsv "$dir" "skills/link.md"
-write_rule_flow "$dir" "skills/link.md"
+write_valid_tsv "$dir" "needle" "skills/link.md"
 assert_failure_contains "symlink escape" "$dir" "must resolve within repo root"
 
-# i. Missing paths key.
-dir="$(new_fixture missing-paths)"
-write_valid_tsv "$dir" "skills/foo.md"
-printf '%s\n' '---' 'name: topology-generation' '---' >"$dir/.claude/rules/topology-generation.md"
-assert_failure_contains "missing paths" "$dir" "must define paths"
+# i4. Symlinks inside the repo are not regular authority files.
+dir="$(new_fixture symlink-in-repo)"
+mkdir -p "$dir/skills"
+printf 'contains needle\n' >"$dir/skills/real.md"
+ln -s "real.md" "$dir/skills/link.md"
+write_valid_tsv "$dir" "needle" "skills/link.md"
+assert_failure_contains "symlink in repo" "$dir" "must be a regular file"
 
-# j. paths is not a list.
-dir="$(new_fixture paths-not-list)"
-write_valid_tsv "$dir" "skills/foo.md"
-printf '%s\n' '---' 'paths: skills/foo.md' '---' >"$dir/.claude/rules/topology-generation.md"
-assert_failure_contains "paths not list" "$dir" "paths must be a list"
-
-# k. paths contains a non-string entry.
-dir="$(new_fixture paths-non-string)"
-write_valid_tsv "$dir" "skills/foo.md"
-printf '%s\n' '---' 'paths: ["skills/foo.md", 3, null, true]' '---' >"$dir/.claude/rules/topology-generation.md"
-assert_failure_contains "paths non-string" "$dir" "must be a string"
-
-# l. Rule file lacks frontmatter.
-dir="$(new_fixture no-frontmatter)"
-write_valid_tsv "$dir" "skills/foo.md"
-printf '%s\n' '# Topology Generation' >"$dir/.claude/rules/topology-generation.md"
-assert_failure_contains "no frontmatter" "$dir" "no YAML frontmatter found"
-
-# m. Block-list YAML shape accepted.
-dir="$(new_fixture block-list)"
-write_valid_tsv "$dir" "skills/foo.md"
-write_rule_block "$dir" "skills/foo.md"
-assert_success "block-list" "$dir"
-
-# n. Flow-style YAML shape accepted.
-dir="$(new_fixture flow-style)"
-write_valid_tsv "$dir" "skills/foo.md"
-write_rule_flow "$dir" "skills/foo.md"
-assert_success "flow-style" "$dir"
-
-# o. Comments and blank lines in TSV tolerated.
+# j. Comments and blank lines in TSV tolerated.
 dir="$(new_fixture comments-blanks)"
-write_tsv "$dir" '# comment\n\nkey\tvalue\t\tskills/foo.md\n'
-write_rule_flow "$dir" "skills/foo.md"
+write_tsv "$dir" '# comment\n\nkey\tneedle\t\tskills/foo.md\n'
+write_authority "$dir" "skills/foo.md" "contains needle"
 assert_success "comments blanks" "$dir"
 
-# p. Real-registry smoke, including current distinct-authority count pin.
+# k. Real-registry smoke, including current distinct-authority count pin.
 real_dir="$TMP_ROOT/real-registry"
 mkdir -p "$real_dir"
 assert_abs_success "real registry smoke" "$real_dir"
@@ -278,13 +219,12 @@ else
   fail_case "real registry authority count: expected 14, got $authority_count"
 fi
 
-# q. Empty TSV.
+# l. Empty TSV.
 dir="$(new_fixture empty-tsv)"
 write_tsv "$dir" '# comment\n\n'
-write_rule_flow "$dir" "skills/foo.md"
 assert_failure_contains "empty TSV" "$dir" "has no data rows"
 
-# r. Script invoked from a non-root cwd resolves its repo root correctly.
+# m. Script invoked from a non-root cwd resolves its repo root correctly.
 nonroot_dir="$TMP_ROOT/non-root-cwd"
 mkdir -p "$nonroot_dir"
 assert_abs_success "non-root cwd" "$nonroot_dir"

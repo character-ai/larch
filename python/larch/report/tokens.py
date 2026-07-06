@@ -1781,8 +1781,6 @@ def _classify_md_tier(*, rel: str, tier1_imports: set[str]) -> str:
         return "tier-1b-runtime-skill"
     if rel.startswith(".claude/skills/") and rel.endswith("/SKILL.md"):
         return "tier-1b-dev-skill"
-    if rel.startswith(".claude/rules/") and rel.endswith(".md"):
-        return "tier-1c-claude-rule"
     if rel.startswith("skills/shared/"):
         return "tier-2-shared-reference"
     if "/references/" in rel:

@@ -25,7 +25,6 @@ harness and alternate-root scans. The scan covers Markdown files under:
 
 - `skills/**/*.md`
 - `.claude/skills/**/*.md`
-- `.claude/rules/*.md`
 
 These are the surfaces whose fenced shell blocks the orchestrator copies into
 Bash tool calls. Documentation under `docs/`, top-level `*.md` (README,

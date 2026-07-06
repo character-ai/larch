@@ -98,6 +98,12 @@ This is the canonical `%%` / `##` split pattern for prompt renderers. If global 
 
 Run `make lint-bash32` after shell-script edits. Suppress fixture tokens only on that line with `# lint-bash32: ok <reason>`.
 
+## 4. GitHub CLI Body-Like Payloads
+
+Use file-backed payloads for GitHub CLI body text: `--body-file` for issue, PR, and comment bodies, and `--notes-file` for release notes. Avoid inline `--body` and `--notes`, even for short dynamic text. For PR creation in this repository, prefer `python3 python/cli.py pr create --body-file <path>` so the wrapper owns push, redaction, and diagnostics.
+
+When body content crosses a public boundary and the caller has not already scrubbed it, redact secrets and local tmpdir paths before writing the body file.
+
 ## Residual Bash after E3
 
 For the shared residual-Bash policy, see `AGENTS.md`. Unique Bash contracts remain here: contract-bearing hooks define local `hook_emit` functions and keep hook JSON on the contract stream. `sessionstart-health.sh` keeps a direct stdout fallback for stripped PATH environments.

@@ -56,11 +56,19 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: a manual `open()`/`close()` or acquire/release leaks the handle when an exception fires between them. A `with` block, or `contextlib.closing`, releases the file, lock, descriptor, or subprocess deterministically. This is the standard Python pattern.
 - Deviate when: a resource whose lifetime outlives the enclosing scope; return it, or wrap it in its own context-manager type.
 
+### G-Py-14: Prefer typed helper functions for monkeypatched callables with parameters
+- Why: pyright strict mode can flag untyped lambda parameters in `monkeypatch.setattr` callables, and helper functions make the fake contract reviewable.
+- Deviate when: the callable has no parameters or a narrow inline pyright suppression is clearer; preserve existing suppressions and keep any new suppression on the smallest possible line.
+
 ## Configuration and protocol literals
 
 ### G-Cfg-1: Define every exit code, env-var name, tunable, and wire literal once in config.py as a Final; build token sets from prior sets rather than re-listing
 - Why: one edit point for protocol literals; aggregated sets cannot drift out of sync with their members.
 - Deviate when: a module-private constant used at one call site with no cross-module contract.
+
+### G-Cfg-2: Release-owned version bumps use the release flow
+- Why: plugin version changes carry release automation and a reserved commit-message shape; manually reusing `Bump version to X.Y.Z` makes provenance ambiguous.
+- Deviate when: n/a for release-owned version fields. Use the release flow or leave the version unchanged.
 
 ## Wire-file I/O
 
@@ -104,7 +112,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 
 ### G-Sec-3: Redact secrets, and tmpdir paths where present, before any egress surface, and fail closed when the scrub cannot prove the secret is gone
 - Why: egress is irreversible. One unredacted publish to a PR body, GitHub issue, or committed log exposes a credential that must then be rotated. A scrub failure is fatal before publish, not a recoverable warning. Even a clean scrub warrants a rotation warning, because the value was already in the session.
-- Deviate when: purely local stdout or stderr that never reaches an artifact; still prefer redaction for anything that may be copied outward. Note: `.claude/rules/gh-body-file.md` reminds but does not mechanically enforce this at new call sites.
+- Deviate when: purely local stdout or stderr that never reaches an artifact; still prefer redaction for anything that may be copied outward.
 
 ### G-Sec-4: Confine larch writes to the session and tmp roots you own; canonicalize, containment-check, and reject symlinks and non-regular files at use time
 - Why: a same-UID symlink swap or a `../`-escaping path turns an internal write into arbitrary-file corruption. Re-checking at write, unlink, or `rm -rf` time, not only at creation, closes the TOCTOU gap.
@@ -164,6 +172,14 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 - Why: the judgment residue is "is this logic that belongs in Python?".
 - Deviate when: n/a; the mechanical parts (no consecutive Bash blocks, the residual-bash allowlist) are lints, not this guideline.
 
+### G-Skill-3: Use the correct runtime root for skill paths
+- Why: public skills run from an installed plugin tree, while dev-only skills run from the checkout. Public `skills/*/SKILL.md` should point at `${CLAUDE_PLUGIN_ROOT}/...`; dev-only `.claude/skills/*/SKILL.md` may use `$PWD/...`.
+- Deviate when: the path is explicitly user-supplied or a local scratch path, not a plugin resource.
+
+### G-Skill-4: Trace skill edits from the skill prompt through local scripts and shared helpers
+- Why: skill behavior is split across `SKILL.md`, local `scripts/`, root `scripts/`, and `skills/shared/`; changing one without reading the others misses the real contract. When `skills/implement/SKILL.md` Bash fences change, inspect `scripts/test-implement-fence-shape.sh` because it pins the old/new fence shape.
+- Deviate when: a purely typographic edit cannot affect behavior and has no local helper references.
+
 ## Bash authoring
 
 ### G-Bash-1: For assistant-authored Bash with three or more nested quote or escape levels, use a file-backed script or a quoted heredoc; on a parse error, switch shapes rather than re-patch escapes
@@ -191,7 +207,7 @@ These guidelines are aspirational. Surface meaningful deviations in design or im
 ## Documentation and Markdown
 
 ### G-Md-1: Keep drift-prone facts out of prose; derive counts from a single source, refer to code by symbol not line number, and use repo-relative or `${CLAUDE_PLUGIN_ROOT}` paths
-- Why: prose in Markdown and YAML goes stale silently, with no test to catch it (`.claude/rules/drift-prone-prose-in-docs.md`). A hardcoded count, a `file.py:198` reference, or a `/Users/<name>/...` path is wrong on the next edit. Source counts and panel sizes from `skills/shared/topology.tsv` or the harness.
+- Why: prose in Markdown and YAML goes stale silently. A hardcoded count, a `file.py:198` reference, or a `/Users/<name>/...` path is wrong on the next edit. Source counts and panel sizes from `skills/shared/topology.tsv` or the harness.
 - Deviate when: a literal that must appear inline is tagged for grep, so its source of truth stays discoverable.
 
 ### G-Md-2: A rename of a script, step, flag, or enum value is not done until its prose consumers are swept in the same change

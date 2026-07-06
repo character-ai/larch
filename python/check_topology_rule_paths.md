@@ -1,38 +1,22 @@
 # python/check_topology_rule_paths.py contract
 
-`python3 python/cli.py lint topology-rule-paths` verifies that every distinct runtime authority in `skills/shared/topology.tsv` is present in `.claude/rules/topology-generation.md` frontmatter `paths:`.
+`python3 python/cli.py lint topology-rule-paths` validates `skills/shared/topology.tsv` directly. The command name stays `topology-rule-paths` for compatibility, but the TSV is now the source of truth; the retired rule frontmatter parser no longer exists and no rule file is read.
 
 ## Caller surface
 
 Primary callers are the `agent-sync` job, the local `check-topology-rule-paths` pre-commit hook, `make test-check-topology-rule-paths`, and manual local runs.
 
-`--root PATH` overrides the checkout root. The default is the repository parent of this module. Harness fixtures pass `--root "$dir"` so TSV and rule files are resolved inside isolated temp trees. Production callers omit `--root`.
+`--root PATH` overrides the checkout root. The default is the repository parent of this module. Harness fixtures pass `--root "$dir"` so `skills/shared/topology.tsv` and referenced authority files resolve inside isolated temp trees. Production callers omit `--root`.
 
-## Frontmatter parser
+## TSV authority checks
 
-The module is stdlib-only. It intentionally implements only the `paths:` shapes used by larch rules.
+Every non-comment data row must have exactly four tab-separated columns with non-empty key, value, and `runtime_authority` columns. `runtime_authority` must be a repo-relative, contained path with LF line endings and no path traversal, duplicate slash, pathspec-magic prefix, leading dash, or symlink escape.
 
-Supported forms:
+For each distinct row authority, the lint verifies that the authority exists, is a regular file, and contains the row's `value` text. When `--root` points at a git work tree, the authority must also be tracked by git. That tracked-by-git assertion is skipped for isolated non-git fixture trees; real-registry smoke runs without `--root` against the live checkout so git tracking assertions execute.
 
-```yaml
-paths:
-  - "skills/shared/topology.tsv"
-  - skills/shared/topology.tsv
-```
+## Fixture contract
 
-```yaml
-paths: ["skills/shared/topology.tsv", "docs/topology.md"]
-```
-
-Inline flow lists split on commas outside double quotes. Every flow-list item must be a double-quoted string. Block-list entries may be double-quoted strings or bare path tokens.
-
-Rejected forms keep the legacy diagnostics:
-
-- Missing `paths:` fails with `frontmatter must define paths`.
-- Scalar `paths: skills/foo.md` fails with `paths must be a list`.
-- Flow-list items such as `3`, `null`, or `true` fail on the first bad item with `must be a string`.
-- CRLF in the rule frontmatter fails before parsing.
-- Missing frontmatter fails with `no YAML frontmatter found`.
+Each fixture creates a temp root, writes `skills/shared/topology.tsv`, writes the referenced authority files containing the row value, and optionally runs `git init && git add` when testing tracked-by-git behavior. Missing authority files, authority files that do not contain the row value, untracked authority files in a git fixture, symlink escapes, path grammar failures, malformed TSV rows, CRLF, and empty TSVs must fail.
 
 ## Edit-in-sync
 

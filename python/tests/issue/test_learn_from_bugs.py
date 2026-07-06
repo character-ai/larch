@@ -111,9 +111,6 @@ def test_list_issues_raises_on_gh_failure() -> None:
 def test_coverage_index_scans_repo_surface(tmp_path: Path) -> None:
     (tmp_path / "ARCHITECTURAL_GUIDELINES.md").write_text(
         "### G-Py-1: Do a thing\n\ntext\n### G-Wire-1: Another\n", encoding="utf-8")
-    rules = tmp_path / ".claude" / "rules"
-    rules.mkdir(parents=True)
-    (rules / "some-rule.md").write_text("# Some Rule\n\nbody\n", encoding="utf-8")
     lintdir = tmp_path / "python" / "larch" / "lint"
     lintdir.mkdir(parents=True)
     (lintdir / "lint_foo.py").write_text("x = 1\n", encoding="utf-8")
@@ -125,7 +122,6 @@ def test_coverage_index_scans_repo_surface(tmp_path: Path) -> None:
     cov = learn_from_bugs.coverage_index(tmp_path)
     assert cov.guidelines == (("G-Py-1", "Do a thing"), ("G-Wire-1", "Another"))
     assert not cov.invariants  # file absent yet, must not error
-    assert cov.rules == (("some-rule.md", "Some Rule"),)
     assert cov.python_lints == ("lint_foo",)
     assert cov.script_lints == ("lint-bar",)
 
@@ -135,10 +131,20 @@ def test_coverage_index_absent_files_yield_empty(tmp_path: Path) -> None:
     assert cov.to_json() == {
         "guidelines": [],
         "invariants": [],
-        "rules": [],
         "python_lints": [],
         "script_lints": [],
     }
+
+
+def test_coverage_index_does_not_emit_retired_rule_field(tmp_path: Path) -> None:
+    retired_dir = tmp_path / ".claude" / "rules"
+    retired_dir.mkdir(parents=True)
+    (retired_dir / "some-rule.md").write_text("# Some Rule\n\nbody\n", encoding="utf-8")
+
+    payload = learn_from_bugs.coverage_index(tmp_path).to_json()
+
+    assert "rules" not in payload
+    assert set(payload) == {"guidelines", "invariants", "python_lints", "script_lints"}
 
 
 def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
@@ -162,4 +168,6 @@ def test_run_prepare_writes_artifacts_and_stats(tmp_path: Path) -> None:
     first = json.loads(digest_lines[0])
     assert first["number"] == 1
     assert first["structured"] is True
-    assert (out_dir / "coverage-index.json").is_file()
+    coverage = json.loads((out_dir / "coverage-index.json").read_text(encoding="utf-8"))
+    assert set(coverage) == {"guidelines", "invariants", "python_lints", "script_lints"}
+    assert "RULES_INDEXED" not in stats

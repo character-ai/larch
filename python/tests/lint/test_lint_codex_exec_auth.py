@@ -67,6 +67,15 @@ def test_markdown_fences(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> 
     assert "skills/foo/SKILL.md:2:" in err
 
 
+def test_claude_skills_markdown_scanned_but_rules_ignored(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    write(tmp_path / ".claude/skills/dev/SKILL.md", "```bash", "codex exec --full-auto -C . hi", "```")
+    write(tmp_path / ".claude" / "rules" / "retired.md", "```bash", "codex exec --full-auto -C . hi", "```")
+    rc, err = run(tmp_path, capsys)
+    assert rc == 1
+    assert ".claude/skills/dev/SKILL.md:2:" in err
+    assert "/rules/retired.md" not in err
+
+
 def test_python_raw_exec_fails(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     write(tmp_path / "python/new_launcher.py", 'subprocess.run(["codex", "exec", "--full-auto"])')
     rc, err = run(tmp_path, capsys)

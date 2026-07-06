@@ -189,6 +189,73 @@ check_context_before_step3_launch() {
   printf '%s\n' "$context" | grep -Fq -e "$literal" || fail "$label"
 }
 
+assert_timing_task_kind_allowlist() {
+  python3 - "$ROOT" <<'PY'
+import ast
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+allowed = set(subprocess.check_output([sys.executable, str(root / "python/cli.py"), "timing", "task-kinds"], text=True).splitlines())
+tracked = subprocess.check_output(["git", "-C", str(root), "ls-files"], text=True).splitlines()
+
+literal_re = re.compile(r"--timing-task-kind\s+([A-Za-z0-9][A-Za-z0-9_-]*)")
+found: dict[str, set[str]] = {}
+
+
+def in_scope(rel: str) -> bool:
+    path = Path(rel)
+    parts = path.parts
+    if "larch-logs" in parts or "test_fixtures" in parts:
+        return False
+    if path.name.startswith("test-") or path.name.startswith("test_"):
+        return False
+    if len(parts) >= 2 and parts[0] == "skills" and path.name == "SKILL.md":
+        return True
+    if len(parts) >= 3 and parts[0] == "skills" and parts[2] == "references" and path.suffix == ".md":
+        return True
+    if len(parts) >= 4 and parts[0] == "skills" and parts[2] == "scripts" and path.suffix == ".sh":
+        return True
+    return len(parts) >= 2 and parts[0] == "python" and parts[1] == "larch" and path.suffix == ".py"
+
+
+def remember(rel: str, value: str) -> None:
+    if value.startswith("-") or any(ch in value for ch in "$<>{}"):
+        return
+    found.setdefault(value, set()).add(rel)
+
+
+for rel in tracked:
+    if not in_scope(rel):
+        continue
+    path = root / rel
+    text = path.read_text(encoding="utf-8", errors="replace")
+    if path.suffix in {".md", ".sh"}:
+        for match in literal_re.finditer(text):
+            remember(rel, match.group(1))
+        continue
+    try:
+        tree = ast.parse(text)
+    except SyntaxError:
+        continue
+    for node in ast.walk(tree):
+        if not isinstance(node, (ast.List, ast.Tuple)):
+            continue
+        values = [elt.value if isinstance(elt, ast.Constant) and isinstance(elt.value, str) else None for elt in node.elts]
+        for index, value in enumerate(values[:-1]):
+            if value == "--timing-task-kind" and values[index + 1] is not None:
+                remember(rel, values[index + 1] or "")
+
+missing = {kind: sorted(paths) for kind, paths in found.items() if kind not in allowed}
+if missing:
+    for kind, paths in sorted(missing.items()):
+        print(f"missing TIMING_TASK_KINDS_ALLOWED entry for {kind}: {', '.join(paths)}", file=sys.stderr)
+    raise SystemExit(1)
+PY
+}
+
 ported_verbs='step0-parse step0-session step0-route step0-clarify-hard-halt step0-init step0-abort-cleanup step0-ap-continue step0c step1d5 step1d7 step1e-reentry'
 retired_paths='design-step0-parse.sh design-step0-session.sh design-step0-route.sh design-step0-clarify-hard-halt.sh design-step0-init.sh design-step0-abort-cleanup.sh design-step0-ap-continue.sh design-step0c.sh design-step1d5.sh design-step1d7.sh design-step1e-reentry.sh test-design-step0-init.sh test-design-step1d5.sh'
 
@@ -664,5 +731,7 @@ contains "$SESSION_ENV" 'design step6-prelude --session-env-path "$SESSION_ENV_P
 contains "$SESSION_ENV" 'design-step6-cleanup.sh)' 'launcher must map design-step6-cleanup.sh'
 contains "$SESSION_ENV" 'design step6-cleanup --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" "$@"' 'launcher must forward step6-cleanup to python/cli.py'
 contains "$SKILL_MD" '"$HOME/.cache/larch/sessions/design-run-$PPID.sh" step6' 'SKILL Step 6 fence must use bare launcher verb'
+
+assert_timing_task_kind_allowlist
 
 printf '%s\n' 'test-design-structure: ok'

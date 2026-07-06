@@ -20,7 +20,7 @@ Larch is a Claude Code workflow automation framework that orchestrates multi-age
 
 - **Setup**
   - [Installation and Setup](docs/installation-and-setup.md) — prerequisites, auth (API keys or web login) for Claude / Codex / Cursor, plugin install and permissions, `/status` validation, `/upgrade-larch`
-  - [Preparing Your Repository](docs/preparing-your-repo.md). Ready your repo for larch and agent-assisted development: instruction files (`CLAUDE.md`/`AGENTS.md`), guardrails (rules, hooks, linters), and the `checks run-relevant` contract
+  - [Preparing Your Repository](docs/preparing-your-repo.md). Ready your repo for larch and agent-assisted development: instruction files (`CLAUDE.md`/`AGENTS.md`), guardrails (guidelines, hooks, linters), and the `checks run-relevant` contract
   - [Contributing](docs/contributing.md) — local dev plugin install, plugin cache vs. working-tree version, Mermaid CLI setup
   - [Clean-Main Entry Contract](docs/clean-main-contract.md) — the `/implement` and `/design` clean `main` entry preconditions, plus `/implement` feature-branch continuation
   - [Fork CI Dry-Runs](docs/forked.md) — remote setup for `/implement --forked`
@@ -143,7 +143,7 @@ larch ships **public skills** with the plugin (`skills/`); **private** skills li
       <td><a href="docs/skills.md#learn-from-bugs"><code>/learn-from-bugs</code></a></td>
       <td><code>[-n COUNT] [--state closed|open|all] [--repo OWNER/REPO] [--search QUERY] [description]</code></td>
     </tr>
-    <tr><td colspan="2">Mine a repository's closed bug reports for recurring root-cause patterns, then propose preventions ranked by mechanical enforceability: lint rules, architectural invariants, guideline entries, and issues to file for still-broken code. Report-only by default: it compresses each body to a compact root-cause digest, maps every recurring principle to the repo's existing coverage (guidelines, <code>.claude/rules/</code>, lints) before proposing the residual gap, and runs the synthesis inline with no sub-agent fan-out. Repository and GitHub changes are gated behind explicit approval; filing goes through <code>/issue</code>.</td></tr>
+    <tr><td colspan="2">Mine a repository's closed bug reports for recurring root-cause patterns, then propose preventions ranked by mechanical enforceability: lint rules, architectural invariants, guideline entries, and issues to file for still-broken code. Report-only by default: it compresses each body to a compact root-cause digest, maps every recurring principle to the repo's existing coverage (guidelines, invariants, hooks, and lints) before proposing the residual gap, and runs the synthesis inline with no sub-agent fan-out. Repository and GitHub changes are gated behind explicit approval; filing goes through <code>/issue</code>.</td></tr>
     <tr><td colspan="2"><hr></td></tr>
     <tr>
       <td><a href="docs/skills.md#difficulty-calibration"><code>/difficulty-calibration</code></a></td>

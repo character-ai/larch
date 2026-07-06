@@ -254,6 +254,6 @@ Then atomic-write `<MANIFEST_PATH>` and exit 0. The dispatcher validates schema,
 
 ## Style
 
-Match existing style. Read CLAUDE.md, AGENTS.md, and matching `.claude/rules/*.md` before editing skill prose. Keep the smallest sufficient change. Don't add comments for clear identifiers or impossible-case error handling.
+Match style. Read CLAUDE.md, AGENTS.md, BASH_AUTHORING.md, ARCHITECTURAL_GUIDELINES.md, and relevant contracts. Keep smallest sufficient change. Don't add comments for clear identifiers or impossible-case error handling.
 
 If you finish in fewer files than planned, say so in `summary_bullets` and list the actual `files_touched`. The dispatcher does not diff-check it, but operators read it.
