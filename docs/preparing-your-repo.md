@@ -1,8 +1,5 @@
 # Preparing Your Repository for Agent-Assisted Development
 
-> **Status: SKELETON / DRAFT.** Topic list and structure are under review; sections
-> below are stubs (`TODO`) to be filled in as we finalize scope. <!-- remove this banner when the doc is complete -->
-
 Larch works best in a repository that is set up for agents. The good news: the
 same setup that makes a repo work well with larch makes it work well with **any**
 coding agent (Claude Code, Codex, Cursor, Gemini). This guide is that setup,
@@ -15,19 +12,23 @@ There are two ways to use it:
 - **Let your agent do it.** Paste the recipe in [Let your agent do it](#let-your-agent-do-it)
   and let it scaffold the equivalents for your repo.
 
-<!-- TODO(intro): tighten the thesis. One line on "advisory context, then mechanical enforcement" as the spine of the doc. -->
+The sections move from advisory context (files the agent reads) to mechanical
+enforcement (checks it cannot skip), then to environment and navigability. Adopt
+them in that order, or pull single items from the [Starter kit](#starter-kit).
 
 ## How to use this guide
 
-<!-- TODO: explain the two labels used throughout.
-     Larch source: which file to look at.
-     Disposition: Copy (take it near-verbatim), Adapt (keep the structure, rewrite for your stack),
-     or Pattern (do not copy; reproduce the idea in your own tooling).
--->
+Each section names a **Larch source** (the file to open in the larch repo) and a
+**Disposition** (how to reuse it):
+
+- **Copy.** Take it near-verbatim. Only the filename or a framing line changes.
+- **Adapt.** Keep the structure; rewrite the content for your stack.
+- **Pattern.** Do not copy larch's version. Reproduce the idea in your own tooling.
 
 ## Let your agent do it
 
-<!-- TODO: refine this into the canonical paste-in prompt. Draft below. -->
+Give your agent this prompt. It reads larch's setup and scaffolds the equivalents
+for your repo:
 
 ```text
 Point yourself at the larch repository (https://github.com/character-ai/larch).
@@ -426,7 +427,8 @@ or scope it as a path-triggered rule (§6).
 
 ## Starter kit
 
-<!-- TODO: this table is the centerpiece: "point your agent at larch and take these." Verify and expand rows. -->
+The whole guide in one table. Open each file in the larch repo, then reuse it per
+its disposition:
 
 | From larch | What it gives you | Disposition |
 |---|---|---|
@@ -443,8 +445,12 @@ or scope it as a path-triggered rule (§6).
 
 ## Suggested adoption order
 
-<!-- TODO: prioritized checklist. Draft ordering:
-     1. Minimum viable: CLAUDE.md + AGENTS.md + KARPATHY_CLAUDE.md, and a `checks run-relevant` entrypoint.
-     2. Enforcement: pre-commit linting, a couple of hooks, path-triggered rules.
-     3. Polish: architectural guidelines, canonical-sources map, permissions allowlist, multi-tool shims.
--->
+You do not need all of it at once. Adopt in three passes.
+
+1. **Minimum viable.** `CLAUDE.md` and `AGENTS.md` (§1), `KARPATHY_CLAUDE.md`
+   (§2), and a `checks run-relevant` entrypoint (§9). This alone makes an agent
+   markedly more effective.
+2. **Enforcement.** Changed-file linting (§8), a hook or two (§7), and
+   path-triggered rules (§6).
+3. **Polish.** Architectural guidelines (§4), the canonical-sources map (§11), a
+   permissions allowlist (§10), and multi-tool shims (§13).
