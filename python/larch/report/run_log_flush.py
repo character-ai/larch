@@ -31,7 +31,9 @@ from larch.report import tokens
 from larch.report.run_log_batch import (
     _REPO_ROOT,
     _append_execution_issue,
+    _larch_sessions_scratch_dir,
     _normalize_body_for_hash,
+    _path_is_repo_related,
     _redact_batch_payload,
     _read_kv_file,
     _read_state_kv,
@@ -767,6 +769,8 @@ def capture_session_transcript(
             source,
             "--log-root",
             str(log_root),
+            "--tmpdir",
+            str(ctx.tmpdir),
             "--skill",
             "implement",
             "--run-id",
@@ -824,10 +828,22 @@ def _capture_transcript_redact_stderr(path: Path) -> str:
     return snippet[:300]
 
 
-def capture_transcript_main(argv: list[str]) -> int:
+def _capture_transcript_scratch_dir(*, tmpdir: str, log_root: Path) -> Path:
+    if tmpdir:
+        scratch_dir = Path(tmpdir)
+    elif _path_is_repo_related(log_root.parent):
+        scratch_dir = _larch_sessions_scratch_dir()
+    else:
+        scratch_dir = log_root.parent
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    return scratch_dir
+
+
+def _parse_capture_transcript_args(argv: list[str]) -> argparse.Namespace | None:
     parser = argparse.ArgumentParser(prog="cli.py run-log capture-transcript", add_help=False)
     parser.add_argument("--source-file", default="")
     parser.add_argument("--log-root", required=True)
+    parser.add_argument("--tmpdir", default="")
     parser.add_argument("--skill", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--no-logs-commit", default="false")
@@ -839,9 +855,16 @@ def capture_transcript_main(argv: list[str]) -> int:
         args = parser.parse_args(argv)
     except SystemExit:
         print("SESSION_TRANSCRIPT_STATUS=usage-error")
-        return 0
+        return None
     if args.no_logs_commit not in {"true", "false"} or args.refresh_mode not in {"true", "false"} or args.defer_commit not in {"true", "false"}:
         print("SESSION_TRANSCRIPT_STATUS=usage-error")
+        return None
+    return args
+
+
+def capture_transcript_main(argv: list[str]) -> int:
+    args = _parse_capture_transcript_args(argv)
+    if args is None:
         return 0
     issues_log = Path(args.execution_issues_log) if args.execution_issues_log else None
     log_root = Path(args.log_root)
@@ -880,8 +903,17 @@ def capture_transcript_main(argv: list[str]) -> int:
             status="transcript-path-missing",
             message="Claude source file did not contain a TRANSCRIPT_PATH entry; transcript capture skipped.",
         )
-    rendered = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl")[1])
-    render_err = Path(tempfile.mkstemp(prefix="render-stderr.", suffix=".log")[1])
+    try:
+        scratch_dir = _capture_transcript_scratch_dir(tmpdir=args.tmpdir, log_root=log_root)
+    except OSError as exc:
+        return _capture_transcript_emit(
+            issues_log=issues_log,
+            step_label=args.warning_step_label,
+            status="write-failed",
+            message=f"session-transcript scratch directory could not be created: {exc}",
+        )
+    rendered = Path(tempfile.mkstemp(prefix="session-transcript.", suffix=".jsonl", dir=scratch_dir)[1])
+    render_err = Path(tempfile.mkstemp(prefix="render-stderr.", suffix=".log", dir=scratch_dir)[1])
     try:
         result = subprocess.run(
             [

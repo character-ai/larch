@@ -1,0 +1,156 @@
+[
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "qualified_symbol": "launch_codex_ci_main",
+    "callee": "TemporaryDirectory",
+    "occurrence": 1,
+    "reason": "external tool config home, system-accessible"
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "qualified_symbol": "launch_cursor_ci_main",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "external tool config home, system-accessible"
+  },
+  {
+    "file": "larch/agents/_ci_launcher.py",
+    "qualified_symbol": "launch_cursor_implement_main",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "external tool config home, system-accessible"
+  },
+  {
+    "file": "larch/agents/_claude_runner.py",
+    "qualified_symbol": "_run_claude_with_stdin",
+    "callee": "TemporaryDirectory",
+    "occurrence": 1,
+    "reason": "claude stdin staging, isolated subprocess workspace"
+  },
+  {
+    "file": "larch/agents/_drafter.py",
+    "qualified_symbol": "launch_codex_exec_main",
+    "callee": "TemporaryDirectory",
+    "occurrence": 1,
+    "reason": "codex exec config home, system-accessible"
+  },
+  {
+    "file": "larch/agents/_review_launcher.py",
+    "qualified_symbol": "_review_setup_cursor_config_dir",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "cursor config home, system-accessible"
+  },
+  {
+    "file": "larch/core/forked_repo.py",
+    "qualified_symbol": "phase_github",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "forked repo workspace, cleaned by caller"
+  },
+  {
+    "file": "larch/git/gh.py",
+    "qualified_symbol": "_body_file_args",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/git/gh.py",
+    "qualified_symbol": "issue_comment_patch",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/git/gh.py",
+    "qualified_symbol": "issue_edit_body_with_retry",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/git/git.py",
+    "qualified_symbol": "commit_with_trailer",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "git commit message staging, deleted in finally"
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "qualified_symbol": "close_priors_main",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/issue/deps_audit.py",
+    "qualified_symbol": "_apply_rewrite",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "editor rewrite staging, deleted in finally"
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "add_blocked_by_main",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/issue/issue_create.py",
+    "qualified_symbol": "create_one_main",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "gh body-file staging, deleted in finally"
+  },
+  {
+    "file": "larch/lint/lint_mermaid_fences.py",
+    "qualified_symbol": "main",
+    "callee": "TemporaryDirectory",
+    "occurrence": 1,
+    "reason": "standalone linter workspace, auto-cleaned"
+  },
+  {
+    "file": "larch/release/release_finish.py",
+    "qualified_symbol": "_redacted_notes",
+    "callee": "NamedTemporaryFile",
+    "occurrence": 1,
+    "reason": "release notes staging, deleted in finally"
+  },
+  {
+    "file": "larch/rendering/_rendering_generators.py",
+    "qualified_symbol": "generate_pre_rendered_reviewer_prompts_main",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "standalone generator workspace, auto-cleaned"
+  },
+  {
+    "file": "larch/report/exec_issue_detail.py",
+    "qualified_symbol": "assess_issue_details",
+    "callee": "TemporaryDirectory",
+    "occurrence": 1,
+    "reason": "standalone report workspace, auto-cleaned"
+  },
+  {
+    "file": "larch/report/report_tokens_cli.py",
+    "qualified_symbol": "main",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "standalone report creates session tmpdir"
+  },
+  {
+    "file": "larch/report/report_tokens_render.py",
+    "qualified_symbol": "_cache_path",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "standalone report cache workspace"
+  },
+  {
+    "file": "larch/research/research_eval.py",
+    "qualified_symbol": "eval_research",
+    "callee": "mkdtemp",
+    "occurrence": 1,
+    "reason": "standalone eval workspace, auto-cleaned"
+  }
+]

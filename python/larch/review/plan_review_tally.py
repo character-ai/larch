@@ -639,7 +639,7 @@ class _Tally:
                     stub_message=f"**⚠ Tally aborted: voter file unreadable: {voter_file}; no votes tallied.**",
                 )
 
-        self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")
+        self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.", dir=self.design_tmpdir)
         self.block_dir = str(Path(self.workdir, "blocks"))
         try:
             voting.split_ballot(ballot_file=self.ballot_file, out_dir=self.block_dir)

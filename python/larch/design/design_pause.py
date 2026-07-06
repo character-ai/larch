@@ -351,7 +351,7 @@ def pause_load_main(argv: Sequence[str]) -> int:
         _emit([("LOAD_OK", "false"), ("ERROR", "snapshot-not-found")])
         return 0
 
-    restore_tmp = Path(tempfile.mkdtemp(prefix="design-pause-load-restore."))
+    restore_tmp = Path(tempfile.mkdtemp(prefix="design-pause-load-restore.", dir=design_tmpdir))
     try:
         prefix = f"larch-logs/design/{run_id}/"
         # NUL-delimited enumeration (-z) so a snapshot path containing a newline cannot be

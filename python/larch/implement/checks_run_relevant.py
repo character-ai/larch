@@ -996,10 +996,10 @@ def _finish_logged_result(
     )
 
 
-def _run_contains_pin_phase(*, repo: Path, changed: tuple[str, ...], log_fd: int) -> int:
+def _run_contains_pin_phase(*, repo: Path, changed: tuple[str, ...], log_fd: int, canonical_tmp: Path) -> int:
     changed_file: Path | None = None
     try:
-        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+        with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False, dir=canonical_tmp) as handle:
             changed_file = Path(handle.name)
             for path in changed:
                 _ = handle.write(f"{path}\n")
@@ -1028,6 +1028,7 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
     *,
     repo: Path,
     log_fd: int,
+    canonical_tmp: Path,
 ) -> int:
     env = _clean_child_env()
     cwd = str(repo)
@@ -1058,7 +1059,7 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
             phases_run += 1
             if make_result.returncode != 0:
                 return make_result.returncode
-        pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd)
+        pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd, canonical_tmp=canonical_tmp)
         if pins_rc != 0:
             return pins_rc
         phases_run += 1
@@ -1089,7 +1090,7 @@ def _run_relevant_checks_inner(  # noqa: PLR0911,PLR0912,PLR0915,RUF100
         if make_result.returncode != 0:
             return make_result.returncode
 
-    pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd)
+    pins_rc = _run_contains_pin_phase(repo=repo, changed=changed, log_fd=log_fd, canonical_tmp=canonical_tmp)
     phases_run += 1
     if pins_rc != 0:
         return pins_rc
@@ -1188,6 +1189,7 @@ def _run_relevant_checks_impl(  # noqa: PLR0911,RUF100
                 runner,
                 repo=repo,
                 log_fd=log_fd,
+                canonical_tmp=canonical_tmp,
             )
         except Exception as exc:  # fail closed and retain the captured diagnostic
             _write_log(log_fd=log_fd, text=f"ERROR: relevant checks internal failure: {exc}\n")

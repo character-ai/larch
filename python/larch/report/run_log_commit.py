@@ -663,6 +663,7 @@ def _publish_breadcrumbs_with_warning(*, log_root: Path, dest: Path) -> None:
 def larch_log_commit_main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(prog="cli.py run-log commit", add_help=False)
     parser.add_argument("--log-root", default="")
+    parser.add_argument("--tmpdir", default="")
     parser.add_argument("--skill", required=True)
     parser.add_argument("--run-id", required=True)
     parser.add_argument("--pre-scrub-violations", default="0")

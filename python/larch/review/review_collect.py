@@ -108,10 +108,11 @@ def _parse_output(*, path: Path, label: str, mode: str) -> list[tuple[str, str, 
     return rows
 
 
-def _parse_output_tsv(*, path: Path, label: str) -> list[tuple[str, str, str]]:
+def _parse_output_tsv(*, path: Path, label: str, review_tmpdir: Path) -> list[tuple[str, str, str]]:
     if not path.is_file() or path.stat().st_size == 0:
         return []
-    fd, tmp = tempfile.mkstemp(prefix="collect-tsv.", suffix=".tsv")
+    review_tmpdir.mkdir(parents=True, exist_ok=True)
+    fd, tmp = tempfile.mkstemp(prefix="collect-tsv.", suffix=".tsv", dir=review_tmpdir)
     os.close(fd)
     tmp_path = Path(tmp)
     try:
@@ -252,12 +253,12 @@ def collect_findings(argv: list[str]) -> int:
     for file in external_files:
         if not _collector_ok(path=collector_results, reviewer_file=file):
             continue
-        rows = _parse_output_tsv(path=file, label=file.name)
+        rows = _parse_output_tsv(path=file, label=file.name, review_tmpdir=review_tmpdir)
         per_rows.extend(rows or _parse_output(path=file, label=file.name, mode=mode))
     for file in claude_files:
         rows = _parse_output(path=file, label=file.name, mode=mode)
         if not rows:
-            rows = _parse_output_tsv(path=file, label=file.name)
+            rows = _parse_output_tsv(path=file, label=file.name, review_tmpdir=review_tmpdir)
         _record_claude_collector_result(collector_results=collector_results, file=file, rows=rows)
         per_rows.extend(rows)
     findings_file.write_text("", encoding="utf-8")

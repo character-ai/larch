@@ -366,8 +366,10 @@ def _parsed_cache_path(claude_pid: str) -> Path:
     return Path.home() / ".cache" / "larch" / "sessions" / f"step0-parsed-{claude_pid}.env"
 
 
-def _run_parse_argv(*, public_argv: Sequence[str], plugin_root: Path) -> tuple[int, dict[str, str], str]:
-    with tempfile.NamedTemporaryFile(prefix="larch-argv.", delete=False) as out:
+def _run_parse_argv(*, public_argv: Sequence[str], plugin_root: Path, claude_pid: str) -> tuple[int, dict[str, str], str]:
+    scratch_dir = _parsed_cache_path(claude_pid).parent
+    scratch_dir.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(prefix="larch-argv.", delete=False, dir=scratch_dir) as out:
         out_path = Path(out.name)
     try:
         proc = subprocess.run(
@@ -412,7 +414,7 @@ def _validate_parse_result(*, rc: int, data: dict[str, str], stderr_text: str) -
 
 
 def _parse_and_persist(*, ns: Step0WrapperNs, plugin_root: Path) -> tuple[Path, dict[str, str]]:
-    rc, data, stderr_text = _run_parse_argv(public_argv=ns.public_argv, plugin_root=plugin_root)
+    rc, data, stderr_text = _run_parse_argv(public_argv=ns.public_argv, plugin_root=plugin_root, claude_pid=ns.claude_pid)
     _validate_parse_result(rc=rc, data=data, stderr_text=stderr_text)
     for key in PARSED_ENV_KEYS:
         data.setdefault(key, "false" if key.endswith("_requested") or key == "no_dedup_requested" else "")

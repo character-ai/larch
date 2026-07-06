@@ -16,7 +16,7 @@ from larch.core import architectural_guidelines
 from larch.core import config
 from larch.report import final_report
 from larch.report import run_logs
-from larch.report import run_log_commit, run_log_flush
+from larch.report import run_log_batch, run_log_commit, run_log_flush
 from larch.report.run_log_batch import _rebase_under_tmpdir, _write_batch  # pyright: ignore[reportPrivateUsage]
 from larch.report import timing
 from larch.report import tokens
@@ -104,6 +104,85 @@ def _guideline_outcome_payload(
         "base_ref": "origin/main",
         "assessment_kind": assessment_kind,
     }
+
+
+
+
+def test_write_batch_uses_cache_scratch_when_log_root_is_under_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    cache = tmp_path / "cache"
+    payload = tmp_path / "architectural-guideline-outcome.json"
+    _ = payload.write_text(json.dumps(_guideline_outcome_payload()), encoding="utf-8")
+
+    def fake_cache_scratch() -> Path:
+        cache.mkdir(parents=True, exist_ok=True)
+        return cache
+
+    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(run_log_batch, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
+
+    assert run_log_batch._scratch_dir_for_log_root(repo / "nested" / "larch-logs") == cache  # pyright: ignore[reportPrivateUsage]
+
+    path, written, unchanged = run_log_batch._write_batch(  # pyright: ignore[reportPrivateUsage]
+        log_root=repo / "nested" / "larch-logs",
+        skill="implement",
+        run_id="run-abc",
+        batch=config.RUN_LOG_BATCH_GUIDELINE_SHIP_OUTCOME,
+        input_file=str(payload),
+    )
+
+    assert written is True
+    assert unchanged is False
+    assert path.is_file()
+    assert cache.is_dir()
+
+
+def test_capture_transcript_scratch_dir_uses_cache_when_log_root_is_under_repo(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    repo = tmp_path / "repo"
+    cache = tmp_path / "cache"
+    repo.mkdir()
+
+    def fake_cache_scratch() -> Path:
+        cache.mkdir(parents=True, exist_ok=True)
+        return cache
+
+    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", repo)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(run_log_flush, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
+
+    assert (
+        run_log_flush._capture_transcript_scratch_dir(  # pyright: ignore[reportPrivateUsage]
+            tmpdir="",
+            log_root=repo / "nested" / "larch-logs",
+        )
+        == cache
+    )
+
+
+def test_capture_transcript_scratch_dir_uses_active_checkout_root(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    repo = tmp_path / "consumer-repo"
+    repo.mkdir()
+    cache = tmp_path / "cache"
+
+    def fake_cache_scratch() -> Path:
+        cache.mkdir(parents=True, exist_ok=True)
+        return cache
+
+    def fake_git_run(argv: Sequence[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        return subprocess.CompletedProcess(argv, 0, stdout=f"{repo}\n", stderr="")
+
+    monkeypatch.setattr(run_log_batch.proc, "run", fake_git_run)  # type: ignore[attr-defined]
+    monkeypatch.setattr(run_log_batch, "_REPO_ROOT", tmp_path / "plugin-root")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(run_log_batch, "_larch_sessions_scratch_dir", fake_cache_scratch)  # pyright: ignore[reportPrivateUsage]
+
+    assert run_log_batch._path_is_repo_related(repo / "nested")  # pyright: ignore[reportPrivateUsage]
+    assert run_log_batch._scratch_dir_for_log_root(repo / "nested" / "larch-logs") == cache  # pyright: ignore[reportPrivateUsage]
 
 
 def test_guideline_outcome_batch_registry_and_sanitizer(tmp_path: Path) -> None:
@@ -1894,6 +1973,23 @@ def test_larch_log_commit_rejects_bad_pre_scrub_violations(tmp_path: Path) -> No
     assert rc == 1
 
 
+def test_larch_log_commit_accepts_tmpdir_flag(tmp_path: Path) -> None:
+    rc = run_logs.larch_log_commit_main(
+        [
+            "--log-root",
+            str(tmp_path / "larch-logs"),
+            "--tmpdir",
+            str(tmp_path / "session"),
+            "--skill",
+            "implement",
+            "--run-id",
+            "run-abc",
+        ]
+    )
+
+    assert rc == 0
+
+
 def test_write_round_commits_review_threshold_inputs(tmp_path: Path) -> None:
     source = tmp_path / "source-round"
     source.mkdir()
@@ -2848,7 +2944,7 @@ def test_capture_transcript_main_defer_commit_no_warning(
                 break
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
-    monkeypatch.setattr(subprocess, "run", _fake_run)
+    monkeypatch.setattr(run_log_batch.proc, "run", _fake_run)  # type: ignore[attr-defined]
 
     buf = StringIO()
     with contextlib.redirect_stdout(buf):
@@ -2875,15 +2971,14 @@ def test_capture_transcript_main_defer_commit_no_warning(
     assert "session transcript was written; commit deferred" not in issues_log.read_text(encoding="utf-8")
 
 
-def test_capture_transcript_main_preserves_system_tmp_render_path(
+def test_capture_transcript_main_uses_explicit_tmpdir_for_render_path(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     system_tmp = tmp_path / "system-tmp"
-    implement_tmp = tmp_path / "implement-tmp"
+    scratch_tmp = tmp_path / "scratch-tmp"
     system_tmp.mkdir()
-    implement_tmp.mkdir()
-    monkeypatch.setenv(config.ENV_IMPLEMENT_TMPDIR, str(implement_tmp))
+    scratch_tmp.mkdir()
     monkeypatch.setattr(run_log_flush.tempfile, "tempdir", str(system_tmp))
     transcript = tmp_path / "transcript.jsonl"
     _ = transcript.write_text('{"type":"message"}\n', encoding="utf-8")
@@ -2893,9 +2988,13 @@ def test_capture_transcript_main_preserves_system_tmp_render_path(
     rendered_payload = '{"type":"stub"}\n'
 
     def _fake_run(args: list[str], **_kwargs: object) -> subprocess.CompletedProcess[str]:
+        if args and args[0] == "git" and "rev-parse" in args and "--show-toplevel" in args:
+            return subprocess.CompletedProcess(args, 0, stdout=f"{tmp_path.parent / 'repo-root'}\n", stderr="")
+        if "--output" not in args:
+            return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
         output = Path(args[args.index("--output") + 1])
-        assert output.is_relative_to(system_tmp)
-        assert not output.is_relative_to(implement_tmp)
+        assert output.is_relative_to(scratch_tmp)
+        assert not output.is_relative_to(system_tmp)
         _ = output.write_text(rendered_payload, encoding="utf-8")
         return subprocess.CompletedProcess(args, 0, stdout="", stderr="")
 
@@ -2909,6 +3008,8 @@ def test_capture_transcript_main_preserves_system_tmp_render_path(
                 str(source),
                 "--log-root",
                 str(log_root),
+                "--tmpdir",
+                str(scratch_tmp),
                 "--skill",
                 "implement",
                 "--run-id",
