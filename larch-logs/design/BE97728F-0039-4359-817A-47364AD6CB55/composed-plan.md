@@ -1,0 +1,322 @@
+## Plan
+
+## Approach
+
+Implement the approved narrow sweep.
+
+1. Fix the 15 tempfile call sites that have a run-scoped tmpdir in scope.
+   - Use the nearest existing tmpdir, not new global plumbing.
+   - Prefer `dir=design_tmpdir`, `dir=review_tmpdir`, `dir=Path(args.log_root).parent`, or `dir=canonical_tmp`.
+   - Keep existing cleanup behavior.
+
+2. Add a new AST lint for `tempfile` calls without `dir=`.
+   - Scan production files under `python/larch/`.
+   - Exclude tests and the same vendored/cache dirs used by nearby ratchets.
+   - Match `tempfile.mkstemp`, `tempfile.mkdtemp`, `tempfile.NamedTemporaryFile`, and `tempfile.TemporaryDirectory`.
+   - Ignore calls that already pass a `dir=` keyword, including multiline calls.
+   - Use stable identities based on file, qualified symbol, callee, and occurrence — excluding reason from the identity key.
+   - Keep line numbers only for diagnostics.
+
+3. Add a reason-bearing baseline for the 22 approved ambient system-temp sites.
+   - Store it as JSON.
+   - Require non-empty reasons, but exclude reason from the identity key.
+   - Store `file` paths relative to `python/` with the `larch/` prefix (e.g., `larch/git/gh.py`).
+   - Fail on malformed rows, duplicate identities, unknown keys, or missing baseline.
+   - Let `--write` preserve reasons and shrink obsolete rows.
+   - Require `--initial-reason` only when new rows need a reason.
+
+4. Wire the lint into existing Python lint surfaces.
+   - Add `python3 python/cli.py lint tempfile-dir`.
+   - Add it to `py-lint-checks-fast`.
+   - Add `regen-tempfile-dir-baseline`.
+
+5. Add tests that pin scanner, baseline, and CLI behavior.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_step0.py
+
+Add `dir=design_tmpdir` to both `NamedTemporaryFile` calls:
+- `_run_step0_init_driver`
+- `step0_route_main`
+
+Keep the existing `delete=False` plus `finally unlink` cleanup.
+
+### UPDATED: python/larch/design/design_step0_env.py
+
+Bootstrap parse runs before `DESIGN_TMPDIR` exists, so `plugin_root.parent` is not safe scratch.
+
+Preferred implementation:
+- Thread `claude_pid` into `_run_parse_argv`.
+- Use `dir=_parsed_cache_path(claude_pid).parent` (or `Path.home() / ".cache" / "larch" / "sessions"`) and call `mkdir(parents=True, exist_ok=True)` first.
+- Drop `plugin_root.parent` as the primary fallback; this is the same session-cache family already used by existing cache helpers.
+
+### UPDATED: python/larch/design/design_log_publish_flow.py
+
+Change the worktree parent from `tempfile.mkdtemp(prefix="larch-design-log-")` to use a run-owned parent that is NOT inside `design_tmpdir` itself, to avoid the disposable worktree being copied into the committed design log tree.
+
+- Do NOT place the worktree under `design_tmpdir` directly; the publish step iterates that tree to build committed output, so a nested worktree would be accidentally included.
+- Instead, use `Path.home() / ".cache" / "larch" / "sessions"` or another owned scratch path outside the design session tree; call `mkdir(parents=True, exist_ok=True)` before use.
+- Alternatively, use a sibling directory outside `design_tmpdir` if available.
+
+Keep the disposable worktree cleanup semantics unchanged.
+
+### UPDATED: python/larch/design/design_pause.py
+
+Change `restore_tmp = Path(tempfile.mkdtemp(prefix="design-pause-load-restore."))` to use `dir=design_tmpdir`.
+
+If the helper does not currently receive `design_tmpdir`, thread it from the pause/load entrypoint that already knows the active design run directory.
+
+### UPDATED: python/larch/review/review_collect.py
+
+Use the existing `review_tmpdir` for `_parse_output_tsv`.
+
+Recommended shape:
+- Add a `review_tmpdir: Path` parameter to `_parse_output_tsv`.
+- Pass it from the caller that already resolves `REVIEW_TMPDIR` or `findings_file.parent`.
+- Call `tempfile.mkstemp(..., dir=review_tmpdir)`.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Add `dir=review_tmpdir` in `_non_security_oos_count`.
+
+If the helper lacks `review_tmpdir` at all callers, add it as a keyword-only parameter and update call sites.
+
+Do not disturb existing `_block_files`, which already uses `dir=str(review_tmpdir)`.
+
+### UPDATED: python/larch/review/review_aggregate.py
+
+Change `_run_scope_marker` and the parity validator to stage under `review_tmpdir`.
+
+- Add `review_tmpdir: Path` to `_run_scope_marker`.
+- Add `review_tmpdir: Path` to `_plan_scope_reduction_parity_ok` and pass it from its caller (`_apply_aggregate_candidate`).
+- Forward `review_tmpdir` to every `_run_scope_marker` call in `_plan_scope_reduction_parity_ok` and `_split_plan_scope_blocks`.
+- Use `tempfile.mkstemp(dir=review_tmpdir)`.
+
+### UPDATED: python/larch/review/compose_review.py
+
+Fix all tempfile sites, including the OOS parsing path.
+
+- Resolve `scratch_dir` as an optional value in `compose_findings` — defer the fail-closed check until just before the first actual tempfile call, not at function entry. This preserves the empty-input path that writes an empty JSONL without needing any tempfile at all.
+- Prefer `Path(args.implement_tmpdir)` when present.
+- Else prefer `Path(args.design_artifacts_dir)` when present.
+- Else read `REVIEW_TMPDIR` from the environment.
+- If none is resolvable, fail closed at the callsite that first needs scratch.
+- Pass `scratch_dir` into `_is_security_text` and the Gate B filtered accepted-findings temp path (line 335).
+- Thread `scratch_dir` through `_parse_artifact` so the OOS parsing path (which calls `_is_security_text`) uses run-owned scratch too.
+- Use `dir=scratch_dir`.
+
+### UPDATED: python/larch/review/plan_review_tally.py
+
+Change `self.workdir = tempfile.mkdtemp(prefix="larch-tally-plan-review.")` to use `dir=self.design_tmpdir`.
+
+Keep the existing `finally shutil.rmtree(self.workdir, ignore_errors=True)` cleanup.
+
+### UPDATED: python/larch/report/run_log_flush.py
+
+Add a `--tmpdir` argument to `capture_transcript_main`.
+
+Use it as the scratch directory for:
+- `session-transcript.*.jsonl`
+- `render-stderr.*.log`
+
+Thread it from existing callers with `ctx.tmpdir`.
+
+Fallback should be conservative:
+- If `--tmpdir` is missing, derive it from `Path(args.log_root).parent` when valid.
+- Do not fall back to ambient `$TMPDIR`.
+
+### UPDATED: python/larch/report/run_log_batch.py
+
+Thread an explicit scratch dir through redaction temp creation, but guard against `log_root.parent` resolving to the repository root (which would create transient files in the working tree and trip clean-tree guards).
+
+- Add `scratch_dir: Path` to `_redact_to_temp`.
+- In `_write_batch` and `_append_batch`, use `log_root.parent` only when it is a known session or run tmpdir (i.e., not the repository root or a parent of it). Otherwise fall back to a larch-owned cache directory (`~/.cache/larch/sessions`, after `mkdir`), not ambient `$TMPDIR`.
+- Use `tempfile.mkstemp(..., dir=scratch_dir)`.
+
+Keep `_rebase_under_tmpdir`, redaction, validation, and `finally unlink` behavior unchanged.
+
+### UPDATED: python/larch/implement/checks_run_relevant.py
+
+Thread `canonical_tmp` through the full call chain to reach both pin-phase invocations.
+
+- Add `canonical_tmp: Path` to `_run_contains_pin_phase`.
+- Add `canonical_tmp: Path` to `_run_relevant_checks_inner`.
+- Pass `canonical_tmp` from `_run_relevant_checks_impl` to `_run_relevant_checks_inner`.
+- Forward it from `_run_relevant_checks_inner` to both `_run_contains_pin_phase` call sites (lines 1061 and 1092).
+- Use `tempfile.NamedTemporaryFile(..., dir=canonical_tmp)`.
+
+Keep the current `delete=False` plus cleanup path.
+
+### NEW: python/larch/lint/lint_tempfile_dir.py
+
+Create an AST ratchet patterned after `lint_subprocess_via_runner.py`.
+
+Core behavior:
+- `BASELINE_FILENAME = "tempfile-dir-baseline.json"`.
+- `ALLOWED_CALLEES = {"mkstemp", "mkdtemp", "NamedTemporaryFile", "TemporaryDirectory"}`.
+- Detect only `tempfile.<callee>(...)` calls missing a `dir=` keyword.
+- Do not try to detect aliases in this first pass unless current code uses them.
+- Exclude tests and non-production dirs using the same conventions as nearby lint ratchets.
+- Support `--root`, `--write`, and `--initial-reason`.
+- Exit `0` when only baselined findings remain.
+- Exit `1` for unbaselined live findings.
+- Exit `2` for malformed baseline, duplicate identity, missing baseline, bad args, or write-without-reason for new rows.
+- Emit diagnostics that name the file, qualified symbol, callee, occurrence, and line.
+
+Baseline identity (keys for dedup; reason excluded):
+- `file`
+- `qualified_symbol`
+- `callee`
+- `occurrence`
+
+`reason` is a required field in the baseline JSON but is NOT part of the identity key, so reason-only edits do not churn the identity or fail `--write`.
+
+Baseline `file` paths are stored relative to `python/` with the `larch/` prefix, mirroring `lint_layering.py` (e.g., `larch/git/gh.py`, not `git/gh.py`).
+
+### NEW: python/tempfile-dir-baseline.json
+
+Add one row per approved baseline site.
+
+Rows should cover these 22 ambient sites:
+- `larch/agents/_ci_launcher.py`
+- `larch/agents/_claude_runner.py`
+- `larch/agents/_drafter.py`
+- `larch/agents/_review_launcher.py`
+- `larch/git/gh.py`
+- `larch/git/git.py`
+- `larch/core/forked_repo.py`
+- `larch/lint/lint_mermaid_fences.py`
+- `larch/issue/audit_runs.py`
+- `larch/issue/deps_audit.py`
+- `larch/issue/issue_create.py`
+- `larch/rendering/_rendering_generators.py`
+- `larch/report/exec_issue_detail.py`
+- `larch/report/report_tokens_cli.py`
+- `larch/report/report_tokens_render.py`
+- `larch/research/research_eval.py`
+- `larch/release/release_finish.py`
+
+Use short reasons, for example:
+- external tool auth/config home, must be system-accessible
+- gh body-file staging, deleted in finally
+- standalone linter workspace, auto-cleaned
+- standalone report creates its own session tmpdir
+
+After the 15 fixes, regenerate the baseline so it contains only these approved rows.
+
+### UPDATED: python/larch/cli.py
+
+Register the new lint verb:
+- `("lint", "tempfile-dir"): ("larch.lint.lint_tempfile_dir", "main")`
+
+Keep the CLI table sorted in the local style if the table is grouped.
+
+### UPDATED: Makefile
+
+Update fast lint and regen plumbing:
+- Add `$(PYTHON) python/cli.py lint tempfile-dir` to `py-lint-checks-fast`.
+- Add `regen-tempfile-dir-baseline` to `.PHONY`.
+- Add a target mirroring the existing baseline regen targets.
+- Use an initial reason only when `python/tempfile-dir-baseline.json` is absent.
+
+Suggested bootstrap reason:
+`grandfathered ambient tempfile usage pre-tempfile-dir ratchet`
+
+### NEW: python/tests/lint/test_lint_tempfile_dir.py
+
+Add focused pytest coverage.
+
+Cover:
+- detects `tempfile.mkstemp`, `mkdtemp`, `NamedTemporaryFile`, and `TemporaryDirectory` without `dir=`
+- ignores calls with `dir=` on the same line and continuation lines
+- assigns occurrences before suppression
+- excludes tests and vendored/cache dirs
+- baseline suppresses existing findings (reason excluded from identity key)
+- unbaselined finding exits `1`
+- malformed, duplicate, extra-key, empty-reason, and bad-path baseline rows exit `2`
+- `--write` preserves reasons and shrinks obsolete rows without changing identity
+- `--write` fails when new rows lack reasons
+- missing baseline exits `2` in check mode
+- absent baseline plus `--write --initial-reason` bootstraps successfully
+
+Correct test file paths for touched runtime areas:
+- `python/tests/report/test_run_logs.py` (not `python/test_capture_session_transcript.py`)
+- `python/tests/report/test_run_log_flush.py` if present, else `python/tests/report/test_run_logs.py`
+- `python/tests/report/test_larch_logs_batches.py` (not `python/test_larch_logs_batches.py`)
+- `python/tests/review/test_plan_review.py` for review tally/aggregate/collect
+- `python/tests/design/test_design_lifecycle.py` for design step0 and pause
+- `python/tests/implement/test_checks.py` or nearest `checks run-relevant` test file for implement path
+- Rewrite or delete `test_capture_transcript_main_preserves_system_tmp_render_path`; the new contract stages scratch under `--tmpdir` or `log_root.parent`, not system `$TMPDIR`.
+
+### MAY_UPDATE: docs/linting.md
+
+Only update this file if the custom-ratchet section is intended to remain complete for every Python AST baseline.
+
+If updated, add a short entry for:
+- `python/cli.py lint tempfile-dir`
+- `python/tempfile-dir-baseline.json`
+- `make regen-tempfile-dir-baseline`
+
+## Edge cases
+
+- Multiline tempfile calls with `dir=` must not be flagged.
+- Context-managed `TemporaryDirectory` is still in lint scope because malformed `$TMPDIR` can break creation.
+- Baseline occurrence numbers must stay stable across line movement.
+- Reason-only baseline edits must not churn identity keys.
+- `delete=False` sites must keep cleanup in `finally`.
+- Scratch dirs must exist before passing them to `tempfile`; create only owned run dirs when needed.
+- `compose_review.py` may run for design-only or implement-only inputs; also calls `_is_security_text` from the OOS `_parse_artifact` path. Pick the available run-owned dir and fail closed if none exists.
+- `capture_transcript_main` may be invoked directly. Derive scratch dir from `--tmpdir` first, then `--log-root` parent.
+- Bootstrap `design_step0_env.py` parse runs before `DESIGN_TMPDIR` exists; use session-cache path (`~/.cache/larch/sessions`), not `plugin_root.parent`.
+
+## Failure modes
+
+- A missed call site (including `_plan_scope_reduction_parity_ok` or `_parse_artifact`) leaves the new lint red.
+- A broad fallback to ambient `$TMPDIR` reintroduces the bug.
+- A baseline row without a reason weakens the ratchet.
+- A baseline identity based on line numbers will churn on unrelated edits.
+- Including reason in the identity key breaks `--write` for reason-only updates.
+- A temp file under the repo can dirty the tree if the chosen dir is wrong.
+- Redaction temp cleanup must still run on validation or write failure.
+
+## Testing strategy
+
+Run focused tests first:
+- `python3 -m pytest python/tests/lint/test_lint_tempfile_dir.py`
+- `python3 python/cli.py lint tempfile-dir`
+
+Run relevant Python checks:
+- `make py-lint-checks-fast`
+
+Run targeted tests for touched runtime areas:
+- `python3 -m pytest python/tests/report/test_run_logs.py`
+- `python3 -m pytest python/tests/report/test_larch_logs_batches.py` (or nearest run-log-batch test)
+- `python3 -m pytest python/tests/review/test_plan_review.py -k "collect or tally or aggregate"`
+- `python3 -m pytest python/tests/design/test_design_lifecycle.py python/tests/design/test_design_publish.py python/tests/state/test_pause_skill.py`
+- `python3 -m pytest python/tests/implement/test_checks.py` or nearest `checks run-relevant` test file
+
+If test names differ, search for the closest existing pytest file for the touched module.
+
+## Acceptance
+
+Run focused tests first:
+- `python3 -m pytest python/tests/lint/test_lint_tempfile_dir.py`
+- `python3 python/cli.py lint tempfile-dir`
+
+Run relevant Python checks:
+- `make py-lint-checks-fast`
+
+Run targeted tests for touched runtime areas:
+- `python3 -m pytest python/tests/report/test_run_logs.py`
+- `python3 -m pytest python/tests/report/test_larch_logs_batches.py` (or nearest run-log-batch test)
+- `python3 -m pytest python/tests/review/test_plan_review.py -k "collect or tally or aggregate"`
+- `python3 -m pytest python/tests/design/test_design_lifecycle.py python/tests/design/test_design_publish.py python/tests/state/test_pause_skill.py`
+- `python3 -m pytest python/tests/implement/test_checks.py` or nearest `checks run-relevant` test file
+
+If test names differ, search for the closest existing pytest file for the touched module.
+
+review_status: complete
+rounds_completed: 2
+difficulty: MODERATE
+diff_lines: 620
