@@ -2329,6 +2329,12 @@
   },
   {
     "file": "larch/git/pr_body.py",
+    "code": "PLR0913",
+    "qualified_symbol": "compose_pr_body",
+    "metric": 6
+  },
+  {
+    "file": "larch/git/pr_body.py",
     "code": "PLR0915",
     "qualified_symbol": "generate_code_flow_diagram",
     "metric": 53
@@ -2756,25 +2762,37 @@
   {
     "file": "larch/implement/ship.py",
     "code": "C901",
+    "qualified_symbol": "_invariants_gate_before_pr",
+    "metric": 11
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 49
+    "metric": 51
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 24
+    "metric": 26
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 52
+    "metric": 54
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0913",
     "qualified_symbol": "_guidelines_gate_before_pr",
+    "metric": 6
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0913",
+    "qualified_symbol": "_invariants_gate_before_pr",
     "metric": 6
   },
   {
@@ -2787,7 +2805,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 170
+    "metric": 174
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -3201,7 +3219,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "C901",
     "qualified_symbol": "compute_counters_main",
-    "metric": 20
+    "metric": 24
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3231,6 +3249,12 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0911",
     "qualified_symbol": "_guideline_ship_outcome_scan_obj",
+    "metric": 9
+  },
+  {
+    "file": "larch/issue/audit_runs.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_invariant_ship_outcome_scan_obj",
     "metric": 9
   },
   {
@@ -3273,7 +3297,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0912",
     "qualified_symbol": "compute_counters_main",
-    "metric": 17
+    "metric": 21
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -3297,7 +3321,7 @@
     "file": "larch/issue/audit_runs.py",
     "code": "PLR0915",
     "qualified_symbol": "compute_counters_main",
-    "metric": 53
+    "metric": 63
   },
   {
     "file": "larch/issue/audit_runs.py",
@@ -4311,7 +4335,7 @@
     "file": "larch/report/final_report.py",
     "code": "C901",
     "qualified_symbol": "write_final_report",
-    "metric": 20
+    "metric": 18
   },
   {
     "file": "larch/report/final_report.py",
@@ -4341,7 +4365,7 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0912",
     "qualified_symbol": "write_final_report",
-    "metric": 19
+    "metric": 17
   },
   {
     "file": "larch/report/final_report.py",
@@ -4353,7 +4377,7 @@
     "file": "larch/report/final_report.py",
     "code": "PLR0915",
     "qualified_symbol": "write_final_report",
-    "metric": 67
+    "metric": 62
   },
   {
     "file": "larch/report/gc_run_logs.py",
