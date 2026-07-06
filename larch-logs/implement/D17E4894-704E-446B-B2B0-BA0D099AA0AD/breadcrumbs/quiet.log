@@ -68,5 +68,6 @@ ci_monitor: poll 3/180 pending after 32s; sleeping 10s
 ci_monitor: CI status query #4 in progress after 42s
 ci_monitor: CI fail after 46s -> rebase_then_evaluate
 ship.py: rebase: Flush+Push
+=== larch-quiet-ship.py-76985.log ===
 === larch-quiet-tracking-issue-upsert-summary-57721.log ===
 === larch-quiet-tracking-issue-upsert-summary-68387.log ===
