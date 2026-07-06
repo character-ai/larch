@@ -1,15 +1,15 @@
-## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: pr-created
+## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: stalled
 
-- **Outcome**: DONE
+- **Outcome**: STALLED
 - **Duration**: 01:15:45
-- **Cost**: 💰 TOTAL ~$63.21: Claude $15.68, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.38  |  Tokens: 125393k
+- **Cost**: 💰 TOTAL ~$63.62: Claude $16.09, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.38  |  Tokens: 126680k
 - **Issue**: #6476: https://github.com/character-ai/larch/issues/6476
 - **PR**: #6510: https://github.com/character-ai/larch/pull/6510
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/18 accepted
-- **Lines (PR diff)**: code +2061/-108, larch-logs +1835/-0
+- **Lines (PR diff)**: code +2061/-108, larch-logs +1832/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
