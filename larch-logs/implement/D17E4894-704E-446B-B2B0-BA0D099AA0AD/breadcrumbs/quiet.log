@@ -102,3 +102,4 @@ ci_monitor: CI status query #3 in progress after 28s
 ci_monitor: CI fail after 33s -> evaluate_failure
 === larch-quiet-tracking-issue-upsert-summary-57721.log ===
 === larch-quiet-tracking-issue-upsert-summary-68387.log ===
+=== larch-quiet-tracking-issue-upsert-summary-86864.log ===
