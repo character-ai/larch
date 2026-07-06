@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round neutral parity concern; the plan can still ship without adding section-5 lint-field parity, so this is out of scope.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Duplicate of the prior-round neutral carve-out concern; explicit file-naming is a wording refinement, not a necessary fix for the feature.

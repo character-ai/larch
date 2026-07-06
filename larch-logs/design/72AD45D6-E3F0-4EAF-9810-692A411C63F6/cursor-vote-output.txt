@@ -1,0 +1,2 @@
+FINDING_1: NO CORRECTNESS=true SEVERITY=minor QUALITY=good UNCERTAIN=false -- Re-raises round-1 neutral FINDING_3; lint-classified section 5 rows are a narrow path and the plan already requires full normative text there.
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- Re-raises round-1 neutral FINDING_1; planned Step 4 carve-out already satisfies acceptance without explicitly naming readability-style.md.
