@@ -112,6 +112,8 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("analyze-bugs", "prefetch"): ("larch.issue.analyze_bugs", "prefetch_main"),
     ("analyze-bugs", "ledger"): ("larch.issue.analyze_bugs", "ledger_main"),
     ("analyze-bugs", "report"): ("larch.issue.analyze_bugs", "report_main"),
+    ("learn-from-bugs", "prepare"): ("larch.issue.learn_from_bugs", "prepare_main"),
+    ("learn-from-bugs", "coverage-index"): ("larch.issue.learn_from_bugs", "coverage_index_main"),
     ("rejected-analysis", "prepare"): ("larch.issue.rejected_analysis", "prepare_main"),
     ("rejected-analysis", "ingest-verdict"): ("larch.issue.rejected_analysis", "ingest_verdict_main"),
     ("rejected-analysis", "finalize"): ("larch.issue.rejected_analysis", "finalize_main"),
