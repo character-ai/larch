@@ -224,6 +224,9 @@ marker_step_completed() {
 PROBE_CLAMP_THRESHOLD="${LARCH_BG_POLL_GUARD_PROBE_THRESHOLD:-2}"
 case "$PROBE_CLAMP_THRESHOLD" in ''|*[!0-9]*) PROBE_CLAMP_THRESHOLD=2 ;; esac
 
+TASK_OUTPUT_READ_THRESHOLD="${LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD:-2}"
+case "$TASK_OUTPUT_READ_THRESHOLD" in ''|*[!0-9]*) TASK_OUTPUT_READ_THRESHOLD=2 ;; esac
+
 probe_counter_file() {
   printf '%s/bg-poll-guard-probe-denials.%s.count' "$1" "$2"
 }
@@ -272,6 +275,73 @@ reset_probe_counter_for_step() {
     *) return 0 ;;
   esac
   rm -f "$(probe_counter_file "$dir" "$name")" 2>/dev/null || true
+}
+
+reset_task_output_read_state() {
+  local dir="$1"
+  [ -n "$dir" ] || return 0
+  rm -f "$dir"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
+}
+
+task_output_read_state_file() {
+  printf '%s/bg-poll-guard-task-output-read.%s.count' "$1" "$2"
+}
+
+read_task_output_id() {
+  local path="$1" token id
+  token=$(printf '%s' "$path" | sed -nE 's#^(.*/)?tasks/([A-Za-z0-9._-]+)\.output$#\2#p')
+  [ -n "$token" ] || return 1
+  id="$token"
+  printf '%s' "$id"
+}
+
+task_output_file_signature() {
+  local path="$1" size checksum class non_ws
+  [ -f "$path" ] || return 1
+  [ ! -L "$path" ] || return 1
+  [ -r "$path" ] || return 1
+  size=$(wc -c <"$path" 2>/dev/null | awk '{print $1}') || return 1
+  case "$size" in ''|*[!0-9]*) return 1 ;; esac
+  checksum=$(dd if="$path" bs=200 count=1 2>/dev/null | cksum 2>/dev/null | awk '{print $1}') || return 1
+  case "$checksum" in ''|*[!0-9]*) return 1 ;; esac
+  non_ws=$(LC_ALL=C tr -d '[:space:]' <"$path" 2>/dev/null | wc -c | awk '{print $1}') || return 1
+  case "$non_ws" in ''|*[!0-9]*) return 1 ;; esac
+  class=content
+  [ "$non_ws" -eq 0 ] && class=whitespace
+  printf '%s\t%s\t%s' "$class" "$size" "$checksum"
+}
+
+task_output_read_bump() {
+  local dir="$1" task_id="$2" sig="$3" state_file old_class old_size old_checksum old_count
+  local class size checksum count tmp
+  IFS=$'\t' read -r class size checksum <<EOF_SIG
+$sig
+EOF_SIG
+  [ -n "$class" ] || return 1
+  state_file=$(task_output_read_state_file "$dir" "$task_id")
+  old_class=""
+  old_size=""
+  old_checksum=""
+  old_count=0
+  if [ -f "$state_file" ] && [ ! -L "$state_file" ]; then
+    IFS=$'\t' read -r old_class old_size old_checksum old_count <"$state_file" 2>/dev/null || true
+    case "$old_count" in ''|*[!0-9]*) old_count=0 ;; esac
+  fi
+  if [ "$class" = "whitespace" ]; then
+    count=$((old_count + 1))
+  elif [ "$old_class" = "$class" ] && [ "$old_size" = "$size" ] && [ "$old_checksum" = "$checksum" ]; then
+    count=$((old_count + 1))
+  else
+    count=1
+  fi
+  tmp="$state_file.tmp.$$"
+  if printf '%s\t%s\t%s\t%s\n' "$class" "$size" "$checksum" "$count" >"$tmp" 2>/dev/null; then
+    mv -f "$tmp" "$state_file" 2>/dev/null || { rm -f "$tmp" 2>/dev/null || true; return 1; }
+  else
+    rm -f "$tmp" 2>/dev/null || true
+    return 1
+  fi
+  printf '%s\t%s' "$class" "$count"
 }
 
 probe_sentinel_name() {
@@ -544,6 +614,36 @@ json_deny_monitor() {
   emit_deny_json "$reason"
 }
 
+json_deny_task_output_read() {
+  local dir="$1" reason
+  reason=$(deny_reason_with_marker 'The classification Read of tasks/*.output is unchanged or empty during a live /design background wait. End the turn now with no prose, no tools, and no retry until the next <task-notification>.' "$dir")
+  emit_deny_json "$reason"
+}
+
+task_output_read_clamp() {
+  local read_abs="$1" task_id="$2" dir step sig bump class count
+  [ -n "$task_id" ] || return 1
+  sig=$(task_output_file_signature "$read_abs") || return 1
+  while IFS='|' read -r dir step || [ -n "$dir" ]; do
+    [ -n "$dir" ] || continue
+    case "$step" in
+      design-step*) ;;
+      *) continue ;;
+    esac
+    bump=$(task_output_read_bump "$dir" "$task_id" "$sig") || return 1
+    IFS=$'\t' read -r class count <<EOF_BUMP
+$bump
+EOF_BUMP
+    case "$count" in ''|*[!0-9]*) return 1 ;; esac
+    if [ "$count" -gt "$TASK_OUTPUT_READ_THRESHOLD" ]; then
+      json_deny_task_output_read "$dir"
+      exit 0
+    fi
+    return 0
+  done <"$live_markers_file"
+  return 1
+}
+
 terminal_sentinel_probe_clamp() {
   # Entered only after bash_is_terminal_sentinel_foreground_probe matched. Allows the
   # probe up to the threshold per absent sentinel, then denies until the sentinel
@@ -606,6 +706,7 @@ marker_is_live() {
   step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
   if marker_step_completed "$dir" "$step"; then
     reset_probe_counter_for_step "$dir" "$step"
+    reset_task_output_read_state "$dir"
     return 1
   fi
   pid=$(marker_value "$marker" PID) || return 2
@@ -614,7 +715,7 @@ marker_is_live() {
   case "$pid" in ''|*[!0-9]*) return 2 ;; esac
   case "$start" in ''|*[!0-9]*) return 2 ;; esac
   case "$timeout" in ''|*[!0-9]*) return 2 ;; esac
-  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; reset_probe_counter_for_step "$dir" "$step"; return 1; }
+  kill -0 "$pid" 2>/dev/null || { rm -f "$marker" 2>/dev/null || true; reset_probe_counter_for_step "$dir" "$step"; reset_task_output_read_state "$dir"; return 1; }
   grace=60
   limit=$((timeout + grace))
   age=$((now - start))
@@ -624,6 +725,7 @@ marker_is_live() {
   if [ "$age" -gt "$limit" ]; then
     rm -f "$marker" 2>/dev/null || true
     reset_probe_counter_for_step "$dir" "$step"
+    reset_task_output_read_state "$dir"
     return 1
   fi
   LIVE_MARKER_DIR="$dir"
@@ -1129,6 +1231,9 @@ if [ "$tool_name" = "Read" ]; then
   esac
   if path_is_bg_wait_marker "$read_abs"; then
     exit 0
+  fi
+  if task_id=$(read_task_output_id "$read_abs" 2>/dev/null); then
+    task_output_read_clamp "$read_abs" "$task_id" || true
   fi
   while IFS= read -r dir || [ -n "$dir" ]; do
     [ -n "$dir" ] || continue

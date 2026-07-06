@@ -9,9 +9,16 @@ from pathlib import Path
 
 
 def _clear_no_progress_sidecars(tmpdir: Path) -> None:
-    for name in ("no-progress-turns.count", "no-progress-circuit-breaker-armed"):
+    for name in (
+        "no-progress-turns.count",
+        "no-progress-circuit-breaker-armed",
+        "no-progress-stop-block-emitted",
+    ):
         with contextlib.suppress(OSError):
             (tmpdir / name).unlink()
+    with contextlib.suppress(OSError):
+        for counter in tmpdir.glob("bg-poll-guard-task-output-read.*.count"):
+            counter.unlink(missing_ok=True)
 
 
 def _read_keepalive_clone_path(tmpdir: Path) -> str:

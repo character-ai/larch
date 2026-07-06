@@ -204,6 +204,9 @@ contains "$SKILL_MD" '`${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wai
 contains "$SKILL_MD" 'NEVER treat an AskUserQuestion no-response fallback as an operator answer' 'Design anti-patterns must not treat AskUserQuestion no-response as an answer'
 contains "$SHARED_DESIGN_WAIT_MD" 'Step 3-specific recovery note: the completion condition MUST be `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`; it MUST NOT be `.step3-review-result.env`.' 'Shared design wait must own Step 3 completion-condition literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'Foreground terminal-sentinel probe: after the one classification `Read` finds new or changed non-empty task-output bytes' 'Shared design wait must own foreground-probe literal'
+contains "$SHARED_DESIGN_WAIT_MD" 'A bg-poll denial of that classification `Read` is same: no prose/tools/retry before next `<task-notification>`.' 'Shared design wait must document denied classification-Read silent yield'
+contains "$SHARED_DESIGN_WAIT_MD" 'blocks directly at `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 3)' 'Shared design wait must document Stop direct block threshold'
+not_contains "$SHARED_DESIGN_WAIT_MD" 'blocks the next prompt at `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5; `UserPromptSubmit` hook)' 'Shared design wait must not describe UserPromptSubmit as primary no-progress block path'
 contains "$SHARED_DESIGN_WAIT_MD" 'Foreground probes are non-sleeping `[ -f … ]` or `test -f …` checks only.' 'Shared design wait must document foreground probe forms'
 contains "$SHARED_DESIGN_WAIT_MD" 'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own DESIGN_TMPDIR prefix literal'
 contains "$SHARED_DESIGN_WAIT_MD" 'prefix the foreground probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment' 'Shared design wait must own foreground DESIGN_TMPDIR prefix literal'
@@ -274,7 +277,8 @@ check_context_before_step3_launch "$SKILL_MD" \
   '/design Step 3 launch loads the post-notification sequence' \
   "20" \
   "$LOAD_LITERAL Step 3 post-notification sequence"
-contains "$SKILL_MD" 'Before parsing the envelope after notification, use this ordered premature-notification contract: exactly one classification `Read` of the active `tasks/*.output`; missing or whitespace-only task-output bytes → silent yield; prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield' 'Design Step 3 post-loop routing must pin ordered repeat handling'
+contains "$SKILL_MD" 'Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same' 'Design Step 3 post-loop routing must pin ordered repeat handling'
+contains "$SKILL_MD" 'denied classification `Read` → same, no retry until the next `<task-notification>`' 'Design Step 3 post-loop routing must pin denied classification Read silent yield'
 contains "$SKILL_MD" 'A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.' 'Design Step 5c must pin repeat silent-yield routing'
 check_context_before "$SKILL_MD" \
   '/design Step 5c uses the immediate-background load contract' \

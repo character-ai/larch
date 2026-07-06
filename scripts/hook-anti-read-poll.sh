@@ -67,6 +67,130 @@ emit_reminder() {
         2>/dev/null || true
 }
 
+canonical_dir() {
+    [ -n "$1" ] || return 1
+    [ -d "$1" ] || return 1
+    (cd "$1" 2>/dev/null && pwd -P)
+}
+
+marker_candidates() {
+    if [ -n "${LARCH_BG_POLL_GUARD_MARKER:-}" ]; then
+        printf '%s\n' "$LARCH_BG_POLL_GUARD_MARKER"
+        return 0
+    fi
+    if [ -n "${HOME:-}" ] && [ -d "$HOME/.cache/larch/sessions" ]; then
+        find "$HOME/.cache/larch/sessions" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+    fi
+    if [ -d "${TMPDIR:-/tmp}" ]; then
+        _lmc_dirs=()
+        for _lmc_d in "${TMPDIR:-/tmp}"/larch-* "${TMPDIR:-/tmp}"/claude-design-* "${TMPDIR:-/tmp}"/claude-implement-*; do
+            [ -d "$_lmc_d" ] || continue
+            _lmc_dirs+=("$_lmc_d")
+        done
+        if [ "${#_lmc_dirs[@]}" -gt 0 ]; then
+            find "${_lmc_dirs[@]}" -maxdepth 2 -name .bg-wait-active -type f 2>/dev/null || true
+        fi
+    fi
+}
+
+marker_value() {
+    local marker="$1" key="$2"
+    awk -F= -v k="$key" '$1 == k { sub(/^[^=]*=/, ""); print; found=1; exit } END { exit found ? 0 : 1 }' "$marker" 2>/dev/null
+}
+
+clone_paths_same() {
+    local marker_canon="$1" current_canon="$2"
+    [ "$marker_canon" = "$current_canon" ] && return 0
+    case "$current_canon" in
+        "$marker_canon"/*) return 0 ;;
+    esac
+    case "$marker_canon" in
+        "$current_canon"/*) return 0 ;;
+    esac
+    return 1
+}
+
+marker_foreign_clone() {
+    local dir="$1" current_canon="$2" marker keepalive marker_clone marker_canon
+    [ -n "$current_canon" ] || return 1
+    marker="$dir/.bg-wait-active"
+    if [ -f "$marker" ] && [ ! -L "$marker" ]; then
+        marker_clone=$(marker_value "$marker" CLONE_PATH 2>/dev/null || true)
+        if [ -n "$marker_clone" ]; then
+            marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null || true)
+            if [ -n "$marker_canon" ]; then
+                clone_paths_same "$marker_canon" "$current_canon" && return 1
+                return 0
+            fi
+        fi
+    fi
+    keepalive="$dir/.larch-keepalive"
+    [ -f "$keepalive" ] && [ ! -L "$keepalive" ] || return 1
+    marker_clone=$(marker_value "$keepalive" CLONE_PATH) || return 1
+    [ -n "$marker_clone" ] || return 1
+    marker_canon=$(canonical_dir "$marker_clone" 2>/dev/null) || return 1
+    clone_paths_same "$marker_canon" "$current_canon" && return 1
+    return 0
+}
+
+design_step_completed() {
+    local dir="$1" step="$2" sentinel sidecar
+    case "$step" in
+        design-step3-review)
+            sentinel="$dir/.completed/step-3-terminal"
+            sidecar="$dir/.step3-terminal-persisted-this-run"
+            [ -f "$sentinel" ] && [ ! -L "$sentinel" ] && [ -f "$sidecar" ] && [ ! -L "$sidecar" ] && [ -r "$sidecar" ]
+            ;;
+        design-step4-tail)
+            sentinel="$dir/.completed/step-4"
+            [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+            ;;
+        design-step5c)
+            sentinel="$dir/.completed/step-5c-terminal"
+            [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+            ;;
+        design-step-final-summary)
+            sentinel="$dir/.completed/step-final-summary"
+            [ -f "$sentinel" ] && [ ! -L "$sentinel" ]
+            ;;
+        *) return 1 ;;
+    esac
+}
+
+live_same_clone_design_marker_active() {
+    local cwd_canon="" marker dir step pid start timeout grace limit age
+    [ -n "$cwd" ] && cwd_canon=$(canonical_dir "$cwd" 2>/dev/null || true)
+    while IFS= read -r marker || [ -n "$marker" ]; do
+        [ -n "$marker" ] || continue
+        [ -f "$marker" ] && [ ! -L "$marker" ] || continue
+        dir=$(dirname "$marker") || continue
+        dir=$(canonical_dir "$dir" 2>/dev/null) || continue
+        step=$(marker_value "$marker" STEP 2>/dev/null) || step=""
+        case "$step" in
+            design-step*) ;;
+            *) continue ;;
+        esac
+        design_step_completed "$dir" "$step" && continue
+        marker_foreign_clone "$dir" "$cwd_canon" && continue
+        pid=$(marker_value "$marker" PID 2>/dev/null) || continue
+        start=$(marker_value "$marker" START_EPOCH 2>/dev/null) || continue
+        timeout=$(marker_value "$marker" TIMEOUT_S 2>/dev/null) || continue
+        case "$pid" in ''|*[!0-9]*) continue ;; esac
+        case "$start" in ''|*[!0-9]*) continue ;; esac
+        case "$timeout" in ''|*[!0-9]*) continue ;; esac
+        kill -0 "$pid" 2>/dev/null || continue
+        grace=60
+        limit=$((timeout + grace))
+        age=$((now - start))
+        [ "$age" -ge 0 ] || continue
+        [ "$age" -le "$limit" ] || continue
+        return 0
+    done <<EOF_MARKERS
+$(marker_candidates)
+EOF_MARKERS
+    return 1
+}
+
 # Read file_path: end-anchored tasks/<id>.output
 is_read_task_output_path() {
     printf '%s' "$1" | grep -Eq '(^|/)tasks/[A-Za-z0-9._-]+\.output$'
@@ -400,6 +524,7 @@ case "$tool_name" in
 
         if is_read_task_output_path "$sanitized_path"; then
             token=$(extract_task_output_token "$sanitized_path") || exit 0
+            live_same_clone_design_marker_active && exit 0
             handle_task_output_poll "$token"
             exit 0
         fi
@@ -409,6 +534,7 @@ case "$tool_name" in
         handle_generic_read_poll "$sanitized_path" "$offset"
         ;;
     Bash)
+        live_same_clone_design_marker_active && exit 0
         found=false
         while IFS= read -r token || [ -n "$token" ]; do
             [ -n "$token" ] || continue

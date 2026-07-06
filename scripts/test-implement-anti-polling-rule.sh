@@ -208,7 +208,7 @@ check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins no-tool action" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
     "2" \
-    'no further probe, parse, or prose tools after the classification `Read`'
+    'Silent yield and denied `Read`: no prose/tools, no "waiting" narration'
 check_context "$DESIGN_MD" \
     "/design Anti-pattern #5 pins spurious notification issue" \
     "$DESIGN_EMPTY_OUTPUT_ANCHOR" \
@@ -252,7 +252,7 @@ check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-tool action" \
     "$SHARED_IMMEDIATE_WAIT_ANCHOR" \
     "2" \
-    'no further probe, parse, or prose tools after the classification `Read`'
+    'Silent yield means no prose/tools or "still empty"/"waiting" status'
 check_context "$SHARED_DESIGN_WAIT_MD" \
     "shared /design immediate wait pins no-probe turn end" \
     'Foreground terminal-sentinel probe' \
@@ -573,7 +573,7 @@ check_absent "$ORCH_NEVER_MD" \
 
 check "$DESIGN_MD" \
     "/design Step 3 pins ordered premature-notification routing before envelope parse" \
-    'Before parsing the envelope after notification, use this ordered premature-notification contract: exactly one classification `Read` of the active `tasks/*.output`; missing or whitespace-only task-output bytes → silent yield; prefix-identical repeat non-empty task-output bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → silent yield'
+    'Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same'
 check "$DESIGN_MD" \
     "/design Step 3 proceeds only after terminal sentinel before envelope parse" \
     'Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'

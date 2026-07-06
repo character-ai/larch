@@ -149,6 +149,19 @@ def _clear_probe_clamp_counter(*, design_tmpdir: Path, step: str) -> None:
     if sentinel:
         with contextlib.suppress(OSError):
             (design_tmpdir / f"bg-poll-guard-probe-denials.{sentinel}.count").unlink(missing_ok=True)
+    with contextlib.suppress(OSError):
+        for counter in design_tmpdir.glob("bg-poll-guard-task-output-read.*.count"):
+            counter.unlink(missing_ok=True)
+
+
+def _clear_no_progress_sidecars(*, design_tmpdir: Path) -> None:
+    for name in (
+        "no-progress-turns.count",
+        "no-progress-circuit-breaker-armed",
+        "no-progress-stop-block-emitted",
+    ):
+        with contextlib.suppress(OSError):
+            (design_tmpdir / name).unlink(missing_ok=True)
 
 
 def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
@@ -156,7 +169,6 @@ def _clear_terminal_sentinel(*, design_tmpdir: Path, step: str) -> None:
     if sentinel:
         with contextlib.suppress(OSError):
             (design_tmpdir / ".completed" / sentinel).unlink(missing_ok=True)
-
 
 
 @contextlib.contextmanager
@@ -167,6 +179,7 @@ def _bg_wait_marker_context(*, design_tmpdir: str | Path, step: str, claude_pid:
     active = False
     _clear_terminal_sentinel(design_tmpdir=tmpdir, step=step)
     _clear_probe_clamp_counter(design_tmpdir=tmpdir, step=step)
+    _clear_no_progress_sidecars(design_tmpdir=tmpdir)
     try:
         text = "\n".join(
             [

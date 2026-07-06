@@ -3,6 +3,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
 HOOK="$SCRIPT_DIR/hook-no-progress-guard.sh"
 
 [ -x "$HOOK" ] || { echo "FAIL: $HOOK not executable" >&2; exit 1; }
@@ -75,8 +76,8 @@ else
 fi
 
 # --- T3: Multiple Stop events → counter increments ---
-run_hook "$(stop_event)" >/dev/null
-run_hook "$(stop_event)" >/dev/null
+LARCH_NO_PROGRESS_GUARD_THRESHOLD=4 run_hook "$(stop_event)" >/dev/null
+LARCH_NO_PROGRESS_GUARD_THRESHOLD=4 run_hook "$(stop_event)" >/dev/null
 cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
 if [ "$cnt" -eq 3 ]; then
   pass "T3: Three Stop events → counter=3"
@@ -84,18 +85,33 @@ else
   fail "T3: counter expected 3, got $cnt"
 fi
 
-# --- T4: Stop at threshold → breaker armed ---
-THRESHOLD_VAL=5
-while [ "$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)" -lt "$THRESHOLD_VAL" ]; do
+# --- T4: Stop at threshold → direct block and breaker armed ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
+write_marker $$ "$(( $(date +%s) - 10 ))"
+THRESHOLD_VAL=3
+out=""
+while [ ! -f "$D/no-progress-stop-block-emitted" ]; do
   LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
   LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
   LARCH_NO_PROGRESS_GUARD_THRESHOLD=$THRESHOLD_VAL \
-    "$HOOK" < <(stop_event) >/dev/null
+    "$HOOK" < <(stop_event) >"$TMP/stop-block.out"
+  out=$(cat "$TMP/stop-block.out")
 done
-if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
-  pass "T4: breaker armed after threshold=$THRESHOLD_VAL Stop events"
+if [ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ] && [ ! -f "$D/no-progress-turns.count" ]; then
+  case "$out" in
+    *'"decision":"block"'*) pass "T4: breaker armed and Stop emitted block at default threshold=$THRESHOLD_VAL" ;;
+    *) fail "T4: expected direct Stop block JSON, got: out='$out'" ;;
+  esac
 else
-  fail "T4: breaker not armed after threshold=$THRESHOLD_VAL Stop events"
+  fail "T4: breaker not armed or counter not reset after threshold=$THRESHOLD_VAL"
+fi
+
+# --- T4b: Stop block is one-shot while stop-emitted sidecar exists ---
+out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(stop_event)")
+if [ -z "$out" ]; then
+  pass "T4b: Stop hook does not emit a second block while no-progress-stop-block-emitted exists"
+else
+  fail "T4b: expected no second Stop block, got: out='$out'"
 fi
 
 # --- T5: UserPromptSubmit with armed breaker → blocked ---
@@ -106,7 +122,7 @@ case "$out" in
 esac
 
 # --- T6: UserPromptSubmit without armed breaker → allowed ---
-rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count"
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-turns.count"
 write_marker $$
 out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
 if [ -z "$out" ]; then
@@ -116,15 +132,16 @@ else
 fi
 
 # --- T7: Step terminal sentinel present → not live, no count ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
 touch "$D/.completed/step-3-terminal"
+touch "$D/no-progress-stop-block-emitted"
 out=$(run_hook "$(stop_event)")
 cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
-if [ -z "$out" ] && [ "$cnt" -eq 0 ]; then
-  pass "T7: terminal sentinel present → marker not live, counter not incremented"
+if [ -z "$out" ] && [ "$cnt" -eq 0 ] && [ ! -f "$D/no-progress-stop-block-emitted" ]; then
+  pass "T7: terminal sentinel present → marker not live and stop-emitted sidecar clears"
 else
-  fail "T7: expected no count with sentinel: out='$out' cnt=$cnt"
+  fail "T7: expected no count and no stop-emitted with sentinel: out='$out' cnt=$cnt emitted=$(test -f "$D/no-progress-stop-block-emitted" && echo yes || echo no)"
 fi
 
 # --- T8: DISABLE env var → no action ---
@@ -151,7 +168,7 @@ else
 fi
 
 # --- T10: Custom threshold via env var ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
 write_marker $$
 # Threshold=2: armed after 2 Stop events
 for _ in 1 2; do
@@ -160,14 +177,43 @@ for _ in 1 2; do
   LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 \
     "$HOOK" < <(stop_event) >/dev/null
 done
-if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+if [ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ]; then
   pass "T10: custom threshold=2 → breaker armed after 2 Stop events"
 else
   fail "T10: custom threshold=2 but breaker not armed"
 fi
 
+# --- T10b: Invalid threshold falls back to default 3 and direct-blocks on third Stop ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
+write_marker $$
+out1=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ LARCH_NO_PROGRESS_GUARD_THRESHOLD=bogus run_hook "$(stop_event)")
+out2=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ LARCH_NO_PROGRESS_GUARD_THRESHOLD=bogus run_hook "$(stop_event)")
+out3=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ LARCH_NO_PROGRESS_GUARD_THRESHOLD=bogus run_hook "$(stop_event)")
+if [ -z "$out1" ] && [ -z "$out2" ] && printf '%s' "$out3" | jq -e '.decision == "block"' >/dev/null 2>&1; then
+  pass "T10b: invalid threshold falls back to default 3"
+else
+  fail "T10b: invalid threshold should direct-block on third Stop: out1='$out1' out2='$out2' out3='$out3'"
+fi
+
+# --- T10c: Python marker arm-time reset clears stale Stop sidecar ---
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
+: >"$D/no-progress-stop-block-emitted"
+PYTHONPATH="$REPO_ROOT/python" python3 - "$D" <<'PY'
+import sys
+from pathlib import Path
+from larch.implement.bg_wait import _write_bg_wait_marker
+
+tmpdir = Path(sys.argv[1])
+_write_bg_wait_marker(tmpdir=tmpdir, step="implement-step3-checks", timeout_s=21600)
+PY
+if [ ! -f "$D/no-progress-stop-block-emitted" ]; then
+  pass "T10c: Python bg-wait marker arm clears stale no-progress-stop-block-emitted"
+else
+  fail "T10c: Python bg-wait marker arm left stale no-progress-stop-block-emitted"
+fi
+
 # --- T11: Step 3 sentinel without persist sidecar → marker still live, counter increments ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$MARKER"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 design-step3-review
 : >"$D/.completed/step-3-terminal"
 rm -f "$D/.step3-terminal-persisted-this-run"
@@ -183,16 +229,16 @@ rm -f "$D/.completed/step-3-terminal" "$MARKER"
 # --- T12: stale breaker clears on dead PID; fresh marker in same tmpdir is not blocked ---
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
 THRESHOLD_VAL=2
-while [ "$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)" -lt "$THRESHOLD_VAL" ]; do
+for _ in 1 2; do
   LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
   LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
   LARCH_NO_PROGRESS_GUARD_THRESHOLD=$THRESHOLD_VAL \
     "$HOOK" < <(stop_event) >/dev/null
 done
-[ -f "$D/no-progress-circuit-breaker-armed" ] || fail "T12: pre-relaunch breaker not armed"
+[ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ] || fail "T12: pre-relaunch breaker not armed"
 write_marker 999999 "$(date +%s)" 21600 implement-step3-checks
 run_hook "$(stop_event)" >/dev/null
-if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+if [ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ]; then
   fail "T12: dead PID must clear armed breaker"
 else
   pass "T12: dead PID clears armed breaker"
@@ -226,7 +272,7 @@ rm -f "$MARKER"
 # In production the hook's PPID/input never match the marker's stored CLAUDE_PID and
 # LARCH_BG_POLL_GUARD_SESSION_PID is unset, so the old equality check skipped every marker
 # and the breaker never armed. A live marker must now count regardless of stored CLAUDE_PID.
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$MARKER"
 printf '%s\n' "PID=$$" "CLAUDE_PID=999999999" "START_EPOCH=$(( $(date +%s) - 10 ))" "STEP=implement-step3-checks" "TIMEOUT_S=21600" >"$MARKER"
 out=$(printf '%s' "$(stop_event)" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
@@ -238,7 +284,7 @@ fi
 rm -f "$MARKER"
 
 # --- T15: Step 8 marker counts and rc sidecar releases; symlink rc does not complete ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/.step-8-ship-handoff.rc" "$MARKER"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/.step-8-ship-handoff.rc" "$MARKER"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step8-ship
 out=$(run_hook "$(stop_event)")
 cnt=$(cat "$D/no-progress-turns.count" 2>/dev/null || echo 0)
@@ -251,7 +297,7 @@ LARCH_BG_POLL_GUARD_MARKER="$MARKER" \
 LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
 LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 \
   "$HOOK" < <(stop_event) >/dev/null
-if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+if [ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ]; then
   pass "T15: Step 8 breaker arms at low threshold"
 else
   fail "T15: Step 8 breaker did not arm"
@@ -263,12 +309,12 @@ case "$out" in
 esac
 : >"$D/.step-8-ship-handoff.rc"
 out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
-if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ]; then
+if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ] && [ ! -f "$D/no-progress-stop-block-emitted" ]; then
   pass "T15: Step 8 rc sidecar auto-disarms and allows prompt"
 else
-  fail "T15: Step 8 rc sidecar should disarm: out='$out' armed=$(test -f "$D/no-progress-circuit-breaker-armed" && echo yes || echo no)"
+  fail "T15: Step 8 rc sidecar should disarm: out='$out' armed=$({ test -f "$D/no-progress-circuit-breaker-armed" || test -f "$D/no-progress-stop-block-emitted"; } && echo yes || echo no)"
 fi
-rm -f "$D/.step-8-ship-handoff.rc" "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed"
+rm -f "$D/.step-8-ship-handoff.rc" "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
 : >"$D/.step-8-real-rc"
 ln -s "$D/.step-8-real-rc" "$D/.step-8-ship-handoff.rc"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step8-ship
@@ -290,7 +336,7 @@ for spec in \
 do
   step=${spec%%:*}
   sentinel=${spec#*:}
-  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER" "$D/.completed/"*
+  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$MARKER" "$D/.completed/"*
   mkdir -p "$D/.completed"
   write_marker $$ "$(( $(date +%s) - 10 ))" 21600 "$step"
   out=$(run_hook "$(stop_event)")
@@ -304,19 +350,19 @@ do
   LARCH_BG_POLL_GUARD_SESSION_PID=$$ \
   LARCH_NO_PROGRESS_GUARD_THRESHOLD=2 \
     "$HOOK" < <(stop_event) >/dev/null
-  if [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+  if [ -f "$D/no-progress-circuit-breaker-armed" ] && [ -f "$D/no-progress-stop-block-emitted" ]; then
     pass "new marker coverage: $step breaker arms at low threshold"
   else
     fail "new marker coverage: $step breaker did not arm"
   fi
   : >"$D/$sentinel"
   out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" LARCH_BG_POLL_GUARD_SESSION_PID=$$ run_hook "$(prompt_event)")
-  if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ]; then
+  if [ -z "$out" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ] && [ ! -f "$D/no-progress-stop-block-emitted" ]; then
     pass "new marker coverage: $step terminal sentinel clears breaker"
   else
-    fail "new marker coverage: $step terminal sentinel should clear: out='$out' armed=$(test -f "$D/no-progress-circuit-breaker-armed" && echo yes || echo no)"
+    fail "new marker coverage: $step terminal sentinel should clear: out='$out' armed=$({ test -f "$D/no-progress-circuit-breaker-armed" || test -f "$D/no-progress-stop-block-emitted"; } && echo yes || echo no)"
   fi
-  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/$sentinel"
+  rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/$sentinel"
   : >"$D/.completed/real-target"
   ln -s "$D/.completed/real-target" "$D/$sentinel"
   write_marker $$ "$(( $(date +%s) - 10 ))" 21600 "$step"
@@ -448,27 +494,27 @@ rm -f "$MARKER_A" "$MARKER_B" "$D_A/.larch-keepalive" "$D_B/.larch-keepalive" \
       "$D_A/no-progress-circuit-breaker-armed" "$D_B/no-progress-circuit-breaker-armed"
 
 # --- T18: unknown clone identity (no .larch-keepalive) still blocks regardless of cwd (fail-safe default) ---
-rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$MARKER"
+rm -f "$D/no-progress-turns.count" "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$MARKER"
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
-touch "$D/no-progress-circuit-breaker-armed"
+touch "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
 out=$(printf '{"prompt":"p","cwd":"%s"}' "$CLONE_A" | LARCH_BG_POLL_GUARD_MARKER="$MARKER" "$HOOK")
 case "$out" in
   *'"decision":"block"'*) pass "T18: marker with no .larch-keepalive still blocks regardless of cwd mismatch" ;;
   *) fail "T18: expected block for unknown-clone marker (fail-safe default): out='$out'" ;;
 esac
-rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count" "$MARKER"
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-turns.count" "$MARKER"
 
 # --- T19: block message identifies exact marker path and recovery files (#5927) ---
 write_marker $$ "$(( $(date +%s) - 10 ))" 21600 implement-step3-checks
-touch "$D/no-progress-circuit-breaker-armed"
+touch "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted"
 out=$(LARCH_BG_POLL_GUARD_MARKER="$MARKER" run_hook "$(prompt_event)")
 D_CANON=$(cd "$D" && pwd -P)
 case "$out" in
-  *"$D_CANON/.bg-wait-active"*"$D_CANON/no-progress-circuit-breaker-armed"*"$D_CANON/no-progress-turns.count"*)
-    pass "T19: block message includes marker path and recovery file paths" ;;
+  *"$D_CANON/.bg-wait-active"*"$D_CANON/no-progress-circuit-breaker-armed"*"$D_CANON/no-progress-turns.count"*"$D_CANON/no-progress-stop-block-emitted"*)
+    pass "T19: block message includes marker path and all recovery file paths" ;;
   *) fail "T19: expected marker/recovery paths in message: out='$out'" ;;
 esac
-rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-turns.count" "$MARKER"
+rm -f "$D/no-progress-circuit-breaker-armed" "$D/no-progress-stop-block-emitted" "$D/no-progress-turns.count" "$MARKER"
 
 # --- T21: Stop-path counter is clone-scoped (#5927 follow-up) ---
 # A Stop fired from a FOREIGN clone must not increment an unrelated clone's

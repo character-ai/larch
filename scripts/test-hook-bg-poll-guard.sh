@@ -183,6 +183,120 @@ assert_deny "$out" 'live marker plus watcher loop denies' "$EXPECTED_STEP"
 out=$(run_payload "$(payload_read 'tasks/foo.output' "$REPO_ROOT")")
 assert_allow "$out" 'live marker plus Read tasks/foo.output allows classification'
 
+TASK_STORE="$TMP/task-store"
+mkdir -p "$TASK_STORE/tasks"
+TASK_OUT="$TASK_STORE/tasks/foo.output"
+printf '   \n' >"$TASK_OUT"
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'task-output classification clamp allows first whitespace-only Read'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'task-output classification clamp allows second unchanged whitespace-only Read'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_deny "$out" 'task-output classification clamp denies third unchanged whitespace-only Read' "$EXPECTED_STEP"
+printf 'new reviewer output\n' >"$TASK_OUT"
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'task-output classification clamp resets on changed non-whitespace content'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'task-output classification clamp allows second identical non-whitespace Read'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_deny "$out" 'task-output classification clamp denies third identical non-whitespace Read' "$EXPECTED_STEP"
+mkdir -p "$D/.completed"
+touch "$D/.completed/step-3-terminal" "$D/.step3-terminal-persisted-this-run"
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'terminal sentinel release allows task-output Read'
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'terminal sentinel release clears task-output Read clamp sidecar'
+else
+  fail 'terminal sentinel release must clear task-output Read clamp sidecar'
+fi
+rm -f "$D/.completed/step-3-terminal" "$D/.step3-terminal-persisted-this-run"
+
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+printf '   \n' >"$TASK_OUT"
+write_marker 999999 "$(date +%s)" 21600 design-step3-review
+printf 'whitespace\t1\t1\t3\n' >"$D/bg-poll-guard-task-output-read.foo.count"
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'dead PID marker allows task-output Read'
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'dead PID marker clears task-output Read clamp sidecar'
+else
+  fail 'dead PID marker must clear task-output Read clamp sidecar'
+fi
+
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+write_marker $$ 1 1 design-step3-review
+printf 'whitespace\t1\t1\t3\n' >"$D/bg-poll-guard-task-output-read.foo.count"
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'aged marker allows task-output Read'
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'aged marker clears task-output Read clamp sidecar'
+else
+  fail 'aged marker must clear task-output Read clamp sidecar'
+fi
+
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+write_marker $$ "$(date +%s)" 21600 implement-step3-checks
+EXPECTED_STEP="implement-step3-checks"
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'implement-step marker does not trigger task-output classification clamp'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'implement-step marker still allows repeated task-output Read through classification path'
+out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'implement-step marker does not deny repeated task-output Read'
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'implement-step marker does not write task-output Read clamp telemetry'
+else
+  fail 'implement-step marker must not write task-output Read clamp telemetry'
+fi
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+EXPECTED_STEP="design-step3-review"
+
+D_FOREIGN="$TMP/claude-design-foreign-task-output"
+mkdir -p "$D_FOREIGN"
+MARKER_FOREIGN="$D_FOREIGN/.bg-wait-active"
+CLONE_OWNER="$TMP/clone-owner"
+CLONE_OTHER="$TMP/clone-other"
+mkdir -p "$CLONE_OWNER" "$CLONE_OTHER"
+write_marker_at "$MARKER_FOREIGN" $$ "$(date +%s)" 21600 design-step3-review
+printf 'CLONE_PATH=%s\n' "$CLONE_OWNER" >"$D_FOREIGN/.larch-keepalive"
+rm -f "$D_FOREIGN"/bg-poll-guard-task-output-read.*.count
+out=$(run_payload_with_marker "$MARKER_FOREIGN" "$(payload_read "$TASK_OUT" "$CLONE_OTHER")")
+assert_allow "$out" 'foreign design marker allows task-output Read without clamp'
+out=$(run_payload_with_marker "$MARKER_FOREIGN" "$(payload_read "$TASK_OUT" "$CLONE_OTHER")")
+assert_allow "$out" 'foreign design marker allows repeated task-output Read without clamp'
+out=$(run_payload_with_marker "$MARKER_FOREIGN" "$(payload_read "$TASK_OUT" "$CLONE_OTHER")")
+assert_allow "$out" 'foreign design marker does not deny repeated task-output Read'
+if ! compgen -G "$D_FOREIGN/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'foreign design marker does not receive task-output Read clamp telemetry'
+else
+  fail 'foreign design marker must not receive task-output Read clamp telemetry'
+fi
+
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+out=$(LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD=1 run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_allow "$out" 'task-output classification threshold override allows first Read'
+out=$(LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD=1 run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
+assert_deny "$out" 'task-output classification threshold override denies second Read' "$EXPECTED_STEP"
+
+rm -f "$D"/bg-poll-guard-task-output-read.*.count
+printf 'whitespace\t1\t1\t3\n' >"$D/bg-poll-guard-task-output-read.foo.count"
+PYTHONPATH="$REPO_ROOT/python" python3 - "$D" <<'PY'
+import sys
+from pathlib import Path
+from larch.design.design_core import _bg_wait_marker_context
+
+with _bg_wait_marker_context(design_tmpdir=Path(sys.argv[1]), step="design-step3-review"):
+    pass
+PY
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
+  pass 'Python design marker arm clears stale task-output Read clamp sidecar'
+else
+  fail 'Python design marker arm must clear stale task-output Read clamp sidecar'
+fi
+write_marker $$ "$(date +%s)" 21600 design-step3-review
+
 out=$(run_payload "$(payload_bash "\"\$HOME/.cache/larch/sessions/design-run-123.sh\" design-step3-review.sh")")
 assert_allow "$out" 'wrapper-routed design-run call allows'
 

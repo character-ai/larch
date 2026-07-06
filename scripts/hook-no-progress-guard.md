@@ -9,11 +9,13 @@ prose "still waiting" turns that are invisible to `PreToolUse` hooks.
 Two event handlers in one script:
 
 - **Stop handler**: counts consecutive turn-ends while any bg-wait marker owned by the current repo
-  clone is live. When the count reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 5), arms a
-  `no-progress-circuit-breaker-armed` flag in the marker directory.
-- **UserPromptSubmit handler**: before each new turn, checks every live marker for an armed flag
-  that cannot be proven to belong to a different repo clone. If found, blocks the turn with an
-  operator-visible message containing the count, threshold, and marker path.
+  clone is live. When the count reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 3), arms a
+  `no-progress-circuit-breaker-armed` flag in the marker directory and emits a one-shot
+  Stop block directly from the hook.
+- **UserPromptSubmit handler**: fallback path before each new turn. It checks every live marker
+  for an armed flag that cannot be proven to belong to a different repo clone. If found, it
+  blocks the turn with an operator-visible message containing the count, threshold, and marker
+  path.
 
 The circuit breaker auto-disarms when the bg task's terminal sentinel is written (or the marker is
 removed by the EXIT trap), so a genuine completion notification is never blocked by the guard.
@@ -44,22 +46,27 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   Step 5 review, Step 5 resume, Step 5 self-review, Step 6 checks, Step 7a, and Step 8 ship
   markers. It releases `implement-step8-ship` on root-level `.step-8-ship-handoff.rc`; every
   completion sentinel must be a regular file, not a symlink.
-- Counter (`no-progress-turns.count`) and breaker (`no-progress-circuit-breaker-armed`) files live
-  in the marker directory and are cleaned up with the session tmpdir.
+- Counter (`no-progress-turns.count`), breaker (`no-progress-circuit-breaker-armed`), and
+  one-shot Stop emission (`no-progress-stop-block-emitted`) files live in the marker directory
+  and are cleaned up with the session tmpdir.
 - Stop re-entry guard: exits immediately when `stop_hook_active=true` in the payload.
 - Disabled entirely via `LARCH_NO_PROGRESS_GUARD_DISABLE=1`.
-- Threshold configurable via `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (integer; default 5). Values that
-  are empty or non-numeric fall back to 5.
+- Threshold configurable via `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (integer; default 3). Values that
+  are empty or non-numeric fall back to 3.
 - Block JSON is emitted via static `printf` (not `jq -cn`) so a `jq` runtime failure at the emit
-  point cannot silently swallow the block signal (#5610 pattern). The message includes the exact
-  marker path (`<dir>/.bg-wait-active`) and the two recovery sidecar paths
-  (`<dir>/no-progress-circuit-breaker-armed`, `<dir>/no-progress-turns.count`) so the operator does
-  not have to guess the offending tmpdir (#5927).
+  point cannot silently swallow the block signal (#5610 pattern). The Stop handler emits the
+  first block directly when the threshold is reached, then writes
+  `no-progress-stop-block-emitted`, resets `no-progress-turns.count`, and exits 0 without
+  processing more markers. `UserPromptSubmit` remains a fallback for already armed markers. The
+  message includes the exact marker path (`<dir>/.bg-wait-active`) and all three recovery sidecar
+  paths (`<dir>/no-progress-circuit-breaker-armed`, `<dir>/no-progress-turns.count`, and
+  `<dir>/no-progress-stop-block-emitted`) so the operator does not have to guess the offending
+  tmpdir (#5927).
 
 ## Threshold rationale
 
-K=5 provides enough headroom for legitimate notification processing (typically 1–3 turns from
-launch to real completion) while capping the documented worst-case storm (`BC8DDA64`: ~40 turns).
+K=3 allows one or two spurious notification turns for legitimate recovery, then blocks before
+users see the repeated empty-output loop as a visible storm.
 
 ## Harness
 

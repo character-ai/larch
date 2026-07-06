@@ -182,6 +182,43 @@ assert_silent "$out_sr1" 'slow Read task-output call 1 silent'
 out_sr2=$(run_hook 40 "$TASK_OUT" 0 "/proj-slow-read")
 assert_reminder "$out_sr2" 'slow Read task-output call 2 (>30s) fires reminder'
 
+echo "=== live design marker suppresses task-output reminders ==="
+DESIGN_MARKER_DIR="$TMP/claude-design-anti-read-marker"
+mkdir -p "$DESIGN_MARKER_DIR"
+DESIGN_MARKER="$DESIGN_MARKER_DIR/.bg-wait-active"
+cat >"$DESIGN_MARKER" <<EOF_MARKER
+PID=$$
+CLAUDE_PID=$$
+START_EPOCH=0
+STEP=design-step3-review
+TIMEOUT_S=21600
+EOF_MARKER
+out_dm1=$(mk_payload "$TASK_OUT" 0 "/proj-design-marker" "design-marker-session" | HOOK_ANTI_READ_POLL_NOW=1 LARCH_BG_POLL_GUARD_MARKER="$DESIGN_MARKER" "$HOOK")
+assert_silent "$out_dm1" 'live design marker task-output Read call 1 silent'
+out_dm2=$(mk_payload "$TASK_OUT" 0 "/proj-design-marker" "design-marker-session" | HOOK_ANTI_READ_POLL_NOW=2 LARCH_BG_POLL_GUARD_MARKER="$DESIGN_MARKER" "$HOOK")
+assert_silent "$out_dm2" 'live design marker suppresses task-output Read reminder'
+out_db1=$(mk_bash_payload "cat $TASK_OUT" "/proj-design-marker-bash" "design-marker-bash-session" | HOOK_ANTI_READ_POLL_NOW=1 LARCH_BG_POLL_GUARD_MARKER="$DESIGN_MARKER" "$HOOK")
+assert_silent "$out_db1" 'live design marker Bash task-output call 1 silent'
+out_db2=$(mk_bash_payload "cat $TASK_OUT" "/proj-design-marker-bash" "design-marker-bash-session" | HOOK_ANTI_READ_POLL_NOW=2 LARCH_BG_POLL_GUARD_MARKER="$DESIGN_MARKER" "$HOOK")
+assert_silent "$out_db2" 'live design marker suppresses Bash task-output reminder'
+rm -f "$DESIGN_MARKER"
+
+echo "=== implement marker does not suppress task-output reminders ==="
+IMPLEMENT_MARKER_DIR="$TMP/claude-implement-anti-read-marker"
+mkdir -p "$IMPLEMENT_MARKER_DIR"
+IMPLEMENT_MARKER="$IMPLEMENT_MARKER_DIR/.bg-wait-active"
+cat >"$IMPLEMENT_MARKER" <<EOF_MARKER
+PID=$$
+CLAUDE_PID=$$
+START_EPOCH=0
+STEP=implement-step3-checks
+TIMEOUT_S=21600
+EOF_MARKER
+out_im1=$(mk_payload "$TASK_OUT" 0 "/proj-implement-marker" "implement-marker-session" | HOOK_ANTI_READ_POLL_NOW=1 LARCH_BG_POLL_GUARD_MARKER="$IMPLEMENT_MARKER" "$HOOK")
+assert_silent "$out_im1" 'implement marker task-output Read call 1 silent'
+out_im2=$(mk_payload "$TASK_OUT" 0 "/proj-implement-marker" "implement-marker-session" | HOOK_ANTI_READ_POLL_NOW=2 LARCH_BG_POLL_GUARD_MARKER="$IMPLEMENT_MARKER" "$HOOK")
+assert_reminder "$out_im2" 'implement marker does not suppress task-output Read reminder'
+
 echo "=== offset-ignore for task-output Read ==="
 out_of1=$(run_hook 0 "$TASK_OUT" 0 "/proj-task-offset")
 assert_silent "$out_of1" 'task-output Read offset call 1 silent'

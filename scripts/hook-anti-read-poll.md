@@ -4,7 +4,7 @@ PostToolUse hook registered in `hooks/hooks.json` under `matcher: "Read|Bash"`. 
 a `system-reminder` when the orchestrator polls repeatedly: generic identical `Read`
 calls (path+offset, 30 s window, threshold 3) or per-turn reads of a background task
 `tasks/<id>.output` file via `Read` or `Bash` (normalized token key, 600 s window,
-threshold 2; offset ignored for task-output paths).
+threshold 2; offset ignored for task-output paths). Task-output reminders are suppressed while a live same-clone `design-step*` `.bg-wait-active` marker exists, because `/design` notification recovery uses one classification `Read` before silent yield and `hook-bg-poll-guard.sh` owns the active wait clamp.
 
 ## Purpose
 
@@ -12,7 +12,9 @@ Detects Read-poll and task-output-poll anti-patterns: an orchestrator waiting fo
 file or background task by re-reading the same target each turn (issue #3175: ~80
 Bash `cat …/tasks/<id>.output` reads). Different `offset` values on non-task-output
 paths count as distinct reads. Task-output paths key state by the normalized
-`tasks/<id>.output` token so wrapper/suffix command variants share one counter.
+`tasks/<id>.output` token so wrapper/suffix command variants share one counter. A live same-clone
+`design-step*` marker suppresses this reminder path; non-design markers still use the normal
+task-output counter.
 
 ## State
 
@@ -52,7 +54,7 @@ Reads from stdin (Claude Code hook event JSON). Relevant fields:
   `"$VAR"` / `$VAR` read targets; `read`, `awk`, and `python` paths are not tracked.
   Multiple qualifying segments on one line each advance the per-task counter.
   Cross-line shell variable indirection remains an accepted gap.
-- `cwd` — project working directory (used to scope state files).
+- `cwd` — project working directory (used to scope state files and to identify same-clone live design markers).
 
 ## Output
 
