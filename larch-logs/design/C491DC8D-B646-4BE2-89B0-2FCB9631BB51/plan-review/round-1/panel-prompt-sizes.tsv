@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	42871	10718	13359	3340	29512	7378		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	28620	7155	13071	3268	15549	3888		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	28635	7159	13086	3272	15549	3888		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	42862	10716	13350	3338	29512	7378		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	28611	7153	13062	3266	15549	3888		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	42886	10722	13374	3344	29512	7378		0	0
+design Step 3	phase1	1	dyn-codex-plan-lint-ratchet-specialist	plan-review	codex	dyn-codex-plan-lint-ratchet-specialist.txt	28935	7234	12937	3235	15998	4000		0	0
+design Step 3	phase1	1	dyn-cursor-plan-lint-ratchet-specialist	plan-review	cursor	dyn-cursor-plan-lint-ratchet-specialist.txt	43186	10797	13225	3307	29961	7491		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	28633	7159	13084	3271	15549	3888		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	42884	10721	13372	3343	29512	7378		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	48319	12080	4640	1160	43679	10920	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	26570	6643	8937	2235	17633	4409		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	26570	6643	8937	2235	17633	4409		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	26570	6643	8937	2235	17633	4409		0	0
