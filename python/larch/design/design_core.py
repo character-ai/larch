@@ -159,6 +159,7 @@ def _clear_no_progress_sidecars(*, design_tmpdir: Path) -> None:
         "no-progress-turns.count",
         "no-progress-circuit-breaker-armed",
         "no-progress-stop-block-emitted",
+        "no-progress-task-output-clamped",
     ):
         with contextlib.suppress(OSError):
             (design_tmpdir / name).unlink(missing_ok=True)

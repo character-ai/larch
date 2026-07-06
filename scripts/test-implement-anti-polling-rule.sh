@@ -232,6 +232,9 @@ check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor bans the background recovery waiter (#4725)" \
     'NEVER launch a background recovery waiter'
 check "$SHARED_DESIGN_WAIT_MD" \
+    "shared /design wait anchor documents same-batch silent yield" \
+    'If several notifications are already queued in the same batch, ignore the rest of that batch after the first denial or clamp: no more tools, no prose, and no extra reads until a later `<task-notification>` arrives.'
+check "$SHARED_DESIGN_WAIT_MD" \
     "shared /design wait anchor pins the compact-table missing warning" \
     '**⚠ Reviewer status table omitted: pre-rendered table not found.**'
 check "$SHARED_DESIGN_WAIT_MD" \
@@ -574,6 +577,9 @@ check_absent "$ORCH_NEVER_MD" \
 check "$DESIGN_MD" \
     "/design Step 3 pins ordered premature-notification routing before envelope parse" \
     'Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same'
+check "$DESIGN_MD" \
+    "/design Step 3 documents same-batch silent yield" \
+    'if the denial or clamp happened while the same-batch notifications are still queued, ignore the rest of that batch too'
 check "$DESIGN_MD" \
     "/design Step 3 proceeds only after terminal sentinel before envelope parse" \
     'Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'

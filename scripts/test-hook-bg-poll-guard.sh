@@ -195,9 +195,19 @@ out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
 assert_allow "$out" 'task-output classification clamp allows second unchanged whitespace-only Read'
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
 assert_deny "$out" 'task-output classification clamp denies third unchanged whitespace-only Read' "$EXPECTED_STEP"
+if [ -f "$D/no-progress-task-output-clamped" ] && [ -f "$D/no-progress-circuit-breaker-armed" ]; then
+  pass 'task-output classification clamp arms no-progress Stop bridge'
+else
+  fail 'task-output classification clamp must arm no-progress Stop bridge'
+fi
 printf 'new reviewer output\n' >"$TASK_OUT"
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
 assert_allow "$out" 'task-output classification clamp resets on changed non-whitespace content'
+if [ ! -f "$D/no-progress-task-output-clamped" ] && [ ! -f "$D/no-progress-circuit-breaker-armed" ]; then
+  pass 'changed task-output clears no-progress Stop bridge'
+else
+  fail 'changed task-output must clear no-progress Stop bridge'
+fi
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
 assert_allow "$out" 'task-output classification clamp allows second identical non-whitespace Read'
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
@@ -206,10 +216,10 @@ mkdir -p "$D/.completed"
 touch "$D/.completed/step-3-terminal" "$D/.step3-terminal-persisted-this-run"
 out=$(run_payload "$(payload_read "$TASK_OUT" "$TASK_STORE")")
 assert_allow "$out" 'terminal sentinel release allows task-output Read'
-if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null; then
-  pass 'terminal sentinel release clears task-output Read clamp sidecar'
+if ! compgen -G "$D/bg-poll-guard-task-output-read.*.count" >/dev/null && [ ! -f "$D/no-progress-task-output-clamped" ]; then
+  pass 'terminal sentinel release clears task-output Read clamp sidecars'
 else
-  fail 'terminal sentinel release must clear task-output Read clamp sidecar'
+  fail 'terminal sentinel release must clear task-output Read clamp sidecars'
 fi
 rm -f "$D/.completed/step-3-terminal" "$D/.step3-terminal-persisted-this-run"
 

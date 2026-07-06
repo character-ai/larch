@@ -47,7 +47,7 @@ step6_cleanup() {
 write_step6_marker() {
     local start claude_pid clone_path
     rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-    rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" 2>/dev/null || true
+    rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
     rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
     start=$(date +%s 2>/dev/null) || start=0
     case "$start" in ''|*[!0-9]*) start=0 ;; esac

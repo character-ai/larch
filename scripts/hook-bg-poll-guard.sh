@@ -281,6 +281,16 @@ reset_task_output_read_state() {
   local dir="$1"
   [ -n "$dir" ] || return 0
   rm -f "$dir"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
+  if [ -e "$dir/no-progress-task-output-clamped" ] && [ ! -L "$dir/no-progress-task-output-clamped" ]; then
+    rm -f \
+      "$dir/no-progress-task-output-clamped" \
+      "$dir/no-progress-circuit-breaker-armed" \
+      "$dir/no-progress-stop-block-emitted" \
+      "$dir/no-progress-turns.count" \
+      2>/dev/null || true
+  else
+    rm -f "$dir/no-progress-task-output-clamped" 2>/dev/null || true
+  fi
 }
 
 task_output_read_state_file() {
@@ -620,6 +630,29 @@ json_deny_task_output_read() {
   emit_deny_json "$reason"
 }
 
+arm_no_progress_task_output_clamp() {
+  local dir="$1"
+  [ -n "$dir" ] || return 0
+  : >"$dir/no-progress-task-output-clamped" 2>/dev/null || return 0
+  : >"$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true
+  rm -f "$dir/no-progress-turns.count" 2>/dev/null || true
+}
+
+clear_no_progress_task_output_clamp() {
+  local dir="$1"
+  [ -n "$dir" ] || return 0
+  if [ -e "$dir/no-progress-task-output-clamped" ] && [ ! -L "$dir/no-progress-task-output-clamped" ]; then
+    rm -f \
+      "$dir/no-progress-task-output-clamped" \
+      "$dir/no-progress-circuit-breaker-armed" \
+      "$dir/no-progress-stop-block-emitted" \
+      "$dir/no-progress-turns.count" \
+      2>/dev/null || true
+  else
+    rm -f "$dir/no-progress-task-output-clamped" 2>/dev/null || true
+  fi
+}
+
 task_output_read_clamp() {
   local read_abs="$1" task_id="$2" dir step sig bump class count
   [ -n "$task_id" ] || return 1
@@ -636,9 +669,11 @@ $bump
 EOF_BUMP
     case "$count" in ''|*[!0-9]*) return 1 ;; esac
     if [ "$count" -gt "$TASK_OUTPUT_READ_THRESHOLD" ]; then
+      arm_no_progress_task_output_clamp "$dir"
       json_deny_task_output_read "$dir"
       exit 0
     fi
+    clear_no_progress_task_output_clamp "$dir"
     return 0
   done <"$live_markers_file"
   return 1

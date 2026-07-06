@@ -168,7 +168,7 @@ _step5_cleanup() {
 _step5_bg_wait_marker_start() {
   local _start _claude_pid _clone_path
   rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" 2>/dev/null || true
+  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
   rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
   rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-5-terminal.count" 2>/dev/null || true
   _start=$(date +%s 2>/dev/null) || _start=0

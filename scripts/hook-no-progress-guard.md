@@ -12,6 +12,11 @@ Two event handlers in one script:
   clone is live. When the count reaches `LARCH_NO_PROGRESS_GUARD_THRESHOLD` (default 3), arms a
   `no-progress-circuit-breaker-armed` flag in the marker directory and emits a one-shot
   Stop block directly from the hook.
+- **Classification-Read clamp bridge**: when `hook-bg-poll-guard.sh` writes
+  `no-progress-task-output-clamped` after denying an unchanged or empty `/design`
+  `tasks/*.output` Read, the Stop handler blocks that turn immediately, before the generic
+  no-progress threshold, and repeats that Stop block for notification-driven turns until new
+  task output clears the bridge or the terminal sentinel completes the wait.
 - **UserPromptSubmit handler**: fallback path before each new turn. It checks every live marker
   for an armed flag that cannot be proven to belong to a different repo clone. If found, it
   blocks the turn with an operator-visible message containing the count, threshold, and marker
@@ -46,8 +51,9 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   Step 5 review, Step 5 resume, Step 5 self-review, Step 6 checks, Step 7a, and Step 8 ship
   markers. It releases `implement-step8-ship` on root-level `.step-8-ship-handoff.rc`; every
   completion sentinel must be a regular file, not a symlink.
-- Counter (`no-progress-turns.count`), breaker (`no-progress-circuit-breaker-armed`), and
-  one-shot Stop emission (`no-progress-stop-block-emitted`) files live in the marker directory
+- Counter (`no-progress-turns.count`), breaker (`no-progress-circuit-breaker-armed`),
+  one-shot Stop emission (`no-progress-stop-block-emitted`), and classification-Read bridge
+  (`no-progress-task-output-clamped`) files live in the marker directory
   and are cleaned up with the session tmpdir.
 - Stop re-entry guard: exits immediately when `stop_hook_active=true` in the payload.
 - Disabled entirely via `LARCH_NO_PROGRESS_GUARD_DISABLE=1`.
@@ -62,6 +68,11 @@ removed by the EXIT trap), so a genuine completion notification is never blocked
   paths (`<dir>/no-progress-circuit-breaker-armed`, `<dir>/no-progress-turns.count`, and
   `<dir>/no-progress-stop-block-emitted`) so the operator does not have to guess the offending
   tmpdir (#5927).
+- The classification-Read clamp bridge is intentionally not one-shot: task-notification events do
+  not pass through `UserPromptSubmit`, so the Stop handler continues blocking notification-driven
+  re-entry while `no-progress-task-output-clamped` remains present. The bridge clears when
+  `hook-bg-poll-guard.sh` observes changed task output or when marker completion resets
+  no-progress state.
 
 ## Threshold rationale
 
