@@ -1,15 +1,15 @@
-## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: stalled
+## /implement run C760E23D-6DC2-4C7B-9349-1BE754F99A99: pr-created
 
-- **Outcome**: STALLED
+- **Outcome**: DONE
 - **Duration**: 01:15:45
-- **Cost**: 💰 TOTAL ~$67.01: Claude $19.48, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.38  |  Tokens: 136828k
+- **Cost**: 💰 TOTAL ~$68.15: Claude $20.59, Codex-5.5 $35.41, Codex-mini $3.25, Cursor $8.49, Claude (subprocess) $0.41  |  Tokens: 140348k
 - **Issue**: #6476: https://github.com/character-ai/larch/issues/6476
 - **PR**: #6510: https://github.com/character-ai/larch/pull/6510
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 7/18 accepted
-- **Lines (PR diff)**: code +2061/-108, larch-logs +1832/-0
+- **Lines (PR diff)**: code +2081/-117, larch-logs +1948/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -82,3 +82,7 @@ codex/apply              │                                           ███
 4. cursor/edge-cases: 2
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
