@@ -198,6 +198,18 @@ def _architectural_invariants_section(implement_tmpdir: Path) -> str:
     return ""
 
 
+def _append_architectural_knowledge(body: str, implement_tmpdir: Path) -> str:
+    """Append invariant and guideline sections to the report body, fail-soft."""
+    for section_fn in (_architectural_invariants_section, _architectural_guidelines_section):
+        try:
+            section = section_fn(implement_tmpdir)
+        except Exception:
+            section = ""
+        if section:
+            body = body.rstrip("\n") + "\n\n" + section
+    return body
+
+
 def _codex_token_argv(*, data: Mapping[str, object], bucket: Mapping[str, object]) -> list[str]:
     """Codex token flags split by model from ``BUCKETS_codex_by_model``.
 
@@ -799,18 +811,7 @@ def write_final_report(
     except Exception:
         detail = ""
     body = review_phase_detail.append_review_phase_detail(body=body, detail=detail)
-    try:
-        invariants_section = _architectural_invariants_section(implement_tmpdir)
-    except Exception:
-        invariants_section = ""
-    if invariants_section:
-        body = body.rstrip("\n") + "\n\n" + invariants_section
-    try:
-        guidelines_section = _architectural_guidelines_section(implement_tmpdir)
-    except Exception:
-        guidelines_section = ""
-    if guidelines_section:
-        body = body.rstrip("\n") + "\n\n" + guidelines_section
+    body = _append_architectural_knowledge(body, implement_tmpdir)
     summary = implement_tmpdir / "summary-final.md"
     try:
         summary.write_text(body, encoding="utf-8")
