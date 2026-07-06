@@ -1105,12 +1105,14 @@ def test_real_design_scan_keeps_plan_review_eager_and_branch_refs_conditional() 
     result = scg.scan_skill(repo_root, "design")
 
     assert "skills/design/scripts/step-name-registry.tsv" in result.files
-    assert "skills/shared/session-setup-output.md" in result.files
-    assert "skills/shared/external-reviewers.md" in result.files
     assert "skills/design/references/plan-review.md" in result.files
     assert "skills/design/references/plan-review.md" not in result.conditional_files
-    assert "skills/shared/session-setup-output.md" not in result.conditional_files
-    assert "skills/shared/external-reviewers.md" not in result.conditional_files
+    for rel in (
+        "skills/shared/session-setup-output.md",
+        "skills/shared/external-reviewers.md",
+    ):
+        assert rel not in result.files
+        assert rel not in result.conditional_files
     for rel in (
         "skills/design/references/decompose-panel.md",
         "skills/design/references/validator-failure.md",
