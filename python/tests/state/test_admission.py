@@ -128,6 +128,29 @@ def test_preflight_nonempty_stash_exits_before_fetch(monkeypatch, capsys) -> Non
     assert not any(call[:3] == ["git", "fetch", "origin"] for call in calls)
 
 
+def test_preflight_skip_branch_still_rejects_nonempty_stash_before_fetch(monkeypatch, capsys) -> None:
+    calls: list[list[str]] = []
+
+    def fake_run(argv, *, env=None):
+        _ = env
+        calls.append(list(argv))
+        if argv[:3] == ["git", "status", "--porcelain"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        if argv[:3] == ["git", "rev-parse", "--git-path"]:
+            return subprocess.CompletedProcess(argv, 0, "", "")
+        return subprocess.CompletedProcess(argv, 0, "", "")
+
+    monkeypatch.setattr(admission, "_run", fake_run)  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_clean_tree", lambda: "true")  # pyright: ignore[reportPrivateUsage]
+    monkeypatch.setattr(admission, "_stash_check", lambda: "nonempty")  # pyright: ignore[reportPrivateUsage]
+    assert admission.preflight_main(["--skip-branch-check"]) == 2
+    out = capsys.readouterr().out
+    assert "PREFLIGHT=fail" in out
+    assert "Git stash is not empty" in out
+    assert not any(call[:3] == ["git", "fetch", "origin"] for call in calls)
+    assert not any(call[:3] == ["git", "symbolic-ref", "--short"] for call in calls)
+
+
 def test_preflight_unknown_stash_exits_before_fetch(monkeypatch, capsys) -> None:
     calls: list[list[str]] = []
 
