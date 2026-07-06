@@ -1,15 +1,15 @@
-## /implement run F910FBD1-3D30-4751-9728-DBFF85EEAB6B: stalled
+## /implement run F910FBD1-3D30-4751-9728-DBFF85EEAB6B: pr-created
 
-- **Outcome**: STALLED
+- **Outcome**: DONE
 - **Duration**: 01:34:47
-- **Cost**: 💰 TOTAL ~$57.20: Claude $11.27, Codex-5.5 $36.77, Codex-mini $2.01, Cursor $6.80, Claude (subprocess) $0.35  |  Tokens: 103057k
+- **Cost**: 💰 TOTAL ~$58.23: Claude $12.30, Codex-5.5 $36.77, Codex-mini $2.01, Cursor $6.80, Claude (subprocess) $0.35  |  Tokens: 106362k
 - **Issue**: #6477: https://github.com/character-ai/larch/issues/6477
 - **PR**: #6490: https://github.com/character-ai/larch/pull/6490
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 2/4 accepted
-- **Lines (PR diff)**: code +502/-1221, larch-logs +1420/-0
+- **Lines (PR diff)**: code +508/-1228, larch-logs +1458/-1
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 2
@@ -98,3 +98,7 @@ codex/apply              │                                          ███�
 6. cursor/testing: 1
 
 **Reviewer slot failures**: 0
+
+## Architectural guidelines
+
+Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
