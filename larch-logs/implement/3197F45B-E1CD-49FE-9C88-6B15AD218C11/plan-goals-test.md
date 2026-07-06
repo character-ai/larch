@@ -1,0 +1,206 @@
+## Goal
+Implement issue #6478: [IMPLEMENTING] [BUG] spurious task-notification loop not suppressed: platform fires notifications on every turn-end, circuit breaker threshold too high or wrong event scope.
+
+## Implementation Plan
+## Plan
+
+## Approach
+
+Implement all four scoped fixes with the smallest hook and prose changes.
+
+1. Lower the no-progress default threshold from `5` to `3`.
+2. Make `scripts/hook-no-progress-guard.sh` able to block from the `Stop` event itself when the threshold is reached.
+3. Add a narrow classification-Read clamp in `scripts/hook-bg-poll-guard.sh` for repeated unchanged or whitespace-only `tasks/<id>.output` Reads during a live same-clone design-step bg wait.
+4. Reinforce the `/design` silent-yield contract so it says zero prose and zero tool calls after the one classification `Read`, including after a denied classification Read.
+
+Keep completion detection unchanged. Terminal sentinels still release live markers before either guard blocks.
+
+## Files to modify/create
+
+### UPDATED: scripts/hook-no-progress-guard.sh
+
+- Change `LARCH_NO_PROGRESS_GUARD_THRESHOLD` default and invalid fallback from `5` to `3`.
+- Update header comments to describe `Stop` direct-block behavior.
+- Add a one-shot Stop block path:
+  - After `counter_bump`, when `cnt >= THRESHOLD`, keep touching `no-progress-circuit-breaker-armed` for the existing `UserPromptSubmit` fallback.
+  - If `no-progress-stop-block-emitted` is absent, emit the top-level `{"decision":"block","reason":"..."}` envelope from the Stop hook. Snapshot `cnt` before resetting, use it in the reason text.
+  - Write `no-progress-stop-block-emitted` before emission; exit 0 immediately after the first block emit without processing further markers.
+  - Reset `no-progress-turns.count` after the one-shot block emission; `no-progress-circuit-breaker-armed` stays set for the UserPromptSubmit fallback.
+- Extend `reset_no_progress_state` to remove `no-progress-stop-block-emitted` on all release paths (sentinel, dead PID, timeout, marker removal). Ensure callers also invoke it at marker arm time.
+- Update `json_block_prompt` recovery text to list `no-progress-stop-block-emitted` as a third file to clear alongside `no-progress-circuit-breaker-armed` and `no-progress-turns.count`.
+- Keep the `stop_hook_active=true` re-entry guard before any counter or block work.
+- Keep clone-scoped counting via `marker_foreign_clone`.
+- Keep release on terminal sentinels before counter increment.
+
+### UPDATED: scripts/hook-no-progress-guard.md
+
+- Document default threshold `3`.
+- Replace the old "Stop arms, UserPromptSubmit blocks" primary model with:
+  - Stop counts and emits a one-shot block at threshold; exits 0 after first emission.
+  - UserPromptSubmit remains a fallback for already armed markers.
+- Document `no-progress-stop-block-emitted` and its reset lifecycle: written at block emission; cleared in `reset_no_progress_state` at arm time and every release path.
+- Document that `json_block_prompt` now names all three sidecar files in its recovery instructions.
+- Update threshold rationale from `K=5` to `K=3`.
+
+### UPDATED: scripts/test-hook-no-progress-guard.sh
+
+- Update default-threshold expectations to `3`.
+- Add a test that the third live Stop event emits `decision=block` directly.
+- Add a test that the Stop hook exits 0 immediately and does not emit a second block while `no-progress-stop-block-emitted` exists.
+- Add a test that terminal-sentinel release removes `no-progress-stop-block-emitted`.
+- Add a test that marker re-arm in the same tmpdir clears stale `no-progress-stop-block-emitted` (arm-time reset).
+- Add a test that the block reason includes `no-progress-stop-block-emitted` in the recovery instructions.
+- Keep existing tests for custom threshold, clone scoping, dead PID cleanup, and UserPromptSubmit fallback.
+- Add an invalid-threshold test that falls back to `3`.
+
+### UPDATED: python/larch/design/design_core.py
+
+- In `_bg_wait_marker_context` (and any helper it delegates arm-time clearing to), add `no-progress-stop-block-emitted` to the set of sidecar files cleared before writing a new `.bg-wait-active` marker, alongside existing `no-progress-turns.count` and `no-progress-circuit-breaker-armed` resets.
+- Add a glob clear of all per-task task-output Read clamp sidecars (`bg-poll-guard-task-output-read.*.count`) in the same arm-time clearing block.
+
+### UPDATED: python/larch/implement/bg_wait.py
+
+- Extend `_clear_no_progress_sidecars` to also remove `no-progress-stop-block-emitted` and glob-clear per-task task-output Read clamp sidecars (`bg-poll-guard-task-output-read.*.count`).
+
+### MAY_UPDATE: python/larch/lint/lint_bg_wait_writer_parity.py
+
+- If it maintains a list of no-progress sidecar names expected at each marker arm site, add `no-progress-stop-block-emitted` and the task-output Read clamp glob pattern to that list.
+
+### UPDATED: scripts/hook-bg-poll-guard.sh
+
+- Add a narrow task-output classification Read clamp before the current generic Read deny loop.
+- Match only `Read` paths whose normalized tail is `tasks/[A-Za-z0-9._-]+.output`.
+- Restrict the clamp to live markers with `STEP` values matching the `design-step*` prefix only. Skip the clamp for `implement-step*` and unknown STEP values; fall through to the existing generic deny loop.
+- Bind the counter to retained live same-clone design-step marker dirs only. If no such live dir exists, exit as before.
+- For the matched file path:
+  - If the file is missing, unreadable, non-regular, or symlinked, fail open unless the existing generic deny path applies.
+  - If readable and regular, compute a small signature: whitespace-only or content class, size, and a checksum of the first 200 bytes.
+  - Store per-task state under the marker dir, keyed by normalized task id from the file path.
+  - Allow the first `LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD` unchanged or whitespace-only Reads, default `2`.
+  - Deny the next unchanged or whitespace-only Read while the marker remains live.
+  - Reset the counter when the signature changes to non-whitespace content.
+  - Clear task-output Read state when the marker completes, dies, or times out: add `reset_task_output_read_state` and invoke it from every `marker_is_live` release branch that already calls `reset_probe_counter_for_step`.
+- Emit a PreToolUse deny reason that says the classification Read is unchanged or empty and instructs the orchestrator to end the turn with no prose or tools.
+- Keep Bash `tasks/*.output` probes and `TaskOutput` denied as today.
+- Keep `.bg-wait-active` diagnosis Reads allowed.
+
+### UPDATED: scripts/hook-bg-poll-guard.md
+
+- Document the new classification Read clamp.
+- Document that the clamp applies to `design-step*` STEP values only, not `implement-step*`.
+- Document the default threshold `2` and `LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD` env override.
+- Document the sidecar naming, reset on content change, and reset on marker release via `reset_task_output_read_state`.
+- Clarify that this is a successful-Read clamp for `/design` notification recovery, not a general task-output polling policy.
+
+### UPDATED: scripts/hook-anti-read-poll.sh
+
+- Suppress task-output poll reminders (`handle_task_output_poll` or equivalent) when a live same-clone `design-step*` `.bg-wait-active` marker is active.
+- Use the same marker discovery logic already present in the hook (scan `$HOME/.cache/larch/sessions` and scoped TMPDIR prefixes).
+- If a live design-step marker is found, skip the PostToolUse reminder for `tasks/*.output` Reads entirely.
+
+### UPDATED: scripts/test-hook-bg-poll-guard.sh
+
+- Add tests for repeated `Read` of `tasks/foo.output` while a same-clone design-step marker is live:
+  - First unchanged whitespace-only Read allows.
+  - Second unchanged whitespace-only Read allows.
+  - Third unchanged whitespace-only Read denies.
+  - Changed non-whitespace content resets and allows.
+  - Repeated identical non-whitespace content denies after the threshold.
+  - Terminal sentinel release clears the task-output Read sidecar.
+  - Dead PID removes marker and clears the task-output Read sidecar.
+  - Aged marker timeout does the same.
+  - A known-foreign marker does not receive task-output Read clamp telemetry.
+  - A live `implement-step*` marker does not trigger the task-output clamp.
+  - Marker re-arm in the same tmpdir starts with a cleared clamp (arm-time reset).
+- Keep existing tests that Bash `cat tasks/foo.output` denies for same-clone markers and allows for known-foreign markers.
+- Add a threshold override test for `LARCH_BG_POLL_GUARD_TASK_OUTPUT_READ_THRESHOLD=1`.
+
+### UPDATED: scripts/test-hook-anti-read-poll.sh
+
+- Add a test that a `tasks/*.output` Read while a live same-clone `design-step*` marker exists does not trigger the PostToolUse reminder.
+- Keep existing tests for the non-design-step paths.
+
+### UPDATED: skills/shared/design-background-wait.md
+
+- Strengthen "silent yield" language:
+  - After the one classification `Read`, emit no prose at all.
+  - Do not call any further tool.
+  - Do not print status lines such as "still empty" or "waiting".
+  - When the bg-poll guard denies a classification `Read` of `tasks/*.output` for unchanged or empty content, treat that denial as silent yield: zero prose, zero further tools, no retry until the next `<task-notification>`.
+- Update the circuit-breaker paragraph to say Stop blocks directly at default threshold `3`, with UserPromptSubmit as fallback.
+- Keep the existing ordered recovery flow and terminal-sentinel names unchanged.
+
+### UPDATED: skills/design/SKILL.md
+
+- In the `/design` NEVER rule and Step 3 boundary, make the silent-yield wording explicit:
+  - zero prose output
+  - zero further tool calls
+  - no "waiting" narration
+  - when the bg-poll guard denies a classification Read, end the turn immediately with no tool calls and no prose (same as an empty-output silent yield)
+- Do not change Step 3 orchestration, Step 3 launch, or Step 5c orchestration beyond that wording.
+
+### UPDATED: scripts/test-design-structure.sh
+
+- Pin the new silent-yield wording in `skills/design/SKILL.md` and `skills/shared/design-background-wait.md`.
+- Pin that `/design` docs no longer describe the no-progress guard as waiting only for `UserPromptSubmit`.
+- Pin that `skills/shared/design-background-wait.md` covers the denied-classification-Read silent-yield contract.
+
+### UPDATED: scripts/test-implement-anti-polling-rule.sh
+
+- Update only literal checks that mention the shared `/design` silent-yield contract or default threshold if they fail after the prose edit.
+- Do not change `/implement` behavior expectations.
+
+## Edge cases
+
+- A genuine completion notification must not be blocked. Both hooks check terminal sentinels before counter or clamp decisions.
+- A live marker from another clone must not receive counters or block this session.
+- Missing clone identity remains fail-safe and may still count or block.
+- A task-output file that changes from whitespace-only to non-whitespace resets the Read clamp.
+- A symlinked task-output path fails open for the new content-inspection path.
+- Stop direct-block must not loop on `stop_hook_active=true`; exit 0 immediately after first emission.
+- An `implement-step*` marker does not trigger the task-output Read clamp.
+- Stale task-output Read sidecars from a prior wait in the same tmpdir are cleared at arm time in Python bg-wait helpers and shell markers.
+- Stale `no-progress-stop-block-emitted` from a prior wait is cleared at arm time before writing a new marker.
+- A dead PID or timed-out marker clears both probe-clamp and task-output Read sidecar on detection.
+- PostToolUse reminder is suppressed for `tasks/*.output` Reads under a live `design-step*` marker.
+
+## Failure modes
+
+- If Stop block JSON is malformed, Claude may ignore the direct block. Keep static `printf` emission and cover it with JSON tests.
+- If task-output signature state cannot be written, fail open. Do not block legitimate completion.
+- If the hook cannot inspect the task-output file safely, fail open and rely on the no-progress Stop breaker.
+- If threshold is set too low by env override, users may see an early block. The reason names the env override and marker path.
+- If `no-progress-stop-block-emitted` is not cleared at arm time, a second wait in the same tmpdir is never blocked even when genuinely stuck. The arm-time reset is critical.
+
+## Testing strategy
+
+Run focused harnesses only:
+
+- `bash scripts/test-hook-no-progress-guard.sh`
+- `bash scripts/test-hook-bg-poll-guard.sh`
+- `bash scripts/test-hook-anti-read-poll.sh`
+- `bash scripts/test-design-structure.sh`
+- `bash scripts/test-implement-anti-polling-rule.sh`
+- `make test-hook-no-progress-guard`
+- `make test-hook-bg-poll-guard`
+
+Also run `make test-hook-clone-ownership-parity` if any shared clone-identity helper changes.
+
+## Acceptance
+
+Run focused harnesses only:
+
+- `bash scripts/test-hook-no-progress-guard.sh`
+- `bash scripts/test-hook-bg-poll-guard.sh`
+- `bash scripts/test-hook-anti-read-poll.sh`
+- `bash scripts/test-design-structure.sh`
+- `bash scripts/test-implement-anti-polling-rule.sh`
+- `make test-hook-no-progress-guard`
+- `make test-hook-bg-poll-guard`
+
+Also run `make test-hook-clone-ownership-parity` if any shared clone-identity helper changes.
+
+diff_lines: 480
+
+## Test plan
+(no test plan section in plan-file)

@@ -101,6 +101,8 @@ require_value REPO "$REPO_RESOLVED"
 # during the long Step 8 ship-pr wait. Fail-open: marker failures must not
 # abort ship-pr. The EXIT trap writes handoff rc/json first, then removes it.
 rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" 2>/dev/null || true
+rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
 rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-8-ship-handoff.rc.count" 2>/dev/null || true
 _step8_start=$(date +%s 2>/dev/null) || _step8_start=0
 case "$_step8_start" in ''|*[!0-9]*) _step8_start=0 ;; esac

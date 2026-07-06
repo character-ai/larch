@@ -2,13 +2,14 @@
 # hook-no-progress-guard.sh — Stop + UserPromptSubmit hook: universal no-progress circuit breaker.
 #
 # Stop event: counts this turn for every live bg-wait marker. When a marker's consecutive-turn
-# count reaches LARCH_NO_PROGRESS_GUARD_THRESHOLD (default 5), arms a circuit-breaker flag in
-# that marker directory. This catches prose-only no-progress turns that make no tool calls and
-# are invisible to the PreToolUse probe-clamp in hook-bg-poll-guard.sh.
+# count reaches LARCH_NO_PROGRESS_GUARD_THRESHOLD (default 3), arms a circuit-breaker flag in
+# that marker directory and emits a one-shot Stop block. This catches prose-only no-progress
+# turns that make no tool calls and are invisible to the PreToolUse probe-clamp in
+# hook-bg-poll-guard.sh.
 #
-# UserPromptSubmit event: when any live marker has an armed circuit breaker, blocks the new turn
-# with an operator-visible message. Auto-disarms when the bg task completes (marker gone or its
-# terminal sentinel present), so a genuine completion notification is never blocked.
+# UserPromptSubmit event: fallback path for an already armed circuit breaker. Auto-disarms when
+# the bg task completes (marker gone or its terminal sentinel present), so a genuine completion
+# notification is never blocked.
 #
 # set -e intentionally omitted: hooks must fail open on malformed input or runtime errors.
 
@@ -41,8 +42,8 @@ if [ "$event_type" = "Stop" ]; then
   [ "$stop_hook_active" = "true" ] && exit 0
 fi
 
-THRESHOLD="${LARCH_NO_PROGRESS_GUARD_THRESHOLD:-5}"
-case "$THRESHOLD" in ''|*[!0-9]*) THRESHOLD=5 ;; esac
+THRESHOLD="${LARCH_NO_PROGRESS_GUARD_THRESHOLD:-3}"
+case "$THRESHOLD" in ''|*[!0-9]*) THRESHOLD=3 ;; esac
 
 now=$(date +%s 2>/dev/null) || exit 0
 case "$now" in ''|*[!0-9]*) exit 0 ;; esac
@@ -187,7 +188,11 @@ reset_no_progress_state() {
   # later wait reusing the same tmpdir starts fresh (mirrors reset_probe_counter_for_step).
   local dir="$1"
   [ -n "$dir" ] || return 0
-  rm -f "$dir/no-progress-turns.count" "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true
+  rm -f \
+    "$dir/no-progress-turns.count" \
+    "$dir/no-progress-circuit-breaker-armed" \
+    "$dir/no-progress-stop-block-emitted" \
+    2>/dev/null || true
 }
 
 # Sets LIVE_MARKER_DIR on success. Returns 0 when live, non-zero when not live.
@@ -267,8 +272,8 @@ counter_read() {
 # count and threshold are validated digit-only strings safe for printf %s interpolation.
 json_block_prompt() {
   local count="$1" threshold="$2" dir="$3"
-  printf '{"decision":"block","reason":"No-progress circuit breaker: %s consecutive turns detected under an active background-wait marker without real progress (threshold: %s turns). Marker: %s/.bg-wait-active. The harness may be delivering spurious notifications (#5639). To continue: (1) check whether the background task completed, (2) clear the stale marker files %s/no-progress-circuit-breaker-armed and %s/no-progress-turns.count if the task is gone, or (3) set LARCH_NO_PROGRESS_GUARD_THRESHOLD to a higher value before retrying."}\n' \
-    "$count" "$threshold" "$dir" "$dir" "$dir"
+  printf '{"decision":"block","reason":"No-progress circuit breaker: %s consecutive turns detected under an active background-wait marker without real progress (threshold: %s turns). Marker: %s/.bg-wait-active. The harness may be delivering spurious notifications (#5639). To continue: (1) check whether the background task completed, (2) clear the stale marker files %s/no-progress-circuit-breaker-armed, %s/no-progress-turns.count, and %s/no-progress-stop-block-emitted if the task is gone, or (3) set LARCH_NO_PROGRESS_GUARD_THRESHOLD to a higher value before retrying."}\n' \
+    "$count" "$threshold" "$dir" "$dir" "$dir" "$dir"
 }
 
 if [ "$event_type" = "Stop" ]; then
@@ -292,6 +297,13 @@ if [ "$event_type" = "Stop" ]; then
     cnt=$(counter_bump "$dir")
     if [ "$cnt" -ge "$THRESHOLD" ]; then
       touch "$dir/no-progress-circuit-breaker-armed" 2>/dev/null || true
+      if [ ! -f "$dir/no-progress-stop-block-emitted" ] && [ ! -L "$dir/no-progress-stop-block-emitted" ]; then
+        if : >"$dir/no-progress-stop-block-emitted" 2>/dev/null; then
+          json_block_prompt "$cnt" "$THRESHOLD" "$dir"
+          rm -f "$dir/no-progress-turns.count" 2>/dev/null || true
+          exit 0
+        fi
+      fi
     fi
   done <<EOF_MARKERS
 $(marker_candidates)

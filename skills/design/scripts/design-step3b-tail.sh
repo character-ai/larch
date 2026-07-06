@@ -98,6 +98,8 @@ design_step4_tail_marker() {
   local start claude_pid clone_path
   [ -n "${DESIGN_TMPDIR:-}" ] || return 0
   rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/no-progress-stop-block-emitted" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
   rm -f "$DESIGN_TMPDIR/.completed/step-4" 2>/dev/null || true
   start=$(date +%s 2>/dev/null) || start=0
   case "$start" in ''|*[!0-9]*) start=0 ;; esac
