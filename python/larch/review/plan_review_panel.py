@@ -944,7 +944,7 @@ def _file_nonempty(path: Path) -> bool:
 
 
 def _emit_final_kvs(*, state: DispatchState, voter_paths_file: Path, dispatch_ok: str) -> None:
-    status_proc = subprocess.run(
+    status_proc = larch_proc.run(
         [
             sys.executable,
             str(_plugin_root() / "python" / "cli.py"),
@@ -965,9 +965,6 @@ def _emit_final_kvs(*, state: DispatchState, voter_paths_file: Path, dispatch_ok
             str(voter_paths_file),
         ],
         cwd=str(_REPO_ROOT),
-        text=True,
-        capture_output=True,
-        check=False,
     )
     print(status_proc.stdout, end="")
     _emit(key="DISPATCH_OK", value=dispatch_ok)
@@ -1114,12 +1111,9 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         "--claude-read-tools-add-dir",
         str(design),
     ]
-    wf = subprocess.run(
+    wf = larch_proc.run(
         wf_args,
         cwd=str(_REPO_ROOT),
-        text=True,
-        capture_output=True,
-        check=False,
         env=panel_env,
     )
     waterfall_output = wf.stdout
@@ -1178,7 +1172,7 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     if state.voter_3_status != "failed" and state.voter_3_parse_rate_status == "NOT_SUBSTANTIVE":
         state.voter_3_status = "failed"
 
-    effective_proc = subprocess.run(
+    effective_proc = larch_proc.run(
         [
             sys.executable,
             str(_plugin_root() / "python" / "cli.py"),
@@ -1189,13 +1183,10 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
             f"{state.voter_3_status}\t{state.voter_3_path}\t{state.voter_3_parse_rate_status}",
         ],
         cwd=str(_REPO_ROOT),
-        text=True,
-        capture_output=True,
-        check=False,
     )
     effective = int(effective_proc.stdout.strip() or "0") if effective_proc.returncode == 0 else 0
     if effective < _PLAN_VOTER_PANEL_SIZE:
-        warn_proc = subprocess.run(
+        warn_proc = larch_proc.run(
             [
                 sys.executable,
                 str(_plugin_root() / "python" / "cli.py"),
@@ -1206,9 +1197,6 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
                 "",
             ],
             cwd=str(_REPO_ROOT),
-            text=True,
-            capture_output=True,
-            check=False,
         )
         if warn_proc.stdout.strip():
             print(warn_proc.stdout.strip())
