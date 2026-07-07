@@ -1,0 +1,31 @@
+# /design plan-size guardrail: split oversized plans into serial part issues before /implement
+
+#### Problem
+
+`/design` finalized a single HARD plan for #6514 with roughly 85 firm `NEW:`/`UPDATED:` headings and `diff_lines: 4800`. `/implement` hands the whole plan to one external implementer invocation (single one-shot by contract). No single one-shot reliably lands an 85-file cross-cutting migration, and this one did not: 25 files landed, 61 were left untouched, and the remainder had to be hand-filed afterward as #6524. The plan review loop scored plan quality and clarity but nothing evaluated whether the plan fits inside one implementer pass.
+
+#### Proposal (for /design to refine)
+
+1. Add mechanical plan-size signals at plan finalization: count of firm `NEW:`/`UPDATED:`/`REWRITTEN:` headings (excluding `MAY_UPDATE:`), declared `diff_lines`, and count of distinct top-level surfaces touched (`skills/`, `python/larch/<pkg>`, `scripts/`, `docs/`). Emit them in the plan block or plan-quality output.
+2. Add thresholds in `python/larch/core/config.py`, calibrated from committed run logs (`/report-tokens` and `/difficulty-calibration` data), with initial values on the order of: firm headings above 25, or `diff_lines` above 1500, or surfaces above 4. Exceeding any threshold marks the plan oversized.
+3. An oversized plan cannot finalize as a single issue by default. `/design` must either decompose it into serial part issues (part 1..N) with native blocked-by edges, per-part firm-heading inventories, and per-part acceptance criteria, or record an explicit operator override in the plan block (an `oversize_override: operator` line adjacent to `diff_lines:`), so the choice is visible to `/implement` preflight and in the run log.
+4. Reuse existing machinery where it fits: the plan grammar already carries `diff_lines:`; plan-quality checks already run at finalization (`python/cli.py plan-quality` surfaces); the `/design` decompose panel machinery may be reusable for proposing the part boundaries. Decomposition must preserve the clarify round-trip and `larch:plan` wire format per `docs/issue-anchored-plan.md`.
+5. Part issues get the same review rigor: each part's plan block carries its own `review_status` and `rounds_completed` provenance so `/implement` preflight admission works unchanged per part.
+
+#### Evidence
+
+Run 0BE6E8A0-8A7D-49E2-8468-8E7BB8EB201C (2026-07-07): #6514's single oversized plan produced a silent 25-of-85 partial implementation under `STATUS=complete` (dispatcher advisory `WARN_PLAN_FILES_UNTOUCHED_COUNT=61`), an acceptance criterion satisfied by allowlisting instead of migrating, and a hand-recovered split (#6524 now carries the remaining inventory, blocking #6516). The companion issue filed alongside this one makes `/implement` fail closed on such gaps; this issue prevents the oversized single plan from reaching `/implement` at all.
+
+#### Non-goals
+
+- Changing `/implement` gating or the one-shot implementer contract (companion issue).
+- Auto-splitting without operator visibility. Decomposition output goes through the normal plan review and approval surfaces.
+
+#### Acceptance criteria
+
+1. Re-running `/design` against an inventory equivalent to #6514's original plan cannot finalize a single issue without an explicit `oversize_override: operator` record; the default path produces serial part issues with native blocked-by edges and per-part plans. Pinned by tests.
+2. The size signals and thresholds are emitted in plan-quality output and documented in `docs/issue-anchored-plan.md`; threshold constants live in `python/larch/core/config.py` with calibration rationale.
+3. `/implement` preflight admission and plan materialization work unchanged on part issues (each part carries its own valid `larch:plan` block with provenance).
+4. `make py-lint`, `make py-test`, and affected `test-harnesses` shards pass.
+
+Related: the companion /implement plan-coverage gate issue filed alongside this one; #6514, PR #6522, and #6524 (the incident and its hand-made split).

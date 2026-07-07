@@ -1,0 +1,5 @@
+FINDING_1: YES CORRECTNESS=partially-true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- The plan already has a retained Step 2b.5 override path; adding more prompt wording is contract polish, not a necessary correctness gate.
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- Extra threshold-key allowlist plumbing is beyond the stated size-gating requirement; the feature can ship with the existing emitted signals and metadata handling.
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=adequate UNCERTAIN=false -- Canonical-parser reuse and auto-derived acceptance bullets are implementation refinements beyond the required split-path behavior; the feature can still ship correctly without them.
