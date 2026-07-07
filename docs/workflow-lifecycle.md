@@ -139,3 +139,7 @@ Ordinary Step 3 panel degradation continues the run. It may become escalation-su
 ### Difficulty-tiered review loops
 
 Design, review, and implement review loops resolve a starting difficulty tier, apply the 1:30 audit for below-HARD runs, and use a fixed cap of 2 for every tier. Substantial code-review rounds escalate one tier at a time; substantial design-review rounds escalate directly to HARD.
+
+## Bgjob completion artifacts
+
+Long-running migrated steps write completion through `$TMPDIR/bgjob/<step>.result.env`. Existing `.completed/*` and handoff sentinels remain as transition routing compatibility markers, but migrated orchestrator text should treat the bgjob result env and `BGJOB_RC=0` as the completion source of truth.

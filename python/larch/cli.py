@@ -55,6 +55,10 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("difficulty", "render-line"): ("larch.calibration.difficulty", "render_line_main"),
     ("difficulty", "resolve-panel"): ("larch.calibration.difficulty", "resolve_panel_main"),
     ("difficulty", "sync-labels"): ("larch.calibration.difficulty", "sync_labels_main"),
+    ("bgjob", "start"): ("larch.bgjob.cli", "start_main"),
+    ("bgjob", "wait"): ("larch.bgjob.cli", "wait_main"),
+    ("bgjob", "status"): ("larch.bgjob.cli", "status_main"),
+    ("bgjob", "reap"): ("larch.bgjob.cli", "reap_main"),
     ("checks", "run-relevant"): ("larch.implement.checks", "checks_run_relevant_main"),
     ("checks", "lint-fix"): ("larch.implement.checks", "checks_lint_fix_main"),
     ("checks", "repair-loop"): ("larch.implement.checks", "checks_repair_loop_main"),
@@ -642,6 +646,10 @@ _DESIGN_LIFECYCLE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
 })
 
 _MACHINE_STDOUT_KEYS: frozenset[tuple[str, str]] = frozenset({
+    ("bgjob", "start"),
+    ("bgjob", "wait"),
+    ("bgjob", "status"),
+    ("bgjob", "reap"),
     ("checks", "run-relevant"),
     ("checks", "lint-fix"),
     ("checks", "repair-loop"),

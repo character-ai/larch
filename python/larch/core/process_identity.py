@@ -102,7 +102,10 @@ def read_process_identity(
     if pgid is None:
         return None
     active_runner = runner or proc.ProcRunner()
-    result = active_runner.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="])
+    try:
+        result = active_runner.run(["ps", "-p", str(pid), "-o", "lstart=", "-o", "command="])
+    except OSError:
+        return None
     if result.returncode != 0:
         return None
     return _parse_ps_identity(pid=pid, pgid=pgid, stdout=result.stdout, expected_signature=expected_signature)

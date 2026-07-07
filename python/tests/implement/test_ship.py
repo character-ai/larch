@@ -5777,6 +5777,30 @@ def test_guideline_ship_outcome_present_empty_note_classifies_dropped(tmp_path: 
     assert data["guidelines_status"] == "present"
 
 
+def test_invariant_ship_outcome_present_empty_invariants_classifies_clean(tmp_path: Path) -> None:
+    outcome = ship_guidelines.write_invariant_ship_outcome(
+        implement_tmpdir=str(tmp_path),
+        result=ship_guidelines.InvariantsGateResult(
+            invariants_status="present",
+            assessment_kind="clean",
+            reason=ship_guidelines.REASON_INVARIANTS_EMPTY,
+        ),
+        head_sha="abc123",
+        base_ref="origin/main",
+    )
+
+    assert outcome is not None
+    assert outcome.outcome == ship_guidelines.OUTCOME_CLEAN
+    assert outcome.reason == ship_guidelines.REASON_INVARIANTS_EMPTY
+    assert outcome.assessment_kind == "clean"
+    data = json.loads((tmp_path / ship.architectural_guidelines.INVARIANT_SHIP_OUTCOME_SIDECAR).read_text(encoding="utf-8"))
+    assert data["outcome"] == "clean"
+    assert data["reason"] == ship_guidelines.REASON_INVARIANTS_EMPTY
+    assert data["invariants_status"] == "present"
+    assert data["assessment_kind"] == "clean"
+    assert ship.architectural_guidelines.validate_invariant_ship_outcome_record(data) is None
+
+
 def test_guideline_ship_outcome_missing_status_does_not_infer_from_note(tmp_path: Path) -> None:
     outcome = ship_guidelines.write_guideline_ship_outcome(
         implement_tmpdir=str(tmp_path),

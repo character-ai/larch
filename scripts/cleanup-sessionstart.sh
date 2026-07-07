@@ -16,6 +16,9 @@ command -v python3 >/dev/null 2>&1 || exit 0
 CLEANUP_LOG="${TMPDIR:-/tmp}/larch-cleanup-sessionstart-$$.log"
 : >"$CLEANUP_LOG" 2>/dev/null || CLEANUP_LOG=/dev/null
 
+# Reap stale bgjob registry rows before the age-based cleanup daemon runs.
+python3 "$CLI" bgjob reap >/dev/null 2>&1 || true
+
 # Launch cleanup as a detached subprocess so the hook exits immediately.
 # Output is captured to the temp log for post-hoc debugging.
 env -u LARCH_TEST_TMP_ROOT python3 "$CLI" cleanup run >"$CLEANUP_LOG" 2>&1 &
