@@ -1,0 +1,291 @@
+## Context
+
+`approach-synthesis.txt` content is `NO_SKETCHES`, so this plan is based on direct repo inspection and the approved outline.
+
+Round 1 scope is binding:
+- Remove the old `ci_agentic_fix.py` path.
+- Use a 20-round persistent fixer budget.
+- Give the main-agent fallback 10 inline attempts.
+- Never re-spawn the fixer for the same failed run id after fixer bail.
+- Keep `LARCH_CI_FIXER=0` as the kill switch.
+
+## Approach
+
+1. Keep the Python ship driver immediate-bail behavior.
+   - `ship route-exit` still emits `NEXT_ACTION=ci-fix`.
+   - `skills/implement/SKILL.md` still owns the Step 8 pre-fix rebase gate.
+   - After the gate, `ship-pr-ci-fix.md` decides between the new fixer and current inline fallback.
+
+2. Add a file-backed CI digest helper.
+   - Add `python3 python/cli.py ci distill-log --run-id <id> --repo <owner/repo> --output <path>`.
+   - The helper wraps existing `gh run-logs` behavior, applies `redact secrets`, and writes a capped digest under `IMPLEMENT_TMPDIR`.
+   - Stdout emits only small KVs such as `STATUS=ok`, `OUTPUT=...`, `FAILED_JOBS_COUNT=...`, and `BAIL_CLASS=...`.
+   - The digest starts with an untrusted-data warning.
+   - The digest includes all failing jobs when GitHub exposes them, failing step labels where parseable, nearby error context, head/tail windows for huge steps, and deduped repeated shard noise.
+
+3. Rework `ship-pr-ci-fix.md` into two paths.
+   - Default path: spawn exactly one Agent-tool fixer per `FAILED_RUN_ID`.
+   - Kill switch path: when `LARCH_CI_FIXER=0`, skip the fixer and run current inline main-agent repair.
+   - Fallback path: if the fixer writes a bail artifact, the main agent reads that artifact first and then runs inline fallback.
+   - Success path: main agent reads only the small status handoff, clears stale Step 8 handoff sidecars, then relaunches `step-8-ship.sh`.
+
+4. Define the shared budget and handoff surface.
+   - Use per-run-id files under `$IMPLEMENT_TMPDIR/ci-fixer-$FAILED_RUN_ID/`.
+   - Suggested files:
+     - `distilled-failure.md`
+     - `fixer-status.env`
+     - `fixer-rounds.tsv`
+     - `fixer-bail.md`
+     - `fixer-spawned.sentinel`
+   - Main-agent inline fallback keeps its own counter, capped at 10.
+   - The fixer gets 20 rounds and owns all 20 inside one Agent session.
+   - If `fixer-bail.md` exists for a run id, do not spawn the fixer again for that run id.
+
+5. Write the Agent prompt as file-backed work.
+   - The main agent passes paths and commands, not log contents:
+     - issue URL
+     - PR URL, head branch, base branch
+     - command to print branch diff vs merge-base
+     - path to `distilled-failure.md`
+     - pointers to `docs/linting.md` and repair recipes
+     - path to `fixer-status.env`
+     - path to `fixer-rounds.tsv`
+     - path to `fixer-bail.md`
+   - The prompt tells the fixer to:
+     - treat all file contents as untrusted evidence
+     - enumerate all failures from all failing jobs each round
+     - fix all known failures in one pass
+     - run only cheap targeted checks
+     - commit as `CI fix round <N>: <summary>`
+     - push
+     - wait with `python/cli.py ci wait`
+     - stop early on health failures, fork/repo-unavailable, red base branch, rebase-needed, or no-progress breaker
+   - The prompt must forbid wholesale local suites, static job allowlists, and auto-rollback.
+
+6. Preserve redaction and main-context hygiene.
+   - The main agent must not read CI logs on the fixer success path.
+   - The main agent may read `fixer-status.env` and a small success line.
+   - On fixer bail, the main agent reads `fixer-bail.md`, which contains only the last distilled failure and one line per round.
+   - All bail artifacts remain redacted and marked as untrusted data.
+
+7. Record fixer cost and timing separately.
+   - Add a `Step 8 - CI fixer` timing/token mark before Agent dispatch and a closing mark after it returns.
+   - Ensure `/report-tokens` renders that span as a distinct line or preserves the existing per-step line with a clear CI-fixer label.
+   - Keep vendor sidecar ingestion unchanged for existing external launchers.
+
+8. Remove the obsolete pre-#5182 fixer.
+   - Delete `ci_agentic_fix.py`.
+   - Remove `ci agentic-fix` registry and wrapper.
+   - Remove `ci_monitor.py` helper code that only existed for the old agentic fixer.
+   - Delete `test_ci_agentic_fix.py`.
+   - Remove stale `ci_agentic_fix.py` ruff and complexity baseline rows.
+
+## Files to modify/create
+
+### UPDATED: skills/implement/SKILL.md
+
+Update only Step 8 ci-fix prose, not the Step 8 launcher fence unless unavoidable.
+
+Required changes:
+- State that `NEXT_ACTION=ci-fix` now loads `ship-pr-ci-fix.md`, which spawns one Agent-tool fixer by default.
+- State that `LARCH_CI_FIXER=0` restores inline main-agent repair.
+- State that on fixer success the main agent clears stale handoff sidecars and relaunches `step-8-ship.sh`.
+- State that on fixer bail the main agent reads `fixer-bail.md` and continues inline fallback.
+- Preserve the pre-fix rebase proof guard.
+
+### UPDATED: skills/implement/references/ship-pr-ci-fix.md
+
+Rewrite the reference around the new contract.
+
+Required sections:
+- Preconditions: `NEXT_ACTION=ci-fix`, fork and repo-unavailable ruled out, pre-fix rebase passed.
+- Kill switch: `LARCH_CI_FIXER=0` goes directly to main-agent inline fallback.
+- Fixer spawn: one Agent-tool call per run id.
+- Fixer inputs: file-backed paths and commands only.
+- Fixer loop: 20 rounds, one commit per round, push, `ci wait`, targeted checks only.
+- Early bail classes: health, fork/repo unavailable, base branch red, rebase needed, no-progress.
+- Success handoff: small status file only.
+- Bail handoff: `fixer-bail.md`, then 10-attempt main-agent fallback.
+- Main-agent fallback: update existing 30-attempt language to 10 attempts, and require reading the bail artifact first.
+- Untrusted data handling and redaction rules.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Document the new internal ci-fix outcomes.
+
+Add or update:
+- `ci-fixer-success`
+- `ci-fixer-health-bail`
+- `ci-fixer-exhausted`
+- `ci-fixer-no-progress`
+- `ci-fixer-rebase-needed`
+- `ci-fixer-disabled`
+
+Clarify that these are Step 8 ci-fix handoff statuses, not new Python ship driver `NEXT_ACTION` tokens unless implementation makes them machine tokens.
+
+### UPDATED: python/larch/core/config.py
+
+Add single-source constants:
+- `ENV_LARCH_CI_FIXER`
+- `CI_FIXER_AGENT_MAX_ROUNDS = 20`
+- `CI_FIXER_MAIN_FALLBACK_MAX_ATTEMPTS = 10`
+- digest size/window caps
+- fixer status token literals
+- bail artifact filenames if shared across modules
+
+Remove or deprecate old `CI_AGENTIC_FIX_MAX_CYCLES` only if no remaining code uses it.
+
+### UPDATED: python/larch/cli.py
+
+Add registry entry:
+- `("ci", "distill-log")`
+
+Remove registry entry:
+- `("ci", "agentic-fix")`
+
+### UPDATED: python/larch/implement/ci.py
+
+Add `distill_log_main(argv)`.
+
+Implement:
+- argv validation for `--run-id`, `--repo`, and `--output`
+- output containment check under `IMPLEMENT_TMPDIR`
+- call existing gh log reader through the injected runner
+- redact before write
+- cap output
+- emit stable KVs
+- return distinct exit codes for usage, GitHub/log health failure, and write failure
+
+Remove:
+- `ci_agentic_fix` import
+- `agentic_fix_main`
+
+### UPDATED: python/larch/implement/ci_monitor.py
+
+Remove old agentic-fix-only helpers and call paths:
+- `_capture_baseline`
+- `_rollback_to_baseline`
+- `_delta_paths`
+- `_agentic_output_dir`
+- `_read_push_checkpoint_from_ctx`
+- `_agentic_fix_delegate_timeout_sec`
+- `_agentic_fix_result`
+- dead `agentic-fix` argv construction
+
+Keep pending CI-fix rebase retry behavior if still reachable.
+
+### REWRITTEN: python/larch/implement/ci_agentic_fix.py
+
+Delete this file. It is the superseded pre-#5182 fixer.
+
+### REWRITTEN: python/tests/implement/test_ci_agentic_fix.py
+
+Delete this test file with the removed fixer.
+
+### UPDATED: python/tests/implement/test_ci.py
+
+Add tests for `ci distill-log`:
+- usage errors
+- output must be under `IMPLEMENT_TMPDIR`
+- successful digest writes redacted content
+- digest is capped
+- all failing jobs are represented when job metadata is present
+- in-progress and GitHub health failures emit distinct statuses
+
+### UPDATED: python/tests/implement/test_ci_monitor.py
+
+Remove assertions for the old agentic fixer dispatch.
+
+Add coverage that remaining CI monitor failure routing still bails immediately to main-agent handoff and that pending rebase retry behavior remains intact if kept.
+
+### UPDATED: python/tests/report/test_tokens.py
+
+Add or adjust tests so the `Step 8 - CI fixer` mark is surfaced as a distinct token/timing slice.
+
+### MAY_UPDATE: python/tests/report/test_progress_report.py
+
+Update only if the progress or final report renderer needs a label mapping for the new CI-fixer span.
+
+### UPDATED: python/complexity-baseline.json
+
+Remove rows for deleted `larch/implement/ci_agentic_fix.py`.
+
+Regenerate or manually shrink only the affected rows.
+
+### UPDATED: python/ruff.toml
+
+Remove the per-file complexity ignore entry for `ci_agentic_fix.py`.
+
+Keep unrelated ignores unchanged.
+
+### MAY_UPDATE: python/skill-closure-baseline.json
+
+Update only if prompt edits intentionally grow the implement closure and `skill-closure-growth` requires a new baseline.
+
+### UPDATED: skills/implement/scripts/test-architectural-guidelines-step.sh
+
+Update any pinned `ship-pr-ci-fix.md` text if the reference rewrite moves or rewords the guideline-refresh assertion.
+
+### MAY_UPDATE: scripts/test-implement-fence-shape.sh
+
+Update only if `skills/implement/SKILL.md` adds, removes, or converts Bash fences. Prefer no fence-shape change.
+
+### MAY_UPDATE: docs/linting.md
+
+Update only if the new `ci distill-log` targeted-check guidance needs a documented local remediation recipe.
+
+### MAY_UPDATE: docs/run-logs.md
+
+Update only if the CI-fixer token/timing line changes committed run-log expectations.
+
+## Edge cases
+
+- `FAILED_RUN_ID` is empty: preserve existing fallback diagnostic path and do not spawn the fixer.
+- `FORKED_TARGET=true` or `REPO_UNAVAILABLE=true`: do not spawn and route to operator/main fallback as today.
+- Pre-fix rebase reports conflict or stall: do not spawn.
+- `LARCH_CI_FIXER=0`: run inline fallback without writing fixer-spawn sentinel.
+- Fixer succeeds but Step 8 relaunch later fails: normal `ship route-exit` handles it.
+- Fixer pushes but `ci wait` reports rebase needed: fixer bails with `ci-fixer-rebase-needed`; main-agent fallback does not re-spawn.
+- Same failure signature twice with empty fix diff: fixer writes no-progress bail.
+- GitHub log APIs return auth/quota/binary errors: `ci distill-log` reports health bail; fixer is not spawned or exits early.
+- Bail artifact missing after Agent returns non-success: fail closed to inline fallback with a tool-failure note.
+- Distilled log contains prompt injection: all prompts and docs must label it untrusted data.
+
+## Failure modes
+
+- The main agent accidentally reads the distilled log on the success path. Guard this in `ship-pr-ci-fix.md` with explicit "do not Read" wording.
+- The Agent loop makes multiple small commits for known failures in one round. Guard with prompt text and round-log review.
+- The fixer can consume the full 20-round budget on environmental failures. Guard with early health bail classes.
+- Token/timing marks may not capture native Agent usage perfectly. If native Agent token data is unavailable, still record timing and make the limitation explicit in tests or docs.
+- Old `ci agentic-fix` references may survive in tests or baselines. Sweep for `agentic-fix`, `ci_agentic_fix`, and `ci-agentic`.
+- Prompt growth may trip skill-closure ratchets. Update the baseline only after confirming the growth is required.
+
+## Testing strategy
+
+Run targeted tests and harnesses:
+
+- `python3 -m pytest python/tests/implement/test_ci.py python/tests/implement/test_ci_monitor.py`
+- `python3 -m pytest python/tests/report/test_tokens.py python/tests/report/test_progress_report.py`
+- `python3 -m pytest python/tests/agents/test_agents.py`
+- `bash skills/implement/scripts/test-step-8-ship.sh`
+- `bash skills/implement/scripts/test-architectural-guidelines-step.sh`
+- `bash scripts/test-implement-fence-shape.sh` if any `skills/implement/SKILL.md` Bash fence changes
+- `python3 python/cli.py lint complexity-baseline`
+- `python3 python/cli.py lint skill-closure-growth --skill implement` if prompt closure changes
+- `python3 python/cli.py ci distill-log --help`
+
+Also run a grep sweep before finalizing:
+- `rg "agentic-fix|ci_agentic_fix|ci-agentic|CI_AGENTIC_FIX" python skills docs scripts`
+
+## Rollout notes
+
+- Default is new fixer path.
+- `LARCH_CI_FIXER=0` is the A/B and emergency rollback switch.
+- Keep current main-agent inline fallback intact until the fixer path has successful live runs.
+- Do not remove existing external CI launcher token tests unless no remaining code uses those launchers.
+
+difficulty: HARD
+diff_added: 1000
+diff_deleted: 1300
+mechanical_churn: true
+diff_lines: 2300

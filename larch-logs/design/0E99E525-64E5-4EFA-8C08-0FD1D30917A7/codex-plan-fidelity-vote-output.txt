@@ -1,0 +1,6 @@
+FINDING_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- these preserved guardrails are optional prompt-detail cleanup; the core sub-agent/fallback flow can still ship correctly.
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- the plan already defines the handoff artifact and round tracking at a coarse level; a stricter env schema is implementation detail, not a blocker.
+FINDING_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=weak UNCERTAIN=false -- the fallback tail is already implied by "repairs inline as today"; this is underspecification, not a feature break.
+FINDING_5: NO CORRECTNESS=false-positive SEVERITY=minor QUALITY=adequate UNCERTAIN=false -- evaluate_failure is dead code here, and the shipped monitor path already bails immediately without CI log I/O.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
