@@ -575,6 +575,10 @@ exclude = [
   "scripts/test-hook-progress-report.sh",
   "scripts/test-hook-stop-fail-close.sh",
   "scripts/test-hook-deny-run-in-background.sh",
+  # scripts/test-bgjob.sh is the Makefile-only regression harness for bgjob
+  # start/wait/reap coverage (make test-bgjob -> pytest python/tests/bgjob).
+  # agent-lint's G004/dead-script rule does not follow Makefile targets.
+  "scripts/test-bgjob.sh",
   # not invokable directly) carrying the canonical plugin sparse install
   # allowlist for upgrade-larch run and SessionStart probes. Referenced via
   # source directives only, which agent-lint does not follow.
