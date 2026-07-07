@@ -1,0 +1,54 @@
+## Problem
+
+When `/design` resumes an interrupted session (`design_router` route `resume@<STEP>` with STEP other than `0c`), Step 0b sub-steps 3-6 are skipped, including the init that runs `session write-design-env --issue-number ...` (`python/larch/design/design_router.py`, `init_runparams_main`). The resumed session's `source-env.sh` therefore has no `ISSUE_NUMBER` or `REPO` export. Step 5c builds the publish argv from the session context rehydrated from `source-env.sh`, so `publish_core` receives `--issue ""` and returns 5 at its argument guard (`python/larch/design/design_publish.py`, the empty/non-digit `--issue` checks near lines 658-660). `design_step5c` then aborts with `design-publish.sh failed (exit 5); aborting /design` and the plan is never written.
+
+## Evidence
+
+Resuming issue #6527 (resumed session `9DAE3141-...`, paused run `A2AD61B7-...`): the resumed `source-env.sh` had `ISSUE_NUMBER` empty and `REPO` absent, while `.design-step0-route-state.env` in the same tmpdir carried `ISSUE_NUMBER=6527` and `REPO=character-ai/larch`. This auto-filed the terminal-failure report #6543 (bail reason `publish-tail-failed`, validated detail `design-publish.sh failed (exit 5)`). Manually refreshing `source-env.sh` via `session write-design-env --issue-number 6527 --repo character-ai/larch` unblocked publish, and the run then completed with #6527 marked `[DESIGNED]`.
+
+## Reproduction
+
+1. Pause a `/design` past Step 0b (for example at Step 3b or later) so a pause marker is written to the issue.
+2. Resume with `/design -s N`; the router takes `resume@<STEP>`.
+3. Proceed to Step 5c. `publish_core` gets an empty `--issue` and returns 5; the run aborts as `failed-publish-tail`.
+
+## Root cause
+
+`resume@<STEP>` deliberately skips Step 0b sub-steps 3-6 to avoid re-running init, but sub-step 6 is the only writer that folds `ISSUE_NUMBER`/`REPO` into `source-env.sh` via `session write-design-env`. The route driver OR-merges flags into `run-params.json` on resume but does not rehydrate issue/repo into `source-env.sh`, so every consumer that reads them from the session env (here, the Step 5c publish argv) sees empty values.
+
+## Suggested fix
+
+On `resume@<STEP>`, rehydrate `source-env.sh` with `ISSUE_NUMBER`/`REPO` from `.design-step0-route-state.env` through the guarded `session write-design-env` writer (the route driver already has the values and OR-merges flags into run-params; extend it to also refresh the session env). Do not hand-write `source-env.sh`.
+
+## Acceptance criteria
+
+1. Resuming an interrupted `/design` reaches Step 5c with a populated `--issue`, and publish is not refused for an empty issue.
+2. A test asserts the resumed `source-env.sh` carries `ISSUE_NUMBER` and `REPO` after `resume@<STEP>`.
+3. `make py-lint` and `make py-test` pass.
+
+Related: #6543 (auto-filed symptom of this bug, closed as superseded), #6527 (the run this surfaced on).
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- On `resume@<STEP>`, refresh `source-env.sh` with `ISSUE_NUMBER` and `REPO` so Step 5c publish receives a non-empty `--issue`.
+- Add a test asserting the resumed `source-env.sh` carries these values.
+
+### Non-goals
+- Do not re-run init-runparams (rename, write-run-params) on resume paths.
+- Do not change the pause/save format or route-state env schema.
+- Do not fix the `.completed/step-3` snapshot exclusion (separate concern).
+
+### Approach sketch
+- In `_finish_step0_route()` in `design_step0.py`, when `route.startswith("resume@")`, call `session write-design-env` as a subprocess with `ISSUE_NUMBER`, `REPO`, and `SESSION_ID` from `ctx.env`.
+- Emit a warning and return non-zero if the call fails, to fail early instead of failing at Step 5c.
+- Add `test_step0_route_resume_rehydrates_source_env` to `test_design_lifecycle.py` using the existing `monkeypatch` pattern.
+
+### Surfaces in scope
+- `python/larch/design/design_step0.py` (`_finish_step0_route`)
+- `python/tests/design/test_design_lifecycle.py`
+
+### Open questions
+- None.
