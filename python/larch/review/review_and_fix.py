@@ -13,6 +13,7 @@ import os
 import re
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Literal, cast
 from collections.abc import Generator
@@ -123,6 +124,20 @@ _HIGH_RE = re.compile(
     r"|^- \*\*Concern\*\*:\s*\[[Ii]mportant\](?:[\s,:;.\)]|$))"
 )
 _OOS_HEADING_RE = re.compile(r"^### FINDING_[0-9]+:.*\[(?:OUT_OF_SCOPE|OOS)\]")
+_STEP5_REVIEW_RESULT_ENV = ".step5-review-result.env"
+
+
+@dataclass(frozen=True)
+class _Step5Envelope:
+    status: str
+    stall_tracking: bool
+    stall_reason: str
+    rounds_completed: int
+    final_round: int
+    final_irf: str
+    coder_status: str
+    files_hint: str
+    effective_cap: int
 
 
 # --- commit-fixes helpers (used by commit_fixes CLI entry point) ---
@@ -261,28 +276,93 @@ def _step5_post_round_gates(*,
     return "complete", "", False
 
 
-def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
-    _emit_kv(key="STEP5_REVIEW_STATUS", value=status)
-    _emit_kv(key="STALL_TRACKING", value=stall_tracking)
-    _emit_kv(key="STALL_REASON", value=stall_reason)
-    _emit_kv(key="ROUNDS_COMPLETED", value=rounds_completed)
-    _emit_kv(key="FINAL_ROUND_NUM", value=final_round)
-    _emit_kv(key="FINAL_REVIEW_AND_FIX_STATUS", value=final_irf)
-    _emit_kv(key="CODER_STATUS", value=coder_status)
-    _emit_kv(key="FILES_CHANGED_HINT", value=files_hint)
-    _emit_kv(key="EFFECTIVE_ROUND_CAP", value=effective_cap)
+def _stringify_step5_env_value(*, value: str | int | bool) -> str:
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    return str(value)
+
+
+def _step5_result_env_path() -> Path | None:
+    raw_tmpdir = os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
+    if not raw_tmpdir:
+        return None
+    tmpdir = Path(raw_tmpdir)
+    if tmpdir.is_symlink() or not tmpdir.is_dir():
+        return None
+    return tmpdir / _STEP5_REVIEW_RESULT_ENV
+
+
+def _step5_difficulty_rows() -> list[tuple[str, str | int | bool]]:
+    rows: list[tuple[str, str | int | bool]] = []
     record = Path(os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")) / difficulty.DIFFICULTY_RECORD_BASENAME
-    if record.is_file():
-        try:
-            data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
-        except (OSError, json.JSONDecodeError):
-            data = {}
-        if isinstance(data, dict):
-            record_data = cast("dict[str, object]", data)
-            if record_data.get("panel_tier"):
-                _emit_kv(key="PANEL_TIER", value=record_data.get("panel_tier"))
-            if record_data.get("audit_upgrade") is not None:
-                _emit_kv(key="AUDIT_UPGRADE", value=str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True)
+    if not record.is_file():
+        return rows
+    try:
+        data = json.loads(record.read_text(encoding="utf-8", errors="replace"))
+    except (OSError, json.JSONDecodeError):
+        return rows
+    if not isinstance(data, dict):
+        return rows
+    record_data = cast("dict[str, object]", data)
+    if record_data.get("panel_tier"):
+        rows.append(("PANEL_TIER", str(record_data.get("panel_tier"))))
+    if record_data.get("audit_upgrade") is not None:
+        audit_upgrade = str(record_data.get("audit_upgrade")).lower() == "true" or record_data.get("audit_upgrade") is True
+        rows.append(("AUDIT_UPGRADE", audit_upgrade))
+    return rows
+
+
+def _step5_envelope_rows(envelope: _Step5Envelope) -> list[tuple[str, str | int | bool]]:
+    rows: list[tuple[str, str | int | bool]] = [
+        ("STEP5_REVIEW_STATUS", envelope.status),
+        ("STALL_TRACKING", envelope.stall_tracking),
+        ("STALL_REASON", envelope.stall_reason),
+        ("ROUNDS_COMPLETED", envelope.rounds_completed),
+        ("FINAL_ROUND_NUM", envelope.final_round),
+        ("FINAL_REVIEW_AND_FIX_STATUS", envelope.final_irf),
+        ("CODER_STATUS", envelope.coder_status),
+        ("FILES_CHANGED_HINT", envelope.files_hint),
+        ("EFFECTIVE_ROUND_CAP", envelope.effective_cap),
+    ]
+    rows.extend(_step5_difficulty_rows())
+    return rows
+
+
+def _write_step5_result_env(rows: list[tuple[str, str | int | bool]]) -> None:
+    result_env = _step5_result_env_path()
+    if result_env is None:
+        return
+    safe_rows: list[tuple[str, str]] = []
+    for key, value in rows:
+        text = _stringify_step5_env_value(value=value)
+        if "\n" in text or "\r" in text:
+            text = text.replace("\r", " ").replace("\n", " ")
+        safe_rows.append((key, text))
+    larch_io.atomic_write(
+        path=result_env,
+        text=larch_io.format_kvs(safe_rows),
+        mode=0o600,
+        nofollow=True,
+    )
+
+
+def _emit_step5_envelope(*, status: str, stall_tracking: bool, stall_reason: str, rounds_completed: int, final_round: int, final_irf: str, coder_status: str, files_hint: str, effective_cap: int) -> None:
+    rows = _step5_envelope_rows(
+        _Step5Envelope(
+            status=status,
+            stall_tracking=stall_tracking,
+            stall_reason=stall_reason,
+            rounds_completed=rounds_completed,
+            final_round=final_round,
+            final_irf=final_irf,
+            coder_status=coder_status,
+            files_hint=files_hint,
+            effective_cap=effective_cap,
+        )
+    )
+    for key, value in rows:
+        _emit_kv(key=key, value=value)
+    _write_step5_result_env(rows)
 
 
 def _build_step5_parser() -> argparse.ArgumentParser:
@@ -729,6 +809,8 @@ def normalize_status(argv: list[str] | None = None) -> int:
     except SystemExit as exc:
         return int(exc.code)
     implement_tmpdir = Path(args.implement_tmpdir)
+    if implement_tmpdir.is_dir() and not implement_tmpdir.is_symlink():
+        os.environ[config.ENV_IMPLEMENT_TMPDIR] = str(implement_tmpdir)
     stdout_file = Path(args.stdout_file)
     if stdout_file.is_symlink() or not stdout_file.is_file():
         _emit_step5_envelope(status="stall", stall_tracking=True, stall_reason="missing-captured-stdout", rounds_completed=0, final_round=0, final_irf="unknown", coder_status="", files_hint="", effective_cap=2)

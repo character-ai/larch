@@ -464,6 +464,36 @@ def test_step3_loop_persist_envelope_merges_and_strips_reason(tmp_path: Path) ->
     assert "PLAN_REVIEW_CONTINUE_REASON=again" in text
 
 
+def test_step3_loop_persist_envelope_writes_mergeable_completion_kvs(tmp_path: Path) -> None:
+    plan_review.step3_loop_persist_envelope(
+        design_tmpdir=tmp_path,
+        status="complete",
+        round_num=1,
+        rounds_completed=1,
+        final_round=1,
+        values={
+            "ACCEPTED_COUNT": "2",
+            "IMPORTANT_ACCEPTED_COUNT": "1",
+            "TALLY_PLAN_REVIEW_STATUS": "ok",
+            "AGGREGATOR_STATUS": "ok",
+        },
+    )
+
+    result_lines = (tmp_path / ".step3-review-result.env").read_text(encoding="utf-8").splitlines()
+    result = dict(line.split("=", 1) for line in result_lines)
+
+    assert result["STEP3_REVIEW_LOOP_STATUS"] == "complete"
+    assert result["LOOP_STATUS"] == "complete"
+    assert result["ROUNDS_COMPLETED"] == "1"
+    assert result["FINAL_ROUND_NUM"] == "1"
+    assert result["ACCEPTED_COUNT"] == "2"
+    assert result["IMPORTANT_ACCEPTED_COUNT"] == "1"
+    assert result["TALLY_PLAN_REVIEW_STATUS"] == "ok"
+    assert result["AGGREGATOR_STATUS"] == "ok"
+    assert all("=" in line for line in result_lines)
+    assert not any(line.startswith(">") or ("review" in line.lower() and "=" not in line) for line in result_lines)
+
+
 def test_step3_loop_persist_envelope_persists_and_emits_degraded_panel_warning(tmp_path: Path) -> None:
     values = {
         "LOOP_STATUS": "complete",

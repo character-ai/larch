@@ -260,6 +260,40 @@ def test_step5_loop_emits_single_final_envelope(tmp_path, monkeypatch, capsys):
     assert not any(line.startswith("REVIEW_AND_FIX_STATUS=") for line in out.splitlines())
 
 
+@MARK_LOOP_TIMING
+def test_step5_loop_writes_mergeable_completion_kvs(tmp_path, monkeypatch, capsys):
+    monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
+    impl = _tmp_impl(tmp_path)
+
+    def fake_core(argv: list[str]) -> int:
+        out_dir = Path(argv[argv.index("--output-dir") + 1])
+        (out_dir / "accepted-findings.md").write_text("", encoding="utf-8")
+        logging_util.emit("REVIEW_CORE_STATUS=ok")
+        logging_util.emit("ACCEPTED_COUNT=0")
+        logging_util.emit("REJECTED_COUNT=0")
+        logging_util.emit(f"ACCEPTED_FINDINGS_FILE={out_dir / 'accepted-findings.md'}")
+        logging_util.emit(f"REJECTED_FINDINGS_FILE={out_dir / 'rejected-findings.md'}")
+        return 0
+
+    monkeypatch.setattr(review_and_fix.review_pipeline, "review_core", fake_core)
+    rc = review_and_fix.step5(["--implement-tmpdir", str(impl), "--mode", "loop", "--starting-round", "1"])
+
+    result_lines = (impl / ".step5-review-result.env").read_text(encoding="utf-8").splitlines()
+    result = dict(line.split("=", 1) for line in result_lines)
+
+    assert rc == 0
+    assert result["STEP5_REVIEW_STATUS"] == "complete"
+    assert result["STALL_TRACKING"] == "false"
+    assert result["STALL_REASON"] == ""
+    assert result["ROUNDS_COMPLETED"] == "1"
+    assert result["FINAL_ROUND_NUM"] == "1"
+    assert result["FINAL_REVIEW_AND_FIX_STATUS"] == "complete"
+    assert result["EFFECTIVE_ROUND_CAP"] == "2"
+    assert all("=" in line for line in result_lines)
+    assert not any(line.startswith(">") for line in result_lines)
+    assert "STEP5_REVIEW_STATUS=complete" in capsys.readouterr().out
+
+
 @MARK_DISPATCH
 def test_apply_findings_empty_file_contract(tmp_path, monkeypatch, capsys):
     monkeypatch.setenv("LARCH_QUIET_DISABLE", "1")
