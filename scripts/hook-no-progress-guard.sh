@@ -279,7 +279,7 @@ json_block_prompt() {
 
 json_block_task_output_clamp() {
   local dir="$1"
-  printf '{"decision":"block","reason":"No-progress circuit breaker: hook-bg-poll-guard.sh already clamped an unchanged or empty /design tasks/*.output classification Read under this active background-wait marker. Marker: %s/.bg-wait-active. End this task-notification turn without tools or prose until a later notification has new non-empty task output or the terminal sentinel is present. Recovery sidecars: %s/no-progress-task-output-clamped, %s/no-progress-circuit-breaker-armed, %s/no-progress-stop-block-emitted."}\n' \
+  printf '{"decision":"block","reason":"No-progress circuit breaker: hook-bg-poll-guard.sh already clamped an unchanged or empty /design or /implement tasks/*.output classification Read under this active background-wait marker. Marker: %s/.bg-wait-active. End this task-notification turn without tools or prose until a later notification has new non-empty task output or the terminal sentinel is present. Recovery sidecars: %s/no-progress-task-output-clamped, %s/no-progress-circuit-breaker-armed, %s/no-progress-stop-block-emitted."}\n' \
     "$dir" "$dir" "$dir" "$dir"
 }
 

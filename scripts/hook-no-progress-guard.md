@@ -13,7 +13,7 @@ Two event handlers in one script:
   `no-progress-circuit-breaker-armed` flag in the marker directory and emits a one-shot
   Stop block directly from the hook.
 - **Classification-Read clamp bridge**: when `hook-bg-poll-guard.sh` writes
-  `no-progress-task-output-clamped` after denying an unchanged or empty `/design`
+  `no-progress-task-output-clamped` after denying an unchanged or empty `/design` or `/implement`
   `tasks/*.output` Read, the Stop handler blocks that turn immediately, before the generic
   no-progress threshold, and repeats that Stop block for notification-driven turns until new
   task output clears the bridge or the terminal sentinel completes the wait.
