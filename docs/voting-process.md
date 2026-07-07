@@ -4,7 +4,7 @@ The voting protocol is used by `/design` (plan review) and `/review` (code revie
 
 ## Overview
 
-After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design` plan review always uses the 3-voter panel (Claude + Codex + Cursor). `/review` and `/implement` Step 5 code review run validity, plan-fidelity, and pragmatism Codex-primary (Codex, then Cursor, then Claude); the panel degrades to a single Claude validity voter only when both external tools are unavailable. Each voter casts one of two votes:
+After reviewers submit findings and findings are deduplicated, a voting panel votes on each finding. `/design`, `/review`, and `/implement` Step 5 run three Codex-primary voter slots: validity, plan-fidelity, and pragmatism. Each slot falls through to Cursor and then Claude; the panel degrades to a single Claude validity voter only when both external tools are unavailable. Each voter casts one of two votes:
 
 | Vote | Meaning |
 |---|---|
@@ -34,16 +34,16 @@ The dispatchers emit loud degraded-panel warnings when effective judges drop bel
 
 ## Voter Panel Composition
 
-`/design` always uses a 3-voter panel in normal mode. Code-review voters use canonical slot indexing on the three-slot path: `v1` is validity, `v2` is plan-fidelity, and `v3` is pragmatism. All launched voters vote on all findings — there is no self-voting exclusion.
+`/design` and code review use canonical slot indexing on the three-slot path: `v1` is validity, `v2` is plan-fidelity, and `v3` is pragmatism. All launched voters vote on all findings — there is no self-voting exclusion.
 
 | Skill | Voters |
 |---|---|
-| `/design` (plan review, normal mode) | Claude Code Reviewer subagent + Codex + Cursor — all 3 always launched |
+| `/design` (plan review, normal mode) | Fixed slots: `v1` = `codex-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. If Codex is down but Cursor is up, launched slots may fall through to Cursor labels. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py plan-review voter-dispatch`. |
 | `/review` and `/implement` Step 5 (code review) | Fixed slots: `v1` = `codex-validity`, `v2` = `codex-plan-fidelity`, `v3` = `codex-pragmatism`. If Codex is down but Cursor is up, launched slots may fall through to Cursor labels. If both external tools are unavailable, slot 1 uses `claude` and slots 2-3 are empty placeholders. Dispatch surface: `python/cli.py agent dispatch-voters`. |
 
 On the three-slot code-review path, quorum counts only substantive non-empty voter files after parse-rate removal. Empty placeholders keep `vN_tool` attribution but do not inflate `ELIGIBLE_VOTERS` or `EFFECTIVE_VOTERS`. The code-review classification TSV has 22 columns: `reviewer_slots`, five rating cells plus `vN_tool` for each voter, trailing `scope`, and no `body_severity`. `/design` plan review keeps its separate 23-column `finding_reviewers` + `body_severity` + `scope` schema. The `scope` column is `in_scope` or `oos`; tally producers write it for `OOS_*` ids, `[OUT_OF_SCOPE]` or `[OOS]` legacy rows, and `_scope_drift`. Top reviewers and weighted scoreboards skip `scope=oos` even when `finding_id` is `FINDING_N`.
 
-Legacy callers that omit `--voter-tools` keep compacted semantics for one to three `--voter-files`. This preserves MAV re-tally and zero-findings paths.
+Old committed design logs may still contain `Claude`, `Codex`, and `Cursor` voter labels. Calibration readers keep those legacy rows readable while new rows use semantic `codex-*` or `cursor-*` labels.
 
 ## Ballot Format
 

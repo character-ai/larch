@@ -5,15 +5,14 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING, cast
+from typing import cast
+
+import pytest
 
 from larch.core import config
 from larch.report import tokens
 from larch.review import plan_review_panel
 from test_support import ROOT, run_cli
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _stdout_key_order(stdout: str) -> list[str]:
@@ -327,7 +326,32 @@ def test_panel_dispatch_moderate_uses_pairs_and_review_codex_role(tmp_path: Path
 def test_panel_dispatch_hard_uses_pairs_and_default_codex_role(tmp_path: Path) -> None:
     proc, _design, rows, waterfall_args = _dispatch_design_panel_for_tier(tmp_path, "HARD")
     assert proc.returncode == 0, proc.stderr + proc.stdout
-    _assert_design_pair_shape(rows, codex_role="default")
+    assert len(rows) == 8
+    by_focus: dict[str, set[str]] = {}
+    for row in rows:
+        by_focus.setdefault(str(row.get("focus_area") or ""), set()).add(str(row.get("tool") or ""))
+    assert by_focus == {
+        "arch": {"codex", "cursor"},
+        "innovation": {"codex", "cursor"},
+        "pragmatic": {"codex", "cursor"},
+        "requirements": {"codex", "cursor"},
+    }
+    codex_rows = [row for row in rows if row.get("tool") == "codex"]
+    roles_by_focus = {str(row["focus_area"]): str(row.get("model_role")) for row in codex_rows}
+    assert roles_by_focus == {
+        "arch": "review",
+        "innovation": "review",
+        "pragmatic": "default",
+        "requirements": "default",
+    }
+    resolved_by_focus = {str(row["focus_area"]): str(row.get("resolved_model")) for row in codex_rows}
+    assert resolved_by_focus == {
+        "arch": config.CODEX_REVIEW_MODEL_DEFAULT,
+        "innovation": config.CODEX_REVIEW_MODEL_DEFAULT,
+        "pragmatic": config.CODEX_DEFAULT_MODEL,
+        "requirements": config.CODEX_DEFAULT_MODEL,
+    }
+    assert len({str(row["focus_area"]) for row in codex_rows}) == len(codex_rows)
     assert _argval(waterfall_args, "--model-role") == "default"
 
 
@@ -480,6 +504,7 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
                         row = json.loads(line)
                         out = str(row["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append((out, str(row.get("tool", "cursor"))))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -502,7 +527,10 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
         def wait(self) -> int:
             return 0
 
-    def _stub_parse_rate(*_a: object, **_k: object) -> str:
+    parse_calls: list[dict[str, object]] = []
+
+    def _stub_parse_rate(**kwargs: object) -> str:
+        parse_calls.append(dict(kwargs))
         return "OK"
 
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
@@ -522,6 +550,144 @@ def test_voter_dispatch_threads_design_step3_site_into_inline_waterfall(tmp_path
     voter_renders = [a for a in records if tuple(a[2:4]) == ("render", "voter")]
     assert voter_renders
     assert all(a[a.index("--findings-ledger-file") + 1] == str(design / "findings-ledger.tsv") for a in voter_renders)
+    assert [(str(call["slot"]), str(call["voter_tool"])) for call in parse_calls] == [
+        ("1", "codex-validity"),
+        ("2", "codex-plan-fidelity"),
+        ("3", "codex-pragmatism"),
+    ]
+
+
+def test_voter_dispatch_marks_failed_when_done_sidecar_nonzero(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    design = tmp_path / "done-sidecar-failure"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    _ = ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    cp = plan_review_panel.subprocess.CompletedProcess
+    parse_calls: list[dict[str, object]] = []
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("render", "voter"):
+            return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[tuple[str, str]] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        out = str(row["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        done_rc = "1\n" if row.get("slot") == "voter-2" else "0\n"
+                        _ = Path(out + ".done").write_text(done_rc, encoding="utf-8")
+                        outs.append((out, str(row.get("tool", "cursor"))))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="2\n", stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    def _stub_parse_rate(**kwargs: object) -> str:
+        parse_calls.append(dict(kwargs))
+        return "OK"
+
+    def _fake_larch_proc_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        verb = tuple(a[2:4]) if len(a) >= 4 else ()
+        if verb == ("agent", "dispatch-waterfall"):
+            outs: list[tuple[str, str]] = []
+            for i, tok in enumerate(a):
+                if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
+                    for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
+                        if not line.strip():
+                            continue
+                        row = json.loads(line)
+                        out = str(row["output"])
+                        _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        done_rc = "1\n" if row.get("slot") == "voter-2" else "0\n"
+                        _ = Path(out + ".done").write_text(done_rc, encoding="utf-8")
+                        outs.append((out, str(row.get("tool", "cursor"))))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
+        if verb == ("voting", "effective-judges"):
+            return cp(a, 0, stdout="2\n", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            pos = a[4:]
+            stdout = (
+                f"VOTER_1_PATH={pos[0]}\nVOTER_1_TOOL={pos[1]}\nVOTER_1_STATUS={pos[2]}\n"
+                f"VOTER_1_PARSE_RATE_STATUS={pos[3]}\n"
+                f"VOTER_2_PATH={pos[4]}\nVOTER_2_TOOL={pos[5]}\nVOTER_2_STATUS={pos[6]}\n"
+                f"VOTER_2_PARSE_RATE_STATUS={pos[7]}\n"
+                f"VOTER_3_PATH={pos[8]}\nVOTER_3_TOOL={pos[9]}\nVOTER_3_STATUS={pos[10]}\n"
+                f"VOTER_3_PARSE_RATE_STATUS={pos[11]}\n"
+                f"VOTER_PATHS_FILE={pos[12]}\n"
+            )
+            return cp(a, 0, stdout=stdout, stderr="")
+        return cp(a, 0, stdout="", stderr="")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    monkeypatch.setattr(plan_review_panel.larch_proc, "run", _fake_larch_proc_run)
+    monkeypatch.setattr(plan_review_panel, "_parse_rate_retry", _stub_parse_rate)
+    rc = plan_review_panel.dispatch_voters([
+        "--ballot-file", str(ballot),
+        "--design-tmpdir", str(design),
+        "--codex-available", "true",
+        "--cursor-available", "true",
+        "--round-num", "1",
+    ])
+    assert rc == 0
+    stdout = capsys.readouterr().out
+    assert "VOTER_2_STATUS=failed" in stdout
+    assert "VOTER_2_PARSE_RATE_STATUS=SKIPPED" in stdout
+    assert [str(call["slot"]) for call in parse_calls] == ["1", "3"]
+
+
+@pytest.mark.parametrize(
+    ("returncode", "stdout"),
+    [
+        (1, "OK\n"),
+        (0, "unexpected\n"),
+    ],
+)
+def test_parse_rate_retry_returns_not_substantive_on_failure(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    returncode: int,
+    stdout: str,
+) -> None:
+    cp = plan_review_panel.subprocess.CompletedProcess
+
+    def _fake_run(argv: object, **_kwargs: object) -> object:
+        a = [str(x) for x in argv]  # type: ignore[union-attr]
+        return cp(a, returncode, stdout=stdout, stderr="bad parse\n")
+
+    monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)
+    design = tmp_path / "design"
+    design.mkdir()
+    ballot = design / "ballot.txt"
+    ballot.write_text("### FINDING_1: test\n", encoding="utf-8")
+    voter_file = design / "vote.txt"
+    voter_file.write_text("vote\n", encoding="utf-8")
+    prompt_file = design / "prompt.txt"
+    prompt_file.write_text("prompt\n", encoding="utf-8")
+
+    assert (
+        plan_review_panel._parse_rate_retry(  # pyright: ignore[reportPrivateUsage]
+            design=design,
+            ballot=ballot,
+            slot="2",
+            voter_file=voter_file,
+            voter_tool="codex-plan-fidelity",
+            prompt_file=prompt_file,
+        )
+        == "NOT_SUBSTANTIVE"
+    )
 
 
 def test_fresh_calibration_stats_file_returns_none_when_feedback_disabled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -562,6 +728,7 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
                         row = json.loads(line)
                         out = str(row["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append((out, str(row.get("tool", "cursor"))))
             stdout = "ALL_OUTPUT_FILES=" + " ".join(o for o, _ in outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(t for _, t in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -611,7 +778,11 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     assert ("codex", "voter-calibration-stats.tsv") in voter_tools
     assert ("cursor", "voter-calibration-stats.tsv") in voter_tools
     rows = _manifest_rows(design / "plan-voter-slots.ndjson")
-    for slot_name, expected_tools in (("voter-2", {"codex", "cursor", "claude"}), ("voter-3", {"cursor", "codex", "claude"})):
+    for slot_name, expected_tools in (
+        ("voter-1", {"codex", "cursor", "claude"}),
+        ("voter-2", {"codex", "cursor", "claude"}),
+        ("voter-3", {"codex", "cursor", "claude"}),
+    ):
         row = next(r for r in rows if r.get("slot") == slot_name)
         prompt_files = row.get("prompt_files")
         assert isinstance(prompt_files, dict)
@@ -619,13 +790,18 @@ def test_dispatch_voters_calibration_wiring_harness(tmp_path: Path, monkeypatch:
     waterfall = next(a for a in run_calls if len(a) >= 4 and tuple(a[2:4]) == ("agent", "dispatch-waterfall"))
     # Plan voters now waterfall through their cross-vendor + Claude tiers (issue #5817).
     assert "--no-fallback" not in waterfall
+    assert "--claude-read-tools-add-dir" in waterfall
+    assert waterfall[waterfall.index("--claude-read-tools-add-dir") + 1] == str(design)
     for basename in (
-        "codex-plan-voter-prompt-codex.txt",
-        "codex-plan-voter-prompt-cursor.txt",
-        "codex-plan-voter-prompt-claude.txt",
-        "cursor-plan-voter-prompt-cursor.txt",
-        "cursor-plan-voter-prompt-codex.txt",
-        "cursor-plan-voter-prompt-claude.txt",
+        "codex-validity-plan-voter-prompt-codex.txt",
+        "codex-validity-plan-voter-prompt-cursor.txt",
+        "codex-validity-plan-voter-prompt-claude.txt",
+        "codex-plan-fidelity-plan-voter-prompt-codex.txt",
+        "codex-plan-fidelity-plan-voter-prompt-cursor.txt",
+        "codex-plan-fidelity-plan-voter-prompt-claude.txt",
+        "codex-pragmatism-plan-voter-prompt-codex.txt",
+        "codex-pragmatism-plan-voter-prompt-cursor.txt",
+        "codex-pragmatism-plan-voter-prompt-claude.txt",
     ):
         assert (design / basename).is_file()
 
@@ -658,6 +834,7 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
                             continue
                         out = str(json.loads(line)["output"])
                         _ = Path(out).write_text("vote\n", encoding="utf-8")
+                        _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                         outs.append(out)
             stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join("cursor" for _ in outs) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
@@ -690,7 +867,7 @@ def test_dispatch_voters_enqueues_both_slots_when_codex_down(tmp_path: Path, mon
     ])
     assert rc == 0
     rows = _manifest_rows(design / "plan-voter-slots.ndjson")
-    assert {r.get("slot") for r in rows} == {"voter-2", "voter-3"}
+    assert {r.get("slot") for r in rows} == {"voter-1", "voter-2", "voter-3"}
     voter2 = next(r for r in rows if r.get("slot") == "voter-2")
     prompt_files = voter2.get("prompt_files")
     assert isinstance(prompt_files, dict)
@@ -1279,7 +1456,6 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "VOTER_1_TOOL",
         "VOTER_1_STATUS",
         "VOTER_1_PARSE_RATE_STATUS",
-        "VOTER_1_RETRIED",
         "VOTER_2_PATH",
         "VOTER_3_PATH",
         "VOTER_PATHS_FILE",
@@ -1290,6 +1466,7 @@ def test_voter_dispatch_stdout_key_order(tmp_path: Path) -> None:
         "VOTER_2_PARSE_RATE_STATUS",
         "VOTER_3_PARSE_RATE_STATUS",
         "DISPATCH_OK",
+        "VOTER_1_RETRIED",
     ]
     assert _stdout_key_order(proc.stdout) == expected
 
@@ -1310,14 +1487,20 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
         if verb == ("render", "voter"):
             return cp(a, 0, stdout="prompt\nRead the ballot from this path: /x\n", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
+            outs: list[str] = []
+            tools: list[str] = []
             for i, tok in enumerate(a):
                 if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
                     for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
                         if not line.strip():
                             continue
                         row = json.loads(line)
-                        _ = Path(row["output"]).write_text("vote\n", encoding="utf-8")
-            stdout = "DISPATCH_OK=true\n"
+                        output = str(row["output"])
+                        _ = Path(output).write_text("vote\n", encoding="utf-8")
+                        _ = Path(output + ".done").write_text("0\n", encoding="utf-8")
+                        outs.append(output)
+                        tools.append(str(row.get("tool", "codex")))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(tools) + "\nDISPATCH_OK=true\n"
             return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="2\n", stderr="")
@@ -1357,18 +1540,19 @@ def test_voter_dispatch_claude_failure_codex_cursor_succeed(
     ])
     assert rc == 0
     stdout = capsys.readouterr().out
-    assert "VOTER_1_STATUS=failed" in stdout
-    # The Claude voter produced no output, so the bounded retry fired once (#5677);
-    # the retry also produced nothing here, so the voter stays failed.
-    assert "VOTER_1_RETRIED=true" in stdout
-    assert "VOTER_2_STATUS=launched" in stdout
-    assert "VOTER_3_STATUS=launched" in stdout
+    assert "VOTER_1_STATUS=launched" in stdout
+    # The externals-present path no longer launches a standalone Claude voter;
+    # slot retry is handled by the shared waterfall.
+    assert "VOTER_1_RETRIED=false" in stdout
+    assert "VOTER_1_TOOL=codex-validity" in stdout
+    assert "VOTER_2_TOOL=codex-plan-fidelity" in stdout
+    assert "VOTER_3_TOOL=codex-pragmatism" in stdout
     assert "DEGRADED_PANEL_WARNING=" in stdout
     assert "DEGRADED_PANEL=1" in stdout
     assert "DISPATCH_OK=true" in stdout
     paths_content = (design / "plan-review-voter-paths.txt").read_text(encoding="utf-8")
     voter_lines = [ln for ln in paths_content.splitlines() if ln.strip()]
-    assert len(voter_lines) == 2
+    assert len(voter_lines) == 3
 
 
 def test_voter_dispatch_claude_retry_recovers_full_panel(
@@ -1394,14 +1578,21 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
                 _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
             return cp(a, 0, stdout="", stderr="")
         if verb == ("agent", "dispatch-waterfall"):
+            outs: list[str] = []
+            tools: list[str] = []
             for i, tok in enumerate(a):
                 if tok == "--slots-file" and i + 1 < len(a) and Path(a[i + 1]).is_file():
                     for line in Path(a[i + 1]).read_text(encoding="utf-8").splitlines():
                         if not line.strip():
                             continue
                         row = json.loads(line)
-                        _ = Path(row["output"]).write_text("vote\n", encoding="utf-8")
-            return cp(a, 0, stdout="DISPATCH_OK=true\n", stderr="")
+                        output = str(row["output"])
+                        _ = Path(output).write_text("vote\n", encoding="utf-8")
+                        _ = Path(output + ".done").write_text("0\n", encoding="utf-8")
+                        outs.append(output)
+                        tools.append(str(row.get("tool", "codex")))
+            stdout = "ALL_OUTPUT_FILES=" + " ".join(outs) + "\nALL_OUTPUT_TOOLS=" + " ".join(tools) + "\nDISPATCH_OK=true\n"
+            return cp(a, 0, stdout=stdout, stderr="")
         if verb == ("voting", "effective-judges"):
             return cp(a, 0, stdout="3\n", stderr="")
         if verb == ("voting", "voter-status-block"):
@@ -1438,7 +1629,7 @@ def test_voter_dispatch_claude_retry_recovers_full_panel(
     ])
     assert rc == 0
     stdout = capsys.readouterr().out
-    assert "VOTER_1_RETRIED=true" in stdout
+    assert "VOTER_1_RETRIED=false" in stdout
     assert "VOTER_1_STATUS=launched" in stdout
     assert "DISPATCH_OK=true" in stdout
 
@@ -1467,6 +1658,20 @@ def test_voter_dispatch_both_down_retry_recovers(
                 _ = Path(out + ".done").write_text("0\n", encoding="utf-8")
                 return cp(a, 0, stdout="", stderr="")
             return cp(a, plan_review_panel.config.EXIT_TIMEOUT, stdout="", stderr="")
+        if verb == ("voting", "voter-status-block"):
+            pos = a[4:]
+            return cp(
+                a,
+                0,
+                stdout=(
+                    f"VOTER_1_PATH={pos[0]}\nVOTER_1_TOOL={pos[1]}\nVOTER_1_STATUS={pos[2]}\n"
+                    f"VOTER_1_PARSE_RATE_STATUS={pos[3]}\nVOTER_2_PATH={pos[4]}\nVOTER_3_PATH={pos[8]}\n"
+                    f"VOTER_PATHS_FILE={pos[12]}\nVOTER_2_TOOL={pos[5]}\nVOTER_3_TOOL={pos[9]}\n"
+                    f"VOTER_2_STATUS={pos[6]}\nVOTER_3_STATUS={pos[10]}\n"
+                    f"VOTER_2_PARSE_RATE_STATUS={pos[7]}\nVOTER_3_PARSE_RATE_STATUS={pos[11]}\n"
+                ),
+                stderr="",
+            )
         return cp(a, 0, stdout="", stderr="")
 
     monkeypatch.setattr(plan_review_panel.subprocess, "run", _fake_run)

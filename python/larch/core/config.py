@@ -204,6 +204,16 @@ DIFFICULTY_CODEX_MODEL_ROLES: Final[dict[str, str]] = {
     DIFFICULTY_TIER_MODERATE: "review",
     DIFFICULTY_TIER_HARD: "default",
 }
+DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES: Final[dict[str, dict[str, str]]] = {
+    "design.plan_review_panel": {
+        "pragmatic": "default",
+        "requirements": "default",
+    },
+    "review.panel": {
+        "correctness": "default",
+        "edge-cases": "default",
+    },
+}
 DIFFICULTY_THRESHOLD_PANEL_TOKENS: Final[dict[str, str]] = {
     DIFFICULTY_TIER_TRIVIAL: "simple",
     DIFFICULTY_TIER_MODERATE: "hard",
@@ -329,7 +339,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_phase="Code review panel",
         doc_role="Review code changes",
         doc_skills="/review, /implement Step 5",
-        doc_fallback="Cursor static rows emit when Cursor is available; Codex static rows emit when Codex is available and use the default model role; no generic Codex reviewer is emitted; reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
+        doc_fallback="Cursor static rows emit when Cursor is available; Codex static rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; reviewer panels always dispatch with --no-fallback so missing vendors drop rows instead of backfilling.",
     ),
     "design.plan_review_panel": RoleDefault(
         role_id="design.plan_review_panel",
@@ -353,7 +363,7 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         doc_phase="Plan review panel",
         doc_role="Review implementation plans",
         doc_skills="/design",
-        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available and use the default model role; no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
+        doc_fallback="Static archetypes are arch, innovation, pragmatic, requirements. Cursor rows emit when Cursor is available; Codex rows emit when Codex is available; HARD rows can override the Codex model role per archetype, dynamic Codex rows use review, no generic Codex reviewer is emitted; panel dispatch always uses --no-fallback.",
     ),
     "design.decompose_panel": RoleDefault(
         role_id="design.decompose_panel",
@@ -386,14 +396,14 @@ ROLE_DEFAULTS: Final[dict[str, RoleDefault]] = {
         role_id="design.plan_voters",
         kind="voter_policies",
         voter_policies=(
-            VoterPolicyDefault("1", "voter-1", "claude", "claude", "validity-correctness", "claude", "claude-vote-output.txt", (("claude", "claude"),)),
-            VoterPolicyDefault("2", "voter-2", "codex", "codex", "plan-fidelity-completeness", "codex", "codex-vote-output.txt", (("codex", "codex"), ("cursor", "cursor"), ("claude", "claude"))),
-            VoterPolicyDefault("3", "voter-3", "cursor", "cursor", "pragmatism-cost", "cursor", "cursor-vote-output.txt", (("cursor", "cursor"), ("codex", "codex"), ("claude", "claude"))),
+            VoterPolicyDefault("1", "voter-1", "codex", "codex-validity", "validity-correctness", "validity", "codex-validity-vote-output.txt", (("codex", "codex-validity"), ("cursor", "cursor-validity"), ("claude", "claude"))),
+            VoterPolicyDefault("2", "voter-2", "codex", "codex-plan-fidelity", "plan-fidelity-completeness", "plan-fidelity", "codex-plan-fidelity-vote-output.txt", (("codex", "codex-plan-fidelity"), ("cursor", "cursor-plan-fidelity"), ("claude", "claude"))),
+            VoterPolicyDefault("3", "voter-3", "codex", "codex-pragmatism", "pragmatism-cost", "pragmatism", "codex-pragmatism-vote-output.txt", (("codex", "codex-pragmatism"), ("cursor", "cursor-pragmatism"), ("claude", "claude"))),
         ),
         doc_phase="Plan voters",
         doc_role="Vote on plan-review findings",
         doc_skills="/design",
-        doc_fallback="Voter 1 is Claude. Voter 2 waterfalls Codex, then Cursor, then Claude. Voter 3 waterfalls Cursor, then Codex, then Claude.",
+        doc_fallback="All three plan voters share the code-review voter shape: Codex primary, then Cursor, then Claude in one shared waterfall manifest. When both external tools are down, the panel shrinks to one dedicated Claude voter-1 floor.",
     ),
     "review.findings_aggregator": RoleDefault(
         role_id="review.findings_aggregator",

@@ -9,6 +9,7 @@ import subprocess
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
+from larch.core import config
 from larch.core import proc
 import pytest
 from larch.review import coder_runner
@@ -2885,10 +2886,19 @@ def test_dispatch_panel_materializes_panel_prompt_sizes(tmp_path: Path) -> None:
     assert "# Review" not in text
 
 
-def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_available: str) -> list[dict[str, object]]:
+def _dispatch_panel_manifest_rows(
+    case_dir: Path,
+    *,
+    round_num: int,
+    codex_available: str,
+    tier: str = config.DIFFICULTY_TIER_TRIVIAL,
+    dynamic_archetypes: str = "0",
+    pre_scouted_manifest: Path | None = None,
+) -> list[dict[str, object]]:
     waterfall = case_dir.parent / "waterfall-noop.sh"
     _write_waterfall_noop(waterfall)
-    result = run_review(
+    panel = "simple" if tier == config.DIFFICULTY_TIER_TRIVIAL else "hard"
+    args = [
         "dispatch-panel",
         "--mode",
         "diff",
@@ -2901,11 +2911,20 @@ def _dispatch_panel_manifest_rows(case_dir: Path, *, round_num: int, codex_avail
         "--cursor-available",
         "true",
         "--panel",
-        "simple",
+        panel,
         "--plan-file",
         str(case_dir / "plan.md"),
         "--round-num",
         str(round_num),
+        "--tier",
+        tier,
+        "--dynamic-archetypes",
+        dynamic_archetypes,
+    ]
+    if pre_scouted_manifest is not None:
+        args.extend(["--pre-scouted-manifest", str(pre_scouted_manifest)])
+    result = run_review(
+        *args,
         env={"CLAUDE_PLUGIN_ROOT": str(ROOT), "LARCH_QUIET_DISABLE": "1", "DISPATCH_WATERFALL": str(waterfall)},
     )
     assert result.returncode == 0, result.stderr
@@ -2939,6 +2958,86 @@ def test_dispatch_panel_generic_codex_static_row_when_codex_unavailable(tmp_path
     assert generalist_rows == []
     codex_rows = [row for row in rows if row.get("tool") == "codex"]
     assert codex_rows == []
+
+
+def test_dispatch_panel_trivial_dynamic_manifest_emits_cursor_only(tmp_path: Path) -> None:
+    case_dir = tmp_path / "trivial-dynamic"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    pre_scouted = case_dir / "pre-scouted.json"
+    pre_scouted.write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "api-contract",
+                        "focus_area": "correctness",
+                        "weight": 1,
+                        "rationale": "API changed.",
+                        "prompt_body": "Check API compatibility.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rows = _dispatch_panel_manifest_rows(
+        case_dir,
+        round_num=1,
+        codex_available="true",
+        tier=config.DIFFICULTY_TIER_TRIVIAL,
+        dynamic_archetypes="1",
+        pre_scouted_manifest=pre_scouted,
+    )
+
+    assert any(row.get("slot") == "dyn-api-contract" and row.get("tool") == "cursor" for row in rows)
+    assert not any(row.get("slot") == "dyn-api-contract-codex" for row in rows)
+
+
+@pytest.mark.parametrize("tier", [config.DIFFICULTY_TIER_MODERATE, config.DIFFICULTY_TIER_HARD])
+def test_dispatch_panel_dynamic_manifest_adds_review_codex_rows_for_upper_tiers(
+    tmp_path: Path,
+    tier: str,
+) -> None:
+    case_dir = tmp_path / f"dynamic-{tier.lower()}"
+    case_dir.mkdir()
+    _ = (case_dir / "plan.md").write_text("# plan\n", encoding="utf-8")
+    _ = (case_dir / "review.diff").write_text("diff --git a/foo b/foo\n", encoding="utf-8")
+    pre_scouted = case_dir / "pre-scouted.json"
+    pre_scouted.write_text(
+        json.dumps(
+            {
+                "archetypes": [
+                    {
+                        "name": "api-contract",
+                        "focus_area": "correctness",
+                        "weight": 1,
+                        "rationale": "API changed.",
+                        "prompt_body": "Check API compatibility.",
+                    }
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    rows = _dispatch_panel_manifest_rows(
+        case_dir,
+        round_num=1,
+        codex_available="true",
+        tier=tier,
+        dynamic_archetypes="1",
+        pre_scouted_manifest=pre_scouted,
+    )
+
+    cursor_row = next(row for row in rows if row.get("slot") == "dyn-api-contract")
+    codex_row = next(row for row in rows if row.get("slot") == "dyn-api-contract-codex")
+    assert cursor_row.get("tool") == "cursor"
+    assert codex_row.get("tool") == "codex"
+    assert codex_row.get("model_role") == "review"
+    assert codex_row.get("resolved_model") == config.CODEX_REVIEW_MODEL_DEFAULT
 
 
 def test_dispatch_panel_pre_scouted_empty_ok_static_only(tmp_path: Path) -> None:
@@ -4529,7 +4628,14 @@ printf 'ALL_OUTPUT_FILES=\nALL_OUTPUT_TOOLS=\nDISPATCH_OK=true\nSTATIC_DISPATCH_
     assert proc.returncode == 0
     rows = _panel_manifest_rows(tmp_path / "review" / "panel-manifest.ndjson")
     assert {row["tool"] for row in rows} == {"codex", "cursor"}
-    assert {row.get("model_role") for row in rows if row["tool"] == "codex"} == {"default"}
+    roles_by_slot = {str(row["slot"]): str(row.get("model_role")) for row in rows if row["tool"] == "codex"}
+    assert roles_by_slot == {"correctness": "default", "edge-cases": "default", "testing": "review"}
+    resolved_by_slot = {str(row["slot"]): str(row.get("resolved_model")) for row in rows if row["tool"] == "codex"}
+    assert resolved_by_slot == {
+        "correctness": config.CODEX_DEFAULT_MODEL,
+        "edge-cases": config.CODEX_DEFAULT_MODEL,
+        "testing": config.CODEX_REVIEW_MODEL_DEFAULT,
+    }
     assert "PANEL_SHAPE=pairs" in proc.stdout
     assert "PANEL_ROUND_CAP=2" in proc.stdout
 

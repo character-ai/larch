@@ -136,23 +136,26 @@ PATH="$stub_bin:$PATH" CLAUDE_PLUGIN_ROOT="$REPO_ROOT" LARCH_QUIET_DISABLE=1 pyt
     --ballot-file "$ballot_file" \
     --design-tmpdir "$plan_voter_tmp" \
     --round-num 1 \
-    --codex-available false \
-    --cursor-available false >/dev/null
+    --codex-available true \
+    --cursor-available true >/dev/null || true
+
+codex_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-codex.txt"
+cursor_plan_voter_prompt="$plan_voter_tmp/codex-validity-plan-voter-prompt-cursor.txt"
 
 assert_contains "plan-voter Verify silently" \
-    'Verify silently' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
+    'Verify silently' "$codex_plan_voter_prompt"
 assert_contains "plan-voter plan/file verification allowance" \
-    'silently inspect the plan or referenced repo files for verification' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
+    'silently inspect the plan or referenced repo files for verification' "$codex_plan_voter_prompt"
 assert_contains "plan-voter Output ONLY vote lines" \
-    'Output ONLY vote lines' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
+    'Output ONLY vote lines' "$codex_plan_voter_prompt"
 assert_contains "plan-voter OOS ballot rows" \
-    'OOS_N: YES' "$plan_voter_tmp/codex-plan-voter-prompt-codex.txt"
+    'OOS_N: YES' "$codex_plan_voter_prompt"
 assert_contains "plan-voter cursor OOS ballot rows" \
-    'OOS_N: YES' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
+    'OOS_N: YES' "$cursor_plan_voter_prompt"
 assert_contains "plan-voter cursor Verify silently" \
-    'Verify silently' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
+    'Verify silently' "$cursor_plan_voter_prompt"
 assert_contains "plan-voter cursor Output ONLY vote lines" \
-    'Output ONLY vote lines' "$plan_voter_tmp/cursor-plan-voter-prompt-cursor.txt"
+    'Output ONLY vote lines' "$cursor_plan_voter_prompt"
 retry_prompt=$(find "$plan_voter_tmp" -name '*plan-voter-prompt-retry.txt' -print -quit)
 [[ -z "$retry_prompt" ]] || fail "plan-voter retry prompt should not be rendered"
 

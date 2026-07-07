@@ -77,15 +77,24 @@ def test_voter_and_decompose_roles() -> None:
 
     plan_voters = external_defaults.voter_policies("design.plan_voters")
     assert [(p.slot_name, p.primary_tool, p.output_name) for p in plan_voters] == [
-        ("voter-1", "claude", "claude-vote-output.txt"),
-        ("voter-2", "codex", "codex-vote-output.txt"),
-        ("voter-3", "cursor", "cursor-vote-output.txt"),
+        ("voter-1", "codex", "codex-validity-vote-output.txt"),
+        ("voter-2", "codex", "codex-plan-fidelity-vote-output.txt"),
+        ("voter-3", "codex", "codex-pragmatism-vote-output.txt"),
     ]
-    # Plan voters waterfall fully now (issue #5817): no always-on --no-fallback,
-    # and each external voter carries its cross-vendor middle tier.
+    # Plan voters share the code-review voter shape: no always-on --no-fallback,
+    # and each voter carries Codex, Cursor, then Claude semantic labels.
     assert external_defaults.voter_dispatch_policy("design.plan_voters") is None
-    assert dict(plan_voters[1].semantic_labels) == {"codex": "codex", "cursor": "cursor", "claude": "claude"}
-    assert dict(plan_voters[2].semantic_labels) == {"cursor": "cursor", "codex": "codex", "claude": "claude"}
+    assert dict(plan_voters[0].semantic_labels) == {"codex": "codex-validity", "cursor": "cursor-validity", "claude": "claude"}
+    assert dict(plan_voters[1].semantic_labels) == {"codex": "codex-plan-fidelity", "cursor": "cursor-plan-fidelity", "claude": "claude"}
+    assert dict(plan_voters[2].semantic_labels) == {"codex": "codex-pragmatism", "cursor": "cursor-pragmatism", "claude": "claude"}
+    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES["design.plan_review_panel"] == {
+        "pragmatic": "default",
+        "requirements": "default",
+    }
+    assert config.DIFFICULTY_CODEX_MODEL_ROLE_OVERRIDES["review.panel"] == {
+        "correctness": "default",
+        "edge-cases": "default",
+    }
 
     review_voters = external_defaults.voter_policies("review.voters")
     assert review_voters[0].primary_tool == "codex"

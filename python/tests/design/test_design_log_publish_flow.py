@@ -552,6 +552,9 @@ def test_publish_excluded_predicate() -> None:
         "findings.md",
         "voting-tally.md",
         "accepted-plan-findings.md",
+        "codex-validity-vote-output.txt",
+        "codex-plan-fidelity-vote-output.txt",
+        "codex-pragmatism-vote-output.txt",
         "aggregator-output.txt",  # not -plan-, not -vote-
         "codex-vote-output.txt",  # curated vote output, not *-plan-*-output*.txt
         "aggregator-validate.stderr",  # bare .stderr kept; only -collector.stderr drops
@@ -590,6 +593,9 @@ def test_log_publish_excludes_sidecar_crud(tmp_path: Path) -> None:
         "aggregator-output.txt": "AGG",
         "findings.md": "F",
         "run-params.json": "{}",
+        "codex-validity-vote-output.txt": "V1",
+        "codex-plan-fidelity-vote-output.txt": "V2",
+        "codex-pragmatism-vote-output.txt": "V3",
     }
     drop = {
         "codex-primary-plan-arch-output.txt.events.jsonl": "{}",

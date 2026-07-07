@@ -33,7 +33,27 @@ from larch.review import plan_review_round
 from larch.review import voting
 from larch.state.session_env import validate_design_tmpdir
 
-_VALID_SLOTS = {"1", "2", "3", "Claude", "Codex", "Cursor", "MainAgent"}
+_VALID_SLOTS = {
+    "1",
+    "2",
+    "3",
+    "Claude",
+    "Codex",
+    "Cursor",
+    "codex-validity",
+    "cursor-validity",
+    "codex-plan-fidelity",
+    "cursor-plan-fidelity",
+    "codex-pragmatism",
+    "cursor-pragmatism",
+    "claude",
+    "MainAgent",
+}
+_SEMANTIC_SLOT_TO_TOOL = {
+    "1": "codex-validity",
+    "2": "codex-plan-fidelity",
+    "3": "codex-pragmatism",
+}
 _BODY_SEVERITY_PREFIX = re.compile(r"^[\s-]*\*\*Severity\*\*:[ \t]*")
 _FULL_PANEL = 3
 LABEL_MAP_MIN_COLS = 2
@@ -184,6 +204,17 @@ class _Tally:
     @staticmethod
     def _infer_voter_slot(*, path: str, index: int) -> str:
         base = Path(path).name.lower()
+        semantic_markers = (
+            ("codex-validity-vote-output", "codex-validity"),
+            ("cursor-validity-vote-output", "cursor-validity"),
+            ("codex-plan-fidelity-vote-output", "codex-plan-fidelity"),
+            ("cursor-plan-fidelity-vote-output", "cursor-plan-fidelity"),
+            ("codex-pragmatism-vote-output", "codex-pragmatism"),
+            ("cursor-pragmatism-vote-output", "cursor-pragmatism"),
+        )
+        for marker, label in semantic_markers:
+            if marker in base:
+                return label
         if "claude" in base:
             return "Claude"
         if "codex" in base:
@@ -194,30 +225,48 @@ class _Tally:
 
     @staticmethod
     def _canonical_position_for_slot(slot: str) -> str:
-        return {"1": "1", "Claude": "1", "2": "2", "Codex": "2", "3": "3", "Cursor": "3"}.get(slot, "0")
+        return {
+            "1": "1",
+            "Claude": "1",
+            "claude": "1",
+            "codex-validity": "1",
+            "cursor-validity": "1",
+            "2": "2",
+            "Codex": "2",
+            "codex-plan-fidelity": "2",
+            "cursor-plan-fidelity": "2",
+            "3": "3",
+            "Cursor": "3",
+            "codex-pragmatism": "3",
+            "cursor-pragmatism": "3",
+        }.get(slot, "0")
 
     @staticmethod
     def _canonical_tool_for_slot(slot: str) -> str:
         return {
-            "Claude": "Claude", "Codex": "Codex", "Cursor": "Cursor",
-            "1": "Claude", "2": "Codex", "3": "Cursor",
+            "Claude": "Claude",
+            "Codex": "Codex",
+            "Cursor": "Cursor",
+            "1": _SEMANTIC_SLOT_TO_TOOL["1"],
+            "2": _SEMANTIC_SLOT_TO_TOOL["2"],
+            "3": _SEMANTIC_SLOT_TO_TOOL["3"],
         }.get(slot, slot)
 
     def _position_for_voter(self, *, tool: str, path: str) -> str:
         base = Path(path).name.lower()
         groups = (
-            (1, ("voter-1", "voter1", "slot1", "slot-1", "claude-vote-output")),
-            (2, ("voter-2", "voter2", "slot2", "slot-2", "codex-vote-output")),
-            (3, ("voter-3", "voter3", "slot3", "slot-3", "cursor-vote-output")),
+            (1, ("voter-1", "voter1", "slot1", "slot-1", "claude-vote-output", "codex-validity-vote-output", "cursor-validity-vote-output")),
+            (2, ("voter-2", "voter2", "slot2", "slot-2", "codex-vote-output", "codex-plan-fidelity-vote-output", "cursor-plan-fidelity-vote-output")),
+            (3, ("voter-3", "voter3", "slot3", "slot-3", "cursor-vote-output", "codex-pragmatism-vote-output", "cursor-pragmatism-vote-output")),
         )
         for pos, needles in groups:
             if any(n in base for n in needles):
                 return str(pos)
-        if tool == "Claude" and not self.slot_file[1]:
+        if tool in {"Claude", "claude", "codex-validity", "cursor-validity"} and not self.slot_file[1]:
             return "1"
-        if tool == "Codex" and not self.slot_file[2]:
+        if tool in {"Codex", "codex-plan-fidelity", "cursor-plan-fidelity"} and not self.slot_file[2]:
             return "2"
-        if tool == "Cursor" and not self.slot_file[3]:
+        if tool in {"Cursor", "codex-pragmatism", "cursor-pragmatism"} and not self.slot_file[3]:
             return "3"
         for pos in (1, 2, 3):
             if not self.slot_file[pos]:
@@ -357,7 +406,7 @@ class _Tally:
         voter_severities: list[str] | None = None
         if self.eligible > 0 and not self.tally_voter_file:
             voter_severities = []
-            fallback = {1: "Claude", 2: "Codex", 3: "Cursor"}
+            fallback = {1: "codex-validity", 2: "codex-plan-fidelity", 3: "codex-pragmatism"}
             for pos in (1, 2, 3):
                 vote, severity = self._vote_and_severity_for_slot(item_id=item_id, pos=pos)
                 voter_votes.append((self.slot_tool[pos] or fallback[pos], vote))

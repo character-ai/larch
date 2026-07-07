@@ -206,6 +206,18 @@ def test_tier_helpers_and_escalation_round_specific(tmp_path: Path) -> None:
     assert "MODERATE->HARD" in difficulty.difficulty_line(data)
 
 
+def test_codex_review_model_role_for_archetype_overrides_hard_only() -> None:
+    assert difficulty.codex_review_model_role_for_archetype("design.plan_review_panel", "pragmatic", difficulty.HARD) == "default"
+    assert difficulty.codex_review_model_role_for_archetype("design.plan_review_panel", "requirements", difficulty.HARD) == "default"
+    assert difficulty.codex_review_model_role_for_archetype("design.plan_review_panel", "arch", difficulty.HARD) == "review"
+    assert difficulty.codex_review_model_role_for_archetype("design.plan_review_panel", "innovation", difficulty.HARD) == "review"
+    assert difficulty.codex_review_model_role_for_archetype("review.panel", "correctness", difficulty.HARD) == "default"
+    assert difficulty.codex_review_model_role_for_archetype("review.panel", "edge-cases", difficulty.HARD) == "default"
+    assert difficulty.codex_review_model_role_for_archetype("review.panel", "testing", difficulty.HARD) == "review"
+    assert difficulty.codex_review_model_role_for_archetype("review.panel", "correctness", difficulty.MODERATE) == "review"
+    assert difficulty.codex_review_model_role_for_archetype("review.panel", "correctness", difficulty.TRIVIAL) == "review"
+
+
 def test_write_record_merge_preserves_resolution_fields(tmp_path: Path) -> None:
     out = tmp_path / "difficulty-rating.json"
     existing = {

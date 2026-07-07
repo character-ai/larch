@@ -333,7 +333,7 @@ grep -Fq '## Per-voter False-negative YES Rate' "$fn_out"
 grep -Fq '| code-review | v1 | 2 | 1 | 1 | 2 | 1.000 |' "$fn_out"
 grep -Fq '| code-review | v2 | 0 | 0 | 0 | 0 | n/a |' "$fn_out"
 grep -Fq '| code-review | v3 | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
-grep -Fq '| design | Claude | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
+grep -Fq '| design | codex-validity | 1 | 1 | 0 | 1 | 1.000 |' "$fn_out"
 if grep -Fq 'scoped-out' "$fn_out"; then exit 1; fi
 
 realized_oos_root="$FIX/larch-logs-realized-oos"
