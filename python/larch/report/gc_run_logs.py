@@ -21,7 +21,7 @@ COMMON_KEEP = {"manifest.json", "final-summary.md", "difficulty-rating.json", "g
 SKILL_KEEP = {
     "implement": {"token-report.json", "timing-report.json", "review-findings-full.jsonl", "execution-issues.ndjson", "run-statistics.md", "checks-digest-sizes.tsv", "architectural-guideline-outcome.json", "architectural-invariant-outcome.json"},
     # session-id disambiguates multiple larch-tokens-*.jsonl ledgers for report_tokens_scan.
-    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id", "architectural-guideline-assessment.md", "architectural-invariant-assessment.md"},
+    "design": {"token-report-final.json", "timing-report-final.json", "run-params.json", "plan.txt", "session-id", "architectural-guideline-assessment.md", "architectural-invariant-assessment.md", "accepted-plan-findings-audit.md"},
     "review": {"checks-digest-sizes.tsv", "architectural-guideline-outcome.json", "architectural-invariant-outcome.json"},
 }
 

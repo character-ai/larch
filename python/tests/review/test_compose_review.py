@@ -173,6 +173,34 @@ def test_compose_findings_design_gate_b_skip_and_accepted_all_precedence(tmp_pat
     assert "FINDING_ALL" in output.read_text(encoding="utf-8")
 
 
+def test_compose_findings_falls_back_to_accepted_round_when_all_missing(tmp_path: Path) -> None:
+    design = tmp_path / "design-map"
+    _ = (design / "plan-review" / "round-1").mkdir(parents=True)
+    _ = (design / "accepted-plan-findings.md").write_text(
+        """### FINDING_FALLBACK: Current-round accepted
+- **Reviewer**: Cursor-Arch
+- **Concern**: fallback source should be consumed.
+""",
+        encoding="utf-8",
+    )
+    output = tmp_path / "design.jsonl"
+
+    result = run_review(
+        "compose-findings",
+        "--design-artifacts-dir",
+        str(design),
+        "--issue",
+        "3776",
+        "--output",
+        str(output),
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert "FINDINGS_TOTAL=1" in result.stdout
+    assert "FINDING_FALLBACK" in output.read_text(encoding="utf-8")
+    assert "fallback source should be consumed." in output.read_text(encoding="utf-8")
+
+
 def test_compose_findings_redacts_token_in_prose_body(tmp_path: Path) -> None:
     impl = tmp_path / "redact-impl"
     round_dir = impl / "round-1"

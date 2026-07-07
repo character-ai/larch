@@ -631,7 +631,7 @@ contains "$CLI_PY" '("design", "render-gate"): ("larch.design.design_gate_render
 printf '%s' "$stdout_keys_block" | grep -Fq '("design", "render-gate")' || fail "cli _DESIGN_LIFECYCLE_STDOUT_KEYS missing design render-gate"
 contains "$APPROVAL_GATES_MD" 'accepted-plan-findings-all.md` when present (cumulative acceptance context).' 'accepted audit must name cumulative accepted corpus in read list'
 contains "$APPROVAL_GATES_MD" 'accepted-plan-findings.md` when present (current-round Gate B apply set; not the end-state fidelity authority).' 'accepted audit must name current-round accepted corpus in read list'
-contains "$APPROVAL_GATES_MD" 'filtered cumulative `accepted-plan-findings-all.md` (the end-state applied set across all Step 3 rounds)' 'accepted audit must name filtered cumulative end-state fidelity source'
+contains "$APPROVAL_GATES_MD" 'filtered accepted corpus selected above' 'accepted audit must name selected corpus fidelity source'
 contains "$APPROVAL_GATES_MD" 'plan-before-review.txt` when present.' 'accepted audit must read pre-review snapshot'
 contains "$APPROVAL_GATES_MD" 'discussion-round1.md` when present (explicit Round 1 refusals).' 'accepted audit must read Round 1 refusals'
 contains "$APPROVAL_GATES_MD" 'design-outline.md` when `.outline-approved` exists (approved non-goals).' 'accepted audit must read approved outline non-goals'
@@ -639,7 +639,7 @@ contains "$APPROVAL_GATES_MD" 'bind `_accepted_corpus` to non-empty `$DESIGN_TMP
 contains "$APPROVAL_GATES_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped '"\\" 'accepted audit must include filter-gate-b-skipped invocation'
 contains "$APPROVAL_GATES_MD" '--accepted "${_accepted_corpus}"' 'accepted audit filter invocation must pass selected corpus'
 contains "$APPROVAL_GATES_MD" 'On filter helper non-zero exit: print `**⚠ 4b: accepted-plan-findings skip-filter failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=filter-gate-b-skipped-failed`, and stop before persist, prompt, auto-approval, or Step 5.' 'accepted audit must fail closed on skip-filter failure'
-contains "$APPROVAL_GATES_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `strong_audit_dissent=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
+contains "$APPROVAL_GATES_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `STRONG_AUDIT_DISSENT=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
 contains "$APPROVAL_GATES_MD" 'Run the full audit on every Gate C Presentation, including `resume@4b`, pause recovery, re-entry after discussion, re-run review, or postplan fixes.' 'accepted audit must rerun on every Gate C Presentation'
 contains "$APPROVAL_GATES_MD" 'mild-disagree or strong-disagree prints a compact audit digest immediately before either Gate C `AskUserQuestion` or the `--skip-approve` auto-approval breadcrumb.' 'accepted audit must print mild digest before prompt or auto-approve'
 contains "$APPROVAL_GATES_MD" '--accepted-audit-escalation "${STRONG_AUDIT_DISSENT:-false}"' 'Gate C render-gate example must include accepted audit escalation'

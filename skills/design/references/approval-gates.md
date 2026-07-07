@@ -146,7 +146,7 @@ Gate B's plan revision may branch the merged driver fence. `--partition` maps to
 
 ## Gate C: Final-Approval Loop (Step 4b)
 
-**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview, architectural invariant/guideline presentation and persistence, and the accepted plan-review findings audit below. If invariant violations remain after presentation, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving. Auto-approve only after accepted-findings audit persistence succeeds and binds `strong_audit_dissent=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation. Do not auto-revert the plan.
+**`--skip-approve` auto-approve carve-out**: when `skip_approve_requested=true`, Gate C still runs the final-plan preview, architectural invariant/guideline presentation and persistence, and the accepted plan-review findings audit below. If invariant violations remain after presentation, rewrite `plan.txt` with the smallest fix, increment the remediation counter, rerun the settle/postplan validation path, and re-enter Gate C instead of auto-approving. Auto-approve only after accepted-findings audit persistence succeeds and binds `STRONG_AUDIT_DISSENT=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation. Do not auto-revert the plan.
 
 **When** (`skip_approve_requested=false`): after Step 4 completes. Any Gate B settled path that continues the design reaches Step 3b finalize → Step 4 → Step 4b. Gate B(c) "switch to discussion mode" reaches Gate C only after Gate A **Ready for review**, a new review, and that review's settled Gate B path. On default auto-apply, post-review discussion happens through Gate C **Discuss further** after script-internal continuation stops. Step 3 bypasses such as `LOOP_STATUS=cap-reached`, `tally-error`, `degraded-empty-collector`, and `panel-failed` skip Gate B but still continue through Step 3b → Step 4 → Step 4b with current artifacts. `panel-init-failed` never reaches Gate C.
 
@@ -220,18 +220,18 @@ Use the helper's stdout as the classification-set input. When the skip marker is
 4. Compare `plan-before-review.txt` to final `plan.txt` as an end-state diff.
 5. Classify each finding in the filtered classification set as `agree`, `mild-disagree`, or `strong-disagree`.
 6. Use this escalation bar: strong only when the accepted finding or its application would cause concrete breakage, contradicts an explicit Round 1 refusal from `discussion-round1.md`, or contradicts an approved-outline non-goal from `design-outline.md` when `.outline-approved` exists. Everything else is a note.
-7. Check application fidelity: each final-plan change should trace to a finding in the filtered cumulative `accepted-plan-findings-all.md` (the end-state applied set across all Step 3 rounds), a required postplan validation fix, or reviewer-loop dedup. Use `accepted-plan-findings.md` only as the current-round Gate B apply-set hint when needed; it is not the end-state fidelity authority. Operator-skipped findings must not be treated as missing application fidelity or strong dissent. Missing snapshot limits fidelity evidence, but is not by itself strong dissent.
+7. Check application fidelity: each final-plan change should trace to a finding in the filtered accepted corpus selected above, a required postplan validation fix, or reviewer-loop dedup. When `_accepted_corpus` resolves to `accepted-plan-findings-all.md`, that corpus is the end-state applied set across all Step 3 rounds; otherwise the fallback `accepted-plan-findings.md` is the current-round Gate B apply-set hint. Operator-skipped findings must not be treated as missing application fidelity or strong dissent. Missing snapshot limits fidelity evidence, but is not by itself strong dissent.
 8. Persist the audit:
    - Clean path (all agree, no mild notes): call `plan-review persist-accepted-audit --assessment clean`.
    - Mild or strong path: write a compact sidecar such as `$DESIGN_TMPDIR/accepted-plan-findings-audit.input.sidecar` with finding IDs, section names, and short rationale; no full raw diffs. Then call `plan-review persist-accepted-audit --assessment-file "$DESIGN_TMPDIR/accepted-plan-findings-audit.input.sidecar"`.
 9. Print digest before prompt or auto-approve: clean path stays silent in chat except for the persisted clean note; mild-disagree or strong-disagree prints a compact audit digest immediately before either Gate C `AskUserQuestion` or the `--skip-approve` auto-approval breadcrumb.
-10. Bind `strong_audit_dissent=true|false` from classification outcome.
+10. Bind `STRONG_AUDIT_DISSENT=true|false` from classification outcome.
 11. Fail closed on persist failure: print `**⚠ 4b: accepted-plan-findings audit persistence failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=persist-accepted-audit-failed`, and stop before prompt, approval, auto-approval, or Step 5.
 
 **Post-audit `--skip-approve` routing**:
 
-- When `skip_approve_requested=true` and `strong_audit_dissent=false`: print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 without `AskUserQuestion`.
-- When `skip_approve_requested=true` and `strong_audit_dissent=true`: do not print the auto-approve breadcrumb; fire Gate C `AskUserQuestion` with dissent visible in the printed digest and renderer output.
+- When `skip_approve_requested=true` and `STRONG_AUDIT_DISSENT=false`: print `⏩ 4b: Gate C: auto-approved final plan (--skip-approve)` and proceed to Step 5 without `AskUserQuestion`.
+- When `skip_approve_requested=true` and `STRONG_AUDIT_DISSENT=true`: do not print the auto-approve breadcrumb; fire Gate C `AskUserQuestion` with dissent visible in the printed digest and renderer output.
 
 ### Prompt
 
