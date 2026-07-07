@@ -1,4 +1,7 @@
 === larch-quiet-cli.py-1559.log ===
+=== larch-quiet-cli.py-30925.log ===
+=== larch-quiet-cli.py-33478.log ===
+=== larch-quiet-cli.py-33911.log ===
 === larch-quiet-cli.py-50718.log ===
 === larch-quiet-cli.py-57685.log ===
 === larch-quiet-cli.py-61240.log ===
@@ -26,3 +29,4 @@
 === larch-quiet-ship.py-87904.log ===
 === larch-quiet-ship.py-97089.log ===
 design-log-sweep: PR #6566 skipped-not-green - required checks status pending
+=== larch-quiet-tracking-issue-upsert-summary-33857.log ===
