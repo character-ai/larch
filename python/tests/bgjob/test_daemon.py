@@ -388,6 +388,7 @@ def test_bgjob_start_and_wait_end_to_end(tmp_path: Path, monkeypatch: pytest.Mon
     if process_identity.read_process_identity(pid=os.getpid()) is None:
         pytest.skip("process identity probe is unavailable in this sandbox")
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    monkeypatch.setenv("LARCH_BGJOB_OWNER_PID", str(os.getpid()))
     cmd = [
         *_repo_cli(),
         "bgjob",
