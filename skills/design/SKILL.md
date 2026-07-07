@@ -39,8 +39,8 @@ Design an implementation plan and review it with the mechanical plan-review pane
 Follow shared/verbosity-control.md rules.
 **Only print:** step breadcrumb lines (start `🔶`, skip `⏩`); plain immediate-background progress breadcrumbs required by specific non-Step-3 fences, such as Step 5c and Final summary; all warning/error lines (`**⚠ ...`); structured summaries (voting tallies, scoreboards, round summaries, findings lists, approach synthesis, implementation plans); and the compact reviewer status table only for the Step 3 review fence and Step 3 resume fences (see below).
 **Suppressed output:** explanatory prose, script paths, rationale for decisions between tool calls, per-reviewer individual completion messages. **NEVER** print `$DESIGN_TMPDIR/architecture-diagram.md`, `$DESIGN_TMPDIR/architecture-diagram.candidate.md`, sanitizer marker bodies, or Mermaid diagram bodies to chat; architecture diagram content is issue-only via `larch:diagrams`.
-**Compact reviewer status table**: Use the single post-notification reviewer status cadence only for the Step 3 review fence and each Step 3 resume fence. Print the compact table once for those Step 3 waits, only after confirmed completion.
-**Post-notification for Step 3 waits**: Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md for the detailed reviewer-status-table emit contract.
+**Compact reviewer status table**: Use the single Step 3 reviewer status cadence only after `bgjob wait` returns `BGJOB_STATUS=DONE` with `BGJOB_RC=0` and the required Step 3 result KVs present. Print the compact table once for those Step 3 waits, only after confirmed completion.
+**Step 3 foreground waits**: Use the shared bgjob wait contract before the Step 3 review fence or any Step 3 resume fence.
 
 ### Bash block prelude
 
@@ -391,28 +391,20 @@ Each reviewer walks five focus areas: code-quality / risk-integration / correctn
 
 ### Plan review driver (`python/cli.py plan-review run`)
 
-Step 3 runs `design-step3-review.sh` in immediate-background mode and waits for `<task-notification>`. The wrapper runs `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`; `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py` handles rounds, accepted-finding application via `python/cli.py plan revise-waterfall --patch-format file-replacement`, Gate B post-apply, and returns only via `STEP3_REVIEW_LOOP_STATUS`. Harness: `${CLAUDE_PLUGIN_ROOT}/python/test_plan_review.py`. Mid-loop resumes use `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND"` at recorded `.step3-round-N.phase`; never rerun completed passes.
-**Scout, panel dispatch, collection, aggregation, voting, and tally** stay inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`. `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review run` owns cap guard, round cursor, loop launch, result normalization, and count persist/rollback (contracts: `python/plan_review.py`, `python/design_lifecycle.py` / `lib-phase-driver.md`, `python/cli.py plan-review prelaunch-failure`; harnesses: `python/test_plan_review.py`, `test-python/design_lifecycle.py` / `test-lib-phase-driver.md`, `test-step3-orchestrator-fence.sh` / `test-step3-orchestrator-fence.md`, `skills/design/scripts/test-design-step3-review.sh`). Step 3 sentinel helper: `${CLAUDE_PLUGIN_ROOT}/python/cli.py plan-review step3-state` (`${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `--direct-review-entry`, `--gate-b-bypass`, `--auto-continuation-entry`).
-Read and apply ## Step 3 task notification boundary in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-Read and apply ## Immediate-background wait rule in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-Parameters:
-- breadcrumb: none
-- terminal sentinel: `.completed/step-3-terminal`
-- confirmation purpose: envelope durability
-- after present: run the Step 3 post-notification sequence
-- extra guards: end the turn with no reviewer table after launch ack
-
-Read and apply ## Step 3 post-notification sequence in ${CLAUDE_PLUGIN_ROOT}/skills/shared/design-background-wait.md completely.
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
+Step 3 launches `design-step3-review.sh` as a foreground bgjob starter, then waits with chunked foreground `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait --step design-step3-review --tmpdir "$DESIGN_TMPDIR" --max-wait-s 270` calls. Fresh-launch stdout is exactly `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`. A live identity-valid registry row or a regular non-symlink Step 3 result env means `bgjob wait`, not a second start. The child runs `plan-review run --mode loop`; `python/plan_review.py` owns rounds, apply, postplan, and `STEP3_REVIEW_LOOP_STATUS`. Mid-loop resumes use the same wrapper with `--starting-round "$STEP3_RESUME_ROUND"`; never rerun completed passes.
+**Scout, panel dispatch, collection, aggregation, voting, and tally** stay inside `${CLAUDE_PLUGIN_ROOT}/python/plan_review.py`; `plan-review run` owns cap, cursor, normalization, and count persist/rollback. Sentinel helper: `python/cli.py plan-review step3-state`.
+Use the shared bgjob wait contract for Step 3 launch, rejoin, `WAIT`, `DEAD`, and `DONE`.
+Parameters: step `design-step3-review`; tmpdir `$DESIGN_TMPDIR`; wait chunk `--max-wait-s 270` with timeout `330000`; sentinel `.completed/step-3-terminal`; result env `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`; after every `BGJOB_STATUS=DONE`, read the result env, then require `BGJOB_RC=0`, `NEXT_ACTION`, status, and route KVs for normal continuation.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh
 ```
 
+After launch, call `bgjob wait` repeatedly. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep. `DEAD` or `DONE` with absent, non-zero, `timeout`, or `orphaned` `BGJOB_RC` uses the existing failure/stall branch. After every `BGJOB_STATUS=DONE`, parse the result env so terminal failure routes are visible; normal continuation still requires `BGJOB_RC=0`. Read `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` first via `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env`; use legacy `$DESIGN_TMPDIR/.step3-review-result.env` only when the bgjob result env is absent.
 Follow `plan-review.md` for interpreting `voting-tally.md`, accepted/rejected findings, and OOS artifacts after the driver returns.
-Plan-review scope anchoring: Step 3 entry creates `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from issue narrative with prior `larch:plan` stripped and appends approved outline when present. Missing/empty/invalid anchor at launch yields `panel-init-failed` and hard-stop. Brainstorm context is optional/non-binding. Scout, reviewers, voters (`--scope-anchor-file`), MainAgent fallback, and pre-vote staged-anchor path use the staged anchor. `SCOPE_ANCHOR_FILE` is a path-only handoff in normalized envs on `ok` / `main-agent-vote-required`; tally/re-tally omit it. Scope-reduction findings use leading `[SCOPE-REDUCTION]` with normal vote thresholds.
-**Post-loop `NEXT_ACTION` routing table** (read `NEXT_ACTION` from the normalized loop envelope before raw status fields; `.step3-review-result.env` remains the per-round handoff):
-Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same; denied classification `Read` → same, no retry until the next `<task-notification>`; if the denial or clamp happened while the same-batch notifications are still queued, ignore the rest of that batch too; new/changed non-empty bytes → one foreground probe against `.completed/step-3-terminal`. Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]` and readable `.step3-review-result.env` exist. Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too; do not advance from `.step3-review-result.env` alone.
+Plan-review scope anchoring: Step 3 entry creates `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` from issue text with prior `larch:plan` stripped and approved outline when present. Missing/empty/invalid yields `panel-init-failed`. Reviewers, voters, and MainAgent use it as untrusted evidence. `SCOPE_ANCHOR_FILE` is a path-only handoff on `ok` / `main-agent-vote-required`.
+**Post-loop `NEXT_ACTION` routing table** (read `NEXT_ACTION` from the bgjob result env before raw status fields; `.step3-review-result.env` remains the merge input and legacy fallback):
+Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 3 parse the result env. Before parsing the envelope after `DONE`, require `BGJOB_RC=0` and route KVs from final wait stdout and/or `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`. Run result-env parsing only after `DONE`; never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone. Before Step 3b+, require `[ -f "$DESIGN_TMPDIR/.completed/step-3" ]` too.
 
 - `NEXT_ACTION=step3b`: proceed to Step 3b. This covers `STEP3_REVIEW_LOOP_STATUS=complete` and the no-loop-envelope `LOOP_STATUS=zero-findings-degraded-panel`; the loop has already run apply, postplan, and continuation until a stop decision.
 - `NEXT_ACTION=step3b-bypass` with `LOOP_STATUS=degraded-empty-collector`: print `**⚠ /design Step 3: all plan reviewers failed at runtime; main agent is self-reviewing the plan before Gate C.**`, append a bounded `Warnings` entry to `$DESIGN_TMPDIR/execution-issues.md`, read `$DESIGN_TMPDIR/plan.txt`, the feature description or scope anchor, and relevant code/docs directly, then self-review the plan. Revise `$DESIGN_TMPDIR/plan.txt` in place only when you find a concrete plan defect. If you revise, run the same post-plan validation and settle path used after direct plan revision so `diff-lines.txt`, trailers, and validators stay coherent. Then run `design-step3-gate-b-bypass.sh`, parse `STEP3_STATE=`, and proceed to Step 3b as below. Do not enter Gate B because there is no findings list to vote or apply.
@@ -445,15 +437,13 @@ The pre phase renders any readable scope anchor as escaped evidence, prints the 
 
 **Step 3 resume fence (all mid-loop returns):**
 
-Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.
-
-**⚠ Immediate-background required: set `run_in_background: true` and `timeout: 21600000`.**
+Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above. A live registry row means rejoin with `bgjob wait`; do not relaunch.
 
 ```bash
 "$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation
 ```
 
-Use the `NEXT_ACTION` routing table for every Step 3 resume. The fence above shows continuation; apply, post-apply, findings-file, and postplan-operator resumes use matching flags on the same wrapper.
+Use the `NEXT_ACTION` routing table for every Step 3 resume after `DONE` and successful result-env parsing. The fence above shows continuation; apply, post-apply, findings-file, and postplan-operator resumes use matching flags on the same wrapper.
 
 In loop mode, Step 3 does not return after every round. Happy path revises `plan.txt` inside `python/plan_review.py`; prompt-side Gate B applies findings only on `main-agent-apply-required` or `per-round-approval-required` bail-outs. Any plan revision must run `python/cli.py design postplan-emit` so `diff-lines.txt` and validation use the shared result contract.
 
@@ -699,3 +689,8 @@ Branch on `_autofix_status` per `validator-failure.md`. If auto-repair does not 
 <!-- compatibility grep note: `design-step2b-postplan.sh --site step2b --snapshot-original --session-env-path "$SESSION_ENV_PATH" --claude-pid "$CLAUDE_PID" --plugin-root "$CLAUDE_PLUGIN_ROOT"` maps to `python/cli.py design step2b-postplan --site step2b --snapshot-original`. -->
 <!-- lint references: skills/design/scripts/design-step3b-sanitize.md skills/design/scripts/design-step3b-sanitize.sh -->
 <!-- agent-lint references: scripts/check-plan-size.md, scripts/test-check-plan-size.md -->
+
+<!-- agent-lint references:
+- skills/design/scripts/test-step3-orchestrator-fence.md
+- skills/design/scripts/test-step3-orchestrator-fence.sh
+-->

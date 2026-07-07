@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of inline Bash.
+Foreground bgjob launcher for the `/design` Step 3 plan-review loop, with an internal child mode that keeps `skills/design/SKILL.md` free of inline Bash.
 
 ## Primary callers
 
@@ -10,34 +10,30 @@ Wrapper for a `/design` Bash block that keeps `skills/design/SKILL.md` free of i
 
 ## Invariants
 
-- Writes `$DESIGN_TMPDIR/.bg-wait-active` after pause-save checks and removes it on exit so hook enforcement covers the immediate-background wait. The marker copies `CLONE_PATH` from sibling `.larch-keepalive` when available; marker setup remains best-effort.
 - Accepts `--session-env-path` from the prompt-side Bash call.
-- Accepts `--claude-pid` when the wrapped logic must refresh session state.
-- Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop`.
-- Accepts `--read-result-env` for a hook-safe recovery read, delegated to `python/cli.py plan-review normalize-status --read-result-env`. The read mode directly stats `$DESIGN_TMPDIR/.step3-review-result.env`, uses a simple line scan for `READ_RESULT_ENV_STATUS=ok|missing` plus the seven follow-up KVs, and never calls `read_result_env_main`. It exits 0 without writing the `.bg-wait-active` marker or dispatching the review.
+- Accepts `--claude-pid` when the wrapped logic must refresh session state or pass the bgjob owner PID.
+- Accepts `--starting-round N` for mid-loop resumes and forwards it to `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run --mode loop` in the bgjob child.
+- Accepts `--read-result-env` for a hook-safe compatibility read, delegated to `python/cli.py plan-review normalize-status --read-result-env`. The Python normalizer reads `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` first and falls back to `$DESIGN_TMPDIR/.step3-review-result.env` only when the bgjob result env is absent.
 - Validates resume-state flags and starting-round bounds before writing state.
-- Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before review launch.
+- Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before bgjob launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
-- Launches `plan-review run --new-process-group --orphan-timeout-s 7200` so Python calls `os.setsid()` before reviewer children start and detached loops self-stop after the configured orphan bound. The wrapper immediately records the loop pid's process identity in `$DESIGN_TMPDIR/.step3-loop-identity.json` through `python/cli.py plan-review write-loop-identity`. The wrapper passes `--new-process-group` and the orphan cap to both the fresh and resume (`--starting-round`) launch paths. Redirects the plan-review loop process's own stderr to a dedicated `$DESIGN_TMPDIR/plan-review-loop-stderr.log` so the worker's and reviewer children's stderr never reaches the task output stream. There is no longer a `bash-job-control.log` redirect or `set -m` invocation because monitor mode is not used. normalize-status reads the stdout-file plus loop-rc only, so the stderr redirect drops no data the orchestrator consumes.
-- Trap-time cleanup delegates loop process-group termination to `python/cli.py plan-review teardown-loop-identity`, which validates the sidecar's pid, pgid, start time, and command signature before signaling and fails closed if the sidecar is absent or mismatched. After normal `wait`, the wrapper removes the sidecar and does not signal the reaped pid.
-- TERM/HUP/INT received while the loop pid is live is treated as an external harness stop, not a normal cleanup request: the EXIT trap guarantees any eligible sentinels, and it attempts detachment whenever the loop identity is published — determined from the in-run readiness flag, or the on-disk `.step3-loop-identity.json` sidecar as a race-proof fallback so a signal delivered during identity publication does not drop the detach. When detached-marker publication succeeds it writes `$DESIGN_TMPDIR/.step3-wrapper-detached`, preserves `.step3-loop-identity.json`, and skips both `teardown-loop-identity` and tmpdir process cleanup. If detached-marker publication fails, the trap falls back to identity-validated teardown and tmpdir process cleanup instead of silently disowning the loop. A later wrapper entry writes `$DESIGN_TMPDIR/.step3-reattach-active`, reattaches when the detached marker plus loop identity or persisted result env are present, waits for the original loop/result, normalizes the existing `.step3-review-result.env`, clears the marker, and does not dispatch a fresh review round. The orphan cap is paused while `.step3-reattach-active` exists, so normal attached review routing is unchanged.
-- Performs best-effort cleanup for any remaining process whose argv references `$DESIGN_TMPDIR` after loop shutdown.
-- The tmpdir process cleanup pass is allowed to fail silently.
-- Clears stale `.completed/step-3-terminal` and `.step3-terminal-persisted-this-run` before writing the immediate-background marker.
-- Guarantees the Step 3 completion sentinel `.completed/step-3` on every terminal exit after the review path is entered, via `_step3_review_guarantee_completed_sentinels`. The original cleanup trap removes `.bg-wait-active` and guarantees eligible sentinels while the review loop is live. After loop teardown, the wrapper atomically replaces it with a dedicated post-loop `EXIT` trap that also removes `.bg-wait-active` before it guarantees eligible sentinels, so no window exists where no `EXIT` trap is registered (#4724). The poll guard gates on `.completed/step-3-terminal`, which the loop writes after result-envelope persist; the wrapper trap may write `step-3-terminal` only when the current-pass persist sidecar exists. A stale `.step3-review-result.env` alone is not enough. Writes **only** `step-3`, never `.completed/step-3.5`: `step-3.5` is a deferred Gate C / pause-resume gate (`design_pause.py`, the Gate B post-apply idempotency guard, `design-step3b-entry.sh`), and creating it here would skip Gate B on apply-pending exits. The write is idempotent and best-effort and never alters the exit status. The `--read-result-env` and pause-save paths return before the trap is installed, so they never write the sentinel (#4489).
-- This wrapper is not a state-only helper. A call with resume flags also resumes the Step 3 loop after pause-save.
+- Before a fresh `bgjob start`, checks the identity-valid registry row for `design-step3-review` and any regular non-symlink `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`. A live row or a completed result env routes the caller to `bgjob wait`; stale or dead rows are cleared before a fresh launch.
+- Immediately before each fresh `bgjob start`, recreates `$DESIGN_TMPDIR/.step3-review-result.env` through the Python helper that rejects symlinks and non-regular paths, and removes stale `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` only on the fresh-start path so prior KVs cannot satisfy a new completion gate.
+- Fresh launcher stdout is exactly one line: `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`.
+- The wrapper passes `--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"` and sentinel `$DESIGN_TMPDIR/.completed/step-3-terminal` to `python/cli.py bgjob start`. The bgjob daemon writes `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`, which is the completion source of truth.
+- The internal child runs `plan-review run --new-process-group --orphan-timeout-s 7200`; Python calls `os.setsid()` before reviewer children start and detached loops self-stop after the configured orphan bound.
+- The child redirects the plan-review loop process's stderr to `$DESIGN_TMPDIR/plan-review-loop-stderr.log`; machine stdout remains the canonical KV envelope captured for normalization.
+- Step 3 loop contract lives in `python/plan_review.py`. The child captures stdout and delegates post-loop status normalization to `python/cli.py plan-review normalize-status`, which reads the merge input through `load_bash_quoted_env` after a quiet in-process `read_result_env_main` call.
+- The normalizer emits and persists `NEXT_ACTION` before raw status fields so prompt-side routing does not reconstruct the Step 3 branch matrix.
+- Post-loop `**⚠ Step 3:` markdown warnings are emitted on stderr by the normalizer. Machine stdout remains the canonical KV envelope. Loop-end `SUMMARY_OUTCOME` KVs are emitted by the normalizer, not by this Bash wrapper.
+- Refuses to launch the child when `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` is absent, empty, or invalid. That prelaunch path emits `panel-init-failed`, stages `failed-judge-panel`, and exits non-zero so Gate C and Step 5 cannot run with zero reviewer coverage.
+- Normalizes `panel-failed` with zero completed rounds or no `plan-review/round-1/` directory to `panel-init-failed`.
+- The retained legacy `$DESIGN_TMPDIR/.step3-review-result.env` is a merge input and fallback only. Prompt-side continuation after bgjob migration must parse `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` first and require `BGJOB_RC=0` plus the route KVs.
+- Compatibility sentinels remain: `.completed/step-3-terminal` is written by bgjob on child completion, and `.completed/step-3` is still owned by the Step 3 loop/normalizer. They are not sufficient for prompt-side continuation without the bgjob result env gate.
+- This wrapper is not a state-only helper. A call with resume flags also starts or rejoins the Step 3 bgjob after pause-save.
 - Sites that previously wrote phase state and then launched review separately must collapse to one wrapper invocation at the resume boundary.
 - `awaiting-vote` remains an internal loop state and is not accepted as a wrapper resume phase.
 - Does not derive the root Claude PID from `$PPID` internally.
-- Step 3 loop contract lives in `python/plan_review.py`. This wrapper captures stdout and delegates post-loop status normalization to `python/cli.py plan-review normalize-status`, which reads the quoted temp env via `load_bash_quoted_env` after a quiet in-process `read_result_env_main` call.
-- The normalizer owns the WARN/ERROR replay contract: quiet `read_result_env_main` leaks no replay lines, Stage 1 replays `WARN=` / `ERROR=` from the selected source once, and Stage 2 replays stdout-overlay `WARN=` lines only when the primary result env is regular.
-- The normalizer guards status mapping: it back-maps `LOOP_STATUS` to `STEP3_REVIEW_LOOP_STATUS` only when the latter is unset, then forward-maps canonical `LOOP_STATUS` from a persisted `STEP3_REVIEW_LOOP_STATUS`.
-- The normalizer emits and persists `NEXT_ACTION` before raw status fields so prompt-side routing does not reconstruct the Step 3 branch matrix.
-- Post-loop `**⚠ Step 3:` markdown warnings are emitted on stderr by the normalizer. Machine stdout remains the canonical KV envelope. Loop-end `SUMMARY_OUTCOME` KVs are emitted by the normalizer, not by this Bash wrapper.
-- `bash-job-control.log` is no longer produced. Monitor mode (`set -m`) is not used. The worker's process group is set by Python via `os.setsid()` through `--new-process-group`.
-- Refuses to launch when `$DESIGN_TMPDIR/plan-review-scope-anchor.txt` is absent, empty, or invalid. That prelaunch path emits `panel-init-failed`, stages `failed-judge-panel`, and exits non-zero so Gate C and Step 5 cannot run with zero reviewer coverage.
-- Normalizes `panel-failed` with zero completed rounds or no `plan-review/round-1/` directory to `panel-init-failed`.
-- The Python normalizer synthesizes a terminal `.step3-review-result.env` and the `.step3-terminal-persisted-this-run` marker when a terminal failure status (`panel-failed` / `panel-init-failed` / `tally-error` / `degraded-empty-collector` / `postplan-failed`) is resolved but the plan-review loop never persisted a result env. Without it the guarantee trap cannot mint `.completed/step-3` and the orchestrator's Step 3 foreground recovery probe never resolves. Apply-pending / vote / operator statuses are excluded so the synthesized sentinel never skips Gate B (#4724).
 
 ## Harness
 
@@ -45,4 +41,4 @@ Covered by `scripts/test-design-structure.sh`, `skills/design/scripts/test-desig
 
 ## KV-only postplan failure
 
-When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, the Python normalizer emits `SUMMARY_OUTCOME=failed-postplan` and exits non-zero. The wrapper propagates that exit code. It does not print final-summary prose; prompt-side orchestration runs the Final summary block.
+When `STEP3_REVIEW_LOOP_STATUS=postplan-failed`, the Python normalizer emits `SUMMARY_OUTCOME=failed-postplan` and exits non-zero. The bgjob result env records that child rc in `BGJOB_RC`. The wrapper does not print final-summary prose; prompt-side orchestration runs the Final summary block after `DONE` parsing routes to that branch.

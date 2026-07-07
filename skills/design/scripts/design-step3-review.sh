@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Generated /design wrapper. Keep in sync with skills/design/SKILL.md.
-# shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2317,SC2329,SC2206,SC2207
+# shellcheck disable=SC1090,SC1091,SC2016,SC2034,SC2086,SC2154,SC2164,SC2312,SC2206,SC2207
 set -euo pipefail
 
 SESSION_ENV_PATH=""
@@ -11,6 +11,7 @@ SITE=""
 SUMMARY_OUTCOME="${SUMMARY_OUTCOME:-}"
 SKIP_VALIDATE=""
 PUBLIC_ARGV_WORDS=()
+RUN_LOOP_CHILD=false
 
 # Prompt-side values may be supplied only as environment variables by Claude Code.
 # Default them before sourced session env overrides to preserve the old inline-fence no-set-u behavior.
@@ -64,6 +65,7 @@ while [ "$#" -gt 0 ]; do
     --snapshot-original) SNAPSHOT_ORIGINAL=true; shift ;;
     --outcome) SUMMARY_OUTCOME="$2"; shift 2 ;;
     --skip-validate) SKIP_VALIDATE=1; shift ;;
+    --run-loop-child) RUN_LOOP_CHILD=true; shift ;;
     --starting-round)
       if [ "$#" -lt 2 ]; then
         printf '%s\n' 'design-step3-review.sh: --starting-round requires a non-empty positive integer' >&2
@@ -143,36 +145,8 @@ design_source_env_optional() {
   fi
 }
 
-
-design_bg_wait_marker_start() {
-  local step="$1"
-  rm -f "$DESIGN_TMPDIR/no-progress-turns.count" "$DESIGN_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR/no-progress-stop-block-emitted" "$DESIGN_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
-  rm -f "$DESIGN_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
-  case "$step" in
-    design-step3-review) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" 2>/dev/null || true ;;
-    design-step5c) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-5c-terminal.count" 2>/dev/null || true ;;
-    design-step-final-summary) rm -f "$DESIGN_TMPDIR/bg-poll-guard-probe-denials.step-final-summary.count" 2>/dev/null || true ;;
-  esac
-  _bg_wait_marker="$DESIGN_TMPDIR/.bg-wait-active"
-  _bg_wait_tmp="${_bg_wait_marker}.tmp.$$"
-  _bg_wait_clone_path=""
-  if [ -f "$DESIGN_TMPDIR/.larch-keepalive" ] && [ ! -L "$DESIGN_TMPDIR/.larch-keepalive" ]; then
-    _bg_wait_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$DESIGN_TMPDIR/.larch-keepalive" 2>/dev/null || true)
-  fi
-  {
-    printf 'PID=%s\n' "$$"
-    printf 'CLAUDE_PID=%s\n' "${CLAUDE_PID:-}"
-    printf 'START_EPOCH=%s\n' "$(date +%s)"
-    printf 'STEP=%s\n' "$step"
-    printf 'TIMEOUT_S=21600\n'
-    printf 'CLONE_PATH=%s\n' "$_bg_wait_clone_path"
-  } >"$_bg_wait_tmp" || return 1
-  mv -f "$_bg_wait_tmp" "$_bg_wait_marker" || { rm -f "$_bg_wait_tmp" 2>/dev/null || true; return 1; }
-  trap 'rm -f "${_bg_wait_marker:-}" "${_bg_wait_tmp:-}"' EXIT
-  return 0
-}
 design_source_env_optional
+design_require_plugin_root
 larch_err() { printf '%s\n' "$*" >&2; }
 
 STEP3_REVIEW_HAS_RESUME_STATE=false
@@ -238,6 +212,17 @@ step3_review_validate_resume_state() {
   fi
 }
 
+step3_review_recreate_merge_env() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR" <<'PY'
+from pathlib import Path
+import sys
+
+from larch.design.design_terminal import phase_driver_recreate_result_env
+
+phase_driver_recreate_result_env(path=Path(sys.argv[1]), design_tmpdir=Path(sys.argv[2]))
+PY
+}
+
 step3_review_write_resume_state() {
   local _phase_file _phase_tmp _approval_env _approval_tmp _continue_file _continue_tmp
   [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] || return 0
@@ -260,337 +245,142 @@ step3_review_write_resume_state() {
     mv "$_continue_tmp" "$_continue_file"
   fi
 }
-if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
-  printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
-  exit 1
-fi
-DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
-if [ -n "${CLAUDE_PLUGIN_ROOT:-}" ] && [ -f "${CLAUDE_PLUGIN_ROOT}/python/cli.py" ]; then
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
-fi
-# #4431 Fix C: hook-safe result-env read. When the immediate-background poll guard
-# blocks a direct Read of .step3-review-result.env (e.g. a <task-notification> that
-# arrives in the same turn as the launch ack), the orchestrator re-invokes this
-# wrapper with --read-result-env to recover STEP3_REVIEW_LOOP_STATUS through the
-# wrapper-routed path the guard allows. Pure read: no marker, no review dispatch.
-if [ "$READ_RESULT_ENV" = true ]; then
-  exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env
-fi
-step3_review_validate_resume_state
-if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-else
-  step3_review_write_resume_state
-  [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
-fi
-# Marker step id: STEP=design-step3-review
-_step3_review_detached_marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
-_step3_review_has_detached_marker=false
-if [ -f "$_step3_review_detached_marker" ] && [ ! -L "$_step3_review_detached_marker" ]; then
-  _step3_review_has_detached_marker=true
-fi
-if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ] && [ "$_step3_review_has_detached_marker" = false ]; then
-  rm -f "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-elif [ "$_step3_review_has_detached_marker" = false ]; then
-  rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
-fi
-if [ "$_step3_review_has_detached_marker" = false ]; then
-  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
-fi
-rm -f "$DESIGN_TMPDIR"/bg-poll-guard-probe-denials.*.count 2>/dev/null || true
-design_bg_wait_marker_start design-step3-review || true
-_plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
-  printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
-  exit 1
+
+step3_review_bgjob_registry_state() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR" <<'PY'
+from pathlib import Path
+import sys
+from larch.bgjob import registry
+
+path, entry = registry.read_for(tmpdir=Path(sys.argv[1]), step="design-step3-review")
+if entry is None:
+    print("missing")
+    raise SystemExit(0)
+if registry.daemon_liveness(entry).live:
+    print("live")
+    raise SystemExit(0)
+registry.unlink_entry(path)
+print("cleared")
+PY
 }
-_loop_pid=""
-_step3_review_loop_identity_ready=false
-_step3_review_external_signal=""
-_step3_review_external_signal_rc=0
 
-_step3_review_script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
-
-_step3_review_write_prelaunch_failure() {
-  local _status="${1:-panel-init-failed}"
-  local _reason="${2:-prelaunch-failure}"
-  _status="${_status:-panel-init-failed}"
-  _reason="${_reason:-prelaunch-failure}"
+step3_review_prelaunch_failure() {
+  local _reason="${1:-scope-anchor-missing}"
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review prelaunch-failure \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --reason "$_reason"
 }
 
-_step3_review_stage_panel_init_failed() {
-  :
-}
-
-# #4489: Guarantee the Step 3 completion sentinel on every terminal exit of this
-# background entrypoint. hook-bg-poll-guard.sh gates on .completed/step-3-terminal
-# and releases a live design-step3-review marker as soon as the current wrapper
-# pass has persisted .step3-review-result.env. The wrapper clears stale terminal
-# sentinels before marker start; this trap may recreate step-3-terminal only when
-# the loop wrote the current-pass persist sidecar.
-# Writes ONLY step-3, never step-3.5: step-3.5 is a deferred Gate C / pause-resume
-# gate (design_pause.py step resolution, the Gate B post-apply idempotency guard,
-# design-step3b-entry.sh). Creating it here would skip Gate B on apply-pending
-# exits (main-agent-apply-required, per-round-approval-required). Idempotent and
-# best-effort: only creates a missing sentinel and never alters $?.
-_step3_review_should_guarantee_step3() {
-  if [ -e "$DESIGN_TMPDIR/.completed/step-3" ]; then
-    return 0
+step3_review_child_args() {
+  printf '%s\0' bash "$0" --run-loop-child --plugin-root "$CLAUDE_PLUGIN_ROOT"
+  if [ -n "${SESSION_ENV_PATH:-}" ]; then
+    printf '%s\0' --session-env-path "$SESSION_ENV_PATH"
   fi
-  if [[ ! -f "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" || -L "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" || ! -r "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ]]; then
-    return 1
+  if [ -n "${CLAUDE_PID:-}" ]; then
+    printf '%s\0' --claude-pid "$CLAUDE_PID"
   fi
-  if [[ ! -f "$DESIGN_TMPDIR/.step3-review-result.env" || -L "$DESIGN_TMPDIR/.step3-review-result.env" || ! -r "$DESIGN_TMPDIR/.step3-review-result.env" ]]; then
-    return 1
+  if [ "$STARTING_ROUND_SEEN" = true ]; then
+    printf '%s\0' --starting-round "$STARTING_ROUND"
   fi
-  local _status=""
-  while IFS= read -r _line || [[ -n "$_line" ]]; do
-    case "$_line" in
-      STEP3_REVIEW_LOOP_STATUS=*) _status="${_line#STEP3_REVIEW_LOOP_STATUS=}" ;;
-    esac
-  done <"$DESIGN_TMPDIR/.step3-review-result.env"
-  case "$_status" in
-    complete|cap-hit|panel-failed|panel-init-failed|tally-error|degraded-empty-collector|postplan-failed)
-      return 0
-      ;;
-    *)
-      return 1
-      ;;
-  esac
-}
-
-_step3_review_guarantee_completed_sentinels() {
-  [ -n "${DESIGN_TMPDIR:-}" ] && [ -d "${DESIGN_TMPDIR:-}" ] || return 0
-  mkdir -p "$DESIGN_TMPDIR/.completed" 2>/dev/null || return 0
-  if _step3_review_should_guarantee_step3; then
-    [ -e "$DESIGN_TMPDIR/.completed/step-3" ] || : >"$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  if [ "$RESUME_PHASE_SEEN" = true ]; then
+    printf '%s\0' --phase "$RESUME_PHASE"
   fi
-  if [ -f "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ ! -L "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ] && [ -r "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" ]; then
-    [ -e "$DESIGN_TMPDIR/.completed/step-3-terminal" ] || : >"$DESIGN_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+  if [ "$RESUME_FINDINGS_FILE_SEEN" = true ]; then
+    printf '%s\0' --findings-file "$RESUME_FINDINGS_FILE"
   fi
-  return 0
-}
-
-_step3_review_guarantee_post_loop_exit() {
-  local _exit_rc=$?
-  trap - EXIT TERM HUP INT
-  rm -f "$DESIGN_TMPDIR/.bg-wait-active" 2>/dev/null || true
-  _step3_review_guarantee_completed_sentinels
-  exit "$_exit_rc"
-}
-
-_step3_review_teardown_loop_group() {
-  local _pid="${1:-}"
-  [[ -n "$_pid" ]] || return 0
-  [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] || return 0
-  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review teardown-loop-identity \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --pid "$_pid" >/dev/null 2>&1 || true
-}
-
-_step3_review_kill_tmpdir_processes() {
-  local _cli=""
-  [[ -n "${CLAUDE_PLUGIN_ROOT:-}" ]] || return 0
-  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
-  command -v python3 >/dev/null 2>&1 || return 0
-  _cli="${CLAUDE_PLUGIN_ROOT}/python/cli.py"
-  [[ -f "$_cli" ]] || return 0
-  python3 "$_cli" session kill-background-processes --design-tmpdir "$DESIGN_TMPDIR" >/dev/null 2>&1 || true
-}
-
-_step3_review_signal_exit() {
-  _step3_review_external_signal="${1:-signal}"
-  _step3_review_external_signal_rc="${2:-143}"
-  exit "$_step3_review_external_signal_rc"
-}
-
-_step3_review_write_detached_marker() {
-  local _pid="${1:-}" _signal="${2:-}" _stdout_file="${3:-}" _detached_at_epoch="${4:-}" _marker _tmp
-  [[ -n "${DESIGN_TMPDIR:-}" ]] || return 0
-  [[ -n "$_pid" ]] || return 0
-  _marker="$DESIGN_TMPDIR/.step3-wrapper-detached"
-  _tmp="${_marker}.tmp.$$"
-  [[ -n "$_detached_at_epoch" ]] || _detached_at_epoch="$(date +%s)"
-  if {
-    printf 'PID=%s\n' "$_pid"
-    printf 'SIGNAL=%s\n' "$_signal"
-    printf 'STDOUT_FILE=%s\n' "$_stdout_file"
-    printf 'DETACHED_AT_EPOCH=%s\n' "$_detached_at_epoch"
-  } >"$_tmp" 2>/dev/null && mv -f "$_tmp" "$_marker" 2>/dev/null && [ -f "$_marker" ]; then
-    return 0
+  if [ "${POSTPLAN_OPERATOR_CONTINUE:-false}" = true ]; then
+    printf '%s\0' --postplan-operator-continue
   fi
-  rm -f "$_tmp" "$_marker" 2>/dev/null || true
-  return 1
 }
 
-_step3_review_marker_value() {
-  local _key="$1" _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _line
-  [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
-  while IFS= read -r _line || [[ -n "$_line" ]]; do
-    case "$_line" in
-      "$_key="*) printf '%s\n' "${_line#*=}"; return 0 ;;
-    esac
-  done <"$_marker"
-  return 1
-}
+if [ -z "${DESIGN_TMPDIR:-}" ] || [ ! -d "$DESIGN_TMPDIR" ]; then
+  printf '%s\n' "/design wrapper: DESIGN_TMPDIR required" >&2
+  exit 1
+fi
+DESIGN_TMPDIR="$(cd "$DESIGN_TMPDIR" && pwd -P)"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" session validate-design-tmpdir "$DESIGN_TMPDIR" || exit 2
 
-_step3_review_file_mtime_ns() {
-  local _path="$1"
-  [ -f "$_path" ] && [ ! -L "$_path" ] || return 1
-  python3 -c 'import os,sys; print(os.stat(sys.argv[1]).st_mtime_ns)' "$_path" 2>/dev/null
-}
+if [ "$READ_RESULT_ENV" = true ]; then
+  exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status --design-tmpdir "$DESIGN_TMPDIR" --read-result-env
+fi
 
-_step3_review_result_env_present() {
-  local _identity="$DESIGN_TMPDIR/.step3-loop-identity.json" _since_ns="" _mtime_ns=""
-  [ -f "$DESIGN_TMPDIR/.step3-review-result.env" ] && [ ! -L "$DESIGN_TMPDIR/.step3-review-result.env" ] || return 1
-  command grep -Eq '^(STEP3_REVIEW_LOOP_STATUS=.+|LOOP_STATUS=zero-findings-degraded-panel)$' "$DESIGN_TMPDIR/.step3-review-result.env" || return 1
-  _since_ns="$(_step3_review_file_mtime_ns "$_identity" || true)"
-  [ -n "$_since_ns" ] || return 1
-  _mtime_ns="$(_step3_review_file_mtime_ns "$DESIGN_TMPDIR/.step3-review-result.env" || true)"
-  [ -n "$_mtime_ns" ] || return 1
-  [ "$_mtime_ns" -ge "$_since_ns" ] || return 1
-}
+step3_review_validate_resume_state
+if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ]; then
+  step3_review_write_resume_state
+fi
+[ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 
-_step3_review_detached_stdout_file() {
-  local _stdout_file="${1:-}" _fallback="$2" _empty_tmp=""
-  if [ -n "$_stdout_file" ] && [ -f "$_stdout_file" ] && [ ! -L "$_stdout_file" ]; then
-    printf '%s\n' "$_stdout_file"
-    return 0
+if [ "$RUN_LOOP_CHILD" = false ]; then
+  _result_env="$DESIGN_TMPDIR/bgjob/design-step3-review.result.env"
+  if [ -L "$_result_env" ]; then
+    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must not be a symlink' >&2
+    exit 1
   fi
-  _empty_tmp="$(mktemp "${TMPDIR:-/tmp}/larch-step3-reattach-stdout.XXXXXX")" || {
-    printf '%s\n' "$_fallback"
-    return 0
+  if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
+    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must be a regular file' >&2
+    exit 1
+  fi
+  if [ -f "$_result_env" ]; then
+    exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+      --step design-step3-review \
+      --tmpdir "$DESIGN_TMPDIR" \
+      --max-wait-s 0
+  fi
+  _registry_state="$(step3_review_bgjob_registry_state)" || {
+    printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
+    exit 2
   }
-  printf '%s\n' "$_empty_tmp"
-}
+  if [ "$_registry_state" = live ]; then
+    exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+      --step design-step3-review \
+      --tmpdir "$DESIGN_TMPDIR" \
+      --max-wait-s 0
+  fi
+  if [ "$STEP3_REVIEW_HAS_RESUME_STATE" = false ]; then
+    rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  else
+    rm -f "$DESIGN_TMPDIR/.completed/step-3" 2>/dev/null || true
+  fi
+  mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
+  rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
+  rm -f "$DESIGN_TMPDIR/bgjob/design-step3-review.result.env" 2>/dev/null || true
+  step3_review_recreate_merge_env
 
-_step3_review_cleanup_detached_marker() {
-  local _stdout_file="${1:-}" _base
-  rm -f "$DESIGN_TMPDIR/.step3-wrapper-detached" "$DESIGN_TMPDIR/.step3-loop-identity.json" 2>/dev/null || true
-  if [ -n "$_stdout_file" ] && [ -f "$_stdout_file" ] && [ ! -L "$_stdout_file" ]; then
-    _base="$(basename "$_stdout_file")"
-    case "$_base" in
-      larch-step3-review-stdout.*|larch-step3-reattach-stdout.*) rm -f "$_stdout_file" 2>/dev/null || true ;;
-    esac
+  _owner_args=()
+  if [ -n "${CLAUDE_PID:-}" ]; then
+    _owner_args=(--owner-pid "$CLAUDE_PID")
   fi
-}
-
-_step3_review_reattach_detached_loop() {
-  local _marker="$DESIGN_TMPDIR/.step3-wrapper-detached" _pid="" _stdout_file="" _signal="" _detached_at_epoch="" _normalize_stdout="" _rc=0 _await_rc=0 _active="$DESIGN_TMPDIR/.step3-reattach-active"
-  [ -f "$_marker" ] && [ ! -L "$_marker" ] || return 1
-  _pid="$(_step3_review_marker_value PID || true)"
-  _stdout_file="$(_step3_review_marker_value STDOUT_FILE || true)"
-  _signal="$(_step3_review_marker_value SIGNAL || true)"
-  _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
-  case "$_pid" in
-    ''|*[!0-9]*)
-      _step3_review_cleanup_detached_marker "$_stdout_file"
-      return 1
-      ;;
-  esac
-  _loop_pid="$_pid"
-  _step3_review_loop_identity_ready=true
-  : >"$_active" 2>/dev/null || true
-  rm -f "$_marker" 2>/dev/null || true
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review await-loop-identity \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --pid "$_pid" \
-    --reattach >/dev/null 2>&1 || _await_rc=$?
-  if [ "$_await_rc" -ne 0 ]; then
-    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
-    rm -f "$_active" 2>/dev/null || true
-    _loop_pid=""
-    return 1
-  fi
-  rm -f "$_active" 2>/dev/null || true
-  if ! _step3_review_result_env_present; then
-    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
-    _loop_pid=""
-    return 1
-  fi
-  _step3_review_kill_tmpdir_processes
-  _normalize_stdout="$(_step3_review_detached_stdout_file "$_stdout_file" "$_plan_review_stdout_file")"
-  python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
-    --design-tmpdir "$DESIGN_TMPDIR" \
-    --stdout-file "$_normalize_stdout" \
-    --loop-rc 0 || _rc=$?
-  if [ "$_rc" -ne 0 ]; then
-    _step3_review_write_detached_marker "$_pid" "$_signal" "$_stdout_file" "$_detached_at_epoch" || true
-    rm -f "$_active" 2>/dev/null || true
-    _loop_pid=""
-    exit "$_rc"
-  fi
-  _step3_review_cleanup_detached_marker "$_stdout_file"
-  _step3_review_cleanup_detached_marker "$_normalize_stdout"
-  rm -f "$_plan_review_stdout_file" "$_active" 2>/dev/null || true
-  _loop_pid=""
-  exit 0
-}
-
-# #6258: The detach gate below normally reads the cached
-# _step3_review_loop_identity_ready flag, which is set one command AFTER
-# write-loop-identity creates .step3-loop-identity.json. A TERM/HUP/INT delivered
-# while write-loop-identity is still running is deferred by bash until that command
-# returns -- after the identity file exists but before the flag is set -- so the
-# flag alone races and can drop the detach for a live, reattachable loop (CI flake
-# in test-design-step3-review's external-TERM case). Consult the on-disk identity
-# file, the reattach source of truth, as a race-proof fallback.
-_step3_review_loop_identity_on_disk() {
-  [ -n "${DESIGN_TMPDIR:-}" ] || return 1
-  [ -f "$DESIGN_TMPDIR/.step3-loop-identity.json" ] && [ ! -L "$DESIGN_TMPDIR/.step3-loop-identity.json" ]
-}
-
-_step3_review_cleanup() {
-  local _rc=$? _detached_at_epoch=""
-  trap - EXIT TERM HUP INT
-  rm -f "$DESIGN_TMPDIR/.bg-wait-active" "$DESIGN_TMPDIR/.step3-reattach-active" 2>/dev/null || true
-  _step3_review_guarantee_completed_sentinels  # #4489: sentinel before exit
-  if [[ -n "${_loop_pid:-}" ]]; then
-    if [[ -n "${_step3_review_external_signal:-}" ]]; then
-      _detached_at_epoch="$(_step3_review_marker_value DETACHED_AT_EPOCH || true)"
-      if [ "${_step3_review_loop_identity_ready:-false}" = true ] || _step3_review_loop_identity_on_disk; then
-        if _step3_review_write_detached_marker "$_loop_pid" "$_step3_review_external_signal" "$_plan_review_stdout_file" "$_detached_at_epoch"; then
-          disown -h "$_loop_pid" 2>/dev/null || true
-          exit "$_rc"
-        fi
-      fi
-    fi
-    _step3_review_teardown_loop_group "$_loop_pid"
-    _step3_review_kill_tmpdir_processes
-    wait "$_loop_pid" 2>/dev/null || true
-  fi
-  exit "$_rc"
-}
+  _child_argv_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-child-argv.XXXXXX")" || {
+    printf '%s\n' 'BGJOB_ERROR=child-argv-tempfile-failed'
+    exit 2
+  }
+  step3_review_child_args >"$_child_argv_file"
+  # Bash 3.2 has no readarray; use xargs -0 to preserve the validated argv cells.
+  exec xargs -0 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+    --step design-step3-review \
+    --tmpdir "$DESIGN_TMPDIR" \
+    --budget-s 21600 \
+    "${_owner_args[@]}" \
+    --sentinel "$DESIGN_TMPDIR/.completed/step-3-terminal" \
+    --merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env" \
+    -- <"$_child_argv_file"
+fi
 
 if ! python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" scope-anchor validate \
   --mode design \
   --design-tmpdir "$DESIGN_TMPDIR" \
   --path "$DESIGN_TMPDIR/plan-review-scope-anchor.txt" >/dev/null; then
   larch_err "**⚠ Step 3: plan-review-scope-anchor.txt is missing, empty, invalid, or outside DESIGN_TMPDIR; treating plan review as panel-init-failed before launch**"
-  _step3_review_write_prelaunch_failure panel-init-failed scope-anchor-missing
-  _step3_review_stage_panel_init_failed scope-anchor-missing
+  step3_review_prelaunch_failure scope-anchor-missing
   printf '%s\n' 'SUMMARY_OUTCOME=failed-judge-panel'
   exit 1
 fi
 
-trap _step3_review_cleanup EXIT
-trap '_step3_review_signal_exit TERM 143' TERM
-trap '_step3_review_signal_exit HUP 129' HUP
-trap '_step3_review_signal_exit INT 130' INT
-_step3_review_reattach_rc=0
-if [ "$_step3_review_has_detached_marker" = true ]; then
-  _step3_review_reattach_detached_loop || _step3_review_reattach_rc=$?
-  if [ "$_step3_review_reattach_rc" -ne 0 ]; then
-    exit "$_step3_review_reattach_rc"
-  fi
-fi
-rm -f "$DESIGN_TMPDIR/.step3-wrapper-detached" 2>/dev/null || true
-# Python owns the process-group setup.
-# Bash owns wait, status capture, identity-validated teardown delegation, and fallback tmpdir cleanup.
-# The dedicated loop stderr log remains the only stderr quarantine for the worker and children.
+_plan_review_stdout_file="$(mktemp "${TMPDIR:-/tmp}/larch-step3-review-stdout.XXXXXX")" || {
+  printf '%s\n' "**⚠ Step 3: could not allocate plan-review stdout capture; aborting plan review**" >&2
+  exit 1
+}
+
 set +e
 if [ -n "$STARTING_ROUND" ]; then
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
@@ -599,41 +389,17 @@ if [ -n "$STARTING_ROUND" ]; then
     --starting-round "$STARTING_ROUND" \
     --new-process-group \
     --orphan-timeout-s 7200 \
-    >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
+    >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"
 else
   python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review run \
     --design-tmpdir "$DESIGN_TMPDIR" \
     --mode loop \
     --new-process-group \
     --orphan-timeout-s 7200 \
-    >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log" &
+    >"$_plan_review_stdout_file" 2>"${DESIGN_TMPDIR}/plan-review-loop-stderr.log"
 fi
-_loop_pid=$!
-python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review write-loop-identity \
-  --design-tmpdir "$DESIGN_TMPDIR" \
-  --pid "$_loop_pid" \
-  --expected-signature "plan-review run" >/dev/null 2>&1 || true
-if [ -f "$DESIGN_TMPDIR/.step3-loop-identity.json" ] && [ ! -L "$DESIGN_TMPDIR/.step3-loop-identity.json" ]; then
-  _step3_review_loop_identity_ready=true
-fi
-wait "$_loop_pid"
 _plan_review_rc=$?
 set -e
-rm -f "$DESIGN_TMPDIR/.step3-loop-identity.json" 2>/dev/null || true
-_loop_pid=""
-_step3_review_kill_tmpdir_processes
-# #4489 / #4724: loop teardown is done; from here every terminal exit (config-error,
-# postplan-failed, panel-init-failed, or the normal complete/cap-hit/main-agent
-# fall-through) must leave .completed/step-3 in place. The hook-release sentinel
-# .completed/step-3-terminal is written only after the current wrapper pass
-# persists the result envelope. Replace the loop-cleanup trap with the post-loop
-# cleanup-plus-guarantee trap in a single atomic assignment: bash overwrites the
-# active EXIT handler in one step, so there is no window where no EXIT trap is
-# registered. The replacement trap owns both .bg-wait-active removal and the
-# completion-sentinel guarantee. The earlier two-step `trap - EXIT` removal
-# followed by a re-arm left a gap in which a crash or signal could skip the
-# completion sentinel (#4724).
-trap _step3_review_guarantee_post_loop_exit EXIT
 _step3_normalize_rc=0
 python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review normalize-status \
   --design-tmpdir "$DESIGN_TMPDIR" \

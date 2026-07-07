@@ -45,7 +45,7 @@ LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
-RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
+RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
 DESIGN_EMPTY_OUTPUT_ANCHOR='5. **NEVER act on empty-output or prefix-identical repeat'
 SHARED_IMMEDIATE_WAIT_ANCHOR='After the background launch ack'
 
@@ -269,15 +269,15 @@ check_context "$SHARED_DESIGN_WAIT_MD" \
     'end the turn without probing'
 
 check_context "$DESIGN_MD" \
-    "/design Verbosity Control references the shared wait anchor" \
-    '**Post-notification for Step 3 waits**' \
+    "/design Verbosity Control references the bgjob wait anchor" \
+    '**Step 3 foreground waits**' \
     "8" \
-    "$SHARED_REF"
+    'shared bgjob wait contract'
 check_context "$DESIGN_MD" \
-    "/design Verbosity Control uses the Step 3 post-notification load contract" \
-    '**Post-notification for Step 3 waits**' \
+    "/design Verbosity Control uses the Step 3 bgjob wait contract" \
+    '**Step 3 foreground waits**' \
     "8" \
-    "$LOAD_LITERAL Step 3 post-notification sequence"
+    'shared bgjob wait contract'
 
 check_context "$DESIGN_MD" \
     "/design Final summary block references the shared wait anchor" \
@@ -310,11 +310,11 @@ check_context_before "$DESIGN_MD" \
     "20" \
     "$LOAD_LITERAL Immediate-background wait rule"
 check_context_before_step3_launch "$DESIGN_MD" \
-    "/design Step 3 launch load contract precedes its background fence" \
+    "/design Step 3 launch load contract precedes its bgjob fence" \
     "20" \
-    "$LOAD_LITERAL Step 3 task notification boundary"
+    'shared bgjob wait contract'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference precedes its background fence" \
+    "/design Step 3 resume back-reference precedes its bgjob fence" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
     "$RESUME_BACKREF_LITERAL"
@@ -325,51 +325,51 @@ check_context_before "$DESIGN_MD" \
     "$LOAD_LITERAL Immediate-background wait rule"
 
 check_context_before_step3_launch "$DESIGN_MD" \
-    "/design Step 3 launch references the shared wait anchor" \
+    "/design Step 3 launch references the bgjob wait anchor" \
     "20" \
-    "$SHARED_REF"
+    'shared bgjob wait contract'
 check_context_before_step3_launch "$DESIGN_MD" \
-    "/design Step 3 launch loads the task notification boundary" \
+    "/design Step 3 launch loads bgjob-wait contract" \
     "20" \
-    "$LOAD_LITERAL Step 3 task notification boundary"
+    'shared bgjob wait contract'
 check_context_before_step3_launch "$DESIGN_MD" \
-    "/design Step 3 launch loads the immediate-background rule" \
-    "20" \
-    "$LOAD_LITERAL Immediate-background wait rule"
+    "/design Step 3 launch pins BGJOB_RC gate" \
+    "35" \
+    'BGJOB_RC=0'
 check_context_before_step3_launch "$DESIGN_MD" \
-    "/design Step 3 launch loads the post-notification sequence" \
-    "20" \
-    "$LOAD_LITERAL Step 3 post-notification sequence"
+    "/design Step 3 launch names bgjob result env" \
+    "35" \
+    'bgjob/design-step3-review.result.env'
 check_context_before_step3_launch "$DESIGN_MD" \
     "/design Step 3 launch keeps the terminal sentinel parameter" \
     "20" \
     '.completed/step-3-terminal'
 
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference names task-notification" \
+    "/design Step 3 resume back-reference names bgjob wait" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    'Step 3 task-notification'
+    'bgjob wait'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference names immediate-background" \
+    "/design Step 3 resume back-reference names BGJOB_RC" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    'immediate-background'
+    'BGJOB_RC=0'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference names Parameters" \
+    "/design Step 3 resume back-reference names result env" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    'Parameters'
+    'result-env'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference names post-notification" \
+    "/design Step 3 resume back-reference names rejoin" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    'post-notification'
+    'start/rejoin'
 check_context_before "$DESIGN_MD" \
-    "/design Step 3 resume back-reference names terminal-sentinel" \
+    "/design Step 3 resume back-reference names terminal-sentinel compatibility" \
     "$STEP3_RESUME_ANCHOR" \
     "20" \
-    'terminal-sentinel'
+    'terminal-sentinel compatibility'
 check_context_before "$DESIGN_MD" \
     "/design Step 3 resume back-reference points at first-time fence" \
     "$STEP3_RESUME_ANCHOR" \
@@ -581,14 +581,14 @@ check_absent "$ORCH_NEVER_MD" \
     'prefix the probe with a single `DESIGN_TMPDIR=<absolute-path>;` assignment'
 
 check "$DESIGN_MD" \
-    "/design Step 3 pins ordered premature-notification routing before envelope parse" \
-    'Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same'
+    "/design Step 3 pins WAIT foreground-only routing" \
+    'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep.'
 check "$DESIGN_MD" \
-    "/design Step 3 documents same-batch silent yield" \
-    'if the denial or clamp happened while the same-batch notifications are still queued, ignore the rest of that batch too'
+    "/design Step 3 documents BGJOB_RC success gate" \
+    'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 3 parse the result env.'
 check "$DESIGN_MD" \
-    "/design Step 3 proceeds only after terminal sentinel before envelope parse" \
-    'Run the post-notification sequence only after `[ -f "$DESIGN_TMPDIR/.completed/step-3-terminal" ]`'
+    "/design Step 3 rejects non-result success signals" \
+    'never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone'
 
 check "$DESIGN_MD" \
     "/design Step 3 requires step-3 sentinel before Step 3b routing" \

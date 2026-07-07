@@ -1725,7 +1725,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "C901",
     "qualified_symbol": "read_result_env_main",
-    "metric": 17
+    "metric": 15
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1749,7 +1749,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0911",
     "qualified_symbol": "read_result_env_main",
-    "metric": 8
+    "metric": 7
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1773,7 +1773,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0912",
     "qualified_symbol": "read_result_env_main",
-    "metric": 16
+    "metric": 14
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -1809,7 +1809,7 @@
     "file": "larch/design/design_terminal.py",
     "code": "PLR0915",
     "qualified_symbol": "read_result_env_main",
-    "metric": 55
+    "metric": 52
   },
   {
     "file": "larch/design/design_terminal.py",
@@ -5283,7 +5283,7 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "C901",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 16
+    "metric": 17
   },
   {
     "file": "larch/review/plan_review_normalize.py",
@@ -5295,13 +5295,13 @@
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0912",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 15
+    "metric": 16
   },
   {
     "file": "larch/review/plan_review_normalize.py",
     "code": "PLR0915",
     "qualified_symbol": "normalize_step3_status_main",
-    "metric": 65
+    "metric": 67
   },
   {
     "file": "larch/review/plan_review_panel.py",

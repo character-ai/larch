@@ -106,7 +106,14 @@ def ensure_under(path: Path, root: Path, *, label: str) -> Path:
 
 def bgjob_dir(tmpdir: Path) -> Path:
     root = checked_dir(tmpdir, label="tmpdir")
-    return root / config.BGJOB_TMP_SUBDIR
+    candidate = root / config.BGJOB_TMP_SUBDIR
+    if candidate.is_symlink():
+        msg = f"bgjob dir must not be a symlink: {candidate}"
+        raise ValueError(msg)
+    if candidate.exists() and not candidate.is_dir():
+        msg = f"bgjob dir is not a directory: {candidate}"
+        raise ValueError(msg)
+    return candidate
 
 
 def result_env_path(*, tmpdir: Path, step: str) -> Path:

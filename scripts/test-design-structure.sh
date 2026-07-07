@@ -50,7 +50,7 @@ LOAD_LITERAL='Read and apply ##'
 CONFIRMATION_COMPLETION='confirmation purpose: completion'
 CONFIRMATION_DURABLE_COMPLETION='confirmation purpose: durable completion'
 WAIT_WHEN_ABSENT='`WAIT` when absent is expected'
-RESUME_BACKREF_LITERAL='Use the same Step 3 task-notification, immediate-background, Parameters, post-notification, and terminal-sentinel contract as the first-time Step 3 review fence above.'
+RESUME_BACKREF_LITERAL='Use the same Step 3 bgjob start/rejoin, chunked `bgjob wait`, `BGJOB_RC=0`, result-env, and terminal-sentinel compatibility contract as the first-time Step 3 review fence above.'
 FINAL_SUMMARY_FENCE_ANCHOR='design-step-final-summary.sh --outcome'
 STEP3_RESUME_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step3-review.sh --starting-round'
 STEP5C_ANCHOR='"$HOME/.cache/larch/sessions/design-run-$PPID.sh" design-step5c.sh'
@@ -240,10 +240,10 @@ contains "$ORCH_NEVER_MD" 'For `/implement` Step 8, run one foreground non-sleep
 contains "$ORCH_NEVER_MD" 'hook-allowed only while `implement-step8-ship` is live and clamped when rc stays absent' 'Shared orchestrator never must document Step 8 hook clamp'
 
 check_context "$SKILL_MD" \
-  '/design Verbosity Control uses the Step 3 post-notification load contract' \
-  '**Post-notification for Step 3 waits**' \
+  '/design Verbosity Control uses the Step 3 bgjob wait contract' \
+  '**Step 3 foreground waits**' \
   "8" \
-  "$LOAD_LITERAL Step 3 post-notification sequence"
+  'shared bgjob wait contract'
 check_context "$SKILL_MD" \
   '/design Final summary block uses the immediate-background load contract' \
   '**When**: after `DESIGN_TMPDIR` exists' \
@@ -265,29 +265,29 @@ check_context_before "$SKILL_MD" \
   "20" \
   "$LOAD_LITERAL Immediate-background wait rule"
 check_context_before_step3_launch "$SKILL_MD" \
-  '/design Step 3 launch load contract precedes its background fence' \
+  '/design Step 3 launch load contract precedes its bgjob fence' \
   "20" \
-  "$LOAD_LITERAL Step 3 task notification boundary"
+  'shared bgjob wait contract'
 check_context_before "$SKILL_MD" \
   '/design Step 5c load contract precedes its background fence' \
   "$STEP5C_ANCHOR" \
   "20" \
   "$LOAD_LITERAL Immediate-background wait rule"
 check_context_before_step3_launch "$SKILL_MD" \
-  '/design Step 3 launch loads the task notification boundary' \
+  '/design Step 3 launch loads bgjob-wait contract' \
   "20" \
-  "$LOAD_LITERAL Step 3 task notification boundary"
+  'shared bgjob wait contract'
 check_context_before_step3_launch "$SKILL_MD" \
-  '/design Step 3 launch loads the immediate-background rule' \
-  "20" \
-  "$LOAD_LITERAL Immediate-background wait rule"
+  '/design Step 3 launch pins BGJOB_RC gate' \
+  "35" \
+  'BGJOB_RC=0'
 check_context_before_step3_launch "$SKILL_MD" \
-  '/design Step 3 launch loads the post-notification sequence' \
-  "20" \
-  "$LOAD_LITERAL Step 3 post-notification sequence"
-contains "$SKILL_MD" 'Before parsing the envelope after notification: exactly one classification `Read` of the active `tasks/*.output`; missing/whitespace-only bytes → silent yield (zero prose/tools); prefix-identical repeat non-empty bytes (first 200 chars) for the same wait with `.completed/step-3-terminal` absent → same' 'Design Step 3 post-loop routing must pin ordered repeat handling'
-contains "$SKILL_MD" 'if the denial or clamp happened while the same-batch notifications are still queued, ignore the rest of that batch too' 'Design Step 3 post-loop routing must pin same-batch silent yield'
-contains "$SKILL_MD" 'denied classification `Read` → same, no retry until the next `<task-notification>`' 'Design Step 3 post-loop routing must pin denied classification Read silent yield'
+  '/design Step 3 launch names bgjob result env' \
+  "35" \
+  'bgjob/design-step3-review.result.env'
+contains "$SKILL_MD" 'If stdout contains `BGJOB_STATUS=WAIT`, the next action is the identical wait command with no intervening prose, reads, Monitor, TaskOutput, or sleep.' 'Design Step 3 WAIT handling must be chunked and foreground-only'
+contains "$SKILL_MD" 'Only after `BGJOB_STATUS=DONE` with `BGJOB_RC=0` may Step 3 parse the result env.' 'Design Step 3 DONE handling must require BGJOB_RC=0'
+contains "$SKILL_MD" 'never continue from launcher stdout, `DONE` alone, `bgjob wait` shell exit 0, notification-time wrapper stdout, or the compatibility sentinel alone' 'Design Step 3 post-loop routing must reject non-result success signals'
 contains "$SKILL_MD" 'A prefix-identical repeat of non-empty task-output bytes (first 200 chars) for the same Step 5c wait with `.completed/step-5c-terminal` absent also ends silently.' 'Design Step 5c must pin repeat silent-yield routing'
 check_context_before "$SKILL_MD" \
   '/design Step 5c uses the immediate-background load contract' \
@@ -300,7 +300,7 @@ check_context_before "$SKILL_MD" \
   "18" \
   "$CONFIRMATION_COMPLETION"
 check_context_before "$SKILL_MD" \
-  '/design Step 3 resume back-reference precedes its background fence' \
+  '/design Step 3 resume back-reference precedes its bgjob fence' \
   "$STEP3_RESUME_ANCHOR" \
   "20" \
   "$RESUME_BACKREF_LITERAL"

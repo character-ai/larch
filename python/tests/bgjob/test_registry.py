@@ -2,11 +2,7 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    import pytest
-
+import pytest
 
 from larch.bgjob import model, registry
 from larch.core import process_identity
@@ -80,6 +76,15 @@ def test_registry_rejects_escaped_result_path(tmp_path: Path, monkeypatch: pytes
     path = registry.write_entry(entry)
 
     assert registry.read_entry(path) is None
+
+
+def test_result_env_path_rejects_symlinked_bgjob_dir(tmp_path: Path) -> None:
+    outside = tmp_path.parent / "bgjob-outside"
+    outside.mkdir()
+    (tmp_path / "bgjob").symlink_to(outside)
+
+    with pytest.raises(ValueError, match="bgjob dir"):
+        _ = model.result_env_path(tmpdir=tmp_path, step="demo-step")
 
 
 def test_default_run_id_depends_only_on_tmpdir(tmp_path: Path) -> None:
