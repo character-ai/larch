@@ -9,7 +9,7 @@
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: code +2055/-114, larch-logs +1653/-0
+- **Lines (PR diff)**: code +2055/-114, larch-logs +1657/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -89,7 +89,3 @@ codex/apply              │                                ██████�
 7. cursor/testing: 5
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
