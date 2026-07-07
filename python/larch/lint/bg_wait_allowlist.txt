@@ -11,6 +11,4 @@ skills/implement/references/ship-pr-ci-fix.md	legacy CI-fix relaunch prose retai
 skills/implement/references/ship-pr-exit-matrix.md	legacy route-exit relaunch prose retained until Step 8 migration completes.
 skills/implement/references/stall-recovery.md	legacy stall-recovery relaunch prose retained until bgjob retry migration completes.
 skills/implement/scripts/step-8-ship.md	legacy wrapper contract retained until Step 8 migration completes.
-skills/research/references/research-phase.md	legacy research lane launch prose retained until research migration completes.
-skills/research/references/validation-phase.md	legacy validation lane launch prose retained until research migration completes.
 skills/shared/orchestrator-never.md	legacy anti-polling rule remains as compatibility defense until issue-2 cleanup.

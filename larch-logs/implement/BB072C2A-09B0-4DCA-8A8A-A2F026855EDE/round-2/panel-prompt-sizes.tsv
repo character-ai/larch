@@ -1,0 +1,14 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+implement Step 5	phase1	2	dyn-dyn-bgjob-contract-codex	specialist	codex	dyn-dyn-bgjob-contract-codex-output.txt	45492	11373	29551	7388	15941	3986		0	0
+implement Step 5	phase1	2	dyn-dyn-bgjob-contract	specialist	cursor	dyn-dyn-bgjob-contract-output.txt	45492	11373	29551	7388	15941	3986		0	0
+implement Step 5	phase1	2	edge-cases	specialist	cursor	cursor-specialist-edge-cases-output.txt	49115	12279	33757	8440	15358	3840	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	2	correctness	specialist	cursor	cursor-specialist-correctness-output.txt	48643	12161	33285	8322	15358	3840	agents/reviewer-correctness.md	5788	1447
+implement Step 5	phase1	2	testing	specialist	cursor	cursor-specialist-testing-output.txt	48557	12140	33199	8300	15358	3840	agents/reviewer-testing.md	5764	1441
+implement Step 5	phase1	2	edge-cases	specialist	codex	codex-specialist-edge-cases-output.txt	49115	12279	33757	8440	15358	3840	agents/reviewer-edge-cases.md	6297	1575
+implement Step 5	phase1	2	testing	specialist	codex	codex-specialist-testing-output.txt	48557	12140	33199	8300	15358	3840	agents/reviewer-testing.md	5764	1441
+implement Step 5	phase1	2	correctness	specialist	codex	codex-specialist-correctness-output.txt	48643	12161	33285	8322	15358	3840	agents/reviewer-correctness.md	5788	1447
+review Step 2	phase1	2	aggregator	aggregator	codex	aggregator-output.txt	28091	7023	4140	1035	23951	5988	agents/orchestrator-aggregator.md	4363	1091
+implement Step 5	phase1	2	voter-1	voter	codex	codex-validity-vote-output.txt	12589	3148	8456	2114	4133	1034		0	0
+implement Step 5	phase1	2	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	12935	3234	8802	2201	4133	1034		0	0
+implement Step 5	phase1	2	voter-3	voter	codex	codex-pragmatism-vote-output.txt	12646	3162	8513	2129	4133	1034		0	0
+review.fix_coder	review.fix_coder	2	implementer	implementer	codex	coder-output.log	1746	437	0	0	4003	1001		0	0

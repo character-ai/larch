@@ -133,7 +133,7 @@ The suffix is appended to the lane's angle base prompt at launch time.
 
 Print: `> **🔶 /research 1.3: lane-launch**`
 
-**Critical sequencing**: launch all four lanes in a single message — Codex Bash invocations (with `run_in_background: true`) AND any per-lane Claude `Agent` fallbacks together.
+**Critical sequencing**: launch all four lanes in a single message. For Codex lanes, call `bgjob start` once per lane from foreground Bash with a unique `--step` slug. For unavailable Codex lanes, launch the per-lane Claude `Agent` fallback in that same message. Do not use Claude background Bash launches.
 
 **Token telemetry (research lanes)**: every Claude `Agent` fallback (pre-launch when `codex_binary_available=false` AND every runtime-timeout replacement) writes a per-lane sidecar after the Agent return: `python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" token lane-write --phase research --lane <slot> --tool claude --total-tokens <N|unknown> --dir "$RESEARCH_TMPDIR"`. Stable slot names: `architecture`, `edge-cases`, `external-comparisons`, `security`. Non-fallback Codex lanes receive best-effort usage records from `launch-codex-exec.sh` (`${OUTPUT}.token-record` / events sidecar); Claude fallbacks remain the authoritative per-lane token tally path.
 
@@ -147,10 +147,29 @@ Print: `> **🔶 /research 1.3: lane-launch**`
 
 `RESEARCH_PROMPT_SEC` = ``"You are researching a codebase to answer this question: <RESEARCH_QUESTION>. Focus your investigation on the **security & threat surface** angle — injection vectors, authn/authz gaps, secret handling, crypto choices, deserialization risks, SSRF, path traversal, dependency CVEs, and any other security-relevant exposure. Explore the codebase to ground your findings with verifiable provenance (see (4)). Write 2-3 paragraphs covering: (1) key security findings — concrete threat surfaces and exposures, (2) relevant files/modules/areas (including dependency manifests and trust boundaries), (3) security risks, attacker scenarios, and mitigation feasibility, (4) Every concrete claim must carry provenance: a `file:line` reference for repo-internal claims, a fenced command + 1–3 lines of its output for behavior claims, or a URL for external claims. Do NOT modify files."``
 
-**Codex launch (per lane)** when `codex_binary_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`:
+**Codex launch (per lane)** when `codex_binary_available=true`. Substitute the lane's angle prompt literal into `<LANE_PROMPT>`.
+
+Per-lane bgjob mapping:
+
+| Slot | Step slug | Merge env | Result env | Output |
+|---|---|---|---|---|
+| `arch` | `--step research-arch` | `$RESEARCH_TMPDIR/.research-arch-merge.env` | `$RESEARCH_TMPDIR/bgjob/research-arch.result.env` | `$RESEARCH_TMPDIR/codex-research-arch-output.txt` |
+| `edge` | `--step research-edge` | `$RESEARCH_TMPDIR/.research-edge-merge.env` | `$RESEARCH_TMPDIR/bgjob/research-edge.result.env` | `$RESEARCH_TMPDIR/codex-research-edge-output.txt` |
+| `ext` | `--step research-ext` | `$RESEARCH_TMPDIR/.research-ext-merge.env` | `$RESEARCH_TMPDIR/bgjob/research-ext.result.env` | `$RESEARCH_TMPDIR/codex-research-ext-output.txt` |
+| `sec` | `--step research-sec` | `$RESEARCH_TMPDIR/.research-sec-merge.env` | `$RESEARCH_TMPDIR/bgjob/research-sec.result.env` | `$RESEARCH_TMPDIR/codex-research-sec-output.txt` |
+
+Truncate that lane's merge env immediately before every start, then launch:
 
 ```bash
-"${CLAUDE_PLUGIN_ROOT:?}/python/cli.py agent launch-codex-exec" \
+RESEARCH_LANE_MERGE_ENV="$RESEARCH_TMPDIR/.research-<slot>-merge.env"
+: > "$RESEARCH_LANE_MERGE_ENV"
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob start \
+  --step research-<slot> \
+  --tmpdir "$RESEARCH_TMPDIR" \
+  --budget-s 1860 \
+  --merge-result-env "$RESEARCH_LANE_MERGE_ENV" \
+  -- \
+  python3 "${CLAUDE_PLUGIN_ROOT:?}/python/cli.py" agent launch-codex-exec \
   --output "$RESEARCH_TMPDIR/codex-research-<slot>-output.txt" \
   --timeout 1800 \
   --workdir "$PWD" \
@@ -159,7 +178,7 @@ Print: `> **🔶 /research 1.3: lane-launch**`
   --prompt "<LANE_PROMPT>"
 ```
 
-`<slot>` is one of `arch` / `edge` / `ext` / `sec`. Use `run_in_background: true` and `timeout: 1860000` on the Bash tool call.
+`<slot>` is one of `arch` / `edge` / `ext` / `sec`. The foreground launcher stdout must be exactly `BGJOB_STATUS=STARTED STEP=research-<slot> PGID=<n>`.
 
 **Per-lane Claude fallback** when `codex_binary_available=false`: launch a Claude `Agent` subagent (no `subagent_type`) carrying the lane's angle prompt + per-lane suffix. Do NOT use `subagent_type: code-reviewer`.
 
@@ -169,13 +188,20 @@ Collect and validate research outputs using the shared collection script. Build 
 
 ```
 COLLECT_ARGS=()
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-arch-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-edge-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-ext-output.txt")
-[[ "$codex_binary_available" == true ]] && COLLECT_ARGS+=("$RESEARCH_TMPDIR/codex-research-sec-output.txt")
 ```
 
 **Zero-externals branch**: if `codex_binary_available=false` (all four lanes ran as Claude fallbacks), skip `python/cli.py agent collect-results` entirely. Proceed directly to Step 1.5 with the four Claude fallback outputs.
+
+For each Codex lane that was actually started, wait on its unique bgjob step before adding that output path to `COLLECT_ARGS`:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+  --step research-<slot> \
+  --tmpdir "$RESEARCH_TMPDIR" \
+  --max-wait-s 270
+```
+
+Use tool timeout `330000`. If stdout contains `BGJOB_STATUS=WAIT`, the next action is the same wait command for the same slot with no intervening prose, reads, monitors, probes, sleeps, or other tools. If stdout contains `BGJOB_STATUS=DEAD`, route that lane through the existing runtime fallback branch. If stdout contains `BGJOB_STATUS=DONE`, continue the lane as passed when either the DONE stdout KV block or `$RESEARCH_TMPDIR/bgjob/research-<slot>.result.env` contains `BGJOB_RC=0` and `STEP=research-<slot>`. Treat `BGJOB_RC=timeout`, `BGJOB_RC=orphaned`, any other non-zero `BGJOB_RC`, or a missing required KV as the lane's existing launch-class failure branch. When a lane passes the gate, append its fixed slot output path to `COLLECT_ARGS`; failed lanes are excluded and routed through Runtime Timeout Fallback before collection.
 
 Otherwise invoke the collector with substantive validation:
 
