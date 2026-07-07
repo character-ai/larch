@@ -578,6 +578,68 @@ def test_read_helpers_parse_workflow_json() -> None:
     assert [job.name for job in failed] == ["lint"]
 
 
+def test_run_list_filtered_builds_filters_and_parses_head_sha_event() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(
+                ("gh", "run", "list"),
+                0,
+                '[{"databaseId":12,"status":"completed","conclusion":"success","headSha":"abc","event":"push"}]',
+                "",
+                0.01,
+            ),
+        ],
+    )
+
+    runs = gh.run_list_filtered(
+        runner,
+        gh.WorkflowRunListFilters(
+            repo="o/r",
+            branch="main",
+            workflow="CI",
+            event="push",
+            status="completed",
+            commit="abc",
+            limit=2,
+        ),
+    )
+
+    assert runs[0].head_sha == "abc"
+    assert runs[0].event == "push"
+    assert runner.calls[0] == [
+        "gh",
+        "run",
+        "list",
+        "--repo",
+        "o/r",
+        "--limit",
+        "2",
+        "--json",
+        "databaseId,status,conclusion,headSha,event",
+        "--branch",
+        "main",
+        "--workflow",
+        "CI",
+        "--event",
+        "push",
+        "--status",
+        "completed",
+        "--commit",
+        "abc",
+    ]
+
+
+def test_run_list_filtered_raises_on_malformed_row() -> None:
+    runner = RecordingRunner(
+        responses=[
+            CommandResult(("gh", "run", "list"), 0, '[{"status":"completed"}]', "", 0.01),
+        ],
+    )
+
+    with pytest.raises(ShipError, match="databaseId"):
+        _ = gh.run_list_filtered(runner, gh.WorkflowRunListFilters(repo="o/r", branch="main"))
+
+
 def test_mutating_helpers_build_argv_without_retry() -> None:
     runner = RecordingRunner(
         responses=[

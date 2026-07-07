@@ -415,6 +415,20 @@ def test_agentic_fix_result_local_unfixable_prefixes_detail(tmp_path: Path) -> N
     assert fix.detail == "local-unfixable: gitleaks\nFAIL gitleaks scan"
 
 
+def test_agentic_fix_result_flaky_defect_unfixed_is_not_success() -> None:
+    kv = (
+        "STATUS=flaky-defect-unfixed\n"
+        "DETAIL=pytest passed after rerun without fix\n"
+        "FIX_ATTEMPTED=false\n"
+        "DELTA_PATHS=\n"
+        "CI_FIX_REBASE_PENDING=false\n"
+    )
+
+    fix = _call_agentic_fix(kv)
+
+    assert fix.status == "flaky-defect-unfixed"
+
+
 def test_agentic_fix_result_missing_repo_root_fail_closed() -> None:
     fix = ci_monitor._agentic_fix_result(  # pyright: ignore[reportPrivateUsage]
         proc,
@@ -1063,7 +1077,7 @@ def test_agentic_fix_result_timeout_reads_push_checkpoint(tmp_path: Path) -> Non
     assert fix.delta_paths == ("a.py",)
 
 
-def test_run_cycle_empty_delta_returns_no_progress_without_push(
+def test_run_cycle_empty_delta_returns_flaky_defect_without_push(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -1180,7 +1194,7 @@ def test_run_cycle_empty_delta_returns_no_progress_without_push(
         cycle=1,
         run_id="42",
     )
-    assert status == "no-progress"
+    assert status == config.NEEDS_USER_FLAKY_DEFECT_UNFIXED
     assert detail == "empty-delta"
     assert attempted is True
     assert push_calls["n"] == 0

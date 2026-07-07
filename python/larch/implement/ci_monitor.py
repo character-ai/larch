@@ -197,7 +197,7 @@ def decide(
         return Decision(action="rebase")
     if status.status == "fail":
         return Decision(
-            action="rebase_then_evaluate" if behind else "evaluate_failure",
+            action="rebase_then_evaluate" if behind and not status.failed_run_id else "evaluate_failure",
         )
     return Decision(action="wait")
 
@@ -1801,8 +1801,8 @@ def _agentic_fix_result(
             return FixResult(status="fix-exhausted", detail=exhausted_detail)
         prefixed = detail if detail.startswith("local-unfixable:") else f"local-unfixable: {detail}"
         return FixResult(status="local-unfixable", detail=prefixed)
-    if status == "first-fixer-non-health":
-        return FixResult(status="first-fixer-non-health", detail=detail)
+    if status in {"first-fixer-non-health", config.NEEDS_USER_FLAKY_DEFECT_UNFIXED}:
+        return FixResult(status=status, detail=detail)
     if status == "ci-fix-exhausted":
         exhausted_detail = detail if detail.startswith("ci-fix-exhausted") else f"ci-fix-exhausted: {detail}"
         return FixResult(status="fix-exhausted", detail=exhausted_detail)

@@ -50,6 +50,9 @@ NEEDS_USER_REVIEW_REQUIRED: Final = "review-required"
 NEEDS_USER_LOCAL_UNFIXABLE: Final = "local-unfixable"
 NEEDS_USER_CI_LOCAL_UNFIXABLE: Final = "ci-local-unfixable"
 NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX: Final = "ship-pr-internal-lint-fix"
+NEEDS_USER_MAIN_CI_FAIL: Final = "main-ci-fail"
+NEEDS_USER_POSTMERGE_MAIN_CI_FAIL: Final = "postmerge-main-ci-fail"
+NEEDS_USER_FLAKY_DEFECT_UNFIXED: Final = "flaky-defect-unfixed"
 NEEDS_USER_REASON_TOKENS: Final = (
     NEEDS_USER_FIRST_FIXER_NON_HEALTH,
     NEEDS_USER_CI_FIX_EXHAUSTED,
@@ -58,7 +61,11 @@ NEEDS_USER_REASON_TOKENS: Final = (
     NEEDS_USER_LOCAL_UNFIXABLE,
     NEEDS_USER_CI_LOCAL_UNFIXABLE,
     NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    NEEDS_USER_MAIN_CI_FAIL,
+    NEEDS_USER_POSTMERGE_MAIN_CI_FAIL,
+    NEEDS_USER_FLAKY_DEFECT_UNFIXED,
 )
+SHIP_ROUTE_ACTION_POSTMERGE_REPAIR: Final = "postmerge-repair"
 POST_DISPATCH_NEXT_CONTINUE: Final = "continue"
 POST_DISPATCH_NEXT_BAIL: Final = "bail"
 POST_DISPATCH_BAIL_MAIN_BRANCH: Final = "main-branch-post-dispatch"
@@ -74,6 +81,8 @@ STALL_RECOVERY_NEEDS_USER_BAIL_REASON_TOKENS: Final[tuple[str, ...]] = (
     NEEDS_USER_REVIEW_REQUIRED,
     NEEDS_USER_LOCAL_UNFIXABLE,
     NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    NEEDS_USER_MAIN_CI_FAIL,
+    NEEDS_USER_FLAKY_DEFECT_UNFIXED,
 )
 
 # Subprocess / CI wait
@@ -91,6 +100,11 @@ CI_STATUS_QUERY_TIMEOUT_SEC: Final = 120
 # runless PR head (zero attached checks) classifies as NO_CHECKS within this
 # window instead of polling the full CI_WAIT_TIMEOUT_SEC budget (issue #4924).
 CI_WAIT_EMPTY_CHECKS_GRACE_SEC: Final = 120
+MAIN_HEALTH_DEFAULT_WORKFLOW: Final = "CI"
+MAIN_HEALTH_RUN_LIST_LIMIT: Final = 20
+MAIN_HEALTH_WAIT_TIMEOUT_SEC: Final = 600
+MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC: Final = 10
+MAIN_HEALTH_DETAIL_MAX_CHARS: Final = 240
 # Bounded "did a fresh CI run start?" window for the ship merge loop after a
 # head-changing push (CI-fix or rebase). When the push triggers no fresh run
 # (observed: GitHub drops the `synchronize` event, issue #4867), zero checks on

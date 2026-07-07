@@ -37,6 +37,16 @@ class ShipResult:
     ledger_dispatcher: str = ""
     ledger_exit_code: int | None = None
     ledger_failure_detail_log: str = ""
+    main_health_head_sha: str = ""
+    main_health_repair_committed: str = ""
+    main_health_repair_failed_run_id: str = ""
+    main_health_repair_base_sha: str = ""
+    main_health_repair_head: str = ""
+    emergency_repair_branch: str = ""
+    original_branch_forbidden: str = ""
+    main_repair_run_id: str = ""
+    main_repair_head: str = ""
+    emergency_repair_pr_number: str = ""
 
     def to_json_dict(self) -> dict[str, Any]:
         return {
@@ -55,6 +65,16 @@ class ShipResult:
             "ledger_dispatcher": self.ledger_dispatcher,
             "ledger_exit_code": self.ledger_exit_code,
             "ledger_failure_detail_log": self.ledger_failure_detail_log,
+            "main_health_head_sha": self.main_health_head_sha,
+            "main_health_repair_committed": self.main_health_repair_committed,
+            "main_health_repair_failed_run_id": self.main_health_repair_failed_run_id,
+            "main_health_repair_base_sha": self.main_health_repair_base_sha,
+            "main_health_repair_head": self.main_health_repair_head,
+            "emergency_repair_branch": self.emergency_repair_branch,
+            "original_branch_forbidden": self.original_branch_forbidden,
+            "main_repair_run_id": self.main_repair_run_id,
+            "main_repair_head": self.main_repair_head,
+            "emergency_repair_pr_number": self.emergency_repair_pr_number,
         }
 
 
@@ -97,6 +117,8 @@ def _step_result_to_ship(
     ledger_triggers = {
         config.NEEDS_USER_CI_FIX_EXHAUSTED,
         config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+        config.NEEDS_USER_MAIN_CI_FAIL,
+        config.NEEDS_USER_FLAKY_DEFECT_UNFIXED,
         config.NEEDS_USER_LOCAL_UNFIXABLE,
         config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
     }

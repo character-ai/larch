@@ -56,6 +56,20 @@ class WorkflowRun:
     database_id: int
     status: str
     conclusion: str | None
+    head_sha: str = ""
+    event: str = ""
+
+
+@dataclass(frozen=True)
+class WorkflowRunListFilters:
+    repo: str
+    branch: str | None = None
+    workflow: str | None = None
+    event: str | None = None
+    status: str | None = None
+    commit: str | None = None
+    limit: int = 5
+    cwd: str | None = None
 
 
 @dataclass(frozen=True)
@@ -963,6 +977,17 @@ def pr_edit_body(
         )
 
 
+def _workflow_run_from_json(data: Mapping[str, object], *, context: str) -> WorkflowRun:
+    _require_json_keys(data, ("databaseId", "status"), context=context)
+    return WorkflowRun(
+        database_id=_as_int(data["databaseId"], context=context, field="databaseId"),
+        status=str(data["status"]),
+        conclusion=_optional_str(data.get("conclusion")),
+        head_sha=str(data.get("headSha") or ""),
+        event=str(data.get("event") or ""),
+    )
+
+
 def run_list_read(
     runner: Runner,
     *,
@@ -989,6 +1014,53 @@ def run_list_read(
     )
 
 
+def run_list_filtered_read(
+    runner: Runner,
+    filters: WorkflowRunListFilters,
+) -> CommandResult:
+    """Read workflow runs through a typed, additive filter surface."""
+    argv = [
+        "run",
+        "list",
+        "--repo",
+        filters.repo,
+        "--limit",
+        str(filters.limit),
+        "--json",
+        "databaseId,status,conclusion,headSha,event",
+    ]
+    if filters.branch is not None:
+        argv.extend(["--branch", filters.branch])
+    if filters.workflow is not None:
+        argv.extend(["--workflow", filters.workflow])
+    if filters.event is not None:
+        argv.extend(["--event", filters.event])
+    if filters.status is not None:
+        argv.extend(["--status", filters.status])
+    if filters.commit is not None:
+        argv.extend(["--commit", filters.commit])
+    return _retry_read(runner, argv, cwd=filters.cwd)
+
+
+def run_list_filtered(
+    runner: Runner,
+    filters: WorkflowRunListFilters,
+) -> tuple[WorkflowRun, ...]:
+    """Return filtered workflow runs with head SHA and event metadata."""
+    result = run_list_filtered_read(runner, filters)
+    if result.returncode != 0:
+        _raise_read_failure(result)
+    rows_obj = _as_json_list(
+        _loads_json(result.stdout or "[]", context="run list filtered"),
+        context="run list filtered",
+    )
+    runs: list[WorkflowRun] = []
+    for row_obj in rows_obj:
+        row = _as_json_object(row_obj, context="run list filtered row")
+        runs.append(_workflow_run_from_json(row, context="run list filtered"))
+    return tuple(runs)
+
+
 def run_list(
     runner: Runner,
     *,
@@ -1007,18 +1079,7 @@ def run_list(
     runs: list[WorkflowRun] = []
     for row_obj in rows_obj:
         row = _as_json_object(row_obj, context="run list row")
-        _require_json_keys(
-            row,
-            ("databaseId", "status"),
-            context="run list",
-        )
-        runs.append(
-            WorkflowRun(
-                database_id=_as_int(row["databaseId"], context="run list", field="databaseId"),
-                status=str(row["status"]),
-                conclusion=_optional_str(row.get("conclusion")),
-            ),
-        )
+        runs.append(_workflow_run_from_json(row, context="run list"))
     return tuple(runs)
 
 
@@ -1055,12 +1116,7 @@ def run_view(
     if result.returncode != 0:
         _raise_read_failure(result)
     data = _as_json_object(_loads_json(result.stdout, context="run view"), context="run view")
-    _require_json_keys(data, ("databaseId", "status"), context="run view")
-    return WorkflowRun(
-        database_id=_as_int(data["databaseId"], context="run view", field="databaseId"),
-        status=str(data["status"]),
-        conclusion=_optional_str(data.get("conclusion")),
-    )
+    return _workflow_run_from_json(data, context="run view")
 
 
 def failed_jobs_read(
@@ -1279,16 +1335,7 @@ def run_list_successful(
     runs: list[WorkflowRun] = []
     for row_obj in rows_obj:
         row = _as_json_object(row_obj, context="run list successful row")
-        _require_json_keys(row, ("databaseId", "status"), context="run list successful")
-        runs.append(
-            WorkflowRun(
-                database_id=_as_int(
-                    row["databaseId"], context="run list successful", field="databaseId"
-                ),
-                status=str(row["status"]),
-                conclusion=_optional_str(row.get("conclusion")),
-            )
-        )
+        runs.append(_workflow_run_from_json(row, context="run list successful"))
     return tuple(runs)
 
 

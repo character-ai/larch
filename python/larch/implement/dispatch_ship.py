@@ -53,9 +53,11 @@ SHIP_ROUTE_TRANSIENT_STALL_RETRY = 4
 SHIP_ROUTE_DETAIL_FILE_MAX = 300
 
 _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS = {
-    "first-fixer-non-health",
-    "ship-pr-internal-lint-fix",
-    "local-unfixable",
+    config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+    config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
+    config.NEEDS_USER_LOCAL_UNFIXABLE,
+    config.NEEDS_USER_MAIN_CI_FAIL,
+    config.NEEDS_USER_FLAKY_DEFECT_UNFIXED,
 }
 _SHIP_ROUTE_EXIT_LEDGER_KEYS = (
     "ledger_ready",
@@ -66,6 +68,18 @@ _SHIP_ROUTE_EXIT_LEDGER_KEYS = (
     "ledger_dispatcher",
     "ledger_exit_code",
     "ledger_failure_detail_log",
+)
+_SHIP_ROUTE_EXIT_HANDOFF_KEYS = (
+    "MAIN_HEALTH_HEAD_SHA",
+    "MAIN_HEALTH_REPAIR_COMMITTED",
+    "MAIN_HEALTH_REPAIR_FAILED_RUN_ID",
+    "MAIN_HEALTH_REPAIR_BASE_SHA",
+    "MAIN_HEALTH_REPAIR_HEAD",
+    "EMERGENCY_REPAIR_BRANCH",
+    "ORIGINAL_BRANCH_FORBIDDEN",
+    "MAIN_REPAIR_RUN_ID",
+    "MAIN_REPAIR_HEAD",
+    "EMERGENCY_REPAIR_PR_NUMBER",
 )
 _PRE_FIX_REBASE_OK_SENTINEL = ".ship-pre-fix-rebase-ok"
 _PRE_FIX_PHASE14_ALLOWED_REASONS = frozenset({"mergeStateStatus=DIRTY", "mergeStateStatus=BEHIND"})
@@ -194,17 +208,20 @@ def _ship_route_required_str(*, payload: Mapping[str, object], key: str) -> tupl
 
 
 def _classify_ship_needs_user_reason(reason: str) -> str:
-    if reason == "oos-filing":
-        return "oos-pipeline"
-    if reason == "architectural-invariants-assessment":
-        return "invariants-assessment"
-    if reason == "architectural-invariants-violation":
-        return "ci-fix"
-    if reason == "architectural-guidelines-assessment":
-        return "guidelines-assessment"
-    if reason in _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS or reason.startswith("ci-local-unfixable:"):
-        return "ci-fix"
-    return "operator-bail"
+    action = "operator-bail"
+    if reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL:
+        action = config.SHIP_ROUTE_ACTION_POSTMERGE_REPAIR
+    elif reason == "oos-filing":
+        action = "oos-pipeline"
+    elif reason == "architectural-invariants-assessment":
+        action = "invariants-assessment"
+    elif reason == "architectural-invariants-violation":
+        action = "ci-fix"
+    elif reason == "architectural-guidelines-assessment":
+        action = "guidelines-assessment"
+    elif reason in _SHIP_ROUTE_EXIT_AUTONOMOUS_REASONS or reason.startswith("ci-local-unfixable:"):
+        action = "ci-fix"
+    return action
 
 
 def _ship_route_conflict_handoff_fields(implement_tmpdir: Path) -> dict[str, str]:
@@ -321,6 +338,11 @@ def _write_ship_route_handoff(
         else:
             lines.append(f"DETAIL={_ship_route_safe_line(detail)}")
     lines.extend(f"{key}={_ship_route_safe_line(payload[key])}" for key in _SHIP_ROUTE_EXIT_LEDGER_KEYS if key in payload)
+    lines.extend(
+        f"{key}={_ship_route_safe_line(payload[key])}"
+        for key in _SHIP_ROUTE_EXIT_HANDOFF_KEYS
+        if key in payload and _ship_route_safe_line(payload[key])
+    )
     if route_fields:
         lines.extend(
             f"{key}={_ship_route_safe_line(value)}"

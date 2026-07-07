@@ -15,6 +15,7 @@ from typing import NoReturn, cast
 
 from larch import io as larch_io
 from larch.calibration import difficulty
+from larch.core import config
 
 LIFECYCLE_PREFIXES = (
     "[DESIGNING] ",
@@ -34,6 +35,16 @@ SUCCESS_ENVELOPE_KEYS = (
     "ISSUE_JSON_PATH",
     "BYPASS_COUNT",
     "DESIGN_DIFFICULTY",
+    "MAIN_CI_STATUS",
+    "MAIN_FAILED_RUN_ID",
+    "MAIN_HEALTH_HEAD_SHA",
+    "MAIN_HEALTH_DETAIL",
+)
+MAIN_HEALTH_KEYS = (
+    "MAIN_CI_STATUS",
+    "MAIN_FAILED_RUN_ID",
+    "MAIN_HEALTH_HEAD_SHA",
+    "MAIN_HEALTH_DETAIL",
 )
 
 
@@ -196,6 +207,13 @@ def _validate_success_envelope(
         error = _success_readability_error(data)
     if not error and not data["BYPASS_COUNT"].isdigit():
         error = "BYPASS_COUNT must be numeric"
+    if not error and data["MAIN_CI_STATUS"] not in {"pass", "fail", "pending", "error"}:
+        error = "MAIN_CI_STATUS must be pass, fail, pending, or error"
+    if not error:
+        for key in MAIN_HEALTH_KEYS:
+            if "\n" in data[key] or "\r" in data[key]:
+                error = f"{key} must be single-line"
+                break
     return error
 
 
@@ -245,6 +263,92 @@ def _base_env() -> dict[str, str]:
                         env["RUN_ID"] = line.split("=", 1)[1]
                         break
     return env
+
+
+def _bounded_main_health_detail(text: str) -> str:
+    compact = " ".join(text.replace("\r", " ").replace("\n", " ").split())
+    return compact[: config.MAIN_HEALTH_DETAIL_MAX_CHARS]
+
+
+def _main_health_error_rows(detail: str) -> dict[str, str]:
+    return {
+        "MAIN_CI_STATUS": "error",
+        "MAIN_FAILED_RUN_ID": "",
+        "MAIN_HEALTH_HEAD_SHA": "",
+        "MAIN_HEALTH_DETAIL": _bounded_main_health_detail(detail),
+    }
+
+
+def _resolve_repo_for_main_health(*, cli_path: Path, env: dict[str, str], repo: str, preflight_tmpdir: Path) -> tuple[str, str]:
+    if repo:
+        return repo, ""
+    stdout_path = preflight_tmpdir / "resolve-repo.stdout"
+    stderr_path = preflight_tmpdir / "resolve-repo.stderr"
+    rc = _run_capture(
+        argv=[sys.executable, str(cli_path), "gh", "resolve-repo"],
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        env=env,
+    )
+    if rc != 0:
+        detail = stderr_path.read_text(encoding="utf-8", errors="replace") if stderr_path.is_file() else ""
+        return "", f"repo resolution failed: {detail or rc}"
+    resolved = stdout_path.read_text(encoding="utf-8", errors="replace").strip().splitlines()
+    return (resolved[0].strip(), "") if resolved and resolved[0].strip() else ("", "repo resolution produced no repo")
+
+
+def _read_main_health_rows(*, cli_path: Path, env: dict[str, str], repo: str, preflight_tmpdir: Path) -> dict[str, str]:
+    resolved_repo, resolve_error = _resolve_repo_for_main_health(
+        cli_path=cli_path,
+        env=env,
+        repo=repo,
+        preflight_tmpdir=preflight_tmpdir,
+    )
+    if resolve_error or not resolved_repo:
+        return _main_health_error_rows(resolve_error or "repo resolution failed")
+    stdout_path = preflight_tmpdir / "main-health.stdout"
+    stderr_path = preflight_tmpdir / "main-health.stderr"
+    rc = _run_capture(
+        argv=[
+            sys.executable,
+            str(cli_path),
+            "ci",
+            "main-health",
+            "--repo",
+            resolved_repo,
+            "--base-ref",
+            "main",
+        ],
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        env=env,
+    )
+    if rc != 0:
+        detail = stderr_path.read_text(encoding="utf-8", errors="replace") if stderr_path.is_file() else ""
+        return _main_health_error_rows(f"main-health probe failed: {detail or rc}")
+    parsed = _read_kv_lines(stdout_path.read_text(encoding="utf-8", errors="replace"))
+    if not all(key in parsed for key in MAIN_HEALTH_KEYS):
+        return _main_health_error_rows("main-health probe omitted required keys")
+    return {key: _single_line(parsed.get(key, "")) for key in MAIN_HEALTH_KEYS}
+
+
+def _write_main_health_env(*, preflight_tmpdir: Path, rows: Mapping[str, str]) -> None:
+    text = "".join(f"{key}={_single_line(rows.get(key, ''))}\n" for key in MAIN_HEALTH_KEYS)
+    _write_text(path=preflight_tmpdir / "main-health.env", text=text)
+
+
+def _materialize_main_health_rows(cli_path: Path, env: dict[str, str], repo: str, preflight_tmpdir: Path) -> dict[str, str]:
+    rows = _read_main_health_rows(
+        cli_path=cli_path,
+        env=env,
+        repo=repo,
+        preflight_tmpdir=preflight_tmpdir,
+    )
+    try:
+        _write_main_health_env(preflight_tmpdir=preflight_tmpdir, rows=rows)
+    except OSError:
+        rows = _main_health_error_rows("cannot write main-health.env")
+    return rows
 
 
 def _run_capture(*, argv: list[str], stdout_path: Path, stderr_path: Path, env: dict[str, str] | None = None) -> int:
@@ -534,6 +638,7 @@ def preflight_main(argv: list[str] | None = None) -> int:
         "ISSUE_JSON_PATH": str(issue_json_path),
         "BYPASS_COUNT": str(_bypass_count(preflight_tmpdir)),
         "DESIGN_DIFFICULTY": design_difficulty,
+        **_materialize_main_health_rows(cli_path, env, repo, preflight_tmpdir),
     })
     return _emit_success_envelope(
         rows,

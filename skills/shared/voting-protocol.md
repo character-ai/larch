@@ -84,7 +84,7 @@ For items prefixed with `[OUT_OF_SCOPE]`: apply the OOS Acceptance Rubric (`skil
 
 ```
 You are a {VOTER_ROLE} on a voting panel. For each proposed change to {REVIEW_CONTEXT}, vote YES or NO:
-- **YES**: The finding is NECESSARY for the feature per the Review Acceptance Rubric (`skills/shared/review-acceptance-rubric.md`): the feature would be incomplete, broken, unverifiable, or regressed without it.
+- **YES**: The finding is NECESSARY for the feature per the Review Acceptance Rubric (`skills/shared/review-acceptance-rubric.md`): the feature would be incomplete, broken, unverifiable, or regressed without it. Red or flapping default-branch CI actively blocks verification for every run; `/implement` owns executing that repair.
 - **NO**: The finding does not clear the necessity gate — it may be real or valuable, but the feature ships correctly without it. Route it to Out-of-Scope instead.
 
 Default-deny. If unsure, vote NO. "Legitimate but not necessary" is a NO.

@@ -5,19 +5,22 @@ from __future__ import annotations
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import pytest
 
 from larch.core import config
+from larch.core.proc import CommandResult
+from larch.errors import ShipError
 from larch.git import git
 from larch.git import push
-from larch.errors import ShipError
-from larch.core.proc import CommandResult
-from larch.core.run_context import RunContext
+from larch.git import rebase
+from larch.implement import phantom
+
+if TYPE_CHECKING:
+    from larch.core.run_context import RunContext
 
 from test_support import RecordingRunner as _RecordingRunner, make_run_context
-from larch.implement import phantom
-from larch.git import rebase
 
 
 @dataclass
@@ -105,6 +108,21 @@ def test_push_branch_refuses_detached_head() -> None:
         ],
     )
     with pytest.raises(ShipError, match="detached HEAD"):
+        _ = push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
+
+
+def test_push_branch_refuses_forbidden_original_branch(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    _ = state_file.write_text(
+        "BRANCH_NAME=feat/x\nORIGINAL_BRANCH_FORBIDDEN=true\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SHIP_PR_STATE_FILE", str(state_file))
+    runner = RecordingRunner(
+        responses=_push_git_responses(),
+    )
+
+    with pytest.raises(ShipError, match="forbidden original branch"):
         _ = push.push_branch(runner=runner, ctx=_ctx(), sleeper=lambda _s: None)
 
 

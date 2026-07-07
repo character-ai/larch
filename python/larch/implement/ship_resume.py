@@ -93,6 +93,11 @@ def _context_with_state_overlay(ctx: RunContext) -> RunContext:
         value = state.get(key, "")
         if value:
             changes[field] = _truthy(value)
+    repair_branch = state.get("EMERGENCY_REPAIR_BRANCH", "")
+    state_phase = state.get("PHASE", "")
+    if repair_branch and state_phase in {"postmerge-push-watch", "emergency-repair", "repair-shipped"}:
+        changes["branch_name"] = repair_branch
+        changes["branch"] = repair_branch
     return ctx.with_(**changes) if changes else ctx
 
 
@@ -231,6 +236,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
     state_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="PHASE")
     resume_phase = run_logs.read_state_kv(state_file=ctx.state_file, key="RESUME_PHASE")
     state_branch = run_logs.read_state_kv(state_file=ctx.state_file, key="BRANCH_NAME").strip()
+    repair_branch = run_logs.read_state_kv(state_file=ctx.state_file, key="EMERGENCY_REPAIR_BRANCH").strip()
     state_repo = run_logs.read_state_kv(state_file=ctx.state_file, key="REPO").strip() or ctx.repo
     state_pr_url = run_logs.read_state_kv(state_file=ctx.state_file, key="PR_URL")
     pr_url = (state_pr_url if _valid_pr_url(state_pr_url) else "") or (ctx.pr_url if _valid_pr_url(ctx.pr_url) else "")
@@ -262,6 +268,8 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
         )
 
     fallback_branch = ctx.branch_name or ctx.branch
+    if repair_branch and not _valid_branch_name(repair_branch):
+        repair_branch = ""
     if state_branch and not _valid_branch_name(state_branch):
         return _invalid_state_plan(
             counters=counters,
@@ -304,7 +312,7 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
         )
 
     current_branch = _try_current_branch(runner, cwd=cwd)
-    expected_branch = state_branch or ctx.branch_name or ctx.branch
+    expected_branch = repair_branch or state_branch or ctx.branch_name or ctx.branch
     if not current_branch:
         return _resume_from_state(
             start="blocked-checkout-mismatch",
@@ -356,6 +364,28 @@ def _resume_plan(*, ctx: RunContext, runner: Runner, cwd: str | None) -> ResumeP
         )
     branch_name = current_branch
     pr_number: int | None = run_logs.parse_pr_number(state_file=ctx.state_file, ctx_pr_number=ctx.pr_number)
+    if state_phase == "postmerge-push-watch":
+        return _resume_from_state(
+            start="postmerge-push-watch",
+            counters=counters,
+            durable=durable,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=branch_name,
+            repo=state_repo,
+        )
+    if state_phase == "emergency-repair":
+        return _resume_from_state(
+            start="emergency-repair",
+            counters=counters,
+            durable=durable,
+            pr_number=pr_number,
+            pr_url=pr_url,
+            merge_result=merge_result,
+            branch_name=branch_name,
+            repo=state_repo,
+        )
     if gh_skipped and pr_number is not None and not pr_url:
         return _resume_from_state(
             start="blocked-checkout-mismatch",

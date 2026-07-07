@@ -38,6 +38,10 @@ def _valid_success_rows(tmp_path: Path) -> list[tuple[str, str]]:
         ("ISSUE_JSON_PATH", str(issue_json)),
         ("BYPASS_COUNT", "0"),
         ("DESIGN_DIFFICULTY", ""),
+        ("MAIN_CI_STATUS", "pass"),
+        ("MAIN_FAILED_RUN_ID", ""),
+        ("MAIN_HEALTH_HEAD_SHA", "abc123"),
+        ("MAIN_HEALTH_DETAIL", "ok"),
     ]
 
 
@@ -150,10 +154,16 @@ def test_preflight_success_emits_kv_and_forwards_repo(
         "ISSUE_JSON_PATH",
         "BYPASS_COUNT",
         "DESIGN_DIFFICULTY",
+        "MAIN_CI_STATUS",
+        "MAIN_FAILED_RUN_ID",
+        "MAIN_HEALTH_HEAD_SHA",
+        "MAIN_HEALTH_DETAIL",
     ]
     assert "ADMISSION_RESULT=pass" in out
     assert "RESUME=true" in out
     assert "BYPASS_COUNT=0" in out
+    assert "MAIN_CI_STATUS=error" in out
+    assert (tmp_path / "main-health.env").is_file()
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "admission" in call)
     assert any(call[-2:] == ["--repo", "o/r"] for call in calls if "plan-block" in call)
 
