@@ -2162,10 +2162,10 @@ def test_tally_plan_review_degraded_two_judge_voter_agreement_parity(tmp_path: P
         voting.voter_agreement_rows_from_tsv(class_tsv.read_text(encoding="utf-8"), panel_kind="design").rows
     )
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
-    cursor = next(record for record in records if record["voter"] == "Cursor")
+    cursor = next(record for record in records if record["voter"] == "codex-pragmatism")
     assert cursor["missing"] > 0  # type: ignore[reportOperatorIssue]
     assert (
-        f"| design | Cursor | {cursor['eligible']} | {cursor['agree']} | "
+        f"| design | codex-pragmatism | {cursor['eligible']} | {cursor['agree']} | "
         f"{cursor['disagree']} | {cursor['missing']} |"
     ) in tally
     severity_records = voting.compute_voter_severity_distribution(
@@ -2318,11 +2318,11 @@ def test_tally_plan_review_missing_middle_slot_severity_alignment(tmp_path: Path
     first_voters = cast("list[dict[str, object]]", parsed_rows[0]["voters"])
     assert [(voter["voter"], voter["severity"]) for voter in first_voters] == [
         ("Claude", "major"),
-        ("Codex", ""),
+        ("codex-plan-fidelity", ""),
         ("Cursor", "minor"),
     ]
     tally = (design / "voting-tally.md").read_text(encoding="utf-8")
-    assert "| design | Codex | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
+    assert "| design | codex-plan-fidelity | 0 | 0 | 0 | 0 | 0 | n/a | n/a | false |" in tally
 
 
 def test_tally_plan_review_single_yes_and_single_no(tmp_path: Path) -> None:

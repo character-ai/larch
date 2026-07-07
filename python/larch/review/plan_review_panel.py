@@ -853,15 +853,20 @@ def _launchable_voter_tools(
     return [tool for tool in dict.fromkeys(tools) if tool in semantic_tools]
 
 
+@dataclass(frozen=True)
+class _PlanVoterPromptInputs:
+    design: Path
+    ballot: Path
+    scope_anchor: str
+    calibration_stats_file: str | None
+
+
 def _build_plan_voter_prompt_files(
     *,
-    design: Path,
-    ballot: Path,
+    inputs: _PlanVoterPromptInputs,
     policies: Sequence[config.VoterPolicyDefault],
     codex_present: bool,
     cursor_present: bool,
-    scope_anchor: str,
-    calibration_stats_file: str | None,
 ) -> tuple[dict[str, dict[str, str]], dict[str, dict[str, int]]]:
     prompt_files: dict[str, dict[str, str]] = {}
     payload_files: dict[str, dict[str, int]] = {}
@@ -870,13 +875,13 @@ def _build_plan_voter_prompt_files(
         payload_files[policy.slot_name] = {}
         for tool in _launchable_voter_tools(policy, codex_present=codex_present, cursor_present=cursor_present):
             rendered = _make_voter_prompt(
-                design=design,
-                ballot=ballot,
+                design=inputs.design,
+                ballot=inputs.ballot,
                 tool=tool,
                 render_options=_voter_prompt_render_options(
-                    design=design,
-                    scope_anchor=scope_anchor,
-                    calibration_stats_file=calibration_stats_file,
+                    design=inputs.design,
+                    scope_anchor=inputs.scope_anchor,
+                    calibration_stats_file=inputs.calibration_stats_file,
                     voter_tool=tool,
                     basename=f"{policy.default_label}-plan-voter-prompt-{tool}.txt",
                 ),
@@ -1024,13 +1029,10 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
         launched_policy = policies_by_slot["voter-1"]
         try:
             prompt_files, payload_files = _build_plan_voter_prompt_files(
-                design=design,
-                ballot=ballot,
+                inputs=_PlanVoterPromptInputs(design=design, ballot=ballot, scope_anchor=scope_anchor, calibration_stats_file=calibration_stats_file),
                 policies=[launched_policy],
                 codex_present=codex_present,
                 cursor_present=cursor_present,
-                scope_anchor=scope_anchor,
-                calibration_stats_file=calibration_stats_file,
             )
         except RuntimeError:
             return 2
@@ -1089,13 +1091,10 @@ def dispatch_voters(argv: Sequence[str]) -> int:  # noqa: C901,PLR0912,PLR0915,R
     launched_policies = policies
     try:
         prompt_files, payload_files = _build_plan_voter_prompt_files(
-            design=design,
-            ballot=ballot,
+            inputs=_PlanVoterPromptInputs(design=design, ballot=ballot, scope_anchor=scope_anchor, calibration_stats_file=calibration_stats_file),
             policies=launched_policies,
             codex_present=codex_present,
             cursor_present=cursor_present,
-            scope_anchor=scope_anchor,
-            calibration_stats_file=calibration_stats_file,
         )
     except RuntimeError:
         return 2
