@@ -1,0 +1,10 @@
+### [Plan Review] FINDING_1
+
+### FINDING_1:
+- **Reviewer(s)**: Codex-Requirements
+- **Severity**: major
+- **Focus area**: correctness
+- **Location**: <TMPDIR>/plan.txt:9-10,53
+- **Concern**: Snapshot-only fix leaves legacy pause archives unrepaired. Scenario: The cited #6527-style snapshot and any other pre-fix pause snapshot still restore without `.completed/step-3`, so Step 5c will keep false-refusing those existing resumes instead of fixing the concrete bug.
+- **Proposed resolution**: Add a legacy compatibility backfill in `pause-load` for snapshots that predate this change, or otherwise re-materialize the implied completed sentinels only when the restored pause snapshot lacks `.completed/`.
+

@@ -1,0 +1,29 @@
+## Problem
+
+`design log-publish` (used by `design pause-save`) does not copy the `.completed/` directory into the `larch-logs` snapshot, so `design pause-load` restores a resume tmpdir with no pre-pause completion sentinels. `_determine_step` runs against the live tmpdir at pause-save time (which still has `.completed/step-3`) and correctly returns the resume step (`3b`), but `resume@3b` never re-creates `.completed/step-3`. The Step 5c publish provenance guard (`python/larch/design/design_publish.py`, `review_provenance` plus `_TERMINAL_STATUSES_REQUIRING_SENTINEL = {complete, cap-hit}` near lines 693-708) then refuses a `review_status=complete` plan whose `.completed/step-3` is missing, returning 4 with `VALIDATE_STATUS=defects-found` and an empty `VALIDATE_LOG_FILE`. That signature is indistinguishable from a review-provenance refusal, so `finalize-step5` routes it to the review-provenance recovery path (re-run `/design` from Step 3), discarding an already-complete review.
+
+## Evidence
+
+Resuming issue #6527 (run `A2AD61B7-...`): the pause snapshot on `origin/main` under `larch-logs/design/<run>/` had zero `.completed/*` entries, while `.step3-review-result.env` carried `STEP3_REVIEW_LOOP_STATUS=complete` and `ROUNDS_COMPLETED=2`. Step 5c returned rc 4 with an empty `VALIDATE_LOG_FILE`. Manually restoring the provably-completed `.completed/step-*` sentinels unblocked publish.
+
+## Reproduction
+
+1. Pause a `/design` at `STEP=3b` or later (review complete), which snapshots the tmpdir via `design log-publish`.
+2. Resume with `/design -s N`; `pause-load` restores from the snapshot into a fresh tmpdir with no `.completed/*`.
+3. Proceed to Step 5c. The publish provenance guard sees `review_status=complete` but no `.completed/step-3` and refuses with rc 4 / empty `VALIDATE_LOG_FILE`, misrouted to review-provenance recovery.
+
+## Root cause
+
+The pause snapshot omits `.completed/` (the completion sentinels), but the Step 5c provenance guard requires `.completed/step-3` to corroborate a `complete` review. Resume never re-materializes the pre-pause sentinels the resume step implies, so the guard false-refuses a genuinely complete review.
+
+## Suggested fix
+
+Either include `.completed/` in the pause snapshot so `pause-load` restores the sentinels, or have `resume@<STEP>` re-materialize the pre-resume completion sentinels implied by the resume step (`design_pause._determine_step` already encodes the ordering, so the set of provably-completed steps is known). Prefer restoring the sentinels so downstream guards keyed on them stay honest.
+
+## Acceptance criteria
+
+1. A resumed `/design` at Step 5c has `.completed/step-3` present and publishes without a provenance false-refusal.
+2. A test covers `.completed/` surviving the pause snapshot round-trip (or resume re-materializing the implied sentinels).
+3. `make py-lint` and `make py-test` pass.
+
+Related: #6527 (the run this surfaced on); companion to the resume source-env bug filed alongside this one.
