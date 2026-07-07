@@ -1,0 +1,11 @@
+1	gate b and retained step 2b.5 override paths still only write completion, so an oversized plan can be approved by the operator but never record `oversize_override: operator`, causing step 5c to refuse finalization as if no override existed.
+1	step 5c auto-compose and publish provenance splicing do not consistently treat `oversize_override: operator` as trailer metadata, so it can land in the body, be dropped from sidecar rebuilds, or be separated from `diff_lines:` before the final size check.
+1	the step 5c finalization size check is wired to the composed artifact and/or is missing required arguments, so it can reject a plan because of envelope lines or exit before seeing the intended plan file.
+1	the gate b optional-trailer snapshot/dedup path does not include the new size-related keys, so `oversize_override` and the emitted plan-size signals can drift between step 2b.5 and step 5c.
+1	other metadata consumers—difficulty parsing, bootstrap, and implement preflight—treat the new trailer as the end of the metadata block, so review_status/rounds_completed/difficulty can become invisible after publication or materialization.
+1	oversize publish refusals are indistinguishable from review-provenance refusals because `publish_refuse_reason` is stripped or unkeyed, so `finalize-step5` sends oversized plans to the wrong recovery path.
+1	the oversize-refusal recovery branch updates `plan.txt` but re-runs against a pre-existing non-empty `composed-plan.md`, so the override does not affect the artifact being checked.
+1	the oversize plan split path still doesn't reliably emit per-part firm-heading inventories, acceptance criteria, or a pinned test for hard-trigger routing to decomposition.
+2	the split/decompose path can still produce part issues that lack per-piece acceptance criteria, consistent scope matching, valid part-plan provenance, or serial blocked-by edges, so the filed pieces are not reliably implement-ready.
+2	the oversized-plan override contract is not fully exposed through the step 2b drafter/prompt path, so operator override cannot be selected or recorded consistently.
+2	the step 5c publish flow can still finalize a stale or oversized composed plan when size checks fail or when plan.txt and composed-plan.md diverge.

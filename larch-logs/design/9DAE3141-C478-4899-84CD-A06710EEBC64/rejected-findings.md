@@ -1,0 +1,10 @@
+### [Plan Review] FINDING_5
+
+### FINDING_5:
+- **Reviewer(s)**: Cursor-Arch
+- **Severity**: major
+- **Focus area**: architecture
+- **Location**: python/larch/design/plan_quality.py:428-560
+- **Concern**: [SCOPE-REDUCTION] Firm-heading and surface counting should reuse canonical scope-path extraction instead of new parallel parsers. Scenario: The plan adds `_firm_heading_count`, `_plan_surface`, and `_plan_surfaces` plus separate path matching inside `prepare_partition_issues`. `issue_wire.extract_scope_paths(..., include_optional=False)` already parses firm `### NEW|UPDATED|REWRITTEN:` headings, backtick paths, parenthetical stripping, and Files-section boundaries for `/implement` coverage. Parallel logic can disagree on heading/path sets, producing false surface triggers, wrong inventories, or drift from implementer coverage diagnostics.
+- **Proposed resolution**: Implement firm-heading count and distinct-surface derivation on top of `extract_scope_paths` (or a shared helper imported by both `plan_quality` and `decompose.py`), applying `_plan_surface` only to those canonical paths; use the same source list for decompose inventory matching. ### 1. architecture — `python/larch/design/decompose.py:97-191` **Concern:** The plan tests per-part acceptance criteria but `prepare_partition_issues` only parses `- acceptance:` from the panel body and does not derive it when missing (unlike firm-headings). **Suggested revision:** Add acceptance derivation or fail-closed validation so every split part body always carries acceptance criteria. ### 2. architecture — `python/larch/design/plan_quality.py:428-560` **Concern:** New surface/firm-heading parsers duplicate `issue_wire.extract_scope_paths`, risking inconsistent counts across Step 2b.5, decompose prepare, and `/implement` coverage. **Suggested revision:** Reuse shared scope-path extraction; apply surface bucketing only to those paths. Prior-round accepted items (Override wiring, `plan.txt` publish guard, trailer preservation, `PUBLISH_REFUSE_REASON`, composed-plan retry, Gate B keys, downstream scanners) are addressed in the current plan. I did not re-raise them.
+
