@@ -1,14 +1,15 @@
-## /implement run 39B1D753-BEBA-4B46-81EC-7569845B626E: shipping
+## /implement run 39B1D753-BEBA-4B46-81EC-7569845B626E: stalled
 
-- **Outcome**: shipping
+- **Outcome**: STALLED
 - **Duration**: 01:48:13
 - **Cost**: 💰 TOTAL ~$64.74: Claude $1.64, Codex-5.5 $44.25, Codex-mini $3.79, Cursor $14.59, Claude (subprocess) $0.47  |  Tokens: 124491k
 - **Issue**: #6506: https://github.com/character-ai/larch/issues/6506
+- **PR**: #6518: https://github.com/character-ai/larch/pull/6518
 - **Plan review**: N/A
 - **Difficulty**: predicted HARD; applied HARD
 - **Dynamic archetypes**: ok (1)
 - **Code review**: 11/14 accepted
-- **Lines (PR diff)**: N/A
+- **Lines (PR diff)**: code +2050/-111, larch-logs +1610/-0
 - **OOS filed**: 0
 - **Exec issues**: 0
 - **Warnings**: 1
@@ -88,7 +89,3 @@ codex/apply              │                                ██████�
 7. cursor/testing: 5
 
 **Reviewer slot failures**: 0
-
-## Architectural guidelines
-
-Consulted ARCHITECTURAL_GUIDELINES.md; no deviations identified.
