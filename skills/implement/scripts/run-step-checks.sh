@@ -1,15 +1,25 @@
 #!/usr/bin/env bash
-# run-step-checks.sh — rehydrate /implement telemetry env and run Python relevant checks.
+# run-step-checks.sh — launch /implement checks legs through bgjob.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
 PLUGIN_ROOT="${CLAUDE_PLUGIN_ROOT:-$(cd "$SCRIPT_DIR/../../.." && pwd -P)}"
 SITE=""
+COMMIT_SITE=""
+FORKED_TARGET="false"
+REBASE_CHECKPOINT_4R="false"
+BGJOB_CHILD="false"
+MERGE_RESULT_ENV=""
 while [ $# -gt 0 ]; do
     case "$1" in
+        --bgjob-child) BGJOB_CHILD="true"; shift ;;
         --site) [ $# -ge 2 ] || exit 2; SITE=$2; shift 2 ;;
+        --commit-site) [ $# -ge 2 ] || exit 2; COMMIT_SITE=$2; shift 2 ;;
+        --forked-target) [ $# -ge 2 ] || exit 2; FORKED_TARGET=$2; shift 2 ;;
+        --merge-result-env) [ $# -ge 2 ] || exit 2; MERGE_RESULT_ENV=$2; shift 2 ;;
+        --rebase-checkpoint-4r) REBASE_CHECKPOINT_4R="true"; shift ;;
         --help) printf '%s
-' 'Usage: run-step-checks.sh --site SITE'; exit 0 ;;
+' 'Usage: run-step-checks.sh --site SITE [--commit-site SITE] [--rebase-checkpoint-4r] [--forked-target true|false]'; exit 0 ;;
         *) printf '%s
 ' "run-step-checks.sh: unknown argument: $1" >&2; exit 2 ;;
     esac
@@ -54,32 +64,86 @@ rehydrate_plugin_root
 rehydrate_larch_triplet
 export PYTHONPATH="$CLAUDE_PLUGIN_ROOT/python${PYTHONPATH:+:$PYTHONPATH}"
 
-# Write bg-wait marker for Step 3 (the site invoked with run_in_background: true) so
-# hook-bg-poll-guard.sh can deny Monitor/TaskOutput/progress probes during the wait.
-# Other sites (step5-review-fixes, step6, etc.) are composites; they manage their own
-# marker lifecycle independently. Fail-open: a write failure must not abort the checks.
-if [ "$SITE" = "step3" ]; then
-  _step3_timeout_s=$(python3 -c "import sys; sys.path.insert(0, '$CLAUDE_PLUGIN_ROOT/python'); from larch.implement.dispatch_leg import CHECKS_STEP3_BG_WAIT_TIMEOUT_S; print(CHECKS_STEP3_BG_WAIT_TIMEOUT_S)" 2>/dev/null || printf '%s\n' '10800')
-  case "$_step3_timeout_s" in ''|*[!0-9]*) _step3_timeout_s=10800 ;; esac
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-turns.count" "$IMPLEMENT_TMPDIR/no-progress-circuit-breaker-armed" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/no-progress-stop-block-emitted" "$IMPLEMENT_TMPDIR/no-progress-task-output-clamped" 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR"/bg-poll-guard-task-output-read.*.count 2>/dev/null || true
-  rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
-  _step3_cleanup() {
-    mkdir -p "$IMPLEMENT_TMPDIR/.completed" 2>/dev/null || true
-    printf '' >"$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
-    rm -f "$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
-  }
-  trap _step3_cleanup EXIT
-  _step3_start=$(date +%s 2>/dev/null) || _step3_start=0
-  case "$_step3_start" in ''|*[!0-9]*) _step3_start=0 ;; esac
-  _step3_claude_pid="${LARCH_BG_POLL_GUARD_SESSION_PID:-${PPID:-}}"
-  _step3_clone_path=""
-  if [ -f "$IMPLEMENT_TMPDIR/.larch-keepalive" ] && [ ! -L "$IMPLEMENT_TMPDIR/.larch-keepalive" ]; then
-    _step3_clone_path=$(awk -F= '$1 == "CLONE_PATH" { sub(/^[^=]*=/, ""); print; exit }' "$IMPLEMENT_TMPDIR/.larch-keepalive" 2>/dev/null || true)
-  fi
-  printf 'PID=%s\nCLAUDE_PID=%s\nSTART_EPOCH=%s\nSTEP=implement-step3-checks\nTIMEOUT_S=%s\nCLONE_PATH=%s\n' \
-    "$$" "$_step3_claude_pid" "$_step3_start" "$_step3_timeout_s" "$_step3_clone_path" >"$IMPLEMENT_TMPDIR/.bg-wait-active" 2>/dev/null || true
+build_child_command() {
+    CHILD_CMD=(python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py")
+    if [ -n "$COMMIT_SITE" ]; then
+        CHILD_CMD+=(implement checks-commit-route --checks-site "$SITE" --commit-site "$COMMIT_SITE")
+        if [ "$REBASE_CHECKPOINT_4R" = "true" ]; then
+            CHILD_CMD+=(--rebase-checkpoint-4r)
+        fi
+        CHILD_CMD+=(--forked-target "$FORKED_TARGET")
+    else
+        CHILD_CMD+=(checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR")
+    fi
+}
+
+merge_result_cleanup() {
+    if [ -n "${MERGE_RESULT_ENV_TMP:-}" ]; then
+        rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true
+    fi
+}
+
+if [ "$BGJOB_CHILD" = "true" ]; then
+    [ -n "$MERGE_RESULT_ENV" ] || { printf '%s
+' 'run-step-checks.sh: --merge-result-env is required in child mode' >&2; exit 2; }
+    MERGE_RESULT_ENV_PARENT="${MERGE_RESULT_ENV%/*}"
+    [ -L "$MERGE_RESULT_ENV_PARENT" ] && { printf '%s
+' 'run-step-checks.sh: refusing symlinked merge-result-env parent' >&2; exit 2; }
+    MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+    trap merge_result_cleanup EXIT
+    build_child_command
+    set +e
+    "${CHILD_CMD[@]}" | tee "$MERGE_RESULT_ENV_TMP"
+    pipe_status=("${PIPESTATUS[@]}")
+    set -e
+    rc=${pipe_status[0]}
+    tee_rc=${pipe_status[1]}
+    if [ "$tee_rc" -ne 0 ]; then
+        rc=$tee_rc
+    fi
+    if [ -L "$MERGE_RESULT_ENV" ]; then
+        exit 2
+    fi
+    mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || rc=$?
+    exit "$rc"
 fi
 
-python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" checks run-relevant --site "$SITE" --tmpdir "$IMPLEMENT_TMPDIR"
+STEP="implement-checks-$SITE"
+BUDGET_S="10800"
+SENTINEL_ARGS=()
+if [ "$SITE" = "step3" ]; then
+    STEP="implement-step3-checks"
+    BUDGET_S="15600"
+    rm -f "$IMPLEMENT_TMPDIR/bg-poll-guard-probe-denials.step-3-terminal.count" "$IMPLEMENT_TMPDIR/.completed/step-3-terminal" 2>/dev/null || true
+    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-3-terminal")
+elif [ "$SITE" = "step6" ]; then
+    STEP="implement-step6-checks"
+    SENTINEL_ARGS=(--sentinel "$IMPLEMENT_TMPDIR/.completed/step-6-terminal")
+fi
+
+if [ -L "$IMPLEMENT_TMPDIR/bgjob" ]; then
+    printf '%s
+' 'run-step-checks.sh: refusing symlinked bgjob directory' >&2
+    exit 2
+fi
+mkdir -p "$IMPLEMENT_TMPDIR/bgjob"
+MERGE_RESULT_ENV="$IMPLEMENT_TMPDIR/bgjob/$STEP.merge.env"
+MERGE_RESULT_ENV_TMP="$(mktemp "${MERGE_RESULT_ENV}.tmp.XXXXXX")" || exit 2
+: >"$MERGE_RESULT_ENV_TMP"
+[ -L "$MERGE_RESULT_ENV" ] && { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; printf '%s
+' 'run-step-checks.sh: refusing symlinked merge-result-env' >&2; exit 2; }
+mv -f "$MERGE_RESULT_ENV_TMP" "$MERGE_RESULT_ENV" 2>/dev/null || { rm -f "$MERGE_RESULT_ENV_TMP" 2>/dev/null || true; exit 2; }
+CHILD_ARGS=(--bgjob-child --site "$SITE" --commit-site "$COMMIT_SITE" --forked-target "$FORKED_TARGET" --merge-result-env "$MERGE_RESULT_ENV")
+if [ "$REBASE_CHECKPOINT_4R" = "true" ]; then
+    CHILD_ARGS+=(--rebase-checkpoint-4r)
+fi
+
+python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" bgjob start \
+    --step "$STEP" \
+    --tmpdir "$IMPLEMENT_TMPDIR" \
+    --budget-s "$BUDGET_S" \
+    --owner-pid "${LARCH_CLAUDE_PID:-$PPID}" \
+    --merge-result-env "$MERGE_RESULT_ENV" \
+    "${SENTINEL_ARGS[@]}" \
+    -- \
+    bash "$SCRIPT_DIR/run-step-checks.sh" "${CHILD_ARGS[@]}"

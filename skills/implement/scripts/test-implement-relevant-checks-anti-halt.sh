@@ -15,8 +15,10 @@
 #   (2) Step 5 accepted-fix composite checks/resume handoff.
 #   (3) Step 6 unified step-6-entry composite.
 #
-# A site passes only when "> **Continue after child returns.**" appears within
-# the five physical lines preceding the invocation line.
+# A site passes only when "> **Continue after" appears within the five physical
+# lines preceding the invocation line. This prefix matches both the legacy
+# "> **Continue after child returns.**" form (Step 5 MAV) and the bgjob-migrated
+# "> **Continue after bgjob `DONE`.**" form (Steps 3 and 6).
 #
 # Wired into `make lint` via the `test-implement-relevant-checks-anti-halt`
 # target.
@@ -30,7 +32,7 @@ set -euo pipefail
 
 REPO_ROOT=$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)
 SKILL_MD="$REPO_ROOT/skills/implement/SKILL.md"
-CANONICAL_OPENER='> **Continue after child returns.**'
+CANONICAL_OPENER='> **Continue after'
 EXPECTED_SITES=3
 
 if [[ ! -f "$SKILL_MD" ]]; then
@@ -68,9 +70,9 @@ BEGIN {
     needle_commit = sprintf("`%s`; commit via", rc_token)
 }
 function is_invocation_site(line) {
-    # Match concrete launcher invocations: Step 6 uses the unified wrapper;
-    # the other active sites use composite Python verbs.
-    return line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" python\/cli\.py implement checks-commit-route/ \
+    # Match concrete launcher invocations: Step 3 uses the bgjob run-step-checks.sh
+    # wrapper; Step 5 MAV uses checks-step5-resume; Step 6 uses step-6-entry.sh.
+    return line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/run-step-checks\.sh/ \
         || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" python\/cli\.py implement checks-step5-resume/ \
         || line ~ /"\$HOME\/\.cache\/larch\/sessions\/implement-run-\$PPID\.sh" skills\/implement\/scripts\/step-6-entry\.sh/
 }

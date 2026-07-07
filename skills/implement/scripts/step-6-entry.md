@@ -1,10 +1,10 @@
 # step-6-entry.sh
 
-Step 6 review boundary helper. Rehydrates telemetry keys and delegates to `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry "$@"`.
+Step 6 review boundary bgjob launcher. The foreground wrapper rehydrates telemetry keys, truncates the Step 6 merge-result env, and starts `python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" implement step-6-entry` as a bgjob.
 
 ## Caller
 
-`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` Step 6 composite fence so the prompt-side Bash fence remains a plugin-root source guard plus one script call.
+`skills/implement/SKILL.md` invokes this wrapper from the named `/implement` Step 6 composite fence. Launcher stdout is exactly `BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>`; the orchestrator then calls `python/cli.py bgjob wait --step implement-step6-checks` until `DONE`.
 
 ## Arguments
 
@@ -42,7 +42,8 @@ Valid routing records are newline-delimited and line-anchored:
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Step 6 relies on the telemetry contract in `skills/shared/session-setup-output.md` and reads the session-env copy under `$IMPLEMENT_TMPDIR`.
-- Arms `.bg-wait-active` with `STEP=implement-step6-checks` for the outer Step 6 background fence, copies `CLONE_PATH` from `$IMPLEMENT_TMPDIR/.larch-keepalive` when available, clears stale no-progress sidecars before marker write, and writes `.completed/step-6-terminal` before marker removal on exit.
+- Uses bgjob step slug `implement-step6-checks`, clears stale `.completed/step-6-terminal`, and passes that sentinel to `bgjob start`.
+- The wrapper does not write `.bg-wait-active`; the terminal sentinel is written by the bgjob daemon and by the child cleanup as a compatibility marker.
 - The wrapper does not call `review-and-fix check-changes` directly. Python owns the composite routing.
 
 ## Edit-in-sync

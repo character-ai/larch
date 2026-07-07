@@ -384,6 +384,39 @@ def test_write_result_keeps_authoritative_bgjob_rc(tmp_path: Path, monkeypatch: 
     assert rows["CUSTOM"] == "ok"
 
 
+def test_write_result_merges_whitespace_packed_relay_rows(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
+    merge = tmp_path / "merge.env"
+    _ = merge.write_text(
+        "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=1 PHASE=checks DIGEST_FILE=/tmp/digest REDACTED_LOG_FILE=/tmp/redacted\n"
+        "MESSAGE=hello world\n",
+        encoding="utf-8",
+    )
+    identity = _identity(pid=111, pgid=222, signature="daemon")
+    spec = model.JobSpec(
+        step="demo-step",
+        tmpdir=tmp_path,
+        log_dir=tmp_path / "bgjob",
+        budget_s=10,
+        command=(sys.executable, "-c", "print('hello')"),
+        run_id="run-1",
+        owner=model.OwnerIdentity(recorded=identity),
+        merge_result_env=merge,
+    )
+
+    daemon.write_result(spec=spec, rc="0", elapsed_s=7)
+
+    rows = larch_io.read_kvs(model.result_env_path(tmpdir=tmp_path, step="demo-step"), reject_symlink=True, on_error_default=True)
+    assert rows["BGJOB_RC"] == "0"
+    assert rows["STATUS"] == "fail"
+    assert rows["FAILURE_REASON"] == "checks-failed"
+    assert rows["EXIT_CODE"] == "1"
+    assert rows["PHASE"] == "checks"
+    assert rows["DIGEST_FILE"] == "/tmp/digest"
+    assert rows["REDACTED_LOG_FILE"] == "/tmp/redacted"
+    assert rows["MESSAGE"] == "hello world"
+
+
 def test_bgjob_start_and_wait_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     if process_identity.read_process_identity(pid=os.getpid()) is None:
         pytest.skip("process identity probe is unavailable in this sandbox")

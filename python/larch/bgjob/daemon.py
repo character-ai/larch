@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import stat
+import re
 import time
 from pathlib import Path
 from typing import BinaryIO
@@ -14,6 +15,9 @@ from typing import BinaryIO
 from larch import io as larch_io
 from larch.bgjob import model, registry
 from larch.core import config, process_identity
+
+_PACKED_ROW_TOKEN_RE = re.compile(r"[A-Z0-9_]+=.*")
+_MIN_PACKED_ROW_TOKENS = 2
 
 
 def _capture_identity(pid: int, *, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
@@ -56,9 +60,28 @@ def _safe_rows(rows: list[tuple[str, object]]) -> list[tuple[str, str]]:
 def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
     if path is None or path.is_symlink() or not path.is_file():
         return []
-    rows = larch_io.read_kvs(path, reject_symlink=True, on_error_default=True, reject_cr=True)
+    try:
+        text = larch_io.read_text(path, reject_cr=True)
+    except (OSError, UnicodeError):
+        return []
     reserved = {config.BGJOB_RC_KEY, config.BGJOB_ELAPSED_KEY, "STEP"}
-    return [(key, model.reject_line_value(value, label=key)) for key, value in rows.items() if key not in reserved]
+    merged = {
+        key: value
+        for key, value in larch_io.read_kvs(path, reject_symlink=True, on_error_default=True, reject_cr=True).items()
+        if key and key not in reserved
+    }
+    for line in text.splitlines():
+        if line.count("=") < _MIN_PACKED_ROW_TOKENS:
+            continue
+        tokens = line.split()
+        if len(tokens) < _MIN_PACKED_ROW_TOKENS or any(_PACKED_ROW_TOKEN_RE.fullmatch(token) is None for token in tokens):
+            continue
+        for token in tokens:
+            key, value = token.split("=", 1)
+            if not key or key in reserved:
+                continue
+            merged[key] = model.reject_line_value(value, label=key)
+    return list(merged.items())
 
 
 def write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:

@@ -27,7 +27,12 @@ def _build_spec(args: argparse.Namespace) -> model.JobSpec:
     log_dir, _, _ = model.log_paths(tmpdir=tmpdir, log_dir=log_dir_arg, step=step)
     sentinels = tuple(model.ensure_under(Path(raw), tmpdir, label="sentinel") for raw in args.sentinel)
     owner = daemon.owner_identity_from_env(args.owner_pid)
-    merge_result_env = Path(args.merge_result_env).resolve() if args.merge_result_env else None
+    merge_result_env = Path(args.merge_result_env) if args.merge_result_env else None
+    if merge_result_env is not None:
+        if merge_result_env.is_symlink():
+            raise ValueError(f"merge-result-env must not be a symlink: {merge_result_env}")
+        if merge_result_env.parent.is_symlink():
+            raise ValueError(f"merge-result-env parent must not be a symlink: {merge_result_env.parent}")
     return model.JobSpec(
         step=step,
         tmpdir=tmpdir,

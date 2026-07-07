@@ -62,7 +62,7 @@ def test_dispatch_bg_wait_marker_copies_keepalive_clone_path(tmp_path: Path) -> 
 
 
 
-def test_checks_commit_route_step3_clears_stale_sidecars_before_marker_write(
+def test_checks_commit_route_step3_clears_stale_sidecars_without_marker_write(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -73,62 +73,43 @@ def test_checks_commit_route_step3_clears_stale_sidecars_before_marker_write(
     stale_sentinel.write_text("stale", encoding="utf-8")
     probe_denials.write_text("1", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, str] = {}
-    original_write = dispatch_commit_route._write_bg_wait_marker
-
-    def spy_write_bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int) -> None:
-        assert tmpdir == tmp
-        assert step == "implement-step3-checks"
-        assert timeout_s == dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000
-        assert not stale_sentinel.exists()
-        assert not probe_denials.exists()
-        original_write(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
-        seen["marker"] = (tmpdir / ".bg-wait-active").read_text(encoding="utf-8")
 
     def fake_impl(args: Any, implement_tmpdir: Path) -> int:
         assert args.checks_site == "step3"
         assert args.commit_site == "step4"
         assert implement_tmpdir == tmp
+        assert not stale_sentinel.exists()
         assert not probe_denials.exists()
         return 0
 
-    monkeypatch.setattr(dispatch_commit_route, "_write_bg_wait_marker", spy_write_bg_wait_marker)
     monkeypatch.setattr(dispatch_commit_route, "_checks_commit_route_main_impl", fake_impl)
 
     rc = dispatch_commit_route.checks_commit_route_main(["--checks-site", "step3", "--commit-site", "step4"])
 
     assert rc == 0
-    assert f"TIMEOUT_S={dispatch_leg.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS // 1000}\n" in seen["marker"]
-    assert stale_sentinel.is_file()
-    assert stale_sentinel.read_text(encoding="utf-8") == ""
+    assert not stale_sentinel.exists()
     assert not (tmp / ".bg-wait-active").exists()
 
 
-def test_run_step_checks_main_arms_step3_bg_wait_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_run_step_checks_main_step3_clears_legacy_sidecars_without_marker(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     tmp = _session(tmp_path)
     (tmp / ".larch-keepalive").write_text(f"CLONE_PATH={tmp_path}\n", encoding="utf-8")
     (tmp / ".completed").mkdir()
     (tmp / ".completed" / "step-3-terminal").write_text("stale", encoding="utf-8")
     (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").write_text("1", encoding="utf-8")
     monkeypatch.setenv("IMPLEMENT_TMPDIR", str(tmp))
-    seen: dict[str, str] = {}
 
     def fake_run_cli_forward(args: Sequence[str]) -> int:
         assert list(args) == ["checks", "run-relevant", "--site", "step3", "--tmpdir", str(tmp)]
-        marker_text = (tmp / ".bg-wait-active").read_text(encoding="utf-8")
-        seen["marker"] = marker_text
-        assert "STEP=implement-step3-checks\n" in marker_text
-        assert f"CLONE_PATH={tmp_path}\n" in marker_text
         assert not (tmp / "bg-poll-guard-probe-denials.step-3-terminal.count").exists()
+        assert not (tmp / ".completed" / "step-3-terminal").exists()
+        assert not (tmp / ".bg-wait-active").exists()
         return 0
 
     monkeypatch.setattr(dispatch_commit_route, "_run_cli_forward", fake_run_cli_forward)
 
     assert dispatch_commit_route.run_step_checks_main(["--site", "step3"]) == 0
 
-    assert seen["marker"]
-    assert f"TIMEOUT_S={dispatch_leg.CHECKS_STEP3_BG_WAIT_TIMEOUT_S}\n" in seen["marker"]
-    assert (tmp / ".completed" / "step-3-terminal").exists()
     assert not (tmp / ".bg-wait-active").exists()
 
 
@@ -3574,13 +3555,11 @@ def test_composite_outer_timeout_budgets_match_leg_sums_and_fences() -> None:
         encoding="utf-8"
     )
     step6_launcher = "skills/implement/scripts/step-6-entry.sh"
-    assert (
-        f"(launcher + '{step6_launcher}', 'timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}')"
-        in structure
-    )
+    assert f"(launcher + '{step6_launcher}', 'implement-step6-checks')" in structure
     assert "require_near('skills/implement/references/self-review.md', self_review_composite" in structure
     assert "python/cli.py implement checks-commit-route --checks-site step5-self-review', 'timeout: 14700000'" not in structure
-    assert f"timeout: {implement_dispatch.CHECKS_COMMIT_ROUTE_OUTER_TIMEOUT_MS}" in skill
+    assert "BGJOB_STATUS=STARTED STEP=implement-step6-checks PGID=<n>" in skill
+    assert "python/cli.py bgjob wait --step implement-step6-checks" in skill
     assert "checks-commit-route --checks-site step5-self-review" not in skill
     assert "timeout: 14700000" not in skill
     assert "checks-commit-route --checks-site step5-self-review" in self_review_ref

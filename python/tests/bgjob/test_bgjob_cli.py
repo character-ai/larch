@@ -61,6 +61,38 @@ def test_start_rejects_sentinel_symlink_escape(
     assert "BGJOB_ERROR" in out
 
 
+def test_start_rejects_merge_result_env_symlink(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    def fake_owner_identity(_raw: str | None) -> model.OwnerIdentity:
+        return model.OwnerIdentity(recorded=None)
+
+    monkeypatch.setattr(cli.daemon, "owner_identity_from_env", fake_owner_identity)
+    outside = tmp_path.parent / "bgjob-merge-outside"
+    _ = outside.write_text("escape\n", encoding="utf-8")
+    link = tmp_path / "merge-link.env"
+    link.symlink_to(outside)
+    rc = cli.start_main(
+        [
+            "--step",
+            "demo-step",
+            "--tmpdir",
+            str(tmp_path),
+            "--budget-s",
+            "1",
+            "--merge-result-env",
+            str(link),
+            "--",
+            sys.executable,
+            "-c",
+            "print('hello')",
+        ]
+    )
+    out = capsys.readouterr().out
+    assert rc == 2
+    assert "BGJOB_ERROR" in out
+
+
 def test_model_rejects_path_escape_slug() -> None:
     with pytest.raises(ValueError, match="invalid step"):
         _ = model.validate_slug("bad/step", label="step")

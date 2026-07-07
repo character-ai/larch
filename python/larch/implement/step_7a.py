@@ -10,6 +10,8 @@ import os
 import re
 import subprocess
 import sys
+from collections.abc import Generator
+from dataclasses import dataclass
 from pathlib import Path
 
 from larch import io as larch_io
@@ -17,20 +19,79 @@ from larch.core import config
 from larch.core import run_context
 from larch.git import pr_body
 from larch.issue import execution_issues
-from larch.implement.bg_wait import _write_bg_wait_marker  # type: ignore[reportPrivateUsage]
 from larch.report import run_logs
 
 _NON_RUNTIME_NAMES = frozenset({"README.md"})
 _NON_RUNTIME_EXTS = frozenset({"txt", "tsv"})
 _MAX_SMALL_CHANGE_FILES = 2
+_result_rows: list[tuple[str, str]] | None = None
+
+
+@dataclass(frozen=True)
+class Step7aBgjobLaunch:
+    implement_tmpdir: Path
+    issue_number: str
+    run_id: str
+    no_logs_commit: str
+    forked_target: str
+    base_remote: str
+    base_ref: str
 
 
 def emit(*, key: str, value: object) -> None:
-    print(f"{key}={value}")
+    _emit_line(f"{key}={value}")
+
+
+def _emit_line(line: str) -> None:
+    print(line)
+    _record_result_line(line)
+
+
+def _record_result_line(line: str) -> None:
+    rows = _result_rows
+    if rows is None or "\n" in line or "\r" in line or "=" not in line:
+        return
+    key, value = line.split("=", 1)
+    if re.fullmatch(r"[A-Z0-9_]+", key):
+        rows.append((key, value))
+
+
+@contextlib.contextmanager
+def _result_env_capture(path: Path | None) -> Generator[None, None, None]:
+    global _result_rows  # noqa: PLW0603 - scoped sink for legacy emit helper
+    prior = _result_rows
+    if path is None:
+        yield
+        return
+    rows: list[tuple[str, str]] = []
+    _result_rows = rows
+    try:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        larch_io.atomic_write(path=path, text="", nofollow=True, mode=0o600)
+        yield
+    finally:
+        larch_io.atomic_write(path=path, text=larch_io.format_kvs(rows), nofollow=True, mode=0o600)
+        _result_rows = prior
 
 
 def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
+
+
+def _emit_arg_failure(*, bail_reason: str) -> int:
+    emit(key="DIAGRAM_STATUS", value="failed")
+    emit(key="DIAGRAM_REASON", value="")
+    emit(key="DIAGRAM_PATH", value="")
+    emit(key="COMMENT_URL", value="")
+    emit(key="LOG_FLUSH_STATUS", value="skip")
+    emit(key="STEP_7A_BAIL_REASON", value=bail_reason)
+    emit(key="REBASE_OUTCOME", value="skipped")
+    return 2
+
+
+def _has_symlink_ancestor(path: Path) -> bool:
+    candidate = path.expanduser()
+    return candidate.is_symlink() or any(parent.is_symlink() for parent in candidate.parents)
 
 
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
@@ -78,14 +139,11 @@ def _write_terminal_sentinel(*, tmpdir: Path, sentinel: str) -> None:
 
 
 @contextlib.contextmanager
-def _bg_wait_marker(*, tmpdir: Path, step: str, timeout_s: int, terminal_sentinel: str):
-    _write_bg_wait_marker(tmpdir=tmpdir, step=step, timeout_s=timeout_s)
+def _terminal_sentinel(*, tmpdir: Path, terminal_sentinel: str) -> Generator[None, None, None]:
     try:
         yield
     finally:
         _write_terminal_sentinel(tmpdir=tmpdir, sentinel=terminal_sentinel)
-        with contextlib.suppress(OSError):
-            (tmpdir / ".bg-wait-active").unlink()
 
 
 def _cleanup_diagram_artifacts(implement_tmpdir: Path, *, keep_diagram: bool) -> None:
@@ -179,7 +237,7 @@ def _run_log_flush(
             log_flush_status = "degraded"
         for line in capture.stdout.splitlines():
             if line.startswith("SESSION_TRANSCRIPT_STATUS="):
-                print(line)
+                _emit_line(line)
     rc2, status2, _, _ = execution_issues.flush_execution_issues(
         log_root=log_root,
         run_id=run_id,
@@ -223,10 +281,8 @@ def run_step7a(
     base_ref: str = "main",
 ) -> int:
     implement_tmpdir.mkdir(parents=True, exist_ok=True)
-    with _bg_wait_marker(
+    with _terminal_sentinel(
         tmpdir=implement_tmpdir,
-        step="implement-step7a",
-        timeout_s=1800,
         terminal_sentinel=".completed/step-7a-terminal",
     ):
         return _run_step7a_inner(
@@ -348,7 +404,7 @@ def _run_step7a_inner(
     rebase_out.write_text(probe.stdout, encoding="utf-8")
     for line in probe.stdout.splitlines():
         if line.strip():
-            print(line)
+            _emit_line(line)
     log_flush_status = _run_log_flush(
         implement_tmpdir,
         run_id=run_id,
@@ -389,33 +445,86 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--forked-target", choices=("true", "false"), default="false")
     parser.add_argument("--base-remote", default="origin")
     parser.add_argument("--base-ref", default="main")
+    parser.add_argument("--bgjob-launch", choices=("true", "false"), default="false")
+    parser.add_argument("--bgjob-merge-result-env", default="")
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit(key="DIAGRAM_STATUS", value="failed")
-        emit(key="DIAGRAM_REASON", value="")
-        emit(key="DIAGRAM_PATH", value="")
-        emit(key="COMMENT_URL", value="")
-        emit(key="LOG_FLUSH_STATUS", value="skip")
-        emit(key="STEP_7A_BAIL_REASON", value="argv")
-        emit(key="REBASE_OUTCOME", value="skipped")
-        return 2
+        return _emit_arg_failure(bail_reason="argv")
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
-        emit(key="DIAGRAM_STATUS", value="failed")
-        emit(key="DIAGRAM_REASON", value="")
-        emit(key="DIAGRAM_PATH", value="")
-        emit(key="COMMENT_URL", value="")
-        emit(key="LOG_FLUSH_STATUS", value="skip")
-        emit(key="STEP_7A_BAIL_REASON", value="missing-implement-tmpdir")
-        emit(key="REBASE_OUTCOME", value="skipped")
-        return 2
-    return run_step7a(
-        Path(raw_tmpdir),
-        issue_number=args.issue_number,
-        run_id=args.run_id,
-        no_logs_commit=args.no_logs_commit == "true",
-        forked_target=args.forked_target == "true",
-        base_remote=args.base_remote,
-        base_ref=args.base_ref,
+        return _emit_arg_failure(bail_reason="missing-implement-tmpdir")
+    if _has_symlink_ancestor(Path(raw_tmpdir)):
+        return _emit_arg_failure(bail_reason="invalid-implement-tmpdir")
+    if args.bgjob_launch == "true":
+        return _launch_step7a_bgjob(
+            Step7aBgjobLaunch(
+                implement_tmpdir=Path(raw_tmpdir),
+                issue_number=args.issue_number,
+                run_id=args.run_id,
+                no_logs_commit=args.no_logs_commit,
+                forked_target=args.forked_target,
+                base_remote=args.base_remote,
+                base_ref=args.base_ref,
+            )
+        )
+    merge_result_env = Path(args.bgjob_merge_result_env) if args.bgjob_merge_result_env else None
+    with _result_env_capture(merge_result_env):
+        return run_step7a(
+            Path(raw_tmpdir),
+            issue_number=args.issue_number,
+            run_id=args.run_id,
+            no_logs_commit=args.no_logs_commit == "true",
+            forked_target=args.forked_target == "true",
+            base_remote=args.base_remote,
+            base_ref=args.base_ref,
+        )
+
+
+def _launch_step7a_bgjob(spec: Step7aBgjobLaunch) -> int:
+    step = "implement-step7a"
+    merge_result_env = spec.implement_tmpdir / "bgjob" / f"{step}.merge.env"
+    merge_result_env.parent.mkdir(parents=True, exist_ok=True)
+    larch_io.atomic_write(path=merge_result_env, text="", nofollow=True, mode=0o600)
+    with contextlib.suppress(OSError):
+        (spec.implement_tmpdir / ".completed" / "step-7a-terminal").unlink()
+    result = _run_cli(
+        "bgjob",
+        "start",
+        "--step",
+        step,
+        "--tmpdir",
+        str(spec.implement_tmpdir),
+        "--budget-s",
+        "1800",
+        "--merge-result-env",
+        str(merge_result_env),
+        "--sentinel",
+        str(spec.implement_tmpdir / ".completed" / "step-7a-terminal"),
+        "--",
+        sys.executable,
+        str(_plugin_root() / "python" / "cli.py"),
+        "implement",
+        "step-7a",
+        "--implement-tmpdir",
+        str(spec.implement_tmpdir),
+        "--issue-number",
+        spec.issue_number,
+        "--run-id",
+        spec.run_id,
+        "--no-logs-commit",
+        spec.no_logs_commit,
+        "--forked-target",
+        spec.forked_target,
+        "--base-remote",
+        spec.base_remote,
+        "--base-ref",
+        spec.base_ref,
+        "--bgjob-merge-result-env",
+        str(merge_result_env),
     )
+    if result.stdout:
+        sys.stdout.write(result.stdout)
+    if result.stderr:
+        sys.stderr.write(result.stderr)
+    return result.returncode

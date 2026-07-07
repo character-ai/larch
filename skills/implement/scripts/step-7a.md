@@ -1,6 +1,6 @@
 # step-7a.sh
 
-`step-7a.sh` is the foreground `/implement` Step 7a orchestration helper. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and performs the pre-ship run-log flush before Step 8.
+`step-7a.sh` is the direct `/implement` Step 7a orchestration helper; active prompt-side Step 7a now launches the Python entrypoint with `--bgjob-launch true`. It rehydrates session context, handles code-flow diagram generation and `larch:diagrams` comment upsert, runs the 7a.r rebase checkpoint, and performs the pre-ship run-log flush before Step 8.
 
 ## Interface
 
@@ -54,7 +54,7 @@ The helper re-emits the `python/cli.py push checkpoint-probe` and `run-log captu
 - `larch:diagrams` uses the shared stable marker `<!-- larch:diagrams v1 -->`; Step 7a does not call `python3 python/cli.py tracking-issue upsert-summary` directly and does not use a `runid=` marker for diagrams.
 - The pre-ship log flush runs after the 7a.r rebase probe on every path. Probe failure preserves the probe rc for orchestrator routing while still flushing diagnostics when inputs allow.
 - The helper does not write a `diagrams` larch-log batch.
-- The Python entrypoint's bg-wait marker for immediate-background Step 7a runs includes `STEP=implement-step7a` and copies `CLONE_PATH` from `$IMPLEMENT_TMPDIR/.larch-keepalive` when available.
+- The Python entrypoint no longer writes `.bg-wait-active`. With `--bgjob-launch true`, it truncates the merge-result env, starts bgjob step slug `implement-step7a`, and passes `.completed/step-7a-terminal` as the compatibility sentinel. The child mirrors required KVs into the merge-result env for the final bgjob `DONE` gate.
 
 ## Regression checklist
 

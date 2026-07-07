@@ -1,21 +1,23 @@
 # run-step-checks.sh
 
-Captured relevant-checks wrapper retained for legacy/helper-only call sites. Active Step 3, Step 5 self-review, Step 5 MAV, and Step 6 paths use Python composites. The wrapper rehydrates telemetry keys before invoking python/cli.py checks run-relevant.
+Captured relevant-checks wrapper and Step 3 checks/commit composite bgjob launcher.
+The wrapper rehydrates telemetry keys, truncates a per-step merge-result env, and launches a bgjob whose foreground stdout is exactly `BGJOB_STATUS=STARTED STEP=<name> PGID=<n>`.
 
 ## Caller
 
-`skills/implement/SKILL.md` no longer invokes this wrapper for active Step 3. Keep it available for offline harnesses and any legacy helper-only paths until all callers are removed.
+`skills/implement/SKILL.md` invokes this wrapper for active Step 3 with `--site step3 --commit-site step4 --rebase-checkpoint-4r`. Legacy helper-only call sites may still pass only `--site SITE` to launch `python/cli.py checks run-relevant` through the same bgjob transport.
 
 ## KV grammar
 
-The wrapper relays the underlying helper stdout unchanged unless this file names explicit keys. Explicit keys are newline-delimited `KEY=value` records and must be token-scannable by the orchestrator.
+The bgjob child tees the underlying helper stdout into the merge-result env. After `python/cli.py bgjob wait` returns `DONE`, the orchestrator reads `$IMPLEMENT_TMPDIR/bgjob/<step>.result.env` and gates continuation on `BGJOB_RC=0` plus the required site KVs.
 
 ## Invariants
 
 - Bash 3.2 portable; no associative arrays or namerefs.
 - Self-rehydrates `CLAUDE_PLUGIN_ROOT` from `$IMPLEMENT_TMPDIR/plugin-root.env` where needed.
 - Session telemetry key names live in `skills/shared/session-setup-output.md`; check wrappers consume the `$IMPLEMENT_TMPDIR/session-env.sh` copy.
-- When `--site step3`, writes a `.bg-wait-active` marker (`STEP=implement-step3-checks`) before the checks call; it includes `CLONE_PATH`, copied from the sibling `.larch-keepalive` file when available. The EXIT trap writes `.completed/step-3-terminal` and removes the marker on any exit. Fail-open: marker/sentinel writes must not abort the checks.
+- When `--site step3`, uses bgjob step slug `implement-step3-checks`, clears stale `.completed/step-3-terminal`, and passes that sentinel to `bgjob start`.
+- The wrapper does not write `.bg-wait-active`; legacy marker helpers remain elsewhere until the cleanup chunk removes them.
 
 ## Edit-in-sync
 
