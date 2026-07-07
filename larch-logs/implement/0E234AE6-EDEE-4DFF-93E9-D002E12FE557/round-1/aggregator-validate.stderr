@@ -1,0 +1,1 @@
+warning: fix text for slot 'dyn-dyn-plan-size-contract' in FINDING_6 not traceable to scoped input (first 80 chars: 'Add a minimal companion test (or slim the 6524 fixture) with only diff_added: 19')

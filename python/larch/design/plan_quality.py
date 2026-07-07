@@ -462,15 +462,16 @@ def _size_trigger_assessment(
     reasons: list[str] = []
     if plan_lines > config.PLAN_SIZE_MAX_PLAN_BODY_LINES:
         reasons.append("plan-body-lines")
-    diff_basis = "diff-added" if meta.diff_added is not None else "diff-lines"
-    size_diff_raw = (
-        int(meta.diff_added) > config.PLAN_SIZE_MAX_DIFF_ADDED
-        if meta.diff_added is not None
-        else diff_lines > config.PLAN_SIZE_MAX_DIFF_LINES
+    size_diff_added: bool = (
+        meta.diff_added is not None and int(meta.diff_added) > config.PLAN_SIZE_MAX_DIFF_ADDED
     )
+    size_diff_lines: bool = diff_lines > config.PLAN_SIZE_MAX_DIFF_LINES
+    size_diff_raw = size_diff_added or size_diff_lines
     soft = meta.mechanical_churn == "true" and size_diff_raw
-    if meta.mechanical_churn != "true" and size_diff_raw:
-        reasons.append(diff_basis)
+    if size_diff_added:
+        reasons.append("diff-added")
+    if size_diff_lines:
+        reasons.append("diff-lines")
     if firm_headings > config.PLAN_SIZE_MAX_FIRM_HEADINGS:
         reasons.append("firm-headings")
     if surfaces > config.PLAN_SIZE_MAX_SURFACES:
