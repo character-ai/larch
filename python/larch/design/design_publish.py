@@ -379,10 +379,12 @@ def _refresh_composed_plan_md(*, design_tmpdir: Path) -> None:
 
 
 def _publish_refusal_reason(*, design_tmpdir: Path, plugin_root: Path, blocked_reason: str) -> str:
+    if blocked_reason:
+        return f"review-provenance:{blocked_reason}"
     size_ok, size_refusal = _check_publish_plan_size(design_tmpdir=design_tmpdir, plugin_root=plugin_root)
     if not size_ok:
         return f"plan-size:{size_refusal}"
-    return f"review-provenance:{blocked_reason}" if blocked_reason else ""
+    return ""
 
 
 def _emit_publish_refusal(*, reason: str, kvs: list[tuple[str, str]], result_env: Path) -> None:
