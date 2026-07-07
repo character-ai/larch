@@ -17,6 +17,7 @@ from larch.bgjob import model, registry
 from larch.core import config, process_identity
 
 _PACKED_ROW_TOKEN_RE = re.compile(r"[A-Z0-9_]+=.*")
+_MIN_PACKED_ROW_TOKENS = 2
 
 
 def _capture_identity(pid: int, *, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
@@ -70,10 +71,10 @@ def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
         if key and key not in reserved
     }
     for line in text.splitlines():
-        if line.count("=") < 2:
+        if line.count("=") < _MIN_PACKED_ROW_TOKENS:
             continue
         tokens = line.split()
-        if len(tokens) < 2 or any(_PACKED_ROW_TOKEN_RE.fullmatch(token) is None for token in tokens):
+        if len(tokens) < _MIN_PACKED_ROW_TOKENS or any(_PACKED_ROW_TOKEN_RE.fullmatch(token) is None for token in tokens):
             continue
         for token in tokens:
             key, value = token.split("=", 1)
