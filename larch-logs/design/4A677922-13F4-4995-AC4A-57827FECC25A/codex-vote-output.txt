@@ -1,0 +1,16 @@
+FINDING_1: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_2: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_3: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_4: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- dedicated post-merge lifecycle is larger than needed; existing ci-fix plus repair state can cover the feature.
+FINDING_6: YES CORRECTNESS=true SEVERITY=major QUALITY=good UNCERTAIN=false
+FINDING_7: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- fork-only branch-filter normalization is an edge-case limitation, not required for the core red-main repair path.
+FINDING_8: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- optional shared-prompt churn is not necessary for the feature.
+FINDING_9: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- optional shared-prompt churn is not necessary for the feature.
+FINDING_10: NO CORRECTNESS=partially-true SEVERITY=nit QUALITY=good UNCERTAIN=false -- optional shared-prompt churn is not necessary for the feature.
+OOS_1: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier /release gating follow-up; outside this /implement scope.
+OOS_2: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- later-phase autonomous emergency shipping is a separate surface and already tracked as out of scope.
+OOS_3: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier /release gating follow-up; outside this /implement scope.
+OOS_4: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier /release gating follow-up; outside this /implement scope.
+OOS_5: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier FAILED_RUN_ID fallback issue; already tracked out of scope.
+OOS_6: NO CORRECTNESS=partially-true SEVERITY=minor QUALITY=good UNCERTAIN=false -- duplicate of the earlier /release gating follow-up; outside this /implement scope.

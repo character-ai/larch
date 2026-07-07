@@ -1,0 +1,84 @@
+# [BUG] /implement merges on broken or flaky main instead of fixing it in-run
+
+## Summary
+
+/implement ships and merges while the default branch is broken or flapping. The merge gate reads only the PR's own checks. Retry paths (rebase, rerun) end the CI-fix loop as soon as any run goes green, with no root cause for the failure that disappeared. Review and OOS doctrine classify pre-existing breakage as out of scope and observed flakes as log-only transients. On 2026-07-06 this let PR #6488 break every push-to-main CI run for about 7 hours while /implement and /release merges landed on top with green PR checks. An operator repaired main manually (PR #6492). Change /implement so fixing broken or flaky main is part of its work.
+
+## Original report
+
+> We had a disturbing situation overnight wherein the first merged PR introduced a flaky unit test issue in main, and the subsequent /implement sessions apparently kept just retrying and merging once CI passed, instead of fixing. I noticed this correlates to a disturbing trend in /implement I noticed on other occasions of being unwilling to fix a problem it calls "pre-existing", and I call "broken main". I want, instead, for /implement, if it notices flaky tests or main broken outright, to fix it as part of its work. Please file an issue for this with root cause of this behavior and suggested fix.
+
+## Reproduction scenario
+
+Historical incident (2026-07-06, verified from CI run conclusions and PR #6492's diagnosis):
+
+1. /implement merges PR #6488. Its test `test_larch_log_commit_accepts_tmpdir_flag` drives `larch_log_commit_main` against the ambient checkout. The default-branch guard makes it fail on every `push` run to `main` (HEAD on `main`) and pass on every `pull_request` run (detached HEAD). Unpinned in `shard-assignments.json`, it drifted shards (1, then 17) as collection order changed, so it looked flaky.
+2. Main's push CI goes red at 09:58Z and stays red.
+3. Later sessions see green PR checks and merge: /implement PR #6490 at 10:29Z, release PR #6491 at 16:32Z. Each push run fails. No session notices, logs, or repairs red main.
+4. Manual PR #6492 (16:54Z) makes the test hermetic and restores green.
+
+Flaky variant (mechanism, not exercised in this incident): a nondeterministic test fails a PR run. `ci decide` routes fail-plus-behind to `rebase_then_evaluate`; the rebase force-push rolls fresh CI; the flake passes; the loop merges with the defect intact and nothing records it.
+
+## Expected behavior
+
+- A run that observes red default-branch CI treats the repair as in-scope work: capture the failed run's redacted logs, fix on the current branch, ship the fix with the feature PR. Bail to the operator only when the cause is outside the repo.
+- A run that observes a test fail and then pass with no code change treats it as a nondeterminism defect in main and root-causes it before ship completes.
+- /implement never silently merges onto red main.
+
+## Observed behavior
+
+- Push-to-main CI conclusions on 2026-07-06: #6488 failed (09:58Z), #6490 failed (10:29Z), #6491 failed (16:32Z), #6492 succeeded (16:54Z).
+- /implement merged #6490 onto red main with green PR checks. No fix, no execution-issues escalation, no operator bail.
+- Observation vs. inference: in this incident PR runs passed deterministically, so sessions merged without needing retries. The operator's "kept retrying until green" reading describes the adjacent designed behavior for genuinely flaky PR-run failures: rebases and reruns end the loop once any run goes green.
+
+## Root cause analysis
+
+Three interlocking layers (line numbers at v52.5.2, commit 7ec392fe6):
+
+1. **Merge gate scope is "this PR's checks" only; main's own CI is never consulted.** `python/larch/implement/ci_monitor.py:158-202` (`decide`): `status == "pass"` yields `merge`, and status comes from `gather_status`, which reads only the PR's checks. `python/larch/implement/preflight.py` has no main-health check. `python/larch/implement/ship_merge.py` never reads the default branch's push-run conclusion, and nothing watches the post-merge push run. Any failure that manifests only on push-to-main (event-conditional tests like #6488's, hermeticity defects, shard drift) is invisible to every /implement run; each merge extends the outage.
+2. **Retry-terminates-loop semantics: a failure that disappears on retry never gets root-caused.** `decide` routes fail-plus-behind to `rebase_then_evaluate` (a rebase force-push rolls fresh CI). `evaluate_failure` blind-reruns transient-network-signature failures (`python/larch/implement/ci_monitor.py:1858-1867`). The agentic fix cycle returns `"passed"` the moment a CI wait comes back green (`python/larch/implement/ci_agentic_fix.py:546-547`), whether or not any fix landed for the observed failure. A flaky test exits the loop through one of these paths by definition. Doctrine matches: `skills/implement/references/ship-pr-ci-fix.md:17` says "Treat the 30-attempt counter as a safety net for flaky, environmental, or newly surfaced failures", so flaky failures consume retry budget instead of demanding fixes.
+3. **Scope doctrine routes "pre-existing" away from repair.** `skills/shared/reviewer-templates.md:126`: In-Scope requires a diff-modified file, a plan-named file, or a diff-caused regression; otherwise OOS "even if adjacent or severe". `skills/shared/review-acceptance-rubric.md` gate 5 accepts a pre-existing defect only when it "actively blocks completing, building, or verifying the feature"; red main does not block a green-PR merge, so it fails the gate. `skills/implement/references/execution-issues-tracking.md:18` sets "log-only for one-off transients" for CI issues; each session observes a given flake once, so each classifies it as a one-off, and N sessions produce N log entries and zero fixes. The best outcome of the OOS pipeline is a filed issue; no path repairs main in-run.
+
+The incident's enabling defect (a non-hermetic, event-conditional test) is fixed (#6492). The systemic gap is that no /implement session could notice or act on it. A related same-day defect, PR #6495 / issue #6494 (test mocks patching the wrong module and silently passing), is context for how quietly test integrity can degrade.
+
+## Evidence
+
+- `gh run list --branch main` (2026-07-06): push runs for #6488, #6490, #6491 concluded `failure`; #6492 restored `success`. Three consecutive red pushes, 09:58Z to 16:54Z.
+- PR #6492 body: full diagnosis of the #6488 test (ambient `Path.cwd()`, default-branch guard, shard drift explaining apparent flakiness).
+- `python/larch/implement/ci_monitor.py:158-202`: `decide` matrix; merge on PR-checks pass; no main-health input.
+- `python/larch/implement/ci_monitor.py:1858-1867`: blind rerun on transient network signature (`CI_MONITOR_TRANSIENT_RERUN_MAX`).
+- `python/larch/implement/ci_agentic_fix.py:546-547`: fix cycle returns `"passed"` on any green wait.
+- `skills/implement/references/ship-pr-ci-fix.md:17`: "safety net for flaky, environmental, or newly surfaced failures".
+- `skills/implement/references/execution-issues-tracking.md:18`: "file when the failure exposes a recurring / systemic defect; log-only for one-off transients".
+- `skills/shared/reviewer-templates.md:126` and `skills/shared/review-acceptance-rubric.md` gate 5: pre-existing scope rules.
+- `python/larch/implement/preflight.py`, `python/larch/implement/ship_merge.py`: no read of default-branch CI health at preflight, pre-merge, or post-merge.
+
+## Affected files
+
+- `python/larch/implement/ci.py`: CLI entrypoints; would host a new `ci main-health` verb.
+- `python/larch/implement/ci_monitor.py`: `decide` matrix, `gather_status`, `evaluate_failure`; owns merge and retry semantics.
+- `python/larch/implement/preflight.py`: preflight gate; add main-health check.
+- `python/larch/implement/ship_merge.py`, `python/larch/implement/ship_pr.py`: merge loop; pre-merge gate and post-merge watch call sites.
+- `python/larch/implement/ci_agentic_fix.py`: fix-cycle exit condition; flaky root-cause obligation hooks here.
+- `skills/implement/SKILL.md`: wire preflight, pre-merge, and post-merge steps.
+- `skills/implement/references/ship-pr-ci-fix.md`: flaky-as-retry-budget doctrine (work item 3 wording).
+- `skills/implement/references/execution-issues-tracking.md`: log-only-transient doctrine (work item 3 wording).
+- `skills/shared/review-acceptance-rubric.md` plus the generated consumers in its "Update triggers" section: gate 5 clarification (optional work item 4).
+
+## Suggested fix(es)
+
+1. **Main-health gate (mechanical).** Add `python3 python/cli.py ci main-health --repo <REPO>`: read the latest completed push-run conclusion for the CI workflow on the default branch; emit `MAIN_CI_STATUS=pass|fail|pending|error` and `MAIN_FAILED_RUN_ID=`. Call it at /implement preflight and again pre-merge in the ship loop. On `fail`: capture the failed run's redacted logs and fix the defect on the current branch through the existing ci-fix machinery, so the repair merges with the feature PR. When the failure is outside the repo (infra), operator-bail. Never silently merge onto red main.
+2. **Post-merge push-run watch (bounded).** After merge, wait (bounded, reusing existing CI-wait plumbing) for the merge commit's push-to-main run. On failure, re-enter the CI-fix procedure targeting main breakage (follow-up fix PR) instead of ending the run at merge. This catches the #6488 class (PR-green, push-red) at introduction time; the first session would have fixed it instead of an operator 7 hours later.
+3. **Flaky-tests-are-defects doctrine.** Exact replacement wording, append-ready:
+   - In `skills/implement/references/ship-pr-ci-fix.md` step 6, replace "Treat the 30-attempt counter as a safety net for flaky, environmental, or newly surfaced failures, not as permission to push one known failure at a time." with: "Treat the 30-attempt counter as a safety net for environmental and newly surfaced failures, not as permission to push one known failure at a time, and not as a rerun budget for flaky tests. A repository test that failed and then passed with no code change (after a rerun, a rebase, or a shard reassignment) is a nondeterminism defect in main, not a transient: before ship completes, root-cause it from the failed run's redacted log and fix it on the current branch; only when the root cause is outside this repository, file a [BUG] issue carrying the redacted log excerpt. Why: a flapping test converts every future CI signal into noise and trains sessions to retry past real regressions, so the first session that observes the flap is the cheapest place to fix it. Deviate only when the operator has explicitly deferred the specific test by name in the run's issue or prompt; record the deferral under CI Issues in execution-issues.md."
+   - In `skills/implement/references/execution-issues-tracking.md`, replace "`Tool Failures` / `CI Issues` / `Warnings` — file when the failure exposes a recurring / systemic defect; log-only for one-off transients." with: "`Tool Failures` / `CI Issues` / `Warnings` — file when the failure exposes a recurring or systemic defect. Log-only classification is reserved for infrastructure transients (network, runner provisioning, quota) that match no repository test or lint. A named repository test or lint failure is never a one-off: it is either deterministic breakage or nondeterminism, and both are defects in main that the observing run fixes in-branch under the flaky-test doctrine in ship-pr-ci-fix.md. Why: each session observes a given flake once, so per-session one-off classification files nothing and fixes nothing across sessions. Deviate only when the operator has explicitly deferred the named failure for this run; record the deferral in the same entry."
+4. **Necessity-gate clarification (small, recommended).** In `skills/shared/review-acceptance-rubric.md` gate 5, append: "A red or flapping default-branch CI counts as actively blocking verification for every run: a change that restores or stabilizes default-branch CI clears this gate. The /implement orchestrator, not reviewers, owns executing this repair." Update the embedding surfaces listed under "Update triggers" and run `make test-prompt-template-invariants`.
+
+Scope notes: add no work items touching `ARCHITECTURAL_INVARIANTS.md`; issue #6476 is implementing that surface now. Note a dependency edge instead if one is warranted.
+
+## Open questions
+
+- Post-merge watch cost: block the session until the push run completes (minutes per run), or rely on the next session's preflight gate alone? Recommendation: bounded post-merge watch plus preflight gate; /design decides the timeout.
+- Fix-first ordering: when preflight finds red main, fix on the feature branch before starting feature work, or on a separate branch? Recommendation: same-branch fix-first, since the merge carries the repair.
+- Should /release adopt the same main-health gate? Release PR #6491 shipped onto red main through the same green-PR gate. Likely a small follow-up in the release skill.
+- Does the gate-5 wording change ripple into all generated reviewer surfaces in one PR, or ship separately from the mechanical items?
