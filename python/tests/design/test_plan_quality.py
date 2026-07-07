@@ -740,6 +740,43 @@ fi
     assert "fallback fixed" in plan.read_text(encoding="utf-8")
 
 
+def test_revise_waterfall_refreshes_oversize_override_authority_on_success(tmp_path: Path) -> None:
+    original = "## Plan\n### UPDATED: file.txt\nbody\noversize_override: operator\ndiff_lines: 1\n"
+    plan, findings, feature = _revise_base(tmp_path, original)
+    assert plan_quality.set_oversize_override_main(["--design-tmpdir", str(tmp_path)]) == 0
+    fake = _write_executable(
+        tmp_path / "fake-launch.sh",
+        """#!/usr/bin/env bash
+while [ $# -gt 0 ]; do
+  case "$1" in --output) out="$2"; shift 2 ;; *) shift ;;
+  esac
+done
+cat >"$out" <<'PLAN'
+## Plan
+### UPDATED: file.txt
+changed body
+oversize_override: operator
+diff_lines: 2
+PLAN
+""",
+    )
+    driver = _write_executable(tmp_path / "driver.sh", "#!/usr/bin/env bash\nprintf 'EMIT_PLAN_STATUS=ok\\n'\n")
+    env = {
+        "LARCH_TEST_LAUNCH_CODEX_REVIEW": str(fake),
+        "LARCH_TEST_LAUNCH_CLAUDE_REVIEW": str(fake),
+        "LARCH_TEST_DESIGN_DRIVER": str(driver),
+    }
+    cp = _run_revise(tmp_path, plan, findings, feature, env, "--patch-format", "file-replacement")
+    assert cp.returncode == 0, cp.stderr
+    out = dict(line.split("=", 1) for line in cp.stdout.splitlines() if "=" in line)
+    assert out["REVISE_STATUS"] == "ok"
+    assert "changed body" in plan.read_text(encoding="utf-8")
+    size_cp = run_cli("plan", "check-size", "--design-tmpdir", str(tmp_path))
+    size_out = dict(line.split("=", 1) for line in size_cp.stdout.splitlines() if "=" in line)
+    assert size_cp.returncode == 0, size_cp.stdout
+    assert size_out["OVERSIZE_OVERRIDE"] == "operator"
+
+
 def test_revise_waterfall_attempts_cursor_first_when_present(tmp_path: Path) -> None:
     plan, findings, feature = _revise_base(tmp_path)
     calls = tmp_path / "calls.txt"

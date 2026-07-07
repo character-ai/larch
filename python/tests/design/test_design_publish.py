@@ -14,6 +14,8 @@ import sys
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+import pytest
+
 from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_step5c
@@ -72,7 +74,9 @@ if args[:2] == ["plan","check-size"]:
         print("PLAN_SIZE_STATUS=failed")
         raise SystemExit(1)
     print("PLAN_SIZE_STATUS=ok")
-    print("SIZE_TRIGGER_FIRED=" + os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED", "false"))
+    size_trigger_fired = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
+    if size_trigger_fired != "__omit__":
+        print("SIZE_TRIGGER_FIRED=" + (size_trigger_fired if size_trigger_fired is not None else "false"))
     raise SystemExit(0)
 if args[:2] == ["redact","secrets"]:
     sys.stdout.write(sys.stdin.read())
@@ -1668,6 +1672,43 @@ def test_publish_refuses_size_check_failure(tmp_path: Path, capsys: pytest.Captu
             os.environ.pop("FAKE_CLI_CHECK_SIZE_FAIL", None)
         else:
             os.environ["FAKE_CLI_CHECK_SIZE_FAIL"] = old_fail
+    out = capsys.readouterr().out
+    result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
+    assert rc == 4
+    assert "PUBLISH_REFUSE_REASON=size-check-failed" in out
+    assert "PUBLISH_REFUSE_REASON=size-check-failed" in result_env
+
+
+@pytest.mark.parametrize("size_trigger_fired", ["__omit__", "maybe"])
+def test_publish_refuses_size_check_without_valid_trigger_fails_closed(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    size_trigger_fired: str,
+) -> None:
+    plugin_root = tmp_path / "plugin"
+    _write_fake_cli(plugin_root / "python" / "cli.py")
+    design = tmp_path / "design"
+    (design / ".completed").mkdir(parents=True)
+    (design / ".completed" / "step-5b").write_text("", encoding="utf-8")
+    (design / ".completed" / "step-5b.5").write_text("", encoding="utf-8")
+    (design / "plan.txt").write_text("body\ndiff_lines: 1\n", encoding="utf-8")
+    (design / "composed-plan.md").write_text("body\ndifficulty: MODERATE\ndiff_lines: 1\n", encoding="utf-8")
+    (design / ".step3-review-result.env").write_text("STEP3_REVIEW_LOOP_STATUS=complete\nROUNDS_COMPLETED=1\n", encoding="utf-8")
+    old_root = os.environ.get("CLAUDE_PLUGIN_ROOT")
+    old_size = os.environ.get("FAKE_CLI_SIZE_TRIGGER_FIRED")
+    os.environ["CLAUDE_PLUGIN_ROOT"] = str(plugin_root)
+    os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = size_trigger_fired
+    try:
+        rc = design_publish.publish_core(["--design-tmpdir", str(design), "--issue", "9", "--session-id", "RUN1", "--claude-pid", "11"])
+    finally:
+        if old_root is None:
+            os.environ.pop("CLAUDE_PLUGIN_ROOT", None)
+        else:
+            os.environ["CLAUDE_PLUGIN_ROOT"] = old_root
+        if old_size is None:
+            os.environ.pop("FAKE_CLI_SIZE_TRIGGER_FIRED", None)
+        else:
+            os.environ["FAKE_CLI_SIZE_TRIGGER_FIRED"] = old_size
     out = capsys.readouterr().out
     result_env = (design / ".design-publish-result.env").read_text(encoding="utf-8")
     assert rc == 4

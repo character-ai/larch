@@ -358,7 +358,10 @@ def _check_publish_plan_size(*, design_tmpdir: Path, plugin_root: Path) -> tuple
     size_kv = _parse_kv((check_size.stdout or "") + "\n" + (check_size.stderr or ""))
     if check_size.returncode != 0 or size_kv.get("PLAN_SIZE_STATUS", "") != "ok":
         return False, "size-check-failed"
-    if size_kv.get("SIZE_TRIGGER_FIRED", "") == "true":
+    size_trigger_fired = size_kv.get("SIZE_TRIGGER_FIRED", "")
+    if size_trigger_fired not in {"true", "false"}:
+        return False, "size-check-failed"
+    if size_trigger_fired == "true":
         return False, "oversize-no-override"
     return True, ""
 

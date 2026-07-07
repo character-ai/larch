@@ -585,6 +585,18 @@ def _trusted_oversize_override(*, design_tmpdir: Path, plan_text: str) -> str | 
     return config.OVERSIZE_OVERRIDE_OPERATOR if token == _oversize_override_authority_token(text=plan_text) else None
 
 
+def _sync_oversize_override_authority(*, design_tmpdir: Path, plan: Path) -> None:
+    authority_path = _oversize_override_authority_path(design_tmpdir=design_tmpdir)
+    try:
+        plan_text = plan.read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return
+    if parse_optional_metadata(plan_text).oversize_override == config.OVERSIZE_OVERRIDE_OPERATOR:
+        _atomic_write(path=authority_path, text=_oversize_override_authority_token(text=plan_text) + "\n")
+    else:
+        authority_path.unlink(missing_ok=True)
+
+
 def set_oversize_override_main(argv: list[str]) -> int:
     quiet_init(argv0="plan set-oversize-override")
     parser = argparse.ArgumentParser(prog="cli.py plan set-oversize-override")
@@ -603,11 +615,7 @@ def set_oversize_override_main(argv: list[str]) -> int:
         updated = _set_oversize_override_text(text=original, remove=bool(args.remove))
         if updated != original:
             _atomic_write(path=plan, text=updated)
-        authority_path = _oversize_override_authority_path(design_tmpdir=design_tmpdir)
-        if args.remove:
-            authority_path.unlink(missing_ok=True)
-        else:
-            _atomic_write(path=authority_path, text=_oversize_override_authority_token(text=updated) + "\n")
+        _sync_oversize_override_authority(design_tmpdir=design_tmpdir, plan=plan)
     except (OSError, ValueError) as exc:
         diagnostic(f"set-oversize-override: {exc}")
         return 2
@@ -1318,6 +1326,7 @@ def revise_plan_with_waterfall_main(argv: list[str]) -> int:  # noqa: PLR0915,RU
             set_tier_status(ord_=ord_, status="emit-plan-failed")
             restore()
             return False
+        _sync_oversize_override_authority(design_tmpdir=plan.parent, plan=plan)
         set_tier_status(ord_=ord_, status="ok")
         winner = tier
         winner_output = str(out_path)

@@ -3809,6 +3809,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
                     "VALIDATE_DEFECT_COUNT=2",
                     "VALIDATE_SKIPPED_COUNT=0",
                     "VALIDATE_UNSAFE_TOKEN_COUNT=1",
+                    "PUBLISH_REFUSE_REASON=validator-defects",
                     f"VALIDATE_LOG_FILE={design / 'validate.log'}",
                     f"FINAL_SUMMARY_PATH={design / 'final-summary.md'}",
                     "",
@@ -3833,6 +3834,7 @@ def test_step5c_core_rc4_emits_validator_status_sidecars_and_no_markers(
     )
     assert rc == 0
     assert "STEP5C_STATUS=validator-defects" in contract
+    assert "PUBLISH_REFUSE_REASON=validator-defects" in contract
     assert "REPORT_GATE_SIDECARS_FILE=" in contract
     assert "LARCH_FINAL_SUMMARY_BEGIN" not in contract
     assert "PLAN_WRITE_OK=false" in (design / ".design-step5c-status.env").read_text(encoding="utf-8")
