@@ -126,8 +126,7 @@ grep -Fq 'python/cli.py" bgjob start' "$WRAPPER" || fail 'wrapper must launch th
 grep -Fq -- '--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"' "$WRAPPER" || fail 'wrapper must pass Step 3 merge-result env'
 # shellcheck disable=SC2016
 grep -Fq -- '--sentinel "$DESIGN_TMPDIR/.completed/step-3-terminal"' "$WRAPPER" || fail 'wrapper must preserve Step 3 terminal sentinel'
-# shellcheck disable=SC2016
-grep -Fq ': >"$DESIGN_TMPDIR/.step3-review-result.env"' "$WRAPPER" || fail 'wrapper must truncate stale merge env before start'
+grep -Fq 'step3_review_recreate_merge_env' "$WRAPPER" || fail 'wrapper must recreate stale merge env safely before start'
 grep -Fq 'step3_review_bgjob_registry_state' "$WRAPPER" || fail 'wrapper must check live bgjob registry before start'
 if grep -Fq '.bg-wait-active' "$WRAPPER"; then
   fail 'Step 3 wrapper must not write legacy .bg-wait-active marker after bgjob migration'
@@ -158,6 +157,25 @@ grep -Fxq 'NEXT_ACTION=step3b' "$D_BGJOB/bgjob/design-step3-review.result.env" |
 grep -Fxq 'STEP3_REVIEW_LOOP_STATUS=complete' "$D_BGJOB/bgjob/design-step3-review.result.env" || fail 'bgjob result env must include loop status'
 rm -rf "$D_BGJOB"
 pass 'Step 3 wrapper starts bgjob and merges fresh result KVs'
+
+D_DONE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-bgjob-done.XXXXXX")
+FAKE_DONE="$D_DONE/fake-plugin"
+make_fake_step3_plugin "$FAKE_DONE"
+printf 'anchor\n' >"$D_DONE/plan-review-scope-anchor.txt"
+mkdir -p "$D_DONE/bgjob"
+printf '%s\n' 'BGJOB_RC=0' 'BGJOB_ELAPSED_S=0' 'STEP=design-step3-review' 'NEXT_ACTION=step3b' 'STEP3_REVIEW_LOOP_STATUS=complete' 'LOOP_STATUS=complete' 'ROUNDS_COMPLETED=1' >"$D_DONE/bgjob/design-step3-review.result.env"
+start_out=$(env -u LARCH_QUIET_LOG_FILE LARCH_QUIET_DISABLE=1 \
+  LARCH_BGJOB_REGISTRY_ROOT="$D_DONE/registry" \
+  LARCH_TEST_REAL_REPO_ROOT="$ROOT" \
+  CLAUDE_PLUGIN_ROOT="$FAKE_DONE" DESIGN_TMPDIR="$D_DONE" ISSUE_NUMBER=9 \
+  "$WRAPPER" --claude-pid "$$" 2>"$D_DONE/start.stderr")
+case "$start_out" in
+  BGJOB_STATUS=DONE*) ;;
+  *) fail "wrapper must rejoin an existing completed result env, got: $start_out stderr=$(cat "$D_DONE/start.stderr")" ;;
+esac
+grep -Fxq 'NEXT_ACTION=step3b' "$D_DONE/bgjob/design-step3-review.result.env" || fail 'existing completion result env must remain authoritative on restart'
+rm -rf "$D_DONE"
+pass 'Step 3 wrapper reuses an existing completed result env instead of relaunching'
 
 D_STALE=$(mktemp -d "${TMPDIR:-/tmp}/test-step3-bgjob-stale.XXXXXX")
 FAKE_STALE="$D_STALE/fake-plugin"

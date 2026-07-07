@@ -146,6 +146,12 @@ assert_rc 'regular input ignores fallback' 0
 assert_file_contains 'regular primary wins' "$out" "INIT_STATUS='primary'"
 assert_file_not_contains 'fallback ignored for regular' "$out" "INIT_STATUS='fallback'"
 
+write_input "$primary" ''
+write_input "$fallback" 'INIT_STATUS=fallback'
+run_subject --input "$primary" --fallback-input "$fallback" --allow INIT_STATUS --output "$out"
+assert_rc 'empty regular primary ignores fallback' 0
+assert_file_not_contains 'empty primary must not revive fallback' "$out" 'INIT_STATUS='
+
 write_input "$primary" 'INIT_STATUS=ok' 'malformed-line'
 write_input "$fallback" 'INIT_STATUS=fallback'
 rm -f "$out"

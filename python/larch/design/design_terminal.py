@@ -119,6 +119,31 @@ def phase_driver_write_result_env(*, path: str | Path, kvs: Iterable[tuple[str, 
             tmp.unlink()
 
 
+def phase_driver_recreate_result_env(*, path: str | Path, design_tmpdir: str | Path) -> None:
+    """Recreate a result-env file under a validated design tmpdir.
+
+    This is the safe replacement for shell truncation when a wrapper needs an
+    empty merge-input env: the destination must stay under DESIGN_TMPDIR, must
+    not be a symlink, and is recreated through the atomic nofollow writer.
+    """
+    dest = Path(path)
+    root = Path(design_tmpdir)
+    if root.is_symlink() or not root.is_dir():
+        raise OSError(f"design tmpdir is not a regular directory: {root}")
+    resolved_root = root.resolve()
+    if dest.is_symlink():
+        raise OSError(f"refusing to replace symlink result env: {dest}")
+    try:
+        resolved_dest = dest.resolve(strict=False)
+    except OSError as exc:
+        raise OSError(f"result env cannot be resolved: {dest}") from exc
+    if resolved_dest != resolved_root and resolved_root not in resolved_dest.parents:
+        raise OSError(f"result env escapes DESIGN_TMPDIR: {dest}")
+    if dest.parent.is_symlink() or not dest.parent.is_dir():
+        raise OSError(f"result env parent is not a regular directory: {dest.parent}")
+    phase_driver_write_result_env(path=dest, kvs=[])
+
+
 def json_get_bool(*, path: str | Path, key: str, default: bool = False) -> bool:
     source = Path(path)
     if source.is_symlink() or not source.is_file():
@@ -1167,10 +1192,6 @@ def read_result_env_main(argv: Sequence[str]) -> int:
         tmp_path = Path(tmp_name)
         if write_pairs(from_path=source_path, tmp_path=tmp_path) != 0:
             return 1
-        if tmp_path.stat().st_size == 0 and primary_kind == "regular" and fallback_path is not None and fallback_path.is_file() and not fallback_path.is_symlink():
-            source_path = fallback_path
-            if write_pairs(from_path=source_path, tmp_path=tmp_path) != 0:
-                return 1
         tmp_path.replace(output_path)  # pyright: ignore[reportUnusedCallResult]
         tmp_name = ""
         return 0

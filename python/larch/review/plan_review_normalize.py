@@ -20,7 +20,6 @@ from larch.design.design_lifecycle import (
     _classify_input,  # pyright: ignore[reportPrivateUsage]
     _replay_warn_error,  # pyright: ignore[reportPrivateUsage]
     load_bash_quoted_env,
-    phase_driver_read_result_env,
     phase_driver_write_result_env,
     read_result_env_main,
     stage_terminal_state_core,
@@ -240,13 +239,6 @@ def _step3_read_result_env_quiet(argv: Sequence[str]) -> tuple[int, Path | None,
             rc = int(read_result_env_main(list(argv)))
         except SystemExit as exc:
             rc = int(exc.code) if isinstance(exc.code, int) else 1
-    if rc == 0 and primary_regular and selected == primary and fallback is not None:
-        try:
-            primary_pairs = phase_driver_read_result_env(path=primary, allow_keys=ns.allow)
-        except OSError:
-            primary_pairs = []
-        if not primary_pairs and fallback.is_file() and not fallback.is_symlink():
-            selected = fallback
     if rc == 0:
         return 0, selected, primary_regular
     return rc, None, primary_regular
@@ -352,6 +344,14 @@ def _step3_normalize_read_result_env(tmpdir: Path) -> int:
         except OSError:
             status = "missing"
             values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
+    bgjob_rc = values.get(BGJOB_RC_KEY, "")
+    route_kvs_present = bool(values.get("NEXT_ACTION") or values.get("STEP3_REVIEW_LOOP_STATUS") or values.get("LOOP_STATUS"))
+    if bgjob_rc != "0" or not route_kvs_present:
+        values["NEXT_ACTION"] = ""
+        _emit_kv(key="READ_RESULT_ENV_STATUS", value="invalid" if bgjob_rc and bgjob_rc != "0" else "missing")
+        for key in _STEP3_READ_RESULT_ENV_KEYS:
+            _emit_kv(key=key, value=values[key])
+        return 1
     if not values.get("NEXT_ACTION"):
         values["NEXT_ACTION"] = _step3_next_action(
             status=values.get("STEP3_REVIEW_LOOP_STATUS", ""),

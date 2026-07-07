@@ -212,6 +212,17 @@ step3_review_validate_resume_state() {
   fi
 }
 
+step3_review_recreate_merge_env() {
+  PYTHONPATH="${CLAUDE_PLUGIN_ROOT}/python${PYTHONPATH:+:$PYTHONPATH}" python3 - "$DESIGN_TMPDIR/.step3-review-result.env" "$DESIGN_TMPDIR" <<'PY'
+from pathlib import Path
+import sys
+
+from larch.design.design_terminal import phase_driver_recreate_result_env
+
+phase_driver_recreate_result_env(path=Path(sys.argv[1]), design_tmpdir=Path(sys.argv[2]))
+PY
+}
+
 step3_review_write_resume_state() {
   local _phase_file _phase_tmp _approval_env _approval_tmp _continue_file _continue_tmp
   [ "$STEP3_REVIEW_HAS_RESUME_STATE" = true ] || return 0
@@ -300,6 +311,21 @@ fi
 [ -f "$DESIGN_TMPDIR/.pause-requested" ] && exec python3 "$CLAUDE_PLUGIN_ROOT/python/cli.py" design pause-save --design-tmpdir "$DESIGN_TMPDIR" --issue "$ISSUE_NUMBER" ${REPO:+--repo "$REPO"}
 
 if [ "$RUN_LOOP_CHILD" = false ]; then
+  _result_env="$DESIGN_TMPDIR/bgjob/design-step3-review.result.env"
+  if [ -L "$_result_env" ]; then
+    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must not be a symlink' >&2
+    exit 1
+  fi
+  if [ -e "$_result_env" ] && [ ! -f "$_result_env" ]; then
+    printf '%s\n' 'design-step3-review.sh: existing bgjob result env must be a regular file' >&2
+    exit 1
+  fi
+  if [ -f "$_result_env" ]; then
+    exec python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" bgjob wait \
+      --step design-step3-review \
+      --tmpdir "$DESIGN_TMPDIR" \
+      --max-wait-s 0
+  fi
   _registry_state="$(step3_review_bgjob_registry_state)" || {
     printf '%s\n' 'BGJOB_ERROR=registry-check-failed'
     exit 2
@@ -318,7 +344,7 @@ if [ "$RUN_LOOP_CHILD" = false ]; then
   mkdir -p "$DESIGN_TMPDIR/.completed" "$DESIGN_TMPDIR/bgjob"
   rm -f "$DESIGN_TMPDIR/.completed/step-3-terminal" "$DESIGN_TMPDIR/.step3-terminal-persisted-this-run" 2>/dev/null || true
   rm -f "$DESIGN_TMPDIR/bgjob/design-step3-review.result.env" 2>/dev/null || true
-  : >"$DESIGN_TMPDIR/.step3-review-result.env"
+  step3_review_recreate_merge_env
 
   _owner_args=()
   if [ -n "${CLAUDE_PID:-}" ]; then

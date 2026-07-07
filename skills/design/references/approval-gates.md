@@ -90,7 +90,7 @@ Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.m
 
 **Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`, with legacy `$DESIGN_TMPDIR/.step3-review-result.env` fallback only when the bgjob result env is absent; raw status fields are diagnostic):
 
-Before routing on any Step 3 outcome, require `BGJOB_RC=0` plus route KVs from final wait stdout and/or `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`. `DONE` alone, launcher stdout, wait shell exit 0, and the sentinel are not success.
+After every `BGJOB_STATUS=DONE`, read the result env first. Require `BGJOB_RC=0` plus route KVs from final wait stdout and/or `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` for normal continuation. `DONE` alone, launcher stdout, wait shell exit 0, and the sentinel are not success.
 
 - `NEXT_ACTION=step3b`: the loop already applied accepted findings, ran postplan, and ran continuation; skip Gate B.
 - `NEXT_ACTION=gate-b`: prompt-side Gate B owns apply/postplan recovery, then resumes the recorded phase.

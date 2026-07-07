@@ -134,6 +134,48 @@ def test_step3_normalize_read_result_env_prefers_bgjob_and_falls_back_to_legacy(
         "REASON=",
     ]
 
+    _ = bgjob_result_env.write_text("", encoding="utf-8")
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 1, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "READ_RESULT_ENV_STATUS=missing",
+        "BGJOB_RC=",
+        "NEXT_ACTION=",
+        "STEP3_REVIEW_LOOP_STATUS=",
+        "LOOP_STATUS=",
+        "ROUNDS_COMPLETED=",
+        "FINAL_ROUND_NUM=",
+        "ACCEPTED_COUNT=",
+        "DEGRADED_PANEL_WARNING=",
+        "INVALID_SLOT_PANEL_WARNING=",
+        "REASON=",
+    ]
+
+    _ = bgjob_result_env.write_text(
+        "BGJOB_RC=timeout\n"
+        "STEP3_REVIEW_LOOP_STATUS=complete\n"
+        "LOOP_STATUS=complete\n"
+        "ROUNDS_COMPLETED=4\n"
+        "FINAL_ROUND_NUM=3\n"
+        "ACCEPTED_COUNT=9\n",
+        encoding="utf-8",
+    )
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 1, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "READ_RESULT_ENV_STATUS=invalid",
+        "BGJOB_RC=timeout",
+        "NEXT_ACTION=",
+        "STEP3_REVIEW_LOOP_STATUS=complete",
+        "LOOP_STATUS=complete",
+        "ROUNDS_COMPLETED=4",
+        "FINAL_ROUND_NUM=3",
+        "ACCEPTED_COUNT=9",
+        "DEGRADED_PANEL_WARNING=",
+        "INVALID_SLOT_PANEL_WARNING=",
+        "REASON=",
+    ]
+
     bgjob_result_env.unlink()
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
     assert proc.returncode == 0, proc.stderr
@@ -153,7 +195,7 @@ def test_step3_normalize_read_result_env_prefers_bgjob_and_falls_back_to_legacy(
 
     legacy_result_env.unlink()
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 1, proc.stderr
     assert proc.stdout.splitlines() == [
         "READ_RESULT_ENV_STATUS=missing",
         "BGJOB_RC=",
@@ -172,7 +214,7 @@ def test_step3_normalize_read_result_env_prefers_bgjob_and_falls_back_to_legacy(
     _ = target.write_text("STEP3_REVIEW_LOOP_STATUS=complete\n", encoding="utf-8")
     legacy_result_env.symlink_to(target)
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
-    assert proc.returncode == 0, proc.stderr
+    assert proc.returncode == 1, proc.stderr
     assert "READ_RESULT_ENV_STATUS=missing" in proc.stdout
     assert "WARN=" not in proc.stdout
 

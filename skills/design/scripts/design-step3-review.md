@@ -17,8 +17,8 @@ Foreground bgjob launcher for the `/design` Step 3 plan-review loop, with an int
 - Validates resume-state flags and starting-round bounds before writing state.
 - Calls without `--phase`, `--findings-file`, or `--postplan-operator-continue` preserve the existing first-entry pause ordering before bgjob launch.
 - Calls with resume-state flags write validated phase, findings env, or postplan continue state before pause-save.
-- Before a fresh `bgjob start`, checks the identity-valid registry row for `design-step3-review`. A live row refuses a second start and routes the caller to `bgjob wait`; stale or dead rows are cleared before a fresh launch.
-- Immediately before each fresh `bgjob start`, truncates `$DESIGN_TMPDIR/.step3-review-result.env` as the merge-result input and removes stale `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` so prior KVs cannot satisfy a new completion gate.
+- Before a fresh `bgjob start`, checks the identity-valid registry row for `design-step3-review` and any regular non-symlink `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`. A live row or a completed result env routes the caller to `bgjob wait`; stale or dead rows are cleared before a fresh launch.
+- Immediately before each fresh `bgjob start`, recreates `$DESIGN_TMPDIR/.step3-review-result.env` through the Python helper that rejects symlinks and non-regular paths, and removes stale `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env` only on the fresh-start path so prior KVs cannot satisfy a new completion gate.
 - Fresh launcher stdout is exactly one line: `BGJOB_STATUS=STARTED STEP=design-step3-review PGID=<n>`.
 - The wrapper passes `--merge-result-env "$DESIGN_TMPDIR/.step3-review-result.env"` and sentinel `$DESIGN_TMPDIR/.completed/step-3-terminal` to `python/cli.py bgjob start`. The bgjob daemon writes `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`, which is the completion source of truth.
 - The internal child runs `plan-review run --new-process-group --orphan-timeout-s 7200`; Python calls `os.setsid()` before reviewer children start and detached loops self-stop after the configured orphan bound.
