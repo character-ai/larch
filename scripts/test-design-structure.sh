@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+# shellcheck disable=SC1003
 # shellcheck disable=SC2016 # single-quoted strings are intentional grep literals
 set -euo pipefail
 
@@ -635,7 +636,7 @@ contains "$APPROVAL_GATES_MD" 'plan-before-review.txt` when present.' 'accepted 
 contains "$APPROVAL_GATES_MD" 'discussion-round1.md` when present (explicit Round 1 refusals).' 'accepted audit must read Round 1 refusals'
 contains "$APPROVAL_GATES_MD" 'design-outline.md` when `.outline-approved` exists (approved non-goals).' 'accepted audit must read approved outline non-goals'
 contains "$APPROVAL_GATES_MD" 'bind `_accepted_corpus` to non-empty `$DESIGN_TMPDIR/accepted-plan-findings-all.md` when that file exists and has non-zero size; else to non-empty `$DESIGN_TMPDIR/accepted-plan-findings.md`; else treat as no cumulative accepted findings.' 'accepted audit must mirror compose_review corpus precedence'
-contains "$APPROVAL_GATES_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped \' 'accepted audit must include filter-gate-b-skipped invocation'
+contains "$APPROVAL_GATES_MD" 'python3 "${CLAUDE_PLUGIN_ROOT}/python/cli.py" plan-review filter-gate-b-skipped '"\\" 'accepted audit must include filter-gate-b-skipped invocation'
 contains "$APPROVAL_GATES_MD" '--accepted "${_accepted_corpus}"' 'accepted audit filter invocation must pass selected corpus'
 contains "$APPROVAL_GATES_MD" 'On filter helper non-zero exit: print `**⚠ 4b: accepted-plan-findings skip-filter failed**`, append a bounded warning with `site=design Gate C Presentation` and `reason=filter-gate-b-skipped-failed`, and stop before persist, prompt, auto-approval, or Step 5.' 'accepted audit must fail closed on skip-filter failure'
 contains "$APPROVAL_GATES_MD" 'Auto-approve only after accepted-findings audit persistence succeeds and binds `strong_audit_dissent=false`; strong disagreement suppresses the auto-approve breadcrumb, requires `AskUserQuestion`, and passes `--accepted-audit-escalation true` to every Gate C `render-gate` invocation.' 'accepted audit strong dissent must override skip-approve'
