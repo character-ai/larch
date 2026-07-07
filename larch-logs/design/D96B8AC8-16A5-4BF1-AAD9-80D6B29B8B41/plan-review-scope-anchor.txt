@@ -1,0 +1,45 @@
+## Out-of-Scope Observation
+
+**Surfaced by**: cursor-specialist-correctness, cursor-specialist-edge-cases, dyn-dyn-resume-env
+
+**Phase**: implement
+
+**Vote tally**: N/A
+
+
+## Description
+
+Route-state gap-fill can seed REPO on non-resume Step 0b entries, so a reused tmpdir can pair a new issue with an old repo and send later `gh issue view` / `design route` calls to the wrong remote.
+- **Suggested revisions (informational for voters; coder decides)**:
+  - From cursor-specialist-correctness: Limit route-state REPO gap-fill to paused-resume recovery, or always invoke resolve_repo() when env still lacks REPO after gap-fill unless route is resume@.
+  - From cursor-specialist-edge-cases: Restrict gap-fill to resume@ intent or clear stale route-state on fresh Step 0a setup.
+  - From dyn-dyn-resume-env: Address the concern above.
+
+---
+*This issue was automatically created by the larch `/implement` workflow from an out-of-scope observation surfaced during the workflow.*
+
+## Approved direction (outline)
+
+## Proposed Design Outline
+
+### Goals
+- Prevent stale `.design-step0-route-state.env` REPO from leaking into fresh Step 0b invocations.
+- Ensure `resolve_repo()` is always called when ISSUE_NUMBER is explicitly provided.
+
+### Non-goals
+- Changing resume path behavior: resumes still use `_recover_resume_route_state_values` correctly via `_refresh_resume_source_env`.
+- Modifying the route-state file format or the REPO emission logic in `_finish_step0_route`.
+- Adding new env vars or CLI flags.
+
+### Approach sketch
+- Change one condition in `_bind_step0_route_issue_env` from `or` to `and`.
+- On a fresh call with explicit ISSUE_NUMBER, the `and` condition is False so gap-fill is skipped.
+- `resolve_repo()` then provides the correct REPO at line 512-513.
+- Add one regression test that seeds stale REPO in route-state and verifies it is not used.
+
+### Surfaces in scope
+- `python/larch/design/design_step0.py` (1-line condition change)
+- `python/tests/design/test_design_lifecycle.py` (1 regression test)
+
+### Open questions
+- None.

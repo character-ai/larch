@@ -1,0 +1,1 @@
+Fix Step 0b so stale route-state `REPO` cannot fill fresh explicit-issue runs. Change the gap-fill guard and add a regression test that proves `resolve_repo()` supplies the repo for an explicit issue.

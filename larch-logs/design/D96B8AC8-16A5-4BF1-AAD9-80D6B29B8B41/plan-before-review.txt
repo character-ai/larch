@@ -1,0 +1,68 @@
+## Approach
+
+Use the approved narrow fix.
+
+- In `_bind_step0_route_issue_env`, only call `_gap_fill_resume_route_state_values` when both `ISSUE_NUMBER` and `REPO` are missing.
+- This preserves resume-like recovery paths.
+- This blocks stale `.design-step0-route-state.env` `REPO` from filling a fresh explicit issue run.
+- Let `step0_route_main` call `resolve_repo()` when the explicit issue is present and `REPO` remains unset.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_step0.py
+
+Change the gap-fill condition in `_bind_step0_route_issue_env`:
+
+- Current behavior: gap-fill runs when either `ISSUE_NUMBER` or `REPO` is missing.
+- New behavior: gap-fill runs only when both are missing.
+- Keep `_recover_resume_route_state_values`, `_refresh_resume_source_env`, route-state file format, and `_finish_step0_route` unchanged.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+Add one focused regression test near the existing Step 0 route tests.
+
+Test shape:
+
+- Create a design tmpdir with `.design-step0-parsed.env` containing `POSITIONAL_KIND=issue` and `POSITIONAL_VALUE=77`.
+- Seed `.design-step0-route-state.env` with stale `ISSUE_NUMBER=42` and `REPO=old/repo`.
+- Use a source env without `REPO`.
+- Monkeypatch `design_step0.resolve_repo` to return `new/repo`.
+- Monkeypatch `_read_json_issue` to assert it receives `issue_number="77"` and `repo="new/repo"`.
+- Monkeypatch `subprocess.run` for `design route` and `design init-runparams`; assert the route command includes `--issue 77` and `--repo new/repo`.
+- Assert the final route-state file contains `ISSUE_NUMBER=77` and `REPO=new/repo`, not the stale values.
+
+## Edge cases
+
+- Fresh explicit positional issue with stale route-state `REPO`: must resolve the current repo.
+- Fresh explicit `--issue-number` should follow the same path because `ISSUE_NUMBER` is set before the guard.
+- Resume-like paths with neither `ISSUE_NUMBER` nor `REPO` still gap-fill from route state.
+- Verbal positional without an issue must still fail before stale route-state can revive an old issue.
+
+## Failure modes
+
+- If the guard is changed too broadly, resume recovery may lose persisted `ISSUE_NUMBER` or `REPO`.
+- If the regression test only checks stdout, it may miss the wrong repo being passed to `gh issue view`.
+- If the test leaves `REPO` in source env, it will not exercise the stale gap-fill path.
+
+## Testing strategy
+
+Run only changed-file Python tests:
+
+```bash
+python3 -m pytest python/tests/design/test_design_lifecycle.py -q
+```
+
+Optionally run the relevant-checks path if available and fast for the branch:
+
+```bash
+python3 python/cli.py checks run-relevant
+```
+
+## Difficulty
+
+This is workflow state handling in `/design` Step 0b. The code edit is small, but a stale repo can route GitHub reads to the wrong remote, and regressions can affect resume behavior.
+
+confidence: high
+difficulty: MODERATE
+mechanical_churn: false
+diff_lines: 55
