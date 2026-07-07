@@ -1,0 +1,2 @@
+{"slot":"correctness","tool":"cursor","output":"<TMPDIR>/round-2/cursor-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.5.2/agents/reviewer-correctness.md","vendor":"cursor","resolved_model":"composer-2.5"}
+{"slot":"correctness","tool":"codex","output":"<TMPDIR>/round-2/codex-specialist-correctness-output.txt","agent":"<OPERATOR_REPO_PATH>/plugins/cache/larch-local/larch/52.5.2/agents/reviewer-correctness.md","model_role":"default","vendor":"codex","resolved_model":"gpt-5.5"}
