@@ -55,3 +55,10 @@ def test_registry_ignores_symlink(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     link = root / "run-demo.env"
     _ = link.symlink_to(target)
     assert registry.read_entry(link) is None
+
+
+def test_default_run_id_depends_only_on_tmpdir(tmp_path: Path) -> None:
+    left = model.default_run_id(tmpdir=tmp_path, clone_path=Path("/tmp/left"))
+    right = model.default_run_id(tmpdir=tmp_path, clone_path=Path("/tmp/right"))
+
+    assert left == right

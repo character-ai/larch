@@ -34,7 +34,12 @@ def owner_identity_from_env(raw_owner_pid: str | None) -> model.OwnerIdentity:
     candidate = raw_owner_pid or os.environ.get(config.ENV_BGJOB_OWNER_PID, "") or os.environ.get(
         "LARCH_BG_POLL_GUARD_SESSION_PID", ""
     )
-    return model.OwnerIdentity(recorded=_read_owner_identity(candidate))
+    if candidate:
+        recorded = _read_owner_identity(candidate)
+        if recorded is None:
+            raise RuntimeError(f"could not capture process identity for owner pid {candidate}")
+        return model.OwnerIdentity(recorded=recorded)
+    return model.OwnerIdentity(recorded=_capture_identity(os.getpid()))
 
 
 def _safe_rows(rows: list[tuple[str, object]]) -> list[tuple[str, str]]:
@@ -45,7 +50,8 @@ def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
     if path is None or path.is_symlink() or not path.is_file():
         return []
     rows = larch_io.read_kvs(path, reject_symlink=True, on_error_default=True, reject_cr=True)
-    return [(key, model.reject_line_value(value, label=key)) for key, value in rows.items()]
+    reserved = {config.BGJOB_RC_KEY, config.BGJOB_ELAPSED_KEY, "STEP"}
+    return [(key, model.reject_line_value(value, label=key)) for key, value in rows.items() if key not in reserved]
 
 
 def write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
@@ -59,10 +65,8 @@ def write_result(*, spec: model.JobSpec, rc: str, elapsed_s: int) -> None:
     rows.extend(_merge_rows(spec.merge_result_env))
     larch_io.atomic_write(path=result, text=larch_io.format_kvs(_safe_rows(rows)), nofollow=True, mode=0o600)
     for sentinel in spec.sentinel_paths:
-        sentinel.parent.mkdir(parents=True, exist_ok=True)
-        if not sentinel.is_symlink():
-            with contextlib.suppress(OSError):
-                _ = sentinel.write_text("", encoding="utf-8")
+        safe_sentinel = model.ensure_under(sentinel, spec.tmpdir, label="sentinel")
+        larch_io.atomic_write(path=safe_sentinel, text="", nofollow=True, mode=0o600)
 
 
 def _terminate_child_group(child: process_identity.RecordedProcessIdentity, *, reason: str) -> None:
@@ -74,25 +78,7 @@ def _terminate_child_group(child: process_identity.RecordedProcessIdentity, *, r
     )
 
 
-def _monitor(spec: model.JobSpec, child: subprocess.Popen[bytes]) -> int:
-    child_identity = _capture_identity(child.pid, expected_signature=" ".join(spec.command[:2]))
-    daemon_identity = _capture_identity(os.getpid())
-    entry = model.RegistryEntry(
-        step=spec.step,
-        run_id=spec.run_id,
-        tmpdir=spec.tmpdir,
-        log_dir=spec.log_dir,
-        clone_path=Path.cwd().resolve(),
-        daemon=daemon_identity,
-        child=child_identity,
-        owner=spec.owner.recorded,
-        start_epoch=int(time.time()),
-        budget_s=spec.budget_s,
-        stdout_log=spec.log_dir / f"{spec.step}.stdout.log",
-        stderr_log=spec.log_dir / f"{spec.step}.stderr.log",
-        result_env=model.result_env_path(tmpdir=spec.tmpdir, step=spec.step),
-    )
-    reg_path = registry.write_entry(entry)
+def _monitor(spec: model.JobSpec, child: subprocess.Popen[bytes], reg_path: Path) -> int:
     start = time.monotonic()
     owner_missing_since: float | None = None
     rc_token = "0"
@@ -129,18 +115,62 @@ def _monitor(spec: model.JobSpec, child: subprocess.Popen[bytes]) -> int:
 def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
     os.setsid()
     spec.log_dir.mkdir(parents=True, exist_ok=True)
+    result = model.result_env_path(tmpdir=spec.tmpdir, step=spec.step)
+    result.parent.mkdir(parents=True, exist_ok=True)
+    with contextlib.suppress(OSError):
+        result.unlink()
     stdout_log = spec.log_dir / f"{spec.step}.stdout.log"
     stderr_log = spec.log_dir / f"{spec.step}.stderr.log"
+    child: subprocess.Popen[bytes] | None = None
+    child_identity: process_identity.RecordedProcessIdentity | None = None
+    reg_path: Path | None = None
+    pipe_closed = False
+    pgid = 0
     with stdout_log.open("ab") as stdout_handle, stderr_log.open("ab") as stderr_handle:
-        child = subprocess.Popen(  # lint-subprocess-via-runner: ok bgjob daemon intentionally owns the long-running child process group
-            spec.command,
-            stdout=stdout_handle,
-            stderr=stderr_handle,
-            start_new_session=True,
-        )
-        _ = os.write(pipe_fd, f"{child.pid} {os.getpgid(child.pid)}\n".encode())
-        _ = os.close(pipe_fd)
-        return _monitor(spec, child)
+        try:
+            child = subprocess.Popen(  # lint-subprocess-via-runner: ok bgjob daemon intentionally owns the long-running child process group
+                spec.command,
+                stdout=stdout_handle,
+                stderr=stderr_handle,
+                start_new_session=True,
+            )
+            child_identity = _capture_identity(child.pid, expected_signature=" ".join(spec.command[:2]))
+            daemon_identity = _capture_identity(os.getpid())
+            reg_path = registry.write_entry(
+                model.RegistryEntry(
+                    step=spec.step,
+                    run_id=spec.run_id,
+                    tmpdir=spec.tmpdir,
+                    log_dir=spec.log_dir,
+                    clone_path=Path.cwd().resolve(),
+                    daemon=daemon_identity,
+                    child=child_identity,
+                    owner=spec.owner.recorded,
+                    start_epoch=int(time.time()),
+                    budget_s=spec.budget_s,
+                    stdout_log=stdout_log,
+                    stderr_log=stderr_log,
+                    result_env=result,
+                )
+            )
+            pgid = os.getpgid(child.pid)
+            _ = os.write(pipe_fd, f"{child.pid} {pgid}\n".encode())
+            _ = os.close(pipe_fd)
+            pipe_closed = True
+            return _monitor(spec, child, reg_path)
+        except Exception:
+            if child_identity is not None:
+                _terminate_child_group(child_identity, reason="startup-failed")
+            if child is not None:
+                with contextlib.suppress(Exception):
+                    _ = child.wait(timeout=5)
+            if reg_path is not None:
+                registry.unlink_entry(reg_path)
+            raise
+        finally:
+            if not pipe_closed:
+                with contextlib.suppress(OSError):
+                    _ = os.close(pipe_fd)
 
 
 def start_daemon(spec: model.JobSpec) -> int:

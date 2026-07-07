@@ -25,7 +25,7 @@ def _build_spec(args: argparse.Namespace) -> model.JobSpec:
     )
     log_dir_arg = Path(args.log_dir) if args.log_dir else None
     log_dir, _, _ = model.log_paths(tmpdir=tmpdir, log_dir=log_dir_arg, step=step)
-    sentinels = tuple(Path(raw).resolve() for raw in args.sentinel)
+    sentinels = tuple(model.ensure_under(Path(raw), tmpdir, label="sentinel") for raw in args.sentinel)
     owner = daemon.owner_identity_from_env(args.owner_pid)
     merge_result_env = Path(args.merge_result_env).resolve() if args.merge_result_env else None
     return model.JobSpec(

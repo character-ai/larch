@@ -74,7 +74,8 @@ def validate_slug(value: str, *, label: str) -> str:
 
 
 def default_run_id(*, tmpdir: Path, clone_path: Path) -> str:
-    material = f"{tmpdir.resolve()}\0{clone_path.resolve()}"
+    _ = clone_path
+    material = str(tmpdir.resolve())
     return hashlib.sha256(material.encode("utf-8")).hexdigest()[:16]
 
 
