@@ -370,9 +370,9 @@ def _refresh_composed_plan_md(*, design_tmpdir: Path) -> None:
     composed_plan = design_tmpdir / "composed-plan.md"
     with contextlib.suppress(OSError):
         composed_plan.unlink()
-    from larch.design import design_step5c
+    from larch.design import design_step5c  # noqa: PLC0415
 
-    design_step5c._auto_compose_plan_md(design_tmpdir)  # pyright: ignore[reportPrivateUsage]
+    design_step5c._auto_compose_plan_md(design_tmpdir)  # pyright: ignore[reportPrivateUsage]  # noqa: SLF001
 
 
 def _publish_refusal_reason(*, design_tmpdir: Path, plugin_root: Path, blocked_reason: str) -> str:

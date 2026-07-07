@@ -227,6 +227,40 @@ def _acyclic(*, node_count: int, edges: list[tuple[int, int]]) -> bool:
     return seen_count == node_count
 
 
+def _collect_piece_data(
+    *,
+    pieces: list[tuple[int, str, str]],
+    index_by_num: dict[int, int],
+    parent_plan_text: str,
+    parent_paths: list[str],
+) -> tuple[str, list[str], list[str], list[list[str]], list[str], list[tuple[int, int]]]:
+    panel_edges: list[tuple[int, int]] = []
+    dep_lines: list[str] = []
+    scopes: list[str] = []
+    firm_heading_lines: list[list[str]] = []
+    acceptance_lines: list[str] = []
+    for i, (_pnum, _title, body) in enumerate(pieces):
+        dep = _piece_field(body, "dependencies") or "none"
+        dep_lines.append(dep)
+        blockers = _prepare_parse_dependency(dep=dep, index_by_num=index_by_num)
+        if blockers is None:
+            return "bad-dependency-ref", [], [], [], [], []
+        panel_edges.extend((index_by_num[blocker], i) for blocker in blockers)
+        metadata = _piece_metadata(body=body, parent_plan_text=parent_plan_text, parent_paths=parent_paths)
+        if metadata is None:
+            return "missing-piece-metadata", [], [], [], [], []
+        scope, firm, acceptance = metadata
+        scopes.append(scope)
+        firm_heading_lines.append(firm)
+        acceptance_lines.append(acceptance)
+    if parent_paths:
+        parent_firm_headings = list(dict.fromkeys(parent_paths))
+        child_firm_headings = list(dict.fromkeys(path for firm in firm_heading_lines for path in firm))
+        if set(parent_firm_headings) != set(child_firm_headings):
+            return "missing-piece-metadata", [], [], [], [], []
+    return "", dep_lines, scopes, firm_heading_lines, acceptance_lines, panel_edges
+
+
 def prepare_partition_issues(
     *,
     design_tmpdir: Path,
@@ -259,32 +293,15 @@ def prepare_partition_issues(
     pieces.sort(key=lambda item: item[0])
     index_by_num: dict[int, int] = {pnum: i for i, (pnum, _title, _body) in enumerate(pieces)}
 
-    panel_edges: list[tuple[int, int]] = []
-    dep_lines: list[str] = []
-    scopes: list[str] = []
-    firm_heading_lines: list[list[str]] = []
-    acceptance_lines: list[str] = []
     parent_plan_text, parent_paths = _parent_plan_scope_data(design_tmpdir)
-    for i, (_pnum, _title, body) in enumerate(pieces):
-        dep = _piece_field(body, "dependencies") or "none"
-        dep_lines.append(dep)
-        blockers = _prepare_parse_dependency(dep=dep, index_by_num=index_by_num)
-        if blockers is None:
-            return "bad-dependency-ref", ""
-        panel_edges.extend((index_by_num[blocker], i) for blocker in blockers)
-        metadata = _piece_metadata(body=body, parent_plan_text=parent_plan_text, parent_paths=parent_paths)
-        if metadata is None:
-            return "missing-piece-metadata", ""
-        scope, firm, acceptance = metadata
-        scopes.append(scope)
-        firm_heading_lines.append(firm)
-        acceptance_lines.append(acceptance)
-
-    if parent_paths:
-        parent_firm_headings = list(dict.fromkeys(parent_paths))
-        child_firm_headings = list(dict.fromkeys(path for firm in firm_heading_lines for path in firm))
-        if set(parent_firm_headings) != set(child_firm_headings):
-            return "missing-piece-metadata", ""
+    err, dep_lines, scopes, firm_heading_lines, acceptance_lines, panel_edges = _collect_piece_data(
+        pieces=pieces,
+        index_by_num=index_by_num,
+        parent_plan_text=parent_plan_text,
+        parent_paths=parent_paths,
+    )
+    if err:
+        return err, ""
 
     serial_edges = [(idx, idx + 1) for idx in range(len(pieces) - 1)]
     edges = list(dict.fromkeys(serial_edges))

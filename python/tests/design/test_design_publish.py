@@ -12,16 +12,11 @@ import stat
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
-
 import pytest
 
 from larch.calibration import difficulty
 from larch.design import design_publish
 from larch.design import design_step5c
-
-if TYPE_CHECKING:
-    import pytest
 
 
 def _write_fake_cli(path: Path) -> None:
