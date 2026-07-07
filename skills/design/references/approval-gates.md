@@ -66,7 +66,7 @@ KV binding:
 
 When `$DESIGN_TMPDIR/accepted-plan-findings.md` is empty, Gate B prints `⏩ 3.5: Gate B: no accepted findings; nothing to apply`. This fires before mode resolution, presentation, prompts, or plan apply.
 
-- **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If empty or non-numeric, treat that as a Step 3 routing error. Resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`.
+- **Loop mode** (`STEP3_REVIEW_LOOP_STATUS` is set): bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If empty or non-numeric, treat that as a Step 3 routing error. Resume through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the Step 3 bgjob resume fence from `SKILL.md`; require `BGJOB_RC=0` plus route KVs.
 
 #### Gate B mode (auto-apply default; `--per-round-approval` for explicit)
 
@@ -88,11 +88,13 @@ Under default auto-apply (`approve_requested=false`), Gate B fires **no** findin
 
 Plan drift (`DRIFT_TRIGGER_FIRED=true`) records a warning in `execution-issues.md` and exits `0`; it no longer halts.
 
-**Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/.step3-review-result.env`; raw status fields are diagnostic):
+**Step 3 outcomes** (read `NEXT_ACTION` first from `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`, with legacy `$DESIGN_TMPDIR/.step3-review-result.env` fallback only when the bgjob result env is absent; raw status fields are diagnostic):
+
+Before routing on any Step 3 outcome, require `BGJOB_RC=0` plus route KVs from final wait stdout and/or `$DESIGN_TMPDIR/bgjob/design-step3-review.result.env`. `DONE` alone, launcher stdout, wait shell exit 0, and the sentinel are not success.
 
 - `NEXT_ACTION=step3b`: the loop already applied accepted findings, ran postplan, and ran continuation; skip Gate B.
 - `NEXT_ACTION=gate-b`: prompt-side Gate B owns apply/postplan recovery, then resumes the recorded phase.
-- `NEXT_ACTION=mav`: delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through `design-run-$PPID.sh`. Parse only trusted scalars from `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END`; do not bind prompt-side retally anchors or invoke tally, persist-retally, or timing helpers inline. After successful post, resume once: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
+- `NEXT_ACTION=mav`: delegate MainAgent vote and re-tally to `design-step3-mav.sh --phase pre` and `design-step3-mav.sh --phase post` through `design-run-$PPID.sh`. Parse only trusted scalars from `DESIGN_STEP3_MAV_KV_BEGIN` / `DESIGN_STEP3_MAV_KV_END`; do not bind prompt-side retally anchors or invoke tally, persist-retally, or timing helpers inline. After successful post, resume once through the Step 3 bgjob wrapper: `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` for zero accepted findings or `--phase awaiting-apply` when accepted findings remain; if live, rejoin with `bgjob wait`. If post emits `NEXT_ACTION=step3b-bypass`, run the Gate-B-bypass helper and continue to Step 3b.
 - `NEXT_ACTION=step3b-bypass`: Gate B is **bypassed**. `NEXT_ACTION=final-summary:*`: Gate B is not reached.
 
 ### Presentation
@@ -136,7 +138,7 @@ After the chosen findings have been applied to `plan.txt` (full accepted set or 
    1. **MANDATORY: READ ENTIRE FILE**: Read `skills/design/references/settle-rc-dispatch.md` completely.
    2. Require `SETTLE_NEXT_ACTION`; stop for repair if it is absent. If the action row and wrapper rc disagree, stop for repair. Branch only on the matching `SETTLE_NEXT_ACTION` row in `settle-rc-dispatch.md`.
 9. Before leaving the post-apply path, bind `STEP3_RESUME_ROUND="${FINAL_ROUND_NUM:-${STEP3_REVIEW_ROUND_NUM:-${ROUND_NUM:-}}}"` per `SKILL.md`'s shared Step 3 resume rule. If empty or non-numeric, stop for operator repair as a Step 3 routing error. Do not call `design-step3-review.sh` yet; step 9 only determines or binds `STEP3_RESUME_ROUND`.
-10. Only when the settle wrapper returns rc `0`, a retained drift Continue settles, or a non-exiting Split/Override path completes without skill exit, resume once through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the immediate-background Step 3 resume fence from `SKILL.md`. The script-internal loop runs continuation from `awaiting-continuation` and owns any terminal Step 3b transition.
+10. Only when the settle wrapper returns rc `0`, a retained drift Continue settles, or a non-exiting Split/Override path completes without skill exit, resume once through `design-step3-review.sh --starting-round "$STEP3_RESUME_ROUND" --phase awaiting-continuation` using the Step 3 bgjob resume fence from `SKILL.md`. The script-internal loop runs continuation from `awaiting-continuation` and owns any terminal Step 3b transition.
 
 ### Gate B plan revision and Step 2b.5
 

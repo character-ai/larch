@@ -95,9 +95,10 @@ def _run_step3_normalizer(tmp_path: Path, stdout_text: str = "", loop_rc: int = 
     )
 
 
-def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: Path) -> None:
-    result_env = tmp_path / ".step3-review-result.env"
-    _ = result_env.write_text(
+def test_step3_normalize_read_result_env_prefers_bgjob_and_falls_back_to_legacy(tmp_path: Path) -> None:
+    legacy_result_env = tmp_path / ".step3-review-result.env"
+    _ = legacy_result_env.write_text(
+        "BGJOB_RC=0\n"
         "STEP3_REVIEW_LOOP_STATUS=tally-error\n"
         "LOOP_STATUS=tally-error\n"
         "ROUNDS_COMPLETED=1\n"
@@ -107,10 +108,38 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
         "INVALID_SLOT_PANEL_WARNING=invalid slot dropped\n",
         encoding="utf-8",
     )
+    bgjob_result_env = tmp_path / "bgjob" / "design-step3-review.result.env"
+    bgjob_result_env.parent.mkdir()
+    _ = bgjob_result_env.write_text(
+        "BGJOB_RC=0\n"
+        "STEP3_REVIEW_LOOP_STATUS=complete\n"
+        "LOOP_STATUS=complete\n"
+        "ROUNDS_COMPLETED=4\n",
+        encoding="utf-8",
+    )
+
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == [
         "READ_RESULT_ENV_STATUS=ok",
+        "BGJOB_RC=0",
+        "NEXT_ACTION=step3b",
+        "STEP3_REVIEW_LOOP_STATUS=complete",
+        "LOOP_STATUS=complete",
+        "ROUNDS_COMPLETED=4",
+        "FINAL_ROUND_NUM=",
+        "ACCEPTED_COUNT=",
+        "DEGRADED_PANEL_WARNING=",
+        "INVALID_SLOT_PANEL_WARNING=",
+        "REASON=",
+    ]
+
+    bgjob_result_env.unlink()
+    proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
+    assert proc.returncode == 0, proc.stderr
+    assert proc.stdout.splitlines() == [
+        "READ_RESULT_ENV_STATUS=ok",
+        "BGJOB_RC=0",
         "NEXT_ACTION=step3b-bypass",
         "STEP3_REVIEW_LOOP_STATUS=tally-error",
         "LOOP_STATUS=tally-error",
@@ -122,11 +151,12 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
         "REASON=",
     ]
 
-    result_env.unlink()
+    legacy_result_env.unlink()
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
     assert proc.returncode == 0, proc.stderr
     assert proc.stdout.splitlines() == [
         "READ_RESULT_ENV_STATUS=missing",
+        "BGJOB_RC=",
         "NEXT_ACTION=",
         "STEP3_REVIEW_LOOP_STATUS=",
         "LOOP_STATUS=",
@@ -140,7 +170,7 @@ def test_step3_normalize_read_result_env_present_missing_and_symlink(tmp_path: P
 
     target = tmp_path / "target.env"
     _ = target.write_text("STEP3_REVIEW_LOOP_STATUS=complete\n", encoding="utf-8")
-    result_env.symlink_to(target)
+    legacy_result_env.symlink_to(target)
     proc = run_cli("plan-review", "normalize-status", "--design-tmpdir", str(tmp_path), "--read-result-env")
     assert proc.returncode == 0, proc.stderr
     assert "READ_RESULT_ENV_STATUS=missing" in proc.stdout

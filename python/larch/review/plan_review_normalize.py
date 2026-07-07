@@ -14,7 +14,7 @@ from pathlib import Path
 from collections.abc import Sequence
 
 from larch.core import logging_util
-from larch.core.config import STEP3_ESCALATION_FAILURE_STATUSES
+from larch.core.config import BGJOB_RC_KEY, STEP3_ESCALATION_FAILURE_STATUSES
 from larch.design.design_lifecycle import (
     capture_contract_stream_to_paths,
     _classify_input,  # pyright: ignore[reportPrivateUsage]
@@ -105,6 +105,7 @@ def step3_loop_status_to_loop_status(*, status: str, fallback: str = "complete")
 
 STEP3_NORMALIZE_ALLOW_KEYS = (
     "NEXT_ACTION",
+    BGJOB_RC_KEY,
     "LOOP_STATUS",
     "STEP3_REVIEW_LOOP_STATUS",
     "POSTPLAN_RC",
@@ -128,6 +129,7 @@ STEP3_NORMALIZE_ALLOW_KEYS = (
     "REASON",
 )
 _STEP3_READ_RESULT_ENV_KEYS = (
+    BGJOB_RC_KEY,
     "NEXT_ACTION",
     "STEP3_REVIEW_LOOP_STATUS",
     "LOOP_STATUS",
@@ -170,6 +172,7 @@ _STEP3_SYNTHESIS_STATUSES = {"panel-failed", "panel-init-failed", "tally-error",
 # Statuses that require interactive main-agent action mid-loop; sentinel must NOT
 # be written in normalize for these because the loop is not yet in a terminal state.
 _STEP3_INTERACTIVE_STATUSES = {"main-agent-vote-required", "main-agent-apply-required", "per-round-approval-required", "postplan-operator-required"}
+_STEP3_COMPLETED_SENTINEL_STATUSES = {"complete", "cap-hit", "panel-failed", "panel-init-failed", "tally-error", "degraded-empty-collector", "postplan-failed"}
 _STEP3_SUMMARY_FAILED_POSTPLAN = "SUMMARY_OUTCOME=failed-postplan"
 _STEP3_SUMMARY_FAILED_JUDGE_PANEL = "SUMMARY_OUTCOME=failed-judge-panel"
 _STEP3_NEXT_ACTION_BY_STATUS = {
@@ -189,6 +192,24 @@ _STEP3_NEXT_ACTION_BY_STATUS = {
 
 class _Step3NormalizeAbort(Exception):
     pass
+
+
+def _step3_bgjob_result_env(tmpdir: Path) -> Path:
+    return tmpdir / "bgjob" / "design-step3-review.result.env"
+
+
+def _step3_legacy_result_env(tmpdir: Path) -> Path:
+    return tmpdir / ".step3-review-result.env"
+
+
+def _step3_selected_result_env(tmpdir: Path) -> tuple[Path, str]:
+    bgjob_result_env = _step3_bgjob_result_env(tmpdir)
+    if bgjob_result_env.is_file() and not bgjob_result_env.is_symlink():
+        return bgjob_result_env, "ok"
+    legacy_result_env = _step3_legacy_result_env(tmpdir)
+    if legacy_result_env.is_file() and not legacy_result_env.is_symlink():
+        return legacy_result_env, "ok"
+    return bgjob_result_env, "missing"
 
 
 def _step3_normalize_warn_stderr(message: str) -> None:
@@ -266,7 +287,8 @@ def _step3_overlay_stdout_env(
 
 
 def _step3_normalize_load_env(*, design_tmpdir: Path, stdout_file: Path) -> dict[str, str]:
-    result_env = design_tmpdir / ".step3-review-result.env"
+    result_env = _step3_bgjob_result_env(design_tmpdir)
+    legacy_result_env = _step3_legacy_result_env(design_tmpdir)
     values: dict[str, str] = {}
     safe_path: Path | None = None
     selected_source: Path | None = None
@@ -281,13 +303,15 @@ def _step3_normalize_load_env(*, design_tmpdir: Path, stdout_file: Path) -> dict
         )
         raise _Step3NormalizeAbort from None
     try:
-        argv = ["--input", str(result_env), "--fallback-input", str(stdout_file)]
+        argv = ["--input", str(result_env), "--fallback-input", str(legacy_result_env)]
         for key in STEP3_NORMALIZE_ALLOW_KEYS:
             argv.extend(["--allow", key])
         argv.extend(["--output", str(safe_path)])
         rc, selected_source, primary_regular = _step3_read_result_env_quiet(argv)
         if rc == 0:
             values = load_bash_quoted_env(path=safe_path, allow_keys=STEP3_NORMALIZE_ALLOW_KEYS)
+            if not values and stdout_file.is_file() and not stdout_file.is_symlink():
+                selected_source = stdout_file
         else:
             _step3_normalize_warn_stderr(
                 "**⚠ Step 3: could not read step3 review result env; recovering from plan-review stdout when possible**"
@@ -304,21 +328,20 @@ def _step3_normalize_load_env(*, design_tmpdir: Path, stdout_file: Path) -> dict
         with contextlib.suppress(FileNotFoundError):
             safe_path.unlink()
     _step3_replay_warn_error_safe(selected_source)
+    selected_result_regular = selected_source is not None and selected_source != stdout_file
     _step3_overlay_stdout_env(
         values=values,
         stdout_file=stdout_file,
-        primary_regular=primary_regular,
+        primary_regular=primary_regular or selected_result_regular,
         selected_source=selected_source,
     )
     return values
 
 
 def _step3_normalize_read_result_env(tmpdir: Path) -> int:
-    result_env = tmpdir / ".step3-review-result.env"
+    result_env, status = _step3_selected_result_env(tmpdir)
     values = dict.fromkeys(_STEP3_READ_RESULT_ENV_KEYS, "")
-    status = "missing"
-    if result_env.is_file() and not result_env.is_symlink():
-        status = "ok"
+    if status == "ok":
         try:
             for line in result_env.read_text(encoding="utf-8", errors="replace").splitlines():
                 if "=" not in line:
@@ -566,6 +589,8 @@ def normalize_step3_status_main(argv: list[str] | None = None) -> int:
     _step3_normalize_terminal_status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
     if _step3_normalize_terminal_status and _step3_normalize_terminal_status not in _STEP3_INTERACTIVE_STATUSES:
         _step3_normalize_write_terminal_sentinel(tmpdir)
+        if _step3_normalize_terminal_status in _STEP3_COMPLETED_SENTINEL_STATUSES:
+            step3_wrapper_write_completed_step3_only(tmpdir)
     _step3_emit_normalize_envelope_with_next_action(tmpdir=tmpdir, values=values)
 
     status = values.get("STEP3_REVIEW_LOOP_STATUS", "")
