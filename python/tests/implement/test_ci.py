@@ -30,6 +30,54 @@ def test_behind_count_fail_open_on_rev_list_timeout(monkeypatch, capsys):
     assert "BEHIND_COUNT=0" in capsys.readouterr().out
 
 
+def test_main_health_cli_emits_stable_kvs(monkeypatch, capsys):
+    runner = RecordingRunner(
+        responses=[
+            _res(
+                0,
+                '[{"databaseId":1,"status":"completed","conclusion":"success","headSha":"abc","event":"push"}]',
+            ),
+        ],
+    )
+    monkeypatch.setattr(ci, "proc", runner)
+
+    assert ci.main_health_main(["--repo", "o/r", "--commit", "abc"]) == 0
+
+    out = capsys.readouterr().out
+    assert "MAIN_CI_STATUS=pass" in out
+    assert "MAIN_FAILED_RUN_ID=" in out
+    assert "MAIN_HEALTH_HEAD_SHA=abc" in out
+    assert "MAIN_HEALTH_DETAIL=" in out
+
+
+def test_main_health_cli_uses_bare_branch_for_upstream(monkeypatch):
+    runner = RecordingRunner(responses=[_res(0, "[]")])
+    monkeypatch.setattr(ci, "proc", runner)
+
+    assert (
+        ci.main_health_main(
+            [
+                "--repo",
+                "fork/r",
+                "--upstream-repo",
+                "upstream/r",
+                "--base-ref",
+                "upstream/main",
+            ],
+        )
+        == 0
+    )
+
+    call = runner.calls[0]
+    assert call[call.index("--repo") + 1] == "upstream/r"
+    assert call[call.index("--branch") + 1] == "main"
+
+
+def test_main_health_cli_rejects_negative_limit(monkeypatch):
+    monkeypatch.setattr(ci, "proc", RecordingRunner())
+    assert ci.main_health_main(["--repo", "o/r", "--limit", "-1"]) == config.EXIT_USAGE
+
+
 def test_decide_usage_exit_one():
     assert ci.decide_main([]) == 1
 

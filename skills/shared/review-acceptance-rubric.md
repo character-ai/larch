@@ -25,7 +25,9 @@ issue). To be accepted in-scope, a finding must clear at least one of these gate
    conclude that no matching requirement exists. Do not include that mapping in voter output.
 5. Unblock a pre-existing condition — a pre-existing defect that actively blocks completing,
    building, or verifying the feature (overlaps 1-2; the test is "the feature cannot be finished
-   or shipped until this is fixed").
+   or shipped until this is fixed"). A red or flapping default-branch CI counts as actively
+   blocking verification for every run: restoring or stabilizing default-branch CI clears this
+   gate. The `/implement` orchestrator, not reviewers, owns executing that repair.
 
 Default-deny. If you are unsure whether a finding clears a gate, it does not. Unsure => Out-of-Scope
 or reject => never an in-scope accept.

@@ -518,6 +518,22 @@ def test_decide_parity_table(
     assert decision.action == expected
 
 
+def test_decide_fail_behind_preserves_failed_run_before_rebase() -> None:
+    decision = ci_monitor.decide(
+        ci_monitor.CiStatus(
+            status="fail",
+            behind_count=1,
+            failed_run_id="999",
+            conflicted=False,
+        ),
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+    )
+
+    assert decision.action == "evaluate_failure"
+
+
 def test_decide_pending_behind_waits_for_inflight_ci() -> None:
     """A pending run on a behind-but-unconflicted branch waits, never rebases.
 
@@ -2937,7 +2953,7 @@ def test_monitor_merge_ok_no_goto() -> None:
     assert result.goto_rebase is False
 
 
-def test_monitor_rebase_then_evaluate_no_fix() -> None:
+def test_monitor_fail_behind_preserves_failed_run_id_for_handoff() -> None:
     responses = _status(status="fail", behind=1)
     runner = RecordingRunner(responses)
 
@@ -2947,9 +2963,11 @@ def test_monitor_rebase_then_evaluate_no_fix() -> None:
         repo="o/r",
         sleep_fn=lambda _s: None,
     )
-    assert result.action == "rebase_then_evaluate"
-    assert result.goto_rebase is True
-    # Behind + failed CI rebases first; it must not download logs or rerun.
+    assert result.action == "evaluate_failure"
+    assert result.failed_run_id == "999"
+    assert result.result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.goto_rebase is False
+    # Behind + failed CI preserves the failed run before any rebase.
     assert not any(c[:3] == ("gh", "run", "view") for c in runner.calls)
     assert not any(c[:3] == ("gh", "run", "rerun") for c in runner.calls)
 

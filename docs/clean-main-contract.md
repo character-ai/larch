@@ -34,3 +34,9 @@ Use the recovery path that matches the raw preflight error:
 On failure, `/design` prints the raw `PREFLIGHT_ERROR=...` line and this message:
 
 > ⚠ /design: session setup failed. Investigate `PREFLIGHT_ERROR` and re-run.
+
+## Default-branch CI health for `/implement --merge`
+
+`/implement` records default-branch push CI health during preflight in `main-health.env`. The probe queries the configured workflow with the bare branch name (`main`), even in forked runs where local git comparisons use `upstream/main`.
+
+A red default branch is in-scope repair work. Pre-PR repair happens on the feature branch and records `MAIN_HEALTH_REPAIR_*` ownership fields so Step 8 can merge the branch that carries the repair without deadlocking on default-branch green. New or different main failures still block merge and route to CI-fix. Pending health waits within a bounded window; unresolved pending or probe errors stall or operator-bail with detail instead of silently merging.

@@ -4444,6 +4444,109 @@ def test_postmerge_sentinel_written_before_finalize_postmerge(
     assert result.outcome is Outcome.OK
 
 
+def test_ship_postmerge_push_watch_routes_failure_to_emergency_repair(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
+
+    def fail_if_postmerge_runs(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        raise AssertionError("postmerge finalize must wait for merged-SHA push CI")
+
+    monkeypatch.setattr(ship, "run_postmerge_phase", fail_if_postmerge_runs)
+    monkeypatch.setattr(
+        ship.main_health,
+        "wait_main_health",
+        lambda *_a, **_k: ship.main_health.MainHealthWaitResult(
+            health=ship.main_health.MainHealthStatus(
+                status="fail",
+                failed_run_id="44",
+                head_sha="abc123",
+                detail="merged push failed",
+            ),
+            elapsed_seconds=1,
+            attempts=1,
+        ),
+    )
+
+    result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        iteration=1,
+        rebase_count=2,
+        fix_attempts=3,
+        transient_retries=4,
+    )
+
+    assert result.outcome is Outcome.NEEDS_USER_INPUT
+    assert result.needs_user_reason == config.NEEDS_USER_POSTMERGE_MAIN_CI_FAIL
+    assert result.failed_run_id == "44"
+    state = _read_state(state_file)
+    assert state["PHASE"] == "emergency-repair"
+    assert state["ORIGINAL_BRANCH_FORBIDDEN"] == "true"
+    assert state["MAIN_REPAIR_RUN_ID"] == "44"
+    assert not (tmp_path / "post-merge-sentinel").exists()
+
+
+def test_ship_postmerge_push_watch_passes_before_finalize(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    state_file = tmp_path / "ship-pr-state.sh"
+    ctx = _ctx(
+        tmp_path,
+        state_file=str(state_file),
+        pr_number=5,
+        pr_url="https://example.com/pr/5",
+        pr_closed=True,
+        merge_result=config.MERGE_RESULT_MERGED,
+    )
+    _ = (tmp_path / "main-health.env").write_text("MAIN_CI_STATUS=pass\n", encoding="utf-8")
+    calls: list[str] = []
+
+    def wait_main_health(*_args: object, **_kwargs: object) -> ship.main_health.MainHealthWaitResult:
+        calls.append("watch")
+        return ship.main_health.MainHealthWaitResult(
+            health=ship.main_health.MainHealthStatus(
+                status="pass",
+                head_sha="abc123",
+                detail="merged push passed",
+            ),
+            elapsed_seconds=1,
+            attempts=1,
+        )
+
+    def run_postmerge_phase(*_args: object, **_kwargs: object) -> ship.ShipResult:
+        calls.append("postmerge")
+        return ship.ShipResult(Outcome.OK, detail="done")
+
+    monkeypatch.setattr(ship.main_health, "wait_main_health", wait_main_health)
+    monkeypatch.setattr(ship, "run_postmerge_phase", run_postmerge_phase)
+
+    result = ship._ship_postmerge_phase(  # pyright: ignore[reportPrivateUsage]
+        runner=RecordingRunner(),
+        working=ctx,
+        cwd=str(tmp_path),
+        iteration=0,
+        rebase_count=0,
+        fix_attempts=0,
+        transient_retries=0,
+    )
+
+    assert result.outcome is Outcome.OK
+    assert calls == ["watch", "postmerge"]
+
+
 def test_postmerge_flush_only_when_pr_closed(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,

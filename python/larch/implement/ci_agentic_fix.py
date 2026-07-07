@@ -487,7 +487,7 @@ def _run_cycle(
                         baseline_staged=baseline_staged,
                         cwd=cwd,
                     )
-                    return "no-progress", "empty-delta", fix_attempted, (), False, None, failure_log_text
+                    return config.NEEDS_USER_FLAKY_DEFECT_UNFIXED, "empty-delta", fix_attempted, (), False, None, failure_log_text
                 pushed, _post_head, pushed_paths, _did_rebase, pending = ci_monitor.stage_and_push(
                     runner,
                     cwd=cwd,
@@ -712,7 +712,7 @@ def _run_cycle(
                 baseline_staged=baseline_staged,
                 cwd=cwd,
             )
-            return "no-progress", "empty-delta", fix_attempted, (), False, None, failure_log_text
+            return config.NEEDS_USER_FLAKY_DEFECT_UNFIXED, "empty-delta", fix_attempted, (), False, None, failure_log_text
         pushed, _post_head, pushed_paths, _did_rebase, pending = ci_monitor.stage_and_push(
             runner,
             cwd=cwd,
@@ -883,7 +883,12 @@ def main(argv: list[str] | None = None) -> int:
                 delta_paths=delta_paths,
                 exhausted_detail_file=str(exhausted_path),
             )
-        if status in {"passed", "rebase-required", "first-fixer-non-health"}:
+        if status in {
+            "passed",
+            "rebase-required",
+            "first-fixer-non-health",
+            config.NEEDS_USER_FLAKY_DEFECT_UNFIXED,
+        }:
             return _emit_result(
                 status,
                 detail=detail,

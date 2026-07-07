@@ -97,6 +97,8 @@ def _step_result_to_ship(
     ledger_triggers = {
         config.NEEDS_USER_CI_FIX_EXHAUSTED,
         config.NEEDS_USER_FIRST_FIXER_NON_HEALTH,
+        config.NEEDS_USER_MAIN_CI_FAIL,
+        config.NEEDS_USER_FLAKY_DEFECT_UNFIXED,
         config.NEEDS_USER_LOCAL_UNFIXABLE,
         config.NEEDS_USER_SHIP_PR_INTERNAL_LINT_FIX,
     }

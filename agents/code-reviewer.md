@@ -103,7 +103,7 @@ You may interleave and stop when high-priority items are exhausted:
 
 ## Necessity gate (in-scope findings)
 
-Before placing ANY finding under In-Scope Findings, apply the Review Acceptance Rubric: the feature would be incomplete, broken, unverifiable, or regressed without it. If the feature ships correctly without your finding, however real or valuable, it is NOT in-scope. Put it under Out-of-Scope Observations.
+Before placing ANY finding under In-Scope Findings, apply the Review Acceptance Rubric: the feature would be incomplete, broken, unverifiable, or regressed without it. If the feature ships correctly without your finding, however real or valuable, it is NOT in-scope. Put it under Out-of-Scope Observations. Red or flapping default-branch CI actively blocks verification for every run; restoring or stabilizing it clears this gate, and `/implement`, not reviewers, owns executing that repair.
 
 "Cleaner," "more robust," "more consistent," "more idiomatic," "more flexible," "best practice," "while we're here," refactors, renames, added configurability, defensive handling for inputs the feature cannot produce, performance / micro-optimization claims when the feature already meets its stated performance requirement, and cross-shell / cross-OS / tool-version portability speculation for shells, platforms, or tool versions the project does not target are Out-of-Scope signals, never In-Scope.
 

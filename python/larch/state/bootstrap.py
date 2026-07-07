@@ -141,6 +141,27 @@ def _merge_write_ship_seed_input(*, tmpdir: str, values: dict[str, str], only_mi
     text = "".join(f"{key}={data.get(key, '')}\n" for key in ordered if key in data)
     _atomic_text(path=path, text=text)
 
+
+def _materialize_main_health_env(st: BootstrapState) -> None:
+    if not st.implement_tmpdir or not st.opts.preflight_tmpdir:
+        return
+    source = Path(st.opts.preflight_tmpdir) / "main-health.env"
+    if not source.is_file() or source.is_symlink():
+        return
+    target = Path(st.implement_tmpdir) / "main-health.env"
+    try:
+        text = source.read_text(encoding="utf-8", errors="replace")
+        _atomic_text(path=target, text=text)
+    except OSError:
+        return
+
+
+def _materialize_preflight_sidecars(st: BootstrapState) -> None:
+    if not st.opts.preflight_tmpdir:
+        return
+    _atomic_text(path=Path(st.implement_tmpdir) / "preflight-tmpdir.env", text=f"PREFLIGHT_TMPDIR={st.opts.preflight_tmpdir}\n")
+    _materialize_main_health_env(st)
+
 def _write_larch_run_sh(implement_tmpdir: str) -> bool:
     if not implement_tmpdir:
         return False
@@ -450,8 +471,7 @@ def _phase_infra(st: BootstrapState) -> None:
         st.cursor_present = skv.get("CURSOR_PRESENT", "")
         st.codex_binary_found = skv.get("CODEX_BINARY_FOUND", "")
         st.cursor_binary_found = skv.get("CURSOR_BINARY_FOUND", "")
-        if st.opts.preflight_tmpdir:
-            _atomic_text(path=Path(st.implement_tmpdir) / "preflight-tmpdir.env", text=f"PREFLIGHT_TMPDIR={st.opts.preflight_tmpdir}\n")
+        _materialize_preflight_sidecars(st)
         _cli("session", "write-id", "--output", str(Path(st.implement_tmpdir) / "session-id"))
         if not st.session_id and (Path(st.implement_tmpdir) / "session-id").is_file():
             st.session_id = (Path(st.implement_tmpdir) / "session-id").read_text(encoding="utf-8", errors="replace").strip()

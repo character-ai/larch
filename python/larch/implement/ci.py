@@ -15,6 +15,7 @@ from typing import cast
 
 from larch.implement import ci_monitor
 from larch.implement import ci_agentic_fix
+from larch.implement import main_health
 from larch.core import config
 from larch.git import git
 from larch.core import logging_util
@@ -53,6 +54,73 @@ def _base_ref_error(*, base_remote: str, base_ref: str) -> str | None:
     if git.validate_base_remote_ref(base_remote=base_remote, base_ref=base_ref) is None:
         return None
     return "ERROR: --base-remote/--base-ref contain unsupported characters"
+
+
+def _normalize_base_branch(value: str) -> str:
+    text = value.strip()
+    if "/" in text:
+        text = text.rsplit("/", 1)[1]
+    return text or "main"
+
+
+def _emit_main_health(status: main_health.MainHealthStatus) -> None:
+    _emit_kv(key="MAIN_CI_STATUS", value=status.status)
+    _emit_kv(key="MAIN_FAILED_RUN_ID", value=status.failed_run_id)
+    _emit_kv(key="MAIN_HEALTH_HEAD_SHA", value=status.head_sha)
+    _emit_kv(key="MAIN_HEALTH_DETAIL", value=status.detail)
+
+
+def main_health_main(argv: list[str]) -> int:
+    parser = argparse.ArgumentParser(prog="cli.py ci main-health")
+    parser.add_argument("--repo", required=True)
+    parser.add_argument("--base-ref", default="main")
+    parser.add_argument("--workflow", default=config.MAIN_HEALTH_DEFAULT_WORKFLOW)
+    parser.add_argument("--limit", default=config.MAIN_HEALTH_RUN_LIST_LIMIT, type=int)
+    parser.add_argument("--timeout", default=config.MAIN_HEALTH_WAIT_TIMEOUT_SEC, type=int)
+    parser.add_argument("--interval", default=config.MAIN_HEALTH_WAIT_POLL_INTERVAL_SEC, type=int)
+    parser.add_argument("--wait", action="store_true")
+    parser.add_argument("--commit", default="")
+    parser.add_argument("--upstream-repo", default="")
+    args = _parse(parser=parser, argv=argv, usage_exit=config.EXIT_USAGE)
+    if isinstance(args, int):
+        return args
+    for name in ("limit", "timeout", "interval"):
+        value = getattr(args, name)
+        if value < 0:
+            _usage_error(f"ERROR: --{name.replace('_', '-')} must be a non-negative integer, got: {value}")
+            return config.EXIT_USAGE
+    base_branch = _normalize_base_branch(str(args.base_ref))
+    if args.wait:
+        waited = main_health.wait_main_health(
+            proc,
+            main_health.MainHealthWaitQuery(
+                health=main_health.MainHealthQuery(
+                    repo=str(args.repo),
+                    base_branch=base_branch,
+                    workflow=str(args.workflow),
+                    limit=int(args.limit),
+                    head_sha=str(args.commit or "") or None,
+                    upstream_repo=str(args.upstream_repo or "") or None,
+                ),
+                timeout=int(args.timeout),
+                interval=int(args.interval),
+            ),
+        )
+        _emit_main_health(waited.health)
+        return 0
+    status = main_health.read_main_health(
+        proc,
+        main_health.MainHealthQuery(
+            repo=str(args.repo),
+            base_branch=base_branch,
+            workflow=str(args.workflow),
+            limit=int(args.limit),
+            head_sha=str(args.commit or "") or None,
+            upstream_repo=str(args.upstream_repo or "") or None,
+        ),
+    )
+    _emit_main_health(status)
+    return 0
 
 
 def status_main(argv: list[str]) -> int:

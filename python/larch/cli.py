@@ -572,6 +572,7 @@ _REGISTRY: dict[tuple[str, str], tuple[str, str]] = {
     ("ci", "wait"): ("larch.implement.ci", "wait_main"),
     ("ci", "status"): ("larch.implement.ci", "status_main"),
     ("ci", "decide"): ("larch.implement.ci", "decide_main"),
+    ("ci", "main-health"): ("larch.implement.ci", "main_health_main"),
     ("ci", "failed-jobs"): ("larch.implement.ci", "failed_jobs_main"),
     ("ci", "behind-count"): ("larch.implement.ci", "behind_count_main"),
     ("ci", "rerun-failed"): ("larch.implement.ci", "rerun_failed_main"),

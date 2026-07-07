@@ -349,6 +349,41 @@ def test_resume_plan_tail_appends_force_bypass_before_flags(tmp_path, monkeypatc
     assert order[:2] == ["bypass", "flags"]
 
 
+def test_main_health_env_copied_from_preflight(tmp_path: Path) -> None:
+    preflight = tmp_path / "preflight"
+    impl = tmp_path / "impl"
+    preflight.mkdir()
+    impl.mkdir()
+    (preflight / "main-health.env").write_text(
+        "MAIN_CI_STATUS=fail\nMAIN_FAILED_RUN_ID=7\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=red main\n",
+        encoding="utf-8",
+    )
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", preflight_tmpdir=str(preflight)),
+        implement_tmpdir=str(impl),
+    )
+
+    bootstrap._materialize_main_health_env(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert (impl / "main-health.env").read_text(encoding="utf-8") == (
+        "MAIN_CI_STATUS=fail\nMAIN_FAILED_RUN_ID=7\nMAIN_HEALTH_HEAD_SHA=abc\nMAIN_HEALTH_DETAIL=red main\n"
+    )
+
+
+def test_main_health_env_preserved_on_resume_without_preflight_refresh(tmp_path: Path) -> None:
+    impl = tmp_path / "impl"
+    impl.mkdir()
+    (impl / "main-health.env").write_text("MAIN_CI_STATUS=fail\n", encoding="utf-8")
+    st = bootstrap.BootstrapState(
+        bootstrap.BootstrapOptions(up_to_phase="plan", resume_plan_tail=True),
+        implement_tmpdir=str(impl),
+    )
+
+    bootstrap._materialize_main_health_env(st)  # pyright: ignore[reportPrivateUsage]
+
+    assert (impl / "main-health.env").read_text(encoding="utf-8") == "MAIN_CI_STATUS=fail\n"
+
+
 def test_resume_plan_tail_stops_after_run_flags_failure(tmp_path, monkeypatch) -> None:
     monkeypatch.setattr(bootstrap, "_append_force_bypass", lambda _st: True)  # pyright: ignore[reportPrivateUsage]
     monkeypatch.setattr(bootstrap, "_persist_run_flags", lambda st: setattr(st, "implement_bail_reason", "run-flags-persist-failed") or False)  # pyright: ignore[reportPrivateUsage]
