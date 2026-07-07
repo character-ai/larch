@@ -1,0 +1,61 @@
+## Approach
+
+- Keep the fix in `_finish_step0_route()` in `python/larch/design/design_step0.py`, per the resolved scope.
+- Add a small helper, for example `_refresh_resume_source_env(ctx: Step0RouteFinishContext) -> int`.
+- Call it only when `ctx.route.startswith("resume@")`, after `.design-step0-route-state.env` is written and before route rows are emitted.
+- Build the argv with `_cli_cmd(ctx.plugin_root, "session", "write-design-env", ...)`.
+  - `--output`: `ctx.design_tmpdir / "source-env.sh"`
+  - `--design-tmpdir`: `ctx.design_tmpdir`
+  - `--session-id`: `ctx.env["SESSION_ID"]`
+  - `--issue-number`: `ctx.env["ISSUE_NUMBER"]`
+  - `--claude-pid`: `ctx.claude_pid`
+  - `--repo`: include when `ctx.env["REPO"]` is present.
+- Prefer `proc.run(...)` over a new direct `subprocess.run(...)` call to avoid adding a new subprocess-ratchet baseline row.
+- Pass an env that includes `CLAUDE_PLUGIN_ROOT=str(ctx.plugin_root)`, because `write-design-env` requires it when `--claude-pid` is set.
+- If the refresh fails, print a clear Step 0b warning to stderr and return `1` before emitting `ROUTE=resume@...`.
+- Do not re-run init-runparams, rename, or run-params writes on resume paths.
+- Do not hand-write `source-env.sh`.
+
+## Files to modify/create
+
+### UPDATED: python/larch/design/design_step0.py
+
+- Add the resume-only source-env refresh helper near the existing Step 0 route helpers.
+- Validate that `SESSION_ID` and `ISSUE_NUMBER` are present before invoking `write-design-env`; fail early if either is missing.
+- Call the helper inside `_finish_step0_route()` only for `resume@` routes.
+- Preserve current behavior for `proceed`, `clarify`, `already-planned`, and cancellation routes.
+- Keep `.design-step0-route-state.env` as the route-state record. Use `ctx.env` values already used to write that file rather than parsing the file again in the same function.
+
+### UPDATED: python/tests/design/test_design_lifecycle.py
+
+- Add `test_step0_route_resume_rehydrates_source_env`.
+- Set up a resumed Step 0 route with an existing `source-env.sh` that has `DESIGN_TMPDIR`, `SESSION_ID`, and `CLAUDE_PLUGIN_ROOT`, but lacks `ISSUE_NUMBER` and `REPO`.
+- Invoke `step0_route_main(..., "--issue-number", "42")`.
+- Monkeypatch repo and issue reads so routing gets `ISSUE_NUMBER=42` and `REPO=owner/repo`.
+- Monkeypatch `design_step0.proc.run` to delegate `session write-design-env` calls to `session_env.write_design_env_main`, so the test exercises the real writer without spawning a subprocess.
+- Assert the refreshed `design/source-env.sh` contains `export ISSUE_NUMBER=42` and `export REPO=owner/repo`.
+- Adjust existing resume-route tests that currently treat `resume@2a` as a no-side-effect non-proceed route so they either stub the new refresh or assert it was called.
+
+## Edge cases
+
+- Resume route with missing `SESSION_ID`: fail in Step 0b, before Step 5c can fail with an empty publish issue.
+- Resume route with missing `ISSUE_NUMBER`: fail in Step 0b, because `write-design-env` treats issue number as optional and would otherwise succeed without fixing the bug.
+- Resume route with no `REPO`: do not invent one in the helper. `step0_route_main` should already resolve it when an issue number is present.
+- Existing `REPO_ROOT`, tool health booleans, and other prior writer-owned values should remain preserved by `session write-design-env` prior-file recovery.
+
+## Failure modes
+
+- The refresh command can fail because `CLAUDE_PLUGIN_ROOT`, `DESIGN_TMPDIR`, or `--output` validation fails. Return `1` and print the stderr detail if available.
+- A test that monkeypatches only `subprocess.run` may miss the new `proc.run` seam. Update resume-route tests explicitly.
+- If `source-env.sh` is absent on resume, the writer can still recreate it with the required issue and repo values. This is acceptable and safer than continuing with a missing file.
+
+## Testing strategy
+
+- Run targeted tests first:
+  - `cd python && pytest tests/design/test_design_lifecycle.py -k "step0_route_resume_rehydrates_source_env or step0_route_non_proceed_routes_do_not_init or step0_route_emits_resume_step_kvs"`
+- Run required Python validation:
+  - `make py-lint`
+  - `make py-test`
+
+difficulty: MODERATE
+diff_lines: 95
