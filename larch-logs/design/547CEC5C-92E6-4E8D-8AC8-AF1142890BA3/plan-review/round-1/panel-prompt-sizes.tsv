@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	49662	12416	13643	3411	36019	9005		0	0
+design Step 3	phase1	1	dyn-cursor-plan-bgjob-process-safety	plan-review	cursor	dyn-cursor-plan-bgjob-process-safety.txt	50002	12501	13509	3378	36493	9124		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	30446	7612	13355	3339	17091	4273		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	49675	12419	13656	3414	36019	9005		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	30459	7615	13368	3342	17091	4273		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	30461	7616	13370	3343	17091	4273		0	0
+design Step 3	phase1	1	dyn-codex-plan-bgjob-process-safety	plan-review	codex	dyn-codex-plan-bgjob-process-safety.txt	30786	7697	13221	3306	17565	4392		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	49677	12420	13658	3415	36019	9005		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	30437	7610	13346	3337	17091	4273		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	49653	12414	13634	3409	36019	9005		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	52664	13166	4697	1175	47967	11992	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	phase1	1	voter-1	voter	codex	codex-validity-vote-output.txt	28308	7077	9227	2307	19081	4771		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-plan-fidelity-vote-output.txt	28308	7077	9227	2307	19081	4771		0	0
+design Step 3	phase1	1	voter-3	voter	codex	codex-pragmatism-vote-output.txt	28308	7077	9227	2307	19081	4771		0	0
