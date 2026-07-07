@@ -348,20 +348,21 @@ def _write_step5_result_env(rows: list[tuple[str, str | int | bool]]) -> None:
 
 def _step5_result_env_rows_from_text(text: str) -> list[tuple[str, str | int | bool]]:
     parsed = _parse_env_lines(text)
-    rows: list[tuple[str, str | int | bool]] = []
-    for key in (
-        "STEP5_REVIEW_STATUS",
-        "STALL_TRACKING",
-        "STALL_REASON",
-        "ROUNDS_COMPLETED",
-        "FINAL_ROUND_NUM",
-        "FINAL_REVIEW_AND_FIX_STATUS",
-        "CODER_STATUS",
-        "FILES_CHANGED_HINT",
-        "EFFECTIVE_ROUND_CAP",
-    ):
-        if key in parsed:
-            rows.append((key, parsed[key]))
+    rows: list[tuple[str, str | int | bool]] = [
+        (key, parsed[key])
+        for key in (
+            "STEP5_REVIEW_STATUS",
+            "STALL_TRACKING",
+            "STALL_REASON",
+            "ROUNDS_COMPLETED",
+            "FINAL_ROUND_NUM",
+            "FINAL_REVIEW_AND_FIX_STATUS",
+            "CODER_STATUS",
+            "FILES_CHANGED_HINT",
+            "EFFECTIVE_ROUND_CAP",
+        )
+        if key in parsed
+    ]
     rows.extend(_step5_difficulty_rows())
     return rows
 
