@@ -1,0 +1,4 @@
+warning: fix text for slot 'cursor-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Skip collect-results when COLLECT_ARGS is empty after waits; continue to Step 1.')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_2 not traceable to scoped input (first 80 chars: 'Skip collect-results when COLLECT_ARGS is empty after waits; finalize on Claude-')
+warning: fix text for slot 'dyn-dyn-bgjob-contract' in FINDING_2 not traceable to scoped input (first 80 chars: 'After bgjob waits finish, add an explicit `COLLECT_ARGS` empty guard. If no exte')
+warning: fix text for slot 'codex-specialist-edge-cases' in FINDING_3 not traceable to scoped input (first 80 chars: 'Keep (slot, output_path) pairs for passed lanes, or derive the slot from each co')
