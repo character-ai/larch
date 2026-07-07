@@ -48,6 +48,13 @@ def test_panel_role_metadata_is_separate() -> None:
         (slot, tool) for slot in ("correctness", "edge-cases", "testing") for tool in ("cursor", "codex")
     }
     generic = next(slot for slot in review_slots if slot.slot == "generalist")
+    plan_fidelity_auto = next(slot for slot in review_slots if slot.slot == "plan-fidelity-auto")
+    assert plan_fidelity_auto.tool == "cursor"
+    assert plan_fidelity_auto.agent == "agents/reviewer-plan-fidelity.md"
+    assert plan_fidelity_auto.output == "cursor-specialist-plan-fidelity-auto-output.txt"
+    assert plan_fidelity_auto.archetype == "plan-fidelity-auto"
+    assert plan_fidelity_auto.focus_area == "architecture"
+    assert plan_fidelity_auto.cursor_model == config.CURSOR_AUTO_MODEL
     assert generic.model_role == "default"
     assert generic.agent == "agents/code-reviewer.md"
     assert generic.focus_area == "code-quality"

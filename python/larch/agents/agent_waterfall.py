@@ -61,6 +61,7 @@ class Slot:
     agent: str
     prompt_file: str
     model_role: str = ""
+    cursor_model: str = ""
     prompt_files: dict[str, str] | None = None
     payload_bytes: int = 0
     payload_files: dict[str, int] | None = None
@@ -323,6 +324,18 @@ def _validated_model_role(*, value: object | None, slot: str, row: str) -> str:
     return value
 
 
+def _validated_cursor_model(*, value: object | None, slot: str, row: str) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
+    if not value.strip():
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' cursor_model must be a non-empty string")
+    if re.search(r"[\x00-\x1f\x7f]", value):
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' cursor_model must not contain control characters")
+    return value
+
+
 def _parse_prompt_files_map(*, raw: object, slot: str) -> dict[str, str] | None:
     if raw is None:
         return None
@@ -395,6 +408,7 @@ def _parse_slot_row(row: str) -> Slot:
     prompt_files_raw: object | None = data_dict.get("prompt_files")
     payload_bytes_raw: object | None = data_dict.get("payload_bytes")
     payload_files_raw: object | None = data_dict.get("payload_files")
+    cursor_model_raw: object | None = data_dict.get("cursor_model")
     if not isinstance(slot, str) or not slot:
         raise ValidationError(f"dispatch-with-waterfall.sh: invalid slot row: {row}")
     if not isinstance(tool, str) or tool not in {"codex", "cursor"}:
@@ -417,9 +431,12 @@ def _parse_slot_row(row: str) -> Slot:
     _validate_prompt_sources(slot=slot, agent=agent, prompt_file=prompt_file, prompt_files=prompt_files)
     model_role_value: object | None = data_dict.get("model_role", "")
     model_role = _validated_model_role(value=model_role_value, slot=slot, row=row)  # type: ignore[reportUnknownArgumentType]
+    cursor_model = _validated_cursor_model(value=cursor_model_raw, slot=slot, row=row)
+    if cursor_model and tool_value != "cursor":
+        raise ValidationError(f"dispatch-with-waterfall.sh: slot '{slot}' cursor_model is only valid for cursor slots")
     payload_bytes = _parse_nonnegative_int_field(raw=payload_bytes_raw, slot=slot, field="payload_bytes")
     payload_files = _parse_payload_files_map(raw=payload_files_raw, slot=slot)
-    return Slot(slot, tool_value, output, agent, prompt_file, model_role, prompt_files, payload_bytes, payload_files)
+    return Slot(slot, tool_value, output, agent, prompt_file, model_role, cursor_model, prompt_files, payload_bytes, payload_files)
 
 
 def _load_slots_with_invalid_drops(slots_file: str, *, skip_invalid: bool) -> tuple[list[Slot], list[InvalidSlotDrop]]:
@@ -554,6 +571,8 @@ def _launch_slot(*, idx: int, phase: str, tool: str, output: str, slots: Sequenc
             effective_role = slot.model_role or opts.model_role
             if effective_role:
                 argv.extend(["--model-role", effective_role])
+        elif tool == "cursor" and slot.cursor_model:
+            argv.extend(["--cursor-model", slot.cursor_model])
     child_env: dict[str, str] | None = None
     inherited_artifact_dir = os.environ.get("LARCH_PANEL_ARTIFACT_DIR", "")
     artifact_dir_raw = opts.panel_artifact_dir or inherited_artifact_dir

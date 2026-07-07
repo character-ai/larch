@@ -7,10 +7,9 @@ import json
 import subprocess
 from pathlib import Path
 from types import SimpleNamespace
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
-if TYPE_CHECKING:
-    import pytest
+import pytest
 
 from larch.agents import agent_voters
 from larch.agents import _ci_launcher
@@ -364,6 +363,59 @@ def test_review_pipeline_panel_helpers_use_review_panel_role(tmp_path: Path, mon
     assert [row["slot"] for row in rows] == ["sentinel"]
     assert seen_slots == ["review.panel"]
     assert seen_policy == ["review.panel"]
+
+
+def test_agent_waterfall_cursor_model_row_validation_and_launch(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    cursor_row = json.dumps(
+        {
+            "slot": "plan-fidelity-auto",
+            "tool": "cursor",
+            "output": str(tmp_path / "out.txt"),
+            "prompt_file": str(tmp_path / "prompt.txt"),
+            "cursor_model": "auto",
+        }
+    )
+    slot = agent_waterfall._parse_slot_row(cursor_row)  # pyright: ignore[reportPrivateUsage]
+    assert slot.cursor_model == "auto"
+    assert slot.tool == "cursor"
+
+    for invalid_row in (
+        {**json.loads(cursor_row), "cursor_model": ""},
+        {**json.loads(cursor_row), "cursor_model": "bad\nmodel"},
+        {**json.loads(cursor_row), "tool": "codex", "cursor_model": "auto"},
+    ):
+        with pytest.raises(agent_waterfall.ValidationError):
+            agent_waterfall._parse_slot_row(json.dumps(invalid_row))  # pyright: ignore[reportPrivateUsage]
+
+    captured_argv: list[str] = []
+
+    class _FakePopen:
+        def __init__(self, argv: list[str], **_kwargs: object) -> None:
+            captured_argv.extend(argv)
+            self.pid = 1234
+
+    prompt = tmp_path / "prompt.txt"
+    prompt.write_text("prompt\n", encoding="utf-8")
+    monkeypatch.setattr(agent_waterfall.subprocess, "Popen", _FakePopen)
+    monkeypatch.setattr(agent_waterfall, "_ACTIVE_LAUNCHES", [])
+    monkeypatch.setattr(agent_waterfall, "_DISPATCH_LAUNCHES", [])
+    opts = agent_waterfall.Options(
+        slots_file=str(tmp_path / "slots.ndjson"),
+        codex_present=True,
+        cursor_present=True,
+        mode="diff",
+    )
+
+    agent_waterfall._launch_slot(  # pyright: ignore[reportPrivateUsage]
+        idx=0,
+        phase="phase1",
+        tool="cursor",
+        output=str(tmp_path / "out.txt"),
+        slots=[slot],
+        opts=opts,
+    )
+
+    assert captured_argv[captured_argv.index("--cursor-model") + 1] == "auto"
 
 
 def test_agent_voters_reload_consumes_review_voters_policies(monkeypatch: pytest.MonkeyPatch) -> None:

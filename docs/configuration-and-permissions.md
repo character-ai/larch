@@ -193,6 +193,7 @@ The model name to pass to Cursor's `--model` flag (e.g., `gpt-5.4-medium`, `clau
 - Defaults to `composer-2.5` — Cursor's `cursor agent` CLI does not honor the model configured in `~/.cursor/cli-config.json`, so an explicit default is required to avoid falling back to a potentially rate-limited model
 - Cursor review prompts are wrapped with `/max-mode on.` unconditionally by `_review_launch_cursor` regardless of diff classification or `--risk`. Codex review effort is not risk-gated; `--with-effort` is always passed to Codex review launchers regardless of diff classification.
 - To opt into earlier defaults (faster / lower reasoning budget), set `LARCH_CURSOR_MODEL=composer-2` or `LARCH_CURSOR_MODEL=composer-2-fast`
+- `LARCH_CURSOR_MODEL` controls ordinary Cursor lanes. The additive plan-fidelity reviewer pins Cursor `auto` through per-slot `cursor_model` and `agent launch-review --cursor-model auto`, including retry replay.
 
 ### `LARCH_VOTER_MODEL`
 

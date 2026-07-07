@@ -8,7 +8,8 @@ import os
 import subprocess
 import sys
 from pathlib import Path
-from typing import TYPE_CHECKING
+
+import pytest
 
 from larch.core import config
 from larch.review import findings_ledger
@@ -16,9 +17,6 @@ from larch.core import logging_util
 from larch.rendering import rendering
 from larch.agents import review_dispatch
 from larch.review import voting
-
-if TYPE_CHECKING:
-    import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 PYTHON_DIR = Path(__file__).resolve().parents[2]
@@ -438,6 +436,56 @@ def test_render_specialist_payload_sidecar_counts_inline_diff_context(
     assert rendering.render_specialist_main([*base_args, "--diff-mode", "test-only"]) == 0
     _ = capsys.readouterr()
     assert sidecar.read_text(encoding="utf-8") == "0\n"
+
+
+@pytest.mark.parametrize(
+    ("mode", "diff_mode"),
+    [
+        ("description", ""),
+        ("diff", "generic"),
+        ("diff", "docs-only"),
+    ],
+)
+def test_render_plan_fidelity_includes_plan_context_for_all_review_modes(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    mode: str,
+    diff_mode: str,
+) -> None:
+    agent = REPO_ROOT / "agents" / "reviewer-plan-fidelity.md"
+    plan = tmp_path / "plan.md"
+    feature = tmp_path / "feature.md"
+    diff = tmp_path / "diff.txt"
+    sidecar = tmp_path / "payload.txt"
+    plan.write_text("PLAN FIDELITY PAYLOAD\n", encoding="utf-8")
+    feature.write_text("FEATURE FIDELITY PAYLOAD\n", encoding="utf-8")
+    diff.write_text("diff --git a/docs/a.md b/docs/a.md\n", encoding="utf-8")
+    args = [
+        "--agent-file",
+        str(agent),
+        "--mode",
+        mode,
+        "--plan-file",
+        str(plan),
+        "--feature-file",
+        str(feature),
+        "--payload-bytes-output",
+        str(sidecar),
+    ]
+    if mode == "description":
+        args.extend(["--description-text", "review plan fidelity", "--scope-files", str(tmp_path / "scope.txt")])
+        (tmp_path / "scope.txt").write_text("docs/a.md\n", encoding="utf-8")
+    else:
+        args.extend(["--diff-file", str(diff), "--diff-mode", diff_mode])
+
+    assert rendering.render_specialist_main(args) == 0
+    out = capsys.readouterr().out
+    assert "<implementation_plan" in out
+    assert "<feature_description" in out
+    assert "PLAN FIDELITY PAYLOAD" in out
+    assert "FEATURE FIDELITY PAYLOAD" in out
+    description_bytes = len(b"review plan fidelity") if mode == "description" else 0
+    assert sidecar.read_text(encoding="utf-8") == f"{description_bytes + len(plan.read_bytes()) + len(feature.read_bytes())}\n"
 
 
 def test_render_specialist_payload_sidecar_counts_competition_notice_only_when_rendered(

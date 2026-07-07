@@ -25,7 +25,7 @@ This document is a consumer-doc projection of runtime authorities. The runtime a
 | <a id="implement.conflict_review.rounds_max"></a>`implement.conflict_review.rounds_max` | 2 total | resolution-review rounds | `skills/implement/references/conflict-resolution.md` |
 | <a id="research.lanes"></a>`research.lanes` | four research lanes | architecture + edge cases + external comparisons + security | `skills/research/references/research-phase.md` |
 | <a id="research.validation_panel"></a>`research.validation_panel` | 3 reviewer lanes | Claude Code Reviewer subagent + Codex + Cursor | `skills/research/references/validation-phase.md` |
-| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | specialists per vendor | Cursor + Codex | `python/larch/review/review_pipeline.py` |
+| <a id="implement.review_and_fix.panel_hard"></a>`implement.review_and_fix.panel_hard` | specialists per vendor | Cursor + Codex + Cursor/auto plan-fidelity | `python/larch/review/review_pipeline.py` |
 | <a id="deps.issue_audit"></a>`deps.issue_audit` | one approval gate | open-issue grouping + REGULAR refresh + explicit and latent dependency audit | `skills/deps/SKILL.md` |
 | <a id="runtime.residual_bash.inventory"></a>`runtime.residual_bash.inventory` | residual-bash | hooks linters thin wrappers sleep helper G-track delegation fences and residual harnesses | `python/larch/cli.py` |
 | <a id="runtime.pr_closes_issue"></a>`runtime.pr_closes_issue` | closes-issue | PR-body Closes issue extraction authority | `python/larch/git/pr.py` |

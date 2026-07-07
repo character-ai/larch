@@ -282,8 +282,9 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
     for slot in external_defaults.slot_defaults("review.panel"):
         if slot.slot == "generalist":
             continue
+        is_additive_plan_fidelity = slot.slot == "plan-fidelity-auto" and slot.tool == "cursor"
         if tier == difficulty.TRIVIAL:
-            if codex_slots_available and slot.tool != "codex":
+            if codex_slots_available and slot.tool != "codex" and not is_additive_plan_fidelity:
                 continue
             if not codex_slots_available and cursor_slots_available and slot.tool != "cursor":
                 continue
@@ -291,20 +292,27 @@ def _append_static_specialist_rows(*, manifest: Path, review_tmpdir: Path, codex
             continue
         if slot.tool == "cursor" and not cursor_slots_available:
             continue
-        codex_role = difficulty.codex_review_model_role_for_archetype(
-            "review.panel",
-            slot.archetype,
-            tier,
-        )
+        row: dict[str, object] = {
+            "slot": slot.slot,
+            "tool": slot.tool,
+            "output": str(review_tmpdir / slot.output),
+            "agent": str(_PLUGIN_ROOT / slot.agent),
+        }
+        if slot.focus_area:
+            row["focus_area"] = slot.focus_area
+        if slot.cursor_model:
+            row["cursor_model"] = slot.cursor_model
+        if is_additive_plan_fidelity:
+            row["resolved_model"] = slot.cursor_model
+        if slot.tool == "codex":
+            row["model_role"] = difficulty.codex_review_model_role_for_archetype(
+                "review.panel",
+                slot.archetype,
+                tier,
+            )
         _append_manifest_row(
             manifest=manifest,
-            row={
-                "slot": slot.slot,
-                "tool": slot.tool,
-                "output": str(review_tmpdir / slot.output),
-                "agent": str(_PLUGIN_ROOT / slot.agent),
-                **({"model_role": codex_role} if slot.tool == "codex" else {}),
-            }
+            row=row,
         )
 
 
