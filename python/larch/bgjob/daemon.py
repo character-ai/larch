@@ -160,7 +160,7 @@ def _daemon_child(spec: model.JobSpec, pipe_fd: int) -> int:
             stderr_log, root=spec.log_dir
         ) as stderr_handle:
             try:
-                child = subprocess.Popen(  # lint-subprocess-via-runner: ok bgjob daemon intentionally owns the long-running child process group
+                child = subprocess.Popen(  # lint-subprocess-via-runner: ok bgjob daemon intentionally owns the long-running child process group  # pylint: disable=consider-using-with
                     spec.command,
                     stdout=stdout_handle,
                     stderr=stderr_handle,

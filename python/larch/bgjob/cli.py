@@ -87,7 +87,8 @@ def wait_main(argv: list[str] | None = None) -> int:
         return 2
 
 
-def status_main(argv: list[str] | None = None) -> int:  # noqa: ARG001 - uniform CLI signature
+def status_main(argv: list[str] | None = None) -> int:
+    _ = argv
     for path, entry in registry.iter_entries():
         if entry is None:
             print(f"BGJOB_STATUS=INVALID REGISTRY={path}")
@@ -97,7 +98,8 @@ def status_main(argv: list[str] | None = None) -> int:  # noqa: ARG001 - uniform
     return 0
 
 
-def reap_main(argv: list[str] | None = None) -> int:  # noqa: ARG001 - uniform CLI signature
+def reap_main(argv: list[str] | None = None) -> int:
+    _ = argv
     count = 0
     for path, entry in registry.iter_entries():
         if entry is None:
