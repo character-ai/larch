@@ -1,0 +1,210 @@
+## Scope
+
+Add one static review-panel lane:
+
+- Tool: Cursor.
+- Model: `auto`.
+- Profile: `agents/reviewer-plan-fidelity.md`, the Plan Correctness/Completeness reviewer.
+- Tiers: TRIVIAL, MODERATE, and HARD.
+- Surfaces: `/review` and `/implement` Step 5 code-review panel.
+
+Do not change `/design` plan-review reviewers or voter slots.
+
+## Approach
+
+1. Add a per-slot Cursor model override to the external-review dispatch path.
+   - Extend the slot manifest schema with a narrowly named field such as `cursor_model`.
+   - Validate it as a non-empty string without control characters.
+   - In `agent dispatch-waterfall`, pass the override only when launching a Cursor slot.
+   - In `agent launch-review`, use the explicit Cursor model override for that launch instead of `LARCH_CURSOR_MODEL`.
+   - Keep Codex `model_role` behavior unchanged.
+
+2. Add the Cursor/auto plan-fidelity static slot.
+   - Register the slot in `review.panel`.
+   - Use `agents/reviewer-plan-fidelity.md`.
+   - Use a distinct slot and output basename, for example `plan-fidelity-auto` and `cursor-specialist-plan-fidelity-auto-output.txt`.
+   - Set `cursor_model` to `config.CURSOR_AUTO_MODEL`.
+   - Include this lane whenever Cursor is available, including TRIVIAL when Codex is also available.
+
+3. Keep existing panel behavior stable.
+   - Preserve Codex-first TRIVIAL specialist selection for the existing correctness, edge-cases, and testing slots.
+   - Preserve MODERATE/HARD paired Cursor composer-2.5 plus Codex specialist rows.
+   - Preserve `--no-fallback`, pruning, degraded retry, collector, tally, and voter behavior.
+
+4. Update attribution and telemetry.
+   - Ensure manifest rows show `resolved_model: "auto"` for the new Cursor/auto slot.
+   - Add timing allowlist entries for the new slot task kind.
+   - Ensure static coverage and tally code can map the new output basename to a stable archetype and focus area.
+
+5. Update public docs and generated topology text so consumers know the panel now has an additive Cursor/auto plan-fidelity lane.
+
+## Files to modify/create
+
+### UPDATED: python/larch/core/config.py
+
+Add a `cursor_model` field to `SlotDefault`.
+
+Add a new `review.panel` `SlotDefault` for the Cursor/auto plan-fidelity reviewer:
+
+- `slot="plan-fidelity-auto"`
+- `tool="cursor"`
+- `agent="agents/reviewer-plan-fidelity.md"`
+- `output="cursor-specialist-plan-fidelity-auto-output.txt"`
+- `archetype="plan-fidelity-auto"` or equivalent stable slug.
+- `focus_area="architecture"` or `correctness`, matching the existing plan-fidelity tally mapping choice.
+- `cursor_model=config.CURSOR_AUTO_MODEL`
+
+Update `doc_fallback` for `review.panel` to mention the additive Cursor/auto plan-fidelity lane.
+
+### UPDATED: python/larch/agents/agent_waterfall.py
+
+Extend `Slot` parsing to accept optional `cursor_model`.
+
+Validate:
+
+- type is string
+- value is not blank when present
+- no POSIX control characters
+
+When launching a Cursor slot with `cursor_model`, pass a new explicit launch arg to `agent launch-review`, such as `--cursor-model auto`.
+
+Do not pass this arg to Codex rows.
+
+### UPDATED: python/larch/agents/_review_launcher.py
+
+Add `--cursor-model` to the review launcher parser.
+
+For Cursor launches:
+
+- When `--cursor-model` is present, use that value for the Cursor `--model` argv.
+- Otherwise, keep the existing `resolve_model_args("cursor", with_effort=True)` path.
+- Keep existing model validation behavior for blank and control-character values.
+- Ensure metadata and postprocess still record the actual resolved model.
+
+### UPDATED: python/larch/review/review_dispatch_panel.py
+
+Emit the new Cursor/auto row from `_append_static_specialist_rows`.
+
+Special-case TRIVIAL so this additive Cursor/auto lane is not filtered out by the current Codex-singleton rule.
+
+Set `resolved_model` to `auto` for the new row.
+
+Keep `STATIC_SLOT_COUNT`, `SLOT_COUNT`, and launch diagnostics accurate.
+
+### UPDATED: python/larch/review/review_pipeline_shared.py
+
+Add the new static reviewer slug to static coverage expectations, or document and implement an equivalent manifest-derived path if static coverage should remain manifest-only.
+
+### UPDATED: python/larch/review/review_tally.py
+
+Map the new static slug to the plan-fidelity focus area so scoreboard and classification output do not fall back to a generic code-quality label.
+
+### UPDATED: python/larch/report/timing.py
+
+Add timing task-kind allowlist entries for the new slot, at least the phase forms that `agent_waterfall._timing_kind` can emit for this slot.
+
+### UPDATED: python/tests/core/test_external_role_defaults.py
+
+Update review panel metadata tests:
+
+- expected static slot count
+- expected static slot set
+- new Cursor/auto slot fields
+- `cursor_model == config.CURSOR_AUTO_MODEL`
+- docs row text expectations if pinned
+
+### UPDATED: python/tests/review/test_review_pipeline.py
+
+Update panel dispatch tests:
+
+- TRIVIAL now includes the additive Cursor/auto plan-fidelity lane when Cursor is available.
+- MODERATE/HARD include existing pairs plus the additive lane.
+- Codex-unavailable Cursor panel includes the additive lane.
+- `STATIC_SLOT_COUNT`, `SLOT_COUNT`, and manifest assertions match the new shape.
+- Assert the new row has `tool="cursor"`, `cursor_model="auto"`, and `resolved_model="auto"`.
+
+Add a focused test that the waterfall argv receives the per-slot Cursor model override.
+
+### UPDATED: python/tests/agents/test_external_dispatch.py
+
+Add or update tests for `agent dispatch-waterfall` slot parsing:
+
+- accepts `cursor_model` on Cursor rows
+- rejects blank or control-character `cursor_model`
+- passes the override to `agent launch-review`
+- ignores or rejects `cursor_model` on Codex rows, whichever policy the implementation chooses
+
+### UPDATED: python/tests/agents/test_launch_review.py
+
+Add a small launcher test for explicit Cursor model override, if existing test seams make this practical without invoking real Cursor.
+
+### UPDATED: README.md
+
+Update the `/implement` feature summary that describes Step 5 reviewer shape. Mention the additive Cursor/auto plan-fidelity reviewer.
+
+### UPDATED: docs/skills.md
+
+Update the `/implement` Step 5 panel description to include the additive Cursor/auto plan-fidelity lane for all tiers.
+
+### UPDATED: docs/review-agents.md
+
+Update the active reviewer panel docs:
+
+- mark `reviewer-plan-fidelity` as active through the Cursor/auto lane
+- update Note A for `/implement` Step 5
+- clarify that the lane is additive and does not replace Cursor composer-2.5 specialists
+
+### UPDATED: skills/shared/topology.tsv
+
+Update the `implement.review_and_fix.panel_hard` row to mention the additive Cursor/auto plan-fidelity lane.
+
+### UPDATED: docs/topology.md
+
+Regenerate from `skills/shared/topology.tsv` with `python3 python/cli.py generate topology-docs`.
+
+### MAY_UPDATE: docs/configuration-and-permissions.md
+
+Update only if the implementation adds a documented `--cursor-model` or per-slot override contract that operators may see. Clarify that `LARCH_CURSOR_MODEL` still controls ordinary Cursor lanes, while the explicit Cursor/auto reviewer lane pins `auto`.
+
+## Edge cases
+
+- Cursor unavailable: drop the new lane like other Cursor rows under `--no-fallback`.
+- Codex unavailable: still launch existing Cursor rows plus the Cursor/auto plan-fidelity lane.
+- TRIVIAL with both vendors available: keep existing Codex singleton specialists and add only this Cursor/auto lane.
+- Operator sets `LARCH_CURSOR_MODEL`: ordinary Cursor rows follow it, but the new lane should still use `auto`.
+- Round 2 pruning: the new lane should be eligible for the same prune ledger flow as other static rows.
+- Degraded retry: carry-forward and relaunch matching must work for the new output basename.
+- Timing: unknown task-kind warnings should not appear for the new lane.
+
+## Failure modes
+
+- A global env override could accidentally make the new lane run composer-2.5. Avoid this by using an explicit per-slot model override.
+- Static coverage could require the new slug but fail to recognize its output basename. Update slug mapping and tests together.
+- Tally attribution could collapse the new lane into generic code-quality. Add explicit mapping.
+- Docs could still claim TRIVIAL is pure Codex singles. Update public docs in the same change.
+- Cost reports may classify the row correctly only if the launcher records `model=auto`. Verify through postprocess metadata tests where feasible.
+
+## Testing strategy
+
+Run focused tests first:
+
+- `python3 -m pytest python/tests/core/test_external_role_defaults.py`
+- `python3 -m pytest python/tests/review/test_review_pipeline.py -k 'dispatch_panel or degraded_retry or static'`
+- `python3 -m pytest python/tests/agents/test_external_dispatch.py`
+- `python3 -m pytest python/tests/agents/test_launch_review.py -k 'cursor or model'`
+
+Then run relevant generation checks for changed docs and generated agents if touched:
+
+- `python3 python/cli.py generate topology-docs`
+- `python3 python/cli.py generate check`
+
+Finally run changed-file lint or the repo relevant-checks command if available:
+
+- `python3 python/cli.py checks run-relevant`
+
+## Difficulty
+
+This is MODERATE because it changes workflow reviewer topology, external-agent dispatch, manifest schema, telemetry labels, and public docs. The change is bounded and has direct test seams.
+
+difficulty: MODERATE
+diff_lines: 260

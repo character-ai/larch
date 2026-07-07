@@ -1,0 +1,3 @@
+# Add Another reviewer (to all 3 difficulty levels): Cursor/auto with Plan Correctness/Completeness profile
+
+The goal is to gather to compare effectiveness of Cursor/auto compared to Cursor/Composer 2.5, since the latter is ~2.3X more expensive, in order to potentially replace the latter with Cursor/auto
