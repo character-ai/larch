@@ -388,7 +388,8 @@ def test_write_result_merges_whitespace_packed_relay_rows(tmp_path: Path, monkey
     monkeypatch.setenv("LARCH_BGJOB_REGISTRY_ROOT", str(tmp_path / "registry"))
     merge = tmp_path / "merge.env"
     _ = merge.write_text(
-        "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=1 PHASE=checks DIGEST_FILE=/tmp/digest REDACTED_LOG_FILE=/tmp/redacted\n",
+        "STATUS=fail FAILURE_REASON=checks-failed EXIT_CODE=1 PHASE=checks DIGEST_FILE=/tmp/digest REDACTED_LOG_FILE=/tmp/redacted\n"
+        "MESSAGE=hello world\n",
         encoding="utf-8",
     )
     identity = _identity(pid=111, pgid=222, signature="daemon")
@@ -413,6 +414,7 @@ def test_write_result_merges_whitespace_packed_relay_rows(tmp_path: Path, monkey
     assert rows["PHASE"] == "checks"
     assert rows["DIGEST_FILE"] == "/tmp/digest"
     assert rows["REDACTED_LOG_FILE"] == "/tmp/redacted"
+    assert rows["MESSAGE"] == "hello world"
 
 
 def test_bgjob_start_and_wait_end_to_end(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -78,6 +78,22 @@ def _plugin_root() -> Path:
     return Path(os.environ.get("CLAUDE_PLUGIN_ROOT", Path(__file__).resolve().parents[3]))
 
 
+def _emit_arg_failure(*, bail_reason: str) -> int:
+    emit(key="DIAGRAM_STATUS", value="failed")
+    emit(key="DIAGRAM_REASON", value="")
+    emit(key="DIAGRAM_PATH", value="")
+    emit(key="COMMENT_URL", value="")
+    emit(key="LOG_FLUSH_STATUS", value="skip")
+    emit(key="STEP_7A_BAIL_REASON", value=bail_reason)
+    emit(key="REBASE_OUTCOME", value="skipped")
+    return 2
+
+
+def _has_symlink_ancestor(path: Path) -> bool:
+    candidate = path.expanduser()
+    return candidate.is_symlink() or any(parent.is_symlink() for parent in candidate.parents)
+
+
 def _read_kv(*, path: Path, key: str, default: str = "") -> str:
     return larch_io.read_kv(path=path, key=key, default=default, first_match=True, cr_strip="strip", on_error_default=False)
 
@@ -434,24 +450,12 @@ def main(argv: list[str] | None = None) -> int:
     try:
         args = parser.parse_args(argv)
     except SystemExit:
-        emit(key="DIAGRAM_STATUS", value="failed")
-        emit(key="DIAGRAM_REASON", value="")
-        emit(key="DIAGRAM_PATH", value="")
-        emit(key="COMMENT_URL", value="")
-        emit(key="LOG_FLUSH_STATUS", value="skip")
-        emit(key="STEP_7A_BAIL_REASON", value="argv")
-        emit(key="REBASE_OUTCOME", value="skipped")
-        return 2
+        return _emit_arg_failure(bail_reason="argv")
     raw_tmpdir = args.implement_tmpdir or os.environ.get(config.ENV_IMPLEMENT_TMPDIR, "")
     if not raw_tmpdir:
-        emit(key="DIAGRAM_STATUS", value="failed")
-        emit(key="DIAGRAM_REASON", value="")
-        emit(key="DIAGRAM_PATH", value="")
-        emit(key="COMMENT_URL", value="")
-        emit(key="LOG_FLUSH_STATUS", value="skip")
-        emit(key="STEP_7A_BAIL_REASON", value="missing-implement-tmpdir")
-        emit(key="REBASE_OUTCOME", value="skipped")
-        return 2
+        return _emit_arg_failure(bail_reason="missing-implement-tmpdir")
+    if _has_symlink_ancestor(Path(raw_tmpdir)):
+        return _emit_arg_failure(bail_reason="invalid-implement-tmpdir")
     if args.bgjob_launch == "true":
         return _launch_step7a_bgjob(
             Step7aBgjobLaunch(

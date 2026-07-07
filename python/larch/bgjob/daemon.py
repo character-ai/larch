@@ -7,6 +7,7 @@ import os
 import signal
 import subprocess
 import stat
+import re
 import time
 from pathlib import Path
 from typing import BinaryIO
@@ -14,6 +15,8 @@ from typing import BinaryIO
 from larch import io as larch_io
 from larch.bgjob import model, registry
 from larch.core import config, process_identity
+
+_PACKED_ROW_TOKEN_RE = re.compile(r"[A-Z0-9_]+=.*")
 
 
 def _capture_identity(pid: int, *, expected_signature: str = "") -> process_identity.RecordedProcessIdentity:
@@ -61,11 +64,18 @@ def _merge_rows(path: Path | None) -> list[tuple[str, str]]:
     except (OSError, UnicodeError):
         return []
     reserved = {config.BGJOB_RC_KEY, config.BGJOB_ELAPSED_KEY, "STEP"}
-    merged: dict[str, str] = {}
+    merged = {
+        key: value
+        for key, value in larch_io.read_kvs(path, reject_symlink=True, on_error_default=True, reject_cr=True).items()
+        if key and key not in reserved
+    }
     for line in text.splitlines():
-        for token in line.split():
-            if "=" not in token:
-                continue
+        if line.count("=") < 2:
+            continue
+        tokens = line.split()
+        if len(tokens) < 2 or any(_PACKED_ROW_TOKEN_RE.fullmatch(token) is None for token in tokens):
+            continue
+        for token in tokens:
             key, value = token.split("=", 1)
             if not key or key in reserved:
                 continue

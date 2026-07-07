@@ -80,6 +80,30 @@ def test_step7a_bgjob_launch_starts_transport(tmp_path: Path, monkeypatch: pytes
     assert "--bgjob-merge-result-env" in start
 
 
+def test_step7a_bgjob_launch_rejects_symlinked_tmpdir_before_merge_env_setup(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    real_tmpdir = tmp_path / "real"
+    real_tmpdir.mkdir()
+    symlink_parent = tmp_path / "tmpdir-link"
+    symlink_parent.symlink_to(real_tmpdir, target_is_directory=True)
+    impl_tmpdir = symlink_parent / "nested"
+
+    called: list[step_7a.Step7aBgjobLaunch] = []
+
+    def fake_launch(spec: step_7a.Step7aBgjobLaunch) -> int:
+        called.append(spec)
+        return 0
+
+    monkeypatch.setattr(step_7a, "_launch_step7a_bgjob", fake_launch)
+
+    rc = step_7a.main(["--bgjob-launch", "true", "--implement-tmpdir", str(impl_tmpdir)])
+
+    assert rc == 2
+    assert called == []
+    _ = capsys.readouterr()
+
+
 def test_step7a_emits_terminal_kvs(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     _ = (tmp_path / "session-id").write_text("run-1\n", encoding="utf-8")
 
