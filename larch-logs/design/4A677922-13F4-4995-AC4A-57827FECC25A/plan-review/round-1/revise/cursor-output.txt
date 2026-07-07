@@ -1,0 +1,405 @@
+Verifying codebase paths and patterns so the revised plan matches the repo.
+## Plan
+
+## Approach
+
+Add a Python-owned main-health path with commit-scoped run selection, durable session materialization, and separate pre-PR vs ship-phase repair contracts. Keep prompt prose thin.
+
+1. Add a typed default-branch CI health helper.
+   - Query recent `push` runs for the configured workflow on the base branch.
+   - Support optional `head_sha` / `--commit` filtering so pre-merge and post-merge checks target the intended commit, not a stale unrelated green run.
+   - Emit `MAIN_CI_STATUS=pass|fail|pending|error`, `MAIN_FAILED_RUN_ID=`, `MAIN_HEALTH_HEAD_SHA=`, and a short reason.
+   - Fail closed on malformed `gh` output or ambiguous state.
+2. Always resolve repo and record main health at preflight.
+   - When `--repo` is omitted, resolve via `python/cli.py gh resolve-repo` (forked runs still honor explicit `--repo` / upstream override).
+   - Always invoke `ci main-health` against the resolved repo and default base ref (`main`, or `upstream/main` when forked).
+   - Extend the success envelope additively with `MAIN_CI_STATUS`, `MAIN_FAILED_RUN_ID`, and `MAIN_HEALTH_DETAIL`.
+   - Write `$PREFLIGHT_TMPDIR/main-health.env`; bootstrap copies it to `$IMPLEMENT_TMPDIR/main-health.env` during Step 0 materialization so resume and multi-turn Step 2 do not depend on chat-only KVs.
+3. Thread main health into `/implement` with distinct repair paths.
+   - Preflight records main health only; it does not edit before Step 0 creates the run branch.
+   - Orchestrator parses the full success-envelope key set (existing keys plus the three `MAIN_*` keys) before Step 0 / Step 2 routing.
+   - After `BOOTSTRAP_NEXT=step2`, if durable `MAIN_CI_STATUS=fail`, run the dedicated pre-PR repair reference (`step2-main-health-fix.md`) before `implement run-dispatch`. That path captures default-branch push-run logs from `MAIN_FAILED_RUN_ID`, fixes on the feature branch, runs relevant checks, commits, and continues Step 2 without `step-8-ship` re-entry.
+   - If `MAIN_CI_STATUS=pending`, bounded wait via `ci main-health --wait`, then branch: `pass` continues, `fail` enters pre-PR repair, `pending` after timeout operator-bails with detail, `error` records detail and operator-bails (do not silently proceed).
+   - Step 8+ checks main health immediately before every merge attempt, using the current base / merge commit SHA. Red main routes to the existing CI-fix handoff with the default-branch failed run ID.
+4. Preserve failed CI evidence through retry paths.
+   - Do not let `fail + behind` hide the failed run by rebasing first.
+   - Carry the failed run ID into the handoff, then allow the existing pre-fix rebase gate to rebase before repair.
+5. Treat repo flakes as defects end-to-end.
+   - If a named repository test or lint fails, then later passes with no authored fix commit or repair-path delta, return `flaky-defect-unfixed`.
+   - Map `flaky-defect-unfixed` through `_agentic_fix_result`, `ci_monitor`, and ship routing to `NEEDS_USER_INPUT` / `NEXT_ACTION=ci-fix`, not `FixResult(status="pushed")` or terminal `passed`.
+   - Keep infrastructure transients as the only log-only retry class.
+6. Add bounded post-merge watch that is commit-scoped.
+   - After merge, before postmerge finalize state, wait for the push workflow run whose `head_sha` matches the merged commit.
+   - Ignore older default-branch greens; treat no matching run as `pending` until timeout.
+   - On pass for that SHA, continue normally.
+   - On fail for that SHA, enter an explicit post-merge emergency-repair state machine instead of finalizing success.
+7. Post-merge emergency repair state machine.
+   - Phases: `postmerge-push-watch` → `emergency-repair` → `repair-shipped` or `stalled`.
+   - Defer `post-merge-sentinel` and `_ship_postmerge_phase` until push CI for the merged SHA passes or repair owns lifecycle.
+   - Checkout/create a dedicated repair branch from fresh `origin/main`; never commit or push on the original feature branch.
+   - Track `EMERGENCY_REPAIR_BRANCH`, `ORIGINAL_BRANCH_FORBIDDEN`, `MAIN_REPAIR_RUN_ID`, and `MAIN_REPAIR_HEAD` in ship state.
+   - Fix from redacted push-run logs, open/ship the repair PR on the repair branch only; forbid larch-log commits after the original PR merge.
+   - Keep `MERGE_RESULT` from marking terminal `done` until repair ships or the session stalls with explicit detail.
+   - Do not reuse `ship-pr-ci-fix.md` verbatim for post-merge repair; use a dedicated reference and ship driver branch.
+8. Wire new route reasons through all ship surfaces.
+   - Add `main-ci-fail`, `postmerge-main-ci-fail`, and `flaky-defect-unfixed` to `config.NEEDS_USER_REASON_TOKENS`, `dispatch_ship.py` autonomous CI-fix routing, `ship_result.py` validation, and `ship-pr-exit-matrix.md`.
+   - Include `FAILED_RUN_ID`, `DETAIL`, `MAIN_HEALTH_HEAD_SHA`, and repair-state fields in `.ship-route-exit-handoff.env`.
+9. Clarify review scope doctrine.
+   - Red or flapping default-branch CI counts as actively blocking verification for every `/implement` run.
+   - The orchestrator owns the repair. Reviewers should not turn this into unrelated scope expansion.
+
+## Files to modify/create
+
+### NEW: python/larch/implement/main_health.py
+
+Create the typed main-health module.
+
+- Add frozen dataclasses such as `MainHealthStatus` and `MainHealthWaitResult`.
+- Add `read_main_health(...)`.
+  - Inputs: runner, repo, base branch, workflow name, limit, cwd, optional `head_sha`.
+  - Use filtered `gh run list` with `--event push`, `--branch`, `--workflow`, `--limit`, and `--commit` when `head_sha` is set.
+  - When `head_sha` is set, accept only rows whose `headSha` matches; do not treat an older unrelated success as pass.
+  - Classify:
+    - matching completed `success` as `pass`
+    - matching completed failure-like conclusion as `fail`
+    - matching queued or in-progress run as `pending`
+    - no usable matching rows or read errors as `error`
+  - Return the failed run ID and matched head SHA for failure-like conclusions.
+- Add `wait_main_health(...)`.
+  - Poll with bounded timeout and interval constants.
+  - Stop on matching `pass` or `fail` for the requested SHA.
+  - Return `pending` on timeout with no matching terminal run.
+- Keep parsing strict. Treat untrusted `gh` JSON as data.
+
+### NEW: skills/implement/references/step2-main-health-fix.md
+
+Dedicated pre-PR main-CI repair contract.
+
+- Entry: after `BOOTSTRAP_NEXT=step2` when durable `$IMPLEMENT_TMPDIR/main-health.env` has `MAIN_CI_STATUS=fail`.
+- Read `MAIN_FAILED_RUN_ID` and optional `MAIN_HEALTH_HEAD_SHA` from the sidecar; do not assume PR context.
+- Capture redacted logs via `gh run view` / `gh run download` for the default-branch push run.
+- Repair on the current feature branch: edit, run `python/cli.py checks run-relevant`, commit with a message that names the main-health repair.
+- Refresh durable main-health evidence after repair; only continue to `implement run-dispatch` when `ci main-health` reports `pass` for the configured base ref.
+- Explicitly forbid calling `step-8-ship`, `ship pre-driver`, or post-PR ci-fix machinery on this path.
+
+### NEW: skills/implement/references/postmerge-emergency-repair.md
+
+Dedicated post-merge repair state machine reference.
+
+- Document phases: `postmerge-push-watch`, `emergency-repair`, `repair-shipped`, `stalled`.
+- Define when `post-merge-sentinel` may be written (only after merged-SHA push pass or repair ownership handoff).
+- Define repair-branch checkout from `origin/main`, log capture from the failed merged-SHA push run, fix/commit/push rules, repair PR open/ship, and stall/operator-bail outcomes.
+- State that `PR_NUMBER` in state remains the original feature PR; repair PR number is tracked separately.
+- Forbid commits on the original feature branch and forbid larch-log commits on any branch after original merge.
+
+### NEW: python/tests/implement/test_main_health.py
+
+Cover main-health classification.
+
+- latest matching success returns pass
+- latest matching failure returns fail and failed run ID
+- queued or in-progress matching run returns pending
+- no rows, no SHA match, and malformed JSON return error
+- filtered `gh run list` argv includes repo, branch, event, workflow, limit, and commit when `head_sha` is set
+- stale older green ignored when waiting for a specific merged SHA
+
+### UPDATED: python/larch/git/gh.py
+
+Extend the typed `gh run list` surface.
+
+- Add optional `workflow`, `event`, `status`, and `commit` filters to a new helper, or add a separate `run_list_filtered_read`.
+- Extend `WorkflowRun` additively with `head_sha` and `event`.
+- Preserve existing callers of `run_list` and `run_list_successful`.
+- Add parser coverage for missing, null, and malformed row fields.
+
+### UPDATED: python/larch/implement/ci.py
+
+Expose the new CLI.
+
+- Add `main_health_main(argv)`.
+- Emit only stable KVs:
+  - `MAIN_CI_STATUS=pass|fail|pending|error`
+  - `MAIN_FAILED_RUN_ID=`
+  - `MAIN_HEALTH_HEAD_SHA=`
+  - `MAIN_HEALTH_DETAIL=`
+- Add `--repo`, `--base-ref`, `--workflow`, `--limit`, `--timeout`, `--wait`, and `--commit`.
+- Validate non-negative numeric flags.
+- Keep usage errors distinct from health errors.
+
+### UPDATED: python/larch/cli.py
+
+Register `("ci", "main-health")`.
+
+### UPDATED: python/larch/core/config.py
+
+Define the new wire literals and bounds once.
+
+- Default workflow name, likely `CI`.
+- run-list limit.
+- main-health wait timeout and poll interval.
+- reason tokens for `main-ci-fail`, `postmerge-main-ci-fail`, `flaky-defect-unfixed`, pending timeout, and post-merge push failure.
+- Add matching `NEEDS_USER_*` entries to `NEEDS_USER_REASON_TOKENS`.
+
+### UPDATED: python/larch/implement/preflight.py
+
+Thread preflight main-health evidence.
+
+- Resolve repo when `--repo` is empty via `gh resolve-repo`; forked explicit `--repo` override unchanged.
+- After existing admission and plan materialization succeed, always run `ci main-health` when repo resolution succeeds.
+- Extend `SUCCESS_ENVELOPE_KEYS` additively with `MAIN_CI_STATUS`, `MAIN_FAILED_RUN_ID`, and `MAIN_HEALTH_DETAIL`.
+- Write `$PREFLIGHT_TMPDIR/main-health.env` with the same KVs for bootstrap handoff.
+- Do not edit or fix here. Preflight is still before branch setup.
+- On `error`, record detail in envelope and sidecar but do not abort admission solely for a degraded `gh` read.
+
+### UPDATED: python/bootstrap.py
+
+Materialize durable main-health evidence.
+
+- During Step 0 plan/session materialization, copy `$PREFLIGHT_TMPDIR/main-health.env` to `$IMPLEMENT_TMPDIR/main-health.env` when present.
+- On resume, preserve existing `$IMPLEMENT_TMPDIR/main-health.env` unless preflight refresh explicitly rewrites it.
+
+### UPDATED: skills/implement/SKILL.md
+
+Wire the new orchestration rules.
+
+- Preflight item 3: expand allowed success-envelope keys to include `MAIN_CI_STATUS`, `MAIN_FAILED_RUN_ID`, and `MAIN_HEALTH_DETAIL` (update the seven-key wording to the full additive set).
+- Bind durable main-health evidence from parsed envelope and/or `$IMPLEMENT_TMPDIR/main-health.env` before Step 0 / Step 2 routing.
+- After `BOOTSTRAP_NEXT=step2`:
+  - `MAIN_CI_STATUS=fail` → execute `step2-main-health-fix.md` before `implement run-dispatch`.
+  - `MAIN_CI_STATUS=pending` → bounded `ci main-health --wait`, then pass / repair / bail per Approach §3.
+  - `MAIN_CI_STATUS=error` → operator bail with recorded detail.
+  - `MAIN_CI_STATUS=pass` → continue to Step 2 dispatch.
+- In Step 8+ routing, document that `main-ci-fail`, `postmerge-main-ci-fail`, and `flaky-defect-unfixed` route to `NEXT_ACTION=ci-fix`.
+- Update the CI-fix procedure call site so `FAILED_RUN_ID` may refer to a default-branch push run, not only a PR run.
+- Point post-merge failure to `postmerge-emergency-repair.md`, not generic ci-fix alone.
+- Update the no-post-merge-commit rule with the narrow emergency repair-branch exception.
+- Do not add Bash logic beyond thin calls to Python CLI helpers.
+- If Bash fences change, update `scripts/test-implement-fence-shape.sh`.
+
+### UPDATED: scripts/test-implement-fence-shape.sh
+
+Update `EXPECTED_OLD` / `EXPECTED_NEW` only if the `skills/implement/SKILL.md` Bash fence shape changes.
+
+### UPDATED: python/larch/implement/dispatch_ship.py
+
+Route main-health failures into existing handoff mechanics.
+
+- Add `main-ci-fail`, `postmerge-main-ci-fail`, and `flaky-defect-unfixed` to autonomous CI-fix routing alongside `first-fixer-non-health`.
+- Include `FAILED_RUN_ID`, `DETAIL`, `MAIN_HEALTH_HEAD_SHA`, `EMERGENCY_REPAIR_BRANCH`, and repair-state fields in `.ship-route-exit-handoff.env`.
+- Keep route-exit JSON validation strict.
+
+### UPDATED: python/larch/implement/ship_result.py
+
+Recognize new needs-user reasons.
+
+- Extend validation / normalization so `main-ci-fail`, `postmerge-main-ci-fail`, and `flaky-defect-unfixed` classify to CI-fix handoffs, not `operator-bail` fallthrough.
+
+### UPDATED: python/larch/implement/ship.py
+
+Add merge-loop and post-merge integration.
+
+- Before accepting `monitor.action == "merge"`, call the main-health helper for the current base commit / `origin/main` HEAD.
+- On `fail`, write terminal state with the failed default-branch run ID and return a CI-fix handoff result (`main-ci-fail`).
+- On `pending`, wait within the configured bound or stall with clear detail. Do not merge onto unknown red main.
+- After a successful merge result, capture merged commit SHA from PR merge metadata or refreshed `origin/main`.
+- Before `_ship_postmerge_phase`, wait for the push workflow run matching that merged SHA.
+- On post-merge push failure for that SHA, enter `postmerge-emergency-repair` driver branch (`postmerge-main-ci-fail`) instead of finalizing success.
+- Enforce repair-branch-only commits after original merge via ship-state guards (`ORIGINAL_BRANCH_FORBIDDEN`).
+- Ensure no larch-log commit happens after the original PR merge.
+
+### UPDATED: python/larch/implement/ship_pr.py
+
+Keep postmerge finalization compatible.
+
+- Write `post-merge-sentinel` only after merged-SHA push watch passes or emergency repair ownership is established per `postmerge-emergency-repair.md`.
+- Keep normal successful-merge finalize behavior unchanged once the watch passes.
+
+### UPDATED: python/larch/implement/ship_resume.py
+
+Support mid-repair resume.
+
+- Recognize `postmerge-push-watch` and `emergency-repair` phases.
+- Resume from durable repair-state fields without reusing the original feature branch.
+
+### UPDATED: python/larch/implement/ci_monitor.py
+
+Fix retry semantics that hide failures.
+
+- Change `decide` so `fail + behind + failed_run_id` routes to failure evaluation or handoff before rebase discards the run signal.
+- Keep a conservative rebase path for failed status with no run ID.
+- Preserve `failed_run_id` in `MonitorResult` and ship state through rebase-required handoffs.
+- Map `flaky-defect-unfixed` from agentic-fix results to a non-success handoff (`NEEDS_USER_INPUT` / ci-fix), parallel to `first-fixer-non-health`.
+- Add tests for:
+  - pass still merges only when main health is pass
+  - fail plus behind does not lose `FAILED_RUN_ID`
+  - red main returns a CI-fix handoff, not merge
+  - flaky-defect-unfixed does not return terminal passed
+
+### UPDATED: python/larch/implement/ci_agentic_fix.py
+
+Block no-change green exits for repository failures.
+
+- Track whether a fix commit or pushed repair-path delta landed after the observed failed run.
+- Do not clear the flaky-defect obligation for base-only rebases, reruns, shard movement, or other head changes without an authored fix.
+- If CI turns green with no code change and the failed log names a repository test or lint, return `flaky-defect-unfixed`.
+- Let infrastructure-only transient signatures keep the existing rerun behavior.
+- Include the redacted failed log detail file in the exhausted or handoff path.
+
+### UPDATED: skills/implement/references/ship-pr-ci-fix.md
+
+Replace the 30-attempt wording.
+
+- State that repository tests or lints that fail and then pass with no code change are nondeterminism defects.
+- Require root cause and repair before ship completes.
+- Allow only named operator deferral or outside-repo root cause as exceptions.
+- Mention default-branch failed run IDs as valid inputs.
+- State that `flaky-defect-unfixed` is a handoff status, not success.
+
+### UPDATED: skills/implement/references/ship-pr-exit-matrix.md
+
+Document new route reasons and handoff fields.
+
+- Map `main-ci-fail`, `postmerge-main-ci-fail`, and `flaky-defect-unfixed` to `NEXT_ACTION=ci-fix` with default-branch `FAILED_RUN_ID` semantics.
+- Document pre-PR Step 2 repair as a separate reference, not this matrix path.
+- Document post-merge emergency repair continuation vs generic ci-fix.
+
+### UPDATED: skills/implement/references/execution-issues-tracking.md
+
+Replace the log-only transient wording.
+
+- Reserve log-only for infrastructure transients.
+- State that named repository test or lint failures are deterministic breakage or nondeterminism, both in-scope defects.
+- Require recording explicit operator deferrals.
+
+### UPDATED: skills/shared/review-acceptance-rubric.md
+
+Clarify gate 5.
+
+- Add that red or flapping default-branch CI actively blocks verification for every run.
+- State that restoring or stabilizing default-branch CI clears the gate.
+- State that `/implement`, not reviewers, owns executing the repair.
+
+### UPDATED: skills/shared/reviewer-templates.md
+
+Propagate the gate 5 clarification to reviewer self-filter prose.
+
+### UPDATED: skills/shared/voting-protocol.md
+
+Update the YES definition only if the gate wording needs a matching voter clarification.
+
+### UPDATED: skills/shared/oos-acceptance-rubric.md
+
+Update only the OOS boundary wording that conflicts with the new default-branch CI rule.
+
+### UPDATED: agents/code-reviewer.md
+
+Regenerate from `skills/shared/reviewer-templates.md`.
+
+### UPDATED: agents/reviewer-plan-fidelity.md
+
+Regenerate from `skills/shared/reviewer-templates.md`.
+
+### UPDATED: agents/reviewer-code-robustness.md
+
+Regenerate from `skills/shared/reviewer-templates.md`.
+
+### UPDATED: agents/reviewer-security-structure-tests.md
+
+Regenerate from `skills/shared/reviewer-templates.md`.
+
+### UPDATED: agents/reviewer-edge-cases.md
+
+Apply the same gate wording, then regenerate pre-rendered prompts.
+
+### UPDATED: agents/reviewer-testing.md
+
+Apply the same gate wording, then regenerate pre-rendered prompts.
+
+### UPDATED: docs/clean-main-contract.md
+
+Document that `/implement --merge` also checks default-branch CI health.
+
+- Explain that red default-branch CI becomes in-scope repair work.
+- Explain pending/error behavior at entry and durable `main-health.env` handoff.
+
+### UPDATED: docs/workflow-lifecycle.md
+
+Document the main-health gate, pre-PR repair reference, flaky-test doctrine, commit-scoped post-merge push watch, and emergency-repair state machine.
+
+### UPDATED: docs/configuration-and-permissions.md
+
+Update the `--admin` merge safety invariants.
+
+- Add default-branch CI health to the pre-admin merge gate.
+- Clarify that green PR checks alone are insufficient.
+
+### UPDATED: python/tests/implement/test_ci.py
+
+Cover `ci main-health` CLI KVs, `--commit`, and usage failures.
+
+### UPDATED: python/tests/implement/test_ci_monitor.py
+
+Cover fail-plus-behind preservation, main-health merge gating, and flaky-defect-unfixed non-success handoff.
+
+### UPDATED: python/tests/implement/test_ci_agentic_fix.py
+
+Cover no-code-change pass after a named repository failure returning `flaky-defect-unfixed`.
+
+### UPDATED: python/tests/implement/test_preflight.py
+
+Cover additive preflight main-health KVs, repo auto-resolution, `main-health.env` write, and degraded read behavior.
+
+### UPDATED: python/tests/implement/test_ship.py
+
+Cover merge-loop and post-merge behavior.
+
+- pre-merge red main routes to CI-fix
+- pending main health stalls or waits without merging
+- post-merge watch ignores stale previous green and waits for merged SHA
+- post-merge push failure for merged SHA enters emergency repair before postmerge sentinel
+- repair-branch guard forbids commits on original feature branch
+- flaky-defect-unfixed routes to ci-fix, not terminal success
+
+## Edge cases
+
+- `gh run list` returns a pending run above an older failed run for the same SHA. Treat as `pending` until bounded wait resolves.
+- `gh run list` returns no rows or no row for the requested SHA. Treat as `error` or `pending` (watch mode) respectively; do not silently merge.
+- An older default-branch success exists before the merged-SHA run appears. Post-merge watch must ignore the stale green and wait for the merge commit's run.
+- Forked runs use upstream repo and `upstream/main` semantics.
+- A failed run ID may be a default-branch push run. CI log capture must not assume PR context.
+- Emergency repair must not touch the original feature branch or commit run logs after merge.
+- Operator can explicitly defer a named flaky test. Record that deferral in execution issues.
+- Resume mid pre-PR repair or mid emergency repair must read `$IMPLEMENT_TMPDIR/main-health.env` and ship repair-state fields, not stale chat KVs.
+
+## Failure modes when non-trivial
+
+- Wrong workflow filter could miss red main. Keep workflow configurable and default to `CI`.
+- Missing `head_sha` correlation could mask merged-SHA failures behind unrelated greens. Commit filter is mandatory at ship call sites.
+- Post-merge repair branch can conflict with concurrent main changes. Rebase from fresh `origin/main` and fail closed on conflict.
+- A no-change green may be a true infrastructure transient. Only classify named repository test or lint failures as flaky defects.
+- Main-health `error` can block merges during GitHub API issues. Use bounded pending/error behavior and clear operator detail.
+- Incomplete route-token wiring could misclassify new reasons as `operator-bail`. Keep `config`, `ship_result`, `dispatch_ship`, and exit-matrix in sync.
+
+## Testing strategy
+
+Run targeted tests only for changed files.
+
+- `python -m pytest python/tests/implement/test_main_health.py`
+- `python -m pytest python/tests/implement/test_ci.py python/tests/implement/test_ci_monitor.py python/tests/implement/test_ci_agentic_fix.py`
+- `python -m pytest python/tests/implement/test_preflight.py python/tests/implement/test_ship.py`
+- `python3 python/cli.py generate code-reviewer-agent`
+- `python3 python/cli.py generate reviewer-plan-fidelity-agent`
+- `python3 python/cli.py generate reviewer-code-robustness-agent`
+- `python3 python/cli.py generate reviewer-security-structure-tests-agent`
+- `python3 python/cli.py generate pre-rendered-reviewer-prompts`
+- `make test-prompt-template-invariants`
+- If `skills/implement/SKILL.md` fences changed: `bash scripts/test-implement-fence-shape.sh`
+- `make py-lint`
+- `make py-test`
+
+## Difficulty
+
+HARD. This changes merge gating, CI retry semantics, post-merge lifecycle, pre-PR repair orchestration, and prompt doctrine. It also adds a narrow exception to a high-stakes no-post-merge-commit invariant.
+
+difficulty: HARD
+diff_lines: 1750

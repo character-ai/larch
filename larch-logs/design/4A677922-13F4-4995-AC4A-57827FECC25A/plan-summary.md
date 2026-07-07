@@ -1,0 +1,1 @@
+Implement main-health gating as a first-class `/implement --merge` responsibility. Add a default-branch CI probe, use it before feature work and before merge, preserve failed-run IDs through rebase paths, treat repository flakes as defects, and add a bounded post-merge watch with a narrow repair-branch exception.

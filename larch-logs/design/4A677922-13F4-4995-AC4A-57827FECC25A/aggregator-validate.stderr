@@ -1,0 +1,2 @@
+warning: fix text for slot 'Codex-Arch' in FINDING_1 not traceable to scoped input (first 80 chars: '"Change the firm target to `python/larch/state/bootstrap.py` and copy main-healt')
+warning: fix text for slot 'Codex-Requirements' in FINDING_7 not traceable to scoped input (first 80 chars: '"Normalize the GitHub run-list branch to `main` while using `--repo \\"$UPSTREAM_')

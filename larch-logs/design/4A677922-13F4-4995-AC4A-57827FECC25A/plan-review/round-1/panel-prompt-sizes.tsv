@@ -1,0 +1,15 @@
+site	phase	round_num	slot	slot_kind	tool	output	prompt_bytes	prompt_tokens	scaffold_bytes	scaffold_tokens	payload_bytes	payload_tokens	agent_file	agent_bytes	agent_tokens
+design Step 3	phase1	1	cursor-plan-arch	plan-review	cursor	cursor-plan-arch-output.txt	40237	10060	13329	3333	26908	6727		0	0
+design Step 3	phase1	1	cursor-plan-requirements	plan-review	cursor	cursor-plan-requirements-output.txt	40250	10063	13342	3336	26908	6727		0	0
+design Step 3	phase1	1	cursor-plan-innovation	plan-review	cursor	cursor-plan-innovation-output.txt	40228	10057	13320	3330	26908	6727		0	0
+design Step 3	phase1	1	dyn-cursor-plan-main-ci-guardian	plan-review	cursor	dyn-cursor-plan-main-ci-guardian.txt	40569	10143	13195	3299	27374	6844		0	0
+design Step 3	phase1	1	codex-plan-pragmatic	plan-review	codex	codex-primary-plan-pragmatic-output.txt	26199	6550	13056	3264	13143	3286		0	0
+design Step 3	phase1	1	codex-plan-requirements	plan-review	codex	codex-primary-plan-requirements-output.txt	26197	6550	13054	3264	13143	3286		0	0
+design Step 3	phase1	1	dyn-codex-plan-main-ci-guardian	plan-review	codex	dyn-codex-plan-main-ci-guardian.txt	26516	6629	12907	3227	13609	3403		0	0
+design Step 3	phase1	1	codex-plan-arch	plan-review	codex	codex-primary-plan-arch-output.txt	26184	6546	13041	3261	13143	3286		0	0
+design Step 3	phase1	1	cursor-plan-pragmatic	plan-review	cursor	cursor-plan-pragmatic-output.txt	40252	10063	13344	3336	26908	6727		0	0
+design Step 3	phase1	1	codex-plan-innovation	plan-review	codex	codex-primary-plan-innovation-output.txt	26175	6544	13032	3258	13143	3286		0	0
+review Step 2	phase1	1	aggregator	aggregator	codex	aggregator-output.txt	53343	13336	4610	1153	48733	12184	agents/orchestrator-aggregator.md	4363	1091
+design Step 3	plan-review-voters	1	voter-1	voter	claude	claude-vote-output.txt	22215	5554	8907	2227	13308	3327		0	0
+design Step 3	phase1	1	voter-2	voter	codex	codex-vote-output.txt	22215	5554	8907	2227	13308	3327		0	0
+design Step 3	phase1	1	voter-3	voter	cursor	cursor-vote-output.txt	22215	5554	8907	2227	13308	3327		0	0
