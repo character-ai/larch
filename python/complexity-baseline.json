@@ -2769,19 +2769,31 @@
     "file": "larch/implement/ship.py",
     "code": "C901",
     "qualified_symbol": "run_ship",
-    "metric": 51
+    "metric": 55
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_postmerge_main_health_gate",
+    "metric": 7
+  },
+  {
+    "file": "larch/implement/ship.py",
+    "code": "PLR0911",
+    "qualified_symbol": "_premerge_main_health_gate",
+    "metric": 7
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0911",
     "qualified_symbol": "run_ship",
-    "metric": 26
+    "metric": 28
   },
   {
     "file": "larch/implement/ship.py",
     "code": "PLR0912",
     "qualified_symbol": "run_ship",
-    "metric": 54
+    "metric": 60
   },
   {
     "file": "larch/implement/ship.py",
@@ -2805,7 +2817,7 @@
     "file": "larch/implement/ship.py",
     "code": "PLR0915",
     "qualified_symbol": "run_ship",
-    "metric": 174
+    "metric": 188
   },
   {
     "file": "larch/implement/ship_merge.py",
@@ -2835,7 +2847,7 @@
     "file": "larch/implement/ship_resume.py",
     "code": "C901",
     "qualified_symbol": "_resume_plan",
-    "metric": 27
+    "metric": 30
   },
   {
     "file": "larch/implement/ship_resume.py",
@@ -6255,7 +6267,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "C901",
     "qualified_symbol": "_phase_infra",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6327,7 +6339,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0912",
     "qualified_symbol": "_phase_infra",
-    "metric": 17
+    "metric": 16
   },
   {
     "file": "larch/state/bootstrap.py",
@@ -6369,7 +6381,7 @@
     "file": "larch/state/bootstrap.py",
     "code": "PLR0915",
     "qualified_symbol": "_phase_infra",
-    "metric": 77
+    "metric": 76
   },
   {
     "file": "larch/state/bootstrap.py",
