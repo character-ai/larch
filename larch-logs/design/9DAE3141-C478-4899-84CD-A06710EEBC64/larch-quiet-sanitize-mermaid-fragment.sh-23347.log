@@ -1,0 +1,4 @@
+usage: mermaid sanitize [--input INPUT] [--from-md]
+                        [--warnings-log WARNINGS_LOG]
+                        [--warnings-step WARNINGS_STEP]
+mermaid sanitize: error: unrecognized arguments: --help

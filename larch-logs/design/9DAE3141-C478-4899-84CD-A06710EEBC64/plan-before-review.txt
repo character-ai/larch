@@ -1,0 +1,107 @@
+## Plan
+
+## Summary
+
+Add a plan-size guardrail to `/design` that measures two new "fits in one implementer pass" signals — firm-heading count and distinct top-level surfaces touched — alongside the existing plan-body-line and diff-size signals, blocks an oversized single plan from finalizing by default, and lets the operator either decompose it (existing panel, unchanged) or record an explicit `oversize_override: operator` line in the plan block. Thresholds move into `python/larch/core/config.py` with calibration rationale anchored to the #6514 incident.
+
+Reuses existing machinery: the Step 2b.5 `hard-trigger` action (`SIZE_TRIGGER_FIRED` routing is unchanged), optional-trailer preservation across the revise waterfall, and the decompose panel. Adds one new fail-closed enforcement point at Step 5c finalization to catch post-review plan growth so an oversized single plan cannot reach `/implement`.
+
+## Approach
+
+- Fold new signals into the existing detector. `check_plan_size_main` gains firm-heading and surface counting and folds `firm-headings` / `surfaces` reason tokens into `TRIGGER_REASONS` and `SIZE_TRIGGER_FIRED`. Because `step2b5_next_action_for` already routes `SIZE_TRIGGER_FIRED=true` to `hard-trigger`, the action decider needs no change.
+- Override is a preserved optional trailer. `oversize_override: operator` is taught to the contiguous metadata-block parser (`parse_optional_metadata`) and added to `OPTIONAL_KEYS`, so the revise waterfall preserves it across review edits. When present it suppresses the size hard trigger (mirroring `mechanical_churn`), and the detector emits `OVERSIZE_OVERRIDE=operator`.
+- Thresholds centralize in config. Existing literals (800/1500/2000) and the new thresholds (firm headings 25, surfaces 4) become `Final` constants in `python/larch/core/config.py` with a rationale comment; the detector references them (G-Cfg-1).
+- Interactive Override at the block. The Step 2b.5 initial-site hard-trigger prompt gains an Override option; choosing it writes the trailer via a new `plan set-oversize-override` verb, then continues (Round 1 decision: interactive prompt only, no flag).
+- Fail-closed finalization guard. `publish_core` re-checks size on the composed plan just after the existing review-provenance refusal; an oversized plan lacking the override is refused (`return 4`), so it cannot finalize. Step 5c surfaces a Decompose / Override / Cancel recovery.
+- Decompose panel unchanged. The Split path files serial part issues with native blocked-by edges and per-part inventories as today; per-part reviewed `larch:plan` blocks are earned when each part is `/design`'d independently (Round 1 decision: boundaries + inventory, not inline per-part plans).
+
+### Surface definition (judgment call, flagged for plan review)
+
+For each firm heading's path: `python/larch/<pkg>` when the path is under `python/larch/<pkg>/...`; `python/larch` for a top-level file directly in that package; otherwise the first path segment (`skills`, `docs`, `scripts`, `python`, ...). Count distinct surfaces across firm headings only (MAY_UPDATE excluded). Note: larch's own multi-surface refactors (this very plan touches ~6 surfaces) trip `surfaces > 4`; the intended release valve is Override or decompose, and firm-heading count remains the primary fits-in-one-pass signal. This is the issue's proposed constant; recalibration is future work.
+
+## Files to modify
+
+### UPDATED: python/larch/core/config.py
+- Add a `# Plan-size guardrail thresholds (#6527)` block of `Final` constants: `PLAN_SIZE_MAX_PLAN_BODY_LINES = 800`, `PLAN_SIZE_MAX_DIFF_ADDED = 2000`, `PLAN_SIZE_MAX_DIFF_LINES = 1500`, `PLAN_SIZE_MAX_FIRM_HEADINGS = 25`, `PLAN_SIZE_MAX_SURFACES = 4`, `OVERSIZE_OVERRIDE_OPERATOR = "operator"`.
+- Rationale comment anchored to run 0BE6E8A0 / #6514 (85 firm headings, `diff_lines: 4800`, silent 25-of-85 landing under `STATUS=complete`); firm-heading count is the primary fits-in-one-pass signal; note `surfaces > 4` is conservative for larch's tree and is a calibration candidate.
+
+### UPDATED: python/larch/design/_plan_quality_commands.py
+- Add `oversize_override: str | None` field to the `OptionalMetadata` dataclass (after `mechanical_churn`).
+- Add `"oversize_override"` to `OPTIONAL_KEYS` so keys-preservation across `revise_plan_with_waterfall_main` preserves the trailer.
+- Extend the `optional-trailers parse` CLI surface to also print the oversize_override value so the wire surface stays complete.
+
+### UPDATED: python/larch/design/plan_quality.py
+- `parse_optional_metadata`: recognize `oversize_override: operator` in the contiguous metadata-block upward scan (add a `continue` branch alongside `mechanical_churn:` / `difficulty:`) and in the value-extraction loop; thread `oversize_override` and its key into the returned `OptionalMetadata` and its `keys`. This stops the new trailer from truncating the block and preserves existing trailers above it.
+- Add `_firm_heading_count(text)` (matches `^###[ \t]+(NEW|UPDATED|REWRITTEN)[ \t]*:`, excludes MAY_UPDATE) and `_plan_surface(path)` / `_plan_surfaces(text)` per the surface definition above.
+- `check_plan_size_main`: replace inline literals with `config.PLAN_SIZE_*`; compute `firm_headings` and `surfaces`; append hard triggers `firm_headings > config.PLAN_SIZE_MAX_FIRM_HEADINGS` and `len(surfaces) > config.PLAN_SIZE_MAX_SURFACES` to `reasons` in fixed priority order (after plan-body-lines / diff); when `meta.oversize_override == config.OVERSIZE_OVERRIDE_OPERATOR`, force `SIZE_TRIGGER_FIRED=false` (reasons stay informational) and set an advisory; emit new keys `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`.
+- Add `set_oversize_override_main(argv)`: `--design-tmpdir` plus optional `--plan-file` / `--remove`; atomically insert `oversize_override: operator` into the final metadata block immediately above `diff_lines:` (or remove it), symlink/CRLF-safe via `_atomic_write` and `_canonical_existing_file`; idempotent.
+
+### UPDATED: python/larch/cli.py
+- Register `("plan", "set-oversize-override"): ("larch.design.plan_quality", "set_oversize_override_main")` in the dispatch table and the ported-verb allowlist next to `("plan", "check-size")`.
+
+### UPDATED: python/larch/design/design_postplan.py
+- Pass `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE` from `size_kv` into the `kvs.update({...})` block and add them to the `flush()` print list, so the Step 2b.5 hard-trigger presentation and `.design-postplan-emit-result.env` carry the new signals. No action-decider or return-code change.
+
+### UPDATED: python/larch/design/design_publish.py
+- In `publish_core`, immediately after the review-provenance refusal block and before the pause / named-block write, add the finalization guard: run the plan-size check on `composed-plan.md` (subprocess `plan check-size --plan-file`, consistent with the existing `_run_cli` pattern, to avoid an import cycle). When `SIZE_TRIGGER_FIRED=true` (an override already suppresses it), print `**⚠ 5c: publish refused: plan is oversized (<TRIGGER_REASONS>) and lacks oversize_override: operator; decompose it or record an operator override before finalizing.**`, set `VALIDATE_STATUS=defects-found`, add `PUBLISH_REFUSE_REASON=oversize-no-override`, emit rows, write the result env, and `return 4` (mirrors the provenance refusal at line 705). Confirm `composed-plan.md` carries the trailer block so the override survives composition (add coverage).
+
+### UPDATED: skills/design/SKILL.md
+- Step 2b.5 `_postplan_rc=12` (initial site): change the prompt to offer Split / Override / Cancel (was Split / Cancel). On Override, invoke `plan set-oversize-override` via the launcher/CLI to write the trailer, then `design step2b-postplan --write-completion-only`, and continue to Step 3. Gate B site keeps its existing Split / Override / Cancel.
+- Step 5c "Plan command validator failure (shared)": add an oversize finalization refusal special case keyed on `PUBLISH_REFUSE_REASON=oversize-no-override` (VALIDATE_STATUS=defects-found, empty log): offer Decompose (Split-path) / Override (`plan set-oversize-override`, re-run `design-step5c.sh`) / Cancel (preserve tmpdir, skip publish/rename). Note the guard fires even under `--skip-approve` (fail-closed; not auto-approvable).
+- Step 2b drafter trailer-grammar note: mention the optional `oversize_override: operator` trailer in the final metadata block.
+
+### UPDATED: skills/design/references/step2b5-rc-handling.md
+- §1 `hard-trigger`: document that the initial Step 2b site now offers Split / Override / Cancel, and describe the Override effect (writes `oversize_override: operator`, returns to caller). Add `FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE` to the direct-entry KV allowlist.
+
+### UPDATED: skills/design/scripts/check-plan-size.md
+- Document the new emitted keys (`FIRM_HEADINGS`, `SURFACES_TOUCHED`, `OVERSIZE_OVERRIDE`), the new thresholds (firm headings > 25, surfaces > 4) and their config home, the new `firm-headings` / `surfaces` reason tokens and their priority order, the surface definition, and `oversize_override: operator` suppression. Update the "Edit in sync" list to add `python/larch/core/config.py`, `design_publish.py`, and `docs/issue-anchored-plan.md`.
+
+### UPDATED: skills/design/references/flags.md
+- Extend the "Plan-size thresholds (Step 2b.5)" section with the firm-heading and surfaces triggers, the config constant names, and `oversize_override` suppression; add the three new keys to the Machine-output list.
+
+### UPDATED: docs/issue-anchored-plan.md
+- Document the plan-size signals (firm-heading count excluding MAY_UPDATE, distinct surfaces), thresholds plus `python/larch/core/config.py` location plus #6514 calibration rationale, the `oversize_override: operator` trailer (position: final metadata block adjacent to `diff_lines:`; preserved across revisions), and the Step 5c finalization guard (an oversized plan without the override cannot finalize). Additive; keep readers tolerant of plans without the trailer (G-Wire-2).
+
+### UPDATED: python/tests/design/test_plan_quality.py
+- `parse_optional_metadata`: recognizes `oversize_override: operator` without truncating `diff_added:` / `mechanical_churn:` above it; absent yields None; a malformed value stops the block as today.
+- `check_plan_size_main`: firm-heading counting excludes MAY_UPDATE; surface bucketing (`python/larch/<pkg>` vs top-level); `firm_headings > 25` and `surfaces > 4` each set `SIZE_TRIGGER_FIRED` and add the reason token; combined with plan-body / diff reasons in priority order; `oversize_override: operator` forces `SIZE_TRIGGER_FIRED=false` and emits `OVERSIZE_OVERRIDE=operator`; the new keys are always emitted; thresholds are read from config.
+- `set_oversize_override_main`: inserts the trailer above `diff_lines:`, preserves existing trailers, is idempotent, `--remove` deletes it, and rejects symlink / CRLF targets.
+
+### UPDATED: python/tests/design/test_design_publish.py
+- Finalization guard: an oversized composed plan without the override makes `publish_core` return 4, print the refusal, and set `VALIDATE_STATUS=defects-found` plus `PUBLISH_REFUSE_REASON=oversize-no-override`; with `oversize_override: operator` it proceeds; under-threshold it proceeds. `composed-plan.md` carries the override trailer through composition.
+
+### MAY_UPDATE: python/tests/design/test_design_postplan.py
+- Extend the postplan KV-flow cases so a firm-heading / surface-driven check-size stdout yields `rc=12` / `hard-trigger` and surfaces the new keys in the result env. Only if the passthrough assertions require it; the decider mapping is unchanged.
+
+### MAY_UPDATE: python/tests/design/test_design_lifecycle.py
+- Add a `step2b5_next_action_for` case for a firm-heading / surface-origin `SIZE_TRIGGER` if explicit coverage is wanted; the decider logic itself is unchanged (`SIZE_TRIGGER_FIRED` routing), so this is conditional.
+
+### MAY_UPDATE: python/larch/design/design_step5c.py
+- If the retained `step2b5_main` presentation path should show the new signals, thread `FIRM_HEADINGS` / `SURFACES_TOUCHED` / `OVERSIZE_OVERRIDE` through the same way as `design_postplan.py`. Conditional on the retained-path breadcrumb surfacing them.
+
+## Edge cases
+- `oversize_override: operator` inside the contiguous metadata block must not break parsing of `diff_added:` / `mechanical_churn:` above it; the parser must accept it as a block line.
+- The override must survive the revise waterfall (findings applied between 2b.5 and Step 5c); preserved via `OPTIONAL_KEYS` and a keys-preservation test.
+- Post-review growth: a plan under threshold at 2b.5 that grows past it during review is caught by the Gate B `--with-plan-size` re-emit and, as the final backstop, the Step 5c guard.
+- MAY_UPDATE headings are conditional and are excluded from firm-heading and surface counts.
+- Mechanical-churn suppression stays orthogonal: it suppresses only the diff trigger; firm-heading / surface triggers still fire unless overridden.
+- A plan with a valid override that is not actually oversized emits `OVERSIZE_OVERRIDE=operator` harmlessly (no trigger to suppress).
+- `--skip-approve` cannot auto-approve past the Step 5c fail-closed refusal; the Decompose / Override / Cancel prompt still fires.
+
+## Failure modes
+1. Trailer-parser regression silently drops existing size trailers (diff estimates lost, mechanical_churn ignored). Earliest signal: `test_plan_quality` optional-trailer preservation cases. Mitigation: the recognition branch plus a preservation test that places `oversize_override` above other trailers.
+2. Override not preserved across revision, so Step 5c refuses a legitimately overridden plan and blocks finalization. Signal: the revise-waterfall keys-preservation test with `oversize_override` in `OPTIONAL_KEYS`. Mitigation: `OPTIONAL_KEYS` membership plus a round-trip test.
+3. Threshold too aggressive (`surfaces > 4`) false-positives on legitimate multi-surface plans, causing operator friction. Signal: this very plan trips it. Mitigation: Override is the documented release valve, the threshold is flagged as a calibration candidate, and firm-heading count remains the primary signal.
+
+## Testing strategy
+- Unit: detector (firm headings, surfaces, config-sourced thresholds, override suppression, new keys), parser (`oversize_override` recognition plus preservation), and `set_oversize_override_main` (insert / remove / idempotent / guards) in `test_plan_quality.py`.
+- Integration: the Step 5c finalization guard in `test_design_publish.py`; postplan KV passthrough in `test_design_postplan.py` (conditional).
+- `make py-lint`, `make py-test`, and the design script harnesses (`test-check-plan-size`, `test-gate-b-apply-mode`, `test-design-structure.sh`) pass.
+
+## Difficulty
+HARD: a multi-consumer plan-grammar change (a new preserved trailer taught to the contiguous parser), a fail-closed finalization guard, folded size signals across the trigger contract, plus config / docs / SKILL sweeps. Contained by reusing the decompose panel and the action decider unchanged.
+
+difficulty: HARD
+diff_added: 520
+mechanical_churn: false
+diff_lines: 700
