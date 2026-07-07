@@ -2,3 +2,4 @@ site	attempt	redacted_bytes	digest_bytes	redacted_tokens	digest_tokens	saved_byt
 step3	1	3584	135	896	34	3449	862	false
 step3	2	3596	161	899	41	3435	858	false
 step6	1	4284	330	1071	83	3954	988	false
+step8-main-agent-fix	1	3772	176	943	44	3596	899	false
